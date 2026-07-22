@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/* Same token contract as apps/website — kept in sync so both experiences
+   feel like one ecosystem, per the branding spec. See that app's
+   globals.css comment for the full explanation. */
+:root {
+  --ejo-primary: #16a34a;
+  --ejo-secondary: #0f172a;
+  --ejo-accent: #22c55e;
+  --ejo-success: #16a34a;
+  --ejo-warning: #f59e0b;
+  --ejo-error: #dc2626;
+  --ejo-info: #2563eb;
+
+  --ejo-bg: #ffffff;
+  --ejo-surface: #f8fafc;
+  --ejo-border: #e2e8f0;
+  --ejo-text: #0f172a;
+  --ejo-text-muted: #64748b;
+
+  --ejo-radius-md: 10px;
+  --ejo-radius-lg: 16px;
+  --ejo-radius-xl: 24px;
+}
+
+[data-theme='dark'] {
+  --ejo-bg: #0b1220;
+  --ejo-surface: #111827;
+  --ejo-border: #1f2937;
+  --ejo-text: #f1f5f9;
+  --ejo-text-muted: #94a3b8;
+}
+
+* {
+  border-color: var(--ejo-border);
+}
+
+body {
+  background: var(--ejo-bg);
+  color: var(--ejo-text);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Reusable "photography" placeholder — used on the auth screens' brand
+   panel until real Kewalram photography is available. */
+.ejo-media-placeholder {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.55), transparent 55%),
+    radial-gradient(circle at 80% 30%, rgba(21, 128, 61, 0.5), transparent 50%),
+    radial-gradient(circle at 50% 90%, rgba(15, 23, 42, 0.6), transparent 60%),
+    linear-gradient(135deg, #0f2417 0%, #143d24 50%, #0b1a11 100%);
+}
+
+@keyframes ejo-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.ejo-shimmer {
+  background: linear-gradient(90deg, var(--ejo-accent) 0%, #d1fae5 50%, var(--ejo-accent) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ejo-shimmer 3.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ejo-shimmer {
+    animation: none;
+  }
+}

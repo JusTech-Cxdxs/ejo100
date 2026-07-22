@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Dummy values — CI never talks to a real database (db-push-if-vercel.js
+      # only runs when VERCEL is set), but Prisma reads these at schema-parse
+      # time even for `generate`, so they must exist and be well-formed.
+      DATABASE_URL: 'postgresql://user:password@localhost:5432/ejo100'
+      DIRECT_URL: 'postgresql://user:password@localhost:5432/ejo100'
+      BETTER_AUTH_SECRET: 'ci-placeholder-secret-do-not-use-in-production'
+      BETTER_AUTH_URL: 'http://localhost:3001'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+      - run: npm install
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build

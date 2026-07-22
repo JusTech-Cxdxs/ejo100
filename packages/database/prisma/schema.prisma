@@ -1,0 +1,586 @@
+// ============================================================================
+// EJO 100 ENTERPRISE PLATFORM — CORE DATABASE SCHEMA
+// Phase 1: organization hierarchy, module registry, branding config.
+// Phase 2 (added below, Phase 1 models untouched): Better Auth tables,
+// Employee/Customer identity separation, RBAC join tables.
+//
+// Still NO business-logic modules (Workshop, Inventory, Finance, etc.) —
+// those arrive in later phases per the project's incremental build rule.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // Neon pooled connection (used at runtime)
+  directUrl = env("DIRECT_URL")   // Neon direct connection (used for migrations)
+}
+
+// ----------------------------------------------------------------------------
+// MODULE REGISTRY — powers the "every route exists, only some are live" rule.
+// The sidebar / router in apps/portal reads this instead of hardcoding which
+// modules are active, so activating a module later is configuration only.
+// ----------------------------------------------------------------------------
+enum ModuleStatus {
+  LIVE
+  COMING_SOON
+  DISABLED
+}
+
+model PlatformModule {
+  id          String       @id @default(cuid())
+  key         String       @unique // e.g. "workshop", "hr", "finance"
+  name        String
+  description String?
+  status      ModuleStatus @default(COMING_SOON)
+  sortOrder   Int          @default(0)
+  icon        String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  companyModules CompanyModule[]
+
+  @@map("platform_modules")
+}
+
+// Per-company override of a module's status (a module can be COMING_SOON
+// platform-wide but LIVE for one company once that company's build lands).
+model CompanyModule {
+  id        String       @id @default(cuid())
+  companyId String
+  moduleId  String
+  status    ModuleStatus
+  company   Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  module    PlatformModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, moduleId])
+  @@map("company_modules")
+}
+
+// ----------------------------------------------------------------------------
+// BRANDING — the dynamic branding engine. One row per company; every UI
+// surface (portal, PDF templates, emails) reads colours from here instead of
+// hardcoding them. Public website branding is also sourced from this model.
+// ----------------------------------------------------------------------------
+model Branding {
+  id              String   @id @default(cuid())
+  companyId       String   @unique
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  logoUrl         String?
+  logoDarkUrl     String?
+  faviconUrl      String?
+
+  primaryColor    String   @default("#16A34A") // Kewalram default: green
+  secondaryColor  String   @default("#0F172A")
+  accentColor     String   @default("#22C55E")
+  successColor    String   @default("#16A34A")
+  warningColor    String   @default("#F59E0B")
+  errorColor      String   @default("#DC2626")
+  infoColor       String   @default("#2563EB")
+
+  fontFamily      String   @default("Inter")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("branding")
+}
+
+// ----------------------------------------------------------------------------
+// ORGANIZATION HIERARCHY
+// Platform -> Company -> Business Unit -> Country -> State -> City -> Branch
+//   -> Department -> Team -> User
+// Every level is a normal configurable record — nothing here is hardcoded
+// to Kewalram; Kewalram Nigeria is simply the first row seeded into it.
+// ----------------------------------------------------------------------------
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  legalName   String?
+  website     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branding      Branding?
+  businessUnits BusinessUnit[]
+  companyModules CompanyModule[]
+  users         User[]
+  roles         Role[]
+  customers     Customer[]
+
+  @@map("companies")
+}
+
+model BusinessUnit {
+  id        String   @id @default(cuid())
+  companyId String
+  name      String   // e.g. "Automobile Division", "Afprint", "Sunola Foods"
+  slug      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  countries CountryLink[]
+  branches  Branch[]
+
+  @@unique([companyId, slug])
+  @@map("business_units")
+}
+
+model Country {
+  id       String @id @default(cuid())
+  name     String @unique // e.g. "Nigeria"
+  isoCode  String @unique // e.g. "NG"
+
+  states       State[]
+  businessUnits CountryLink[]
+
+  @@map("countries")
+}
+
+// Join table: which business units operate in which countries.
+model CountryLink {
+  id             String       @id @default(cuid())
+  businessUnitId String
+  countryId      String
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+  country        Country      @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@unique([businessUnitId, countryId])
+  @@map("business_unit_countries")
+}
+
+model State {
+  id        String   @id @default(cuid())
+  countryId String
+  name      String   // e.g. "Lagos State"
+
+  country   Country   @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  cities    City[]
+
+  @@unique([countryId, name])
+  @@map("states")
+}
+
+model City {
+  id      String @id @default(cuid())
+  stateId String
+  name    String // e.g. "Isolo"
+
+  state    State    @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  branches Branch[]
+
+  @@unique([stateId, name])
+  @@map("cities")
+}
+
+model Branch {
+  id             String   @id @default(cuid())
+  businessUnitId String
+  cityId         String
+  name           String   // e.g. "Isolo Branch"
+  code           String?  // short code used in document numbering, e.g. "KWL-WS"
+  address        String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  businessUnit BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+  city         City         @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  departments  Department[]
+  users        User[]
+
+  @@map("branches")
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  branchId  String
+  name      String   // e.g. "Workshop", "HR", "Finance", "Store"
+  slug      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  teams  Team[]
+  users  User[]
+
+  @@unique([branchId, slug])
+  @@map("departments")
+}
+
+model Team {
+  id           String   @id @default(cuid())
+  departmentId String
+  name         String   // e.g. "Technicians", "Store Officers"
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  users      User[]
+
+  @@map("teams")
+}
+
+// ----------------------------------------------------------------------------
+// IDENTITY & ACCESS
+// User = employees and platform administrators only. Customers are a
+// separate model (see CUSTOMER section below) so an employee account can
+// never satisfy a customer-dashboard query and vice versa, per the Phase 2
+// requirement that the two account types stay fully isolated even though
+// they share one Better Auth backend and one database.
+//
+// Session / Account / Verification below follow Better Auth's standard
+// adapter schema (https://www.better-auth.com) — field names and shapes
+// are dictated by that library, not invented here. Better Auth is
+// configured with two-model support (see apps/portal/lib/auth.ts) mapping
+// User -> "user" and Customer -> a second identity table via its
+// multi-session/organization-free plugin approach; both write into these
+// same Session/Account/Verification tables, discriminated by which foreign
+// key (userId vs customerId) is populated.
+// ----------------------------------------------------------------------------
+
+enum AccountType {
+  EMPLOYEE
+  ADMIN
+}
+
+model User {
+  id            String      @id @default(cuid())
+  // Nullable: Better Auth creates this row on signup before an
+  // administrator has necessarily assigned org placement (see
+  // apps/portal/lib/auth.ts). A user with no companyId yet is invisible
+  // everywhere except account settings until an admin assigns one.
+  companyId     String?
+  branchId      String?
+  departmentId  String?
+  teamId        String?
+
+  accountType   AccountType @default(EMPLOYEE)
+
+  employeeId    String?     @unique // human-facing staff number
+  fullName      String
+  email         String      @unique
+  emailVerified Boolean     @default(false) // required by Better Auth
+  image         String?                     // required by Better Auth (avatar URL)
+  phone         String?
+  photoUrl      String?
+
+  isActive      Boolean     @default(true)
+  lastLoginAt   DateTime?
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  company    Company?    @relation(fields: [companyId], references: [id])
+  branch     Branch?     @relation(fields: [branchId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+  team       Team?       @relation(fields: [teamId], references: [id])
+
+  roles           UserRole[]
+  sessions        Session[]
+  accounts        Account[]
+  employeeProfile EmployeeProfile?
+
+  @@map("users")
+}
+
+// One-to-one HR extension of User. Kept separate per the Phase 1 note so
+// the core identity table stays lean; HR-specific fields live here.
+model EmployeeProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Employment
+  jobTitle         String?
+  employmentType   String?   // Full-time, Part-time, Contract, Intern, NYSC, Consultant...
+  employmentStatus String?   // Active, Suspended, On Leave, Resigned, Retired, Terminated
+  dateEmployed     DateTime?
+  reportingManagerId String?
+
+  // Emergency contact (kept inline — single contact per employee is enough
+  // for Phase 2; promote to its own model if multiple contacts are needed)
+  emergencyContactName         String?
+  emergencyContactRelationship String?
+  emergencyContactPhone        String?
+
+  // Signature / notification preferences
+  signatureUrl               String?
+  notifyByEmail               Boolean @default(true)
+  notifyByInApp                Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents EmployeeDocument[]
+
+  @@map("employee_profiles")
+}
+
+model EmployeeDocument {
+  id                String          @id @default(cuid())
+  employeeProfileId String
+  employeeProfile   EmployeeProfile @relation(fields: [employeeProfileId], references: [id], onDelete: Cascade)
+
+  type    String // CV, Employment Letter, Contract, Certificate, Medical Fitness...
+  fileUrl String
+  uploadedAt DateTime @default(now())
+
+  @@map("employee_documents")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  companyId   String
+  name        String   // e.g. "Technician", "Workshop Supervisor", "Administrator"
+  slug        String
+  description String?
+  isSystem    Boolean  @default(false) // true for built-in roles that can't be deleted
+
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@unique([companyId, slug])
+  @@map("roles")
+}
+
+model Permission {
+  id          String @id @default(cuid())
+  key         String @unique // e.g. "workshop.job_card.approve"
+  description String?
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ----------------------------------------------------------------------------
+// CUSTOMER IDENTITY — deliberately separate from User (employees/admins).
+// Same Better Auth backend and database per Phase 2 requirements, but a
+// customer session can never resolve to a User row, so a customer account
+// structurally cannot reach an employee-only route.
+// ----------------------------------------------------------------------------
+
+model Customer {
+  id            String   @id @default(cuid())
+  companyId     String   // which company this customer belongs to (Kewalram, etc.)
+
+  fullName      String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  phone         String?
+
+  isActive      Boolean  @default(true)
+  lastLoginAt   DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company    Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sessions   CustomerSession[]
+  accounts   CustomerAccount[]
+
+  customerCompany CustomerCompany?
+  vehicles        CustomerVehicle[]
+  addresses       CustomerAddress[]
+  contacts        CustomerContact[]
+
+  @@map("customers")
+}
+
+// Optional: when the customer is a business (fleet account) rather than
+// an individual — e.g. a company that brings multiple vehicles in.
+model CustomerCompany {
+  id         String   @id @default(cuid())
+  customerId String   @unique
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  companyName String
+  taxId       String?
+
+  @@map("customer_companies")
+}
+
+model CustomerVehicle {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  make         String?
+  model        String?
+  year         Int?
+  plateNumber  String?
+  chassisNumber String?
+  createdAt    DateTime @default(now())
+
+  @@map("customer_vehicles")
+}
+
+model CustomerAddress {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  label      String? // "Home", "Office"
+  line1      String
+  line2      String?
+  city       String?
+  state      String?
+  country    String?
+
+  @@map("customer_addresses")
+}
+
+model CustomerContact {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  name  String
+  phone String?
+  email String?
+  role  String? // e.g. "Fleet Manager"
+
+  @@map("customer_contacts")
+}
+
+// ----------------------------------------------------------------------------
+// BETTER AUTH TABLES
+// Standard Better Auth schema (see https://www.better-auth.com/docs/concepts/database).
+// Field names/shapes are dictated by the library's Prisma adapter — do not
+// rename without also updating apps/portal/lib/auth.ts. Employee/Admin
+// sessions and Customer sessions are kept in physically separate tables
+// (rather than one shared table with two nullable FKs) — that is what
+// actually guarantees a customer token cannot be presented to an
+// employee-only guard, matching the Phase 2 isolation requirement.
+// ----------------------------------------------------------------------------
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId             String
+  providerId            String    // "credential", "google", "microsoft"...
+  passwordHash          String?   // set for the "credential" (email+password) provider
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([providerId, accountId])
+  @@map("accounts")
+}
+
+model CustomerSession {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  expiresAt  DateTime
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("customer_sessions")
+}
+
+model CustomerAccount {
+  id                    String    @id @default(cuid())
+  customerId            String
+  customer              Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  accountId             String
+  providerId            String
+  passwordHash          String?
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([providerId, accountId])
+  @@map("customer_accounts")
+}
+
+// Shared by both auth flows — email verification, password reset, etc.
+// Better Auth keys this by (identifier, value), not by user, so one table
+// safely serves both Employee and Customer flows.
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String   // typically the email being verified/reset
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@map("verifications")
+}
+
+// ----------------------------------------------------------------------------
+// AUDIT LOG — required from Phase 1 per the "nothing deletable, everything
+// timestamped" rule; every future module writes into this same table.
+// ----------------------------------------------------------------------------
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String   // e.g. "user.created", "job_card.approved"
+  entityType String   // e.g. "JobCard"
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@map("audit_logs")
+}

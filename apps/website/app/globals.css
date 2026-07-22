@@ -1,0 +1,114 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+  Design tokens as CSS variables. Values below are the Kewalram (Phase One
+  client) branding, populated from lib/branding.ts. Every future client
+  gets a different set of values here — no component should ever reference
+  a raw hex colour directly. Dark mode is class-based (see lib/theme.tsx) —
+  toggling `.dark` on <html> swaps the block below.
+*/
+:root {
+  --ejo-primary: #16a34a;
+  --ejo-primary-dark: #15803d;
+  --ejo-secondary: #0f172a;
+  --ejo-accent: #22c55e;
+  --ejo-success: #16a34a;
+  --ejo-warning: #f59e0b;
+  --ejo-error: #dc2626;
+  --ejo-info: #2563eb;
+
+  --ejo-bg: #ffffff;
+  --ejo-surface: #f8fafc;
+  --ejo-surface-alt: #f1f5f9;
+  --ejo-border: #e2e8f0;
+  --ejo-text: #0f172a;
+  --ejo-text-muted: #64748b;
+  --ejo-text-on-dark: #f8fafc;
+  --ejo-text-on-dark-muted: rgba(248, 250, 252, 0.7);
+
+  --ejo-radius-md: 10px;
+  --ejo-radius-lg: 16px;
+  --ejo-radius-xl: 24px;
+}
+
+.dark {
+  --ejo-bg: #06120a;
+  --ejo-surface: #0d1b12;
+  --ejo-surface-alt: #10241a;
+  --ejo-border: #1c3626;
+  --ejo-text: #f1f5f9;
+  --ejo-text-muted: #9db3a6;
+}
+
+* {
+  border-color: var(--ejo-border);
+}
+
+body {
+  background: var(--ejo-bg);
+  color: var(--ejo-text);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Reusable "photography" placeholder — a deliberate gradient mesh used
+   anywhere a real photo will eventually go. Swap the element for
+   next/image once real Kewalram photography is available. */
+.ejo-media-placeholder {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.55), transparent 55%),
+    radial-gradient(circle at 80% 30%, rgba(21, 128, 61, 0.5), transparent 50%),
+    radial-gradient(circle at 50% 90%, rgba(15, 23, 42, 0.6), transparent 60%),
+    linear-gradient(135deg, #0f2417 0%, #143d24 50%, #0b1a11 100%);
+}
+
+.ejo-glass {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+@keyframes ejo-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.ejo-marquee-track {
+  animation: ejo-marquee 32s linear infinite;
+}
+.ejo-marquee-track:hover {
+  animation-play-state: paused;
+}
+
+@keyframes ejo-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.ejo-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--ejo-accent) 0%,
+    #d1fae5 50%,
+    var(--ejo-accent) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ejo-shimmer 3.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .ejo-marquee-track,
+  .ejo-shimmer {
+    animation: none;
+  }
+}
