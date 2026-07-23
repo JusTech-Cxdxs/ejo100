@@ -3,9 +3,20 @@
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { siteConfig } from '@/lib/site-config';
+import { useI18n } from '@/lib/i18n';
 import { PoweredByBadge } from './PoweredByBadge';
+import { FacebookIcon, LinkedInIcon, XIcon, YouTubeIcon, InstagramIcon } from './icons';
+
+const SOCIALS = [
+  { label: 'Facebook', icon: FacebookIcon, href: '#' },
+  { label: 'LinkedIn', icon: LinkedInIcon, href: '#' },
+  { label: 'X (Twitter)', icon: XIcon, href: '#' },
+  { label: 'YouTube', icon: YouTubeIcon, href: '#' },
+  { label: 'Instagram', icon: InstagramIcon, href: '#' },
+];
 
 export function Footer() {
+  const { t } = useI18n();
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
 
@@ -26,21 +37,21 @@ export function Footer() {
             A spirit of entrepreneurship that has driven the success of our businesses for over 150 years.
           </p>
           <div className="mt-5 flex gap-3">
-            {['Facebook', 'LinkedIn', 'Twitter', 'YouTube', 'Instagram'].map((label) => (
+            {SOCIALS.map(({ label, icon: Icon, href }) => (
               <a
                 key={label}
-                href="#"
+                href={href}
                 aria-label={label}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-xs hover:bg-[var(--ejo-primary)]"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-[var(--ejo-primary)]"
               >
-                {label[0]}
+                <Icon />
               </a>
             ))}
           </div>
         </div>
 
         <FooterColumn
-          title="Quick Links"
+          title={t('footer.quickLinks')}
           links={[
             ['About Us', '/about'],
             ['Our Businesses', '/businesses'],
@@ -52,7 +63,7 @@ export function Footer() {
           ]}
         />
         <FooterColumn
-          title="Our Businesses"
+          title={t('footer.ourBusinesses')}
           links={[
             ['Automotive', '/businesses/automotive'],
             ['Agriculture', '/businesses/agriculture'],
@@ -63,7 +74,7 @@ export function Footer() {
           ]}
         />
         <div>
-          <p className="text-sm font-semibold text-white">Contact Us</p>
+          <p className="text-sm font-semibold text-white">{t('footer.contactUs')}</p>
           <address className="mt-3 space-y-2 text-sm not-italic text-white/60">
             <p>Kewalram Chanrai Group Head Office</p>
             <p>Lagos, Nigeria</p>
@@ -72,10 +83,10 @@ export function Footer() {
         </div>
 
         <div>
-          <p className="text-sm font-semibold text-white">Newsletter</p>
-          <p className="mt-3 text-sm text-white/60">Stay updated with our latest news and insights.</p>
+          <p className="text-sm font-semibold text-white">{t('footer.newsletter')}</p>
+          <p className="mt-3 text-sm text-white/60">{t('footer.newsletterText')}</p>
           {subscribed ? (
-            <p className="mt-4 text-sm text-[var(--ejo-accent)]">Thanks — you&apos;re subscribed!</p>
+            <p className="mt-4 text-sm text-[var(--ejo-accent)]">{t('footer.newsletterSuccess')}</p>
           ) : (
             <form onSubmit={handleSubscribe} className="mt-4 flex gap-2">
               <input
@@ -83,7 +94,7 @@ export function Footer() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
+                placeholder={t('footer.newsletterPlaceholder')}
                 className="w-full rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm text-white placeholder-white/40 outline-none focus:border-[var(--ejo-primary)]"
               />
               <button
@@ -101,11 +112,11 @@ export function Footer() {
       <div className="border-t border-white/10 px-6 py-6">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
           <p className="text-xs text-white/50">
-            © {new Date().getFullYear()} {siteConfig.companyName}. All rights reserved.
+            © {new Date().getFullYear()} {siteConfig.companyName}. {t('footer.rights')}
           </p>
           <div className="flex flex-wrap items-center gap-5 text-xs text-white/50">
-            <Link href="/privacy" className="hover:text-white">Privacy Policy</Link>
-            <Link href="/terms" className="hover:text-white">Terms of Use</Link>
+            <Link href="/privacy" className="hover:text-white">{t('footer.privacy')}</Link>
+            <Link href="/terms" className="hover:text-white">{t('footer.terms')}</Link>
             <PoweredByBadge />
           </div>
         </div>
