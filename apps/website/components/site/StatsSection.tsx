@@ -1,19 +1,21 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useInView, motion } from 'framer-motion';
+import { AwardIcon, BuildingIcon, UsersIcon, GlobeIcon } from '@/components/icons';
 
 interface Stat {
   label: string;
   value: number;
   suffix: string;
+  icon: ReactNode;
 }
 
 const STATS: Stat[] = [
-  { label: 'Years of Legacy', value: 150, suffix: '+' },
-  { label: 'Business Divisions', value: 20, suffix: '+' },
-  { label: 'Employees', value: 10000, suffix: '+' },
-  { label: 'Countries of Operation', value: 50, suffix: '+' },
+  { label: 'Years of Legacy', value: 150, suffix: '+', icon: <AwardIcon /> },
+  { label: 'Business Divisions', value: 20, suffix: '+', icon: <BuildingIcon /> },
+  { label: 'Employees', value: 10000, suffix: '+', icon: <UsersIcon /> },
+  { label: 'Countries of Operation', value: 50, suffix: '+', icon: <GlobeIcon /> },
 ];
 
 function Counter({ value, suffix }: { value: number; suffix: string }) {
@@ -45,7 +47,7 @@ function Counter({ value, suffix }: { value: number; suffix: string }) {
 
 export function StatsSection() {
   return (
-    <section className="relative z-20 -mt-16 px-6">
+    <section className="relative z-30 -mt-10 px-6">
       <div className="mx-auto max-w-6xl rounded-[var(--ejo-radius-xl)] bg-[var(--ejo-primary)] px-8 py-10 shadow-2xl">
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
           {STATS.map((stat, i) => (
@@ -55,8 +57,11 @@ export function StatsSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: i * 0.1 }}
-              className="text-center"
+              className="flex flex-col items-center text-center"
             >
+              <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white">
+                {stat.icon}
+              </span>
               <Counter value={stat.value} suffix={stat.suffix} />
               <p className="mt-1 text-sm text-white/80">{stat.label}</p>
             </motion.div>
