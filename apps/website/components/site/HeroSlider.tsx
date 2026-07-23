@@ -15,9 +15,9 @@ interface Slide {
 const SLIDES: Slide[] = [
   {
     eyebrow: '150+ YEARS OF TRUST. A FUTURE OF IMPACT.',
-    headline: 'Building Sustainable Businesses. Empowering Generations.',
+    headline: 'Building Businesses. Inspiring Generations.',
     subheading:
-      'We are a diversified group with interests in agriculture, automotive, manufacturing, real estate and more — creating lasting value across Africa and beyond.',
+      'A diversified group driving growth across agriculture, automotive, manufacturing, real estate, and other key industries.',
     primaryCta: { label: 'Explore Our Businesses', href: '/businesses' },
     secondaryCta: { label: 'About Kewalram Chanrai', href: '/about' },
   },
