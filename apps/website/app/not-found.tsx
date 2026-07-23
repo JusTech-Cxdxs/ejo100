@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 export default function NotFound() {
   return (
-    <main className="mx-auto flex min-h-[70vh] max-w-2xl flex-col items-center justify-center gap-4 px-6 pt-20 text-center">
+    <main className="mx-auto flex min-h-[70vh] max-w-2xl flex-col items-center justify-center gap-4 px-6 pt-28 text-center">
       <p className="text-sm font-semibold text-[var(--ejo-primary)]">404</p>
       <h1 className="text-3xl font-bold text-[var(--ejo-text)]">Page not found</h1>
       <p className="text-[var(--ejo-text-muted)]">
