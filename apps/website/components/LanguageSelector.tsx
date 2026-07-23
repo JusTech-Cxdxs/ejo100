@@ -1,21 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { LANGUAGES } from '@/lib/languages';
+import { useI18n } from '@/lib/i18n';
 
-const LANGUAGES = [
-  { code: 'en', label: 'English', flag: '🇬🇧' },
-  { code: 'fr', label: 'Français', flag: '🇫🇷' },
-  { code: 'ha', label: 'Hausa', flag: '🇳🇬' },
-];
-
-/**
- * UI only for now — selecting a language stores the preference but does
- * not yet translate content. Full i18n (see project constitution's
- * multi-language requirement) is a separate, larger phase.
- */
 export function LanguageSelector({ dark = false }: { dark?: boolean }) {
+  const { language, setLanguage } = useI18n();
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState(LANGUAGES[0]!);
+  const current = LANGUAGES.find((l) => l.code === language) ?? LANGUAGES[0];
 
   return (
     <div className="relative">
@@ -27,26 +19,28 @@ export function LanguageSelector({ dark = false }: { dark?: boolean }) {
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <span>{selected.flag}</span>
-        <span>{selected.label}</span>
+        <span>{current.flag}</span>
+        <span>{current.label}</span>
         <span aria-hidden="true">▾</span>
       </button>
 
       {open && (
         <ul
           role="listbox"
-          className="absolute right-0 z-50 mt-2 w-40 overflow-hidden rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] py-1 shadow-xl"
+          className="absolute right-0 z-50 mt-2 max-h-72 w-44 overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] py-1 shadow-xl"
         >
           {LANGUAGES.map((lang) => (
             <li key={lang.code}>
               <button
                 role="option"
-                aria-selected={selected.code === lang.code}
+                aria-selected={current.code === lang.code}
                 onClick={() => {
-                  setSelected(lang);
+                  setLanguage(lang.code);
                   setOpen(false);
                 }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--ejo-surface)] ${
+                  current.code === lang.code ? 'text-[var(--ejo-primary)]' : 'text-[var(--ejo-text)]'
+                }`}
               >
                 <span>{lang.flag}</span>
                 {lang.label}
