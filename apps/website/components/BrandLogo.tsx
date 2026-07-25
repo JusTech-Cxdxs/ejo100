@@ -22,7 +22,7 @@ export function BrandLogo({ transparent = false, size = 36 }: BrandLogoProps) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- needs plain onError fallback chaining (svg -> png -> monogram)
       <img
-        src="/images/logo/logo.svg"
+        src="/images/logo/logo.png"
         alt="KCG Logo"
         style={{ height: size, width: 'auto' }}
         onError={() => setSvgFailed(true)}
