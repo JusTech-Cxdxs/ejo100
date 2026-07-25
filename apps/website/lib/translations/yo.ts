@@ -19,15 +19,23 @@ const yo: Record<keyof typeof en, string> = {
   'search.noResults': 'Kò sí àbájáde',
 
   'hero.slide1.eyebrow': 'ỌDÚN 150+ ÌGBẸ́KẸ̀LÉ',
-  'hero.slide1.headline': 'Ìkọ́lé Àwọn Iṣòwò Alálòpẹ́ẹ́.',
-  'hero.slide1.subheading': 'Ẹgbẹ́ oríṣiríṣi tí ń dá iye tí ó dúró ṣinṣin ní Áfíríkà àti jù bẹ́ẹ̀ lọ.',
-  'hero.slide1.primaryCta': 'Wo Àwọn Iṣòwò Wa',
-  'hero.slide1.secondaryCta': 'Nípa Kewalram Chanrai',
-  'hero.slide2.eyebrow': 'TI A ṢE FÚN ÌPÉLÉTA',
-  'hero.slide2.headline': 'Àwọn Ìtọ́jú Ọkọ̀ Tí A Gbẹ́kẹ̀lé.',
-  'hero.slide2.subheading': 'Títà ọkọ̀ àti àwọn ibùdó ìṣẹ́ ní gbogbo orílẹ̀-èdè.',
-  'hero.slide2.primaryCta': 'Ṣàbẹ̀wò sí Ibùdó Ìṣẹ́',
-  'hero.slide2.secondaryCta': 'Ìhà Onibara',
+'hero.slide1.headline': 'Ìkọ́lé Àwọn Iṣòwò Alálòpẹ́ẹ́.',
+'hero.slide1.subheading':
+  'Ẹgbẹ́ oríṣiríṣi tí ń dá iye tí ó dúró ṣinṣin ní Áfíríkà àti jù bẹ́ẹ̀ lọ.',
+'hero.slide1.primaryCta': 'Wo Àwọn Iṣòwò Wa',
+'hero.slide1.secondaryCta': 'Nípa Kewalram Chanrai'
+'hero.slide2.eyebrow': 'TI A ṢE FÚN ÌPÉLÉTA',
+'hero.slide2.headline': 'Àwọn Ìtọ́jú Ọkọ̀ Tí A Gbẹ́kẹ̀lé.',
+'hero.slide2.subheading':
+  'Títà ọkọ̀ àti àwọn ibùdó ìṣẹ́ ní gbogbo orílẹ̀-èdè.',
+'hero.slide2.primaryCta': 'Ṣàbẹ̀wò sí Ibùdó Ìṣẹ́',
+'hero.slide2.secondaryCta': 'Ìhà Oníbàárà',
+'hero.slide3.eyebrow': 'A GBÒǸGBÒ WA WÀ NÍNÚ IṢẸ́ ÀGBẸ̀',
+'hero.slide3.headline': 'Ṣíṣe Ìdàgbàsókè Nàìjíríà Láti Gbòǹgbò Rẹ̀.',
+'hero.slide3.subheading':
+  'Àwọn iṣẹ́ àgbẹ̀ wa ń mú ààbò oúnjẹ lágbára, wọ́n sì ń ṣe atilẹyin fún àwọn ẹ̀wọ̀n ìpèsè alálòpẹ́ẹ́ nípasẹ̀ ṣíṣe àwọn ọja iṣẹ́ àgbẹ̀ tó ga ní ìdánilẹ́kọ̀ọ́. Àwọn ọja wọ̀nyí ń ṣèrànwọ́ láti pèsè oúnjẹ, aṣọ, àti láti mú ìgbé ayé àwọn àgbègbè àti àwọn ìlú ní gbogbo Nàìjíríà àti ní òkè òkun dára sí i.',
+'hero.slide3.primaryCta': 'Wo Ìpa Wa',
+'hero.slide3.secondaryCta': 'Àwọn Iṣẹ́',
 
   'stats.years': 'Ọdún Ogún',
   'stats.divisions': 'Àwọn Ẹ̀ka Iṣòwò',
