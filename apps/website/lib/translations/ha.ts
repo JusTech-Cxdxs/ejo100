@@ -75,6 +75,10 @@ const ha: Record<keyof typeof en, string> = {
   'news.sustainabilityBody': 'Muna sadaukar da kai ga ayyukan dorewa da ke kare duniyarmu tare da karfafa al\u2019ummomi.',
   'news.sustainabilityCta': 'Kara Sani',
 
+  'footer.companyName': 'Kewalram Chanrai Group',
+  'footer.companyDescription': 'Ruhun kasuwanci wanda ya jagoranci nasarar kasuwancinmu fiye da shekaru 150.',
+  'footer.headOffice': 'Babban Ofishin Kewalram Chanrai Group',
+  'footer.location': 'Legas, Najeriya',
   'footer.quickLinks': 'Hanyoyin Sauri',
   'footer.ourBusinesses': 'Kasuwancinmu',
   'footer.contactUs': 'Tuntube Mu',
