@@ -25,19 +25,27 @@ const en = {
   'search.close': 'Press Esc to close',
   'search.noResults': 'No results found',
 
-  // Hero slider — slide 3 is intentionally excluded from this dictionary
-  // per the "leave slide three exactly as it is" instruction: its copy
-  // stays hardcoded in HeroSlider.tsx rather than routed through here.
+  // Hero slide
   'hero.slide1.eyebrow': '150+ YEARS OF TRUST',
-  'hero.slide1.headline': 'Building Sustainable Businesses.',
-  'hero.slide1.subheading': 'A diversified group creating lasting value across Africa and beyond.',
-  'hero.slide1.primaryCta': 'Explore Our Businesses',
-  'hero.slide1.secondaryCta': 'About Kewalram Chanrai',
-  'hero.slide2.eyebrow': 'ENGINEERED FOR EXCELLENCE',
-  'hero.slide2.headline': 'Automotive Solutions You Can Trust.',
-  'hero.slide2.subheading': 'Vehicle sales and full-service workshops, nationwide.',
-  'hero.slide2.primaryCta': 'Visit the Workshop',
-  'hero.slide2.secondaryCta': 'Customer Portal',
+'hero.slide1.headline': 'Building Sustainable Businesses.',
+'hero.slide1.subheading':
+  'A diversified group creating lasting value across Africa and beyond.',
+'hero.slide1.primaryCta': 'Explore Our Businesses',
+'hero.slide1.secondaryCta': 'About Kewalram Chanrai',
+
+'hero.slide2.eyebrow': 'ENGINEERED FOR EXCELLENCE',
+'hero.slide2.headline': 'Automotive Solutions You Can Trust.',
+'hero.slide2.subheading':
+  'Vehicle sales and full-service workshops, nationwide.',
+'hero.slide2.primaryCta': 'Visit the Workshop',
+'hero.slide2.secondaryCta': 'Customer Portal',
+
+'hero.slide3.eyebrow': 'ROOTED IN AGRICULTURE',
+'hero.slide3.headline': 'Growing Nigeria From the Ground Up.',
+'hero.slide3.subheading':
+  'Our agricultural operations strengthen food security and support sustainable supply chains by producing high-quality agricultural products that help feed, clothe, and improve the lives of communities across Nigeria and beyond.',
+'hero.slide3.primaryCta': 'See Our Impact',
+'hero.slide3.secondaryCta': 'Careers',
 
   // Stats
   'stats.years': 'Years of Legacy',
