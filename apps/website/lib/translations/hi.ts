@@ -19,15 +19,23 @@ const hi: Record<keyof typeof en, string> = {
   'search.noResults': 'कोई परिणाम नहीं मिला',
 
   'hero.slide1.eyebrow': '150+ वर्षों का विश्वास',
-  'hero.slide1.headline': 'टिकाऊ व्यवसायों का निर्माण।',
-  'hero.slide1.subheading': 'अफ्रीका और उससे आगे स्थायी मूल्य बनाने वाला एक विविध समूह।',
-  'hero.slide1.primaryCta': 'हमारे व्यवसाय देखें',
-  'hero.slide1.secondaryCta': 'केवलराम चनराय के बारे में',
-  'hero.slide2.eyebrow': 'उत्कृष्टता के लिए इंजीनियर',
-  'hero.slide2.headline': 'भरोसेमंद ऑटोमोटिव समाधान।',
-  'hero.slide2.subheading': 'देशभर में वाहन बिक्री और पूर्ण-सेवा कार्यशालाएं।',
-  'hero.slide2.primaryCta': 'वर्कशॉप देखें',
-  'hero.slide2.secondaryCta': 'ग्राहक पोर्टल',
+'hero.slide1.headline': 'टिकाऊ व्यवसायों का निर्माण।',
+'hero.slide1.subheading':
+  'अफ्रीका और उससे आगे स्थायी मूल्य बनाने वाला एक विविध समूह।',
+'hero.slide1.primaryCta': 'हमारे व्यवसाय देखें',
+'hero.slide1.secondaryCta': 'केवलराम चनराय के बारे में',
+'hero.slide2.eyebrow': 'उत्कृष्टता के लिए इंजीनियर',
+'hero.slide2.headline': 'भरोसेमंद ऑटोमोटिव समाधान।',
+'hero.slide2.subheading':
+  'देशभर में वाहन बिक्री और पूर्ण-सेवा कार्यशालाएं।',
+'hero.slide2.primaryCta': 'वर्कशॉप देखें',
+'hero.slide2.secondaryCta': 'ग्राहक पोर्टल',
+'hero.slide3.eyebrow': 'कृषि हमारी नींव है',
+'hero.slide3.headline': 'हम नाइजीरिया की प्रगति उसकी जड़ों से कर रहे हैं।',
+'hero.slide3.subheading':
+  'हमारे कृषि कार्य उच्च गुणवत्ता वाले कृषि उत्पादों का उत्पादन करके खाद्य सुरक्षा को मजबूत करते हैं और टिकाऊ आपूर्ति श्रृंखलाओं का समर्थन करते हैं, जिससे नाइजीरिया और उससे आगे के समुदायों को भोजन, वस्त्र और बेहतर जीवन उपलब्ध कराने में सहायता मिलती है।',
+'hero.slide3.primaryCta': 'हमारा प्रभाव देखें',
+'hero.slide3.secondaryCta': 'करियर',
 
   'stats.years': 'वर्षों की विरासत',
   'stats.divisions': 'व्यावसायिक प्रभाग',
