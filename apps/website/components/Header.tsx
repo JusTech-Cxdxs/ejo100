@@ -63,8 +63,10 @@ export function Header() {
           }
         >
           <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-            <Link href="/" className="flex items-center gap-1 mr-10 lg:mr-16">
-              <BrandLogo transparent={transparent} size={48} />
+            <Link href="/" className="flex items-center gap-1.5 lg:mr-10">
+              <span className="lg:origin-left lg:scale-110">
+                <BrandLogo transparent={transparent} size={48} />
+              </span>
               <span>
                 <span className={`block text-base font-bold leading-tight ${transparent ? 'text-white' : 'text-[var(--ejo-text)]'}`}>
                   Kewalram
