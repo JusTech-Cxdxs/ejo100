@@ -75,6 +75,10 @@ const ig: Record<keyof typeof en, string> = {
   'news.sustainabilityBody': 'Anyị na-arụsi ọrụ ike n\u2019omume na-adịgide adịgide nke na-echebe ụwa anyị ma na-eme ka obodo dị ike.',
   'news.sustainabilityCta': 'Mụtakwuo',
 
+  'footer.companyName': 'Kewalram Chanrai Group',
+  'footer.companyDescription': 'Mmụọ ịzụ ahịa nke duuru ihe ịga nke ọma nke azụmahịa anyị kemgbe afọ 150.',
+  'footer.headOffice': 'Isi Ụlọ Ọrụ Kewalram Chanrai Group',
+  'footer.location': 'Lagos, Naịjịrịa',
   'footer.quickLinks': 'Njikọ Ngwa Ngwa',
   'footer.ourBusinesses': 'Azụmahịa Anyị',
   'footer.contactUs': 'Kpọtụrụ Anyị',
