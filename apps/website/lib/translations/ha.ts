@@ -19,15 +19,23 @@ const ha: Record<keyof typeof en, string> = {
   'search.noResults': 'Ba a sami sakamako ba',
 
   'hero.slide1.eyebrow': 'SHEKARA 150+ NA AMINCI',
-  'hero.slide1.headline': 'Gina Kasuwancin Dorewa.',
-  'hero.slide1.subheading': 'Kungiya mai bambancin ra\u2019ayi wacce ke kirkiro dawwamammiyar riba a Afirka da bayanta.',
-  'hero.slide1.primaryCta': 'Bincika Kasuwancinmu',
-  'hero.slide1.secondaryCta': 'Game da Kewalram Chanrai',
-  'hero.slide2.eyebrow': 'AN GINA DON DACEWA',
-  'hero.slide2.headline': 'Hanyoyin Mota da Ake Amincewa.',
-  'hero.slide2.subheading': 'Sayar da motoci da cikakkun bita a fadin kasar.',
-  'hero.slide2.primaryCta': 'Ziyarci Bita',
-  'hero.slide2.secondaryCta': 'Fatalwar Abokin Ciniki',
+'hero.slide1.headline': 'Gina Kasuwancin Dorewa.',
+'hero.slide1.subheading':
+  'Kungiya mai bambancin ra’ayi wacce ke kirkirar dawwamammiyar riba a Afirka da bayanta.',
+'hero.slide1.primaryCta': 'Bincika Kasuwancinmu',
+'hero.slide1.secondaryCta': 'Game da Kewalram Chanrai',
+'hero.slide2.eyebrow': 'AN GINA DON DACEWA',
+'hero.slide2.headline': 'Hanyoyin Mota da Ake Amincewa.',
+'hero.slide2.subheading':
+  'Sayar da motoci da cikakkun bita a fadin kasar.',
+'hero.slide2.primaryCta': 'Ziyarci Bita',
+'hero.slide2.secondaryCta': 'Fatalwar Abokin Ciniki',
+'hero.slide3.eyebrow': 'TUSHENMU YANA CIKIN NOMA',
+'hero.slide3.headline': 'Muna Gina Makomar Najeriya Daga Tushenta.',
+'hero.slide3.subheading':
+  'Ayyukanmu na noma suna ƙarfafa tsaron abinci tare da tallafa wa dorewar hanyoyin samar da kayayyaki ta hanyar samar da amfanin gona masu inganci waɗanda ke taimakawa wajen ciyar da al’umma, samar da kayan sawa, da inganta rayuwar jama’a a faɗin Najeriya da ma ƙasashen waje.',
+'hero.slide3.primaryCta': 'Duba Tasirinmu',
+'hero.slide3.secondaryCta': 'Ayyukan Yi',
 
   'stats.years': 'Shekarun Gado',
   'stats.divisions': 'Bangarorin Kasuwanci',
