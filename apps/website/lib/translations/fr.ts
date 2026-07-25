@@ -19,15 +19,23 @@ const fr: Record<keyof typeof en, string> = {
   'search.noResults': 'Aucun résultat trouvé',
 
   'hero.slide1.eyebrow': 'PLUS DE 150 ANS DE CONFIANCE',
-  'hero.slide1.headline': 'Bâtir des entreprises durables.',
-  'hero.slide1.subheading': 'Un groupe diversifié créant une valeur durable en Afrique et au-delà.',
-  'hero.slide1.primaryCta': 'Découvrir nos activités',
-  'hero.slide1.secondaryCta': 'À propos de Kewalram Chanrai',
-  'hero.slide2.eyebrow': "CONÇU POUR L'EXCELLENCE",
-  'hero.slide2.headline': 'Des solutions automobiles fiables.',
-  'hero.slide2.subheading': 'Vente de véhicules et ateliers complets à travers le pays.',
-  'hero.slide2.primaryCta': "Visiter l'atelier",
-  'hero.slide2.secondaryCta': 'Espace client',
+'hero.slide1.headline': 'Bâtir des entreprises durables.',
+'hero.slide1.subheading':
+  'Un groupe diversifié créant une valeur durable en Afrique et au-delà.',
+'hero.slide1.primaryCta': 'Découvrir nos activités',
+'hero.slide1.secondaryCta': 'À propos de Kewalram Chanrai',
+'hero.slide2.eyebrow': "CONÇU POUR L'EXCELLENCE",
+'hero.slide2.headline': 'Des solutions automobiles fiables.',
+'hero.slide2.subheading':
+  'Vente de véhicules et ateliers complets à travers le pays.',
+'hero.slide2.primaryCta': "Visiter l'atelier",
+'hero.slide2.secondaryCta': 'Espace client',
+'hero.slide3.eyebrow': 'ENRACINÉS DANS L’AGRICULTURE',
+'hero.slide3.headline': 'Faire grandir le Nigeria depuis ses racines.',
+'hero.slide3.subheading':
+  "Nos activités agricoles renforcent la sécurité alimentaire et soutiennent des chaînes d'approvisionnement durables en produisant des produits agricoles de haute qualité qui contribuent à nourrir, vêtir et améliorer la vie des communautés à travers le Nigeria et au-delà.",
+'hero.slide3.primaryCta': 'Découvrir notre impact',
+'hero.slide3.secondaryCta': 'Carrières',
 
   'stats.years': "Années d'héritage",
   'stats.divisions': "Divisions d'activité",
