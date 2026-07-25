@@ -23,7 +23,7 @@ const yo: Record<keyof typeof en, string> = {
 'hero.slide1.subheading':
   'Ẹgbẹ́ oríṣiríṣi tí ń dá iye tí ó dúró ṣinṣin ní Áfíríkà àti jù bẹ́ẹ̀ lọ.',
 'hero.slide1.primaryCta': 'Wo Àwọn Iṣòwò Wa',
-'hero.slide1.secondaryCta': 'Nípa Kewalram Chanrai'
+'hero.slide1.secondaryCta': 'Nípa Kewalram Chanrai',
 'hero.slide2.eyebrow': 'TI A ṢE FÚN ÌPÉLÉTA',
 'hero.slide2.headline': 'Àwọn Ìtọ́jú Ọkọ̀ Tí A Gbẹ́kẹ̀lé.',
 'hero.slide2.subheading':
