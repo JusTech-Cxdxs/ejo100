@@ -75,6 +75,10 @@ const yo: Record<keyof typeof en, string> = {
   'news.sustainabilityBody': 'A fara mọ́ àwọn ìṣe alálòpẹ́ẹ́ tí ó ń dáàbò bo ilẹ̀ ayé wa tí ó sì ń fún àwọn àgbègbè lágbára.',
   'news.sustainabilityCta': 'Kọ́ Síwájú',
 
+  'footer.companyName': 'Kewalram Chanrai Group',
+  'footer.companyDescription': 'Ẹ̀mí iṣòwò tí ó ti darí àṣeyọrí àwọn iṣòwò wa fún ọdún 150 àti jù bẹ́ẹ̀ lọ.',
+  'footer.headOffice': 'Ọ́físì Àkọ́kọ́ Kewalram Chanrai Group',
+  'footer.location': 'Èkó, Nàìjíríà',
   'footer.quickLinks': 'Àwọn Ọ̀nà Kánkán',
   'footer.ourBusinesses': 'Àwọn Iṣòwò Wa',
   'footer.contactUs': 'Kàn sí Wa',
