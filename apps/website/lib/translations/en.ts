@@ -32,14 +32,12 @@ const en = {
   'A diversified group creating lasting value across Africa and beyond.',
 'hero.slide1.primaryCta': 'Explore Our Businesses',
 'hero.slide1.secondaryCta': 'About Kewalram Chanrai',
-
 'hero.slide2.eyebrow': 'ENGINEERED FOR EXCELLENCE',
 'hero.slide2.headline': 'Automotive Solutions You Can Trust.',
 'hero.slide2.subheading':
   'Vehicle sales and full-service workshops, nationwide.',
 'hero.slide2.primaryCta': 'Visit the Workshop',
 'hero.slide2.secondaryCta': 'Customer Portal',
-
 'hero.slide3.eyebrow': 'ROOTED IN AGRICULTURE',
 'hero.slide3.headline': 'Growing Nigeria From the Ground Up.',
 'hero.slide3.subheading':
