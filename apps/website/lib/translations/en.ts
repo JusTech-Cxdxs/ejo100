@@ -94,6 +94,11 @@ const en = {
   'footer.quickLinks': 'Quick Links',
   'footer.ourBusinesses': 'Our Businesses',
   'footer.contactUs': 'Contact Us',
+  'footer.companyName': 'Kewalram Chanrai Group',
+  'footer.companyDescription':
+    'A spirit of entrepreneurship that has driven the success of our businesses for over 150 years.',
+  'footer.headOffice': 'Kewalram Chanrai Group Head Office',
+  'footer.location': 'Lagos, Nigeria',
   'footer.newsletter': 'Newsletter',
   'footer.newsletterText': 'Stay updated with our latest news and insights.',
   'footer.newsletterPlaceholder': 'Enter your email',
