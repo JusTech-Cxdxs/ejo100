@@ -75,6 +75,10 @@ const hi: Record<keyof typeof en, string> = {
   'news.sustainabilityBody': 'हम स्थायी प्रथाओं के प्रति प्रतिबद्ध हैं जो हमारे ग्रह की रक्षा करती हैं और समुदायों को सशक्त बनाती हैं।',
   'news.sustainabilityCta': 'और जानें',
 
+  'footer.companyName': 'केवलराम चनराय समूह',
+  'footer.companyDescription': '150 से अधिक वर्षों से हमारे व्यवसायों की सफलता के पीछे उद्यमशीलता की भावना।',
+  'footer.headOffice': 'केवलराम चनराय समूह मुख्यालय',
+  'footer.location': 'लागोस, नाइजीरिया',
   'footer.quickLinks': 'त्वरित लिंक',
   'footer.ourBusinesses': 'हमारे व्यवसाय',
   'footer.contactUs': 'संपर्क करें',
