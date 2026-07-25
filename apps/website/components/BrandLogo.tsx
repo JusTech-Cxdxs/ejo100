@@ -35,7 +35,7 @@ export function BrandLogo({ transparent = false, size = 36 }: BrandLogoProps) {
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src="/images/logo/logo.svg"
-        alt="Kewalram Chanrai Group"
+        alt="KCG Logo"
         style={{ height: size, width: 'auto' }}
         onError={() => setPngFailed(true)}
       />
