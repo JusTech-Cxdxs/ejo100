@@ -50,17 +50,15 @@ const SLIDES: Slide[] = [
     secondaryHref: '/customer-portal',
   },
   {
-    image: '/images/home/home-slider-img-3.jpg',
-    primaryHref: '/sustainability',
-    secondaryHref: '/careers',
-    hardcoded: {
-      eyebrow: 'ROOTED IN AGRICULTURE',
-      headline: 'Growing Nigeria From the Ground Up.',
-      subheading:
-        'Our agricultural operations power the supply chains that feed and clothe communities across the region.',
-      primaryCta: 'See Our Impact',
-      secondaryCta: 'Careers',
-    },
+  image: '/images/home/home-slider-img-3.jpg',
+  eyebrowKey: 'hero.slide3.eyebrow',
+  headlineKey: 'hero.slide3.headline',
+  subheadingKey: 'hero.slide3.subheading',
+  primaryCtaKey: 'hero.slide3.primaryCta',
+  secondaryCtaKey: 'hero.slide3.secondaryCta',
+  primaryHref: '/sustainability',
+  secondaryHref: '/careers',
+},
   },
 ];
 
