@@ -75,6 +75,10 @@ const fr: Record<keyof typeof en, string> = {
   'news.sustainabilityBody': 'Nous nous engageons à adopter des pratiques durables qui protègent notre planète et renforcent les communautés.',
   'news.sustainabilityCta': 'En savoir plus',
 
+  'footer.companyName': 'Kewalram Chanrai Group',
+  'footer.companyDescription': "Un esprit d'entreprise qui porte le succès de nos activités depuis plus de 150 ans.",
+  'footer.headOffice': 'Siège social de Kewalram Chanrai Group',
+  'footer.location': 'Lagos, Nigéria',
   'footer.quickLinks': 'Liens rapides',
   'footer.ourBusinesses': 'Nos activités',
   'footer.contactUs': 'Contactez-nous',
