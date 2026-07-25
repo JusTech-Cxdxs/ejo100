@@ -37,7 +37,7 @@ export function PartnersMarquee() {
         {t('partners.title').toUpperCase()}
       </p>
       <div className="overflow-hidden">
-        <div className="ejo-marquee-track flex w-max gap-6">
+        <div className="ejo-marquee-track flex w-max gap-8">
           {TRACK.map((partner, i) => (
             <PartnerLogo key={`${partner.filename}-${i}`} name={partner.name} filename={partner.filename} />
           ))}
