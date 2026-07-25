@@ -12,7 +12,7 @@ import { PartnerLogo } from '@/components/PartnerLogo';
  * entry to the PARTNERS array below and upload its matching image file.
  */
 const PARTNERS = [
-  { name: 'SOUEAST', filename: '/public/images/partners/soueast-img.png' },
+  { name: 'SOUEAST', filename: 'soueast-img.png' },
   { name: 'Isuzu', filename: 'isuzu-img.png' },
   { name: 'Bridgestone', filename: 'bridgestone-img.png' },
   { name: 'Foton', filename: 'foton-img.png' },
