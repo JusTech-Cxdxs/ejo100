@@ -19,15 +19,23 @@ const ig: Record<keyof typeof en, string> = {
   'search.noResults': 'Enweghị nsonaazụ',
 
   'hero.slide1.eyebrow': 'AFỌ 150+ NKE NTỤKWASỊOBI',
-  'hero.slide1.headline': 'Iwulite Azụmahịa Na-adịgide Adịgide.',
-  'hero.slide1.subheading': 'Otu dị iche iche na-emepụta uru na-adịgide na Africa na mgbe niile ọzọ.',
-  'hero.slide1.primaryCta': 'Chọpụta Azụmahịa Anyị',
-  'hero.slide1.secondaryCta': 'Maka Kewalram Chanrai',
-  'hero.slide2.eyebrow': 'EDEZIRI MAKA ỊMA MMA',
-  'hero.slide2.headline': 'Ngwọta Ụgbọala A Na-atụkwasị Obi.',
-  'hero.slide2.subheading': 'Ire ụgbọala na ụlọ ọrụ ọrụ zuru oke n\u2019akụkụ niile nke mba ahụ.',
-  'hero.slide2.primaryCta': 'Gaa Ụlọ Ọrụ',
-  'hero.slide2.secondaryCta': 'Ọnọdụ Ahịa',
+'hero.slide1.headline': 'Iwulite Azụmahịa Na-adịgide Adịgide.',
+'hero.slide1.subheading':
+  'Otu dị iche iche na-emepụta uru na-adịgide na Africa na mgbe niile ọzọ.',
+'hero.slide1.primaryCta': 'Chọpụta Azụmahịa Anyị',
+'hero.slide1.secondaryCta': 'Maka Kewalram Chanrai',
+'hero.slide2.eyebrow': 'EDEZIRI MAKA ỊMA MMA',
+'hero.slide2.headline': 'Ngwọta Ụgbọala A Na-atụkwasị Obi.',
+'hero.slide2.subheading':
+  'Ire ụgbọala na ụlọ ọrụ ọrụ zuru oke n’akụkụ niile nke mba ahụ.',
+'hero.slide2.primaryCta': 'Gaa Ụlọ Ọrụ',
+'hero.slide2.secondaryCta': 'Ọnọdụ Ahịa',
+'hero.slide3.eyebrow': 'AKỤRỤNGWA ANYỊ DỊ NA ỌRỤ UGBO',
+'hero.slide3.headline': 'Na-ewulite Ọdịnihu Naịjirịa Site na Mgbọrọgwụ Ya.',
+'hero.slide3.subheading':
+  'Ọrụ ugbo anyị na-eme ka nchekwa nri sie ike ma na-akwado usoro nkwakọba na nkesa na-adịgide adịgide site n’ịmepụta ngwaahịa ugbo dị elu nke na-enyere aka inye nri, uwe, ma melite ndụ obodo dị iche iche n’ofe Naịjirịa na ọbụna karịa.',
+'hero.slide3.primaryCta': 'Lee Mmetụta Anyị',
+'hero.slide3.secondaryCta': 'Ọrụ',
 
   'stats.years': 'Afọ Ndụmọdụ',
   'stats.divisions': 'Ngalaba Azụmahịa',
