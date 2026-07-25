@@ -75,6 +75,10 @@ const zh: Record<keyof typeof en, string> = {
   'news.sustainabilityBody': '我们致力于保护地球、赋能社区的可持续实践。',
   'news.sustainabilityCta': '了解更多',
 
+  'footer.companyName': 'Kewalram Chanrai 集团',
+  'footer.companyDescription': '150多年来，企业家精神一直推动着我们业务的成功。',
+  'footer.headOffice': 'Kewalram Chanrai 集团总部',
+  'footer.location': '尼日利亚拉各斯',
   'footer.quickLinks': '快速链接',
   'footer.ourBusinesses': '业务板块',
   'footer.contactUs': '联系我们',
