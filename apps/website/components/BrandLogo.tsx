@@ -23,7 +23,7 @@ export function BrandLogo({ transparent = false, size = 36 }: BrandLogoProps) {
       // eslint-disable-next-line @next/next/no-img-element -- needs plain onError fallback chaining (svg -> png -> monogram)
       <img
         src="/images/logo/logo.svg"
-        alt="KCG Logo"
+        alt="Kewalram Chanrai Group"
         style={{ height: size, width: 'auto' }}
         onError={() => setSvgFailed(true)}
       />
@@ -34,8 +34,8 @@ export function BrandLogo({ transparent = false, size = 36 }: BrandLogoProps) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src="/images/logo/logo.svg"
-        alt="KCG Logo"
+        src="/images/logo/logo.png"
+        alt="Kewalram Chanrai Group"
         style={{ height: size, width: 'auto' }}
         onError={() => setPngFailed(true)}
       />
