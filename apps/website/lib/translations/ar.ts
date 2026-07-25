@@ -65,7 +65,7 @@ const ar: Record<keyof typeof en, string> = {
   'cta.contact': 'اتصل بنا',
   'cta.careers': 'استكشف الوظائف',
 
-  'news.eyebrow': 'أحدث الأخبار والمستجدات',
+   'news.eyebrow': 'أحدث الأخبار والمستجدات',
   'news.title': 'ماذا يحدث في كيوالرام',
   'news.readMore': 'اقرأ المزيد',
   'news.sustainabilityEyebrow': 'الاستدامة',
@@ -73,6 +73,10 @@ const ar: Record<keyof typeof en, string> = {
   'news.sustainabilityBody': 'نحن ملتزمون بالممارسات المستدامة التي تحمي كوكبنا وتمكّن المجتمعات.',
   'news.sustainabilityCta': 'اعرف المزيد',
 
+  'footer.companyName': 'مجموعة كيوالرام تشانراي',
+  'footer.companyDescription': 'روح ريادة الأعمال التي قادت نجاح أعمالنا لأكثر من 150 عامًا.',
+  'footer.headOffice': 'المقر الرئيسي لمجموعة كيوالرام تشانراي',
+  'footer.location': 'لاغوس، نيجيريا',
   'footer.quickLinks': 'روابط سريعة',
   'footer.ourBusinesses': 'أعمالنا',
   'footer.contactUs': 'اتصل بنا',
@@ -89,3 +93,4 @@ const ar: Record<keyof typeof en, string> = {
 };
 
 export default ar;
+
