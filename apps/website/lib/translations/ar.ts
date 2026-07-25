@@ -1,0 +1,85 @@
+import type en from './en';
+
+const ar: Record<keyof typeof en, string> = {
+  'nav.home': 'الرئيسية',
+  'nav.about': 'من نحن',
+  'nav.businesses': 'أعمالنا',
+  'nav.products': 'المنتجات',
+  'nav.investors': 'المستثمرون',
+  'nav.sustainability': 'الاستدامة',
+  'nav.careers': 'الوظائف',
+  'nav.news': 'الأخبار والإعلام',
+  'nav.contact': 'اتصل بنا',
+  'header.tagline': 'روح ريادة الأعمال منذ أكثر من 150 عامًا',
+  'header.customerLogin': 'دخول العملاء',
+  'header.employeeLogin': 'دخول الموظفين',
+
+  'search.placeholder': 'ابحث عن الصفحات والأعمال والمنتجات والأخبار والوظائف…',
+  'search.close': 'اضغط Esc للإغلاق',
+  'search.noResults': 'لا توجد نتائج',
+
+  'hero.slide1.eyebrow': 'أكثر من 150 عامًا من الثقة',
+  'hero.slide1.headline': 'بناء أعمال مستدامة.',
+  'hero.slide1.subheading': 'مجموعة متنوعة تخلق قيمة دائمة في أفريقيا وخارجها.',
+  'hero.slide1.primaryCta': 'استكشف أعمالنا',
+  'hero.slide1.secondaryCta': 'عن كيوالرام تشانراي',
+  'hero.slide2.eyebrow': 'مصمم للتميز',
+  'hero.slide2.headline': 'حلول سيارات موثوقة.',
+  'hero.slide2.subheading': 'مبيعات المركبات وورش الخدمة الكاملة في جميع أنحاء البلاد.',
+  'hero.slide2.primaryCta': 'زيارة الورشة',
+  'hero.slide2.secondaryCta': 'بوابة العملاء',
+
+  'stats.years': 'سنوات من الإرث',
+  'stats.divisions': 'الأقسام التجارية',
+  'stats.employees': 'الموظفون',
+  'stats.countries': 'دول العمليات',
+
+  'about.eyebrow': 'عن مجموعة كيوالرام تشانراي',
+  'about.title': 'إرث من الثقة. مستقبل من التميز.',
+  'about.body':
+    'على مدى أكثر من 150 عامًا، كانت مجموعة كيوالرام تشانراي في طليعة الابتكار وريادة الأعمال. من بداياتنا المتواضعة إلى حضورنا العالمي اليوم، يظل التزامنا بالجودة والنزاهة والنمو المستدام ثابتًا.',
+  'about.cta': 'اكتشف قصتنا',
+  'about.badgeYears': '+150',
+  'about.badgeCaption': 'سنوات من التميز، منذ عام 1870',
+
+  'business.eyebrow': 'أعمالنا',
+  'business.title': 'صناعات متنوعة. هدف مشترك.',
+  'business.viewAll': 'عرض جميع الأعمال',
+  'business.automotive': 'السيارات',
+  'business.agriculture': 'الزراعة',
+  'business.manufacturing': 'التصنيع',
+  'business.food': 'الأغذية',
+  'business.logistics': 'الخدمات اللوجستية',
+  'business.healthcare': 'الرعاية الصحية',
+
+  'partners.title': 'موثوق بها من قبل العلامات التجارية الرائدة',
+
+  'cta.title': 'دعنا نبني شيئًا دائمًا معًا.',
+  'cta.body': 'سواء كنت عميلاً أو شريكًا أو موظفًا مستقبليًا — يسعدنا أن نسمع منك.',
+  'cta.contact': 'اتصل بنا',
+  'cta.careers': 'استكشف الوظائف',
+
+  'news.eyebrow': 'أحدث الأخبار والمستجدات',
+  'news.title': 'ماذا يحدث في كيوالرام',
+  'news.readMore': 'اقرأ المزيد',
+  'news.sustainabilityEyebrow': 'الاستدامة',
+  'news.sustainabilityTitle': 'بناء غدٍ أفضل',
+  'news.sustainabilityBody': 'نحن ملتزمون بالممارسات المستدامة التي تحمي كوكبنا وتمكّن المجتمعات.',
+  'news.sustainabilityCta': 'اعرف المزيد',
+
+  'footer.quickLinks': 'روابط سريعة',
+  'footer.ourBusinesses': 'أعمالنا',
+  'footer.contactUs': 'اتصل بنا',
+  'footer.newsletter': 'النشرة الإخبارية',
+  'footer.newsletterText': 'ابق على اطلاع بأحدث أخبارنا.',
+  'footer.newsletterPlaceholder': 'أدخل بريدك الإلكتروني',
+  'footer.newsletterSuccess': 'شكرًا — تم اشتراكك!',
+  'footer.privacy': 'سياسة الخصوصية',
+  'footer.terms': 'شروط الاستخدام',
+  'footer.rights': 'جميع الحقوق محفوظة.',
+
+  'common.comingSoonDefault': 'هذا القسم قيد التطوير حاليًا وسيتم تفعيله بعد الموافقة على المشروع.',
+  'common.loading': 'جارٍ التحميل…',
+};
+
+export default ar;
