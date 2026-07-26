@@ -35,6 +35,16 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException('No authenticated user on request');
     }
 
+    // Super-admin bypass: a user holding any role with isSuperAdmin=true
+    // (the bootstrap Master Administrator role) automatically satisfies
+    // every permission check, including permissions that don't exist yet.
+    const superAdminMatch = await this.prisma.client.userRole.findFirst({
+      where: { userId: user.id, role: { isSuperAdmin: true } },
+    });
+    if (superAdminMatch) {
+      return true;
+    }
+
     const match = await this.prisma.client.userRole.findFirst({
       where: {
         userId: user.id,
