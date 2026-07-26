@@ -62,12 +62,12 @@ export function Header() {
               : { background: 'var(--ejo-bg)', borderBottom: '1px solid var(--ejo-border)', boxShadow: '0 4px 20px rgba(0,0,0,0.06)' }
           }
         >
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-            <Link href="/" className="flex items-center gap-1.5 lg:mr-10">
-              <span className="lg:origin-left lg:scale-110">
+          <div className="mx-auto flex max-w-7xl flex-nowrap items-center justify-between px-6 py-4">
+            <Link href="/" className="flex shrink-0 items-center gap-1">
+              <span className="lg:origin-left lg:scale-125">
                 <BrandLogo transparent={transparent} size={48} />
               </span>
-              <span>
+              <span className="whitespace-nowrap">
                 <span className={`block text-base font-bold leading-tight ${transparent ? 'text-white' : 'text-[var(--ejo-text)]'}`}>
                   Kewalram
                 </span>
@@ -77,14 +77,14 @@ export function Header() {
               </span>
             </Link>
 
-            <nav className="hidden items-center gap-7 lg:flex">
+            <nav className="hidden shrink-0 items-center gap-5 whitespace-nowrap lg:ml-6 lg:flex xl:gap-7">
               {siteNav.map((item) => {
                 const active = pathname === item.href;
                 return (
-                  <div key={item.href} className="group relative">
+                  <div key={item.href} className="group relative shrink-0">
                     <Link
                       href={item.href}
-                      className={`relative pb-1 text-sm font-medium transition-colors ${
+                      className={`relative whitespace-nowrap pb-1 text-sm font-medium transition-colors ${
                         transparent ? 'text-white/90 hover:text-white' : 'text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)]'
                       } ${active ? (transparent ? 'text-white' : 'text-[var(--ejo-primary)]') : ''}`}
                     >
@@ -116,10 +116,10 @@ export function Header() {
               })}
             </nav>
 
-            <div className="hidden items-center gap-3 lg:flex">
+            <div className="hidden shrink-0 items-center gap-3 whitespace-nowrap lg:ml-4 lg:flex">
               <Link
                 href="/customer-portal"
-                className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+                className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
                   transparent
                     ? 'border-white/30 text-white hover:bg-white/10'
                     : 'border-[var(--ejo-border)] text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]'
@@ -129,7 +129,7 @@ export function Header() {
               </Link>
               <a
                 href={getPortalLoginUrl()}
-                className="rounded-full bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform hover:scale-[1.03] hover:opacity-90"
+                className="shrink-0 whitespace-nowrap rounded-full bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform hover:scale-[1.03] hover:opacity-90"
               >
                 {t('header.employeeLogin')}
               </a>
