@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { portalConfig } from '@/lib/site-config';
+import { BrandLogo } from './BrandLogo';
 
 interface AuthShellProps {
   eyebrow: string;
@@ -25,9 +26,7 @@ export function AuthShell({ eyebrow, title, subtitle, children, footer }: AuthSh
         <div className="ejo-media-placeholder absolute inset-0 opacity-40" aria-hidden="true" />
         <div className="relative">
           <div className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--ejo-primary)] text-lg font-bold">
-              K
-            </span>
+            <BrandLogo size={36} />
             <span className="text-lg font-bold">Kewalram Chanrai Group</span>
           </div>
         </div>
