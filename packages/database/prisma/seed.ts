@@ -9,8 +9,22 @@
  * (requires DATABASE_URL to point at a real, migrated Postgres instance)
  */
 import { PrismaClient, ModuleStatus } from '@prisma/client';
+import { hashPassword } from 'better-auth/crypto';
 
 const prisma = new PrismaClient();
+
+/**
+ * First Master Administrator (System Owner / Super Admin) — bootstraps the
+ * platform. Every future user, role, and permission is created from the
+ * Portal's admin UI, not from this seed. Override via env vars if you want
+ * different bootstrap credentials without editing this file; these values
+ * are only the default for the very first run.
+ */
+const MASTER_ADMIN = {
+  name: process.env.MASTER_ADMIN_NAME ?? 'Justice Enefola',
+  email: process.env.MASTER_ADMIN_EMAIL ?? 'enefolajustice004@gmail.com',
+  password: process.env.MASTER_ADMIN_PASSWORD ?? 'Omagwu@2004',
+};
 
 async function main() {
   // --- Module registry -----------------------------------------------------
@@ -110,8 +124,62 @@ async function main() {
     });
   }
 
+  // --- Master Administrator (bootstrap account) -----------------------------
+  // isSuperAdmin bypasses PermissionsGuard entirely (see
+  // apps/api/src/common/guards/permissions.guard.ts) — this role has
+  // unrestricted access to every current and future module without
+  // needing an explicit RolePermission row per permission.
+  const superAdminRole = await prisma.role.upsert({
+    where: { companyId_slug: { companyId: company.id, slug: 'master-administrator' } },
+    update: { isSuperAdmin: true, isSystem: true },
+    create: {
+      companyId: company.id,
+      name: 'Master Administrator',
+      slug: 'master-administrator',
+      description: 'System owner. Unrestricted access to every company, module, and setting.',
+      isSystem: true,
+      isSuperAdmin: true,
+    },
+  });
+
+  const masterAdminUser = await prisma.user.upsert({
+    where: { email: MASTER_ADMIN.email },
+    update: {},
+    create: {
+      companyId: company.id,
+      accountType: 'ADMIN',
+      fullName: MASTER_ADMIN.name,
+      email: MASTER_ADMIN.email,
+      emailVerified: true, // bootstrap account — skip the email-verification step
+      isActive: true,
+    },
+  });
+
+  await prisma.userRole.upsert({
+    where: { userId_roleId: { userId: masterAdminUser.id, roleId: superAdminRole.id } },
+    update: {},
+    create: { userId: masterAdminUser.id, roleId: superAdminRole.id },
+  });
+
+  // Better Auth's own credential provider row — hashed with Better Auth's
+  // own hashPassword() so it verifies correctly through the existing
+  // /login page (apps/portal/lib/auth.ts) with no special-case login path.
+  const existingAccount = await prisma.account.findFirst({
+    where: { userId: masterAdminUser.id, providerId: 'credential' },
+  });
+  if (!existingAccount) {
+    await prisma.account.create({
+      data: {
+        userId: masterAdminUser.id,
+        accountId: masterAdminUser.id,
+        providerId: 'credential',
+        passwordHash: await hashPassword(MASTER_ADMIN.password),
+      },
+    });
+  }
+
   // eslint-disable-next-line no-console
-  console.log('Seed complete: module registry + Kewalram Nigeria hierarchy.');
+  console.log(`Seed complete: module registry + Kewalram Nigeria hierarchy + Master Administrator (${MASTER_ADMIN.email}).`);
 }
 
 function slugify(value: string): string {
