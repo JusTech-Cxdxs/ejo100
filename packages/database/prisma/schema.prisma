@@ -346,6 +346,12 @@ model Role {
   slug        String
   description String?
   isSystem    Boolean  @default(false) // true for built-in roles that can't be deleted
+  // Bypasses PermissionsGuard entirely (see apps/api/src/common/guards/
+  // permissions.guard.ts) — grants every current AND future permission
+  // without needing a RolePermission row per permission. Reserved for the
+  // bootstrap Master Administrator / platform-owner role; do not grant
+  // this to ordinary admin roles.
+  isSuperAdmin Boolean @default(false)
 
   company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   users       UserRole[]
