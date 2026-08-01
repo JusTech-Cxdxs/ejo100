@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
 import { portalConfig } from '@/lib/site-config';
 import { AuthShell } from '@/components/AuthShell';
+import { EjoSpinner } from '@/components/EjoSpinner';
 
 export default function ResetPasswordPage() {
   return (
@@ -36,16 +37,21 @@ function ResetPasswordForm() {
     }
 
     setLoading(true);
-    const { error: resetError } = await authClient.resetPassword({ newPassword, token });
-    setLoading(false);
+    try {
+      const { error: resetError } = await authClient.resetPassword({ newPassword, token });
 
-    if (resetError) {
-      setError(resetError.message ?? 'Could not reset your password. Please request a new link.');
-      return;
+      if (resetError) {
+        setError(resetError.message ?? 'Could not reset your password. Please request a new link.');
+        return;
+      }
+
+      setSuccess(true);
+      setTimeout(() => router.push('/login'), 2000);
+    } catch {
+      setError('Could not reach the server. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
-
-    setSuccess(true);
-    setTimeout(() => router.push('/login'), 2000);
   }
 
   return (
@@ -96,8 +102,9 @@ function ResetPasswordForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-full bg-[var(--ejo-primary)] py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[1.01] hover:opacity-90 disabled:scale-100 disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-[var(--ejo-primary)] py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[1.01] hover:opacity-90 disabled:scale-100 disabled:opacity-60"
           >
+            {loading && <EjoSpinner />}
             {loading ? 'Updating…' : 'Update password'}
           </button>
         </form>
