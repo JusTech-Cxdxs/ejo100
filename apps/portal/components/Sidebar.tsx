@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { ModuleStatusBadge } from '@ejo/ui';
 import { platformModules } from '@/lib/modules';
 import { portalConfig } from '@/lib/site-config';
+import { BrandLogo } from './BrandLogo';
 
 /**
  * Renders EVERY module in the registry, live or not — clicking a
@@ -17,9 +18,12 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
-      <div className="border-b border-[var(--ejo-border)] px-5 py-5">
-        <p className="text-sm font-bold text-[var(--ejo-text)]">{portalConfig.companyName}</p>
-        <p className="text-xs text-[var(--ejo-text-muted)]">{portalConfig.poweredBy}</p>
+      <div className="flex items-center gap-2 border-b border-[var(--ejo-border)] px-5 py-5">
+        <BrandLogo size={32} />
+        <div>
+          <p className="text-sm font-bold text-[var(--ejo-text)]">{portalConfig.companyName}</p>
+          <p className="text-xs text-[var(--ejo-text-muted)]">{portalConfig.poweredBy}</p>
+        </div>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
