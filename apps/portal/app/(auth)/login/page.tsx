@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
 import { portalConfig } from '@/lib/site-config';
 import { AuthShell } from '@/components/AuthShell';
+import { EjoSpinner } from '@/components/EjoSpinner';
 
 export default function LoginPage() {
   return (
@@ -32,22 +33,30 @@ function LoginForm() {
     setError(null);
     setLoading(true);
 
-    const { error: signInError } = await authClient.signIn.email({
-      email,
-      password,
-      rememberMe,
-    });
+    try {
+      const { error: signInError } = await authClient.signIn.email({
+        email,
+        password,
+        rememberMe,
+      });
 
-    setLoading(false);
+      if (signInError) {
+        setError(signInError.message ?? 'Invalid email or password.');
+        return;
+      }
 
-    if (signInError) {
-      setError(signInError.message ?? 'Invalid email or password.');
-      return;
+      // Portal is Employee/Admin only — both land on the same dashboard;
+      // guards elsewhere in the app narrow what each accountType can see.
+      router.push(redirectTo);
+    } catch {
+      // The signIn call itself threw (e.g. the API is unreachable) rather
+      // than resolving with a Better Auth error object — without this
+      // catch, `loading` would never reset and the button would be stuck
+      // on "Signing in…" forever with no feedback.
+      setError('Could not reach the server. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
-
-    // Portal is Employee/Admin only — both land on the same dashboard;
-    // guards elsewhere in the app narrow what each accountType can see.
-    router.push(redirectTo);
   }
 
   return (
@@ -114,8 +123,9 @@ function LoginForm() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-full bg-[var(--ejo-primary)] py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[1.01] hover:opacity-90 disabled:scale-100 disabled:opacity-60"
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-[var(--ejo-primary)] py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[1.01] hover:opacity-90 disabled:scale-100 disabled:opacity-60"
         >
+          {loading && <EjoSpinner />}
           {loading ? 'Signing in…' : 'Sign In'}
         </button>
       </form>
