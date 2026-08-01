@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { authClient } from '@/lib/auth-client';
 import { portalConfig } from '@/lib/site-config';
 import { AuthShell } from '@/components/AuthShell';
+import { EjoSpinner } from '@/components/EjoSpinner';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -18,19 +19,23 @@ export default function ForgotPasswordPage() {
     setError(null);
     setLoading(true);
 
-    const { error: reqError } = await authClient.requestPasswordReset({
-      email,
-      redirectTo: '/reset-password',
-    });
+    try {
+      const { error: reqError } = await authClient.requestPasswordReset({
+        email,
+        redirectTo: '/reset-password',
+      });
 
-    setLoading(false);
+      if (reqError) {
+        setError(reqError.message ?? 'Something went wrong. Please try again.');
+        return;
+      }
 
-    if (reqError) {
-      setError(reqError.message ?? 'Something went wrong. Please try again.');
-      return;
+      setSent(true);
+    } catch {
+      setError('Could not reach the server. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
-
-    setSent(true);
   }
 
   return (
@@ -81,8 +86,9 @@ export default function ForgotPasswordPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-full bg-[var(--ejo-primary)] py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[1.01] hover:opacity-90 disabled:scale-100 disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-[var(--ejo-primary)] py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[1.01] hover:opacity-90 disabled:scale-100 disabled:opacity-60"
           >
+            {loading && <EjoSpinner />}
             {loading ? 'Sending…' : 'Send reset link'}
           </button>
         </form>
