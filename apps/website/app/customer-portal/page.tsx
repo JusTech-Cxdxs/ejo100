@@ -4,6 +4,8 @@ import { Suspense, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { customerAuthClient } from '@/lib/auth-customer-client';
 import { siteConfig } from '@/lib/site-config';
+import { BrandLogo } from '@/components/BrandLogo';
+import { Spinner } from '@/components/Spinner';
 
 export default function CustomerPortalLoginPage() {
   return (
@@ -28,20 +30,27 @@ function CustomerLoginForm() {
     setError(null);
     setLoading(true);
 
-    const { error: signInError } = await customerAuthClient.signIn.email({ email, password });
+    try {
+      const { error: signInError } = await customerAuthClient.signIn.email({ email, password });
 
-    setLoading(false);
+      if (signInError) {
+        setError(signInError.message ?? 'Invalid email or password.');
+        return;
+      }
 
-    if (signInError) {
-      setError(signInError.message ?? 'Invalid email or password.');
-      return;
+      router.push(redirectTo);
+    } catch {
+      setError('Could not reach the server. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
-
-    router.push(redirectTo);
   }
 
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-sm flex-col justify-center px-6 pt-32 pb-24">
+      <div className="mb-4 flex justify-center">
+        <BrandLogo size={44} />
+      </div>
       <h1 className="text-center text-2xl font-bold text-[var(--ejo-text)]">Customer Portal</h1>
       <p className="mb-8 text-center text-sm text-[var(--ejo-text-muted)]">
         Sign in to track your vehicle, orders and invoices with {siteConfig.companyName}.
@@ -84,8 +93,9 @@ function CustomerLoginForm() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+          className="flex w-full items-center justify-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
         >
+          {loading && <Spinner />}
           {loading ? 'Signing in…' : 'Sign In'}
         </button>
       </form>
