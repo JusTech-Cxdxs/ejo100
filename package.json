@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "generate": "prisma generate",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate --schema=$( [ -f prisma/schema.prisma ] && echo prisma/schema.prisma || echo packages/database/prisma/schema.prisma )",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "studio": "prisma studio",
@@ -24,7 +24,6 @@
     "tsx": "^4.19.0"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts",
-    "schema": "prisma/schema.prisma"
+    "seed": "tsx prisma/seed.ts"
   }
 }
