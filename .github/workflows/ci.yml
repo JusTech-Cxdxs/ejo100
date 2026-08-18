@@ -24,6 +24,13 @@ jobs:
           node-version-file: '.node-version'
           cache: 'npm'
       - run: npm install
+      # @ejo/database no longer builds itself from its own postinstall (that
+      # caused a race condition — see packages/database/package.json history).
+      # Every other workspace's typecheck/build/lint depends on its compiled
+      # dist/index.d.ts existing, so it must be built explicitly here, before
+      # anything that consumes it runs — mirrors the same explicit step in
+      # Render's Build Command for apps/api.
+      - run: npm run build --workspace=packages/database
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
