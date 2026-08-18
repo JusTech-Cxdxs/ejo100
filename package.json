@@ -1,29 +1,29 @@
 {
-  "name": "@ejo/database",
-  "version": "1.0.0",
+  "name": "ejo100",
   "private": true,
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "version": "1.0.0",
+  "description": "EJO 100 Enterprise Platform - reusable Enterprise Operating System (EnterpriseOS)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "generate": "prisma generate",
-    "postinstall": "prisma generate --schema=$( [ -f prisma/schema.prisma ] && echo prisma/schema.prisma || echo packages/database/prisma/schema.prisma )",
-    "migrate:dev": "prisma migrate dev",
-    "migrate:deploy": "prisma migrate deploy",
-    "studio": "prisma studio",
-    "seed": "tsx prisma/seed.ts",
-    "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json"
-  },
-  "dependencies": {
-    "@prisma/client": "^5.20.0",
-    "better-auth": "^1.2.0"
+    "dev:website": "npm run dev --workspace=apps/website",
+    "dev:portal": "npm run dev --workspace=apps/portal",
+    "dev:api": "npm run start:dev --workspace=apps/api",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
   },
   "devDependencies": {
-    "prisma": "^5.20.0",
-    "typescript": "5.6.3",
-    "tsx": "^4.19.0"
+    "prettier": "^3.3.3",
+    "typescript": "5.6.3"
   },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
+  "overrides": {
+    "typescript": "5.6.3"
+  },
+  "engines": {
+    "node": ">=20.0.0 <21.0.0"
   }
 }
