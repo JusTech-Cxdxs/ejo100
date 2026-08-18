@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "generate": "prisma generate",
-    "postinstall": "prisma generate && npm run build",
+    "postinstall": "echo '--- TypeScript version at build time: ---' && npx tsc --version && prisma generate && npm run build",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "studio": "prisma studio",
