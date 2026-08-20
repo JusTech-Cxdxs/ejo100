@@ -86,7 +86,10 @@ export async function listCustomers(search?: string) {
       : undefined,
     orderBy: { createdAt: 'desc' },
     take: 100,
-    include: { _count: { select: { vehicles: true, jobCards: true } } },
+    include: {
+      _count: { select: { vehicles: true, jobCards: true } },
+      createdBy: { select: { fullName: true } },
+    },
   });
 }
 
@@ -100,7 +103,7 @@ export type CreateCustomerInput = {
  * a returning customer must never get a duplicate record. Only creates a
  * new row when no existing customer has that email. */
 export async function findOrCreateCustomer(input: CreateCustomerInput) {
-  await requireUser();
+  const currentUser = await requireUser();
   const email = input.email.trim().toLowerCase();
   if (!email || !input.fullName.trim()) {
     throw new WorkshopActionError('Customer name and email are required.');
@@ -123,6 +126,7 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
       fullName: input.fullName.trim(),
       email,
       phone: input.phone?.trim() || null,
+      createdById: currentUser.id,
     },
   });
 
@@ -203,7 +207,10 @@ export async function listAllVehicles(search?: string) {
       : undefined,
     orderBy: { createdAt: 'desc' },
     take: 100,
-    include: { customer: { select: { fullName: true, email: true } } },
+    include: {
+      customer: { select: { fullName: true, email: true } },
+      createdBy: { select: { fullName: true } },
+    },
   });
 }
 
@@ -234,44 +241,56 @@ function normalizeChassis(value: string): string {
 }
 
 export async function createVehicle(input: CreateVehicleInput) {
-  await requireUser();
+  const currentUser = await requireUser();
   if (!input.customerId) {
     throw new WorkshopActionError('A vehicle must belong to a customer.');
   }
 
-  const plateNumber = input.plateNumber?.trim() ? normalizePlate(input.plateNumber) : null;
-  const chassisNumber = input.chassisNumber?.trim() ? normalizeChassis(input.chassisNumber) : null;
+  // Required at the server, not just via the form's `required` attribute
+  // — a form's client-side validation can always be bypassed, so this is
+  // the actual enforcement. Mileage and engine number stay optional
+  // (mileage is also captured per Job Card check-in; engine number is
+  // sometimes genuinely unavailable) — Make/Model/Year/Plate/Chassis are
+  // the fields that make a registration meaningfully identify a real,
+  // specific vehicle rather than an empty placeholder row.
+  const make = input.make?.trim();
+  const model = input.model?.trim();
+  const plateNumberRaw = input.plateNumber?.trim();
+  const chassisNumberRaw = input.chassisNumber?.trim();
+  if (!make || !model || !input.year || !plateNumberRaw || !chassisNumberRaw) {
+    throw new WorkshopActionError('Make, model, year, plate number, and chassis/VIN are all required to register a vehicle.');
+  }
 
-  if (chassisNumber && chassisNumber.length !== 17) {
+  const plateNumber = normalizePlate(plateNumberRaw);
+  const chassisNumber = normalizeChassis(chassisNumberRaw);
+
+  if (chassisNumber.length !== 17) {
     throw new WorkshopActionError('Chassis / VIN must be exactly 17 characters.');
   }
 
   // Friendly, specific error before hitting the database's own unique
   // constraint (which still exists as a safety net for the rare case of
   // two near-simultaneous submissions racing past this check).
-  if (plateNumber) {
-    const existing = await prisma.customerVehicle.findUnique({ where: { plateNumber } });
-    if (existing) {
-      throw new WorkshopActionError(`A vehicle with plate number "${plateNumber}" is already registered.`);
-    }
+  const existingByPlate = await prisma.customerVehicle.findUnique({ where: { plateNumber } });
+  if (existingByPlate) {
+    throw new WorkshopActionError(`A vehicle with plate number "${plateNumber}" is already registered.`);
   }
-  if (chassisNumber) {
-    const existing = await prisma.customerVehicle.findUnique({ where: { chassisNumber } });
-    if (existing) {
-      throw new WorkshopActionError(`A vehicle with chassis/VIN "${chassisNumber}" is already registered.`);
-    }
+  const existingByChassis = await prisma.customerVehicle.findUnique({ where: { chassisNumber } });
+  if (existingByChassis) {
+    throw new WorkshopActionError(`A vehicle with chassis/VIN "${chassisNumber}" is already registered.`);
   }
 
   return prisma.customerVehicle.create({
     data: {
       customerId: input.customerId,
-      make: input.make?.trim() || null,
-      model: input.model?.trim() || null,
-      year: input.year ?? null,
+      make,
+      model,
+      year: input.year,
       plateNumber,
       chassisNumber,
       engineNumber: input.engineNumber?.trim() || null,
       mileage: input.mileage ?? null,
+      createdById: currentUser.id,
     },
   });
 }
