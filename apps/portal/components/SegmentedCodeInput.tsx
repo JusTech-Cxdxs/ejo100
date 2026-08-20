@@ -76,7 +76,7 @@ export function SegmentedCodeInput({
     <div className="flex flex-wrap items-center gap-1.5">
       <input type="hidden" name={name} value={joined} />
       {groupRanges.map((range, groupIndex) => (
-        <div key={groupIndex} className="flex gap-1">
+        <div key={groupIndex} className="flex flex-wrap gap-1">
           {range.map((i) => (
             <input
               key={i}
