@@ -4,6 +4,7 @@ import { createVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
+import { formatDateTimeCompact } from '@/lib/utils/format-date';
 
 export default async function WorkshopVehiclesPage({
   searchParams,
@@ -58,6 +59,7 @@ export default async function WorkshopVehiclesPage({
                   <th className="px-4 py-3 font-medium">Vehicle</th>
                   <th className="px-4 py-3 font-medium">Owner</th>
                   <th className="px-4 py-3 font-medium">Mileage</th>
+                  <th className="px-4 py-3 font-medium">Registered</th>
                 </tr>
               </thead>
               <tbody>
@@ -75,6 +77,10 @@ export default async function WorkshopVehiclesPage({
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{v.customer.fullName}</td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       {v.mileage != null ? `${v.mileage.toLocaleString()} km` : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[var(--ejo-text-muted)]">
+                      {formatDateTimeCompact(v.createdAt)}
+                      {v.createdBy ? <><br />by {v.createdBy.fullName}</> : null}
                     </td>
                   </tr>
                 ))}
@@ -110,18 +116,18 @@ export default async function WorkshopVehiclesPage({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Make</label>
-                  <input name="make" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                  <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Make <span className="text-[var(--ejo-error)]">*</span></label>
+                  <input name="make" required className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Model</label>
-                  <input name="model" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                  <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Model <span className="text-[var(--ejo-error)]">*</span></label>
+                  <input name="model" required className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Year</label>
-                  <input name="year" type="number" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                  <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Year <span className="text-[var(--ejo-error)]">*</span></label>
+                  <input name="year" type="number" required className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Mileage (km)</label>
@@ -131,19 +137,21 @@ export default async function WorkshopVehiclesPage({
 
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">
-                  Plate number <span className="text-[var(--ejo-text-muted)] font-normal">(AAA 000 AA)</span>
+                  Plate number <span className="text-[var(--ejo-error)]">*</span>{' '}
+                  <span className="text-[var(--ejo-text-muted)] font-normal">(AAA 000 AA)</span>
                 </label>
                 <SegmentedCodeInput name="plateNumber" length={8} groups={[3, 3, 2]} placeholder="LAGXXXAA" />
                 <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
-                  Leave blank if the vehicle doesn&apos;t have plates yet — but no two registered vehicles can share the same plate.
+                  No two registered vehicles can share the same plate.
                 </p>
               </div>
 
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">
-                  Chassis / VIN <span className="text-[var(--ejo-text-muted)] font-normal">(17 characters)</span>
+                  Chassis / VIN <span className="text-[var(--ejo-error)]">*</span>{' '}
+                  <span className="text-[var(--ejo-text-muted)] font-normal">(17 characters)</span>
                 </label>
-                <SegmentedCodeInput name="chassisNumber" length={17} groups={[17]} />
+                <SegmentedCodeInput name="chassisNumber" length={17} groups={[9, 8]} />
               </div>
 
               <div>
