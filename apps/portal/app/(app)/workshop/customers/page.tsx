@@ -1,14 +1,23 @@
 import Link from 'next/link';
 import { listCustomers } from '@/lib/actions/workshop';
 import { createCustomerFormAction } from '@/lib/actions/workshop-form-handlers';
+import { SubmitButton } from '@/components/SubmitButton';
+import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+
+const STATUS_MESSAGES: Record<string, { kind: 'success' | 'warning'; message: string }> = {
+  customer_existing: { kind: 'success', message: 'That email already had a customer record — reused it, no duplicate created.' },
+  customer_created_emailed: { kind: 'success', message: 'Customer added — a welcome email with their login details has been sent.' },
+  customer_created_no_email: { kind: 'warning', message: 'Customer added, but the welcome email could not be sent. Please share their login details manually, or try resending later.' },
+};
 
 export default async function WorkshopCustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; error?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, status, error } = await searchParams;
   const customers = await listCustomers(q);
+  const statusInfo = status ? STATUS_MESSAGES[status] : undefined;
 
   return (
     <div className="p-8">
@@ -20,6 +29,9 @@ export default async function WorkshopCustomersPage({
           </p>
         </div>
       </div>
+
+      {statusInfo ? <FormFeedbackBanner kind={statusInfo.kind} message={statusInfo.message} /> : null}
+      {error ? <FormFeedbackBanner kind="error" message={error} /> : null}
 
       <form className="mb-6 flex gap-2" action="/workshop/customers">
         <input
@@ -74,7 +86,7 @@ export default async function WorkshopCustomersPage({
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Add customer</h2>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
             If the email already belongs to an existing customer, their existing record is reused —
-            no duplicate is created.
+            no duplicate is created. A new customer receives a welcome email with login details.
           </p>
           <form action={createCustomerFormAction} className="mt-4 space-y-3">
             <div>
@@ -101,12 +113,11 @@ export default async function WorkshopCustomersPage({
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
             </div>
-            <button
-              type="submit"
+            <SubmitButton
+              label="Add customer"
+              pendingLabel="Adding…"
               className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
-              Add customer
-            </button>
+            />
           </form>
         </div>
       </div>
