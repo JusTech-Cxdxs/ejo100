@@ -1,16 +1,25 @@
-const stats = [
-  { label: 'Active Jobs', value: '32' },
-  { label: 'Pending Approvals', value: '7' },
-  { label: 'Vehicles In Workshop', value: '18' },
-  { label: 'Technicians On Duty', value: '11' },
-];
+import { getWorkshopDashboardCounts } from '@/lib/actions/workshop';
 
-export default function DashboardPage() {
+/**
+ * Real counts from the database — no hardcoded numbers. If there are no
+ * Job Cards/customers/vehicles yet, these correctly show 0, not a fake
+ * production-looking figure. See lib/actions/workshop.ts for the queries.
+ */
+export default async function DashboardPage() {
+  const counts = await getWorkshopDashboardCounts();
+
+  const stats = [
+    { label: 'Active Job Cards', value: counts.activeJobCards },
+    { label: 'Vehicles Currently In Workshop', value: counts.inWorkshop },
+    { label: 'Total Customers', value: counts.totalCustomers },
+    { label: 'Total Vehicles Registered', value: counts.totalVehicles },
+  ];
+
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Welcome back, John 👋</h1>
+      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Dashboard</h1>
       <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
-        Here&apos;s what&apos;s happening at Isolo Branch — Workshop today.
+        Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Workshop
       </p>
 
       <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
