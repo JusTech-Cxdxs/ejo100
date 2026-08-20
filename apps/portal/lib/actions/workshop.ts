@@ -214,22 +214,63 @@ export type CreateVehicleInput = {
   year?: number;
   plateNumber?: string;
   chassisNumber?: string;
+  engineNumber?: string;
   mileage?: number;
 };
+
+/** Nigerian plates (2011 format) are 3 letters + 3 digits + 2 letters,
+ * commonly written with spaces (e.g. "LAG 123 AA"). Stored normalized —
+ * uppercased, spaces collapsed to single spaces — so "lag123aa" and
+ * "LAG 123 AA" are correctly treated as the same plate for duplicate
+ * detection, rather than silently allowed as two different rows. */
+function normalizePlate(value: string): string {
+  return value.trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
+/** VINs are internationally standardized at exactly 17 characters, no
+ * spaces. Stored uppercased for consistent duplicate matching. */
+function normalizeChassis(value: string): string {
+  return value.trim().toUpperCase().replace(/\s+/g, '');
+}
 
 export async function createVehicle(input: CreateVehicleInput) {
   await requireUser();
   if (!input.customerId) {
     throw new WorkshopActionError('A vehicle must belong to a customer.');
   }
+
+  const plateNumber = input.plateNumber?.trim() ? normalizePlate(input.plateNumber) : null;
+  const chassisNumber = input.chassisNumber?.trim() ? normalizeChassis(input.chassisNumber) : null;
+
+  if (chassisNumber && chassisNumber.length !== 17) {
+    throw new WorkshopActionError('Chassis / VIN must be exactly 17 characters.');
+  }
+
+  // Friendly, specific error before hitting the database's own unique
+  // constraint (which still exists as a safety net for the rare case of
+  // two near-simultaneous submissions racing past this check).
+  if (plateNumber) {
+    const existing = await prisma.customerVehicle.findUnique({ where: { plateNumber } });
+    if (existing) {
+      throw new WorkshopActionError(`A vehicle with plate number "${plateNumber}" is already registered.`);
+    }
+  }
+  if (chassisNumber) {
+    const existing = await prisma.customerVehicle.findUnique({ where: { chassisNumber } });
+    if (existing) {
+      throw new WorkshopActionError(`A vehicle with chassis/VIN "${chassisNumber}" is already registered.`);
+    }
+  }
+
   return prisma.customerVehicle.create({
     data: {
       customerId: input.customerId,
       make: input.make?.trim() || null,
       model: input.model?.trim() || null,
       year: input.year ?? null,
-      plateNumber: input.plateNumber?.trim() || null,
-      chassisNumber: input.chassisNumber?.trim() || null,
+      plateNumber,
+      chassisNumber,
+      engineNumber: input.engineNumber?.trim() || null,
       mileage: input.mileage ?? null,
     },
   });

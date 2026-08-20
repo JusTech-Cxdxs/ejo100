@@ -8,6 +8,14 @@
  * monorepo this project has needed a full, careful deploy-verification
  * cycle. Adding real client-side validation is a good, deliberate next
  * step, not something to fold silently into this pass.
+ *
+ * Every create-action now redirects back to its list page carrying a
+ * `?status=` (success) or `?error=` (failure) query param, which the
+ * page reads server-side to render a FormFeedbackBanner. This is the
+ * fix for "nothing visibly happens after clicking Add/Register" — the
+ * SubmitButton component handles the *during* (spinner, disabled), this
+ * handles the *after* (a real confirmation or a real error message,
+ * instead of silence either way).
  */
 
 import { revalidatePath } from 'next/cache';
@@ -34,25 +42,46 @@ function num(formData: FormData, key: string): number | undefined {
 }
 
 export async function createCustomerFormAction(formData: FormData) {
-  await findOrCreateCustomer({
-    fullName: str(formData, 'fullName'),
-    email: str(formData, 'email'),
-    phone: str(formData, 'phone') || undefined,
-  });
-  revalidatePath('/workshop/customers');
+  let query: string;
+  try {
+    const { wasExisting, welcomeEmailSent } = await findOrCreateCustomer({
+      fullName: str(formData, 'fullName'),
+      email: str(formData, 'email'),
+      phone: str(formData, 'phone') || undefined,
+    });
+    revalidatePath('/workshop/customers');
+    if (wasExisting) {
+      query = 'status=customer_existing';
+    } else if (welcomeEmailSent) {
+      query = 'status=customer_created_emailed';
+    } else {
+      query = 'status=customer_created_no_email';
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not add customer.';
+    redirect(`/workshop/customers?error=${encodeURIComponent(message)}`);
+  }
+  redirect(`/workshop/customers?${query}`);
 }
 
 export async function createVehicleFormAction(formData: FormData) {
-  await createVehicle({
-    customerId: str(formData, 'customerId'),
-    make: str(formData, 'make') || undefined,
-    model: str(formData, 'model') || undefined,
-    year: num(formData, 'year'),
-    plateNumber: str(formData, 'plateNumber') || undefined,
-    chassisNumber: str(formData, 'chassisNumber') || undefined,
-    mileage: num(formData, 'mileage'),
-  });
+  try {
+    await createVehicle({
+      customerId: str(formData, 'customerId'),
+      make: str(formData, 'make') || undefined,
+      model: str(formData, 'model') || undefined,
+      year: num(formData, 'year'),
+      plateNumber: str(formData, 'plateNumber') || undefined,
+      chassisNumber: str(formData, 'chassisNumber') || undefined,
+      engineNumber: str(formData, 'engineNumber') || undefined,
+      mileage: num(formData, 'mileage'),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not register vehicle.';
+    redirect(`/workshop/vehicles?error=${encodeURIComponent(message)}`);
+  }
   revalidatePath('/workshop/vehicles');
+  redirect('/workshop/vehicles?status=vehicle_created');
 }
 
 export async function createJobCardFormAction(formData: FormData) {
