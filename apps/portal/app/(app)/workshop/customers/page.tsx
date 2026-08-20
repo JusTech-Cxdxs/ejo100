@@ -3,6 +3,7 @@ import { listCustomers } from '@/lib/actions/workshop';
 import { createCustomerFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { formatDateTimeCompact } from '@/lib/utils/format-date';
 
 const STATUS_MESSAGES: Record<string, { kind: 'success' | 'warning'; message: string }> = {
   customer_existing: { kind: 'success', message: 'That email already had a customer record — reused it, no duplicate created.' },
@@ -63,6 +64,7 @@ export default async function WorkshopCustomersPage({
                   <th className="px-4 py-3 font-medium">Contact</th>
                   <th className="px-4 py-3 font-medium">Vehicles</th>
                   <th className="px-4 py-3 font-medium">Job Cards</th>
+                  <th className="px-4 py-3 font-medium">Registered</th>
                 </tr>
               </thead>
               <tbody>
@@ -75,6 +77,10 @@ export default async function WorkshopCustomersPage({
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{c._count.vehicles}</td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{c._count.jobCards}</td>
+                    <td className="px-4 py-3 text-xs text-[var(--ejo-text-muted)]">
+                      {formatDateTimeCompact(c.createdAt)}
+                      {c.createdBy ? <><br />by {c.createdBy.fullName}</> : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
