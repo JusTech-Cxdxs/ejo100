@@ -18,6 +18,7 @@ import {
   createVehicle,
   createJobCard,
   updateJobCardStatus,
+  assignTechnician,
 } from './workshop';
 
 function str(formData: FormData, key: string): string {
@@ -70,5 +71,14 @@ export async function updateJobCardStatusFormAction(formData: FormData) {
   const status = str(formData, 'status') as JobCardStatus;
   await updateJobCardStatus(id, status);
   revalidatePath(`/workshop/job-cards/${id}`);
+  revalidatePath('/workshop/job-cards');
+}
+
+export async function assignTechnicianFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  const technicianId = str(formData, 'technicianId');
+  if (!technicianId) return; // "Unassigned" placeholder selected — nothing to do
+  await assignTechnician(jobCardId, technicianId);
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
   revalidatePath('/workshop/job-cards');
 }

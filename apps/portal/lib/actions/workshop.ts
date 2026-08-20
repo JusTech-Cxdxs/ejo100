@@ -277,6 +277,26 @@ export async function assignTechnician(jobCardId: string, technicianId: string) 
   });
 }
 
+/** Users who can be assigned to a Job Card. Deliberately not filtered by
+ * a "Technician" role yet — this project's Roles/Permissions admin UI
+ * doesn't have a way to assign roles to users yet, so filtering by role
+ * here would just hide every real user until that's built. Showing each
+ * user's role name(s) alongside their name lets staff pick correctly in
+ * the meantime; narrowing this to a real role filter is a small, natural
+ * follow-up once role assignment exists, not a redesign. */
+export async function listTechnicianCandidates() {
+  await requireUser();
+  return prisma.user.findMany({
+    where: { isActive: true },
+    orderBy: { fullName: 'asc' },
+    select: {
+      id: true,
+      fullName: true,
+      roles: { select: { role: { select: { name: true } } } },
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // DASHBOARD — real counts, replacing the hardcoded 32/7/18/11
 // ---------------------------------------------------------------------------
