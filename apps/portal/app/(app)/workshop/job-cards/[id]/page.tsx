@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getJobCard } from '@/lib/actions/workshop';
-import { updateJobCardStatusFormAction } from '@/lib/actions/workshop-form-handlers';
+import { getJobCard, listTechnicianCandidates } from '@/lib/actions/workshop';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction } from '@/lib/actions/workshop-form-handlers';
 
 const ALL_STATUSES = [
   'CHECKED_IN',
@@ -31,7 +31,7 @@ export default async function JobCardDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const jobCard = await getJobCard(id);
+  const [jobCard, technicians] = await Promise.all([getJobCard(id), listTechnicianCandidates()]);
   if (!jobCard) notFound();
 
   return (
@@ -109,26 +109,57 @@ export default async function JobCardDetailPage({
           </div>
         </div>
 
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Update status</h2>
-          <form action={updateJobCardStatusFormAction} className="mt-4 space-y-3">
-            <input type="hidden" name="jobCardId" value={jobCard.id} />
-            <select
-              name="status"
-              defaultValue={jobCard.status}
-              className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-            >
-              {ALL_STATUSES.map((s) => (
-                <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
-              Update status
-            </button>
-          </form>
+        <div className="space-y-6">
+          <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Update status</h2>
+            <form action={updateJobCardStatusFormAction} className="mt-4 space-y-3">
+              <input type="hidden" name="jobCardId" value={jobCard.id} />
+              <select
+                name="status"
+                defaultValue={jobCard.status}
+                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+              >
+                {ALL_STATUSES.map((s) => (
+                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              >
+                Update status
+              </button>
+            </form>
+          </div>
+
+          <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Assign technician</h2>
+            <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+              Currently: {jobCard.assignedTechnician?.fullName ?? 'Unassigned'}
+            </p>
+            <form action={assignTechnicianFormAction} className="mt-4 space-y-3">
+              <input type="hidden" name="jobCardId" value={jobCard.id} />
+              <select
+                name="technicianId"
+                defaultValue={jobCard.assignedTechnician?.id ?? ''}
+                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+              >
+                <option value="">— Unassigned —</option>
+                {technicians.map((t: (typeof technicians)[number]) => (
+                  <option key={t.id} value={t.id}>
+                    {t.fullName}
+                    {t.roles.length > 0 ? ` (${t.roles.map((r: (typeof t.roles)[number]) => r.role.name).join(', ')})` : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+              >
+                Assign
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
