@@ -66,10 +66,12 @@ export async function createCustomerFormAction(formData: FormData) {
 
 export async function createVehicleFormAction(formData: FormData) {
   try {
+    const vehicleTypeRaw = str(formData, 'vehicleType');
     await createVehicle({
       customerId: str(formData, 'customerId'),
       make: str(formData, 'make') || undefined,
       model: str(formData, 'model') || undefined,
+      vehicleType: vehicleTypeRaw === 'PASSENGER' || vehicleTypeRaw === 'COMMERCIAL' ? vehicleTypeRaw : undefined,
       year: num(formData, 'year'),
       plateNumber: str(formData, 'plateNumber') || undefined,
       chassisNumber: str(formData, 'chassisNumber') || undefined,

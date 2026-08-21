@@ -296,6 +296,7 @@ export type CreateVehicleInput = {
   customerId: string;
   make?: string;
   model?: string;
+  vehicleType?: 'PASSENGER' | 'COMMERCIAL';
   year?: number;
   plateNumber?: string;
   chassisNumber?: string;
@@ -328,15 +329,16 @@ export async function createVehicle(input: CreateVehicleInput) {
   // — a form's client-side validation can always be bypassed, so this is
   // the actual enforcement. Mileage and engine number stay optional
   // (mileage is also captured per Job Card check-in; engine number is
-  // sometimes genuinely unavailable) — Make/Model/Year/Plate/Chassis are
-  // the fields that make a registration meaningfully identify a real,
-  // specific vehicle rather than an empty placeholder row.
+  // sometimes genuinely unavailable) — Make/Model/Year/Plate/Chassis/
+  // Vehicle Type are the fields that make a registration meaningfully
+  // identify a real, specific vehicle rather than an empty placeholder
+  // row, and correctly place it in one of the Workshop's two sections.
   const make = input.make?.trim();
   const model = input.model?.trim();
   const plateNumberRaw = input.plateNumber?.trim();
   const chassisNumberRaw = input.chassisNumber?.trim();
-  if (!make || !model || !input.year || !plateNumberRaw || !chassisNumberRaw) {
-    throw new WorkshopActionError('Make, model, year, plate number, and chassis/VIN are all required to register a vehicle.');
+  if (!make || !model || !input.year || !plateNumberRaw || !chassisNumberRaw || !input.vehicleType) {
+    throw new WorkshopActionError('Vehicle type, make, model, year, plate number, and chassis/VIN are all required to register a vehicle.');
   }
 
   const plateNumber = normalizePlate(plateNumberRaw);
@@ -363,6 +365,7 @@ export async function createVehicle(input: CreateVehicleInput) {
       customerId: input.customerId,
       make,
       model,
+      vehicleType: input.vehicleType,
       year: input.year,
       plateNumber,
       chassisNumber,
