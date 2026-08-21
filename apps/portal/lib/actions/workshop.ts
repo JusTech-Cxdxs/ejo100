@@ -68,6 +68,35 @@ async function getWorkshopBranchId(): Promise<string> {
   return department.branchId;
 }
 
+/** Real Company/Branch/Department names for the branded email layout's
+ * organizational context line — e.g. "Kewalram Nigeria · Isolo Branch ·
+ * Workshop". Kept separate from getWorkshopBranchId() above rather than
+ * changing its return shape, since that function has another caller
+ * (createJobCard) that only ever needs the bare id. */
+async function getWorkshopOrgContext(): Promise<{
+  companyName: string;
+  branchName: string;
+  departmentName: string;
+}> {
+  const department = await prisma.department.findFirstOrThrow({
+    where: { slug: 'workshop' },
+    select: {
+      name: true,
+      branch: {
+        select: {
+          name: true,
+          businessUnit: { select: { company: { select: { name: true } } } },
+        },
+      },
+    },
+  });
+  return {
+    companyName: department.branch.businessUnit.company.name,
+    branchName: department.branch.name,
+    departmentName: department.name,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // CUSTOMERS
 // ---------------------------------------------------------------------------
@@ -188,7 +217,8 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
     },
   });
 
-  const welcomeEmailSent = await provisionCustomerAccountAndWelcomeEmail(customer);
+  const orgContext = await getWorkshopOrgContext();
+  const welcomeEmailSent = await provisionCustomerAccountAndWelcomeEmail(customer, orgContext);
 
   return { customer, wasExisting: false, welcomeEmailSent };
 }
@@ -202,11 +232,10 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
  * or block the staff member at the counter. Failure is caught, logged,
  * and reported back via the `welcomeEmailSent` flag instead, so the UI
  * can tell staff to relay the details manually if it ever happens. */
-async function provisionCustomerAccountAndWelcomeEmail(customer: {
-  id: string;
-  fullName: string;
-  email: string;
-}): Promise<boolean> {
+async function provisionCustomerAccountAndWelcomeEmail(
+  customer: { id: string; fullName: string; email: string },
+  orgContext: { companyName: string; branchName: string; departmentName: string },
+): Promise<boolean> {
   try {
     const temporaryPassword = generateSecurePassword();
     await prisma.customerAccount.create({
@@ -228,6 +257,9 @@ async function provisionCustomerAccountAndWelcomeEmail(customer: {
         temporaryPassword,
         loginUrl: `${websiteUrl}/customer-portal`,
         logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
       }),
     );
     return true;
