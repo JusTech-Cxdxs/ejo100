@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { listJobCards, listCustomers, listAllVehicles } from '@/lib/actions/workshop';
+import { listJobCards } from '@/lib/actions/workshop';
 import { createJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -33,11 +33,7 @@ export default async function WorkshopJobCardsPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  const [jobCards, customers, vehicles] = await Promise.all([
-    listJobCards(),
-    listCustomers(),
-    listAllVehicles(),
-  ]);
+  const jobCards = await listJobCards();
 
   return (
     <div className="p-8">
@@ -95,51 +91,27 @@ export default async function WorkshopJobCardsPage({
 
         <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Open Job Card</h2>
-          {customers.length === 0 || vehicles.length === 0 ? (
-            <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">
-              A Job Card needs an existing customer and vehicle.{' '}
-              <Link href="/workshop/customers" className="text-[var(--ejo-primary)] underline">Add a customer</Link>
-              {' '}and{' '}
-              <Link href="/workshop/vehicles" className="text-[var(--ejo-primary)] underline">register their vehicle</Link>
-              {' '}first.
-            </p>
-          ) : (
-            <form action={createJobCardFormAction} className="mt-4 space-y-3">
-              <CustomerVehiclePicker
-                customers={customers.map((c: (typeof customers)[number]) => ({
-                  id: c.id,
-                  fullName: c.fullName,
-                }))}
-                vehicles={vehicles.map((v: (typeof vehicles)[number]) => ({
-                  id: v.id,
-                  customerId: v.customerId,
-                  plateNumber: v.plateNumber,
-                  chassisNumber: v.chassisNumber,
-                  make: v.make,
-                  model: v.model,
-                  year: v.year,
-                }))}
+          <form action={createJobCardFormAction} className="mt-4 space-y-3">
+            <CustomerVehiclePicker />
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Mileage at check-in (km)</label>
+              <input name="mileageAtCheckIn" type="number" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Complaint / reason for visit</label>
+              <textarea
+                name="complaint"
+                required
+                rows={3}
+                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
-              <div>
-                <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Mileage at check-in (km)</label>
-                <input name="mileageAtCheckIn" type="number" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Complaint / reason for visit</label>
-                <textarea
-                  name="complaint"
-                  required
-                  rows={3}
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                />
-              </div>
-              <SubmitButton
-                label="Open Job Card"
-                pendingLabel="Opening…"
-                className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-              />
-            </form>
-          )}
+            </div>
+            <SubmitButton
+              label="Open Job Card"
+              pendingLabel="Opening…"
+              className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            />
+          </form>
         </div>
       </div>
 
