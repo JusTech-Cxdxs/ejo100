@@ -26,15 +26,18 @@ type SearchState = 'idle' | 'loading' | 'success' | 'error';
  * sits inside submits exactly the same FormData shape a native <select>
  * would.
  *
- * Reusable by design: `search` is the only thing that changes between
- * uses (searchCustomers, a future searchTechnicians, searchParts, etc.)
- * — everything else (debouncing, loading/empty/error states, keyboard
- * navigation, accessibility, race-condition handling) is common and
- * shouldn't need to be rebuilt per entity type.
+ * Reusable by design: `search` (and the optional `loadDefaultOptions`)
+ * are the only things that change between uses (searchCustomers, a
+ * future searchTechnicians, searchParts, etc.) — everything else
+ * (debouncing, loading/empty/error states, keyboard navigation,
+ * accessibility, race-condition handling) is common and shouldn't need
+ * to be rebuilt per entity type.
  */
 export function SearchableSelect({
   name,
   search,
+  loadDefaultOptions,
+  defaultOptionsLabel = 'Recent',
   placeholder = 'Search…',
   required,
   defaultValue,
@@ -46,6 +49,13 @@ export function SearchableSelect({
 }: {
   name: string;
   search: (query: string) => Promise<SearchableOption[]>;
+  /** Optional: shown before the person has typed anything — e.g. the
+   * most recently registered customers, so the common case ("the same
+   * customer as earlier today") needs zero typing. If omitted, the
+   * dropdown simply stays closed until there's a real query, same as
+   * before this existed. */
+  loadDefaultOptions?: () => Promise<SearchableOption[]>;
+  defaultOptionsLabel?: string;
   placeholder?: string;
   required?: boolean;
   defaultValue?: string;
@@ -60,6 +70,7 @@ export function SearchableSelect({
   const [open, setOpen] = useState(false);
   const [results, setResults] = useState<SearchableOption[]>([]);
   const [state, setState] = useState<SearchState>('idle');
+  const [showingDefaults, setShowingDefaults] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -71,18 +82,39 @@ export function SearchableSelect({
   // request-generation counter means that if the user types quickly
   // enough to fire two searches, and the FIRST one's network response
   // happens to arrive after the SECOND's, the stale first response is
-  // discarded instead of overwriting the correct, newer results.
+  // discarded instead of overwriting the correct, newer results. Below
+  // minQueryLength, either show loadDefaultOptions() (if provided) or
+  // fall back to the original "nothing until you type" behavior.
   useEffect(() => {
     const trimmed = debouncedQuery.trim();
+    const requestId = ++requestIdRef.current;
+
     if (trimmed.length < minQueryLength) {
-      setResults([]);
-      setState('idle');
+      if (!loadDefaultOptions) {
+        setResults([]);
+        setState('idle');
+        setShowingDefaults(false);
+        return;
+      }
+      setState('loading');
+      setShowingDefaults(true);
+      loadDefaultOptions()
+        .then((found) => {
+          if (requestId !== requestIdRef.current) return;
+          setResults(found);
+          setState('success');
+          setHighlightIndex(0);
+        })
+        .catch(() => {
+          if (requestId !== requestIdRef.current) return;
+          setResults([]);
+          setState('error');
+        });
       return;
     }
 
-    const requestId = ++requestIdRef.current;
     setState('loading');
-
+    setShowingDefaults(false);
     search(trimmed)
       .then((found) => {
         if (requestId !== requestIdRef.current) return; // a newer search has since superseded this one
@@ -95,7 +127,7 @@ export function SearchableSelect({
         setResults([]);
         setState('error');
       });
-  }, [debouncedQuery, minQueryLength, search]);
+  }, [debouncedQuery, minQueryLength, search, loadDefaultOptions]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -135,7 +167,7 @@ export function SearchableSelect({
     }
   }
 
-  const showDropdown = open && query.trim().length >= minQueryLength;
+  const showDropdown = open && (query.trim().length >= minQueryLength || Boolean(loadDefaultOptions));
 
   return (
     <div ref={containerRef} className="relative">
@@ -168,34 +200,43 @@ export function SearchableSelect({
           {state === 'loading' ? (
             <p className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-              Searching…
+              {showingDefaults ? 'Loading…' : 'Searching…'}
             </p>
           ) : state === 'error' ? (
             <p className="px-3 py-2 text-xs text-[var(--ejo-error)]">
-              Something went wrong searching — try again.
+              Something went wrong {showingDefaults ? 'loading suggestions' : 'searching'} — try again.
             </p>
           ) : state === 'success' && results.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">{emptyMessage}</p>
+            <p className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
+              {showingDefaults ? 'Nothing to suggest yet — start typing to search.' : emptyMessage}
+            </p>
           ) : (
-            results.map((option, i) => (
-              <button
-                key={option.value}
-                id={`${listboxId}-option-${i}`}
-                role="option"
-                aria-selected={i === highlightIndex}
-                type="button"
-                onClick={() => selectOption(option)}
-                onMouseEnter={() => setHighlightIndex(i)}
-                className={`block w-full px-3 py-2 text-left text-sm ${
-                  i === highlightIndex ? 'bg-[var(--ejo-primary)]/10' : ''
-                }`}
-              >
-                <span className="text-[var(--ejo-text)]">{option.label}</span>
-                {option.sublabel ? (
-                  <span className="ml-2 text-xs text-[var(--ejo-text-muted)]">{option.sublabel}</span>
-                ) : null}
-              </button>
-            ))
+            <>
+              {showingDefaults ? (
+                <p className="px-3 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-[var(--ejo-text-muted)]">
+                  {defaultOptionsLabel}
+                </p>
+              ) : null}
+              {results.map((option, i) => (
+                <button
+                  key={option.value}
+                  id={`${listboxId}-option-${i}`}
+                  role="option"
+                  aria-selected={i === highlightIndex}
+                  type="button"
+                  onClick={() => selectOption(option)}
+                  onMouseEnter={() => setHighlightIndex(i)}
+                  className={`block w-full px-3 py-2 text-left text-sm ${
+                    i === highlightIndex ? 'bg-[var(--ejo-primary)]/10' : ''
+                  }`}
+                >
+                  <span className="text-[var(--ejo-text)]">{option.label}</span>
+                  {option.sublabel ? (
+                    <span className="ml-2 text-xs text-[var(--ejo-text-muted)]">{option.sublabel}</span>
+                  ) : null}
+                </button>
+              ))}
+            </>
           )}
         </div>
       ) : null}
