@@ -85,14 +85,21 @@ export async function createVehicleFormAction(formData: FormData) {
 }
 
 export async function createJobCardFormAction(formData: FormData) {
-  const jobCard = await createJobCard({
-    customerId: str(formData, 'customerId'),
-    vehicleId: str(formData, 'vehicleId'),
-    complaint: str(formData, 'complaint'),
-    mileageAtCheckIn: num(formData, 'mileageAtCheckIn'),
-  });
+  let jobCardId: string;
+  try {
+    const jobCard = await createJobCard({
+      customerId: str(formData, 'customerId'),
+      vehicleId: str(formData, 'vehicleId'),
+      complaint: str(formData, 'complaint'),
+      mileageAtCheckIn: num(formData, 'mileageAtCheckIn'),
+    });
+    jobCardId = jobCard.id;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not open Job Card.';
+    redirect(`/workshop/job-cards?error=${encodeURIComponent(message)}`);
+  }
   revalidatePath('/workshop/job-cards');
-  redirect(`/workshop/job-cards/${jobCard.id}`);
+  redirect(`/workshop/job-cards/${jobCardId}?status=job_card_created`);
 }
 
 export async function updateJobCardStatusFormAction(formData: FormData) {
