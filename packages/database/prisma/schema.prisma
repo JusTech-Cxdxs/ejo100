@@ -508,7 +508,7 @@ model JobCard {
   customerId  String
   vehicleId   String
 
-  complaint   String        // what the customer reported
+  complaint   String?       // legacy single-field complaint, kept for Job Cards created before per-item complaints existed — new Job Cards use `complaints` below instead
   diagnosis   String?       // technician/service-advisor findings, filled in after inspection
   mileageAtCheckIn Int?
 
@@ -522,13 +522,31 @@ model JobCard {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  branch             Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  customer           Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  vehicle            CustomerVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  assignedTechnician User?           @relation("JobCardTechnician", fields: [assignedTechnicianId], references: [id])
-  createdBy          User            @relation("JobCardCreatedBy", fields: [createdById], references: [id])
+  branch             Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer           Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  vehicle            CustomerVehicle     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  assignedTechnician User?               @relation("JobCardTechnician", fields: [assignedTechnicianId], references: [id])
+  createdBy          User                @relation("JobCardCreatedBy", fields: [createdById], references: [id])
+  complaints         JobCardComplaint[]
 
   @@map("job_cards")
+}
+
+/** One row per distinct reported issue on a Job Card — e.g. "Fan not
+ * working" and "AC not working" as two separate, numbered entries,
+ * rather than one free-text paragraph mixing multiple complaints
+ * together. `sequenceNumber` preserves the order they were entered in
+ * (the order the customer/staff actually listed them), independent of
+ * database insertion order. */
+model JobCardComplaint {
+  id             String   @id @default(cuid())
+  jobCardId      String
+  jobCard        JobCard  @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  sequenceNumber Int
+  description    String
+  createdAt      DateTime @default(now())
+
+  @@map("job_card_complaints")
 }
 
 model CustomerAddress {
