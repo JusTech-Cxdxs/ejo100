@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getJobCard, listTechnicianCandidates } from '@/lib/actions/workshop';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction } from '@/lib/actions/workshop-form-handlers';
+import { getJobCard, listTechnicianCandidates, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 
 const ALL_STATUSES = [
   'CHECKED_IN',
@@ -37,7 +38,11 @@ export default async function JobCardDetailPage({
 }) {
   const { id } = await params;
   const { status } = await searchParams;
-  const [jobCard, technicians] = await Promise.all([getJobCard(id), listTechnicianCandidates()]);
+  const [jobCard, technicians, isMasterAdmin] = await Promise.all([
+    getJobCard(id),
+    listTechnicianCandidates(),
+    currentUserIsMasterAdmin(),
+  ]);
   if (!jobCard) notFound();
 
   return (
@@ -182,6 +187,23 @@ export default async function JobCardDetailPage({
               />
             </form>
           </div>
+
+          {isMasterAdmin ? (
+            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Danger zone</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                Permanently deletes this Job Card and its complaints. This cannot be undone.
+              </p>
+              <form action={deleteJobCardFormAction} className="mt-4">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <ConfirmDeleteButton
+                  confirmMessage={`Delete Job Card ${jobCard.jobNumber}? This permanently removes it and its complaints. This cannot be undone.`}
+                  label="Delete this Job Card"
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
+                />
+              </form>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
