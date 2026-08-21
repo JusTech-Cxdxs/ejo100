@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getJobCard, listTechnicianCandidates } from '@/lib/actions/workshop';
 import { updateJobCardStatusFormAction, assignTechnicianFormAction } from '@/lib/actions/workshop-form-handlers';
+import { formatDateTime } from '@/lib/utils/format-date';
 
 const ALL_STATUSES = [
   'CHECKED_IN',
@@ -101,11 +102,8 @@ export default async function JobCardDetailPage({
           </div>
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6 text-xs text-[var(--ejo-text-muted)]">
-            Opened by {jobCard.createdBy.fullName} on{' '}
-            {jobCard.createdAt.toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' })}
-            {jobCard.closedAt
-              ? ` — closed ${jobCard.closedAt.toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' })}`
-              : null}
+            Opened by {jobCard.createdBy.fullName} on {formatDateTime(jobCard.createdAt)}
+            {jobCard.closedAt ? ` — closed ${formatDateTime(jobCard.closedAt)}` : null}
           </div>
         </div>
 
