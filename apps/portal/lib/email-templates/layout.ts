@@ -9,21 +9,40 @@
  * most email clients (especially Outlook) don't support flexbox/grid or
  * external stylesheets: table-based layout, all styles inline, a fixed
  * 600px content width, and an explicit `alt` on every image.
+ *
+ * Icon badges use a plain colored circle + a single Unicode character
+ * (✓, !, etc.), not SVG or emoji — SVG has patchy support across email
+ * clients (especially Outlook, which renders using Word's engine), and
+ * emoji render inconsistently across platforms/fonts in a way that can
+ * look unprofessional. A basic Unicode glyph in a styled circle is
+ * simple, universally supported, and looks intentional everywhere.
  */
 
 const BRAND = {
   primary: '#16A34A',
   primaryDark: '#15803D',
+  primarySoft: '#DCFCE7',
   dark: '#0F172A',
+  darkSoft: '#1E293B',
   textMuted: '#64748B',
   border: '#E2E8F0',
   surface: '#F8FAFC',
-  companyName: 'Kewalram Nigeria',
   poweredBy: 'Powered by EJO 100 Enterprise Platform',
 };
 
 export type EmailLayoutOptions = {
   previewText: string; // hidden preheader text shown in inbox lists (Gmail/Outlook)
+  companyName: string; // written out prominently in the header, not just carried in the logo's alt text
+  /** Dynamic organizational context for the specific event this email
+   * is about — e.g. ["Kewalram Nigeria", "Isolo Branch", "Workshop"].
+   * The layout doesn't know or assume any fixed hierarchy; the caller
+   * supplies exactly the pieces that are relevant, in order. Omit for
+   * emails that aren't tied to a specific branch/department. */
+  orgContext?: string[];
+  /** A single Unicode character shown in a small colored badge above
+   * the heading — e.g. "✓" for a completed/ready event, "!" for one
+   * needing attention. Omit for a plainer heading with no badge. */
+  iconGlyph?: string;
   heading: string;
   bodyHtml: string; // pre-built inner HTML — paragraphs, lists, etc.
   ctaLabel?: string;
@@ -35,6 +54,9 @@ export type EmailLayoutOptions = {
 export function renderEmailLayout(opts: EmailLayoutOptions): string {
   const {
     previewText,
+    companyName,
+    orgContext,
+    iconGlyph,
     heading,
     bodyHtml,
     ctaLabel,
@@ -43,12 +65,31 @@ export function renderEmailLayout(opts: EmailLayoutOptions): string {
     logoUrl,
   } = opts;
 
+  const contextLine = orgContext && orgContext.length > 0
+    ? `<p style="margin: 4px 0 0 0; font-size: 12px; color: #94A3B8; font-family: Arial, Helvetica, sans-serif;">${orgContext.map(escapeHtml).join(' &middot; ')}</p>`
+    : '';
+
+  const iconBadge = iconGlyph
+    ? `
+    <tr>
+      <td align="center" style="padding: 32px 40px 0 40px;">
+        <table role="presentation" cellpadding="0" cellspacing="0">
+          <tr>
+            <td width="48" height="48" align="center" valign="middle" style="width: 48px; height: 48px; border-radius: 24px; background-color: ${BRAND.primarySoft};">
+              <span style="font-size: 22px; font-weight: bold; color: ${BRAND.primaryDark}; font-family: Arial, Helvetica, sans-serif; line-height: 48px;">${escapeHtml(iconGlyph)}</span>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>`
+    : '';
+
   const ctaBlock = ctaLabel && ctaUrl
     ? `
     <tr>
       <td align="center" style="padding: 8px 40px 32px 40px;">
         <a href="${ctaUrl}" style="background-color: ${BRAND.primary}; color: #ffffff; text-decoration: none; font-family: Arial, Helvetica, sans-serif; font-size: 15px; font-weight: bold; padding: 14px 32px; border-radius: 8px; display: inline-block;">
-          ${ctaLabel}
+          ${escapeHtml(ctaLabel)}
         </a>
       </td>
     </tr>`
@@ -59,10 +100,10 @@ export function renderEmailLayout(opts: EmailLayoutOptions): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>${heading}</title>
+<title>${escapeHtml(heading)}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: ${BRAND.surface}; font-family: Arial, Helvetica, sans-serif;">
-  <div style="display: none; max-height: 0; overflow: hidden; opacity: 0;">${previewText}</div>
+  <div style="display: none; max-height: 0; overflow: hidden; opacity: 0;">${escapeHtml(previewText)}</div>
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: ${BRAND.surface}; padding: 32px 16px;">
     <tr>
@@ -70,15 +111,27 @@ export function renderEmailLayout(opts: EmailLayoutOptions): string {
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid ${BRAND.border};">
 
           <tr>
-            <td style="background-color: ${BRAND.dark}; padding: 28px 40px;" align="left">
-              <img src="${logoUrl}" alt="${BRAND.companyName}" height="36" style="display: block; height: 36px; width: auto;" />
+            <td style="background-color: ${BRAND.dark}; padding: 28px 40px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td valign="middle" width="44">
+                    <img src="${logoUrl}" alt="${escapeHtml(companyName)}" height="36" style="display: block; height: 36px; width: auto;" />
+                  </td>
+                  <td valign="middle" style="padding-left: 14px;">
+                    <p style="margin: 0; font-size: 16px; font-weight: bold; color: #ffffff; font-family: Arial, Helvetica, sans-serif;">${escapeHtml(companyName)}</p>
+                    ${contextLine}
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
+          ${iconBadge}
+
           <tr>
-            <td style="padding: 40px 40px 8px 40px;">
-              <h1 style="margin: 0 0 24px 0; font-size: 22px; line-height: 1.3; color: ${BRAND.dark}; font-family: Arial, Helvetica, sans-serif;">
-                ${heading}
+            <td style="padding: ${iconGlyph ? '20px' : '40px'} 40px 8px 40px;">
+              <h1 style="margin: 0 0 24px 0; font-size: 22px; line-height: 1.3; color: ${BRAND.dark}; font-family: Arial, Helvetica, sans-serif; text-align: ${iconGlyph ? 'center' : 'left'};">
+                ${escapeHtml(heading)}
               </h1>
               <div style="font-size: 15px; line-height: 1.6; color: #334155; font-family: Arial, Helvetica, sans-serif;">
                 ${bodyHtml}
@@ -91,12 +144,12 @@ export function renderEmailLayout(opts: EmailLayoutOptions): string {
           <tr>
             <td style="padding: 24px 40px; border-top: 1px solid ${BRAND.border};" align="center">
               <p style="margin: 0 0 4px 0; font-size: 13px; color: ${BRAND.textMuted}; font-family: Arial, Helvetica, sans-serif;">
-                ${BRAND.companyName}
+                ${escapeHtml(companyName)}
               </p>
               <p style="margin: 0; font-size: 11px; color: #94A3B8; font-family: Arial, Helvetica, sans-serif;">
                 ${BRAND.poweredBy}
               </p>
-              ${footerNote ? `<p style="margin: 16px 0 0 0; font-size: 11px; color: #94A3B8; font-family: Arial, Helvetica, sans-serif;">${footerNote}</p>` : ''}
+              ${footerNote ? `<p style="margin: 16px 0 0 0; font-size: 11px; color: #94A3B8; font-family: Arial, Helvetica, sans-serif;">${escapeHtml(footerNote)}</p>` : ''}
             </td>
           </tr>
 
@@ -106,4 +159,19 @@ export function renderEmailLayout(opts: EmailLayoutOptions): string {
   </table>
 </body>
 </html>`;
+}
+
+/** Shared HTML-escaping — every dynamic string passed into the layout
+ * (company name, org context, heading, footer note, preview text) now
+ * goes through this, not just the values individual templates happened
+ * to escape themselves. A branch or department name is real,
+ * user-entered data too, just like a customer's name — it deserves the
+ * same protection against breaking the email's markup. */
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

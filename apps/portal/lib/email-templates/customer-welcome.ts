@@ -1,4 +1,4 @@
-import { renderEmailLayout } from './layout';
+import { renderEmailLayout, escapeHtml } from './layout';
 
 export type CustomerWelcomeEmailOptions = {
   customerName: string;
@@ -6,17 +6,20 @@ export type CustomerWelcomeEmailOptions = {
   temporaryPassword: string;
   loginUrl: string;
   logoUrl: string;
+  companyName: string;
+  branchName: string;
+  departmentName: string;
 };
 
 export function renderCustomerWelcomeEmail(opts: CustomerWelcomeEmailOptions): string {
-  const { customerName, email, temporaryPassword, loginUrl, logoUrl } = opts;
+  const { customerName, email, temporaryPassword, loginUrl, logoUrl, companyName, branchName, departmentName } = opts;
 
   const bodyHtml = `
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
     <p style="margin: 0 0 16px 0;">
-      Thank you for visiting Kewalram Workshop. We've created an account for you
-      so you can track your vehicle's service progress, view estimates, and see
-      your service history online.
+      Thank you for visiting the ${escapeHtml(branchName)} ${escapeHtml(departmentName)}. We've created an
+      account for you so you can track your vehicle's service progress, view estimates, and see your service
+      history online.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
@@ -36,32 +39,20 @@ export function renderCustomerWelcomeEmail(opts: CustomerWelcomeEmailOptions): s
       that's entirely up to you.
     </p>
     <p style="margin: 0;">
-      If you weren't expecting this email, please contact Kewalram Workshop directly
-      and let us know.
+      If you weren't expecting this email, please contact ${escapeHtml(companyName)} directly and let us know.
     </p>
   `;
 
   return renderEmailLayout({
-    previewText: `Your Kewalram customer account is ready — sign in to track your vehicle's service.`,
+    previewText: `Your ${companyName} customer account is ready — sign in to track your vehicle's service.`,
+    companyName,
+    orgContext: [companyName, branchName, departmentName],
+    iconGlyph: '✓',
     heading: 'Your customer account is ready',
     bodyHtml,
     ctaLabel: 'Sign in to your account',
     ctaUrl: loginUrl,
-    footerNote: 'For your security, never share your password with anyone — Kewalram staff will never ask for it.',
+    footerNote: `For your security, never share your password with anyone — ${companyName} staff will never ask for it.`,
     logoUrl,
   });
-}
-
-/** Minimal HTML-escaping for the handful of user-supplied values that get
- * interpolated into this template (name, email) — prevents a customer
- * name/email containing HTML-special characters from breaking the email's
- * markup. Not a general sanitizer; sufficient for plain-text fields going
- * into a fixed template, not for rendering arbitrary HTML. */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
