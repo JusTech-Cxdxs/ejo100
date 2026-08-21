@@ -92,7 +92,7 @@ export async function createJobCardFormAction(formData: FormData) {
     const jobCard = await createJobCard({
       customerId: str(formData, 'customerId'),
       vehicleId: str(formData, 'vehicleId'),
-      complaint: str(formData, 'complaint'),
+      complaints: formData.getAll('complaints').map((v) => String(v)),
       mileageAtCheckIn: num(formData, 'mileageAtCheckIn'),
     });
     jobCardId = jobCard.id;

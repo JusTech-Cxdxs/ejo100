@@ -497,6 +497,7 @@ export async function getJobCard(id: string) {
       assignedTechnician: { select: { id: true, fullName: true } },
       createdBy: { select: { id: true, fullName: true } },
       branch: { select: { name: true } },
+      complaints: { orderBy: { sequenceNumber: 'asc' } },
     },
   });
 }
@@ -504,14 +505,15 @@ export async function getJobCard(id: string) {
 export type CreateJobCardInput = {
   customerId: string;
   vehicleId: string;
-  complaint: string;
+  complaints: string[];
   mileageAtCheckIn?: number;
 };
 
 export async function createJobCard(input: CreateJobCardInput) {
   const user = await requireUser();
-  if (!input.customerId || !input.vehicleId || !input.complaint.trim()) {
-    throw new WorkshopActionError('Customer, vehicle, and complaint are all required to open a Job Card.');
+  const complaints = input.complaints.map((c) => c.trim()).filter((c) => c.length > 0);
+  if (!input.customerId || !input.vehicleId || complaints.length === 0) {
+    throw new WorkshopActionError('Customer, vehicle, and at least one complaint are required to open a Job Card.');
   }
   const branchId = await getWorkshopBranchId();
 
@@ -533,10 +535,15 @@ export async function createJobCard(input: CreateJobCardInput) {
           branchId,
           customerId: input.customerId,
           vehicleId: input.vehicleId,
-          complaint: input.complaint.trim(),
           mileageAtCheckIn: input.mileageAtCheckIn ?? null,
           createdById: user.id,
           status: JobCardStatus.CHECKED_IN,
+          complaints: {
+            create: complaints.map((description, i) => ({
+              sequenceNumber: i + 1,
+              description,
+            })),
+          },
         },
       });
     } catch (err) {
