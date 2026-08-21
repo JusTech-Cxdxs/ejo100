@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import { listAllVehicles, listCustomers } from '@/lib/actions/workshop';
+import { listAllVehicles } from '@/lib/actions/workshop';
 import { createVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
+import { CustomerSearchField } from '@/components/CustomerSearchField';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 
 export default async function WorkshopVehiclesPage({
@@ -12,7 +13,7 @@ export default async function WorkshopVehiclesPage({
   searchParams: Promise<{ q?: string; status?: string; error?: string }>;
 }) {
   const { q, status, error } = await searchParams;
-  const [vehicles, customers] = await Promise.all([listAllVehicles(q), listCustomers()]);
+  const vehicles = await listAllVehicles(q);
 
   return (
     <div className="p-8">
@@ -48,7 +49,7 @@ export default async function WorkshopVehiclesPage({
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-hidden">
           {vehicles.length === 0 ? (
             <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
-              No vehicles registered yet.{customers.length === 0 ? ' Add a customer first, then register their vehicle.' : ''}
+              No vehicles registered yet.
             </div>
           ) : (
             <table className="w-full text-sm">
@@ -91,28 +92,10 @@ export default async function WorkshopVehiclesPage({
 
         <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Register vehicle</h2>
-          {customers.length === 0 ? (
-            <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">
-              Add a customer first — every vehicle must belong to one.{' '}
-              <Link href="/workshop/customers" className="text-[var(--ejo-primary)] underline">
-                Go to Customers
-              </Link>
-            </p>
-          ) : (
-            <form action={createVehicleFormAction} className="mt-4 space-y-4">
+          <form action={createVehicleFormAction} className="mt-4 space-y-4">
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Owner</label>
-                <select
-                  name="customerId"
-                  required
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                >
-                  {customers.map((c: (typeof customers)[number]) => (
-                    <option key={c.id} value={c.id}>
-                      {c.fullName}
-                    </option>
-                  ))}
-                </select>
+                <CustomerSearchField required />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -165,7 +148,6 @@ export default async function WorkshopVehiclesPage({
                 className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
               />
             </form>
-          )}
         </div>
       </div>
 
