@@ -3,6 +3,7 @@ import { listJobCards, listCustomers, listAllVehicles } from '@/lib/actions/work
 import { createJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { CustomerVehiclePicker } from '@/components/CustomerVehiclePicker';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -104,35 +105,21 @@ export default async function WorkshopJobCardsPage({
             </p>
           ) : (
             <form action={createJobCardFormAction} className="mt-4 space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Customer</label>
-                <select
-                  name="customerId"
-                  required
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                >
-                  {customers.map((c: (typeof customers)[number]) => (
-                    <option key={c.id} value={c.id}>{c.fullName}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Vehicle</label>
-                <select
-                  name="vehicleId"
-                  required
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                >
-                  {vehicles.map((v: (typeof vehicles)[number]) => (
-                    <option key={v.id} value={v.id}>
-                      {(v.plateNumber || v.chassisNumber || v.id.slice(0, 6))} — {v.customer.fullName}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
-                  Every vehicle is listed with its owner — pick the one matching the customer selected above.
-                </p>
-              </div>
+              <CustomerVehiclePicker
+                customers={customers.map((c: (typeof customers)[number]) => ({
+                  id: c.id,
+                  fullName: c.fullName,
+                }))}
+                vehicles={vehicles.map((v: (typeof vehicles)[number]) => ({
+                  id: v.id,
+                  customerId: v.customerId,
+                  plateNumber: v.plateNumber,
+                  chassisNumber: v.chassisNumber,
+                  make: v.make,
+                  model: v.model,
+                  year: v.year,
+                }))}
+              />
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Mileage at check-in (km)</label>
                 <input name="mileageAtCheckIn" type="number" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
