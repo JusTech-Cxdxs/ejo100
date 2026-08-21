@@ -102,8 +102,23 @@ export default async function JobCardDetailPage({
           </div>
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Complaint</h2>
-            <p className="mt-2 text-sm text-[var(--ejo-text)]">{jobCard.complaint}</p>
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">
+              Complaints{jobCard.complaints.length > 1 ? ` (${jobCard.complaints.length})` : ''}
+            </h2>
+            {jobCard.complaints.length > 0 ? (
+              <ol className="mt-2 space-y-1.5">
+                {jobCard.complaints.map((c: (typeof jobCard.complaints)[number]) => (
+                  <li key={c.id} className="flex gap-2 text-sm text-[var(--ejo-text)]">
+                    <span className="shrink-0 font-medium text-[var(--ejo-text-muted)]">{c.sequenceNumber}.</span>
+                    <span>{c.description}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              // Legacy fallback — a Job Card created before per-item complaints existed
+              // only has the old single `complaint` field populated, not any related rows.
+              <p className="mt-2 text-sm text-[var(--ejo-text)]">{jobCard.complaint}</p>
+            )}
             {jobCard.diagnosis ? (
               <>
                 <h2 className="mt-4 text-sm font-semibold text-[var(--ejo-text)]">Diagnosis</h2>
