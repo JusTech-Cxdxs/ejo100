@@ -4,6 +4,7 @@ import { createJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { CustomerVehiclePicker } from '@/components/CustomerVehiclePicker';
+import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -30,10 +31,11 @@ const STATUS_COLOR: Record<string, string> = {
 export default async function WorkshopJobCardsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; error?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; error?: string }>;
 }) {
-  const { q, error } = await searchParams;
-  const jobCards = await listJobCards(undefined, q);
+  const { q, type, error } = await searchParams;
+  const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
+  const jobCards = await listJobCards(undefined, q, vehicleType);
 
   return (
     <div className="p-8">
@@ -45,7 +47,10 @@ export default async function WorkshopJobCardsPage({
         </p>
       </div>
 
+      <CategoryFilterTabs basePath="/workshop/job-cards" currentType={vehicleType} preserveParams={{ q }} />
+
       <form className="mb-6 flex gap-2" action="/workshop/job-cards">
+        {vehicleType ? <input type="hidden" name="type" value={vehicleType} /> : null}
         <input
           type="search"
           name="q"
@@ -67,7 +72,9 @@ export default async function WorkshopJobCardsPage({
             <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
               {q
                 ? `No Job Cards match "${q}".`
-                : 'No Job Cards yet. Open the first one using the form on the right.'}
+                : vehicleType
+                  ? 'No Job Cards match this filter.'
+                  : 'No Job Cards yet. Open the first one using the form on the right.'}
             </div>
           ) : (
             <table className="w-full text-sm">
