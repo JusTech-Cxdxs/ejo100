@@ -425,11 +425,36 @@ export async function createVehicle(input: CreateVehicleInput) {
  * here directly — the caller (createJobCard) retries with a fresh call
  * to this function on exactly that collision, which is what actually
  * closes the gap; regenerating the format here alone wouldn't help. */
+/** JC-<year>-<sequence>, e.g. "JC-2026-000042".
+ *
+ * Previously derived the sequence from a row COUNT, which turned out to
+ * be the actual bug behind the reported crash: a count only matches the
+ * highest sequence in use if every number from 1 upward is still
+ * present with no gaps. If even one Job Card was ever deleted directly
+ * (the same way other data has been cleared via Supabase before), the
+ * count permanently undercounts relative to what's actually been used —
+ * and since a FAILED create doesn't add a row, retrying this function
+ * after a collision recomputed the exact same wrong number every time,
+ * which is exactly what the Vercel logs showed: the identical error,
+ * five times in a row, for one request.
+ *
+ * Fixed by deriving the next number from the MAXIMUM existing jobNumber
+ * for this year instead of a count — this is correct regardless of any
+ * gaps from deletions. String-descending order on `jobNumber` correctly
+ * matches numeric order here specifically because the sequence portion
+ * is always zero-padded to a fixed 6 digits (e.g. "000002" sorts before
+ * "000010" as a string too, unlike unpadded numbers).
+ */
 async function generateJobNumber(): Promise<string> {
   const year = new Date().getFullYear();
-  const startOfYear = new Date(Date.UTC(year, 0, 1));
-  const count = await prisma.jobCard.count({ where: { createdAt: { gte: startOfYear } } });
-  return `JC-${year}-${String(count + 1).padStart(6, '0')}`;
+  const prefix = `JC-${year}-`;
+  const latest = await prisma.jobCard.findFirst({
+    where: { jobNumber: { startsWith: prefix } },
+    orderBy: { jobNumber: 'desc' },
+    select: { jobNumber: true },
+  });
+  const nextSequence = latest ? parseInt(latest.jobNumber.slice(prefix.length), 10) + 1 : 1;
+  return `${prefix}${String(nextSequence).padStart(6, '0')}`;
 }
 
 export async function listJobCards(status?: JobCardStatus, search?: string, vehicleType?: 'PASSENGER' | 'COMMERCIAL') {
@@ -490,17 +515,14 @@ export async function createJobCard(input: CreateJobCardInput) {
   }
   const branchId = await getWorkshopBranchId();
 
-  // Retries on a jobNumber collision specifically — this is the fix for
-  // the real, reported "Unique constraint failed on jobNumber" crash,
-  // exactly the race condition already flagged as a known limitation
-  // above: two Job Cards created close enough together can both read
-  // the same count() before either insert lands, and both then try the
-  // same number. Each retry re-reads the count fresh (via
-  // generateJobNumber() again), so it picks up whatever the other
-  // request just inserted — a stale local increment wouldn't help here,
-  // since the whole problem is the count being stale in the first
-  // place. Any other kind of failure (validation, connection issue,
-  // etc.) is re-thrown immediately, not retried.
+  // Retries on a jobNumber collision specifically — now a genuine
+  // safety net for true concurrent-request races (two creations landing
+  // close enough together to both read the same "latest" number before
+  // either insert completes), rather than the primary fix — the actual
+  // bug (a permanently wrong number from a row-count/gap mismatch, not
+  // a timing race) is fixed in generateJobNumber() itself above. Any
+  // other kind of failure (validation, connection issue, etc.) is
+  // re-thrown immediately, not retried.
   const MAX_ATTEMPTS = 5;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const jobNumber = await generateJobNumber();
