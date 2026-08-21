@@ -532,12 +532,12 @@ model JobCard {
   @@map("job_cards")
 }
 
-/** One row per distinct reported issue on a Job Card — e.g. "Fan not
- * working" and "AC not working" as two separate, numbered entries,
- * rather than one free-text paragraph mixing multiple complaints
- * together. `sequenceNumber` preserves the order they were entered in
- * (the order the customer/staff actually listed them), independent of
- * database insertion order. */
+// One row per distinct reported issue on a Job Card — e.g. "Fan not
+// working" and "AC not working" as two separate, numbered entries,
+// rather than one free-text paragraph mixing multiple complaints
+// together. `sequenceNumber` preserves the order they were entered in
+// (the order the customer/staff actually listed them), independent of
+// database insertion order.
 model JobCardComplaint {
   id             String   @id @default(cuid())
   jobCardId      String
