@@ -1,4 +1,4 @@
-import { EjoSpinner } from './EjoSpinner';
+import { EjoMarkSpinner } from './EjoMarkSpinner';
 
 /**
  * The loading state shown while a page's data is being fetched during
@@ -11,11 +11,16 @@ import { EjoSpinner } from './EjoSpinner';
  * page content itself shows the loading state, exactly matching how
  * Next.js's `loading.tsx` convention is meant to be used: it replaces
  * only `{children}` within the parent layout, not the whole screen.
+ *
+ * Uses the actual EJO diamond mark (EjoMarkSpinner), not the generic
+ * circular EjoSpinner — that plain circle is still the right choice for
+ * small inline contexts like a button, but a page-level loading state
+ * deserves the real, distinctive branded mark.
  */
 export function PageLoading() {
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-[var(--ejo-primary)]">
-      <EjoSpinner size={32} />
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
+      <EjoMarkSpinner size={64} />
       <p className="text-sm text-[var(--ejo-text-muted)]">Loading…</p>
     </div>
   );
