@@ -51,6 +51,38 @@ async function requireUser(): Promise<{ id: string }> {
   return { id: session.user.id };
 }
 
+/** Whether the current user holds any role with isSuperAdmin=true — the
+ * bootstrap Master Administrator role, matching exactly the same check
+ * apps/api's PermissionsGuard uses (see permissions.guard.ts). Built
+ * natively here rather than calling apps/api, since portal Server
+ * Actions query Prisma directly per this project's established
+ * architecture (cross-origin cookies make calling the Render API from
+ * here impractical — the same reason every other Workshop action
+ * already works this way). */
+export async function currentUserIsMasterAdmin(): Promise<boolean> {
+  const user = await requireUser();
+  const match = await prisma.userRole.findFirst({
+    where: { userId: user.id, role: { isSuperAdmin: true } },
+  });
+  return Boolean(match);
+}
+
+/** Guards any destructive action — deleting a Vehicle or Job Card
+ * removes real data permanently (see deleteVehicle/deleteJobCard below),
+ * so only a Master Administrator may do it, matching exactly what was
+ * asked for: "not all roles can delete... but I'm master admin so I can
+ * do everything." */
+async function requireMasterAdmin(): Promise<{ id: string }> {
+  const user = await requireUser();
+  const match = await prisma.userRole.findFirst({
+    where: { userId: user.id, role: { isSuperAdmin: true } },
+  });
+  if (!match) {
+    throw new WorkshopActionError('Only a Master Administrator can delete records.');
+  }
+  return user;
+}
+
 /** The Workshop is currently scoped to a single branch (Isolo) per the
  * project's Phase-One rule — found by its Workshop department rather than
  * a hardcoded ID/name, so this keeps working unchanged once more Workshop
@@ -412,6 +444,15 @@ export async function createVehicle(input: CreateVehicleInput) {
   });
 }
 
+/** Permanently removes a vehicle and, via schema-level cascades, every
+ * Job Card (and each of those Job Cards' complaints) that reference it —
+ * exactly "every of their job data... entirely from database" as asked
+ * for. Irreversible; the UI must confirm before calling this. */
+export async function deleteVehicle(vehicleId: string): Promise<void> {
+  await requireMasterAdmin();
+  await prisma.customerVehicle.delete({ where: { id: vehicleId } });
+}
+
 // ---------------------------------------------------------------------------
 // JOB CARDS
 // ---------------------------------------------------------------------------
@@ -577,6 +618,14 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus) {
       closedAt: status === JobCardStatus.CLOSED ? new Date() : undefined,
     },
   });
+}
+
+/** Permanently removes a Job Card and, via schema-level cascades, its
+ * complaints. Does NOT touch the Customer or Vehicle it belonged to.
+ * Irreversible; the UI must confirm before calling this. */
+export async function deleteJobCard(jobCardId: string): Promise<void> {
+  await requireMasterAdmin();
+  await prisma.jobCard.delete({ where: { id: jobCardId } });
 }
 
 export async function assignTechnician(jobCardId: string, technicianId: string) {

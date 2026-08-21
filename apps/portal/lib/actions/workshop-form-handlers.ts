@@ -27,6 +27,8 @@ import {
   createJobCard,
   updateJobCardStatus,
   assignTechnician,
+  deleteVehicle,
+  deleteJobCard,
 } from './workshop';
 
 function str(formData: FormData, key: string): string {
@@ -119,4 +121,33 @@ export async function assignTechnicianFormAction(formData: FormData) {
   await assignTechnician(jobCardId, technicianId);
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
   revalidatePath('/workshop/job-cards');
+}
+
+export async function deleteVehicleFormAction(formData: FormData) {
+  const vehicleId = str(formData, 'vehicleId');
+  try {
+    await deleteVehicle(vehicleId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not delete vehicle.';
+    redirect(`/workshop/vehicles?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/vehicles');
+  revalidatePath('/workshop/job-cards');
+  redirect('/workshop/vehicles?status=vehicle_deleted');
+}
+
+/** `redirectTo` distinguishes the two places this can be triggered from:
+ * the Job Cards list (stay on the list after deleting) vs. a specific
+ * Job Card's own detail page (that page no longer exists afterward, so
+ * it must redirect back to the list instead of trying to re-render). */
+export async function deleteJobCardFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await deleteJobCard(jobCardId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not delete Job Card.';
+    redirect(`/workshop/job-cards?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/job-cards');
+  redirect('/workshop/job-cards?status=job_card_deleted');
 }
