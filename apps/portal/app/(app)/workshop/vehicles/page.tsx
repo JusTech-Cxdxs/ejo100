@@ -6,15 +6,17 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
 import { CustomerSearchField } from '@/components/CustomerSearchField';
 import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
+import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 
 export default async function WorkshopVehiclesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; error?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string }>;
 }) {
-  const { q, status, error } = await searchParams;
-  const vehicles = await listAllVehicles(q);
+  const { q, type, status, error } = await searchParams;
+  const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
+  const vehicles = await listAllVehicles(q, vehicleType);
 
   return (
     <div className="p-8">
@@ -30,7 +32,10 @@ export default async function WorkshopVehiclesPage({
       ) : null}
       {error ? <FormFeedbackBanner kind="error" message={error} /> : null}
 
+      <CategoryFilterTabs basePath="/workshop/vehicles" currentType={vehicleType} preserveParams={{ q }} />
+
       <form className="mb-6 flex gap-2" action="/workshop/vehicles">
+        {vehicleType ? <input type="hidden" name="type" value={vehicleType} /> : null}
         <input
           type="search"
           name="q"
@@ -50,7 +55,9 @@ export default async function WorkshopVehiclesPage({
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-hidden">
           {vehicles.length === 0 ? (
             <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
-              No vehicles registered yet.
+              {q || vehicleType
+                ? 'No vehicles match this filter.'
+                : 'No vehicles registered yet.'}
             </div>
           ) : (
             <table className="w-full text-sm">
