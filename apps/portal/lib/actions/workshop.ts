@@ -302,19 +302,23 @@ export async function listVehiclesForCustomer(customerId: string): Promise<Vehic
   });
 }
 
-export async function listAllVehicles(search?: string) {
+export async function listAllVehicles(search?: string, vehicleType?: 'PASSENGER' | 'COMMERCIAL') {
   await requireUser();
+  const q = search?.trim();
   return prisma.customerVehicle.findMany({
-    where: search
-      ? {
-          OR: [
-            { plateNumber: { contains: search, mode: 'insensitive' } },
-            { chassisNumber: { contains: search, mode: 'insensitive' } },
-            { make: { contains: search, mode: 'insensitive' } },
-            { model: { contains: search, mode: 'insensitive' } },
-          ],
-        }
-      : undefined,
+    where: {
+      ...(vehicleType ? { vehicleType } : {}),
+      ...(q
+        ? {
+            OR: [
+              { plateNumber: { contains: q, mode: 'insensitive' } },
+              { chassisNumber: { contains: q, mode: 'insensitive' } },
+              { make: { contains: q, mode: 'insensitive' } },
+              { model: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    },
     orderBy: { createdAt: 'desc' },
     take: 100,
     include: {
@@ -413,12 +417,14 @@ export async function createVehicle(input: CreateVehicleInput) {
 // ---------------------------------------------------------------------------
 
 /** JC-<year>-<sequence>, e.g. "JC-2026-000042". Sequence is derived from
- * the count of Job Cards already created this year — simple and readable,
- * with a known limitation: two Job Cards created in the same instant could
- * theoretically race to the same number under concurrent load. Acceptable
- * for this phase's usage pattern (one branch, staff-paced data entry); a
- * DB-level sequence is the natural follow-up if that ever becomes real.
- */
+ * the count of Job Cards already created this year — simple and readable.
+ * Two calls close enough together can read the same count before either
+ * insert lands, both producing the same number — this DID happen in
+ * production (a real "Unique constraint failed on jobNumber" crash, not
+ * just the theoretical risk this comment used to describe). Not fixed
+ * here directly — the caller (createJobCard) retries with a fresh call
+ * to this function on exactly that collision, which is what actually
+ * closes the gap; regenerating the format here alone wouldn't help. */
 async function generateJobNumber(): Promise<string> {
   const year = new Date().getFullYear();
   const startOfYear = new Date(Date.UTC(year, 0, 1));
@@ -426,13 +432,14 @@ async function generateJobNumber(): Promise<string> {
   return `JC-${year}-${String(count + 1).padStart(6, '0')}`;
 }
 
-export async function listJobCards(status?: JobCardStatus, search?: string) {
+export async function listJobCards(status?: JobCardStatus, search?: string, vehicleType?: 'PASSENGER' | 'COMMERCIAL') {
   await requireUser();
   const q = search?.trim();
 
   return prisma.jobCard.findMany({
     where: {
       ...(status ? { status } : {}),
+      ...(vehicleType ? { vehicle: { vehicleType } } : {}),
       ...(q
         ? {
             OR: [
@@ -449,7 +456,7 @@ export async function listJobCards(status?: JobCardStatus, search?: string) {
     take: 100,
     include: {
       customer: { select: { fullName: true, phone: true } },
-      vehicle: { select: { make: true, model: true, plateNumber: true } },
+      vehicle: { select: { make: true, model: true, plateNumber: true, vehicleType: true } },
       assignedTechnician: { select: { fullName: true } },
     },
   });
@@ -482,20 +489,54 @@ export async function createJobCard(input: CreateJobCardInput) {
     throw new WorkshopActionError('Customer, vehicle, and complaint are all required to open a Job Card.');
   }
   const branchId = await getWorkshopBranchId();
-  const jobNumber = await generateJobNumber();
 
-  return prisma.jobCard.create({
-    data: {
-      jobNumber,
-      branchId,
-      customerId: input.customerId,
-      vehicleId: input.vehicleId,
-      complaint: input.complaint.trim(),
-      mileageAtCheckIn: input.mileageAtCheckIn ?? null,
-      createdById: user.id,
-      status: JobCardStatus.CHECKED_IN,
-    },
-  });
+  // Retries on a jobNumber collision specifically — this is the fix for
+  // the real, reported "Unique constraint failed on jobNumber" crash,
+  // exactly the race condition already flagged as a known limitation
+  // above: two Job Cards created close enough together can both read
+  // the same count() before either insert lands, and both then try the
+  // same number. Each retry re-reads the count fresh (via
+  // generateJobNumber() again), so it picks up whatever the other
+  // request just inserted — a stale local increment wouldn't help here,
+  // since the whole problem is the count being stale in the first
+  // place. Any other kind of failure (validation, connection issue,
+  // etc.) is re-thrown immediately, not retried.
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const jobNumber = await generateJobNumber();
+    try {
+      return await prisma.jobCard.create({
+        data: {
+          jobNumber,
+          branchId,
+          customerId: input.customerId,
+          vehicleId: input.vehicleId,
+          complaint: input.complaint.trim(),
+          mileageAtCheckIn: input.mileageAtCheckIn ?? null,
+          createdById: user.id,
+          status: JobCardStatus.CHECKED_IN,
+        },
+      });
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      const target = (err as { meta?: { target?: unknown } } | null)?.meta?.target;
+      // Prisma's `meta.target` shape for a unique-constraint violation
+      // varies slightly by database provider — usually an array of
+      // column names on Postgres, but checking for a string too costs
+      // nothing and removes any dependency on getting that exactly right.
+      const isJobNumberCollision =
+        code === 'P2002' &&
+        ((Array.isArray(target) && target.includes('jobNumber')) ||
+          (typeof target === 'string' && target.includes('jobNumber')));
+      if (isJobNumberCollision && attempt < MAX_ATTEMPTS) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  // Unreachable in practice (the loop always returns or throws), but
+  // keeps TypeScript satisfied that every path returns a value.
+  throw new WorkshopActionError('Could not generate a unique Job Card number after several attempts — please try again.');
 }
 
 export async function updateJobCardStatus(id: string, status: JobCardStatus) {
