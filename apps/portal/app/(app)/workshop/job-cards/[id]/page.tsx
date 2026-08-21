@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation';
 import { getJobCard, listTechnicianCandidates } from '@/lib/actions/workshop';
 import { updateJobCardStatusFormAction, assignTechnicianFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { SubmitButton } from '@/components/SubmitButton';
+import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 
 const ALL_STATUSES = [
   'CHECKED_IN',
@@ -28,10 +30,13 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default async function JobCardDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ status?: string }>;
 }) {
   const { id } = await params;
+  const { status } = await searchParams;
   const [jobCard, technicians] = await Promise.all([getJobCard(id), listTechnicianCandidates()]);
   if (!jobCard) notFound();
 
@@ -40,6 +45,12 @@ export default async function JobCardDetailPage({
       <Link href="/workshop/job-cards" className="text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
         ← All Job Cards
       </Link>
+
+      {status === 'job_card_created' ? (
+        <div className="mt-4">
+          <FormFeedbackBanner kind="success" message="Job Card successfully created." />
+        </div>
+      ) : null}
 
       <div className="mt-3 mb-6 flex items-center gap-3">
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{jobCard.jobNumber}</h1>
@@ -121,12 +132,11 @@ export default async function JobCardDetailPage({
                   <option key={s} value={s}>{STATUS_LABEL[s]}</option>
                 ))}
               </select>
-              <button
-                type="submit"
+              <SubmitButton
+                label="Update status"
+                pendingLabel="Updating…"
                 className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-              >
-                Update status
-              </button>
+              />
             </form>
           </div>
 
@@ -150,12 +160,11 @@ export default async function JobCardDetailPage({
                   </option>
                 ))}
               </select>
-              <button
-                type="submit"
+              <SubmitButton
+                label="Assign"
+                pendingLabel="Assigning…"
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-              >
-                Assign
-              </button>
+              />
             </form>
           </div>
         </div>
