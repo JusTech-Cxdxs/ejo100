@@ -5,6 +5,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { CustomerVehiclePicker } from '@/components/CustomerVehiclePicker';
 import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
+import { ComplaintListInput } from '@/components/ComplaintListInput';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -123,13 +124,10 @@ export default async function WorkshopJobCardsPage({
               <input name="mileageAtCheckIn" type="number" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Complaint / reason for visit</label>
-              <textarea
-                name="complaint"
-                required
-                rows={3}
-                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-              />
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">
+                Complaints / reasons for visit <span className="text-[var(--ejo-error)]">*</span>
+              </label>
+              <ComplaintListInput />
             </div>
             <SubmitButton
               label="Open Job Card"
