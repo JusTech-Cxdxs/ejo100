@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { listJobCards, listCustomers, listAllVehicles } from '@/lib/actions/workshop';
 import { createJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
+import { SubmitButton } from '@/components/SubmitButton';
+import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -24,7 +26,12 @@ const STATUS_COLOR: Record<string, string> = {
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
-export default async function WorkshopJobCardsPage() {
+export default async function WorkshopJobCardsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
   const [jobCards, customers, vehicles] = await Promise.all([
     listJobCards(),
     listCustomers(),
@@ -33,6 +40,7 @@ export default async function WorkshopJobCardsPage() {
 
   return (
     <div className="p-8">
+      {error ? <FormFeedbackBanner kind="error" message={error} /> : null}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Job Cards</h1>
         <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
@@ -138,12 +146,11 @@ export default async function WorkshopJobCardsPage() {
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                 />
               </div>
-              <button
-                type="submit"
+              <SubmitButton
+                label="Open Job Card"
+                pendingLabel="Opening…"
                 className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-              >
-                Open Job Card
-              </button>
+              />
             </form>
           )}
         </div>
