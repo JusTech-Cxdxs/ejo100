@@ -134,6 +134,23 @@ export async function searchCustomers(query: string): Promise<CustomerSearchResu
   });
 }
 
+/**
+ * The default suggestions shown in a customer picker before anyone
+ * types anything — most-recently-registered customers, matching the
+ * "recent" convention already used elsewhere in this file (page-list
+ * ordering is `createdAt: 'desc'` throughout). A returning customer
+ * from earlier today/this week is very likely to be near the top of a
+ * "recent" list, saving staff from typing at all for the common case.
+ */
+export async function listRecentCustomers(): Promise<CustomerSearchResult[]> {
+  await requireUser();
+  return prisma.customer.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: 8,
+    select: { id: true, fullName: true, email: true, phone: true },
+  });
+}
+
 export type CreateCustomerInput = {
   fullName: string;
   email: string;
@@ -374,10 +391,25 @@ async function generateJobNumber(): Promise<string> {
   return `JC-${year}-${String(count + 1).padStart(6, '0')}`;
 }
 
-export async function listJobCards(status?: JobCardStatus) {
+export async function listJobCards(status?: JobCardStatus, search?: string) {
   await requireUser();
+  const q = search?.trim();
+
   return prisma.jobCard.findMany({
-    where: status ? { status } : undefined,
+    where: {
+      ...(status ? { status } : {}),
+      ...(q
+        ? {
+            OR: [
+              { jobNumber: { contains: q, mode: 'insensitive' } },
+              { customer: { fullName: { contains: q, mode: 'insensitive' } } },
+              { vehicle: { plateNumber: { contains: q, mode: 'insensitive' } } },
+              { vehicle: { chassisNumber: { contains: q, mode: 'insensitive' } } },
+              { assignedTechnician: { fullName: { contains: q, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    },
     orderBy: { createdAt: 'desc' },
     take: 100,
     include: {
