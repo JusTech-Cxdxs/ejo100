@@ -1,11 +1,12 @@
 import Link from 'next/link';
-import { listJobCards } from '@/lib/actions/workshop';
-import { createJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
+import { listJobCards, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
+import { createJobCardFormAction, deleteJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { CustomerVehiclePicker } from '@/components/CustomerVehiclePicker';
 import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { ComplaintListInput } from '@/components/ComplaintListInput';
+import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -32,14 +33,20 @@ const STATUS_COLOR: Record<string, string> = {
 export default async function WorkshopJobCardsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; error?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string }>;
 }) {
-  const { q, type, error } = await searchParams;
+  const { q, type, status, error } = await searchParams;
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
-  const jobCards = await listJobCards(undefined, q, vehicleType);
+  const [jobCards, isMasterAdmin] = await Promise.all([
+    listJobCards(undefined, q, vehicleType),
+    currentUserIsMasterAdmin(),
+  ]);
 
   return (
     <div className="p-8">
+      {status === 'job_card_deleted' ? (
+        <FormFeedbackBanner kind="success" message="Job Card deleted." />
+      ) : null}
       {error ? <FormFeedbackBanner kind="error" message={error} /> : null}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Job Cards</h1>
@@ -86,6 +93,7 @@ export default async function WorkshopJobCardsPage({
                   <th className="px-4 py-3 font-medium">Vehicle</th>
                   <th className="px-4 py-3 font-medium">Technician</th>
                   <th className="px-4 py-3 font-medium">Status</th>
+                  {isMasterAdmin ? <th className="px-4 py-3 font-medium">&nbsp;</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -108,6 +116,17 @@ export default async function WorkshopJobCardsPage({
                         {STATUS_LABEL[jc.status]}
                       </span>
                     </td>
+                    {isMasterAdmin ? (
+                      <td className="px-4 py-3">
+                        <form action={deleteJobCardFormAction}>
+                          <input type="hidden" name="jobCardId" value={jc.id} />
+                          <ConfirmDeleteButton
+                            confirmMessage={`Delete Job Card ${jc.jobNumber}? This permanently removes it and its complaints. This cannot be undone.`}
+                            className="text-xs font-medium text-[var(--ejo-error)] hover:underline"
+                          />
+                        </form>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
