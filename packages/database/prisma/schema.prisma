@@ -460,6 +460,7 @@ model CustomerVehicle {
 
   make         String?
   model        String?
+  vehicleType  VehicleCategory? // Passenger vs Commercial — the Workshop's two operational sections
   year         Int?
   plateNumber  String?  @unique // no two vehicles may share a plate — this is what caused the visible duplicate-vehicle bug: nothing stopped a second/third accidental submit from creating another row for the same real vehicle
   chassisNumber String? @unique // VIN — globally unique per vehicle by definition
@@ -473,6 +474,11 @@ model CustomerVehicle {
   jobCards JobCard[]
 
   @@map("customer_vehicles")
+}
+
+enum VehicleCategory {
+  PASSENGER
+  COMMERCIAL
 }
 
 // ----------------------------------------------------------------------------
