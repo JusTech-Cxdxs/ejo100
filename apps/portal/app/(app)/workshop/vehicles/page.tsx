@@ -5,6 +5,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
 import { CustomerSearchField } from '@/components/CustomerSearchField';
+import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 
 export default async function WorkshopVehiclesPage({
@@ -58,6 +59,7 @@ export default async function WorkshopVehiclesPage({
                   <th className="px-4 py-3 font-medium">Plate</th>
                   <th className="px-4 py-3 font-medium">Chassis / VIN</th>
                   <th className="px-4 py-3 font-medium">Vehicle</th>
+                  <th className="px-4 py-3 font-medium">Type</th>
                   <th className="px-4 py-3 font-medium">Owner</th>
                   <th className="px-4 py-3 font-medium">Mileage</th>
                   <th className="px-4 py-3 font-medium">Registered</th>
@@ -74,6 +76,9 @@ export default async function WorkshopVehiclesPage({
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       {[v.year, v.make, v.model].filter(Boolean).join(' ') || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
+                      {v.vehicleType === 'PASSENGER' ? 'Passenger' : v.vehicleType === 'COMMERCIAL' ? 'Commercial' : '—'}
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{v.customer.fullName}</td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
@@ -97,16 +102,7 @@ export default async function WorkshopVehiclesPage({
                 <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Owner</label>
                 <CustomerSearchField required />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Make <span className="text-[var(--ejo-error)]">*</span></label>
-                  <input name="make" required className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Model <span className="text-[var(--ejo-error)]">*</span></label>
-                  <input name="model" required className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
-                </div>
-              </div>
+              <VehicleMakeModelPicker />
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Year <span className="text-[var(--ejo-error)]">*</span></label>
