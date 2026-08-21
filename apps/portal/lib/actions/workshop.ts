@@ -93,6 +93,47 @@ export async function listCustomers(search?: string) {
   });
 }
 
+export type CustomerSearchResult = {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+};
+
+const PICKER_RESULT_LIMIT = 20;
+
+/**
+ * Purpose-built for search-as-you-type pickers (SearchableSelect) —
+ * deliberately separate from listCustomers() above, not a shared
+ * function with an extra flag. listCustomers() powers the full
+ * Customers table page: it needs `_count`/`createdBy`, orders by recency,
+ * and caps at 100 for a page of rows. A typeahead dropdown wants none of
+ * that — it wants the top ~20 real matches for whatever's been typed,
+ * as fast and light as possible, queried against the FULL customer
+ * table every time (not a pre-loaded, capped snapshot) so search results
+ * are always complete regardless of how large the customer base grows.
+ * An empty/blank query deliberately returns nothing rather than "the
+ * first 20 customers" — a picker should stay empty until the person
+ * actually starts typing, not dump an arbitrary slice of the table.
+ */
+export async function searchCustomers(query: string): Promise<CustomerSearchResult[]> {
+  await requireUser();
+  const q = query.trim();
+  if (!q) return [];
+  return prisma.customer.findMany({
+    where: {
+      OR: [
+        { fullName: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { phone: { contains: q, mode: 'insensitive' } },
+      ],
+    },
+    orderBy: { fullName: 'asc' },
+    take: PICKER_RESULT_LIMIT,
+    select: { id: true, fullName: true, email: true, phone: true },
+  });
+}
+
 export type CreateCustomerInput = {
   fullName: string;
   email: string;
@@ -184,11 +225,31 @@ async function provisionCustomerAccountAndWelcomeEmail(customer: {
 // VEHICLES
 // ---------------------------------------------------------------------------
 
-export async function listVehiclesForCustomer(customerId: string) {
+export type VehicleSearchResult = {
+  id: string;
+  plateNumber: string | null;
+  chassisNumber: string | null;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+};
+
+/**
+ * Every vehicle belonging to one customer, for the Job Card cascading
+ * picker — always scoped to a single customerId (never the whole
+ * table), so no search query or debouncing is needed here: a real
+ * customer's own vehicle count is inherently small and bounded, unlike
+ * "search all customers" or "search all vehicles system-wide". The
+ * `take: 50` is a sanity cap, not a real-world limit anyone should hit.
+ */
+export async function listVehiclesForCustomer(customerId: string): Promise<VehicleSearchResult[]> {
   await requireUser();
+  if (!customerId) return [];
   return prisma.customerVehicle.findMany({
     where: { customerId },
     orderBy: { createdAt: 'desc' },
+    take: 50,
+    select: { id: true, plateNumber: true, chassisNumber: true, make: true, model: true, year: true },
   });
 }
 
