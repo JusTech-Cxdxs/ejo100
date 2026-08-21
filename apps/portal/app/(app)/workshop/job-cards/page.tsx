@@ -30,10 +30,10 @@ const STATUS_COLOR: Record<string, string> = {
 export default async function WorkshopJobCardsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ q?: string; error?: string }>;
 }) {
-  const { error } = await searchParams;
-  const jobCards = await listJobCards();
+  const { q, error } = await searchParams;
+  const jobCards = await listJobCards(undefined, q);
 
   return (
     <div className="p-8">
@@ -45,11 +45,29 @@ export default async function WorkshopJobCardsPage({
         </p>
       </div>
 
+      <form className="mb-6 flex gap-2" action="/workshop/job-cards">
+        <input
+          type="search"
+          name="q"
+          defaultValue={q ?? ''}
+          placeholder="Search by job number, customer, vehicle/VIN, or technician…"
+          className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+        />
+        <button
+          type="submit"
+          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+        >
+          Search
+        </button>
+      </form>
+
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-hidden">
           {jobCards.length === 0 ? (
             <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
-              No Job Cards yet. Open the first one using the form on the right.
+              {q
+                ? `No Job Cards match "${q}".`
+                : 'No Job Cards yet. Open the first one using the form on the right.'}
             </div>
           ) : (
             <table className="w-full text-sm">
