@@ -5,6 +5,7 @@ import { prisma } from '@ejo/database';
 import { auth } from '@/lib/auth';
 import { Sidebar } from '@/components/Sidebar';
 import { Topbar } from '@/components/Topbar';
+import { NavigationLoadingProvider } from '@/components/NavigationLoadingProvider';
 
 /**
  * Fetches the logged-in user's real name/role server-side (via Prisma
@@ -40,7 +41,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           userName={user?.fullName ?? 'Unknown user'}
           roleName={user?.roles[0]?.role.name ?? 'No role assigned'}
         />
-        <main className="flex-1 bg-[var(--ejo-bg)]">{children}</main>
+        <main className="flex-1 bg-[var(--ejo-bg)] flex">
+          <NavigationLoadingProvider>{children}</NavigationLoadingProvider>
+        </main>
       </div>
     </div>
   );
