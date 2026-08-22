@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import { LoadingLink } from './LoadingLink';
 import { CustomerSearchField } from './CustomerSearchField';
 import {
   listVehiclesForCustomer,
@@ -112,9 +112,9 @@ export function CustomerVehiclePicker() {
         ) : vehicles.length === 0 ? (
           <p className="rounded-[var(--ejo-radius-md)] border border-dashed border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
             This customer has no registered vehicles yet.{' '}
-            <Link href="/workshop/vehicles" className="text-[var(--ejo-primary)] underline">
+            <LoadingLink href="/workshop/vehicles" className="text-[var(--ejo-primary)] underline">
               Register one
-            </Link>{' '}
+            </LoadingLink>{' '}
             first.
           </p>
         ) : (
@@ -146,7 +146,7 @@ export function CustomerVehiclePicker() {
           {!selectedVehicle.vehicleType ? (
             <p className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 px-3 py-2 text-xs text-[var(--ejo-warning)]">
               This vehicle has no Passenger/Commercial type on file — set it on the{' '}
-              <Link href="/workshop/vehicles" className="underline">Vehicles page</Link> before opening a Job Card
+              <LoadingLink href="/workshop/vehicles" className="underline">Vehicles page</LoadingLink> before opening a Job Card
               for it.
             </p>
           ) : supervisorsState === 'loading' ? (
