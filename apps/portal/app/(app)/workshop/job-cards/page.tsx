@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { LoadingLink } from '@/components/LoadingLink';
 import { listJobCards, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
 import { createJobCardFormAction, deleteJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -100,9 +100,9 @@ export default async function WorkshopJobCardsPage({
                 {jobCards.map((jc: (typeof jobCards)[number]) => (
                   <tr key={jc.id} className="border-b border-[var(--ejo-border)] last:border-0">
                     <td className="px-4 py-3 font-medium text-[var(--ejo-text)]">
-                      <Link href={`/workshop/job-cards/${jc.id}`} className="hover:underline">
+                      <LoadingLink href={`/workshop/job-cards/${jc.id}`} className="hover:underline">
                         {jc.jobNumber}
-                      </Link>
+                      </LoadingLink>
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{jc.customer.fullName}</td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
@@ -157,12 +157,12 @@ export default async function WorkshopJobCardsPage({
         </div>
       </div>
 
-      <Link
+      <LoadingLink
         href="/workshop"
         className="mt-6 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
       >
         ← Back to Workshop
-      </Link>
+      </LoadingLink>
     </div>
   );
 }
