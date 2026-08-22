@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
@@ -59,9 +59,9 @@ export default async function JobCardDetailPage({
 
   return (
     <div className="p-8">
-      <Link href="/workshop/job-cards" className="text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
+      <LoadingLink href="/workshop/job-cards" className="text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
         ← All Job Cards
-      </Link>
+      </LoadingLink>
 
       {error ? (
         <div className="mt-4">
@@ -119,9 +119,15 @@ export default async function JobCardDetailPage({
                 </dd>
               </div>
               <div>
-                <dt className="text-[var(--ejo-text-muted)]">Plate / Chassis</dt>
+                <dt className="text-[var(--ejo-text-muted)]">Plate</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
-                  {jobCard.vehicle.plateNumber || jobCard.vehicle.chassisNumber || '—'}
+                  {jobCard.vehicle.plateNumber || '—'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[var(--ejo-text-muted)]">Chassis / VIN</dt>
+                <dd className="mt-0.5 font-mono text-xs font-medium text-[var(--ejo-text)]">
+                  {jobCard.vehicle.chassisNumber || '—'}
                 </dd>
               </div>
               <div>
