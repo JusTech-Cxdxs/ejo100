@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { LoadingLink } from '@/components/LoadingLink';
 import { listAllVehicles, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
 import { createVehicleFormAction, deleteVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -173,12 +173,12 @@ export default async function WorkshopVehiclesPage({
         </div>
       </div>
 
-      <Link
+      <LoadingLink
         href="/workshop"
         className="mt-6 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
       >
         ← Back to Workshop
-      </Link>
+      </LoadingLink>
     </div>
   );
 }
