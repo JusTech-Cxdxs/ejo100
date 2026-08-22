@@ -133,6 +133,28 @@ async function main() {
     create: { branchId: isoloBranch.id, name: 'Workshop', slug: 'workshop' },
   });
 
+  // Two operational Workshop departments — Passenger vs Commercial — each
+  // with its own HOD/Supervisor and specialists. Added alongside the
+  // original single "workshop" department above, not replacing it:
+  // getWorkshopBranchId() still resolves the branch via that original
+  // row, so nothing that already depends on it breaks. These two are
+  // where actual Job Cards route to going forward, based on the
+  // vehicle's Passenger/Commercial type.
+  const [passengerWorkshop, commercialWorkshop] = await Promise.all([
+    prisma.department.upsert({
+      where: { branchId_slug: { branchId: isoloBranch.id, slug: 'workshop-passenger' } },
+      update: {},
+      create: { branchId: isoloBranch.id, name: 'Passenger Vehicle Workshop', slug: 'workshop-passenger' },
+    }),
+    prisma.department.upsert({
+      where: { branchId_slug: { branchId: isoloBranch.id, slug: 'workshop-commercial' } },
+      update: {},
+      create: { branchId: isoloBranch.id, name: 'Commercial Vehicle Workshop', slug: 'workshop-commercial' },
+    }),
+  ]);
+  // eslint-disable-next-line no-console
+  console.log(`Seeded Workshop departments: ${passengerWorkshop.name} (${passengerWorkshop.id}), ${commercialWorkshop.name} (${commercialWorkshop.id})`);
+
   // --- Baseline roles (system roles, cannot be deleted) --------------------
   const roleNames = ['Administrator', 'Workshop Manager', 'Workshop Supervisor', 'Technician', 'Store Officer'];
   for (const name of roleNames) {

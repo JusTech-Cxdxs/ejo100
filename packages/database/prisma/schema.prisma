@@ -213,6 +213,7 @@ model Department {
   branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
   teams  Team[]
   users  User[]
+  jobCards JobCard[]
 
   @@unique([branchId, slug])
   @@map("departments")
@@ -292,6 +293,7 @@ model User {
   accounts        Account[]
   employeeProfile EmployeeProfile?
   jobCardsAssigned JobCard[] @relation("JobCardTechnician")
+  jobCardsSupervised JobCard[] @relation("JobCardSupervisor")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -507,12 +509,26 @@ model JobCard {
   branchId    String
   customerId  String
   vehicleId   String
+  // Which of the two Workshop departments (Passenger / Commercial) owns
+  // this Job Card — auto-resolved at creation from vehicle.vehicleType,
+  // never chosen manually. Nullable so every Job Card created before this
+  // field existed keeps working unchanged; it simply won't appear in a
+  // department-scoped HOD queue (a later phase), which is an honest,
+  // disclosed limit for old data rather than something silently broken.
+  departmentId String?
 
   complaint   String?       // legacy single-field complaint, kept for Job Cards created before per-item complaints existed — new Job Cards use `complaints` below instead
   diagnosis   String?       // technician/service-advisor findings, filled in after inspection
   mileageAtCheckIn Int?
 
   assignedTechnicianId String? // User.id — nullable until a technician is assigned
+  // The Workshop Supervisor/HOD of the resolved department, chosen by
+  // whoever creates the Job Card from a list already filtered to that
+  // department — this is the "first assignment always goes to the right
+  // department's HOD" rule, enforced at the data layer (createJobCard
+  // validates the chosen supervisor actually belongs to the resolved
+  // department, not just trusting client input).
+  supervisorId String?
   createdById String        // User.id — staff member who opened this Job Card
 
   status      JobCardStatus @default(CHECKED_IN)
@@ -523,9 +539,11 @@ model JobCard {
   updatedAt   DateTime      @updatedAt
 
   branch             Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  department         Department?         @relation(fields: [departmentId], references: [id])
   customer           Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
   vehicle            CustomerVehicle     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   assignedTechnician User?               @relation("JobCardTechnician", fields: [assignedTechnicianId], references: [id])
+  supervisor         User?               @relation("JobCardSupervisor", fields: [supervisorId], references: [id])
   createdBy          User                @relation("JobCardCreatedBy", fields: [createdById], references: [id])
   complaints         JobCardComplaint[]
 
