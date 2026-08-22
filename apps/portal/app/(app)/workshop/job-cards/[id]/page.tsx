@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getJobCard, listTechnicianCandidates, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
+import { getJobCard, getJobCardAuditTrail, listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -29,21 +29,33 @@ const STATUS_LABEL: Record<string, string> = {
   CANCELLED: 'Cancelled',
 };
 
+// Falls back to the raw action string for anything not listed — future
+// phases add more audit actions (assignment.*, estimate.*, etc.); this
+// map only needs updating for a nicer label, never to avoid breaking.
+const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'job_card.created': 'Job Card created',
+  'job_card.approved': 'Job Card approved',
+  'job_card.rejected': 'Job Card rejected',
+};
+
 export default async function JobCardDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; error?: string }>;
 }) {
   const { id } = await params;
-  const { status } = await searchParams;
-  const [jobCard, technicians, isMasterAdmin] = await Promise.all([
+  const { status, error } = await searchParams;
+  const [jobCard, technicians, isMasterAdmin, viewerId] = await Promise.all([
     getJobCard(id),
     listTechnicianCandidates(),
     currentUserIsMasterAdmin(),
+    currentUserId(),
   ]);
   if (!jobCard) notFound();
+  const auditTrail = await getJobCardAuditTrail(id);
+  const isApprover = isMasterAdmin || jobCard.supervisor?.id === viewerId;
 
   return (
     <div className="p-8">
@@ -51,16 +63,37 @@ export default async function JobCardDetailPage({
         ← All Job Cards
       </Link>
 
+      {error ? (
+        <div className="mt-4">
+          <FormFeedbackBanner kind="error" message={error} />
+        </div>
+      ) : null}
+
       {status === 'job_card_created' ? (
         <div className="mt-4">
           <FormFeedbackBanner kind="success" message="Job Card successfully created." />
         </div>
       ) : null}
 
-      <div className="mt-3 mb-6 flex items-center gap-3">
+      <div className="mt-3 mb-6 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{jobCard.jobNumber}</h1>
         <span className="rounded-full bg-[var(--ejo-primary)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-primary)]">
           {STATUS_LABEL[jobCard.status]}
+        </span>
+        <span
+          className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+            jobCard.approvalStatus === 'APPROVED'
+              ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
+              : jobCard.approvalStatus === 'REJECTED'
+                ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]'
+                : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
+          }`}
+        >
+          {jobCard.approvalStatus === 'APPROVED'
+            ? `Approved by ${jobCard.approvedBy?.fullName ?? 'supervisor'}`
+            : jobCard.approvalStatus === 'REJECTED'
+              ? `Rejected — ${jobCard.rejectionReason}`
+              : 'Awaiting Supervisor Approval'}
         </span>
       </div>
 
@@ -151,6 +184,50 @@ export default async function JobCardDetailPage({
         </div>
 
         <div className="space-y-6">
+          {isApprover && jobCard.approvalStatus === 'PENDING' ? (
+            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Review this Job Card</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                As the assigned supervisor, approve to confirm this Job Card is correctly opened, or reject it
+                back to {jobCard.createdBy.fullName} with a reason.
+              </p>
+              <form action={approveJobCardFormAction} className="mt-4 space-y-2">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <textarea
+                  name="notes"
+                  rows={2}
+                  placeholder="Optional notes"
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                />
+                <SubmitButton
+                  label="Approve"
+                  pendingLabel="Approving…"
+                  className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                />
+              </form>
+              <form action={rejectJobCardFormAction} className="mt-3 space-y-2">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <input
+                  name="reason"
+                  required
+                  placeholder="Reason for rejection (required)"
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                />
+                <textarea
+                  name="notes"
+                  rows={2}
+                  placeholder="Optional additional notes"
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                />
+                <SubmitButton
+                  label="Reject"
+                  pendingLabel="Rejecting…"
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
+                />
+              </form>
+            </div>
+          ) : null}
+
           <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Update status</h2>
             <form action={updateJobCardStatusFormAction} className="mt-4 space-y-3">
@@ -217,6 +294,28 @@ export default async function JobCardDetailPage({
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+        <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit trail</h2>
+        {auditTrail.length === 0 ? (
+          <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No recorded activity yet.</p>
+        ) : (
+          <ol className="mt-3 space-y-3">
+            {auditTrail.map((entry) => (
+              <li key={entry.id} className="flex items-start gap-3 text-sm">
+                <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--ejo-primary)]" />
+                <div>
+                  <p className="text-[var(--ejo-text)]">
+                    <span className="font-medium">{AUDIT_ACTION_LABEL[entry.action] ?? entry.action}</span>
+                    {entry.user ? ` — ${entry.user.fullName}` : ''}
+                  </p>
+                  <p className="text-xs text-[var(--ejo-text-muted)]">{formatDateTime(entry.createdAt)}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
     </div>
   );
