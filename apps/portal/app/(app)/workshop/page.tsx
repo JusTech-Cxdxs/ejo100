@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { LoadingLink } from '@/components/LoadingLink';
 
 const sections = [
   { name: 'Customers', href: '/workshop/customers', desc: 'Customer records and vehicle ownership history.' },
@@ -28,14 +28,14 @@ export default function WorkshopPage() {
 
       <div className="grid gap-6 md:grid-cols-3">
         {sections.map((s) => (
-          <Link
+          <LoadingLink
             key={s.href}
             href={s.href}
             className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6 transition-shadow hover:shadow-md"
           >
             <h3 className="font-semibold text-[var(--ejo-text)]">{s.name}</h3>
             <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">{s.desc}</p>
-          </Link>
+          </LoadingLink>
         ))}
       </div>
     </div>
