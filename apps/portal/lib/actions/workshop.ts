@@ -29,6 +29,7 @@ import { sendEmail } from '@/lib/email';
 import { generateSecurePassword } from '@/lib/utils/generate-password';
 import { renderCustomerWelcomeEmail } from '@/lib/email-templates/customer-welcome';
 import { renderSupervisorJobCardAssignedEmail } from '@/lib/email-templates/supervisor-job-card-assigned';
+import { renderCustomerJobCardAcknowledgmentEmail } from '@/lib/email-templates/customer-job-card-acknowledgment';
 
 class WorkshopActionError extends Error {}
 
@@ -831,7 +832,7 @@ export async function createJobCard(input: CreateJobCardInput) {
         },
       },
       include: {
-        customer: { select: { fullName: true } },
+        customer: { select: { fullName: true, email: true } },
         supervisor: { select: { fullName: true, email: true } },
         complaints: { orderBy: { sequenceNumber: 'asc' } },
       },
@@ -894,6 +895,34 @@ export async function createJobCard(input: CreateJobCardInput) {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Failed to send supervisor notification email for Job Card', created.jobNumber, err);
+  }
+
+  // Notify the customer too — a genuinely separate try/catch from the
+  // supervisor email above, deliberately: one failing (e.g. a bad
+  // customer email address) must never prevent the other from sending,
+  // and vice versa. Website URL, not portal — the customer's own
+  // dashboard lives on apps/website, not apps/portal.
+  try {
+    const orgContext = await getWorkshopOrgContext(department.name);
+    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    await sendEmail(
+      created.customer.email,
+      `We've received your vehicle — Job Card ${created.jobNumber}`,
+      renderCustomerJobCardAcknowledgmentEmail({
+        customerName: created.customer.fullName,
+        jobNumber: created.jobNumber,
+        vehicleDescription: [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+        complaints: created.complaints.map((c: (typeof created.complaints)[number]) => c.description),
+        dashboardUrl: `${websiteUrl}/customer-portal/dashboard`,
+        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send customer acknowledgment email for Job Card', created.jobNumber, err);
   }
 
   await writeAuditLog({
