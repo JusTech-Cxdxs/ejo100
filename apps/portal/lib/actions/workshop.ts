@@ -60,6 +60,11 @@ async function requireUser(): Promise<{ id: string }> {
  * architecture (cross-origin cookies make calling the Render API from
  * here impractical — the same reason every other Workshop action
  * already works this way). */
+export async function currentUserId(): Promise<string> {
+  const user = await requireUser();
+  return user.id;
+}
+
 export async function currentUserIsMasterAdmin(): Promise<boolean> {
   const user = await requireUser();
   const match = await prisma.userRole.findFirst({
@@ -82,6 +87,52 @@ async function requireMasterAdmin(): Promise<{ id: string }> {
     throw new WorkshopActionError('Only a Master Administrator can delete records.');
   }
   return user;
+}
+
+/** Writes to the existing AuditLog model — reused exactly as it already
+ * is (its own example action string is literally "job_card.approved"),
+ * not duplicated with a parallel history mechanism. Deliberately never
+ * throws: an audit-log write failing should never block or roll back
+ * the real action it's recording, only be logged for someone to notice.
+ * `action` follows a `entity.verb` convention (e.g. "job_card.created",
+ * "job_card.approved", "job_card.rejected") so a later reporting view
+ * can group/filter by entity or by verb consistently. */
+async function writeAuditLog(params: {
+  userId: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        userId: params.userId,
+        action: params.action,
+        entityType: params.entityType,
+        entityId: params.entityId,
+        metadata: params.metadata,
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to write audit log:', params.action, params.entityId, err);
+  }
+}
+
+/** Only the Job Card's own assigned supervisor, or a Master
+ * Administrator, may approve or reject it — matching "approval must be
+ * explicit" and giving a real, checkable answer to "who is allowed to
+ * sign off on this," not just whoever happens to open the page. */
+async function requireJobCardApprover(jobCard: { supervisorId: string | null }): Promise<{ id: string }> {
+  const user = await requireUser();
+  if (jobCard.supervisorId === user.id) {
+    return user;
+  }
+  if (await currentUserIsMasterAdmin()) {
+    return user;
+  }
+  throw new WorkshopActionError('Only the assigned supervisor or a Master Administrator can approve or reject this Job Card.');
 }
 
 /** The Workshop is currently scoped to a single branch (Isolo) per the
@@ -628,12 +679,50 @@ export async function getJobCard(id: string) {
       vehicle: true,
       assignedTechnician: { select: { id: true, fullName: true } },
       supervisor: { select: { id: true, fullName: true } },
+      approvedBy: { select: { id: true, fullName: true } },
       department: { select: { id: true, name: true } },
       createdBy: { select: { id: true, fullName: true } },
       branch: { select: { name: true } },
       complaints: { orderBy: { sequenceNumber: 'asc' } },
     },
   });
+}
+
+export type JobCardAuditEntry = {
+  id: string;
+  action: string;
+  createdAt: Date;
+  metadata: unknown;
+  user: { fullName: string } | null;
+};
+
+/** The Job Card's own chronological audit trail — reads the same
+ * AuditLog rows writeAuditLog() creates, filtered to this one entity,
+ * newest first. Nothing here is a separate history mechanism; it's a
+ * read view onto the one shared audit log. */
+export async function getJobCardAuditTrail(jobCardId: string): Promise<JobCardAuditEntry[]> {
+  await requireUser();
+  const entries = await prisma.auditLog.findMany({
+    where: { entityType: 'JobCard', entityId: jobCardId },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  });
+  const userIds = [
+    ...new Set(
+      entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id)),
+    ),
+  ];
+  const users = userIds.length
+    ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } })
+    : [];
+  const userById = new Map(users.map((u: (typeof users)[number]) => [u.id, u]));
+  return entries.map((e: (typeof entries)[number]) => ({
+    id: e.id,
+    action: e.action,
+    createdAt: e.createdAt,
+    metadata: e.metadata,
+    user: e.userId ? (userById.get(e.userId) ?? null) : null,
+  }));
 }
 
 export type CreateJobCardInput = {
@@ -797,6 +886,14 @@ export async function createJobCard(input: CreateJobCardInput) {
     console.error('Failed to send supervisor notification email for Job Card', created.jobNumber, err);
   }
 
+  await writeAuditLog({
+    userId: user.id,
+    action: 'job_card.created',
+    entityType: 'JobCard',
+    entityId: created.id,
+    metadata: { jobNumber: created.jobNumber, departmentId: department.id, supervisorId: input.supervisorId },
+  });
+
   return created;
 }
 
@@ -808,6 +905,77 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus) {
       status,
       closedAt: status === JobCardStatus.CLOSED ? new Date() : undefined,
     },
+  });
+}
+
+/** The supervisor (or Master Admin) signs off that the Job Card is
+ * correctly opened and ready to proceed — the explicit approval step,
+ * separate from and not inferable from `status`. */
+export async function approveJobCard(jobCardId: string, notes?: string): Promise<void> {
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: { supervisorId: true, jobNumber: true },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  const approver = await requireJobCardApprover(jobCard);
+
+  await prisma.jobCard.update({
+    where: { id: jobCardId },
+    data: {
+      approvalStatus: 'APPROVED',
+      approvedById: approver.id,
+      approvedAt: new Date(),
+      rejectionReason: null,
+      approvalNotes: notes?.trim() || null,
+    },
+  });
+
+  await writeAuditLog({
+    userId: approver.id,
+    action: 'job_card.approved',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: notes?.trim() ? { notes: notes.trim() } : undefined,
+  });
+}
+
+/** Returns the Job Card to the creator for correction — the required
+ * short `reason` is what shows in the UI's status badge (e.g.
+ * "Rejected — Incomplete vehicle information"); `notes` is optional,
+ * longer commentary. */
+export async function rejectJobCard(jobCardId: string, reason: string, notes?: string): Promise<void> {
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) {
+    throw new WorkshopActionError('A reason is required to reject a Job Card.');
+  }
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: { supervisorId: true, jobNumber: true },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  const approver = await requireJobCardApprover(jobCard);
+
+  await prisma.jobCard.update({
+    where: { id: jobCardId },
+    data: {
+      approvalStatus: 'REJECTED',
+      approvedById: approver.id,
+      approvedAt: new Date(),
+      rejectionReason: trimmedReason,
+      approvalNotes: notes?.trim() || null,
+    },
+  });
+
+  await writeAuditLog({
+    userId: approver.id,
+    action: 'job_card.rejected',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { reason: trimmedReason, notes: notes?.trim() || undefined },
   });
 }
 

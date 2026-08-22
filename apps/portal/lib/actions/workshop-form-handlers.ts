@@ -29,6 +29,8 @@ import {
   assignTechnician,
   deleteVehicle,
   deleteJobCard,
+  approveJobCard,
+  rejectJobCard,
 } from './workshop';
 
 function str(formData: FormData, key: string): string {
@@ -113,6 +115,28 @@ export async function updateJobCardStatusFormAction(formData: FormData) {
   await updateJobCardStatus(id, status);
   revalidatePath(`/workshop/job-cards/${id}`);
   revalidatePath('/workshop/job-cards');
+}
+
+export async function approveJobCardFormAction(formData: FormData) {
+  const id = str(formData, 'jobCardId');
+  try {
+    await approveJobCard(id, str(formData, 'notes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not approve Job Card.';
+    redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${id}`);
+}
+
+export async function rejectJobCardFormAction(formData: FormData) {
+  const id = str(formData, 'jobCardId');
+  try {
+    await rejectJobCard(id, str(formData, 'reason'), str(formData, 'notes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not reject Job Card.';
+    redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${id}`);
 }
 
 export async function assignTechnicianFormAction(formData: FormData) {
