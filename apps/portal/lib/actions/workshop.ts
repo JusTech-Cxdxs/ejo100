@@ -22,7 +22,7 @@
  */
 
 import { headers } from 'next/headers';
-import { prisma, JobCardStatus } from '@ejo/database';
+import { prisma, JobCardStatus, Prisma } from '@ejo/database';
 import { hashPassword } from 'better-auth/crypto';
 import { auth } from '@/lib/auth';
 import { sendEmail } from '@/lib/email';
@@ -111,7 +111,17 @@ async function writeAuditLog(params: {
         action: params.action,
         entityType: params.entityType,
         entityId: params.entityId,
-        metadata: params.metadata,
+        // Prisma's generated type for a Json column (InputJsonValue) is
+        // stricter than a plain `Record<string, unknown>` — it needs
+        // every value to be provably JSON-safe, which `unknown` can't
+        // guarantee at the type level even though every real call site
+        // here only ever passes plain strings/objects it just built
+        // itself. This sandbox's local verification stubs Prisma as
+        // fully permissive, so this specific mismatch could only be
+        // caught by a real build — exactly what happened. Narrow,
+        // deliberate cast at the one point it's actually needed, not a
+        // blanket `any` on the function's own signature.
+        metadata: params.metadata as Prisma.InputJsonValue | undefined,
       },
     });
   } catch (err) {
