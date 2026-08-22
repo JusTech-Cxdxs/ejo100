@@ -95,6 +95,7 @@ export async function createJobCardFormAction(formData: FormData) {
       customerId: str(formData, 'customerId'),
       vehicleId: str(formData, 'vehicleId'),
       complaints: formData.getAll('complaints').map((v) => String(v)),
+      supervisorId: str(formData, 'supervisorId'),
       mileageAtCheckIn: num(formData, 'mileageAtCheckIn'),
     });
     jobCardId = jobCard.id;

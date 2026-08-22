@@ -28,6 +28,7 @@ import { auth } from '@/lib/auth';
 import { sendEmail } from '@/lib/email';
 import { generateSecurePassword } from '@/lib/utils/generate-password';
 import { renderCustomerWelcomeEmail } from '@/lib/email-templates/customer-welcome';
+import { renderSupervisorJobCardAssignedEmail } from '@/lib/email-templates/supervisor-job-card-assigned';
 
 class WorkshopActionError extends Error {}
 
@@ -100,12 +101,97 @@ async function getWorkshopBranchId(): Promise<string> {
   return department.branchId;
 }
 
+/** Resolves which of the two Workshop departments (Passenger / Commercial)
+ * a vehicle's Job Cards belong to, using CustomerVehicle.vehicleType as
+ * the source of truth — never chosen manually, always derived. Kept
+ * separate from getWorkshopBranchId() above (which still resolves the
+ * original single "workshop" department, unchanged) so nothing that
+ * already depends on that function's exact behavior is affected. */
+async function getWorkshopDepartmentForVehicleType(
+  vehicleType: 'PASSENGER' | 'COMMERCIAL',
+): Promise<{ id: string; name: string }> {
+  const branchId = await getWorkshopBranchId();
+  const slug = vehicleType === 'PASSENGER' ? 'workshop-passenger' : 'workshop-commercial';
+  const department = await prisma.department.findUnique({
+    where: { branchId_slug: { branchId, slug } },
+    select: { id: true, name: true },
+  });
+  if (!department) {
+    const label = vehicleType === 'PASSENGER' ? 'Passenger' : 'Commercial';
+    throw new WorkshopActionError(
+      `No ${label} Vehicle Workshop department exists yet — run the seed script, or create one under Departments.`,
+    );
+  }
+  return department;
+}
+
+export type EligibleSupervisor = { id: string; fullName: string; email: string };
+export type EligibleSupervisorResult = {
+  supervisors: EligibleSupervisor[];
+  // true when no one has actually been placed into this department with
+  // the "Workshop Supervisor" role yet, and the list below is Master
+  // Administrators standing in instead — see the note on the function
+  // itself for why this exists. The UI must show this plainly, not hide
+  // it, so nobody mistakes a fallback list for real department staff.
+  usingFallback: boolean;
+};
+
+/** Users eligible to be the assigned supervisor/HOD for a given vehicle
+ * type — must belong to that vehicle type's Workshop department (via
+ * User.departmentId) AND hold the "Workshop Supervisor" role (seeded in
+ * seed.ts, reused here rather than inventing a separate "HOD" role
+ * name). This is what makes it structurally impossible for the Job Card
+ * creation picker to even show a Commercial-side supervisor for a
+ * Passenger vehicle, or vice versa.
+ *
+ * Falls back to Master Administrators when the department has nobody
+ * placed into it with that role yet — confirmed by inspection that
+ * `/users` and `/roles` are currently placeholder pages with zero
+ * functionality, so there is genuinely no way for anyone to set a
+ * user's department or role through the product yet. Without this
+ * fallback, requiring a real eligible supervisor would make Job Card
+ * creation completely blocked for both departments until a separate,
+ * much larger Users/Roles admin area is built. The fallback is surfaced
+ * to the UI explicitly (`usingFallback: true`), never silently. */
+export async function listEligibleSupervisorsForVehicleType(
+  vehicleType: 'PASSENGER' | 'COMMERCIAL',
+): Promise<EligibleSupervisorResult> {
+  await requireUser();
+  const department = await getWorkshopDepartmentForVehicleType(vehicleType);
+  const departmentSupervisors = await prisma.user.findMany({
+    where: {
+      departmentId: department.id,
+      isActive: true,
+      roles: { some: { role: { slug: 'workshop-supervisor' } } },
+    },
+    orderBy: { fullName: 'asc' },
+    select: { id: true, fullName: true, email: true },
+  });
+  if (departmentSupervisors.length > 0) {
+    return { supervisors: departmentSupervisors, usingFallback: false };
+  }
+  const masterAdmins = await prisma.user.findMany({
+    where: {
+      isActive: true,
+      roles: { some: { role: { isSuperAdmin: true } } },
+    },
+    orderBy: { fullName: 'asc' },
+    select: { id: true, fullName: true, email: true },
+  });
+  return { supervisors: masterAdmins, usingFallback: true };
+}
+
 /** Real Company/Branch/Department names for the branded email layout's
  * organizational context line — e.g. "Kewalram Nigeria · Isolo Branch ·
  * Workshop". Kept separate from getWorkshopBranchId() above rather than
  * changing its return shape, since that function has another caller
- * (createJobCard) that only ever needs the bare id. */
-async function getWorkshopOrgContext(): Promise<{
+ * (createJobCard) that only ever needs the bare id.
+ *
+ * `departmentNameOverride` lets a caller show the actual routed
+ * department (e.g. "Passenger Vehicle Workshop") instead of the generic
+ * "Workshop" — the company/branch lookup is identical either way, only
+ * the department label in the returned context changes. */
+async function getWorkshopOrgContext(departmentNameOverride?: string): Promise<{
   companyName: string;
   branchName: string;
   departmentName: string;
@@ -125,7 +211,7 @@ async function getWorkshopOrgContext(): Promise<{
   return {
     companyName: department.branch.businessUnit.company.name,
     branchName: department.branch.name,
-    departmentName: department.name,
+    departmentName: departmentNameOverride ?? department.name,
   };
 }
 
@@ -313,6 +399,7 @@ export type VehicleSearchResult = {
   make: string | null;
   model: string | null;
   year: number | null;
+  vehicleType: 'PASSENGER' | 'COMMERCIAL' | null;
 };
 
 /**
@@ -322,6 +409,10 @@ export type VehicleSearchResult = {
  * customer's own vehicle count is inherently small and bounded, unlike
  * "search all customers" or "search all vehicles system-wide". The
  * `take: 50` is a sanity cap, not a real-world limit anyone should hit.
+ *
+ * Includes vehicleType now — the Job Card creation picker needs to know
+ * a selected vehicle's type immediately, to fetch the right department's
+ * eligible supervisors without a separate round trip.
  */
 export async function listVehiclesForCustomer(customerId: string): Promise<VehicleSearchResult[]> {
   await requireUser();
@@ -330,7 +421,7 @@ export async function listVehiclesForCustomer(customerId: string): Promise<Vehic
     where: { customerId },
     orderBy: { createdAt: 'desc' },
     take: 50,
-    select: { id: true, plateNumber: true, chassisNumber: true, make: true, model: true, year: true },
+    select: { id: true, plateNumber: true, chassisNumber: true, make: true, model: true, year: true, vehicleType: true },
   });
 }
 
@@ -536,6 +627,8 @@ export async function getJobCard(id: string) {
       customer: true,
       vehicle: true,
       assignedTechnician: { select: { id: true, fullName: true } },
+      supervisor: { select: { id: true, fullName: true } },
+      department: { select: { id: true, name: true } },
       createdBy: { select: { id: true, fullName: true } },
       branch: { select: { name: true } },
       complaints: { orderBy: { sequenceNumber: 'asc' } },
@@ -547,8 +640,29 @@ export type CreateJobCardInput = {
   customerId: string;
   vehicleId: string;
   complaints: string[];
+  supervisorId: string;
   mileageAtCheckIn?: number;
 };
+
+/** Re-validates a chosen supervisor server-side — never trusts that the
+ * client-side picker's own filtering was followed correctly. Mirrors
+ * exactly the two cases listEligibleSupervisorsForVehicleType() can
+ * return: a real department supervisor, or (while no one has been
+ * placed into the department yet) a Master Administrator standing in. */
+async function isEligibleSupervisor(userId: string, departmentId: string): Promise<boolean> {
+  const match = await prisma.user.findFirst({
+    where: {
+      id: userId,
+      isActive: true,
+      OR: [
+        { departmentId, roles: { some: { role: { slug: 'workshop-supervisor' } } } },
+        { roles: { some: { role: { isSuperAdmin: true } } } },
+      ],
+    },
+    select: { id: true },
+  });
+  return Boolean(match);
+}
 
 export async function createJobCard(input: CreateJobCardInput) {
   const user = await requireUser();
@@ -556,6 +670,32 @@ export async function createJobCard(input: CreateJobCardInput) {
   if (!input.customerId || !input.vehicleId || complaints.length === 0) {
     throw new WorkshopActionError('Customer, vehicle, and at least one complaint are required to open a Job Card.');
   }
+  if (!input.supervisorId) {
+    throw new WorkshopActionError('A supervisor must be assigned to open a Job Card.');
+  }
+
+  // The routed department is derived from the vehicle's own recorded
+  // type — never taken from client input — so it's structurally
+  // impossible for a Job Card to be routed to the wrong department by a
+  // client-side mistake or tampering.
+  const vehicle = await prisma.customerVehicle.findUnique({
+    where: { id: input.vehicleId },
+    select: { vehicleType: true, make: true, model: true, plateNumber: true },
+  });
+  if (!vehicle) {
+    throw new WorkshopActionError('That vehicle could not be found.');
+  }
+  if (!vehicle.vehicleType) {
+    throw new WorkshopActionError(
+      'This vehicle has no Passenger/Commercial type on file yet — set it on the Vehicles page before opening a Job Card for it.',
+    );
+  }
+  const department = await getWorkshopDepartmentForVehicleType(vehicle.vehicleType);
+
+  if (!(await isEligibleSupervisor(input.supervisorId, department.id))) {
+    throw new WorkshopActionError('The selected supervisor is not eligible for this vehicle\'s Workshop department.');
+  }
+
   const branchId = await getWorkshopBranchId();
 
   // Retries on a jobNumber collision specifically — now a genuine
@@ -566,27 +706,47 @@ export async function createJobCard(input: CreateJobCardInput) {
   // a timing race) is fixed in generateJobNumber() itself above. Any
   // other kind of failure (validation, connection issue, etc.) is
   // re-thrown immediately, not retried.
+  //
+  // Captures the created row into `created` and `break`s on success,
+  // rather than returning directly from inside the loop — the
+  // supervisor notification email below needs to run exactly once,
+  // after a genuinely successful creation, never inside the retry loop
+  // itself (which could otherwise fire it multiple times on retries).
+  async function attemptCreate(jobNumber: string) {
+    return prisma.jobCard.create({
+      data: {
+        jobNumber,
+        branchId,
+        departmentId: department.id,
+        customerId: input.customerId,
+        vehicleId: input.vehicleId,
+        supervisorId: input.supervisorId,
+        mileageAtCheckIn: input.mileageAtCheckIn ?? null,
+        createdById: user.id,
+        status: JobCardStatus.CHECKED_IN,
+        complaints: {
+          create: complaints.map((description, i) => ({
+            sequenceNumber: i + 1,
+            description,
+          })),
+        },
+      },
+      include: {
+        customer: { select: { fullName: true } },
+        supervisor: { select: { fullName: true, email: true } },
+        complaints: { orderBy: { sequenceNumber: 'asc' } },
+      },
+    });
+  }
+
   const MAX_ATTEMPTS = 5;
+  let created: Awaited<ReturnType<typeof attemptCreate>> | undefined;
+
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const jobNumber = await generateJobNumber();
     try {
-      return await prisma.jobCard.create({
-        data: {
-          jobNumber,
-          branchId,
-          customerId: input.customerId,
-          vehicleId: input.vehicleId,
-          mileageAtCheckIn: input.mileageAtCheckIn ?? null,
-          createdById: user.id,
-          status: JobCardStatus.CHECKED_IN,
-          complaints: {
-            create: complaints.map((description, i) => ({
-              sequenceNumber: i + 1,
-              description,
-            })),
-          },
-        },
-      });
+      created = await attemptCreate(jobNumber);
+      break;
     } catch (err) {
       const code = (err as { code?: string } | null)?.code;
       const target = (err as { meta?: { target?: unknown } } | null)?.meta?.target;
@@ -604,9 +764,40 @@ export async function createJobCard(input: CreateJobCardInput) {
       throw err;
     }
   }
-  // Unreachable in practice (the loop always returns or throws), but
-  // keeps TypeScript satisfied that every path returns a value.
-  throw new WorkshopActionError('Could not generate a unique Job Card number after several attempts — please try again.');
+
+  if (!created) {
+    throw new WorkshopActionError('Could not generate a unique Job Card number after several attempts — please try again.');
+  }
+
+  // Notify the assigned supervisor — best-effort, fail-soft, matching
+  // the exact same pattern already used for the customer welcome email
+  // (Phase 3): a transient SMTP hiccup is not a reason to undo a real,
+  // already-successful Job Card creation.
+  try {
+    const orgContext = await getWorkshopOrgContext(department.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      created.supervisor!.email,
+      `New Job Card ${created.jobNumber} assigned to you`,
+      renderSupervisorJobCardAssignedEmail({
+        supervisorName: created.supervisor!.fullName,
+        jobNumber: created.jobNumber,
+        customerName: created.customer.fullName,
+        vehicleDescription: [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+        complaints: created.complaints.map((c: (typeof created.complaints)[number]) => c.description),
+        jobCardUrl: `${portalUrl}/workshop/job-cards/${created.id}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send supervisor notification email for Job Card', created.jobNumber, err);
+  }
+
+  return created;
 }
 
 export async function updateJobCardStatus(id: string, status: JobCardStatus) {
