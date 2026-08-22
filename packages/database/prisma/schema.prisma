@@ -294,6 +294,7 @@ model User {
   employeeProfile EmployeeProfile?
   jobCardsAssigned JobCard[] @relation("JobCardTechnician")
   jobCardsSupervised JobCard[] @relation("JobCardSupervisor")
+  jobCardsApproved JobCard[] @relation("JobCardApprovedBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -503,6 +504,14 @@ enum JobCardStatus {
   CANCELLED
 }
 
+// A separate dimension from JobCardStatus above — see the field comment
+// on JobCard.approvalStatus for why these aren't combined into one enum.
+enum JobCardApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model JobCard {
   id          String        @id @default(cuid())
   jobNumber   String        @unique // human-facing, e.g. "JC-2026-000123" — generated server-side, never user-entered
@@ -534,6 +543,19 @@ model JobCard {
   status      JobCardStatus @default(CHECKED_IN)
   notes       String?
 
+  // Approval is deliberately a SEPARATE dimension from `status` above,
+  // not a value within it — a Job Card can be `CHECKED_IN` in status
+  // while simultaneously `PENDING` in approval; these answer two
+  // different questions ("where is it in the physical workflow" vs
+  // "has the supervisor signed off on it") and shouldn't be forced into
+  // one field. This is the explicit approval tracking asked for: never
+  // inferred from status alone.
+  approvalStatus   JobCardApprovalStatus @default(PENDING)
+  approvedById     String?   // User.id — who approved or rejected it
+  approvedAt       DateTime? // when the current approvalStatus was set
+  rejectionReason  String?   // short, required when rejecting — e.g. "Incomplete vehicle information"
+  approvalNotes    String?   // optional longer commentary, on either an approval or a rejection
+
   closedAt    DateTime?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -544,6 +566,7 @@ model JobCard {
   vehicle            CustomerVehicle     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   assignedTechnician User?               @relation("JobCardTechnician", fields: [assignedTechnicianId], references: [id])
   supervisor         User?               @relation("JobCardSupervisor", fields: [supervisorId], references: [id])
+  approvedBy         User?               @relation("JobCardApprovedBy", fields: [approvedById], references: [id])
   createdBy          User                @relation("JobCardCreatedBy", fields: [createdById], references: [id])
   complaints         JobCardComplaint[]
 
