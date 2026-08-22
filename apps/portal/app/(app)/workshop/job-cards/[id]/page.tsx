@@ -98,6 +98,18 @@ export default async function JobCardDetailPage({
                 </dd>
               </div>
               <div>
+                <dt className="text-[var(--ejo-text-muted)]">Workshop department</dt>
+                <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
+                  {jobCard.department?.name ?? '—'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[var(--ejo-text-muted)]">Supervisor</dt>
+                <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
+                  {jobCard.supervisor?.fullName ?? '—'}
+                </dd>
+              </div>
+              <div>
                 <dt className="text-[var(--ejo-text-muted)]">Assigned technician</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
                   {jobCard.assignedTechnician?.fullName ?? 'Unassigned'}
