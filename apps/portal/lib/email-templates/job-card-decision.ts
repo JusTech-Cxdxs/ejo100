@@ -57,7 +57,7 @@ export function renderJobCardDecisionEmail(opts: JobCardDecisionEmailOptions): s
     <p style="margin: 0 0 16px 0;">
       ${isApproved
         ? `Job Card ${escapeHtml(jobNumber)} for ${escapeHtml(customerName)} has been approved and can now proceed.`
-        : `Job Card ${escapeHtml(jobNumber)} for ${escapeHtml(customerName)} has been sent back for correction.`}
+        : `Job Card ${escapeHtml(jobNumber)} for ${escapeHtml(customerName)} has been rejected.`}
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
@@ -69,17 +69,18 @@ export function renderJobCardDecisionEmail(opts: JobCardDecisionEmailOptions): s
     </table>
 
     ${notes?.trim() ? `<p style="margin: 0 0 16px 0;"><strong>Additional notes:</strong> ${escapeHtml(notes.trim())}</p>` : ''}
-    ${!isApproved ? '<p style="margin: 0;">Please review and correct as needed.</p>' : ''}
+    ${!isApproved ? '<p style="margin: 0;">Please review the reason above and take the appropriate next step.</p>' : ''}
   `;
 
   return renderEmailLayout({
     previewText: isApproved
       ? `Job Card ${jobNumber} was approved.`
-      : `Job Card ${jobNumber} was returned for correction.`,
+      : `Job Card ${jobNumber} was rejected.`,
     companyName,
     orgContext: [companyName, branchName, departmentName],
     iconGlyph: isApproved ? '✓' : '!',
-    heading: isApproved ? 'Job Card approved' : 'Job Card returned for correction',
+    iconTone: isApproved ? 'positive' : 'negative',
+    heading: isApproved ? 'Job Card approved' : 'Job Card rejected',
     bodyHtml,
     ctaLabel: 'Open Job Card',
     ctaUrl: jobCardUrl,

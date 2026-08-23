@@ -71,6 +71,7 @@ export function renderTechnicianJobCardAssignedEmail(opts: TechnicianJobCardAssi
     companyName,
     orgContext: [companyName, branchName, departmentName],
     iconGlyph: '!',
+    iconTone: 'neutral',
     heading: 'You\u2019ve been assigned a Job Card',
     bodyHtml,
     ctaLabel: 'Review & respond',

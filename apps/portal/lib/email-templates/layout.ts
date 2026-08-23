@@ -22,12 +22,40 @@ const BRAND = {
   primary: '#16A34A',
   primaryDark: '#15803D',
   primarySoft: '#DCFCE7',
+  // Negative/neutral icon tones, added so a rejection or an
+  // attention-needed notification can visually read as such rather
+  // than every email showing the same green circle regardless of what
+  // it's actually about. Reuses this project's own existing
+  // --ejo-error/--ejo-warning hex values from the portal UI, not new
+  // colors invented for email — one consistent palette across every
+  // surface, not two.
+  negative: '#DC2626',
+  negativeDark: '#B91C1C',
+  negativeSoft: '#FEE2E2',
+  neutral: '#F59E0B',
+  neutralDark: '#B45309',
+  neutralSoft: '#FEF3C7',
   dark: '#0F172A',
   darkSoft: '#1E293B',
   textMuted: '#64748B',
   border: '#E2E8F0',
   surface: '#F8FAFC',
   poweredBy: 'Powered by EJO 100 Enterprise Platform',
+};
+
+/** Which of the three tones an icon badge renders in — governs both
+ * the badge's own colors and, deliberately, nothing else in the
+ * layout, since the tone should read from that one small element, not
+ * tint the whole email. Defaults to 'positive' (the layout's original,
+ * only appearance before tones existed), so any call site that hasn't
+ * been updated to pick a tone explicitly keeps looking exactly as it
+ * did before this was added. */
+type IconTone = 'positive' | 'negative' | 'neutral';
+
+const ICON_TONE_COLORS: Record<IconTone, { soft: string; dark: string }> = {
+  positive: { soft: BRAND.primarySoft, dark: BRAND.primaryDark },
+  negative: { soft: BRAND.negativeSoft, dark: BRAND.negativeDark },
+  neutral: { soft: BRAND.neutralSoft, dark: BRAND.neutralDark },
 };
 
 export type EmailLayoutOptions = {
@@ -43,6 +71,12 @@ export type EmailLayoutOptions = {
    * the heading — e.g. "✓" for a completed/ready event, "!" for one
    * needing attention. Omit for a plainer heading with no badge. */
   iconGlyph?: string;
+  /** The badge's color — 'positive' (green) for approvals/acceptances,
+   * 'negative' (red) for rejections, 'neutral' (amber) for
+   * needs-your-attention notifications that aren't inherently bad news
+   * (a new assignment, for instance). Only meaningful alongside
+   * iconGlyph; ignored otherwise. Defaults to 'positive'. */
+  iconTone?: IconTone;
   heading: string;
   bodyHtml: string; // pre-built inner HTML — paragraphs, lists, etc.
   ctaLabel?: string;
@@ -57,6 +91,7 @@ export function renderEmailLayout(opts: EmailLayoutOptions): string {
     companyName,
     orgContext,
     iconGlyph,
+    iconTone = 'positive',
     heading,
     bodyHtml,
     ctaLabel,
@@ -69,14 +104,15 @@ export function renderEmailLayout(opts: EmailLayoutOptions): string {
     ? `<p style="margin: 4px 0 0 0; font-size: 12px; color: #94A3B8; font-family: Arial, Helvetica, sans-serif;">${orgContext.map(escapeHtml).join(' &middot; ')}</p>`
     : '';
 
+  const toneColors = ICON_TONE_COLORS[iconTone];
   const iconBadge = iconGlyph
     ? `
     <tr>
       <td align="center" style="padding: 32px 40px 0 40px;">
         <table role="presentation" cellpadding="0" cellspacing="0">
           <tr>
-            <td width="48" height="48" align="center" valign="middle" style="width: 48px; height: 48px; border-radius: 24px; background-color: ${BRAND.primarySoft};">
-              <span style="font-size: 22px; font-weight: bold; color: ${BRAND.primaryDark}; font-family: Arial, Helvetica, sans-serif; line-height: 48px;">${escapeHtml(iconGlyph)}</span>
+            <td width="48" height="48" align="center" valign="middle" style="width: 48px; height: 48px; border-radius: 24px; background-color: ${toneColors.soft};">
+              <span style="font-size: 22px; font-weight: bold; color: ${toneColors.dark}; font-family: Arial, Helvetica, sans-serif; line-height: 48px;">${escapeHtml(iconGlyph)}</span>
             </td>
           </tr>
         </table>

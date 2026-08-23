@@ -66,6 +66,7 @@ export function renderTechnicianResponseEmail(opts: TechnicianResponseEmailOptio
     companyName,
     orgContext: [companyName, branchName, departmentName],
     iconGlyph: isAccepted ? '✓' : '!',
+    iconTone: isAccepted ? 'positive' : 'negative',
     heading: isAccepted ? 'Assignment accepted' : 'Assignment rejected',
     bodyHtml,
     ctaLabel: 'Open Job Card',

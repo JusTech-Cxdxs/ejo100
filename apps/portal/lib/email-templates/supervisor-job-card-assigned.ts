@@ -69,6 +69,7 @@ export function renderSupervisorJobCardAssignedEmail(opts: SupervisorJobCardAssi
     companyName,
     orgContext: [companyName, branchName, departmentName],
     iconGlyph: '!',
+    iconTone: 'neutral',
     heading: 'New Job Card assigned to you',
     bodyHtml,
     ctaLabel: 'Open Job Card',
