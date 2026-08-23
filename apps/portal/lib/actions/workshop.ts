@@ -30,6 +30,9 @@ import { generateSecurePassword } from '@/lib/utils/generate-password';
 import { renderCustomerWelcomeEmail } from '@/lib/email-templates/customer-welcome';
 import { renderSupervisorJobCardAssignedEmail } from '@/lib/email-templates/supervisor-job-card-assigned';
 import { renderCustomerJobCardAcknowledgmentEmail } from '@/lib/email-templates/customer-job-card-acknowledgment';
+import { renderJobCardDecisionEmail } from '@/lib/email-templates/job-card-decision';
+import { renderTechnicianJobCardAssignedEmail } from '@/lib/email-templates/technician-job-card-assigned';
+import { renderTechnicianResponseEmail } from '@/lib/email-templates/technician-response-notification';
 
 class WorkshopActionError extends Error {}
 
@@ -144,6 +147,64 @@ async function requireJobCardApprover(jobCard: { supervisorId: string | null }):
     return user;
   }
   throw new WorkshopActionError('Only the assigned supervisor or a Master Administrator can approve or reject this Job Card.');
+}
+
+/** Notifies whoever created a Job Card the moment it's approved or
+ * rejected — shared by approveJobCard/rejectJobCard below rather than
+ * duplicated, since the "fetch context, build the email, send it"
+ * logic is identical either way, only the content differs (handled by
+ * renderJobCardDecisionEmail's own branching). Fail-soft, matching
+ * every other notification in this file: a transient SMTP hiccup is
+ * never a reason to undo a real, already-successful approval/rejection. */
+async function notifyJobCardCreatorOfDecision(params: {
+  jobCardId: string;
+  jobNumber: string;
+  decision: 'APPROVED' | 'REJECTED';
+  approverId: string;
+  rejectionReason?: string;
+  notes?: string;
+}): Promise<void> {
+  try {
+    const jobCard = await prisma.jobCard.findUnique({
+      where: { id: params.jobCardId },
+      select: {
+        customer: { select: { fullName: true } },
+        createdBy: { select: { fullName: true, email: true } },
+        department: { select: { name: true } },
+      },
+    });
+    if (!jobCard) return;
+    const approver = await prisma.user.findUnique({
+      where: { id: params.approverId },
+      select: { fullName: true },
+    });
+    const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+
+    await sendEmail(
+      jobCard.createdBy.email,
+      params.decision === 'APPROVED'
+        ? `Job Card ${params.jobNumber} approved`
+        : `Job Card ${params.jobNumber} returned for correction`,
+      renderJobCardDecisionEmail({
+        decision: params.decision,
+        recipientName: jobCard.createdBy.fullName,
+        jobNumber: params.jobNumber,
+        customerName: jobCard.customer.fullName,
+        approverName: approver?.fullName ?? 'Supervisor',
+        rejectionReason: params.rejectionReason,
+        notes: params.notes,
+        jobCardUrl: `${portalUrl}/workshop/job-cards/${params.jobCardId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Job Card decision email to creator', params.jobNumber, err);
+  }
 }
 
 /** The Workshop is currently scoped to a single branch (Isolo) per the
@@ -978,6 +1039,14 @@ export async function approveJobCard(jobCardId: string, notes?: string): Promise
     entityId: jobCardId,
     metadata: notes?.trim() ? { notes: notes.trim() } : undefined,
   });
+
+  await notifyJobCardCreatorOfDecision({
+    jobCardId,
+    jobNumber: jobCard.jobNumber,
+    decision: 'APPROVED',
+    approverId: approver.id,
+    notes,
+  });
 }
 
 /** Returns the Job Card to the creator for correction — the required
@@ -1016,6 +1085,15 @@ export async function rejectJobCard(jobCardId: string, reason: string, notes?: s
     entityId: jobCardId,
     metadata: { reason: trimmedReason, notes: notes?.trim() || undefined },
   });
+
+  await notifyJobCardCreatorOfDecision({
+    jobCardId,
+    jobNumber: jobCard.jobNumber,
+    decision: 'REJECTED',
+    approverId: approver.id,
+    rejectionReason: trimmedReason,
+    notes,
+  });
 }
 
 /** Permanently removes a Job Card and, via schema-level cascades, its
@@ -1026,11 +1104,205 @@ export async function deleteJobCard(jobCardId: string): Promise<void> {
   await prisma.jobCard.delete({ where: { id: jobCardId } });
 }
 
+/** Assigns a technician and resets the acceptance workflow to PENDING —
+ * being assigned isn't the same as having agreed to do it (see the
+ * technicianAcceptanceStatus field comment on JobCard). Reassigning to
+ * someone new correctly clears any previous person's response; their
+ * accept/reject has no bearing on a different person's assignment.
+ * Notifies the technician — fail-soft, matching every other
+ * notification in this file. */
 export async function assignTechnician(jobCardId: string, technicianId: string) {
   await requireUser();
-  return prisma.jobCard.update({
+  const jobCard = await prisma.jobCard.update({
     where: { id: jobCardId },
-    data: { assignedTechnicianId: technicianId },
+    data: {
+      assignedTechnicianId: technicianId,
+      technicianAcceptanceStatus: 'PENDING',
+      technicianRespondedAt: null,
+      technicianRejectionReason: null,
+    },
+    select: {
+      id: true,
+      jobNumber: true,
+      customer: { select: { fullName: true } },
+      supervisor: { select: { fullName: true } },
+      department: { select: { name: true } },
+      vehicle: { select: { make: true, model: true } },
+      complaints: { orderBy: { sequenceNumber: 'asc' } },
+    },
+  });
+
+  try {
+    const technician = await prisma.user.findUnique({
+      where: { id: technicianId },
+      select: { fullName: true, email: true },
+    });
+    if (!technician) return jobCard;
+    const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      technician.email,
+      `You've been assigned to Job Card ${jobCard.jobNumber}`,
+      renderTechnicianJobCardAssignedEmail({
+        technicianName: technician.fullName,
+        jobNumber: jobCard.jobNumber,
+        customerName: jobCard.customer.fullName,
+        vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+        complaints: jobCard.complaints.map((c: (typeof jobCard.complaints)[number]) => c.description),
+        supervisorName: jobCard.supervisor?.fullName ?? 'Supervisor',
+        jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCard.id}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send technician assignment email for Job Card', jobCard.jobNumber, err);
+  }
+
+  return jobCard;
+}
+
+/** Only the assigned technician, or a Master Administrator, may respond
+ * to an assignment — same reasoning and shape as
+ * requireJobCardApprover above, applied to a different actor. */
+async function requireAssignedTechnician(jobCard: { assignedTechnicianId: string | null }): Promise<{ id: string }> {
+  const user = await requireUser();
+  if (jobCard.assignedTechnicianId === user.id) {
+    return user;
+  }
+  if (await currentUserIsMasterAdmin()) {
+    return user;
+  }
+  throw new WorkshopActionError('Only the assigned technician or a Master Administrator can respond to this assignment.');
+}
+
+/** Notifies the supervisor of a technician's response — shared by
+ * acceptTechnicianAssignment/rejectTechnicianAssignment below, same
+ * "one shared notify function, template branches internally" pattern
+ * as notifyJobCardCreatorOfDecision. */
+async function notifySupervisorOfTechnicianResponse(params: {
+  jobCardId: string;
+  jobNumber: string;
+  response: 'ACCEPTED' | 'REJECTED';
+  technicianId: string;
+  rejectionReason?: string;
+}): Promise<void> {
+  try {
+    const jobCard = await prisma.jobCard.findUnique({
+      where: { id: params.jobCardId },
+      select: {
+        customer: { select: { fullName: true } },
+        supervisor: { select: { fullName: true, email: true } },
+        department: { select: { name: true } },
+      },
+    });
+    if (!jobCard?.supervisor) return;
+    const technician = await prisma.user.findUnique({
+      where: { id: params.technicianId },
+      select: { fullName: true },
+    });
+    const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+
+    await sendEmail(
+      jobCard.supervisor.email,
+      params.response === 'ACCEPTED'
+        ? `Assignment accepted on Job Card ${params.jobNumber}`
+        : `Assignment rejected on Job Card ${params.jobNumber}`,
+      renderTechnicianResponseEmail({
+        response: params.response,
+        supervisorName: jobCard.supervisor.fullName,
+        jobNumber: params.jobNumber,
+        customerName: jobCard.customer.fullName,
+        technicianName: technician?.fullName ?? 'Technician',
+        rejectionReason: params.rejectionReason,
+        jobCardUrl: `${portalUrl}/workshop/job-cards/${params.jobCardId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send technician response email to supervisor', params.jobNumber, err);
+  }
+}
+
+export async function acceptTechnicianAssignment(jobCardId: string): Promise<void> {
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: { assignedTechnicianId: true, jobNumber: true },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  const technician = await requireAssignedTechnician(jobCard);
+
+  await prisma.jobCard.update({
+    where: { id: jobCardId },
+    data: {
+      technicianAcceptanceStatus: 'ACCEPTED',
+      technicianRespondedAt: new Date(),
+      technicianRejectionReason: null,
+    },
+  });
+
+  await writeAuditLog({
+    userId: technician.id,
+    action: 'assignment.accepted',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+  });
+
+  await notifySupervisorOfTechnicianResponse({
+    jobCardId,
+    jobNumber: jobCard.jobNumber,
+    response: 'ACCEPTED',
+    technicianId: technician.id,
+  });
+}
+
+export async function rejectTechnicianAssignment(jobCardId: string, reason: string): Promise<void> {
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) {
+    throw new WorkshopActionError('A reason is required to reject an assignment.');
+  }
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: { assignedTechnicianId: true, jobNumber: true },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  const technician = await requireAssignedTechnician(jobCard);
+
+  await prisma.jobCard.update({
+    where: { id: jobCardId },
+    data: {
+      technicianAcceptanceStatus: 'REJECTED',
+      technicianRespondedAt: new Date(),
+      technicianRejectionReason: trimmedReason,
+    },
+  });
+
+  await writeAuditLog({
+    userId: technician.id,
+    action: 'assignment.rejected',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { reason: trimmedReason },
+  });
+
+  await notifySupervisorOfTechnicianResponse({
+    jobCardId,
+    jobNumber: jobCard.jobNumber,
+    response: 'REJECTED',
+    technicianId: technician.id,
+    rejectionReason: trimmedReason,
   });
 }
 
