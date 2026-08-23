@@ -154,6 +154,17 @@ export default async function JobCardDetailPage({
                 <dt className="text-[var(--ejo-text-muted)]">Supervisor</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
                   {jobCard.supervisor?.fullName ?? 'Unassigned'}
+                  {jobCard.supervisor ? (
+                    <span
+                      className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        jobCard.approvalStatus === 'APPROVED'
+                          ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
+                          : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
+                      }`}
+                    >
+                      {jobCard.approvalStatus === 'APPROVED' ? 'Approved' : 'Awaiting approval'}
+                    </span>
+                  ) : null}
                 </dd>
               </div>
               <div>
