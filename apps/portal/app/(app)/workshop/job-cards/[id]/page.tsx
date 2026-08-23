@@ -153,7 +153,7 @@ export default async function JobCardDetailPage({
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Supervisor</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
-                  {jobCard.supervisor?.fullName ?? '—'}
+                  {jobCard.supervisor?.fullName ?? 'Unassigned'}
                 </dd>
               </div>
               <div>
