@@ -1,7 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
-import { getJobCard, getJobCardAuditTrail, listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction } from '@/lib/actions/workshop-form-handlers';
+import { getJobCard, getJobCardAuditTrail, listTechnicianCandidates, listEligibleSupervisorsForJobCard, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -36,6 +36,7 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'job_card.created': 'Job Card created',
   'job_card.approved': 'Job Card approved',
   'job_card.rejected': 'Job Card rejected',
+  'job_card.supervisor_reassigned': 'Supervisor reassigned',
   'assignment.accepted': 'Technician accepted assignment',
   'assignment.rejected': 'Technician rejected assignment',
 };
@@ -56,9 +57,13 @@ export default async function JobCardDetailPage({
     currentUserId(),
   ]);
   if (!jobCard) notFound();
-  const auditTrail = await getJobCardAuditTrail(id);
+  const [auditTrail, eligibleSupervisors] = await Promise.all([
+    getJobCardAuditTrail(id),
+    listEligibleSupervisorsForJobCard(id),
+  ]);
   const isApprover = isMasterAdmin || jobCard.supervisor?.id === viewerId;
   const isAssignedTechnician = isMasterAdmin || jobCard.assignedTechnician?.id === viewerId;
+  const isCreator = isMasterAdmin || jobCard.createdBy.id === viewerId;
 
   return (
     <div className="p-8">
@@ -210,6 +215,48 @@ export default async function JobCardDetailPage({
         </div>
 
         <div className="space-y-6">
+          {isCreator && !jobCard.supervisor ? (
+            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Reassign supervisor</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                {jobCard.approvalStatus === 'REJECTED'
+                  ? `This Job Card was rejected${jobCard.rejectionReason ? ` — ${jobCard.rejectionReason}` : ''}. Route it to another eligible supervisor in the same department.`
+                  : 'No supervisor is currently assigned. Choose one to route this Job Card to.'}
+              </p>
+              {eligibleSupervisors.supervisors.length === 0 ? (
+                <p className="mt-3 text-xs text-[var(--ejo-error)]">
+                  No eligible supervisor or Master Administrator is currently active.
+                </p>
+              ) : (
+                <form action={reassignSupervisorFormAction} className="mt-3 space-y-2">
+                  <input type="hidden" name="jobCardId" value={jobCard.id} />
+                  <select
+                    name="supervisorId"
+                    required
+                    defaultValue=""
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                  >
+                    <option value="" disabled>Select a supervisor…</option>
+                    {eligibleSupervisors.supervisors.map((s) => (
+                      <option key={s.id} value={s.id}>{s.fullName}</option>
+                    ))}
+                  </select>
+                  <SubmitButton
+                    label="Reassign"
+                    pendingLabel="Reassigning…"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                  />
+                </form>
+              )}
+              {eligibleSupervisors.usingFallback ? (
+                <p className="mt-1 text-[11px] text-[var(--ejo-warning)]">
+                  No one is placed in this department as a Supervisor yet — showing Master Administrators as a
+                  stand-in.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {isApprover && jobCard.approvalStatus === 'PENDING' ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Review this Job Card</h2>
