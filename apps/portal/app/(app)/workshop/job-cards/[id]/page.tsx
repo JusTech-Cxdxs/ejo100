@@ -1,7 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
-import { getJobCard, getJobCardAuditTrail, listTechnicianCandidates, listEligibleSupervisorsForJobCard, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction } from '@/lib/actions/workshop-form-handlers';
+import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, listTechnicianCandidates, listEligibleSupervisorsForJobCard, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, deleteEstimateLineItemFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -39,7 +39,23 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'job_card.supervisor_reassigned': 'Supervisor reassigned',
   'assignment.accepted': 'Technician accepted assignment',
   'assignment.rejected': 'Technician rejected assignment',
+  'estimate.line_item_added': 'Estimate line added',
+  'estimate.line_item_removed': 'Estimate line removed',
 };
+
+const ESTIMATE_TYPE_LABEL: Record<string, string> = {
+  STORE_PART: 'Store Part',
+  EXTERNAL_JOB: 'External Job',
+  LABOUR: 'Labour',
+};
+
+// Prisma returns Decimal fields as Decimal objects (from decimal.js),
+// not plain numbers — Number(...) here is a deliberate, safe
+// conversion, not a shortcut around it, since these amounts have
+// already been rounded to 2dp at write time (see addEstimateLineItem).
+function formatNaira(value: unknown): string {
+  return `₦${Number(value).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 export default async function JobCardDetailPage({
   params,
@@ -57,13 +73,15 @@ export default async function JobCardDetailPage({
     currentUserId(),
   ]);
   if (!jobCard) notFound();
-  const [auditTrail, eligibleSupervisors] = await Promise.all([
+  const [auditTrail, eligibleSupervisors, estimate] = await Promise.all([
     getJobCardAuditTrail(id),
     listEligibleSupervisorsForJobCard(id),
+    getJobCardEstimate(id),
   ]);
   const isApprover = isMasterAdmin || jobCard.supervisor?.id === viewerId;
   const isAssignedTechnician = isMasterAdmin || jobCard.assignedTechnician?.id === viewerId;
   const isCreator = isMasterAdmin || jobCard.createdBy.id === viewerId;
+  const isEstimateContributor = isMasterAdmin || jobCard.supervisor?.id === viewerId || jobCard.assignedTechnician?.id === viewerId;
 
   return (
     <div className="p-8">
@@ -216,6 +234,130 @@ export default async function JobCardDetailPage({
                 <h2 className="mt-4 text-sm font-semibold text-[var(--ejo-text)]">Diagnosis</h2>
                 <p className="mt-2 text-sm text-[var(--ejo-text)]">{jobCard.diagnosis}</p>
               </>
+            ) : null}
+          </div>
+
+          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Estimate</h2>
+            {!estimate || estimate.lineItems.length === 0 ? (
+              <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No estimate lines yet.</p>
+            ) : (
+              <>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
+                        <th className="py-2 pr-3 font-medium">Type</th>
+                        <th className="py-2 pr-3 font-medium">Description</th>
+                        <th className="py-2 pr-3 text-right font-medium">Qty</th>
+                        <th className="py-2 pr-3 text-right font-medium">Unit Price</th>
+                        <th className="py-2 pr-3 text-right font-medium">Amount</th>
+                        <th className="py-2 pr-3 font-medium">Entered By</th>
+                        {isEstimateContributor ? <th className="py-2 font-medium">&nbsp;</th> : null}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {estimate.lineItems.map((item: (typeof estimate.lineItems)[number]) => (
+                        <tr key={item.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                          <td className="py-2 pr-3 text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</td>
+                          <td className="py-2 pr-3 text-[var(--ejo-text)]">{item.description}</td>
+                          <td className="py-2 pr-3 text-right text-[var(--ejo-text)]">{item.quantity}</td>
+                          <td className="py-2 pr-3 text-right text-[var(--ejo-text)]">{formatNaira(item.unitPrice)}</td>
+                          <td className="py-2 pr-3 text-right font-medium text-[var(--ejo-text)]">{formatNaira(item.amount)}</td>
+                          <td className="py-2 pr-3 text-xs text-[var(--ejo-text-muted)]">{item.enteredBy.fullName}</td>
+                          {isEstimateContributor ? (
+                            <td className="py-2">
+                              {viewerId === item.enteredById || isApprover ? (
+                                <form action={deleteEstimateLineItemFormAction}>
+                                  <input type="hidden" name="jobCardId" value={jobCard.id} />
+                                  <input type="hidden" name="lineItemId" value={item.id} />
+                                  <button
+                                    type="submit"
+                                    className="text-xs font-medium text-[var(--ejo-error)] hover:underline"
+                                  >
+                                    Remove
+                                  </button>
+                                </form>
+                              ) : null}
+                            </td>
+                          ) : null}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-3 space-y-1 border-t border-[var(--ejo-border)] pt-3 text-sm">
+                  {(['STORE_PART', 'EXTERNAL_JOB', 'LABOUR'] as const).map((type) => {
+                    const subtotal = estimate.lineItems
+                      .filter((item: (typeof estimate.lineItems)[number]) => item.type === type)
+                      .reduce((sum: number, item: (typeof estimate.lineItems)[number]) => sum + Number(item.amount), 0);
+                    if (subtotal === 0) return null;
+                    return (
+                      <div key={type} className="flex justify-between text-[var(--ejo-text-muted)]">
+                        <span>{ESTIMATE_TYPE_LABEL[type]} subtotal</span>
+                        <span>{formatNaira(subtotal)}</span>
+                      </div>
+                    );
+                  })}
+                  <div className="flex justify-between text-base font-semibold text-[var(--ejo-text)]">
+                    <span>Total Estimate</span>
+                    <span>
+                      {formatNaira(
+                        estimate.lineItems.reduce(
+                          (sum: number, item: (typeof estimate.lineItems)[number]) => sum + Number(item.amount),
+                          0,
+                        ),
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {isEstimateContributor ? (
+              <form action={addEstimateLineItemFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4 sm:grid-cols-5">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <select
+                  name="type"
+                  required
+                  defaultValue="STORE_PART"
+                  className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)] sm:col-span-1"
+                >
+                  <option value="STORE_PART">Store Part</option>
+                  <option value="EXTERNAL_JOB">External Job</option>
+                  <option value="LABOUR">Labour</option>
+                </select>
+                <input
+                  name="description"
+                  required
+                  placeholder="Description"
+                  className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)] sm:col-span-2"
+                />
+                <input
+                  name="quantity"
+                  type="number"
+                  step="1"
+                  min="1"
+                  required
+                  defaultValue="1"
+                  placeholder="Qty"
+                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                />
+                <input
+                  name="unitPrice"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  placeholder="Unit Price"
+                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                />
+                <SubmitButton
+                  label="Add"
+                  pendingLabel="Adding…"
+                  className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)] sm:col-span-5"
+                />
+              </form>
             ) : null}
           </div>
 
