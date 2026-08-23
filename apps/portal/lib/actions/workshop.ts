@@ -276,14 +276,16 @@ export type EligibleSupervisorResult = {
  * creation completely blocked for both departments until a separate,
  * much larger Users/Roles admin area is built. The fallback is surfaced
  * to the UI explicitly (`usingFallback: true`), never silently. */
-export async function listEligibleSupervisorsForVehicleType(
-  vehicleType: 'PASSENGER' | 'COMMERCIAL',
-): Promise<EligibleSupervisorResult> {
-  await requireUser();
-  const department = await getWorkshopDepartmentForVehicleType(vehicleType);
+/** The actual eligibility query, shared by both entry points below —
+ * one takes a vehicle type (creation flow, department not yet known),
+ * the other takes a Job Card whose department is already resolved
+ * (reassignment flow). Extracted here rather than duplicated so the
+ * eligibility rule (and its Master Admin fallback) only ever lives in
+ * one place. */
+async function listEligibleSupervisorsForDepartmentId(departmentId: string): Promise<EligibleSupervisorResult> {
   const departmentSupervisors = await prisma.user.findMany({
     where: {
-      departmentId: department.id,
+      departmentId,
       isActive: true,
       roles: { some: { role: { slug: 'workshop-supervisor' } } },
     },
@@ -302,6 +304,29 @@ export async function listEligibleSupervisorsForVehicleType(
     select: { id: true, fullName: true, email: true },
   });
   return { supervisors: masterAdmins, usingFallback: true };
+}
+
+export async function listEligibleSupervisorsForVehicleType(
+  vehicleType: 'PASSENGER' | 'COMMERCIAL',
+): Promise<EligibleSupervisorResult> {
+  await requireUser();
+  const department = await getWorkshopDepartmentForVehicleType(vehicleType);
+  return listEligibleSupervisorsForDepartmentId(department.id);
+}
+
+/** For the "reassign supervisor" picker on a Job Card whose department
+ * is already known (set at creation, from the vehicle's own type) —
+ * no need to re-derive it from a vehicle type again. */
+export async function listEligibleSupervisorsForJobCard(jobCardId: string): Promise<EligibleSupervisorResult> {
+  await requireUser();
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: { departmentId: true },
+  });
+  if (!jobCard?.departmentId) {
+    return { supervisors: [], usingFallback: false };
+  }
+  return listEligibleSupervisorsForDepartmentId(jobCard.departmentId);
 }
 
 /** Real Company/Branch/Department names for the branded email layout's
@@ -1075,6 +1100,15 @@ export async function rejectJobCard(jobCardId: string, reason: string, notes?: s
       approvedAt: new Date(),
       rejectionReason: trimmedReason,
       approvalNotes: notes?.trim() || null,
+      // Deliberately cleared, not left pointing at the rejecting
+      // supervisor — a rejection means nobody currently owns this Job
+      // Card as supervisor, freeing the creator to route it to someone
+      // else eligible in the same department. The rejection itself,
+      // who made it, and why all stay fully visible via the fields
+      // above and the audit log below — clearing this one field only
+      // affects "who is currently assigned," never the historical
+      // record of what happened.
+      supervisorId: null,
     },
   });
 
@@ -1094,6 +1128,99 @@ export async function rejectJobCard(jobCardId: string, reason: string, notes?: s
     rejectionReason: trimmedReason,
     notes,
   });
+}
+
+/** Routes a Job Card to a different supervisor — used after the
+ * current one has rejected it (their name is deliberately no longer
+ * attached; see rejectJobCard above) and the creator wants to try
+ * someone else eligible in the same department. Only the Job Card's
+ * own creator, or a Master Administrator, may do this — matching
+ * exactly who was asked to be able to.
+ *
+ * Resets the whole approval dimension back to PENDING and clears the
+ * previous decision's fields — a fresh supervisor deserves a fresh
+ * decision, not one carried over from someone else. This mirrors
+ * exactly how assignTechnician() already resets the acceptance
+ * dimension on every (re)assignment; same principle, applied here for
+ * consistency. */
+export async function reassignSupervisor(jobCardId: string, newSupervisorId: string): Promise<void> {
+  const user = await requireUser();
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: {
+      createdById: true,
+      departmentId: true,
+      jobNumber: true,
+      customer: { select: { fullName: true } },
+      vehicle: { select: { make: true, model: true } },
+      complaints: { orderBy: { sequenceNumber: 'asc' } },
+    },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  if (jobCard.createdById !== user.id && !(await currentUserIsMasterAdmin())) {
+    throw new WorkshopActionError('Only this Job Card\'s creator or a Master Administrator can reassign the supervisor.');
+  }
+  if (!jobCard.departmentId) {
+    throw new WorkshopActionError('This Job Card has no Workshop department set — cannot validate supervisor eligibility.');
+  }
+  if (!(await isEligibleSupervisor(newSupervisorId, jobCard.departmentId))) {
+    throw new WorkshopActionError('The selected supervisor is not eligible for this Job Card\'s Workshop department.');
+  }
+
+  await prisma.jobCard.update({
+    where: { id: jobCardId },
+    data: {
+      supervisorId: newSupervisorId,
+      approvalStatus: 'PENDING',
+      approvedById: null,
+      approvedAt: null,
+      rejectionReason: null,
+      approvalNotes: null,
+    },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'job_card.supervisor_reassigned',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { newSupervisorId },
+  });
+
+  try {
+    const supervisor = await prisma.user.findUnique({
+      where: { id: newSupervisorId },
+      select: { fullName: true, email: true },
+    });
+    if (!supervisor) return;
+    const department = await prisma.department.findUnique({
+      where: { id: jobCard.departmentId },
+      select: { name: true },
+    });
+    const orgContext = await getWorkshopOrgContext(department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      supervisor.email,
+      `New Job Card ${jobCard.jobNumber} assigned to you`,
+      renderSupervisorJobCardAssignedEmail({
+        supervisorName: supervisor.fullName,
+        jobNumber: jobCard.jobNumber,
+        customerName: jobCard.customer.fullName,
+        vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+        complaints: jobCard.complaints.map((c: (typeof jobCard.complaints)[number]) => c.description),
+        jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send supervisor reassignment email for Job Card', jobCard.jobNumber, err);
+  }
 }
 
 /** Permanently removes a Job Card and, via schema-level cascades, its
@@ -1283,9 +1410,17 @@ export async function rejectTechnicianAssignment(jobCardId: string, reason: stri
   await prisma.jobCard.update({
     where: { id: jobCardId },
     data: {
-      technicianAcceptanceStatus: 'REJECTED',
-      technicianRespondedAt: new Date(),
-      technicianRejectionReason: trimmedReason,
+      // Fully reset back to the "never assigned" state, not left
+      // pointing at the rejecting technician — they said no, so they
+      // shouldn't still show as "the assigned technician" while the
+      // supervisor picks someone else. The full rejection record (who,
+      // when, why) is preserved below in the audit log regardless of
+      // these fields being cleared — clearing only affects "who is
+      // currently assigned," never the historical record.
+      assignedTechnicianId: null,
+      technicianAcceptanceStatus: null,
+      technicianRespondedAt: null,
+      technicianRejectionReason: null,
     },
   });
 

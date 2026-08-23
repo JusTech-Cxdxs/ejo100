@@ -33,6 +33,7 @@ import {
   rejectJobCard,
   acceptTechnicianAssignment,
   rejectTechnicianAssignment,
+  reassignSupervisor,
 } from './workshop';
 
 function str(formData: FormData, key: string): string {
@@ -158,6 +159,17 @@ export async function rejectTechnicianAssignmentFormAction(formData: FormData) {
     await rejectTechnicianAssignment(id, str(formData, 'reason'));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not reject assignment.';
+    redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${id}`);
+}
+
+export async function reassignSupervisorFormAction(formData: FormData) {
+  const id = str(formData, 'jobCardId');
+  try {
+    await reassignSupervisor(id, str(formData, 'supervisorId'));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not reassign supervisor.';
     redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${id}`);
