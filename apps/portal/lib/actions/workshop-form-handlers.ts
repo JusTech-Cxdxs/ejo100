@@ -34,6 +34,9 @@ import {
   acceptTechnicianAssignment,
   rejectTechnicianAssignment,
   reassignSupervisor,
+  addEstimateLineItem,
+  deleteEstimateLineItem,
+  type EstimateLineItemType,
 } from './workshop';
 
 function str(formData: FormData, key: string): string {
@@ -173,6 +176,33 @@ export async function reassignSupervisorFormAction(formData: FormData) {
     redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${id}`);
+}
+
+export async function addEstimateLineItemFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await addEstimateLineItem(jobCardId, {
+      type: str(formData, 'type') as EstimateLineItemType,
+      description: str(formData, 'description'),
+      quantity: num(formData, 'quantity') ?? NaN,
+      unitPrice: num(formData, 'unitPrice') ?? NaN,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not add estimate line item.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function deleteEstimateLineItemFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await deleteEstimateLineItem(str(formData, 'lineItemId'));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not remove estimate line item.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
 }
 
 export async function assignTechnicianFormAction(formData: FormData) {

@@ -1479,3 +1479,158 @@ export async function getWorkshopDashboardCounts() {
   ]);
   return { activeJobCards, totalCustomers, totalVehicles, inWorkshop };
 }
+
+// ---------------------------------------------------------------------------
+// ESTIMATES — structured line items (Store Part / External Job / Labour),
+// one Estimate per Job Card for now. `version` on Estimate exists for a
+// later phase (controlled technician-revision approval) to extend into
+// real versioning without restructuring this; nothing here increments it
+// yet. The cash-advance/receipt tracking for EXTERNAL_JOB entries is
+// deliberately out of scope here too — this phase gets a working, costed
+// estimate; that additional accountability layer is its own later phase.
+// ---------------------------------------------------------------------------
+
+export type EstimateLineItemType = 'STORE_PART' | 'EXTERNAL_JOB' | 'LABOUR';
+
+export type EstimateLineItemInput = {
+  type: EstimateLineItemType;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+};
+
+/** Who can add to a Job Card's estimate — the assigned supervisor, the
+ * assigned technician, or a Master Administrator. Deliberately
+ * permissive at this stage, not yet the controlled revision-approval
+ * workflow a later phase adds — the accountability that actually
+ * matters right now is that every line records exactly who entered it
+ * and when, not gatekeeping who's allowed to contribute in the first
+ * place. */
+async function requireEstimateContributor(jobCard: {
+  supervisorId: string | null;
+  assignedTechnicianId: string | null;
+}): Promise<{ id: string }> {
+  const user = await requireUser();
+  if (jobCard.supervisorId === user.id || jobCard.assignedTechnicianId === user.id) {
+    return user;
+  }
+  if (await currentUserIsMasterAdmin()) {
+    return user;
+  }
+  throw new WorkshopActionError(
+    'Only the assigned supervisor, the assigned technician, or a Master Administrator can add to this estimate.',
+  );
+}
+
+export async function getJobCardEstimate(jobCardId: string) {
+  await requireUser();
+  return prisma.estimate.findUnique({
+    where: { jobCardId },
+    include: {
+      lineItems: {
+        orderBy: { createdAt: 'asc' },
+        include: { enteredBy: { select: { fullName: true } } },
+      },
+    },
+  });
+}
+
+/** Adds one line item, creating the Estimate itself on first use (a
+ * Job Card has no estimate until someone actually adds a line to it —
+ * no separate "start an estimate" step needed). `amount` is always
+ * computed here, server-side, from `quantity * unitPrice` — never
+ * taken from client input, so it can't be tampered with or drift from
+ * what the two factors actually multiply to. */
+export async function addEstimateLineItem(jobCardId: string, input: EstimateLineItemInput): Promise<void> {
+  const description = input.description.trim();
+  if (!description) {
+    throw new WorkshopActionError('A description is required for this line item.');
+  }
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+    throw new WorkshopActionError('Quantity must be a positive number.');
+  }
+  if (!Number.isFinite(input.unitPrice) || input.unitPrice < 0) {
+    throw new WorkshopActionError('Unit price must be zero or a positive number.');
+  }
+
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: { supervisorId: true, assignedTechnicianId: true, jobNumber: true },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  const contributor = await requireEstimateContributor(jobCard);
+
+  // Rounded to 2dp explicitly — quantity * unitPrice on plain JS numbers
+  // can produce results with more binary-floating-point noise than a
+  // currency amount should ever show (e.g. 0.1 + 0.2 style drift).
+  const amount = Math.round(input.quantity * input.unitPrice * 100) / 100;
+
+  const estimate = await prisma.estimate.upsert({
+    where: { jobCardId },
+    update: {},
+    create: { jobCardId, createdById: contributor.id },
+    select: { id: true },
+  });
+
+  await prisma.estimateLineItem.create({
+    data: {
+      estimateId: estimate.id,
+      type: input.type,
+      description,
+      quantity: input.quantity,
+      unitPrice: input.unitPrice,
+      amount,
+      enteredById: contributor.id,
+    },
+  });
+
+  await writeAuditLog({
+    userId: contributor.id,
+    action: 'estimate.line_item_added',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { type: input.type, description, quantity: input.quantity, unitPrice: input.unitPrice, amount },
+  });
+}
+
+/** Whoever entered a line, the assigned supervisor, or a Master
+ * Administrator may remove it — a technician can correct their own
+ * mistake, but can't erase someone else's entry without the
+ * supervisor's or an admin's oversight. */
+export async function deleteEstimateLineItem(lineItemId: string): Promise<void> {
+  const lineItem = await prisma.estimateLineItem.findUnique({
+    where: { id: lineItemId },
+    select: {
+      enteredById: true,
+      description: true,
+      estimate: {
+        select: {
+          jobCardId: true,
+          jobCard: { select: { supervisorId: true } },
+        },
+      },
+    },
+  });
+  if (!lineItem) {
+    throw new WorkshopActionError('Estimate line item not found.');
+  }
+  const user = await requireUser();
+  const isOwnEntry = lineItem.enteredById === user.id;
+  const isSupervisor = lineItem.estimate.jobCard.supervisorId === user.id;
+  const isMasterAdmin = await currentUserIsMasterAdmin();
+  if (!isOwnEntry && !isSupervisor && !isMasterAdmin) {
+    throw new WorkshopActionError('Only whoever entered this line, the assigned supervisor, or a Master Administrator can remove it.');
+  }
+
+  await prisma.estimateLineItem.delete({ where: { id: lineItemId } });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'estimate.line_item_removed',
+    entityType: 'JobCard',
+    entityId: lineItem.estimate.jobCardId,
+    metadata: { description: lineItem.description },
+  });
+}
