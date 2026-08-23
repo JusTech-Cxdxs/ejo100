@@ -512,6 +512,16 @@ enum JobCardApprovalStatus {
   REJECTED
 }
 
+// Whether an assigned technician has agreed to take on the work —
+// mirrors JobCardApprovalStatus's shape deliberately, same underlying
+// idea (a real person's explicit response, not inferred from anything
+// else) applied to a different actor at a different point in the flow.
+enum TechnicianAcceptanceStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
 model JobCard {
   id          String        @id @default(cuid())
   jobNumber   String        @unique // human-facing, e.g. "JC-2026-000123" — generated server-side, never user-entered
@@ -531,6 +541,17 @@ model JobCard {
   mileageAtCheckIn Int?
 
   assignedTechnicianId String? // User.id — nullable until a technician is assigned
+  // Whether the assigned technician has accepted the work — a separate
+  // dimension from `status`/`approvalStatus` above, same principle:
+  // being assigned isn't the same as having agreed to do it. Nullable
+  // specifically because there's a real "no technician assigned yet"
+  // state that isn't the same as "assigned but hasn't responded" — set
+  // to PENDING the moment assignTechnician() runs, cleared back to null
+  // if reassigned to someone else (their predecessor's accept/reject
+  // has no bearing on a different person's assignment).
+  technicianAcceptanceStatus   TechnicianAcceptanceStatus?
+  technicianRespondedAt       DateTime?
+  technicianRejectionReason   String? // required when the technician rejects, mirrors JobCard.rejectionReason's role for approval
   // The Workshop Supervisor/HOD of the resolved department, chosen by
   // whoever creates the Job Card from a list already filtered to that
   // department — this is the "first assignment always goes to the right
