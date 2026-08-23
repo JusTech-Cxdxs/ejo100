@@ -1,7 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -36,6 +36,8 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'job_card.created': 'Job Card created',
   'job_card.approved': 'Job Card approved',
   'job_card.rejected': 'Job Card rejected',
+  'assignment.accepted': 'Technician accepted assignment',
+  'assignment.rejected': 'Technician rejected assignment',
 };
 
 export default async function JobCardDetailPage({
@@ -56,6 +58,7 @@ export default async function JobCardDetailPage({
   if (!jobCard) notFound();
   const auditTrail = await getJobCardAuditTrail(id);
   const isApprover = isMasterAdmin || jobCard.supervisor?.id === viewerId;
+  const isAssignedTechnician = isMasterAdmin || jobCard.assignedTechnician?.id === viewerId;
 
   return (
     <div className="p-8">
@@ -152,6 +155,23 @@ export default async function JobCardDetailPage({
                 <dt className="text-[var(--ejo-text-muted)]">Assigned technician</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
                   {jobCard.assignedTechnician?.fullName ?? 'Unassigned'}
+                  {jobCard.technicianAcceptanceStatus ? (
+                    <span
+                      className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        jobCard.technicianAcceptanceStatus === 'ACCEPTED'
+                          ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
+                          : jobCard.technicianAcceptanceStatus === 'REJECTED'
+                            ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]'
+                            : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
+                      }`}
+                    >
+                      {jobCard.technicianAcceptanceStatus === 'ACCEPTED'
+                        ? 'Accepted'
+                        : jobCard.technicianAcceptanceStatus === 'REJECTED'
+                          ? `Rejected — ${jobCard.technicianRejectionReason}`
+                          : 'Awaiting response'}
+                    </span>
+                  ) : null}
                 </dd>
               </div>
             </dl>
@@ -282,6 +302,38 @@ export default async function JobCardDetailPage({
               />
             </form>
           </div>
+
+          {isAssignedTechnician && jobCard.technicianAcceptanceStatus === 'PENDING' ? (
+            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Respond to this assignment</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                {jobCard.assignedTechnician?.fullName}, you&apos;ve been assigned to this Job Card. Accept to begin,
+                or reject with a reason if you can&apos;t take it on.
+              </p>
+              <form action={acceptTechnicianAssignmentFormAction} className="mt-4">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <SubmitButton
+                  label="Accept"
+                  pendingLabel="Accepting…"
+                  className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                />
+              </form>
+              <form action={rejectTechnicianAssignmentFormAction} className="mt-3 space-y-2">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <input
+                  name="reason"
+                  required
+                  placeholder="Reason for rejecting (required)"
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                />
+                <SubmitButton
+                  label="Reject"
+                  pendingLabel="Rejecting…"
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
+                />
+              </form>
+            </div>
+          ) : null}
 
           {isMasterAdmin ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
