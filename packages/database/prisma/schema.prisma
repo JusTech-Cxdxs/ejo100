@@ -689,7 +689,15 @@ model EstimateLineItem {
   amount      Decimal?             @db.Decimal(12, 2)
   enteredById String
   createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  // `@default(now())` alongside `@updatedAt` is deliberate, not
+  // redundant — `@updatedAt` alone tells Prisma's client to keep this
+  // current on every future update, but gives the migration itself no
+  // database-level default to backfill EXISTING rows with. Two real
+  // rows already existed here from testing the earlier phase, so the
+  // migration correctly refused to add this as a required column with
+  // nothing to put in them — confirmed directly from the actual
+  // deploy error, not guessed at. The explicit default fixes that.
+  updatedAt   DateTime             @default(now()) @updatedAt
 
   estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   enteredBy   User     @relation(fields: [enteredById], references: [id])
