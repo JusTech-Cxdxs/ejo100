@@ -296,7 +296,8 @@ model User {
   jobCardsSupervised JobCard[] @relation("JobCardSupervisor")
   jobCardsApproved JobCard[] @relation("JobCardApprovedBy")
   estimateLineItemsEntered EstimateLineItem[]
-  estimatesCreated Estimate[]
+  estimatesCreated Estimate[] @relation("EstimateCreatedBy")
+  estimatesApproved Estimate[] @relation("EstimateApprovedBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -618,34 +619,60 @@ model JobCardComplaint {
 // phase (controlled technician-estimate-revision approval) can extend
 // this into real versioning without restructuring what's built here;
 // it's not yet incremented or acted on anywhere in this phase.
+// DRAFT while the technician and supervisor are still building it up —
+// prices can be left blank at this stage, since real workshop practice
+// is that different people fill in their own portion at different
+// times (technician prices external/outside work, Store prices parts,
+// supervisor/company sets labour and sundry). SUBMITTED once the
+// technician marks it done and sends it to the supervisor to validate
+// — every line must have a price by this point, enforced at the
+// transition, not before. APPROVED once the supervisor signs off.
+// Manager-level approval and the customer/admin-facing hand-off are a
+// later phase, not modeled here yet.
+enum EstimateStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
 model Estimate {
-  id          String   @id @default(cuid())
-  jobCardId   String   @unique
-  version     Int      @default(1)
+  id          String         @id @default(cuid())
+  jobCardId   String         @unique
+  status      EstimateStatus @default(DRAFT)
+  version     Int            @default(1)
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  approvedById String?
   createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
   jobCard     JobCard            @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
-  createdBy   User               @relation(fields: [createdById], references: [id])
+  createdBy   User               @relation("EstimateCreatedBy", fields: [createdById], references: [id])
+  approvedBy  User?              @relation("EstimateApprovedBy", fields: [approvedById], references: [id])
   lineItems   EstimateLineItem[]
 
   @@map("estimates")
 }
 
-// The three kinds of entry a real workshop estimate needs, each with
+// The four kinds of entry a real workshop estimate needs, each with
 // different accountability: a STORE_PART is priced/fulfilled by Store
 // staff from stock they control; an EXTERNAL_JOB is work sourced or
 // done outside (e.g. cylinder resurfacing, lathe work on a brake disc)
 // — the cash-advance/receipt side of this is a later phase, this one
-// just tracks it as a costed line; LABOUR is a supervisor's or
-// technician's own assessed work/time. `enteredById` matters more here
-// than usual precisely because these three types have different people
-// accountable for getting them right.
+// just tracks it as a costed line; LABOUR and SUNDRY are the
+// supervisor's/company's own assessed charges — unlike the other two
+// types, a Job Card may only ever have ONE Labour line and ONE Sundry
+// line (enforced in code, not the schema — a second attempt is
+// rejected with a clear message pointing at editing the existing one
+// instead). `enteredById` matters more here than usual precisely
+// because these types have different people accountable for getting
+// them right.
 enum EstimateLineItemType {
   STORE_PART
   EXTERNAL_JOB
   LABOUR
+  SUNDRY
 }
 
 model EstimateLineItem {
@@ -654,10 +681,15 @@ model EstimateLineItem {
   type        EstimateLineItemType
   description String
   quantity    Int                  @default(1)
-  unitPrice   Decimal              @db.Decimal(12, 2) // Naira, 2 decimal places — Decimal, not Float, so money never drifts from floating-point rounding
-  amount      Decimal              @db.Decimal(12, 2) // quantity * unitPrice, computed and stored server-side at write time — never trusted from client input
+  // Both nullable now — a DRAFT-stage line can exist with no price yet
+  // (see EstimateStatus above); `amount` is only ever computed and
+  // stored once both quantity and unitPrice are actually known, never
+  // trusted from client input either way.
+  unitPrice   Decimal?             @db.Decimal(12, 2)
+  amount      Decimal?             @db.Decimal(12, 2)
   enteredById String
   createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
 
   estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   enteredBy   User     @relation(fields: [enteredById], references: [id])
