@@ -1513,23 +1513,6 @@ export type EstimateLineItemInput = {
   unitPrice?: number;
 };
 
-/** Common service/labour descriptions shown as suggestions, not a
- * closed list — every one of these fields stays a free-text input with
- * a `<datalist>`, matching the same "suggest, don't restrict" pattern
- * already used for vehicle Make/Model. Kept here as the one place this
- * list is maintained, not duplicated between server validation (there
- * isn't any — free text is always allowed) and the UI. */
-export const COMMON_LABOUR_DESCRIPTIONS = [
-  'Wheel Alignment',
-  'Wheel Balancing',
-  'Body Job',
-  'Painting',
-  'Gas / AC Refill',
-  'Engine Overhauling',
-  'Battery Charging',
-  'Injector Servicing (Diesel)',
-];
-
 /** Who can add to or edit a Job Card's estimate — the assigned
  * supervisor, the assigned technician, or a Master Administrator.
  * Deliberately permissive at this stage (the controlled-approval gate
