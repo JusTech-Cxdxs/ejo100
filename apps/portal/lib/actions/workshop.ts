@@ -1481,31 +1481,60 @@ export async function getWorkshopDashboardCounts() {
 }
 
 // ---------------------------------------------------------------------------
-// ESTIMATES — structured line items (Store Part / External Job / Labour),
-// one Estimate per Job Card for now. `version` on Estimate exists for a
-// later phase (controlled technician-revision approval) to extend into
-// real versioning without restructuring this; nothing here increments it
-// yet. The cash-advance/receipt tracking for EXTERNAL_JOB entries is
-// deliberately out of scope here too — this phase gets a working, costed
-// estimate; that additional accountability layer is its own later phase.
+// ESTIMATES — structured line items across four types (Store Part /
+// External Job / Labour / Sundry), one Estimate per Job Card for now.
+// `version` on Estimate exists for a later phase (revision approval) to
+// extend into real versioning without restructuring this — nothing here
+// increments it yet.
+//
+// Lifecycle: DRAFT (technician and supervisor build it up together,
+// prices can be left blank — real workshop practice is that different
+// people fill in their own portion at different times) → SUBMITTED
+// (technician marks it done; every line must have a price by this
+// point, enforced right here, not before) → APPROVED (supervisor signs
+// off). A Manager-level approval tier above this, and the customer/
+// admin-facing hand-off once approved, are a later phase — not modeled
+// yet, so this phase's terminal state is the supervisor's own approval.
+//
+// Deliberately still out of scope here: the cash-advance/receipt
+// tracking for EXTERNAL_JOB entries, real store-inventory sync/pricing,
+// Part Request/Issue Slips, and photo/evidence attachments — each is
+// its own real, separate piece of work, not folded in.
 // ---------------------------------------------------------------------------
 
-export type EstimateLineItemType = 'STORE_PART' | 'EXTERNAL_JOB' | 'LABOUR';
+export type EstimateLineItemType = 'STORE_PART' | 'EXTERNAL_JOB' | 'LABOUR' | 'SUNDRY';
 
 export type EstimateLineItemInput = {
   type: EstimateLineItemType;
   description: string;
   quantity: number;
-  unitPrice: number;
+  /** Optional while the estimate is still DRAFT — see the lifecycle
+   * note above. Required (validated) once submitForValidation() runs. */
+  unitPrice?: number;
 };
 
-/** Who can add to a Job Card's estimate — the assigned supervisor, the
- * assigned technician, or a Master Administrator. Deliberately
- * permissive at this stage, not yet the controlled revision-approval
- * workflow a later phase adds — the accountability that actually
- * matters right now is that every line records exactly who entered it
- * and when, not gatekeeping who's allowed to contribute in the first
- * place. */
+/** Common service/labour descriptions shown as suggestions, not a
+ * closed list — every one of these fields stays a free-text input with
+ * a `<datalist>`, matching the same "suggest, don't restrict" pattern
+ * already used for vehicle Make/Model. Kept here as the one place this
+ * list is maintained, not duplicated between server validation (there
+ * isn't any — free text is always allowed) and the UI. */
+export const COMMON_LABOUR_DESCRIPTIONS = [
+  'Wheel Alignment',
+  'Wheel Balancing',
+  'Body Job',
+  'Painting',
+  'Gas / AC Refill',
+  'Engine Overhauling',
+  'Battery Charging',
+  'Injector Servicing (Diesel)',
+];
+
+/** Who can add to or edit a Job Card's estimate — the assigned
+ * supervisor, the assigned technician, or a Master Administrator.
+ * Deliberately permissive at this stage (the controlled-approval gate
+ * is a later phase's job), but every line still records exactly who
+ * entered or last touched it. */
 async function requireEstimateContributor(jobCard: {
   supervisorId: string | null;
   assignedTechnicianId: string | null;
@@ -1518,7 +1547,7 @@ async function requireEstimateContributor(jobCard: {
     return user;
   }
   throw new WorkshopActionError(
-    'Only the assigned supervisor, the assigned technician, or a Master Administrator can add to this estimate.',
+    'Only the assigned supervisor, the assigned technician, or a Master Administrator can work on this estimate.',
   );
 }
 
@@ -1531,16 +1560,19 @@ export async function getJobCardEstimate(jobCardId: string) {
         orderBy: { createdAt: 'asc' },
         include: { enteredBy: { select: { fullName: true } } },
       },
+      approvedBy: { select: { fullName: true } },
     },
   });
 }
 
-/** Adds one line item, creating the Estimate itself on first use (a
- * Job Card has no estimate until someone actually adds a line to it —
- * no separate "start an estimate" step needed). `amount` is always
- * computed here, server-side, from `quantity * unitPrice` — never
- * taken from client input, so it can't be tampered with or drift from
- * what the two factors actually multiply to. */
+/** Adds one line item, creating the Estimate itself on first use — a
+ * Job Card has no estimate until someone actually adds a line, and
+ * only once the Job Card itself has been approved by its supervisor
+ * (an unapproved Job Card shouldn't have pricing work happening on it
+ * yet). `amount` is only ever computed here, server-side, from
+ * `quantity * unitPrice` when both are actually known — never taken
+ * from client input, and left null when unitPrice is still blank
+ * (DRAFT-stage entries are allowed to have no price yet). */
 export async function addEstimateLineItem(jobCardId: string, input: EstimateLineItemInput): Promise<void> {
   const description = input.description.trim();
   if (!description) {
@@ -1549,30 +1581,38 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
   if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
     throw new WorkshopActionError('Quantity must be a positive number.');
   }
-  if (!Number.isFinite(input.unitPrice) || input.unitPrice < 0) {
+  if (input.unitPrice !== undefined && (!Number.isFinite(input.unitPrice) || input.unitPrice < 0)) {
     throw new WorkshopActionError('Unit price must be zero or a positive number.');
   }
 
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
-    select: { supervisorId: true, assignedTechnicianId: true, jobNumber: true },
+    select: { supervisorId: true, assignedTechnicianId: true, jobNumber: true, approvalStatus: true },
   });
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
   }
+  if (jobCard.approvalStatus !== 'APPROVED') {
+    throw new WorkshopActionError('This Job Card must be approved by its supervisor before an estimate can be started.');
+  }
   const contributor = await requireEstimateContributor(jobCard);
-
-  // Rounded to 2dp explicitly — quantity * unitPrice on plain JS numbers
-  // can produce results with more binary-floating-point noise than a
-  // currency amount should ever show (e.g. 0.1 + 0.2 style drift).
-  const amount = Math.round(input.quantity * input.unitPrice * 100) / 100;
 
   const estimate = await prisma.estimate.upsert({
     where: { jobCardId },
     update: {},
     create: { jobCardId, createdById: contributor.id },
-    select: { id: true },
+    select: { id: true, status: true, lineItems: { select: { type: true } } },
   });
+  if (estimate.status !== 'DRAFT') {
+    throw new WorkshopActionError('This estimate has already been submitted and can no longer have lines added — edit an existing line instead.');
+  }
+  if ((input.type === 'LABOUR' || input.type === 'SUNDRY') && estimate.lineItems.some((li: { type: string }) => li.type === input.type)) {
+    throw new WorkshopActionError(
+      `A ${input.type === 'LABOUR' ? 'Labour' : 'Sundry'} line already exists on this estimate — edit it instead of adding another.`,
+    );
+  }
+
+  const amount = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
 
   await prisma.estimateLineItem.create({
     data: {
@@ -1580,7 +1620,7 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
       type: input.type,
       description,
       quantity: input.quantity,
-      unitPrice: input.unitPrice,
+      unitPrice: input.unitPrice ?? null,
       amount,
       enteredById: contributor.id,
     },
@@ -1595,10 +1635,74 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
   });
 }
 
+export type EstimateLineItemUpdateInput = {
+  description: string;
+  quantity: number;
+  unitPrice?: number;
+};
+
+/** Edits an existing line — description, quantity, and/or price.
+ * Allowed while the estimate is DRAFT or SUBMITTED (the supervisor
+ * validating a submitted estimate can still correct it, per the
+ * workflow this phase implements), locked once APPROVED, matching how
+ * a closed Job Card is treated elsewhere in this codebase. */
+export async function updateEstimateLineItem(lineItemId: string, input: EstimateLineItemUpdateInput): Promise<void> {
+  const description = input.description.trim();
+  if (!description) {
+    throw new WorkshopActionError('A description is required for this line item.');
+  }
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+    throw new WorkshopActionError('Quantity must be a positive number.');
+  }
+  if (input.unitPrice !== undefined && (!Number.isFinite(input.unitPrice) || input.unitPrice < 0)) {
+    throw new WorkshopActionError('Unit price must be zero or a positive number.');
+  }
+
+  const lineItem = await prisma.estimateLineItem.findUnique({
+    where: { id: lineItemId },
+    select: {
+      estimate: {
+        select: {
+          jobCardId: true,
+          status: true,
+          jobCard: { select: { supervisorId: true, assignedTechnicianId: true } },
+        },
+      },
+    },
+  });
+  if (!lineItem) {
+    throw new WorkshopActionError('Estimate line item not found.');
+  }
+  if (lineItem.estimate.status === 'APPROVED') {
+    throw new WorkshopActionError('This estimate has already been approved and can no longer be edited.');
+  }
+  const editor = await requireEstimateContributor(lineItem.estimate.jobCard);
+
+  const amount = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
+
+  await prisma.estimateLineItem.update({
+    where: { id: lineItemId },
+    data: {
+      description,
+      quantity: input.quantity,
+      unitPrice: input.unitPrice ?? null,
+      amount,
+    },
+  });
+
+  await writeAuditLog({
+    userId: editor.id,
+    action: 'estimate.line_item_updated',
+    entityType: 'JobCard',
+    entityId: lineItem.estimate.jobCardId,
+    metadata: { description, quantity: input.quantity, unitPrice: input.unitPrice, amount },
+  });
+}
+
 /** Whoever entered a line, the assigned supervisor, or a Master
  * Administrator may remove it — a technician can correct their own
  * mistake, but can't erase someone else's entry without the
- * supervisor's or an admin's oversight. */
+ * supervisor's or an admin's oversight. Locked once APPROVED. */
 export async function deleteEstimateLineItem(lineItemId: string): Promise<void> {
   const lineItem = await prisma.estimateLineItem.findUnique({
     where: { id: lineItemId },
@@ -1608,6 +1712,7 @@ export async function deleteEstimateLineItem(lineItemId: string): Promise<void> 
       estimate: {
         select: {
           jobCardId: true,
+          status: true,
           jobCard: { select: { supervisorId: true } },
         },
       },
@@ -1615,6 +1720,9 @@ export async function deleteEstimateLineItem(lineItemId: string): Promise<void> 
   });
   if (!lineItem) {
     throw new WorkshopActionError('Estimate line item not found.');
+  }
+  if (lineItem.estimate.status === 'APPROVED') {
+    throw new WorkshopActionError('This estimate has already been approved and can no longer be edited.');
   }
   const user = await requireUser();
   const isOwnEntry = lineItem.enteredById === user.id;
@@ -1632,5 +1740,79 @@ export async function deleteEstimateLineItem(lineItemId: string): Promise<void> 
     entityType: 'JobCard',
     entityId: lineItem.estimate.jobCardId,
     metadata: { description: lineItem.description },
+  });
+}
+
+/** Technician (or supervisor/admin) marks the estimate done and sends
+ * it to the supervisor to validate — this is the one place pricing
+ * actually becomes required: every line must have a unit price before
+ * this transition is allowed. Draft-stage blanks are fine right up
+ * until this point, never before it. */
+export async function submitEstimateForValidation(jobCardId: string): Promise<void> {
+  const estimate = await prisma.estimate.findUnique({
+    where: { jobCardId },
+    select: {
+      id: true,
+      status: true,
+      jobCard: { select: { supervisorId: true, assignedTechnicianId: true } },
+      lineItems: { select: { unitPrice: true, description: true } },
+    },
+  });
+  if (!estimate) {
+    throw new WorkshopActionError('This Job Card has no estimate yet.');
+  }
+  if (estimate.status !== 'DRAFT') {
+    throw new WorkshopActionError('This estimate has already been submitted.');
+  }
+  if (estimate.lineItems.length === 0) {
+    throw new WorkshopActionError('Add at least one line item before submitting the estimate.');
+  }
+  const missingPricesOn = estimate.lineItems.filter((li: { unitPrice: unknown }) => li.unitPrice === null);
+  if (missingPricesOn.length > 0) {
+    throw new WorkshopActionError(
+      `Every line needs a price before submitting — missing on: ${missingPricesOn.map((li: { description: string }) => li.description).join(', ')}.`,
+    );
+  }
+  const user = await requireEstimateContributor(estimate.jobCard);
+
+  await prisma.estimate.update({
+    where: { id: estimate.id },
+    data: { status: 'SUBMITTED', submittedAt: new Date() },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'estimate.submitted',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+  });
+}
+
+/** The assigned supervisor (or a Master Admin) signs off on a
+ * submitted estimate. This phase's terminal state — routing to a
+ * Manager tier above this is a later phase, not modeled yet. */
+export async function approveEstimate(jobCardId: string): Promise<void> {
+  const estimate = await prisma.estimate.findUnique({
+    where: { jobCardId },
+    select: { id: true, status: true, jobCard: { select: { supervisorId: true } } },
+  });
+  if (!estimate) {
+    throw new WorkshopActionError('This Job Card has no estimate yet.');
+  }
+  if (estimate.status !== 'SUBMITTED') {
+    throw new WorkshopActionError('This estimate has not been submitted for validation yet.');
+  }
+  const user = await requireJobCardApprover(estimate.jobCard);
+
+  await prisma.estimate.update({
+    where: { id: estimate.id },
+    data: { status: 'APPROVED', approvedAt: new Date(), approvedById: user.id },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'estimate.approved',
+    entityType: 'JobCard',
+    entityId: jobCardId,
   });
 }

@@ -35,7 +35,10 @@ import {
   rejectTechnicianAssignment,
   reassignSupervisor,
   addEstimateLineItem,
+  updateEstimateLineItem,
   deleteEstimateLineItem,
+  submitEstimateForValidation,
+  approveEstimate,
   type EstimateLineItemType,
 } from './workshop';
 
@@ -185,10 +188,29 @@ export async function addEstimateLineItemFormAction(formData: FormData) {
       type: str(formData, 'type') as EstimateLineItemType,
       description: str(formData, 'description'),
       quantity: num(formData, 'quantity') ?? NaN,
-      unitPrice: num(formData, 'unitPrice') ?? NaN,
+      // Deliberately no `?? NaN` fallback here, unlike quantity above —
+      // a blank price field must stay `undefined` (a real, allowed
+      // DRAFT-stage state), not become `NaN`, which addEstimateLineItem
+      // would correctly reject as an invalid number.
+      unitPrice: num(formData, 'unitPrice'),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not add estimate line item.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function updateEstimateLineItemFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await updateEstimateLineItem(str(formData, 'lineItemId'), {
+      description: str(formData, 'description'),
+      quantity: num(formData, 'quantity') ?? NaN,
+      unitPrice: num(formData, 'unitPrice'),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not update estimate line item.';
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -200,6 +222,28 @@ export async function deleteEstimateLineItemFormAction(formData: FormData) {
     await deleteEstimateLineItem(str(formData, 'lineItemId'));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not remove estimate line item.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function submitEstimateForValidationFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await submitEstimateForValidation(jobCardId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not submit estimate.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function approveEstimateFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await approveEstimate(jobCardId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not approve estimate.';
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
