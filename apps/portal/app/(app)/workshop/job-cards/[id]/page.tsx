@@ -1,7 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
-import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, listTechnicianCandidates, listEligibleSupervisorsForJobCard, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, deleteEstimateLineItemFormAction } from '@/lib/actions/workshop-form-handlers';
+import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, listTechnicianCandidates, listEligibleSupervisorsForJobCard, currentUserIsMasterAdmin, currentUserId, COMMON_LABOUR_DESCRIPTIONS } from '@/lib/actions/workshop';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -40,13 +40,23 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'assignment.accepted': 'Technician accepted assignment',
   'assignment.rejected': 'Technician rejected assignment',
   'estimate.line_item_added': 'Estimate line added',
+  'estimate.line_item_updated': 'Estimate line updated',
   'estimate.line_item_removed': 'Estimate line removed',
+  'estimate.submitted': 'Estimate submitted for validation',
+  'estimate.approved': 'Estimate approved',
 };
 
 const ESTIMATE_TYPE_LABEL: Record<string, string> = {
   STORE_PART: 'Store Part',
   EXTERNAL_JOB: 'External Job',
   LABOUR: 'Labour',
+  SUNDRY: 'Sundry',
+};
+
+const ESTIMATE_STATUS_LABEL: Record<string, string> = {
+  DRAFT: 'Draft',
+  SUBMITTED: 'Awaiting supervisor validation',
+  APPROVED: 'Approved',
 };
 
 // Prisma returns Decimal fields as Decimal objects (from decimal.js),
@@ -54,6 +64,7 @@ const ESTIMATE_TYPE_LABEL: Record<string, string> = {
 // conversion, not a shortcut around it, since these amounts have
 // already been rounded to 2dp at write time (see addEstimateLineItem).
 function formatNaira(value: unknown): string {
+  if (value === null || value === undefined) return '—';
   return `₦${Number(value).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
@@ -62,10 +73,10 @@ export default async function JobCardDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ status?: string; error?: string }>;
+  searchParams: Promise<{ status?: string; error?: string; editLineId?: string }>;
 }) {
   const { id } = await params;
-  const { status, error } = await searchParams;
+  const { status, error, editLineId } = await searchParams;
   const [jobCard, technicians, isMasterAdmin, viewerId] = await Promise.all([
     getJobCard(id),
     listTechnicianCandidates(),
@@ -238,8 +249,28 @@ export default async function JobCardDetailPage({
           </div>
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Estimate</h2>
-            {!estimate || estimate.lineItems.length === 0 ? (
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Estimate</h2>
+              {estimate ? (
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    estimate.status === 'APPROVED'
+                      ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
+                      : estimate.status === 'SUBMITTED'
+                        ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
+                        : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
+                  }`}
+                >
+                  {ESTIMATE_STATUS_LABEL[estimate.status]}
+                </span>
+              ) : null}
+            </div>
+
+            {jobCard.approvalStatus !== 'APPROVED' ? (
+              <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">
+                This Job Card must be approved by its supervisor before an estimate can be started.
+              </p>
+            ) : !estimate || estimate.lineItems.length === 0 ? (
               <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No estimate lines yet.</p>
             ) : (
               <>
@@ -257,40 +288,101 @@ export default async function JobCardDetailPage({
                       </tr>
                     </thead>
                     <tbody>
-                      {estimate.lineItems.map((item: (typeof estimate.lineItems)[number]) => (
-                        <tr key={item.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                          <td className="py-2 pr-3 text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</td>
-                          <td className="py-2 pr-3 text-[var(--ejo-text)]">{item.description}</td>
-                          <td className="py-2 pr-3 text-right text-[var(--ejo-text)]">{item.quantity}</td>
-                          <td className="py-2 pr-3 text-right text-[var(--ejo-text)]">{formatNaira(item.unitPrice)}</td>
-                          <td className="py-2 pr-3 text-right font-medium text-[var(--ejo-text)]">{formatNaira(item.amount)}</td>
-                          <td className="py-2 pr-3 text-xs text-[var(--ejo-text-muted)]">{item.enteredBy.fullName}</td>
-                          {isEstimateContributor ? (
-                            <td className="py-2">
-                              {viewerId === item.enteredById || isApprover ? (
-                                <form action={deleteEstimateLineItemFormAction}>
+                      {estimate.lineItems.map((item: (typeof estimate.lineItems)[number]) => {
+                        const canModifyThis =
+                          estimate.status !== 'APPROVED' && isEstimateContributor && (viewerId === item.enteredById || isApprover);
+                        const isEditingThis = editLineId === item.id && canModifyThis;
+
+                        if (isEditingThis) {
+                          return (
+                            <tr key={item.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                              <td colSpan={isEstimateContributor ? 7 : 6} className="py-2">
+                                <form action={updateEstimateLineItemFormAction} className="flex flex-wrap items-center gap-2">
                                   <input type="hidden" name="jobCardId" value={jobCard.id} />
                                   <input type="hidden" name="lineItemId" value={item.id} />
-                                  <button
-                                    type="submit"
-                                    className="text-xs font-medium text-[var(--ejo-error)] hover:underline"
+                                  <span className="w-24 shrink-0 text-xs text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</span>
+                                  <input
+                                    name="description"
+                                    defaultValue={item.description}
+                                    required
+                                    list="labour-suggestions"
+                                    className="min-w-[150px] flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                                  />
+                                  <input
+                                    name="quantity"
+                                    type="number"
+                                    step="1"
+                                    min="1"
+                                    required
+                                    defaultValue={item.quantity}
+                                    className="w-16 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                                  />
+                                  <input
+                                    name="unitPrice"
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="Unit Price"
+                                    defaultValue={item.unitPrice != null ? Number(item.unitPrice) : ''}
+                                    className="w-28 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                                  />
+                                  <SubmitButton
+                                    label="Save"
+                                    pendingLabel="Saving…"
+                                    className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                                  />
+                                  <LoadingLink
+                                    href={`/workshop/job-cards/${jobCard.id}`}
+                                    className="text-xs text-[var(--ejo-text-muted)] hover:underline"
                                   >
-                                    Remove
-                                  </button>
+                                    Cancel
+                                  </LoadingLink>
                                 </form>
-                              ) : null}
-                            </td>
-                          ) : null}
-                        </tr>
-                      ))}
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return (
+                          <tr key={item.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                            <td className="py-2 pr-3 text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</td>
+                            <td className="py-2 pr-3 text-[var(--ejo-text)]">{item.description}</td>
+                            <td className="py-2 pr-3 text-right text-[var(--ejo-text)]">{item.quantity}</td>
+                            <td className="py-2 pr-3 text-right text-[var(--ejo-text)]">{formatNaira(item.unitPrice)}</td>
+                            <td className="py-2 pr-3 text-right font-medium text-[var(--ejo-text)]">{formatNaira(item.amount)}</td>
+                            <td className="py-2 pr-3 text-xs text-[var(--ejo-text-muted)]">{item.enteredBy.fullName}</td>
+                            {isEstimateContributor ? (
+                              <td className="py-2">
+                                {canModifyThis ? (
+                                  <div className="flex gap-2">
+                                    <LoadingLink
+                                      href={`/workshop/job-cards/${jobCard.id}?editLineId=${item.id}`}
+                                      className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+                                    >
+                                      Edit
+                                    </LoadingLink>
+                                    <form action={deleteEstimateLineItemFormAction}>
+                                      <input type="hidden" name="jobCardId" value={jobCard.id} />
+                                      <input type="hidden" name="lineItemId" value={item.id} />
+                                      <button type="submit" className="text-xs font-medium text-[var(--ejo-error)] hover:underline">
+                                        Remove
+                                      </button>
+                                    </form>
+                                  </div>
+                                ) : null}
+                              </td>
+                            ) : null}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
                 <div className="mt-3 space-y-1 border-t border-[var(--ejo-border)] pt-3 text-sm">
-                  {(['STORE_PART', 'EXTERNAL_JOB', 'LABOUR'] as const).map((type) => {
+                  {(['STORE_PART', 'EXTERNAL_JOB', 'LABOUR', 'SUNDRY'] as const).map((type) => {
                     const subtotal = estimate.lineItems
                       .filter((item: (typeof estimate.lineItems)[number]) => item.type === type)
-                      .reduce((sum: number, item: (typeof estimate.lineItems)[number]) => sum + Number(item.amount), 0);
+                      .reduce((sum: number, item: (typeof estimate.lineItems)[number]) => sum + Number(item.amount ?? 0), 0);
                     if (subtotal === 0) return null;
                     return (
                       <div key={type} className="flex justify-between text-[var(--ejo-text-muted)]">
@@ -304,7 +396,7 @@ export default async function JobCardDetailPage({
                     <span>
                       {formatNaira(
                         estimate.lineItems.reduce(
-                          (sum: number, item: (typeof estimate.lineItems)[number]) => sum + Number(item.amount),
+                          (sum: number, item: (typeof estimate.lineItems)[number]) => sum + Number(item.amount ?? 0),
                           0,
                         ),
                       )}
@@ -314,7 +406,13 @@ export default async function JobCardDetailPage({
               </>
             )}
 
-            {isEstimateContributor ? (
+            <datalist id="labour-suggestions">
+              {COMMON_LABOUR_DESCRIPTIONS.map((d: string) => (
+                <option key={d} value={d} />
+              ))}
+            </datalist>
+
+            {jobCard.approvalStatus === 'APPROVED' && isEstimateContributor && (!estimate || estimate.status === 'DRAFT') ? (
               <form action={addEstimateLineItemFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4 sm:grid-cols-5">
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <select
@@ -325,11 +423,17 @@ export default async function JobCardDetailPage({
                 >
                   <option value="STORE_PART">Store Part</option>
                   <option value="EXTERNAL_JOB">External Job</option>
-                  <option value="LABOUR">Labour</option>
+                  {!estimate?.lineItems.some((li: (typeof estimate.lineItems)[number]) => li.type === 'LABOUR') ? (
+                    <option value="LABOUR">Labour</option>
+                  ) : null}
+                  {!estimate?.lineItems.some((li: (typeof estimate.lineItems)[number]) => li.type === 'SUNDRY') ? (
+                    <option value="SUNDRY">Sundry</option>
+                  ) : null}
                 </select>
                 <input
                   name="description"
                   required
+                  list="labour-suggestions"
                   placeholder="Description"
                   className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)] sm:col-span-2"
                 />
@@ -348,14 +452,38 @@ export default async function JobCardDetailPage({
                   type="number"
                   step="0.01"
                   min="0"
-                  required
-                  placeholder="Unit Price"
+                  placeholder="Unit Price (optional)"
                   className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
                 />
                 <SubmitButton
                   label="Add"
                   pendingLabel="Adding…"
                   className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)] sm:col-span-5"
+                />
+              </form>
+            ) : null}
+
+            {estimate?.status === 'DRAFT' && isEstimateContributor && estimate.lineItems.length > 0 ? (
+              <form action={submitEstimateForValidationFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
+                  Every line needs a price before this can be submitted — a supervisor will validate it next.
+                </p>
+                <SubmitButton
+                  label="Submit for validation"
+                  pendingLabel="Submitting…"
+                  className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                />
+              </form>
+            ) : null}
+
+            {estimate?.status === 'SUBMITTED' && isApprover ? (
+              <form action={approveEstimateFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <SubmitButton
+                  label="Approve estimate"
+                  pendingLabel="Approving…"
+                  className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 />
               </form>
             ) : null}
