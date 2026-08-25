@@ -2,7 +2,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { COMMON_LABOUR_DESCRIPTIONS } from '@/lib/workshop-constants';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction } from '@/lib/actions/workshop-form-handlers';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -46,6 +46,8 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'estimate.submitted': 'Estimate submitted for validation',
   'estimate.approved': 'Estimate approved',
   'estimate.manager_approved': 'Estimate approved by manager',
+  'estimate.nudge_to_technician': 'Supervisor notified technician about estimate',
+  'estimate.nudge_to_supervisor': 'Technician notified supervisor about estimate',
 };
 
 /** Turns the stored audit metadata into a real, field-level detail
@@ -82,7 +84,7 @@ const ESTIMATE_TYPE_LABEL: Record<string, string> = {
   STORE_PART: 'Store Part',
   EXTERNAL_PART: 'External Part',
   EXTERNAL_JOB: 'External Job',
-  LABOUR: 'Labour',
+  LABOUR: 'Internal Job / Labour',
   SUNDRY: 'Sundry',
 };
 
@@ -463,7 +465,7 @@ export default async function JobCardDetailPage({
                   <option value="STORE_PART">Store Part</option>
                   <option value="EXTERNAL_PART">External Part</option>
                   <option value="EXTERNAL_JOB">External Job</option>
-                  <option value="LABOUR">Labour</option>
+                  <option value="LABOUR">Internal Job / Labour</option>
                   {!estimate?.lineItems.some((li: (typeof estimate.lineItems)[number]) => li.type === 'SUNDRY') ? (
                     <option value="SUNDRY">Sundry</option>
                   ) : null}
@@ -502,6 +504,44 @@ export default async function JobCardDetailPage({
                   Pricing: the technician prices External Part/Job lines (they sourced them); the supervisor
                   prices Store Part, Labour, and Sundry.
                 </p>
+              </form>
+            ) : null}
+
+            {estimate?.status === 'DRAFT' && isAssignedTechnician ? (
+              <form action={notifySupervisorAboutEstimateFormAction} className="mt-4 flex flex-wrap items-end gap-2 border-t border-[var(--ejo-border)] pt-4">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <div className="flex-1 min-w-[180px]">
+                  <label className="mb-1 block text-[11px] text-[var(--ejo-text-muted)]">Notify supervisor (optional note)</label>
+                  <input
+                    name="note"
+                    placeholder="e.g. Compressor priced, ready to check"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                  />
+                </div>
+                <SubmitButton
+                  label="Notify supervisor"
+                  pendingLabel="Sending…"
+                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                />
+              </form>
+            ) : null}
+
+            {estimate?.status === 'DRAFT' && isApprover ? (
+              <form action={notifyTechnicianAboutEstimateFormAction} className="mt-4 flex flex-wrap items-end gap-2 border-t border-[var(--ejo-border)] pt-4">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <div className="flex-1 min-w-[180px]">
+                  <label className="mb-1 block text-[11px] text-[var(--ejo-text-muted)]">Notify technician (optional note)</label>
+                  <input
+                    name="note"
+                    placeholder="e.g. Please add the AC compressor price"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                  />
+                </div>
+                <SubmitButton
+                  label="Notify technician"
+                  pendingLabel="Sending…"
+                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                />
               </form>
             ) : null}
 
@@ -598,8 +638,9 @@ export default async function JobCardDetailPage({
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Review this Job Card</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                As the assigned supervisor, approve to confirm this Job Card is correctly opened, or reject it
-                back to {jobCard.createdBy.fullName} with a reason.
+                Approve to confirm this Job Card can proceed, or reject it back to {jobCard.createdBy.fullName} with
+                a reason — a rejection doesn&apos;t have to mean something was wrong; availability or workload are
+                valid reasons too.
               </p>
               <form action={approveJobCardFormAction} className="mt-4 space-y-2">
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
