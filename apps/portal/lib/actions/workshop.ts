@@ -453,7 +453,9 @@ export async function listRecentCustomers(): Promise<CustomerSearchResult[]> {
 }
 
 export type CreateCustomerInput = {
+  customerType: 'INDIVIDUAL' | 'COMPANY';
   fullName: string;
+  address?: string;
   email: string;
   phone?: string;
 };
@@ -466,6 +468,12 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
   const email = input.email.trim().toLowerCase();
   if (!email || !input.fullName.trim()) {
     throw new WorkshopActionError('Customer name and email are required.');
+  }
+  const address = input.address?.trim() || null;
+  // Enforced, not just a UI hint — kept brief on purpose (like a VIN)
+  // so it never stretches the Job Card layout it's displayed on.
+  if (address && address.length > 80) {
+    throw new WorkshopActionError('Address must be 80 characters or fewer — keep it brief, e.g. "Plot 3, Cheesebrough, Lagos".');
   }
 
   const existing = await prisma.customer.findUnique({ where: { email } });
@@ -482,7 +490,9 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
   const customer = await prisma.customer.create({
     data: {
       companyId: branch.businessUnit.companyId,
+      customerType: input.customerType,
       fullName: input.fullName.trim(),
+      address,
       email,
       phone: input.phone?.trim() || null,
       createdById: currentUser.id,
@@ -1636,13 +1646,11 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
   if (estimate.status !== 'DRAFT') {
     throw new WorkshopActionError('This estimate has already been submitted and can no longer have lines added — edit an existing line instead.');
   }
-  // Labour and Sundry are both capped at one line each — Labour is
-  // the company's own general labour/time charge, a single aggregate
-  // figure, not the same thing as a specific INTERNAL_JOB (wheel
-  // alignment, AC refill, etc.), which genuinely can and does need
-  // several distinct entries on one Job Card — that's the type this
-  // one-line cap does NOT apply to.
-  const cappedTypes: EstimateLineItemType[] = ['LABOUR', 'SUNDRY'];
+  // Only Sundry is capped at one line — real evidence (an actual
+  // Kewalram paper estimate showing "Labour for Service" and "Labour
+  // for Brake" as two separate lines on one job) confirmed Labour
+  // needs to support multiple entries too, same as INTERNAL_JOB.
+  const cappedTypes: EstimateLineItemType[] = ['SUNDRY'];
   if (cappedTypes.includes(input.type) && estimate.lineItems.some((li: { type: string }) => li.type === input.type)) {
     throw new WorkshopActionError(
       `A ${ESTIMATE_LINE_TYPE_DISPLAY[input.type]} line already exists on this estimate — edit it instead of adding another.`,
