@@ -96,12 +96,36 @@ export default async function WorkshopCustomersPage({
           </p>
           <form action={createCustomerFormAction} className="mt-4 space-y-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Full name</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Customer type</label>
+              <select
+                name="customerType"
+                required
+                defaultValue="INDIVIDUAL"
+                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+              >
+                <option value="INDIVIDUAL">Individual</option>
+                <option value="COMPANY">Company</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Full name / Company name</label>
               <input
                 name="fullName"
                 required
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Address (optional)</label>
+              <input
+                name="address"
+                maxLength={80}
+                placeholder="e.g. Plot 3, Cheesebrough, Lagos"
+                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+              />
+              <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
+                Keep it brief (like a VIN) — this shows directly on the Job Card, up to 80 characters.
+              </p>
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Email</label>
