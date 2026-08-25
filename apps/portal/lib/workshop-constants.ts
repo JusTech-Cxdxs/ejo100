@@ -8,16 +8,18 @@
  * Anything that's plain data, not an action, belongs here instead.
  */
 
-/** Common Internal Job descriptions shown as suggestions, not a
- * closed list — every one of these fields stays a free-text input with
- * a `<datalist>`, matching the same "suggest, don't restrict" pattern
- * already used for vehicle Make/Model. Kept here as the one place this
- * list is maintained, not duplicated between server validation (there
- * isn't any — free text is always allowed) and the UI. Named for
- * INTERNAL_JOB specifically, not LABOUR — the two are genuinely
- * separate types (LABOUR is the company's own general labour/time
- * charge; these are named services the workshop performs). */
-export const COMMON_INTERNAL_JOB_DESCRIPTIONS = [
+/** Common description suggestions for the estimate line-item description
+ * field, shared across every type (Internal Job, Labour, etc.) since
+ * the datalist can't dynamically swap based on which type is currently
+ * selected without client JS — not a closed list, every field stays
+ * free-text with a `<datalist>`, matching the same "suggest, don't
+ * restrict" pattern already used for vehicle Make/Model. Kept here as
+ * the one place this list is maintained, not duplicated between server
+ * validation (there isn't any — free text is always allowed) and the
+ * UI. The Labour entries are directly evidenced, not guessed — an
+ * actual Kewalram paper estimate shows "Labour for Service" and
+ * "Labour for Brake" as real, separate line items. */
+export const COMMON_ESTIMATE_LINE_DESCRIPTIONS = [
   'Wheel Alignment',
   'Wheel Balancing',
   'Body Job',
@@ -26,6 +28,8 @@ export const COMMON_INTERNAL_JOB_DESCRIPTIONS = [
   'Engine Overhauling',
   'Battery Charging',
   'Injector Servicing (Diesel)',
+  'Labour for Service',
+  'Labour for Brake',
 ];
 
 /** Company bank details shown to customers for the deposit payment —
