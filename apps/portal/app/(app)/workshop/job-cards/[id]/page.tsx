@@ -1,8 +1,8 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
-import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
+import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS } from '@/lib/workshop-constants';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction } from '@/lib/actions/workshop-form-handlers';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, approvePaymentAndProceedFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -51,6 +51,8 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'estimate.customer_notified': 'Customer notified of approved estimate',
   'estimate.nudge_to_technician': 'Supervisor notified technician about estimate',
   'estimate.nudge_to_supervisor': 'Technician notified supervisor about estimate',
+  'payment.recorded': 'Payment recorded',
+  'payment.approved': 'Payment approved — work can proceed',
 };
 
 /** Turns the stored audit metadata into a real, field-level detail
@@ -78,6 +80,15 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
     case 'job_card.supervisor_reassigned':
     case 'assignment.rejected':
       return typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : null;
+    case 'payment.recorded': {
+      const parts: string[] = [];
+      if (typeof meta.amount === 'number') parts.push(formatNaira(meta.amount));
+      if (typeof meta.method === 'string') parts.push(meta.method === 'CASH' ? 'Cash' : 'Bank Transfer');
+      if (typeof meta.notes === 'string' && meta.notes) parts.push(meta.notes);
+      return parts.join(' — ') || null;
+    }
+    case 'payment.approved':
+      return typeof meta.totalPaid === 'number' ? `Total confirmed: ${formatNaira(meta.totalPaid)}` : null;
     default:
       return typeof meta.notes === 'string' && meta.notes ? `Notes: ${meta.notes}` : null;
   }
@@ -124,17 +135,21 @@ export default async function JobCardDetailPage({
     currentUserId(),
   ]);
   if (!jobCard) notFound();
-  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers] = await Promise.all([
+  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers, eligibleFinance, payments] = await Promise.all([
     getJobCardAuditTrail(id),
     listEligibleSupervisorsForJobCard(id),
     getJobCardEstimate(id),
     listEligibleManagersForBranch(jobCard.branchId),
+    listEligibleFinanceOfficersForBranch(jobCard.branchId),
+    getJobCardPayments(id),
   ]);
   const isApprover = isMasterAdmin || jobCard.supervisor?.id === viewerId;
   const isAssignedTechnician = isMasterAdmin || jobCard.assignedTechnician?.id === viewerId;
   const isCreator = isMasterAdmin || jobCard.createdBy.id === viewerId;
   const isEstimateContributor = isMasterAdmin || jobCard.supervisor?.id === viewerId || jobCard.assignedTechnician?.id === viewerId;
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
+  const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
+  const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
 
   return (
     <div className="p-8">
@@ -623,6 +638,80 @@ export default async function JobCardDetailPage({
               </p>
             ) : null}
           </div>
+
+          {jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' && isEligibleFinance ? (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Payments</h2>
+              {payments.length === 0 ? (
+                <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No payments recorded yet.</p>
+              ) : (
+                <div className="mt-3 space-y-2 text-sm">
+                  {payments.map((p: (typeof payments)[number]) => (
+                    <div key={p.id} className="flex items-center justify-between border-b border-[var(--ejo-border)] pb-2 last:border-0">
+                      <div>
+                        <p className="text-[var(--ejo-text)]">
+                          {formatNaira(p.amount)} — {p.method === 'CASH' ? 'Cash' : 'Bank Transfer'}
+                        </p>
+                        <p className="text-xs text-[var(--ejo-text-muted)]">
+                          {p.recordedBy.fullName} · {formatDateTime(p.recordedAt)}
+                          {p.notes ? ` · ${p.notes}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between pt-1 text-sm font-semibold text-[var(--ejo-text)]">
+                    <span>Total Recorded</span>
+                    <span>{formatNaira(paymentsTotal)}</span>
+                  </div>
+                </div>
+              )}
+
+              <form action={recordPaymentFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <input
+                  name="amount"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  placeholder="Amount"
+                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                />
+                <select
+                  name="method"
+                  required
+                  defaultValue="BANK_TRANSFER"
+                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                >
+                  <option value="BANK_TRANSFER">Bank Transfer</option>
+                  <option value="CASH">Cash</option>
+                </select>
+                <input
+                  name="notes"
+                  placeholder="Reference / notes (optional)"
+                  className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                />
+                <SubmitButton
+                  label="Record payment"
+                  pendingLabel="Recording…"
+                  className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                />
+              </form>
+
+              <form action={approvePaymentAndProceedFormAction} className="mt-3">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
+                  Confirms the minimum deposit has been met, moves this Job Card to In Progress, and notifies
+                  everyone involved.
+                </p>
+                <SubmitButton
+                  label="Approve payment & proceed"
+                  pendingLabel="Approving…"
+                  className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                />
+              </form>
+            </div>
+          ) : null}
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6 text-xs text-[var(--ejo-text-muted)]">
             Opened by {jobCard.createdBy.fullName} on {formatDateTime(jobCard.createdAt)}
