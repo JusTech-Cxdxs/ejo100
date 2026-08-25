@@ -34,6 +34,8 @@ import { renderJobCardDecisionEmail } from '@/lib/email-templates/job-card-decis
 import { renderTechnicianJobCardAssignedEmail } from '@/lib/email-templates/technician-job-card-assigned';
 import { renderTechnicianResponseEmail } from '@/lib/email-templates/technician-response-notification';
 import { renderEstimateSubmittedEmail } from '@/lib/email-templates/estimate-submitted-for-validation';
+import { renderEstimateReadyForManagerEmail } from '@/lib/email-templates/estimate-ready-for-manager';
+import { renderCustomerEstimateApprovedEmail } from '@/lib/email-templates/customer-estimate-approved';
 
 class WorkshopActionError extends Error {}
 
@@ -1572,6 +1574,7 @@ export async function getJobCardEstimate(jobCardId: string) {
         include: { enteredBy: { select: { fullName: true } } },
       },
       approvedBy: { select: { fullName: true } },
+      managerApprovedBy: { select: { fullName: true } },
     },
   });
 }
@@ -1690,8 +1693,8 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
   if (!lineItem) {
     throw new WorkshopActionError('Estimate line item not found.');
   }
-  if (lineItem.estimate.status === 'APPROVED') {
-    throw new WorkshopActionError('This estimate has already been approved and can no longer be edited.');
+  if (lineItem.estimate.status === 'MANAGER_APPROVED') {
+    throw new WorkshopActionError('This estimate has already been approved by the manager and can no longer be edited.');
   }
   const editor = await requireEstimateContributor(lineItem.estimate.jobCard);
   if (input.unitPrice !== undefined) {
@@ -1741,8 +1744,8 @@ export async function deleteEstimateLineItem(lineItemId: string): Promise<void> 
   if (!lineItem) {
     throw new WorkshopActionError('Estimate line item not found.');
   }
-  if (lineItem.estimate.status === 'APPROVED') {
-    throw new WorkshopActionError('This estimate has already been approved and can no longer be edited.');
+  if (lineItem.estimate.status === 'MANAGER_APPROVED') {
+    throw new WorkshopActionError('This estimate has already been approved by the manager and can no longer be edited.');
   }
   const user = await requireUser();
   const isOwnEntry = lineItem.enteredById === user.id;
@@ -1849,10 +1852,71 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
 /** The assigned supervisor (or a Master Admin) signs off on a
  * submitted estimate. This phase's terminal state — routing to a
  * Manager tier above this is a later phase, not modeled yet. */
+/** A Manager oversees a whole branch — both Passenger and Commercial
+ * Workshop departments — unlike a Supervisor, who's scoped to one
+ * department. Eligibility is therefore checked by branch, reusing the
+ * existing seeded "Workshop Manager" role (confirmed already present
+ * in seed.ts, not a role invented for this phase) rather than the
+ * department-scoped pattern used for supervisors. Same Master Admin
+ * fallback as everywhere else this project checks eligibility — see
+ * listEligibleSupervisorsForVehicleType's own comment for why that
+ * exists (no admin UI yet to place anyone into a role). */
+export async function listEligibleManagersForBranch(branchId: string): Promise<EligibleSupervisorResult> {
+  await requireUser();
+  const branchManagers = await prisma.user.findMany({
+    where: {
+      branchId,
+      isActive: true,
+      roles: { some: { role: { slug: 'workshop-manager' } } },
+    },
+    orderBy: { fullName: 'asc' },
+    select: { id: true, fullName: true, email: true },
+  });
+  if (branchManagers.length > 0) {
+    return { supervisors: branchManagers, usingFallback: false };
+  }
+  const masterAdmins = await prisma.user.findMany({
+    where: { isActive: true, roles: { some: { role: { isSuperAdmin: true } } } },
+    orderBy: { fullName: 'asc' },
+    select: { id: true, fullName: true, email: true },
+  });
+  return { supervisors: masterAdmins, usingFallback: true };
+}
+
+/** Any eligible manager for the branch, or a Master Admin, may perform
+ * the manager-approval step — there's no single "assigned manager" on
+ * a Job Card the way there is a supervisor or technician, since a
+ * Manager's oversight spans the whole branch; whichever eligible
+ * manager acts first completes the review. */
+async function requireEligibleManager(branchId: string): Promise<{ id: string }> {
+  const user = await requireUser();
+  if (await currentUserIsMasterAdmin()) return user;
+  const match = await prisma.user.findFirst({
+    where: { id: user.id, branchId, roles: { some: { role: { slug: 'workshop-manager' } } } },
+    select: { id: true },
+  });
+  if (!match) {
+    throw new WorkshopActionError('Only a Workshop Manager for this branch, or a Master Administrator, can approve this estimate.');
+  }
+  return user;
+}
+
 export async function approveEstimate(jobCardId: string): Promise<void> {
   const estimate = await prisma.estimate.findUnique({
     where: { jobCardId },
-    select: { id: true, status: true, jobCard: { select: { supervisorId: true } } },
+    select: {
+      id: true,
+      status: true,
+      jobCard: {
+        select: {
+          supervisorId: true,
+          branchId: true,
+          jobNumber: true,
+          customer: { select: { fullName: true } },
+          branch: { select: { name: true, businessUnit: { select: { company: { select: { name: true } } } } } },
+        },
+      },
+    },
   });
   if (!estimate) {
     throw new WorkshopActionError('This Job Card has no estimate yet.');
@@ -1873,4 +1937,117 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
     entityType: 'JobCard',
     entityId: jobCardId,
   });
+
+  // Notify every eligible manager for the branch — fail-soft, matching
+  // every other notification in this file. Sent once the approval and
+  // audit log are already committed, so a failed send here never
+  // undoes the real, already-successful approval.
+  try {
+    const managers = await listEligibleManagersForBranch(estimate.jobCard.branchId);
+    if (managers.supervisors.length === 0) return;
+    const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const lineItems = await prisma.estimateLineItem.findMany({ where: { estimateId: estimate.id }, select: { amount: true } });
+    const total = lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const companyName = estimate.jobCard.branch.businessUnit.company.name;
+    const branchName = estimate.jobCard.branch.name;
+    for (const manager of managers.supervisors) {
+      await sendEmail(
+        manager.email,
+        `Estimate for Job Card ${estimate.jobCard.jobNumber} ready for your review`,
+        renderEstimateReadyForManagerEmail({
+          managerName: manager.fullName,
+          jobNumber: estimate.jobCard.jobNumber,
+          customerName: estimate.jobCard.customer.fullName,
+          approvedByName: approver?.fullName ?? 'The supervisor',
+          totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName,
+          branchName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send estimate-ready-for-manager email', jobCardId, err);
+  }
+}
+
+/** The Workshop Manager's own sign-off — this phase's actual terminal
+ * state. The customer is notified the moment this happens, with the
+ * unified, type-hidden view (see customer-estimate-approved.ts's own
+ * comment for why the internal Store Part/External/Labour/Sundry
+ * breakdown must never reach this specific email). Simplified from the
+ * fuller "Manager reviews, sends to an Admin block, which then notifies
+ * the customer" chain described — a distinct third role beyond Manager
+ * and Master Admin wasn't clearly specified, so this step notifies the
+ * customer directly rather than guess at what a separate Admin role
+ * would add. */
+export async function approveEstimateAsManager(jobCardId: string): Promise<void> {
+  const estimate = await prisma.estimate.findUnique({
+    where: { jobCardId },
+    select: {
+      id: true,
+      status: true,
+      jobCard: {
+        select: {
+          branchId: true,
+          jobNumber: true,
+          vehicle: { select: { make: true, model: true } },
+          customer: { select: { id: true, fullName: true, email: true } },
+          branch: { select: { name: true, businessUnit: { select: { company: { select: { name: true } } } } } },
+        },
+      },
+      lineItems: { orderBy: { createdAt: 'asc' }, select: { description: true, quantity: true, amount: true } },
+    },
+  });
+  if (!estimate) {
+    throw new WorkshopActionError('This Job Card has no estimate yet.');
+  }
+  if (estimate.status !== 'APPROVED') {
+    throw new WorkshopActionError('This estimate has not been approved by its supervisor yet.');
+  }
+  const user = await requireEligibleManager(estimate.jobCard.branchId);
+
+  await prisma.estimate.update({
+    where: { id: estimate.id },
+    data: { status: 'MANAGER_APPROVED', managerApprovedAt: new Date(), managerApprovedById: user.id },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'estimate.manager_approved',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+  });
+
+  // Notify the customer — the first time an estimate reaches them at
+  // all. Fail-soft, matching every other notification in this file.
+  try {
+    const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    await sendEmail(
+      estimate.jobCard.customer.email,
+      `Your estimate for Job Card ${estimate.jobCard.jobNumber} has been approved`,
+      renderCustomerEstimateApprovedEmail({
+        customerName: estimate.jobCard.customer.fullName,
+        jobNumber: estimate.jobCard.jobNumber,
+        vehicleDescription: [estimate.jobCard.vehicle.make, estimate.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+        lineItems: estimate.lineItems.map((li: { description: string; quantity: number; amount: unknown }) => ({
+          description: li.description,
+          quantity: li.quantity,
+          amount: `₦${Number(li.amount ?? 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        })),
+        totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        dashboardUrl: `${websiteUrl}/customer-portal/dashboard`,
+        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        companyName: estimate.jobCard.branch.businessUnit.company.name,
+        branchName: estimate.jobCard.branch.name,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send customer estimate-approved email', jobCardId, err);
+  }
 }
