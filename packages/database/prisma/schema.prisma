@@ -298,6 +298,7 @@ model User {
   estimateLineItemsEntered EstimateLineItem[]
   estimatesCreated Estimate[] @relation("EstimateCreatedBy")
   estimatesApproved Estimate[] @relation("EstimateApprovedBy")
+  estimatesManagerApproved Estimate[] @relation("EstimateManagerApprovedBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -629,10 +630,19 @@ model JobCardComplaint {
 // transition, not before. APPROVED once the supervisor signs off.
 // Manager-level approval and the customer/admin-facing hand-off are a
 // later phase, not modeled here yet.
+// DRAFT while the technician and supervisor are still building it up —
+// prices can be left blank at this stage. SUBMITTED once the
+// technician marks it done and sends it to the supervisor to validate
+// — every line must have a price by this point. APPROVED once the
+// supervisor signs off — NOT yet the final word; it now moves to the
+// Workshop Manager for their own review. MANAGER_APPROVED is this
+// phase's actual terminal state — the customer is notified once an
+// estimate reaches it.
 enum EstimateStatus {
   DRAFT
   SUBMITTED
   APPROVED
+  MANAGER_APPROVED
 }
 
 model Estimate {
@@ -643,6 +653,14 @@ model Estimate {
   submittedAt DateTime?
   approvedAt  DateTime?
   approvedById String?
+  // The Workshop Manager's own sign-off, distinct from the
+  // supervisor's approvedAt/approvedById above — a Manager oversees a
+  // whole branch (both Passenger and Commercial departments), not one
+  // department the way a Supervisor does, so eligibility for this step
+  // is checked by branch, not department (see
+  // listEligibleManagersForBranch in workshop.ts).
+  managerApprovedAt   DateTime?
+  managerApprovedById String?
   createdById String
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
@@ -650,6 +668,7 @@ model Estimate {
   jobCard     JobCard            @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
   createdBy   User               @relation("EstimateCreatedBy", fields: [createdById], references: [id])
   approvedBy  User?              @relation("EstimateApprovedBy", fields: [approvedById], references: [id])
+  managerApprovedBy User?        @relation("EstimateManagerApprovedBy", fields: [managerApprovedById], references: [id])
   lineItems   EstimateLineItem[]
 
   @@map("estimates")
