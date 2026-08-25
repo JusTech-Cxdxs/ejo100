@@ -23,6 +23,7 @@
 
 import { headers } from 'next/headers';
 import { prisma, JobCardStatus, Prisma } from '@ejo/database';
+import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { hashPassword } from 'better-auth/crypto';
 import { auth } from '@/lib/auth';
 import { sendEmail } from '@/lib/email';
@@ -2206,12 +2207,12 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
         select: {
           createdById: true,
           jobNumber: true,
-          vehicle: { select: { make: true, model: true } },
+          vehicle: { select: { make: true, model: true, plateNumber: true } },
           customer: { select: { fullName: true, email: true } },
           branch: { select: { name: true, businessUnit: { select: { company: { select: { name: true } } } } } },
         },
       },
-      lineItems: { orderBy: { createdAt: 'asc' }, select: { description: true, quantity: true, amount: true } },
+      lineItems: { orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true } },
     },
   });
   if (!estimate) {
@@ -2229,10 +2230,19 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
     throw new WorkshopActionError('The customer has already been notified about this estimate.');
   }
 
-  await prisma.estimate.update({
-    where: { id: estimate.id },
-    data: { customerNotifiedAt: new Date(), customerNotifiedById: user.id },
-  });
+  await prisma.$transaction([
+    prisma.estimate.update({
+      where: { id: estimate.id },
+      data: { customerNotifiedAt: new Date(), customerNotifiedById: user.id },
+    }),
+    // The workshop's own process is done the moment the customer is
+    // told — this transition happens right here, not as a separate
+    // manual step, matching exactly when it's meant to occur.
+    prisma.jobCard.update({
+      where: { id: jobCardId },
+      data: { status: JobCardStatus.AWAITING_CUSTOMER_APPROVAL },
+    }),
+  ]);
 
   await writeAuditLog({
     userId: user.id,
@@ -2242,21 +2252,51 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
   });
 
   try {
-    const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+    // Combined "Parts & Services" figure — every kind of parts/work
+    // sourced or performed, merged into one — versus Labour and
+    // Sundry kept separate, exactly the three-way split the customer
+    // should see. Never STORE_PART/EXTERNAL_PART/etc individually.
+    const servicesTypes = new Set(['STORE_PART', 'EXTERNAL_PART', 'EXTERNAL_JOB', 'INTERNAL_JOB']);
+    let servicesTotal = 0;
+    let labourTotal = 0;
+    let sundryTotal = 0;
+    for (const li of estimate.lineItems as { type: string; amount: unknown }[]) {
+      const amount = Number(li.amount ?? 0);
+      if (li.type === 'LABOUR') labourTotal += amount;
+      else if (li.type === 'SUNDRY') sundryTotal += amount;
+      else if (servicesTypes.has(li.type)) servicesTotal += amount;
+    }
+    const total = servicesTotal + labourTotal + sundryTotal;
+    const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+    const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
     const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const vehicleDescription = [estimate.jobCard.vehicle.make, estimate.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
+    const paymentRemarkSuggestion = [estimate.jobCard.jobNumber, vehicleDescription, estimate.jobCard.vehicle.plateNumber]
+      .filter(Boolean)
+      .join(' — ');
+
     await sendEmail(
       estimate.jobCard.customer.email,
       `Your estimate for Job Card ${estimate.jobCard.jobNumber} has been approved`,
       renderCustomerEstimateApprovedEmail({
         customerName: estimate.jobCard.customer.fullName,
         jobNumber: estimate.jobCard.jobNumber,
-        vehicleDescription: [estimate.jobCard.vehicle.make, estimate.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
-        lineItems: estimate.lineItems.map((li: { description: string; quantity: number; amount: unknown }) => ({
+        vehicleDescription,
+        lineItems: (estimate.lineItems as { description: string; quantity: number; amount: unknown }[]).map((li) => ({
           description: li.description,
           quantity: li.quantity,
-          amount: `₦${Number(li.amount ?? 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          amount: formatNaira(Number(li.amount ?? 0)),
         })),
-        totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        servicesSubtotal: servicesTotal > 0 ? formatNaira(servicesTotal) : undefined,
+        labourSubtotal: labourTotal > 0 ? formatNaira(labourTotal) : undefined,
+        sundrySubtotal: sundryTotal > 0 ? formatNaira(sundryTotal) : undefined,
+        totalAmount: formatNaira(total),
+        minimumDepositAmount: formatNaira(minimumDeposit),
+        bankName: COMPANY_BANK_DETAILS.bankName,
+        accountName: COMPANY_BANK_DETAILS.accountName,
+        accountNumber: COMPANY_BANK_DETAILS.accountNumber,
+        paymentRemarkSuggestion,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard`,
         logoUrl: `${websiteUrl}/images/logo/logo.png`,
         companyName: estimate.jobCard.branch.businessUnit.company.name,
