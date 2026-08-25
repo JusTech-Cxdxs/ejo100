@@ -27,3 +27,23 @@ export const COMMON_INTERNAL_JOB_DESCRIPTIONS = [
   'Battery Charging',
   'Injector Servicing (Diesel)',
 ];
+
+/** Company bank details shown to customers for the deposit payment —
+ * a real placeholder, not a guessed value: the account number is
+ * deliberately "XXX" until the real one is supplied. No company-wide
+ * settings model exists yet to store this properly (same standing gap
+ * as the Users/Roles admin pages elsewhere in this project); once one
+ * does, this moves there instead of living as a hardcoded constant.
+ * Kept in one place so it's trivial to update everywhere it's used
+ * once the real account number is known. */
+export const COMPANY_BANK_DETAILS = {
+  bankName: 'Zenith Bank',
+  accountName: 'Kewalram Nigeria',
+  accountNumber: 'XXX',
+};
+
+/** The minimum deposit required before work begins, as a fraction of
+ * the total estimate — kept as one named constant so the 70% figure
+ * (and the exact amount computed from it) is never duplicated or
+ * allowed to drift between the email and the dashboard. */
+export const MINIMUM_DEPOSIT_FRACTION = 0.7;
