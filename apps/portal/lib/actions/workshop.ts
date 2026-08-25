@@ -40,6 +40,8 @@ import { renderCustomerEstimateApprovedEmail } from '@/lib/email-templates/custo
 import { renderEstimateReadyForCustomerNotificationEmail } from '@/lib/email-templates/estimate-ready-for-customer-notification';
 import { renderEstimateNudgeEmail } from '@/lib/email-templates/estimate-nudge';
 import { renderPaymentConfirmedEmail } from '@/lib/email-templates/payment-confirmed-work-can-proceed';
+import { renderPaymentRecordedUpdateEmail } from '@/lib/email-templates/payment-recorded-update';
+import { renderCustomerPaymentReceivedEmail } from '@/lib/email-templates/customer-payment-received';
 
 class WorkshopActionError extends Error {}
 
@@ -2384,18 +2386,46 @@ export async function getJobCardPayments(jobCardId: string) {
 
 /** Records one payment toward a Job Card — only meaningful once the
  * customer has actually been asked to pay. */
+export type PaymentAmountPreset = 'SEVENTY_PERCENT' | 'FULL' | 'OTHER';
+
+/** Records one payment toward a Job Card — the amount comes from one
+ * of three presets: the exact 70% minimum deposit (auto-computed from
+ * the real estimate total, never a bare guess), the full remaining
+ * total, or a custom "Other" amount for whatever the customer actually
+ * paid (e.g. 71–99%, or a smaller bit-by-bit installment). No
+ * per-payment minimum is enforced here deliberately — payments
+ * genuinely accumulate over multiple entries (a deposit, then a
+ * balance later), and it's the *cumulative* total that has to clear
+ * the minimum deposit before approvePaymentAndProceed() will move the
+ * Job Card forward, not any single payment on its own.
+ *
+ * Broadcasts twice on success: an informational update to everyone
+ * real on the Job Card (creator, supervisor, technician, every
+ * eligible branch Manager) showing where the cumulative total now
+ * stands — never claiming work can start, since that's still Finance's
+ * separate, deliberate approval — and a receipt confirmation to the
+ * customer themselves, every time, exactly as asked. */
 export async function recordPayment(
   jobCardId: string,
-  amount: number,
+  preset: PaymentAmountPreset,
+  customAmount: number | undefined,
   method: PaymentMethod,
   notes?: string,
 ): Promise<void> {
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new WorkshopActionError('Payment amount must be a positive number.');
-  }
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
-    select: { branchId: true, status: true },
+    select: {
+      branchId: true,
+      status: true,
+      jobNumber: true,
+      createdById: true,
+      supervisorId: true,
+      assignedTechnicianId: true,
+      customer: { select: { fullName: true, email: true } },
+      department: { select: { name: true } },
+      estimate: { select: { lineItems: { select: { amount: true } } } },
+      payments: { select: { amount: true } },
+    },
   });
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
@@ -2405,10 +2435,25 @@ export async function recordPayment(
   }
   const user = await requireEligibleFinanceOfficer(jobCard.branchId);
 
+  const total = (jobCard.estimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+  const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+
+  let amount: number;
+  if (preset === 'SEVENTY_PERCENT') {
+    amount = minimumDeposit;
+  } else if (preset === 'FULL') {
+    amount = total;
+  } else {
+    if (!customAmount || !Number.isFinite(customAmount) || customAmount <= 0) {
+      throw new WorkshopActionError('Enter a valid payment amount.');
+    }
+    amount = Math.round(customAmount * 100) / 100;
+  }
+
   await prisma.payment.create({
     data: {
       jobCardId,
-      amount: Math.round(amount * 100) / 100,
+      amount,
       method,
       notes: notes?.trim() || null,
       recordedById: user.id,
@@ -2422,6 +2467,82 @@ export async function recordPayment(
     entityId: jobCardId,
     metadata: { amount, method, notes: notes?.trim() || undefined },
   });
+
+  const priorTotal = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount ?? 0), 0);
+  const newTotal = priorTotal + amount;
+  const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const statusMessage = newTotal >= total
+    ? 'This completes payment in full.'
+    : newTotal >= minimumDeposit
+      ? 'This meets the required 70% deposit — work can begin once Finance approves.'
+      : 'This does not yet meet the required 70% deposit.';
+
+  try {
+    const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+
+    const recipientIds = new Set<string>();
+    if (jobCard.createdById) recipientIds.add(jobCard.createdById);
+    if (jobCard.supervisorId) recipientIds.add(jobCard.supervisorId);
+    if (jobCard.assignedTechnicianId) recipientIds.add(jobCard.assignedTechnicianId);
+    const managers = await listEligibleManagersForBranch(jobCard.branchId);
+    for (const m of managers.supervisors) recipientIds.add(m.id);
+
+    const recipients = await prisma.user.findMany({
+      where: { id: { in: Array.from(recipientIds) } },
+      select: { id: true, fullName: true, email: true },
+    });
+
+    for (const recipient of recipients) {
+      await sendEmail(
+        recipient.email,
+        `Payment update on Job Card ${jobCard.jobNumber}`,
+        renderPaymentRecordedUpdateEmail({
+          recipientName: recipient.fullName,
+          jobNumber: jobCard.jobNumber,
+          customerName: jobCard.customer.fullName,
+          amountReceived: formatNaira(amount),
+          totalPaidSoFar: formatNaira(newTotal),
+          totalEstimate: formatNaira(total),
+          statusMessage,
+          jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send payment-recorded update emails', jobCardId, err);
+  }
+
+  try {
+    const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const balance = total - newTotal;
+    await sendEmail(
+      jobCard.customer.email,
+      `Payment received — Job Card ${jobCard.jobNumber}`,
+      renderCustomerPaymentReceivedEmail({
+        customerName: jobCard.customer.fullName,
+        jobNumber: jobCard.jobNumber,
+        amountReceived: formatNaira(amount),
+        totalPaidSoFar: formatNaira(newTotal),
+        totalEstimate: formatNaira(total),
+        balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
+        dashboardUrl: `${websiteUrl}/customer-portal/dashboard`,
+        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send customer payment-received email', jobCardId, err);
+  }
 }
 
 /** The deliberate act that actually unblocks the workshop's own work —

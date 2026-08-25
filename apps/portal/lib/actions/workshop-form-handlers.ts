@@ -46,6 +46,7 @@ import {
   recordPayment,
   approvePaymentAndProceed,
   type PaymentMethod,
+  type PaymentAmountPreset,
   type EstimateLineItemType,
 } from './workshop';
 
@@ -305,9 +306,13 @@ export async function notifyCustomerOfApprovedEstimateFormAction(formData: FormD
 export async function recordPaymentFormAction(formData: FormData) {
   const jobCardId = str(formData, 'jobCardId');
   try {
+    const presetRaw = str(formData, 'amountPreset');
+    const preset: PaymentAmountPreset =
+      presetRaw === 'FULL' ? 'FULL' : presetRaw === 'OTHER' ? 'OTHER' : 'SEVENTY_PERCENT';
     await recordPayment(
       jobCardId,
-      num(formData, 'amount') ?? NaN,
+      preset,
+      num(formData, 'customAmount'),
       str(formData, 'method') === 'CASH' ? 'CASH' : 'BANK_TRANSFER',
       str(formData, 'notes') || undefined,
     );
