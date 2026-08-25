@@ -150,6 +150,15 @@ export default async function JobCardDetailPage({
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
+  const estimateTotal = (estimate?.lineItems ?? []).reduce((sum: number, li: (typeof estimate.lineItems)[number]) => sum + Number(li.amount ?? 0), 0);
+  const paymentStatus: 'AWAITING_PAYMENT' | 'PARTIAL' | 'DEPOSIT_MET' | 'PAID_IN_FULL' =
+    paymentsTotal <= 0
+      ? 'AWAITING_PAYMENT'
+      : estimateTotal > 0 && paymentsTotal >= estimateTotal
+        ? 'PAID_IN_FULL'
+        : estimateTotal > 0 && paymentsTotal >= estimateTotal * 0.7
+          ? 'DEPOSIT_MET'
+          : 'PARTIAL';
 
   return (
     <div className="p-8">
@@ -189,6 +198,27 @@ export default async function JobCardDetailPage({
               ? `Rejected — ${jobCard.rejectionReason}`
               : 'Awaiting Supervisor Approval'}
         </span>
+        {payments.length > 0 || jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              paymentStatus === 'PAID_IN_FULL'
+                ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
+                : paymentStatus === 'DEPOSIT_MET'
+                  ? 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]'
+                  : paymentStatus === 'PARTIAL'
+                    ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
+                    : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
+            }`}
+          >
+            {paymentStatus === 'PAID_IN_FULL'
+              ? 'Payment Completed'
+              : paymentStatus === 'DEPOSIT_MET'
+                ? 'Required Payment Met'
+                : paymentStatus === 'PARTIAL'
+                  ? 'Partial Payment'
+                  : 'Awaiting Payment'}
+          </span>
+        ) : null}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -639,7 +669,7 @@ export default async function JobCardDetailPage({
             ) : null}
           </div>
 
-          {jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' && isEligibleFinance ? (
+          {payments.length > 0 || jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Payments</h2>
               {payments.length === 0 ? (
@@ -666,50 +696,63 @@ export default async function JobCardDetailPage({
                 </div>
               )}
 
-              <form action={recordPaymentFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4">
-                <input type="hidden" name="jobCardId" value={jobCard.id} />
-                <input
-                  name="amount"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  required
-                  placeholder="Amount"
-                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-                />
-                <select
-                  name="method"
-                  required
-                  defaultValue="BANK_TRANSFER"
-                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-                >
-                  <option value="BANK_TRANSFER">Bank Transfer</option>
-                  <option value="CASH">Cash</option>
-                </select>
-                <input
-                  name="notes"
-                  placeholder="Reference / notes (optional)"
-                  className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-                />
-                <SubmitButton
-                  label="Record payment"
-                  pendingLabel="Recording…"
-                  className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                />
-              </form>
+              {jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' && isEligibleFinance ? (
+                <>
+                  <form action={recordPaymentFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4">
+                    <input type="hidden" name="jobCardId" value={jobCard.id} />
+                    <select
+                      name="amountPreset"
+                      required
+                      defaultValue="SEVENTY_PERCENT"
+                      className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                    >
+                      <option value="SEVENTY_PERCENT">70% deposit ({formatNaira(estimateTotal * 0.7)})</option>
+                      <option value="FULL">Full payment ({formatNaira(estimateTotal)})</option>
+                      <option value="OTHER">Other amount</option>
+                    </select>
+                    <input
+                      name="customAmount"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      placeholder="Amount (only used if 'Other' is selected)"
+                      className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                    />
+                    <select
+                      name="method"
+                      required
+                      defaultValue="BANK_TRANSFER"
+                      className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                    >
+                      <option value="BANK_TRANSFER">Bank Transfer</option>
+                      <option value="CASH">Cash</option>
+                    </select>
+                    <input
+                      name="notes"
+                      placeholder="Reference / notes (optional)"
+                      className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                    />
+                    <SubmitButton
+                      label="Record payment"
+                      pendingLabel="Recording…"
+                      className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                    />
+                  </form>
 
-              <form action={approvePaymentAndProceedFormAction} className="mt-3">
-                <input type="hidden" name="jobCardId" value={jobCard.id} />
-                <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
-                  Confirms the minimum deposit has been met, moves this Job Card to In Progress, and notifies
-                  everyone involved.
-                </p>
-                <SubmitButton
-                  label="Approve payment & proceed"
-                  pendingLabel="Approving…"
-                  className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-                />
-              </form>
+                  <form action={approvePaymentAndProceedFormAction} className="mt-3">
+                    <input type="hidden" name="jobCardId" value={jobCard.id} />
+                    <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
+                      Confirms the minimum deposit has been met, moves this Job Card to In Progress, and notifies
+                      everyone involved.
+                    </p>
+                    <SubmitButton
+                      label="Approve payment & proceed"
+                      pendingLabel="Approving…"
+                      className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                    />
+                  </form>
+                </>
+              ) : null}
             </div>
           ) : null}
 
