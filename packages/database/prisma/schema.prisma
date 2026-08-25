@@ -503,6 +503,12 @@ enum JobCardStatus {
   IN_PROGRESS
   AWAITING_PARTS
   QUALITY_CHECK
+  // The workshop's own process is done and the estimate has been sent
+  // to the customer — set the moment notifyCustomerOfApprovedEstimate
+  // runs, not a separate manual step. Sits between the workshop's own
+  // work and payment: nothing proceeds until the customer pays (or,
+  // in a later phase, explicitly cancels).
+  AWAITING_CUSTOMER_APPROVAL
   COMPLETED
   READY_FOR_COLLECTION
   CLOSED
