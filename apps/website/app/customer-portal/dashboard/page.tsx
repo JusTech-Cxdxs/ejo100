@@ -3,12 +3,14 @@ import { redirect } from 'next/navigation';
 import { customerAuth } from '@/lib/auth-customer';
 import { prisma } from '@ejo/database';
 import { siteConfig } from '@/lib/site-config';
+import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-payment-constants';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
   IN_PROGRESS: 'In Progress',
   AWAITING_PARTS: 'Awaiting Parts',
   QUALITY_CHECK: 'Quality Check',
+  AWAITING_CUSTOMER_APPROVAL: 'Awaiting Your Approval',
   COMPLETED: 'Completed',
   READY_FOR_COLLECTION: 'Ready for Collection',
   CLOSED: 'Closed',
@@ -20,11 +22,16 @@ const STATUS_COLOR: Record<string, string> = {
   IN_PROGRESS: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   AWAITING_PARTS: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   QUALITY_CHECK: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  AWAITING_CUSTOMER_APPROVAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   READY_FOR_COLLECTION: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
+
+function formatNaira(value: number): string {
+  return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 /**
  * Real customer content — replaces the placeholder. Customers reach
@@ -56,6 +63,16 @@ export default async function CustomerDashboardPage() {
         include: {
           vehicle: { select: { make: true, model: true, plateNumber: true } },
           complaints: { orderBy: { sequenceNumber: 'asc' } },
+          // Only ever shown once customerNotifiedAt is set — a
+          // Manager-approved-but-not-yet-notified estimate must never
+          // reach the customer through this dashboard any more than
+          // through email; see the render logic below.
+          estimate: {
+            select: {
+              customerNotifiedAt: true,
+              lineItems: { orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true } },
+            },
+          },
         },
       },
     },
@@ -142,6 +159,79 @@ export default async function CustomerDashboardPage() {
                   </ul>
                 ) : jc.complaint ? (
                   <p className="mt-2 text-sm text-[var(--ejo-text)]">{jc.complaint}</p>
+                ) : null}
+
+                {jc.estimate && jc.estimate.customerNotifiedAt ? (
+                  (() => {
+                    const servicesTypes = new Set(['STORE_PART', 'EXTERNAL_PART', 'EXTERNAL_JOB', 'INTERNAL_JOB']);
+                    let servicesTotal = 0;
+                    let labourTotal = 0;
+                    let sundryTotal = 0;
+                    for (const li of jc.estimate.lineItems as { type: string; amount: unknown }[]) {
+                      const amount = Number(li.amount ?? 0);
+                      if (li.type === 'LABOUR') labourTotal += amount;
+                      else if (li.type === 'SUNDRY') sundryTotal += amount;
+                      else if (servicesTypes.has(li.type)) servicesTotal += amount;
+                    }
+                    const total = servicesTotal + labourTotal + sundryTotal;
+                    const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+                    return (
+                      <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Estimate</p>
+                        <ol className="mt-2 space-y-0.5 text-sm text-[var(--ejo-text)]">
+                          {(jc.estimate.lineItems as { description: string; quantity: number; amount: unknown }[]).map((li, i) => (
+                            <li key={i}>
+                              {li.description} (x{li.quantity}) — {formatNaira(Number(li.amount ?? 0))}
+                            </li>
+                          ))}
+                        </ol>
+                        <div className="mt-2 space-y-0.5 border-t border-[var(--ejo-border)] pt-2 text-sm">
+                          {servicesTotal > 0 ? (
+                            <div className="flex justify-between text-[var(--ejo-text-muted)]">
+                              <span>Parts &amp; Services</span>
+                              <span>{formatNaira(servicesTotal)}</span>
+                            </div>
+                          ) : null}
+                          {labourTotal > 0 ? (
+                            <div className="flex justify-between text-[var(--ejo-text-muted)]">
+                              <span>Labour</span>
+                              <span>{formatNaira(labourTotal)}</span>
+                            </div>
+                          ) : null}
+                          {sundryTotal > 0 ? (
+                            <div className="flex justify-between text-[var(--ejo-text-muted)]">
+                              <span>Sundry</span>
+                              <span>{formatNaira(sundryTotal)}</span>
+                            </div>
+                          ) : null}
+                          <div className="flex justify-between font-semibold text-[var(--ejo-text)]">
+                            <span>Total Estimate</span>
+                            <span>{formatNaira(total)}</span>
+                          </div>
+                        </div>
+                        {jc.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
+                          <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-amber-200 bg-amber-50 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                              Minimum deposit required (70%)
+                            </p>
+                            <p className="text-lg font-bold text-[var(--ejo-text)]">{formatNaira(minimumDeposit)}</p>
+                            <p className="mt-1 text-xs text-amber-800">
+                              Bank: {COMPANY_BANK_DETAILS.bankName} · Account Name: {COMPANY_BANK_DETAILS.accountName} ·
+                              Account Number: {COMPANY_BANK_DETAILS.accountNumber}
+                            </p>
+                            <p className="mt-1 text-xs text-amber-800">
+                              Reference: {jc.jobNumber} — {[jc.vehicle.make, jc.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}
+                              {jc.vehicle.plateNumber ? ` — ${jc.vehicle.plateNumber}` : ''}
+                            </p>
+                            <p className="mt-1 text-xs text-amber-800">
+                              Or pay in person at our office — the cashier will confirm your payment. After
+                              transferring, you can send your payment proof by replying to our email.
+                            </p>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })()
                 ) : null}
               </div>
             ))}
