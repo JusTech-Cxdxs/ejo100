@@ -1,8 +1,8 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
-import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, listTechnicianCandidates, listEligibleSupervisorsForJobCard, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
+import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { COMMON_LABOUR_DESCRIPTIONS } from '@/lib/workshop-constants';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction } from '@/lib/actions/workshop-form-handlers';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -45,6 +45,7 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'estimate.line_item_removed': 'Estimate line removed',
   'estimate.submitted': 'Estimate submitted for validation',
   'estimate.approved': 'Estimate approved',
+  'estimate.manager_approved': 'Estimate approved by manager',
 };
 
 /** Turns the stored audit metadata into a real, field-level detail
@@ -88,7 +89,8 @@ const ESTIMATE_TYPE_LABEL: Record<string, string> = {
 const ESTIMATE_STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Draft',
   SUBMITTED: 'Awaiting supervisor validation',
-  APPROVED: 'Approved',
+  APPROVED: 'Awaiting manager review',
+  MANAGER_APPROVED: 'Approved',
 };
 
 // Prisma returns Decimal fields as Decimal objects (from decimal.js),
@@ -116,15 +118,17 @@ export default async function JobCardDetailPage({
     currentUserId(),
   ]);
   if (!jobCard) notFound();
-  const [auditTrail, eligibleSupervisors, estimate] = await Promise.all([
+  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers] = await Promise.all([
     getJobCardAuditTrail(id),
     listEligibleSupervisorsForJobCard(id),
     getJobCardEstimate(id),
+    listEligibleManagersForBranch(jobCard.branchId),
   ]);
   const isApprover = isMasterAdmin || jobCard.supervisor?.id === viewerId;
   const isAssignedTechnician = isMasterAdmin || jobCard.assignedTechnician?.id === viewerId;
   const isCreator = isMasterAdmin || jobCard.createdBy.id === viewerId;
   const isEstimateContributor = isMasterAdmin || jobCard.supervisor?.id === viewerId || jobCard.assignedTechnician?.id === viewerId;
+  const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
 
   return (
     <div className="p-8">
@@ -286,9 +290,9 @@ export default async function JobCardDetailPage({
               {estimate ? (
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                    estimate.status === 'APPROVED'
+                    estimate.status === 'MANAGER_APPROVED'
                       ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
-                      : estimate.status === 'SUBMITTED'
+                      : estimate.status === 'SUBMITTED' || estimate.status === 'APPROVED'
                         ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
                         : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
                   }`}
@@ -322,7 +326,7 @@ export default async function JobCardDetailPage({
                     <tbody>
                       {estimate.lineItems.map((item: (typeof estimate.lineItems)[number]) => {
                         const canModifyThis =
-                          estimate.status !== 'APPROVED' && isEstimateContributor && (viewerId === item.enteredById || isApprover);
+                          estimate.status !== 'MANAGER_APPROVED' && isEstimateContributor && (viewerId === item.enteredById || isApprover);
                         const isEditingThis = editLineId === item.id && canModifyThis;
 
                         if (isEditingThis) {
@@ -520,6 +524,20 @@ export default async function JobCardDetailPage({
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <SubmitButton
                   label="Approve estimate"
+                  pendingLabel="Approving…"
+                  className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                />
+              </form>
+            ) : null}
+
+            {estimate?.status === 'APPROVED' && isEligibleManager ? (
+              <form action={approveEstimateAsManagerFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
+                  Approved by the supervisor — approving here notifies the customer with the final estimate.
+                </p>
+                <SubmitButton
+                  label="Approve as Manager"
                   pendingLabel="Approving…"
                   className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 />
