@@ -36,6 +36,7 @@ import { renderTechnicianResponseEmail } from '@/lib/email-templates/technician-
 import { renderEstimateSubmittedEmail } from '@/lib/email-templates/estimate-submitted-for-validation';
 import { renderEstimateReadyForManagerEmail } from '@/lib/email-templates/estimate-ready-for-manager';
 import { renderCustomerEstimateApprovedEmail } from '@/lib/email-templates/customer-estimate-approved';
+import { renderEstimateNudgeEmail } from '@/lib/email-templates/estimate-nudge';
 
 class WorkshopActionError extends Error {}
 
@@ -1771,6 +1772,123 @@ export async function deleteEstimateLineItem(lineItemId: string): Promise<void> 
  * actually becomes required: every line must have a unit price before
  * this transition is allowed. Draft-stage blanks are fine right up
  * until this point, never before it. */
+/** Shared by notifySupervisorAboutEstimate/notifyTechnicianAboutEstimate
+ * below — a lightweight, repeatable "please take a look" nudge while
+ * the estimate is still being built, genuinely distinct from
+ * submitEstimateForValidation()'s one-time, formal, all-prices-required
+ * hand-off. This never changes the estimate's status at all — it's
+ * just informal communication, which is exactly why it doesn't reuse
+ * that function. Records an audit entry either way (even if the email
+ * fails) so the back-and-forth itself stays visible in the trail. */
+async function sendEstimateNudge(params: {
+  jobCardId: string;
+  fromRole: 'supervisor' | 'technician';
+  fromUserId: string;
+  toUserId: string;
+  note?: string;
+}): Promise<void> {
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: params.jobCardId },
+    select: {
+      jobNumber: true,
+      customer: { select: { fullName: true } },
+      department: { select: { name: true } },
+    },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+
+  await writeAuditLog({
+    userId: params.fromUserId,
+    action: params.fromRole === 'supervisor' ? 'estimate.nudge_to_technician' : 'estimate.nudge_to_supervisor',
+    entityType: 'JobCard',
+    entityId: params.jobCardId,
+    metadata: params.note?.trim() ? { notes: params.note.trim() } : undefined,
+  });
+
+  try {
+    const [fromUser, toUser] = await Promise.all([
+      prisma.user.findUnique({ where: { id: params.fromUserId }, select: { fullName: true } }),
+      prisma.user.findUnique({ where: { id: params.toUserId }, select: { fullName: true, email: true } }),
+    ]);
+    if (!toUser) return;
+    const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      toUser.email,
+      `A note on the estimate for Job Card ${jobCard.jobNumber}`,
+      renderEstimateNudgeEmail({
+        recipientName: toUser.fullName,
+        fromName: fromUser?.fullName ?? 'A team member',
+        fromRole: params.fromRole,
+        jobNumber: jobCard.jobNumber,
+        customerName: jobCard.customer.fullName,
+        note: params.note,
+        jobCardUrl: `${portalUrl}/workshop/job-cards/${params.jobCardId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send estimate nudge email', params.jobCardId, err);
+  }
+}
+
+/** The assigned technician nudges the supervisor to check the
+ * estimate — the informal counterpart to a formal submission, usable
+ * any time while still building it up together. */
+export async function notifySupervisorAboutEstimate(jobCardId: string, note?: string): Promise<void> {
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: { supervisorId: true, assignedTechnicianId: true },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  const user = await requireUser();
+  const isMasterAdmin = await currentUserIsMasterAdmin();
+  if (user.id !== jobCard.assignedTechnicianId && !isMasterAdmin) {
+    throw new WorkshopActionError('Only the assigned technician can notify the supervisor about this estimate.');
+  }
+  if (!jobCard.supervisorId) {
+    throw new WorkshopActionError('This Job Card has no supervisor assigned yet.');
+  }
+  await sendEstimateNudge({
+    jobCardId,
+    fromRole: 'technician',
+    fromUserId: user.id,
+    toUserId: jobCard.supervisorId,
+    note,
+  });
+}
+
+/** The supervisor nudges the assigned technician to review or price
+ * the estimate. */
+export async function notifyTechnicianAboutEstimate(jobCardId: string, note?: string): Promise<void> {
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: { supervisorId: true, assignedTechnicianId: true },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  const user = await requireJobCardApprover(jobCard);
+  if (!jobCard.assignedTechnicianId) {
+    throw new WorkshopActionError('This Job Card has no technician assigned yet.');
+  }
+  await sendEstimateNudge({
+    jobCardId,
+    fromRole: 'supervisor',
+    fromUserId: user.id,
+    toUserId: jobCard.assignedTechnicianId,
+    note,
+  });
+}
+
 export async function submitEstimateForValidation(jobCardId: string): Promise<void> {
   const estimate = await prisma.estimate.findUnique({
     where: { jobCardId },

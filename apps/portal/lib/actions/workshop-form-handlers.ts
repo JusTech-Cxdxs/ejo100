@@ -37,6 +37,8 @@ import {
   addEstimateLineItem,
   updateEstimateLineItem,
   deleteEstimateLineItem,
+  notifySupervisorAboutEstimate,
+  notifyTechnicianAboutEstimate,
   submitEstimateForValidation,
   approveEstimate,
   approveEstimateAsManager,
@@ -223,6 +225,28 @@ export async function deleteEstimateLineItemFormAction(formData: FormData) {
     await deleteEstimateLineItem(str(formData, 'lineItemId'));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not remove estimate line item.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function notifySupervisorAboutEstimateFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await notifySupervisorAboutEstimate(jobCardId, str(formData, 'note') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not notify supervisor.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function notifyTechnicianAboutEstimateFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await notifyTechnicianAboutEstimate(jobCardId, str(formData, 'note') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not notify technician.';
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
