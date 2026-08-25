@@ -2,7 +2,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { COMMON_LABOUR_DESCRIPTIONS } from '@/lib/workshop-constants';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction } from '@/lib/actions/workshop-form-handlers';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -46,6 +46,7 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'estimate.submitted': 'Estimate submitted for validation',
   'estimate.approved': 'Estimate approved',
   'estimate.manager_approved': 'Estimate approved by manager',
+  'estimate.customer_notified': 'Customer notified of approved estimate',
   'estimate.nudge_to_technician': 'Supervisor notified technician about estimate',
   'estimate.nudge_to_supervisor': 'Technician notified supervisor about estimate',
 };
@@ -574,7 +575,8 @@ export default async function JobCardDetailPage({
               <form action={approveEstimateAsManagerFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
-                  Approved by the supervisor — approving here notifies the customer with the final estimate.
+                  Approved by the supervisor — approving here notifies {jobCard.createdBy.fullName}, who created
+                  this Job Card, to review and decide when to tell the customer.
                 </p>
                 <SubmitButton
                   label="Approve as Manager"
@@ -582,6 +584,26 @@ export default async function JobCardDetailPage({
                   className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 />
               </form>
+            ) : null}
+
+            {estimate?.status === 'MANAGER_APPROVED' && !estimate.customerNotifiedAt && isCreator ? (
+              <form action={notifyCustomerOfApprovedEstimateFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
+                  Approved by the manager. Once you&apos;re satisfied everything is in order, notify the customer
+                  so they can review the estimate and proceed.
+                </p>
+                <SubmitButton
+                  label="Notify customer"
+                  pendingLabel="Notifying…"
+                  className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                />
+              </form>
+            ) : null}
+            {estimate?.status === 'MANAGER_APPROVED' && estimate.customerNotifiedAt ? (
+              <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
+                Customer notified on {formatDateTime(estimate.customerNotifiedAt)}.
+              </p>
             ) : null}
           </div>
 
