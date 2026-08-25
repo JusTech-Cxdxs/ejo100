@@ -8,13 +8,16 @@
  * Anything that's plain data, not an action, belongs here instead.
  */
 
-/** Common service/labour descriptions shown as suggestions, not a
+/** Common Internal Job descriptions shown as suggestions, not a
  * closed list — every one of these fields stays a free-text input with
  * a `<datalist>`, matching the same "suggest, don't restrict" pattern
  * already used for vehicle Make/Model. Kept here as the one place this
  * list is maintained, not duplicated between server validation (there
- * isn't any — free text is always allowed) and the UI. */
-export const COMMON_LABOUR_DESCRIPTIONS = [
+ * isn't any — free text is always allowed) and the UI. Named for
+ * INTERNAL_JOB specifically, not LABOUR — the two are genuinely
+ * separate types (LABOUR is the company's own general labour/time
+ * charge; these are named services the workshop performs). */
+export const COMMON_INTERNAL_JOB_DESCRIPTIONS = [
   'Wheel Alignment',
   'Wheel Balancing',
   'Body Job',
