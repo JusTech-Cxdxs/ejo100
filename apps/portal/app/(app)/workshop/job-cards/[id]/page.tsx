@@ -47,8 +47,39 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'estimate.approved': 'Estimate approved',
 };
 
+/** Turns the stored audit metadata into a real, field-level detail
+ * line — "who entered price X for Y", not just a generic action label
+ * — reading exactly what writeAuditLog() already captures at the point
+ * each action happens, not reconstructed after the fact. Returns null
+ * when there's genuinely nothing more specific to show. */
+function formatAuditDetail(entry: { action: string; metadata: unknown }): string | null {
+  const meta = entry.metadata as Record<string, unknown> | null;
+  if (!meta) return null;
+  switch (entry.action) {
+    case 'estimate.line_item_added':
+    case 'estimate.line_item_updated': {
+      const parts: string[] = [];
+      if (typeof meta.type === 'string') parts.push(ESTIMATE_TYPE_LABEL[meta.type] ?? meta.type);
+      if (typeof meta.description === 'string') parts.push(`"${meta.description}"`);
+      if (typeof meta.quantity === 'number') parts.push(`qty ${meta.quantity}`);
+      if (typeof meta.unitPrice === 'number') parts.push(`priced at ${formatNaira(meta.unitPrice)}`);
+      else parts.push('no price set');
+      return parts.join(' — ');
+    }
+    case 'estimate.line_item_removed':
+      return typeof meta.description === 'string' ? `"${meta.description}"` : null;
+    case 'job_card.rejected':
+    case 'job_card.supervisor_reassigned':
+    case 'assignment.rejected':
+      return typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : null;
+    default:
+      return typeof meta.notes === 'string' && meta.notes ? `Notes: ${meta.notes}` : null;
+  }
+}
+
 const ESTIMATE_TYPE_LABEL: Record<string, string> = {
   STORE_PART: 'Store Part',
+  EXTERNAL_PART: 'External Part',
   EXTERNAL_JOB: 'External Job',
   LABOUR: 'Labour',
   SUNDRY: 'Sundry',
@@ -355,17 +386,20 @@ export default async function JobCardDetailPage({
                             {isEstimateContributor ? (
                               <td className="py-2">
                                 {canModifyThis ? (
-                                  <div className="flex gap-2">
+                                  <div className="flex items-center gap-3">
                                     <LoadingLink
                                       href={`/workshop/job-cards/${jobCard.id}?editLineId=${item.id}`}
-                                      className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+                                      className="inline-flex items-center text-xs font-medium leading-none text-[var(--ejo-primary)] hover:underline"
                                     >
                                       Edit
                                     </LoadingLink>
-                                    <form action={deleteEstimateLineItemFormAction}>
+                                    <form action={deleteEstimateLineItemFormAction} className="inline-flex items-center">
                                       <input type="hidden" name="jobCardId" value={jobCard.id} />
                                       <input type="hidden" name="lineItemId" value={item.id} />
-                                      <button type="submit" className="text-xs font-medium text-[var(--ejo-error)] hover:underline">
+                                      <button
+                                        type="submit"
+                                        className="inline-flex items-center text-xs font-medium leading-none text-[var(--ejo-error)] hover:underline"
+                                      >
                                         Remove
                                       </button>
                                     </form>
@@ -380,7 +414,7 @@ export default async function JobCardDetailPage({
                   </table>
                 </div>
                 <div className="mt-3 space-y-1 border-t border-[var(--ejo-border)] pt-3 text-sm">
-                  {(['STORE_PART', 'EXTERNAL_JOB', 'LABOUR', 'SUNDRY'] as const).map((type) => {
+                  {(['STORE_PART', 'EXTERNAL_PART', 'EXTERNAL_JOB', 'LABOUR', 'SUNDRY'] as const).map((type) => {
                     const subtotal = estimate.lineItems
                       .filter((item: (typeof estimate.lineItems)[number]) => item.type === type)
                       .reduce((sum: number, item: (typeof estimate.lineItems)[number]) => sum + Number(item.amount ?? 0), 0);
@@ -423,10 +457,9 @@ export default async function JobCardDetailPage({
                   className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)] sm:col-span-1"
                 >
                   <option value="STORE_PART">Store Part</option>
+                  <option value="EXTERNAL_PART">External Part</option>
                   <option value="EXTERNAL_JOB">External Job</option>
-                  {!estimate?.lineItems.some((li: (typeof estimate.lineItems)[number]) => li.type === 'LABOUR') ? (
-                    <option value="LABOUR">Labour</option>
-                  ) : null}
+                  <option value="LABOUR">Labour</option>
                   {!estimate?.lineItems.some((li: (typeof estimate.lineItems)[number]) => li.type === 'SUNDRY') ? (
                     <option value="SUNDRY">Sundry</option>
                   ) : null}
@@ -461,6 +494,10 @@ export default async function JobCardDetailPage({
                   pendingLabel="Adding…"
                   className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)] sm:col-span-5"
                 />
+                <p className="col-span-2 text-[11px] text-[var(--ejo-text-muted)] sm:col-span-5">
+                  Pricing: the technician prices External Part/Job lines (they sourced them); the supervisor
+                  prices Store Part, Labour, and Sundry.
+                </p>
               </form>
             ) : null}
 
@@ -689,18 +726,22 @@ export default async function JobCardDetailPage({
           <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No recorded activity yet.</p>
         ) : (
           <ol className="mt-3 space-y-3">
-            {auditTrail.map((entry) => (
-              <li key={entry.id} className="flex items-start gap-3 text-sm">
-                <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--ejo-primary)]" />
-                <div>
-                  <p className="text-[var(--ejo-text)]">
-                    <span className="font-medium">{AUDIT_ACTION_LABEL[entry.action] ?? entry.action}</span>
-                    {entry.user ? ` — ${entry.user.fullName}` : ''}
-                  </p>
-                  <p className="text-xs text-[var(--ejo-text-muted)]">{formatDateTime(entry.createdAt)}</p>
-                </div>
-              </li>
-            ))}
+            {auditTrail.map((entry) => {
+              const detail = formatAuditDetail(entry);
+              return (
+                <li key={entry.id} className="flex items-start gap-3 text-sm">
+                  <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--ejo-primary)]" />
+                  <div>
+                    <p className="text-[var(--ejo-text)]">
+                      <span className="font-medium">{AUDIT_ACTION_LABEL[entry.action] ?? entry.action}</span>
+                      {entry.user ? ` — ${entry.user.fullName}` : ''}
+                    </p>
+                    {detail ? <p className="text-xs text-[var(--ejo-text)]">{detail}</p> : null}
+                    <p className="text-xs text-[var(--ejo-text-muted)]">{formatDateTime(entry.createdAt)}</p>
+                  </div>
+                </li>
+              );
+            })}
           </ol>
         )}
       </div>
