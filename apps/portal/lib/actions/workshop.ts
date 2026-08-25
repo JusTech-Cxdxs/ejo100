@@ -33,6 +33,7 @@ import { renderCustomerJobCardAcknowledgmentEmail } from '@/lib/email-templates/
 import { renderJobCardDecisionEmail } from '@/lib/email-templates/job-card-decision';
 import { renderTechnicianJobCardAssignedEmail } from '@/lib/email-templates/technician-job-card-assigned';
 import { renderTechnicianResponseEmail } from '@/lib/email-templates/technician-response-notification';
+import { renderEstimateSubmittedEmail } from '@/lib/email-templates/estimate-submitted-for-validation';
 
 class WorkshopActionError extends Error {}
 
@@ -1502,7 +1503,7 @@ export async function getWorkshopDashboardCounts() {
 // its own real, separate piece of work, not folded in.
 // ---------------------------------------------------------------------------
 
-export type EstimateLineItemType = 'STORE_PART' | 'EXTERNAL_JOB' | 'LABOUR' | 'SUNDRY';
+export type EstimateLineItemType = 'STORE_PART' | 'EXTERNAL_PART' | 'EXTERNAL_JOB' | 'LABOUR' | 'SUNDRY';
 
 export type EstimateLineItemInput = {
   type: EstimateLineItemType;
@@ -1531,6 +1532,33 @@ async function requireEstimateContributor(jobCard: {
   }
   throw new WorkshopActionError(
     'Only the assigned supervisor, the assigned technician, or a Master Administrator can work on this estimate.',
+  );
+}
+
+/** Who's actually allowed to set the PRICE on a given line type — a
+ * real, deliberate restriction distinct from requireEstimateContributor
+ * above, which only governs adding/editing a line at all. A technician
+ * only knows the true cost of what they personally sourced or had done
+ * outside the workshop (EXTERNAL_PART/EXTERNAL_JOB) — everything else
+ * (Store's own parts, the company's Labour/Sundry charges) is priced
+ * by the supervisor, who has broader pricing authority across every
+ * type, matching the same supervisor-outranks-technician hierarchy
+ * already established everywhere else in this file. Only checked when
+ * a price is actually being set — leaving a line unpriced (still
+ * allowed while DRAFT) never needs this check at all. */
+async function requirePricingAuthority(
+  type: EstimateLineItemType,
+  jobCard: { supervisorId: string | null; assignedTechnicianId: string | null },
+  userId: string,
+): Promise<void> {
+  if (await currentUserIsMasterAdmin()) return;
+  if (userId === jobCard.supervisorId) return;
+  const technicianPriceableTypes: EstimateLineItemType[] = ['EXTERNAL_PART', 'EXTERNAL_JOB'];
+  if (userId === jobCard.assignedTechnicianId && technicianPriceableTypes.includes(type)) return;
+  throw new WorkshopActionError(
+    type === 'EXTERNAL_PART' || type === 'EXTERNAL_JOB'
+      ? 'Only the assigned technician or supervisor can set a price for an external part or job.'
+      : 'Only the assigned supervisor can set a price for this line — the technician can add the description and quantity, but not the price.',
   );
 }
 
@@ -1589,10 +1617,15 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
   if (estimate.status !== 'DRAFT') {
     throw new WorkshopActionError('This estimate has already been submitted and can no longer have lines added — edit an existing line instead.');
   }
-  if ((input.type === 'LABOUR' || input.type === 'SUNDRY') && estimate.lineItems.some((li: { type: string }) => li.type === input.type)) {
-    throw new WorkshopActionError(
-      `A ${input.type === 'LABOUR' ? 'Labour' : 'Sundry'} line already exists on this estimate — edit it instead of adding another.`,
-    );
+  // Only Sundry is capped at one line — Labour genuinely needs to
+  // support several distinct entries on one Job Card (wheel alignment
+  // AND an AC gas refill AND injector servicing can all be needed on
+  // the same vehicle at once), so it's no longer restricted here.
+  if (input.type === 'SUNDRY' && estimate.lineItems.some((li: { type: string }) => li.type === 'SUNDRY')) {
+    throw new WorkshopActionError('A Sundry line already exists on this estimate — edit it instead of adding another.');
+  }
+  if (input.unitPrice !== undefined) {
+    await requirePricingAuthority(input.type, jobCard, contributor.id);
   }
 
   const amount = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
@@ -1644,6 +1677,7 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
   const lineItem = await prisma.estimateLineItem.findUnique({
     where: { id: lineItemId },
     select: {
+      type: true,
       estimate: {
         select: {
           jobCardId: true,
@@ -1660,6 +1694,9 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
     throw new WorkshopActionError('This estimate has already been approved and can no longer be edited.');
   }
   const editor = await requireEstimateContributor(lineItem.estimate.jobCard);
+  if (input.unitPrice !== undefined) {
+    await requirePricingAuthority(lineItem.type, lineItem.estimate.jobCard, editor.id);
+  }
 
   const amount = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
 
@@ -1678,7 +1715,7 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
     action: 'estimate.line_item_updated',
     entityType: 'JobCard',
     entityId: lineItem.estimate.jobCardId,
-    metadata: { description, quantity: input.quantity, unitPrice: input.unitPrice, amount },
+    metadata: { type: lineItem.type, description, quantity: input.quantity, unitPrice: input.unitPrice, amount },
   });
 }
 
@@ -1737,8 +1774,17 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
     select: {
       id: true,
       status: true,
-      jobCard: { select: { supervisorId: true, assignedTechnicianId: true } },
-      lineItems: { select: { unitPrice: true, description: true } },
+      jobCard: {
+        select: {
+          jobNumber: true,
+          supervisorId: true,
+          assignedTechnicianId: true,
+          department: { select: { name: true } },
+          customer: { select: { fullName: true } },
+          supervisor: { select: { fullName: true, email: true } },
+        },
+      },
+      lineItems: { select: { unitPrice: true, amount: true, description: true } },
     },
   });
   if (!estimate) {
@@ -1769,6 +1815,35 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
     entityType: 'JobCard',
     entityId: jobCardId,
   });
+
+  // Notify the supervisor — fail-soft, matching every other
+  // notification in this file.
+  try {
+    if (!estimate.jobCard.supervisor) return;
+    const submitter = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const orgContext = await getWorkshopOrgContext(estimate.jobCard.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+    await sendEmail(
+      estimate.jobCard.supervisor.email,
+      `Estimate for Job Card ${estimate.jobCard.jobNumber} needs your validation`,
+      renderEstimateSubmittedEmail({
+        supervisorName: estimate.jobCard.supervisor.fullName,
+        jobNumber: estimate.jobCard.jobNumber,
+        customerName: estimate.jobCard.customer.fullName,
+        submittedByName: submitter?.fullName ?? 'A team member',
+        totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send estimate-submitted email to supervisor', jobCardId, err);
+  }
 }
 
 /** The assigned supervisor (or a Master Admin) signs off on a
