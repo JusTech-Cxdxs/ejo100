@@ -413,13 +413,34 @@ model RolePermission {
 // structurally cannot reach an employee-only route.
 // ----------------------------------------------------------------------------
 
-model Customer {
-  id            String   @id @default(cuid())
-  companyId     String   // which company this customer belongs to (Kewalram, etc.)
+// Whether a customer is an individual person or a registered company —
+// real evidence for this distinction: an actual Kewalram paper estimate
+// form shows a company customer ("F Trading Nig. Ltd.") alongside
+// individual customers. `fullName` on Customer below covers either case
+// as a single display name (a person's full name, or a company's name)
+// — kept as one field rather than split into separate person/company
+// name fields, since that's what the paper form itself does.
+enum CustomerType {
+  INDIVIDUAL
+  COMPANY
+}
 
+model Customer {
+  id            String       @id @default(cuid())
+  companyId     String       // which company this customer belongs to (Kewalram, etc.)
+
+  customerType  CustomerType @default(INDIVIDUAL)
   fullName      String
-  email         String   @unique
-  emailVerified Boolean  @default(false)
+  // Deliberately a single short line, not the separate, multi-field
+  // CustomerAddress model below (label/line1/line2/city/state/country)
+  // — that model is scaffolded for a fuller multi-address system this
+  // project doesn't need yet. What's actually needed here is simpler:
+  // one short address shown directly on the Job Card, kept brief on
+  // purpose (like a VIN) so it never stretches that layout — enforced
+  // with a UI character limit, not just a hint.
+  address       String?
+  email         String       @unique
+  emailVerified Boolean      @default(false)
   image         String?
   phone         String?
 
@@ -717,21 +738,22 @@ model Estimate {
 //                   genuinely separate concept from LABOUR below, not
 //                   a relabeling of it. Plural by nature: one Job Card
 //                   can need several of these at once, so unlike
-//                   LABOUR/SUNDRY there is no one-line cap here.
-//                   Priced by the supervisor/company, never the
-//                   technician.
-//   LABOUR        — the company's own general labour/time charge, a
-//                   single aggregate figure distinct from any specific
-//                   INTERNAL_JOB — a Job Card may only ever have ONE
-//                   Labour line (enforced in code, not the schema — a
-//                   second attempt is rejected with a clear message
-//                   pointing at editing the existing one instead).
+//                   SUNDRY there is no one-line cap here. Priced by
+//                   the supervisor/company, never the technician.
+//   LABOUR        — the company's own labour/time charge for a
+//                   specific piece of work — e.g. "Labour for
+//                   Service", "Labour for Brake" — confirmed by an
+//                   actual Kewalram paper estimate, which shows both
+//                   as separate lines on the same job. Also plural by
+//                   nature, same as INTERNAL_JOB, no one-line cap.
 //                   Priced by the supervisor/company.
 //   SUNDRY        — miscellaneous small charges, naturally a single
 //                   aggregate rather than several distinct items — a
-//                   Job Card may only ever have ONE Sundry line, same
-//                   one-line rule as Labour. Priced by the
-//                   supervisor/company.
+//                   Job Card may only ever have ONE Sundry line
+//                   (enforced in code, not the schema — a second
+//                   attempt is rejected with a clear message pointing
+//                   at editing the existing one instead). Priced by
+//                   the supervisor/company.
 // `enteredById` matters more here than usual precisely because these
 // types have different people accountable for getting them right.
 enum EstimateLineItemType {
