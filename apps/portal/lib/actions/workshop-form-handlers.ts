@@ -42,6 +42,7 @@ import {
   submitEstimateForValidation,
   approveEstimate,
   approveEstimateAsManager,
+  notifyCustomerOfApprovedEstimate,
   type EstimateLineItemType,
 } from './workshop';
 
@@ -280,6 +281,17 @@ export async function approveEstimateAsManagerFormAction(formData: FormData) {
     await approveEstimateAsManager(jobCardId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not approve estimate as manager.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function notifyCustomerOfApprovedEstimateFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await notifyCustomerOfApprovedEstimate(jobCardId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not notify the customer.';
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);

@@ -36,6 +36,7 @@ import { renderTechnicianResponseEmail } from '@/lib/email-templates/technician-
 import { renderEstimateSubmittedEmail } from '@/lib/email-templates/estimate-submitted-for-validation';
 import { renderEstimateReadyForManagerEmail } from '@/lib/email-templates/estimate-ready-for-manager';
 import { renderCustomerEstimateApprovedEmail } from '@/lib/email-templates/customer-estimate-approved';
+import { renderEstimateReadyForCustomerNotificationEmail } from '@/lib/email-templates/estimate-ready-for-customer-notification';
 import { renderEstimateNudgeEmail } from '@/lib/email-templates/estimate-nudge';
 
 class WorkshopActionError extends Error {}
@@ -2112,12 +2113,11 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
         select: {
           branchId: true,
           jobNumber: true,
-          vehicle: { select: { make: true, model: true } },
-          customer: { select: { id: true, fullName: true, email: true } },
+          createdBy: { select: { fullName: true, email: true } },
+          customer: { select: { fullName: true } },
           branch: { select: { name: true, businessUnit: { select: { company: { select: { name: true } } } } } },
         },
       },
-      lineItems: { orderBy: { createdAt: 'asc' }, select: { description: true, quantity: true, amount: true } },
     },
   });
   if (!estimate) {
@@ -2140,8 +2140,89 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
     entityId: jobCardId,
   });
 
-  // Notify the customer — the first time an estimate reaches them at
-  // all. Fail-soft, matching every other notification in this file.
+  // Notify whoever created the Job Card — the Manager approving is
+  // not the same as anyone deciding the customer should be told. That
+  // decision belongs to this person specifically; see
+  // notifyCustomerOfApprovedEstimate below for the actual customer
+  // hand-off, which this person triggers explicitly, not automatically.
+  // Fail-soft, matching every other notification in this file.
+  try {
+    const manager = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const lineItems = await prisma.estimateLineItem.findMany({ where: { estimateId: estimate.id }, select: { amount: true } });
+    const total = lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      estimate.jobCard.createdBy.email,
+      `Estimate for Job Card ${estimate.jobCard.jobNumber} approved by manager`,
+      renderEstimateReadyForCustomerNotificationEmail({
+        recipientName: estimate.jobCard.createdBy.fullName,
+        jobNumber: estimate.jobCard.jobNumber,
+        customerName: estimate.jobCard.customer.fullName,
+        approvedByManagerName: manager?.fullName ?? 'The manager',
+        totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: estimate.jobCard.branch.businessUnit.company.name,
+        branchName: estimate.jobCard.branch.name,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send estimate-ready-for-customer-notification email', jobCardId, err);
+  }
+}
+
+/** The explicit hand-off to the customer — only the Job Card's own
+ * creator, or a Master Admin, may trigger this, and only once the
+ * Manager has approved. Deliberately not automatic: the Manager
+ * approving means the numbers are right, not that anyone has decided
+ * the customer should be told yet. That's this person's call. */
+export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promise<void> {
+  const estimate = await prisma.estimate.findUnique({
+    where: { jobCardId },
+    select: {
+      id: true,
+      status: true,
+      customerNotifiedAt: true,
+      jobCard: {
+        select: {
+          createdById: true,
+          jobNumber: true,
+          vehicle: { select: { make: true, model: true } },
+          customer: { select: { fullName: true, email: true } },
+          branch: { select: { name: true, businessUnit: { select: { company: { select: { name: true } } } } } },
+        },
+      },
+      lineItems: { orderBy: { createdAt: 'asc' }, select: { description: true, quantity: true, amount: true } },
+    },
+  });
+  if (!estimate) {
+    throw new WorkshopActionError('This Job Card has no estimate yet.');
+  }
+  if (estimate.status !== 'MANAGER_APPROVED') {
+    throw new WorkshopActionError('This estimate has not been approved by the manager yet.');
+  }
+  const user = await requireUser();
+  const isMasterAdmin = await currentUserIsMasterAdmin();
+  if (user.id !== estimate.jobCard.createdById && !isMasterAdmin) {
+    throw new WorkshopActionError('Only whoever created this Job Card, or a Master Administrator, can notify the customer.');
+  }
+  if (estimate.customerNotifiedAt) {
+    throw new WorkshopActionError('The customer has already been notified about this estimate.');
+  }
+
+  await prisma.estimate.update({
+    where: { id: estimate.id },
+    data: { customerNotifiedAt: new Date(), customerNotifiedById: user.id },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'estimate.customer_notified',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+  });
+
   try {
     const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
     const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
@@ -2169,3 +2250,4 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
     console.error('Failed to send customer estimate-approved email', jobCardId, err);
   }
 }
+
