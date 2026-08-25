@@ -704,27 +704,35 @@ model Estimate {
 //                   The cash-advance/receipt side of both external
 //                   types is a later phase; this one just tracks the
 //                   cost as a line.
-//   LABOUR        — work performed inside the workshop itself (wheel
-//                   alignment, wheel balancing, body work, painting,
-//                   gas/AC refill, engine overhaul, battery charging,
-//                   diesel injector servicing, etc.) — NOT a part, and
-//                   genuinely plural: one Job Card can need several of
-//                   these at once, so unlike Sundry below there is no
-//                   one-line cap here. Priced by the supervisor/
-//                   company, never the technician.
+//   INTERNAL_JOB  — named work performed inside the workshop itself
+//                   (wheel alignment, wheel balancing, body work,
+//                   painting, gas/AC refill, engine overhaul, battery
+//                   charging, diesel injector servicing, etc.) — a
+//                   genuinely separate concept from LABOUR below, not
+//                   a relabeling of it. Plural by nature: one Job Card
+//                   can need several of these at once, so unlike
+//                   LABOUR/SUNDRY there is no one-line cap here.
+//                   Priced by the supervisor/company, never the
+//                   technician.
+//   LABOUR        — the company's own general labour/time charge, a
+//                   single aggregate figure distinct from any specific
+//                   INTERNAL_JOB — a Job Card may only ever have ONE
+//                   Labour line (enforced in code, not the schema — a
+//                   second attempt is rejected with a clear message
+//                   pointing at editing the existing one instead).
+//                   Priced by the supervisor/company.
 //   SUNDRY        — miscellaneous small charges, naturally a single
 //                   aggregate rather than several distinct items — a
-//                   Job Card may only ever have ONE Sundry line
-//                   (enforced in code, not the schema — a second
-//                   attempt is rejected with a clear message pointing
-//                   at editing the existing one instead). Priced by
-//                   the supervisor/company, same as Labour.
+//                   Job Card may only ever have ONE Sundry line, same
+//                   one-line rule as Labour. Priced by the
+//                   supervisor/company.
 // `enteredById` matters more here than usual precisely because these
 // types have different people accountable for getting them right.
 enum EstimateLineItemType {
   STORE_PART
   EXTERNAL_PART
   EXTERNAL_JOB
+  INTERNAL_JOB
   LABOUR
   SUNDRY
 }
