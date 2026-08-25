@@ -1507,7 +1507,20 @@ export async function getWorkshopDashboardCounts() {
 // its own real, separate piece of work, not folded in.
 // ---------------------------------------------------------------------------
 
-export type EstimateLineItemType = 'STORE_PART' | 'EXTERNAL_PART' | 'EXTERNAL_JOB' | 'LABOUR' | 'SUNDRY';
+export type EstimateLineItemType = 'STORE_PART' | 'EXTERNAL_PART' | 'EXTERNAL_JOB' | 'INTERNAL_JOB' | 'LABOUR' | 'SUNDRY';
+
+/** Human-readable names for server-side error messages — a small,
+ * separate map from the UI's own display labels (which live in the
+ * page component and can't be imported into a 'use server' file, per
+ * the export-shape rule that broke a build once already). */
+const ESTIMATE_LINE_TYPE_DISPLAY: Record<EstimateLineItemType, string> = {
+  STORE_PART: 'Store Part',
+  EXTERNAL_PART: 'External Part',
+  EXTERNAL_JOB: 'External Job',
+  INTERNAL_JOB: 'Internal Job',
+  LABOUR: 'Labour',
+  SUNDRY: 'Sundry',
+};
 
 export type EstimateLineItemInput = {
   type: EstimateLineItemType;
@@ -1622,12 +1635,17 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
   if (estimate.status !== 'DRAFT') {
     throw new WorkshopActionError('This estimate has already been submitted and can no longer have lines added — edit an existing line instead.');
   }
-  // Only Sundry is capped at one line — Labour genuinely needs to
-  // support several distinct entries on one Job Card (wheel alignment
-  // AND an AC gas refill AND injector servicing can all be needed on
-  // the same vehicle at once), so it's no longer restricted here.
-  if (input.type === 'SUNDRY' && estimate.lineItems.some((li: { type: string }) => li.type === 'SUNDRY')) {
-    throw new WorkshopActionError('A Sundry line already exists on this estimate — edit it instead of adding another.');
+  // Labour and Sundry are both capped at one line each — Labour is
+  // the company's own general labour/time charge, a single aggregate
+  // figure, not the same thing as a specific INTERNAL_JOB (wheel
+  // alignment, AC refill, etc.), which genuinely can and does need
+  // several distinct entries on one Job Card — that's the type this
+  // one-line cap does NOT apply to.
+  const cappedTypes: EstimateLineItemType[] = ['LABOUR', 'SUNDRY'];
+  if (cappedTypes.includes(input.type) && estimate.lineItems.some((li: { type: string }) => li.type === input.type)) {
+    throw new WorkshopActionError(
+      `A ${ESTIMATE_LINE_TYPE_DISPLAY[input.type]} line already exists on this estimate — edit it instead of adding another.`,
+    );
   }
   if (input.unitPrice !== undefined) {
     await requirePricingAuthority(input.type, jobCard, contributor.id);
