@@ -655,21 +655,44 @@ model Estimate {
   @@map("estimates")
 }
 
-// The four kinds of entry a real workshop estimate needs, each with
-// different accountability: a STORE_PART is priced/fulfilled by Store
-// staff from stock they control; an EXTERNAL_JOB is work sourced or
-// done outside (e.g. cylinder resurfacing, lathe work on a brake disc)
-// — the cash-advance/receipt side of this is a later phase, this one
-// just tracks it as a costed line; LABOUR and SUNDRY are the
-// supervisor's/company's own assessed charges — unlike the other two
-// types, a Job Card may only ever have ONE Labour line and ONE Sundry
-// line (enforced in code, not the schema — a second attempt is
-// rejected with a clear message pointing at editing the existing one
-// instead). `enteredById` matters more here than usual precisely
-// because these types have different people accountable for getting
-// them right.
+// The five kinds of entry a real workshop estimate needs, each with
+// different accountability AND, critically, different pricing
+// authority — who is actually allowed to fill in the price differs by
+// type, enforced in code (see requirePricingAuthority below):
+//   STORE_PART    — Store staff (auto-fill once real inventory sync
+//                   exists — each part will carry its own fixed price;
+//                   that sync is a later phase, this one just tracks
+//                   it as a manually-priced line for now).
+//   EXTERNAL_PART — a part the technician sourced from outside the
+//                   workshop. Priced by the technician — they're the
+//                   one who bought it, they're the one who knows what
+//                   it cost.
+//   EXTERNAL_JOB  — work done outside (e.g. cylinder resurfacing,
+//                   lathe work on a brake disc), NOT a part. Priced by
+//                   the technician for the same reason as EXTERNAL_PART.
+//                   The cash-advance/receipt side of both external
+//                   types is a later phase; this one just tracks the
+//                   cost as a line.
+//   LABOUR        — work performed inside the workshop itself (wheel
+//                   alignment, wheel balancing, body work, painting,
+//                   gas/AC refill, engine overhaul, battery charging,
+//                   diesel injector servicing, etc.) — NOT a part, and
+//                   genuinely plural: one Job Card can need several of
+//                   these at once, so unlike Sundry below there is no
+//                   one-line cap here. Priced by the supervisor/
+//                   company, never the technician.
+//   SUNDRY        — miscellaneous small charges, naturally a single
+//                   aggregate rather than several distinct items — a
+//                   Job Card may only ever have ONE Sundry line
+//                   (enforced in code, not the schema — a second
+//                   attempt is rejected with a clear message pointing
+//                   at editing the existing one instead). Priced by
+//                   the supervisor/company, same as Labour.
+// `enteredById` matters more here than usual precisely because these
+// types have different people accountable for getting them right.
 enum EstimateLineItemType {
   STORE_PART
+  EXTERNAL_PART
   EXTERNAL_JOB
   LABOUR
   SUNDRY
