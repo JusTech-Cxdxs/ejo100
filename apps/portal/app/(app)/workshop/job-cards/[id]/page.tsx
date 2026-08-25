@@ -1,7 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
-import { COMMON_INTERNAL_JOB_DESCRIPTIONS } from '@/lib/workshop-constants';
+import { COMMON_ESTIMATE_LINE_DESCRIPTIONS } from '@/lib/workshop-constants';
 import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -183,8 +183,21 @@ export default async function JobCardDetailPage({
             <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Customer</dt>
-                <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">{jobCard.customer.fullName}</dd>
+                <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
+                  {jobCard.customer.fullName}
+                  {jobCard.customer.customerType === 'COMPANY' ? (
+                    <span className="ml-2 rounded-full bg-[var(--ejo-info)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--ejo-info)]">
+                      Company
+                    </span>
+                  ) : null}
+                </dd>
               </div>
+              {jobCard.customer.address ? (
+                <div>
+                  <dt className="text-[var(--ejo-text-muted)]">Address</dt>
+                  <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">{jobCard.customer.address}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Contact</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
@@ -452,7 +465,7 @@ export default async function JobCardDetailPage({
             )}
 
             <datalist id="internal-job-suggestions">
-              {COMMON_INTERNAL_JOB_DESCRIPTIONS.map((d: string) => (
+              {COMMON_ESTIMATE_LINE_DESCRIPTIONS.map((d: string) => (
                 <option key={d} value={d} />
               ))}
             </datalist>
@@ -470,9 +483,7 @@ export default async function JobCardDetailPage({
                   <option value="EXTERNAL_PART">External Part</option>
                   <option value="EXTERNAL_JOB">External Job</option>
                   <option value="INTERNAL_JOB">Internal Job</option>
-                  {!estimate?.lineItems.some((li: (typeof estimate.lineItems)[number]) => li.type === 'LABOUR') ? (
-                    <option value="LABOUR">Labour</option>
-                  ) : null}
+                  <option value="LABOUR">Labour</option>
                   {!estimate?.lineItems.some((li: (typeof estimate.lineItems)[number]) => li.type === 'SUNDRY') ? (
                     <option value="SUNDRY">Sundry</option>
                   ) : null}
