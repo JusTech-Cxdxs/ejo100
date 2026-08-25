@@ -300,6 +300,7 @@ model User {
   estimatesApproved Estimate[] @relation("EstimateApprovedBy")
   estimatesManagerApproved Estimate[] @relation("EstimateManagerApprovedBy")
   estimatesCustomerNotified Estimate[] @relation("EstimateCustomerNotifiedBy")
+  paymentsRecorded Payment[]
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -623,6 +624,7 @@ model JobCard {
   createdBy          User                @relation("JobCardCreatedBy", fields: [createdById], references: [id])
   complaints         JobCardComplaint[]
   estimate           Estimate?
+  payments           Payment[]
 
   @@map("job_cards")
 }
@@ -793,6 +795,37 @@ model EstimateLineItem {
   enteredBy   User     @relation(fields: [enteredById], references: [id])
 
   @@map("estimate_line_items")
+}
+
+// A payment toward a Job Card's estimate — deliberately one-to-many,
+// not one-to-one, since the 70% deposit model means a Job Card
+// realistically sees at least two payments (deposit, then balance).
+// Recorded by Finance staff after seeing proof of a bank transfer or
+// receiving cash at the cashier — a real, minimal record rather than
+// a bare boolean "paid" flag, so there's an actual audit trail of who
+// recorded what, how much, and by which method. The customer
+// uploading their own proof directly, and a real payment gateway,
+// are both later phases — this is the foundation they'd build on.
+enum PaymentMethod {
+  BANK_TRANSFER
+  CASH
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  jobCardId     String
+  amount        Decimal       @db.Decimal(12, 2)
+  method        PaymentMethod
+  notes         String?       // e.g. a transfer reference or receipt number
+  recordedById  String
+  recordedAt    DateTime      @default(now())
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @default(now()) @updatedAt
+
+  jobCard       JobCard @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  recordedBy    User    @relation(fields: [recordedById], references: [id])
+
+  @@map("payments")
 }
 
 model CustomerAddress {
