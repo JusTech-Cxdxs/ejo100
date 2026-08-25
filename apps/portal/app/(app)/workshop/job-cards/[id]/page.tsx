@@ -1,7 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
-import { COMMON_LABOUR_DESCRIPTIONS } from '@/lib/workshop-constants';
+import { COMMON_INTERNAL_JOB_DESCRIPTIONS } from '@/lib/workshop-constants';
 import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -85,7 +85,8 @@ const ESTIMATE_TYPE_LABEL: Record<string, string> = {
   STORE_PART: 'Store Part',
   EXTERNAL_PART: 'External Part',
   EXTERNAL_JOB: 'External Job',
-  LABOUR: 'Internal Job / Labour',
+  INTERNAL_JOB: 'Internal Job',
+  LABOUR: 'Labour',
   SUNDRY: 'Sundry',
 };
 
@@ -344,7 +345,7 @@ export default async function JobCardDetailPage({
                                     name="description"
                                     defaultValue={item.description}
                                     required
-                                    list="labour-suggestions"
+                                    list="internal-job-suggestions"
                                     className="min-w-[150px] flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                                   />
                                   <input
@@ -421,7 +422,7 @@ export default async function JobCardDetailPage({
                   </table>
                 </div>
                 <div className="mt-3 space-y-1 border-t border-[var(--ejo-border)] pt-3 text-sm">
-                  {(['STORE_PART', 'EXTERNAL_PART', 'EXTERNAL_JOB', 'LABOUR', 'SUNDRY'] as const).map((type) => {
+                  {(['STORE_PART', 'EXTERNAL_PART', 'EXTERNAL_JOB', 'INTERNAL_JOB', 'LABOUR', 'SUNDRY'] as const).map((type) => {
                     const subtotal = estimate.lineItems
                       .filter((item: (typeof estimate.lineItems)[number]) => item.type === type)
                       .reduce((sum: number, item: (typeof estimate.lineItems)[number]) => sum + Number(item.amount ?? 0), 0);
@@ -448,8 +449,8 @@ export default async function JobCardDetailPage({
               </>
             )}
 
-            <datalist id="labour-suggestions">
-              {COMMON_LABOUR_DESCRIPTIONS.map((d: string) => (
+            <datalist id="internal-job-suggestions">
+              {COMMON_INTERNAL_JOB_DESCRIPTIONS.map((d: string) => (
                 <option key={d} value={d} />
               ))}
             </datalist>
@@ -466,7 +467,10 @@ export default async function JobCardDetailPage({
                   <option value="STORE_PART">Store Part</option>
                   <option value="EXTERNAL_PART">External Part</option>
                   <option value="EXTERNAL_JOB">External Job</option>
-                  <option value="LABOUR">Internal Job / Labour</option>
+                  <option value="INTERNAL_JOB">Internal Job</option>
+                  {!estimate?.lineItems.some((li: (typeof estimate.lineItems)[number]) => li.type === 'LABOUR') ? (
+                    <option value="LABOUR">Labour</option>
+                  ) : null}
                   {!estimate?.lineItems.some((li: (typeof estimate.lineItems)[number]) => li.type === 'SUNDRY') ? (
                     <option value="SUNDRY">Sundry</option>
                   ) : null}
@@ -474,7 +478,7 @@ export default async function JobCardDetailPage({
                 <input
                   name="description"
                   required
-                  list="labour-suggestions"
+                  list="internal-job-suggestions"
                   placeholder="Description"
                   className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)] sm:col-span-2"
                 />
