@@ -299,6 +299,7 @@ model User {
   estimatesCreated Estimate[] @relation("EstimateCreatedBy")
   estimatesApproved Estimate[] @relation("EstimateApprovedBy")
   estimatesManagerApproved Estimate[] @relation("EstimateManagerApprovedBy")
+  estimatesCustomerNotified Estimate[] @relation("EstimateCustomerNotifiedBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -661,6 +662,16 @@ model Estimate {
   // listEligibleManagersForBranch in workshop.ts).
   managerApprovedAt   DateTime?
   managerApprovedById String?
+  // Gates the actual customer notification separately from
+  // MANAGER_APPROVED — the Manager approving is not the same as
+  // anyone deciding the customer should be told. That decision
+  // belongs to whoever created the Job Card (the front-desk/admin
+  // staff who opened it and is accountable for the customer
+  // relationship), reusing JobCard.createdById rather than inventing
+  // a distinct "Admin" role — see notifyCustomerOfApprovedEstimate in
+  // workshop.ts.
+  customerNotifiedAt   DateTime?
+  customerNotifiedById String?
   createdById String
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
@@ -669,6 +680,7 @@ model Estimate {
   createdBy   User               @relation("EstimateCreatedBy", fields: [createdById], references: [id])
   approvedBy  User?              @relation("EstimateApprovedBy", fields: [approvedById], references: [id])
   managerApprovedBy User?        @relation("EstimateManagerApprovedBy", fields: [managerApprovedById], references: [id])
+  customerNotifiedBy User?       @relation("EstimateCustomerNotifiedBy", fields: [customerNotifiedById], references: [id])
   lineItems   EstimateLineItem[]
 
   @@map("estimates")
