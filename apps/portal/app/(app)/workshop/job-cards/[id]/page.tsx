@@ -150,7 +150,8 @@ export default async function JobCardDetailPage({
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
-  const estimateTotal = (estimate?.lineItems ?? []).reduce((sum: number, li: (typeof estimate.lineItems)[number]) => sum + Number(li.amount ?? 0), 0);
+  const estimateLineItems = estimate?.lineItems ?? [];
+  const estimateTotal = estimateLineItems.reduce((sum: number, li: (typeof estimateLineItems)[number]) => sum + Number(li.amount ?? 0), 0);
   const paymentStatus: 'AWAITING_PAYMENT' | 'PARTIAL' | 'DEPOSIT_MET' | 'PAID_IN_FULL' =
     paymentsTotal <= 0
       ? 'AWAITING_PAYMENT'
@@ -529,7 +530,7 @@ export default async function JobCardDetailPage({
                   <option value="EXTERNAL_JOB">External Job</option>
                   <option value="INTERNAL_JOB">Internal Job</option>
                   <option value="LABOUR">Labour</option>
-                  {!estimate?.lineItems.some((li: (typeof estimate.lineItems)[number]) => li.type === 'SUNDRY') ? (
+                  {!estimate?.lineItems.some((li: (typeof estimateLineItems)[number]) => li.type === 'SUNDRY') ? (
                     <option value="SUNDRY">Sundry</option>
                   ) : null}
                 </select>
