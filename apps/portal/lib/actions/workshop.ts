@@ -39,6 +39,7 @@ import { renderEstimateReadyForManagerEmail } from '@/lib/email-templates/estima
 import { renderCustomerEstimateApprovedEmail } from '@/lib/email-templates/customer-estimate-approved';
 import { renderEstimateReadyForCustomerNotificationEmail } from '@/lib/email-templates/estimate-ready-for-customer-notification';
 import { renderEstimateNudgeEmail } from '@/lib/email-templates/estimate-nudge';
+import { renderPaymentConfirmedEmail } from '@/lib/email-templates/payment-confirmed-work-can-proceed';
 
 class WorkshopActionError extends Error {}
 
@@ -2317,3 +2318,203 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// PAYMENTS — recorded by Finance after seeing proof of a bank transfer or
+// receiving cash at the cashier. A real, minimal audit record (who, how
+// much, by what method) rather than a bare "paid" flag. Deliberately
+// separate from the approval decision below: recording can happen more
+// than once (deposit, then balance), approval is the one deliberate act
+// that actually unblocks the workshop's own work.
+//
+// The customer uploading their own proof directly, and a real payment
+// gateway, are both later phases — this is the foundation they'd build
+// on, not a substitute for them.
+// ---------------------------------------------------------------------------
+
+export type PaymentMethod = 'BANK_TRANSFER' | 'CASH';
+
+/** A Finance Officer for the branch, or a Master Admin, may record or
+ * approve payments — same branch-scoped eligibility pattern already
+ * used for Workshop Managers (Finance, like Manager, oversees the
+ * whole branch, not one department), same Master Admin fallback. */
+export async function listEligibleFinanceOfficersForBranch(branchId: string): Promise<EligibleSupervisorResult> {
+  await requireUser();
+  const branchFinance = await prisma.user.findMany({
+    where: {
+      branchId,
+      isActive: true,
+      roles: { some: { role: { slug: 'finance-officer' } } },
+    },
+    orderBy: { fullName: 'asc' },
+    select: { id: true, fullName: true, email: true },
+  });
+  if (branchFinance.length > 0) {
+    return { supervisors: branchFinance, usingFallback: false };
+  }
+  const masterAdmins = await prisma.user.findMany({
+    where: { isActive: true, roles: { some: { role: { isSuperAdmin: true } } } },
+    orderBy: { fullName: 'asc' },
+    select: { id: true, fullName: true, email: true },
+  });
+  return { supervisors: masterAdmins, usingFallback: true };
+}
+
+async function requireEligibleFinanceOfficer(branchId: string): Promise<{ id: string }> {
+  const user = await requireUser();
+  if (await currentUserIsMasterAdmin()) return user;
+  const match = await prisma.user.findFirst({
+    where: { id: user.id, branchId, roles: { some: { role: { slug: 'finance-officer' } } } },
+    select: { id: true },
+  });
+  if (!match) {
+    throw new WorkshopActionError('Only a Finance Officer for this branch, or a Master Administrator, can do this.');
+  }
+  return user;
+}
+
+export async function getJobCardPayments(jobCardId: string) {
+  await requireUser();
+  return prisma.payment.findMany({
+    where: { jobCardId },
+    orderBy: { recordedAt: 'asc' },
+    include: { recordedBy: { select: { fullName: true } } },
+  });
+}
+
+/** Records one payment toward a Job Card — only meaningful once the
+ * customer has actually been asked to pay. */
+export async function recordPayment(
+  jobCardId: string,
+  amount: number,
+  method: PaymentMethod,
+  notes?: string,
+): Promise<void> {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new WorkshopActionError('Payment amount must be a positive number.');
+  }
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: { branchId: true, status: true },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  if (jobCard.status !== JobCardStatus.AWAITING_CUSTOMER_APPROVAL) {
+    throw new WorkshopActionError('Payments can only be recorded once the customer has been notified and is awaiting approval.');
+  }
+  const user = await requireEligibleFinanceOfficer(jobCard.branchId);
+
+  await prisma.payment.create({
+    data: {
+      jobCardId,
+      amount: Math.round(amount * 100) / 100,
+      method,
+      notes: notes?.trim() || null,
+      recordedById: user.id,
+    },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'payment.recorded',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { amount, method, notes: notes?.trim() || undefined },
+  });
+}
+
+/** The deliberate act that actually unblocks the workshop's own work —
+ * confirms the total recorded payments genuinely meet the minimum
+ * deposit (never just trusting Finance's own judgment blindly, same
+ * server-side validation discipline used everywhere else in this
+ * file), moves the Job Card to IN_PROGRESS, and broadcasts to every
+ * real party involved: the creator, the supervisor, the assigned
+ * technician, and every eligible Manager for the branch — each their
+ * own copy of the email, not a single CC'd send. */
+export async function approvePaymentAndProceed(jobCardId: string): Promise<void> {
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: {
+      status: true,
+      branchId: true,
+      jobNumber: true,
+      createdById: true,
+      supervisorId: true,
+      assignedTechnicianId: true,
+      customer: { select: { fullName: true } },
+      department: { select: { name: true } },
+      estimate: { select: { lineItems: { select: { amount: true } } } },
+      payments: { select: { amount: true } },
+    },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  if (jobCard.status !== JobCardStatus.AWAITING_CUSTOMER_APPROVAL) {
+    throw new WorkshopActionError('This Job Card is not currently awaiting customer approval.');
+  }
+  const user = await requireEligibleFinanceOfficer(jobCard.branchId);
+
+  const total = (jobCard.estimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+  const totalPaid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount ?? 0), 0);
+  const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+  if (totalPaid < minimumDeposit) {
+    const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    throw new WorkshopActionError(
+      `Recorded payments (${formatNaira(totalPaid)}) don't yet meet the minimum deposit (${formatNaira(minimumDeposit)}) — record the remaining amount first.`,
+    );
+  }
+
+  await prisma.jobCard.update({
+    where: { id: jobCardId },
+    data: { status: JobCardStatus.IN_PROGRESS },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'payment.approved',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { totalPaid },
+  });
+
+  try {
+    const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    const recipientIds = new Set<string>();
+    if (jobCard.createdById) recipientIds.add(jobCard.createdById);
+    if (jobCard.supervisorId) recipientIds.add(jobCard.supervisorId);
+    if (jobCard.assignedTechnicianId) recipientIds.add(jobCard.assignedTechnicianId);
+    const managers = await listEligibleManagersForBranch(jobCard.branchId);
+    for (const m of managers.supervisors) recipientIds.add(m.id);
+
+    const recipients = await prisma.user.findMany({
+      where: { id: { in: Array.from(recipientIds) } },
+      select: { id: true, fullName: true, email: true },
+    });
+
+    for (const recipient of recipients) {
+      await sendEmail(
+        recipient.email,
+        `Payment confirmed on Job Card ${jobCard.jobNumber} — work can proceed`,
+        renderPaymentConfirmedEmail({
+          recipientName: recipient.fullName,
+          jobNumber: jobCard.jobNumber,
+          customerName: jobCard.customer.fullName,
+          amountPaid: formatNaira(totalPaid),
+          jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send payment-confirmed broadcast emails', jobCardId, err);
+  }
+}

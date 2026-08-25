@@ -43,6 +43,9 @@ import {
   approveEstimate,
   approveEstimateAsManager,
   notifyCustomerOfApprovedEstimate,
+  recordPayment,
+  approvePaymentAndProceed,
+  type PaymentMethod,
   type EstimateLineItemType,
 } from './workshop';
 
@@ -294,6 +297,33 @@ export async function notifyCustomerOfApprovedEstimateFormAction(formData: FormD
     await notifyCustomerOfApprovedEstimate(jobCardId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not notify the customer.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function recordPaymentFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await recordPayment(
+      jobCardId,
+      num(formData, 'amount') ?? NaN,
+      str(formData, 'method') === 'CASH' ? 'CASH' : 'BANK_TRANSFER',
+      str(formData, 'notes') || undefined,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not record payment.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function approvePaymentAndProceedFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await approvePaymentAndProceed(jobCardId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not approve payment.';
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
