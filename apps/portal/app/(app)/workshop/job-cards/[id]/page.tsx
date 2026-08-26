@@ -214,7 +214,7 @@ export default async function JobCardDetailPage({
             {paymentStatus === 'PAID_IN_FULL'
               ? 'Payment Completed'
               : paymentStatus === 'DEPOSIT_MET'
-                ? 'Required Payment Met'
+                ? 'Minimum Met — Balance Pending'
                 : paymentStatus === 'PARTIAL'
                   ? 'Partial Payment'
                   : 'Awaiting Payment'}
@@ -694,17 +694,27 @@ export default async function JobCardDetailPage({
                     <span>Total Recorded</span>
                     <span>{formatNaira(paymentsTotal)}</span>
                   </div>
+                  {estimateTotal > 0 && paymentsTotal < estimateTotal ? (
+                    <div className="flex justify-between text-sm text-[var(--ejo-warning)]">
+                      <span>Balance Remaining</span>
+                      <span>{formatNaira(estimateTotal - paymentsTotal)}</span>
+                    </div>
+                  ) : null}
                 </div>
               )}
 
-              {jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' && isEligibleFinance ? (
+              {estimateTotal > 0 && paymentsTotal >= estimateTotal ? (
+                <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs font-medium text-[var(--ejo-success)]">
+                  Paid in full — nothing further to record.
+                </p>
+              ) : (jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' || jobCard.status === 'IN_PROGRESS') && isEligibleFinance ? (
                 <>
                   <form action={recordPaymentFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4">
                     <input type="hidden" name="jobCardId" value={jobCard.id} />
                     <select
                       name="amountPreset"
                       required
-                      defaultValue="SEVENTY_PERCENT"
+                      defaultValue={paymentsTotal > 0 ? 'OTHER' : 'SEVENTY_PERCENT'}
                       className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
                     >
                       <option value="SEVENTY_PERCENT">70% deposit ({formatNaira(estimateTotal * 0.7)})</option>
@@ -740,18 +750,21 @@ export default async function JobCardDetailPage({
                     />
                   </form>
 
-                  <form action={approvePaymentAndProceedFormAction} className="mt-3">
-                    <input type="hidden" name="jobCardId" value={jobCard.id} />
-                    <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
-                      Confirms the minimum deposit has been met, moves this Job Card to In Progress, and notifies
-                      everyone involved.
-                    </p>
-                    <SubmitButton
-                      label="Approve payment & proceed"
-                      pendingLabel="Approving…"
-                      className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-                    />
-                  </form>
+                  {jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
+                    <form action={approvePaymentAndProceedFormAction} className="mt-3">
+                      <input type="hidden" name="jobCardId" value={jobCard.id} />
+                      <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
+                        Confirms the minimum deposit has been met, moves this Job Card to In Progress, and notifies
+                        everyone involved. You can keep recording further payments afterward until the full amount
+                        is reached.
+                      </p>
+                      <SubmitButton
+                        label="Approve payment & proceed"
+                        pendingLabel="Approving…"
+                        className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                      />
+                    </form>
+                  ) : null}
                 </>
               ) : null}
             </div>
