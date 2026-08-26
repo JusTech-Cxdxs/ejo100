@@ -2430,13 +2430,24 @@ export async function recordPayment(
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
   }
-  if (jobCard.status !== JobCardStatus.AWAITING_CUSTOMER_APPROVAL) {
-    throw new WorkshopActionError('Payments can only be recorded once the customer has been notified and is awaiting approval.');
+  // Payments continue to accumulate even after the 70% deposit has
+  // already moved the Job Card to IN_PROGRESS — a customer paying in
+  // installments (70%, then a bit more, then the rest) needs to keep
+  // recording right up until the full amount is reached, not just
+  // during the brief window before work starts. Blocked once the
+  // total already meets or exceeds the estimate — nothing left to
+  // record at that point.
+  if (jobCard.status !== JobCardStatus.AWAITING_CUSTOMER_APPROVAL && jobCard.status !== JobCardStatus.IN_PROGRESS) {
+    throw new WorkshopActionError('Payments can only be recorded once the customer has been notified and is awaiting approval, or while work is in progress.');
   }
   const user = await requireEligibleFinanceOfficer(jobCard.branchId);
 
   const total = (jobCard.estimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+  const alreadyPaid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount ?? 0), 0);
+  if (total > 0 && alreadyPaid >= total) {
+    throw new WorkshopActionError('This estimate has already been paid in full — nothing left to record.');
+  }
 
   let amount: number;
   if (preset === 'SEVENTY_PERCENT') {
@@ -2468,8 +2479,7 @@ export async function recordPayment(
     metadata: { amount, method, notes: notes?.trim() || undefined },
   });
 
-  const priorTotal = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount ?? 0), 0);
-  const newTotal = priorTotal + amount;
+  const newTotal = alreadyPaid + amount;
   const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const statusMessage = newTotal >= total
