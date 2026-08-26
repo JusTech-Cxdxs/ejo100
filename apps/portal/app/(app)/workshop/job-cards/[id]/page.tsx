@@ -10,10 +10,10 @@ import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 
 const ALL_STATUSES = [
   'CHECKED_IN',
+  'AWAITING_CUSTOMER_APPROVAL',
   'IN_PROGRESS',
   'AWAITING_PARTS',
   'QUALITY_CHECK',
-  'AWAITING_CUSTOMER_APPROVAL',
   'COMPLETED',
   'READY_FOR_COLLECTION',
   'CLOSED',
@@ -101,6 +101,20 @@ const ESTIMATE_TYPE_LABEL: Record<string, string> = {
   INTERNAL_JOB: 'Internal Job',
   LABOUR: 'Labour',
   SUNDRY: 'Sundry',
+};
+
+const PAYMENT_STATUS_LABEL: Record<string, string> = {
+  AWAITING_PAYMENT: 'Awaiting Payment',
+  PARTIAL: 'Partial Payment',
+  DEPOSIT_MET: 'Minimum Met — Balance Pending',
+  PAID_IN_FULL: 'Payment Completed',
+};
+
+const PAYMENT_STATUS_COLOR: Record<string, string> = {
+  AWAITING_PAYMENT: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+  PARTIAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  DEPOSIT_MET: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  PAID_IN_FULL: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
 };
 
 const ESTIMATE_STATUS_LABEL: Record<string, string> = {
@@ -200,24 +214,8 @@ export default async function JobCardDetailPage({
               : 'Awaiting Supervisor Approval'}
         </span>
         {payments.length > 0 || jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
-          <span
-            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-              paymentStatus === 'PAID_IN_FULL'
-                ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
-                : paymentStatus === 'DEPOSIT_MET'
-                  ? 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]'
-                  : paymentStatus === 'PARTIAL'
-                    ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
-                    : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
-            }`}
-          >
-            {paymentStatus === 'PAID_IN_FULL'
-              ? 'Payment Completed'
-              : paymentStatus === 'DEPOSIT_MET'
-                ? 'Minimum Met — Balance Pending'
-                : paymentStatus === 'PARTIAL'
-                  ? 'Partial Payment'
-                  : 'Awaiting Payment'}
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYMENT_STATUS_COLOR[paymentStatus]}`}>
+            {PAYMENT_STATUS_LABEL[paymentStatus]}
           </span>
         ) : null}
       </div>
@@ -672,7 +670,12 @@ export default async function JobCardDetailPage({
 
           {payments.length > 0 || jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Payments</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Payments</h2>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYMENT_STATUS_COLOR[paymentStatus]}`}>
+                  {PAYMENT_STATUS_LABEL[paymentStatus]}
+                </span>
+              </div>
               {payments.length === 0 ? (
                 <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No payments recorded yet.</p>
               ) : (
@@ -874,7 +877,9 @@ export default async function JobCardDetailPage({
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               >
                 {ALL_STATUSES.map((s) => (
-                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                  <option key={s} value={s} style={s === 'CANCELLED' ? { color: 'var(--ejo-error)' } : undefined}>
+                    {STATUS_LABEL[s]}
+                  </option>
                 ))}
               </select>
               <SubmitButton
