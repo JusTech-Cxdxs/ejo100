@@ -717,11 +717,17 @@ export default async function JobCardDetailPage({
                     <select
                       name="amountPreset"
                       required
-                      defaultValue={paymentsTotal > 0 ? 'OTHER' : 'SEVENTY_PERCENT'}
+                      defaultValue={paymentsTotal > 0 ? 'REMAINING' : 'SEVENTY_PERCENT'}
                       className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
                     >
-                      <option value="SEVENTY_PERCENT">70% deposit ({formatNaira(estimateTotal * 0.7)})</option>
-                      <option value="FULL">Full payment ({formatNaira(estimateTotal)})</option>
+                      {paymentsTotal > 0 ? (
+                        <option value="REMAINING">Remaining balance ({formatNaira(estimateTotal - paymentsTotal)})</option>
+                      ) : (
+                        <>
+                          <option value="SEVENTY_PERCENT">70% deposit ({formatNaira(estimateTotal * 0.7)})</option>
+                          <option value="FULL">Full payment ({formatNaira(estimateTotal)})</option>
+                        </>
+                      )}
                       <option value="OTHER">Other amount</option>
                     </select>
                     <input
