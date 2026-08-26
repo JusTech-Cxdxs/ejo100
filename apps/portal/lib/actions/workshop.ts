@@ -2386,7 +2386,7 @@ export async function getJobCardPayments(jobCardId: string) {
 
 /** Records one payment toward a Job Card — only meaningful once the
  * customer has actually been asked to pay. */
-export type PaymentAmountPreset = 'SEVENTY_PERCENT' | 'FULL' | 'OTHER';
+export type PaymentAmountPreset = 'SEVENTY_PERCENT' | 'FULL' | 'REMAINING' | 'OTHER';
 
 /** Records one payment toward a Job Card — the amount comes from one
  * of three presets: the exact 70% minimum deposit (auto-computed from
@@ -2454,6 +2454,8 @@ export async function recordPayment(
     amount = minimumDeposit;
   } else if (preset === 'FULL') {
     amount = total;
+  } else if (preset === 'REMAINING') {
+    amount = Math.round((total - alreadyPaid) * 100) / 100;
   } else {
     if (!customAmount || !Number.isFinite(customAmount) || customAmount <= 0) {
       throw new WorkshopActionError('Enter a valid payment amount.');

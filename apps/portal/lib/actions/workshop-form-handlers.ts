@@ -224,6 +224,14 @@ export async function updateEstimateLineItemFormAction(formData: FormData) {
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  // Explicit success redirect back to the plain URL, clearing
+  // ?editLineId= — without this, revalidatePath() alone re-renders the
+  // page with the SAME url still present, so the row stays in edit
+  // mode even though the save genuinely succeeded. This is the actual
+  // fix for that; redirect() out of a Server Action is not itself an
+  // error, so this line is expected to "throw" internally — that's how
+  // Next.js performs the redirect, not a bug.
+  redirect(`/workshop/job-cards/${jobCardId}`);
 }
 
 export async function deleteEstimateLineItemFormAction(formData: FormData) {
@@ -308,7 +316,10 @@ export async function recordPaymentFormAction(formData: FormData) {
   try {
     const presetRaw = str(formData, 'amountPreset');
     const preset: PaymentAmountPreset =
-      presetRaw === 'FULL' ? 'FULL' : presetRaw === 'OTHER' ? 'OTHER' : 'SEVENTY_PERCENT';
+      presetRaw === 'FULL' ? 'FULL'
+        : presetRaw === 'REMAINING' ? 'REMAINING'
+        : presetRaw === 'OTHER' ? 'OTHER'
+        : 'SEVENTY_PERCENT';
     await recordPayment(
       jobCardId,
       preset,
