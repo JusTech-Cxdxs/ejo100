@@ -7,7 +7,7 @@ export type PaymentRecordedUpdateEmailOptions = {
   amountReceived: string;
   totalPaidSoFar: string;
   totalEstimate: string;
-  statusMessage: string;
+  balanceRemaining?: string;
   jobCardUrl: string;
   logoUrl: string;
   companyName: string;
@@ -16,22 +16,27 @@ export type PaymentRecordedUpdateEmailOptions = {
 };
 
 /**
- * Sent to every real party on a Job Card each time Finance records a
- * payment — genuinely distinct from payment-confirmed-work-can-
- * proceed.ts, which only fires once Finance takes the separate,
- * deliberate "approve and proceed" action. This one is purely
- * informational: a payment came in, here's where things stand
- * cumulatively — it never claims work can start, since that's still
- * a distinct decision Finance makes afterward.
+ * Sent to Finance and Manager — the people who actually track money on
+ * this Job Card — every time a payment is recorded. Deliberately NOT
+ * sent to the technician or supervisor: what concerns them is a
+ * genuinely different, separate event (see
+ * payment-requirement-met.ts) — being told about every individual
+ * amount recorded, when they have no financial role, is noise, not
+ * signal. Also deliberately makes no claim about any threshold being
+ * met — "recorded" and "requirement met" are two different facts, and
+ * a customer could easily pay in several installments (a bank
+ * transfer, then cash, then another transfer) well before or after
+ * crossing 70%; this email only ever reports what actually happened
+ * with this specific payment, nothing more.
  */
 export function renderPaymentRecordedUpdateEmail(opts: PaymentRecordedUpdateEmailOptions): string {
-  const { recipientName, jobNumber, customerName, amountReceived, totalPaidSoFar, totalEstimate, statusMessage, jobCardUrl, logoUrl, companyName, branchName, departmentName } = opts;
+  const { recipientName, jobNumber, customerName, amountReceived, totalPaidSoFar, totalEstimate, balanceRemaining, jobCardUrl, logoUrl, companyName, branchName, departmentName } = opts;
 
   const bodyHtml = `
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
     <p style="margin: 0 0 16px 0;">
       A payment of ${escapeHtml(amountReceived)} was recorded on Job Card ${escapeHtml(jobNumber)} for
-      ${escapeHtml(customerName)}. ${escapeHtml(statusMessage)}
+      ${escapeHtml(customerName)}.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
@@ -40,19 +45,22 @@ export function renderPaymentRecordedUpdateEmail(opts: PaymentRecordedUpdateEmai
           <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Job Card</p>
           <p style="margin: 0 0 16px 0; font-size: 15px; color: #0F172A; font-weight: bold;">${escapeHtml(jobNumber)}</p>
           <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Total Received So Far</p>
-          <p style="margin: 0 0 16px 0; font-size: 15px; color: #0F172A;">${escapeHtml(totalPaidSoFar)} of ${escapeHtml(totalEstimate)}</p>
+          <p style="margin: 0 ${balanceRemaining ? '0 16px 0' : '0'}; font-size: 15px; color: #0F172A;">${escapeHtml(totalPaidSoFar)} of ${escapeHtml(totalEstimate)}</p>
+          ${balanceRemaining
+            ? `<p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Balance Remaining</p><p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(balanceRemaining)}</p>`
+            : ''}
         </td>
       </tr>
     </table>
   `;
 
   return renderEmailLayout({
-    previewText: `${amountReceived} received on Job Card ${jobNumber}.`,
+    previewText: `${amountReceived} recorded on Job Card ${jobNumber}.`,
     companyName,
     orgContext: [companyName, branchName, departmentName],
     iconGlyph: '!',
     iconTone: 'neutral',
-    heading: 'Payment update',
+    heading: 'Payment recorded',
     bodyHtml,
     ctaLabel: 'Open Job Card',
     ctaUrl: jobCardUrl,
