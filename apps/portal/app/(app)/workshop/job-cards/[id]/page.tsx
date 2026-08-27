@@ -1,8 +1,8 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
-import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
+import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS } from '@/lib/workshop-constants';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, approvePaymentAndProceedFormAction } from '@/lib/actions/workshop-form-handlers';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, approvePaymentAndProceedFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -53,6 +53,9 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'estimate.nudge_to_supervisor': 'Technician notified supervisor about estimate',
   'payment.recorded': 'Payment recorded',
   'payment.approved': 'Payment approved — work can proceed',
+  'cancellation.requested': 'Cancellation requested',
+  'cancellation.approved': 'Cancellation approved',
+  'cancellation.declined': 'Cancellation declined',
 };
 
 /** Turns the stored audit metadata into a real, field-level detail
@@ -79,7 +82,14 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
     case 'job_card.rejected':
     case 'job_card.supervisor_reassigned':
     case 'assignment.rejected':
+    case 'cancellation.requested':
       return typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : null;
+    case 'cancellation.approved': {
+      const parts: string[] = [];
+      if (typeof meta.reason === 'string') parts.push(`Reason: ${meta.reason}`);
+      if (typeof meta.notes === 'string' && meta.notes) parts.push(`Note: ${meta.notes}`);
+      return parts.join(' — ') || null;
+    }
     case 'payment.recorded': {
       const parts: string[] = [];
       if (typeof meta.amount === 'number') parts.push(formatNaira(meta.amount));
@@ -149,13 +159,14 @@ export default async function JobCardDetailPage({
     currentUserId(),
   ]);
   if (!jobCard) notFound();
-  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers, eligibleFinance, payments] = await Promise.all([
+  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers, eligibleFinance, payments, cancellationRequests] = await Promise.all([
     getJobCardAuditTrail(id),
     listEligibleSupervisorsForJobCard(id),
     getJobCardEstimate(id),
     listEligibleManagersForBranch(jobCard.branchId),
     listEligibleFinanceOfficersForBranch(jobCard.branchId),
     getJobCardPayments(id),
+    getCancellationRequests(id),
   ]);
   const isApprover = isMasterAdmin || jobCard.supervisor?.id === viewerId;
   const isAssignedTechnician = isMasterAdmin || jobCard.assignedTechnician?.id === viewerId;
@@ -163,6 +174,8 @@ export default async function JobCardDetailPage({
   const isEstimateContributor = isMasterAdmin || jobCard.supervisor?.id === viewerId || jobCard.assignedTechnician?.id === viewerId;
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
+  const canRequestCancellation = isCreator || isApprover;
+  const pendingCancellationRequest = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'PENDING');
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const estimateLineItems = estimate?.lineItems ?? [];
   const estimateTotal = estimateLineItems.reduce((sum: number, li: (typeof estimateLineItems)[number]) => sum + Number(li.amount ?? 0), 0);
@@ -775,6 +788,92 @@ export default async function JobCardDetailPage({
                     </form>
                   ) : null}
                 </>
+              ) : null}
+            </div>
+          ) : null}
+
+          {cancellationRequests.length > 0 || (canRequestCancellation && jobCard.status !== 'CANCELLED' && jobCard.status !== 'CLOSED') ? (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-6">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Cancellation</h2>
+
+              {cancellationRequests.length > 0 ? (
+                <div className="mt-3 space-y-3 text-sm">
+                  {cancellationRequests.map((r: (typeof cancellationRequests)[number]) => (
+                    <div key={r.id} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-3">
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            r.status === 'APPROVED'
+                              ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]'
+                              : r.status === 'DECLINED'
+                                ? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
+                                : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
+                          }`}
+                        >
+                          {r.status === 'APPROVED' ? 'Approved' : r.status === 'DECLINED' ? 'Declined' : 'Awaiting Manager Decision'}
+                        </span>
+                        <span className="text-xs text-[var(--ejo-text-muted)]">{formatDateTime(r.requestedAt)}</span>
+                      </div>
+                      <p className="mt-1 text-[var(--ejo-text)]">{r.reason}</p>
+                      <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Requested by {r.requestedBy.fullName}</p>
+                      {r.decidedBy ? (
+                        <p className="text-xs text-[var(--ejo-text-muted)]">
+                          {r.status === 'APPROVED' ? 'Approved' : 'Declined'} by {r.decidedBy.fullName}
+                          {r.decisionNotes ? ` — ${r.decisionNotes}` : ''}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {pendingCancellationRequest && isEligibleManager ? (
+                <div className="mt-4 space-y-2 border-t border-[var(--ejo-border)] pt-4">
+                  <form action={approveCancellationRequestFormAction} className="space-y-2">
+                    <input type="hidden" name="jobCardId" value={jobCard.id} />
+                    <input type="hidden" name="requestId" value={pendingCancellationRequest.id} />
+                    <input
+                      name="decisionNotes"
+                      placeholder="Note (optional)"
+                      className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                    />
+                    <SubmitButton
+                      label="Approve cancellation"
+                      pendingLabel="Approving…"
+                      className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                    />
+                  </form>
+                  <form action={declineCancellationRequestFormAction} className="space-y-2">
+                    <input type="hidden" name="jobCardId" value={jobCard.id} />
+                    <input type="hidden" name="requestId" value={pendingCancellationRequest.id} />
+                    <input
+                      name="decisionNotes"
+                      placeholder="Note (optional)"
+                      className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                    />
+                    <SubmitButton
+                      label="Decline"
+                      pendingLabel="Declining…"
+                      className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                    />
+                  </form>
+                </div>
+              ) : !pendingCancellationRequest && canRequestCancellation && jobCard.status !== 'CANCELLED' && jobCard.status !== 'CLOSED' ? (
+                <form action={requestJobCardCancellationFormAction} className="mt-4 space-y-2 border-t border-[var(--ejo-border)] pt-4">
+                  <input type="hidden" name="jobCardId" value={jobCard.id} />
+                  <textarea
+                    name="reason"
+                    required
+                    rows={2}
+                    placeholder="Reason for cancellation — e.g. customer found another workshop, could not afford repair, no longer needed"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                  />
+                  <SubmitButton
+                    label="Request cancellation"
+                    pendingLabel="Requesting…"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
+                  />
+                </form>
               ) : null}
             </div>
           ) : null}
