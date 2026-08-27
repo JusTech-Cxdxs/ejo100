@@ -19,11 +19,13 @@ export type PaymentRequirementMetEmailOptions = {
  * (creator, supervisor, technician, every eligible Manager, and every
  * eligible Finance Officer for the branch). Genuinely different content
  * from payment-recorded-update.ts: this is the one thing a technician
- * or supervisor actually needs to know — the requirement is met, work
- * can begin once Finance approves — not the raw amount or running
- * total, which means nothing to them. Never repeated on a later
- * payment; that's the whole point of gating this on "just crossed the
- * threshold" rather than "is currently at or above it."
+ * or supervisor actually needs to know — the requirement is met and
+ * work can begin now — not the raw amount or running total, which
+ * means nothing to them. Approval is automatic the moment this fires;
+ * there is no separate manual approval step for Finance to action.
+ * Never repeated on a later payment; that's the whole point of gating
+ * this on "just crossed the threshold" rather than "is currently at or
+ * above it."
  */
 export function renderPaymentRequirementMetEmail(opts: PaymentRequirementMetEmailOptions): string {
   const { recipientName, jobNumber, customerName, totalPaidSoFar, totalEstimate, jobCardUrl, logoUrl, companyName, branchName, departmentName } = opts;
@@ -32,7 +34,7 @@ export function renderPaymentRequirementMetEmail(opts: PaymentRequirementMetEmai
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
     <p style="margin: 0 0 16px 0;">
       The required 70% deposit has been met on Job Card ${escapeHtml(jobNumber)} for ${escapeHtml(customerName)}.
-      Work can begin once Finance approves.
+      Work can begin now.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
@@ -48,7 +50,7 @@ export function renderPaymentRequirementMetEmail(opts: PaymentRequirementMetEmai
   `;
 
   return renderEmailLayout({
-    previewText: `Required deposit met on Job Card ${jobNumber} — ready for Finance approval.`,
+    previewText: `Required deposit met on Job Card ${jobNumber} — work can begin.`,
     companyName,
     orgContext: [companyName, branchName, departmentName],
     iconGlyph: '!',
