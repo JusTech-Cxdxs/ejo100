@@ -2,6 +2,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { listCustomers } from '@/lib/actions/workshop';
 import { createCustomerFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
+import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 
@@ -95,6 +96,7 @@ export default async function WorkshopCustomersPage({
             no duplicate is created. A new customer receives a welcome email with login details.
           </p>
           <form action={createCustomerFormAction} className="mt-4 space-y-3">
+            <FormPendingOverlay />
             <div>
               <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Customer type</label>
               <select
