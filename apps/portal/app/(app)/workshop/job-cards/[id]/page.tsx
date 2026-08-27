@@ -2,11 +2,12 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, approvePaymentAndProceedFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
+import { PaymentAmountField } from '@/components/PaymentAmountField';
 
 const ALL_STATUSES = [
   'CHECKED_IN',
@@ -742,31 +743,23 @@ export default async function JobCardDetailPage({
                 </p>
               ) : (jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' || jobCard.status === 'IN_PROGRESS') && isEligibleFinance ? (
                 <>
-                  <form action={recordPaymentFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4">
+                  <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
+                    Recording is fully automatic — approval and the move to In Progress happen the moment the total
+                    recorded first reaches the 70% minimum deposit, with no separate approval step. Pick a suggested
+                    amount below, or choose &quot;Other&quot; to enter one manually — either way, whatever the field
+                    shows is exactly what gets recorded.
+                  </p>
+                  <form action={recordPaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
                     <input type="hidden" name="jobCardId" value={jobCard.id} />
-                    <select
-                      name="amountPreset"
-                      required
-                      defaultValue={paymentsTotal > 0 ? 'REMAINING' : 'SEVENTY_PERCENT'}
-                      className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-                    >
-                      {paymentsTotal > 0 ? (
-                        <option value="REMAINING">Remaining balance ({formatNaira(estimateTotal - paymentsTotal)})</option>
-                      ) : (
-                        <>
-                          <option value="SEVENTY_PERCENT">70% deposit ({formatNaira(minimumDeposit)})</option>
-                          <option value="FULL">Full payment ({formatNaira(estimateTotal)})</option>
-                        </>
-                      )}
-                      <option value="OTHER">Other amount</option>
-                    </select>
-                    <input
-                      name="customAmount"
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      placeholder="Amount (only used if 'Other' is selected)"
-                      className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                    <PaymentAmountField
+                      options={
+                        paymentsTotal > 0
+                          ? [{ key: 'REMAINING', label: `Remaining balance (${formatNaira(estimateTotal - paymentsTotal)})`, value: (Math.round((estimateTotal - paymentsTotal) * 100) / 100).toFixed(2) }]
+                          : [
+                              { key: 'SEVENTY_PERCENT', label: `70% deposit (${formatNaira(minimumDeposit)})`, value: minimumDeposit.toFixed(2) },
+                              { key: 'FULL', label: `Full payment (${formatNaira(estimateTotal)})`, value: estimateTotal.toFixed(2) },
+                            ]
+                      }
                     />
                     <select
                       name="method"
@@ -788,27 +781,6 @@ export default async function JobCardDetailPage({
                       className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
                     />
                   </form>
-
-                  {jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' && paymentsTotal >= minimumDeposit ? (
-                    <form action={approvePaymentAndProceedFormAction} className="mt-3">
-                      <input type="hidden" name="jobCardId" value={jobCard.id} />
-                      <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
-                        Confirms the minimum deposit has been met, moves this Job Card to In Progress, and notifies
-                        everyone involved. You can keep recording further payments afterward until the full amount
-                        is reached.
-                      </p>
-                      <SubmitButton
-                        label="Approve payment & proceed"
-                        pendingLabel="Approving…"
-                        className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-                      />
-                    </form>
-                  ) : jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
-                    <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">
-                      Recorded so far ({formatNaira(paymentsTotal)}) doesn&apos;t yet meet the minimum deposit
-                      ({formatNaira(minimumDeposit)}) — the approval option appears once it does.
-                    </p>
-                  ) : null}
                 </>
               ) : null}
             </div>
