@@ -301,6 +301,8 @@ model User {
   estimatesManagerApproved Estimate[] @relation("EstimateManagerApprovedBy")
   estimatesCustomerNotified Estimate[] @relation("EstimateCustomerNotifiedBy")
   paymentsRecorded Payment[]
+  cancellationRequestsMade CancellationRequest[] @relation("CancellationRequestedBy")
+  cancellationRequestsDecided CancellationRequest[] @relation("CancellationDecidedBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -625,6 +627,7 @@ model JobCard {
   complaints         JobCardComplaint[]
   estimate           Estimate?
   payments           Payment[]
+  cancellationRequests CancellationRequest[]
 
   @@map("job_cards")
 }
@@ -826,6 +829,42 @@ model Payment {
   recordedBy    User    @relation(fields: [recordedById], references: [id])
 
   @@map("payments")
+}
+
+// A cancellation request stays entirely separate from JobCard.status
+// itself until a Manager actually approves it — a declined request
+// never needs to "revert" anything, because nothing was ever touched
+// in the first place. Deliberately one-to-many (like Payment above):
+// a Job Card could see a declined request followed later by a second,
+// genuine one. The reason is required at request time (an employee's
+// note explaining why, whether that came from the customer by email,
+// phone, in person, or the customer's own dashboard) and shown to the
+// Manager for their decision; the Manager's own decision note is
+// separately recorded, whichever way they decide.
+enum CancellationRequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+model CancellationRequest {
+  id            String                    @id @default(cuid())
+  jobCardId     String
+  reason        String
+  requestedById String
+  requestedAt   DateTime                  @default(now())
+  status        CancellationRequestStatus @default(PENDING)
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNotes String?
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @default(now()) @updatedAt
+
+  jobCard     JobCard @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  requestedBy User    @relation("CancellationRequestedBy", fields: [requestedById], references: [id])
+  decidedBy   User?   @relation("CancellationDecidedBy", fields: [decidedById], references: [id])
+
+  @@map("cancellation_requests")
 }
 
 model CustomerAddress {
