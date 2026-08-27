@@ -45,7 +45,6 @@ import {
   notifyCustomerOfApprovedEstimate,
   recordPayment,
   approvePaymentAndProceed,
-  type PaymentMethod,
   type PaymentAmountPreset,
   requestJobCardCancellation,
   approveCancellationRequest,
