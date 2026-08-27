@@ -805,7 +805,7 @@ export default async function JobCardDetailPage({
                     </form>
                   ) : jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
                     <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">
-                      Recorded so far ({formatNaira(paymentsTotal)}) doesn't yet meet the minimum deposit
+                      Recorded so far ({formatNaira(paymentsTotal)}) doesn&apos;t yet meet the minimum deposit
                       ({formatNaira(minimumDeposit)}) — the approval option appears once it does.
                     </p>
                   ) : null}
