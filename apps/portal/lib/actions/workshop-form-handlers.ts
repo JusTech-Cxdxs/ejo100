@@ -47,6 +47,9 @@ import {
   approvePaymentAndProceed,
   type PaymentMethod,
   type PaymentAmountPreset,
+  requestJobCardCancellation,
+  approveCancellationRequest,
+  declineCancellationRequest,
   type EstimateLineItemType,
 } from './workshop';
 
@@ -381,4 +384,37 @@ export async function deleteJobCardFormAction(formData: FormData) {
   }
   revalidatePath('/workshop/job-cards');
   redirect('/workshop/job-cards?status=job_card_deleted');
+}
+
+export async function requestJobCardCancellationFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await requestJobCardCancellation(jobCardId, str(formData, 'reason'));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not request cancellation.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function approveCancellationRequestFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await approveCancellationRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not approve cancellation.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function declineCancellationRequestFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await declineCancellationRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not decline cancellation.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
 }

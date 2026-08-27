@@ -42,6 +42,10 @@ import { renderEstimateNudgeEmail } from '@/lib/email-templates/estimate-nudge';
 import { renderPaymentConfirmedEmail } from '@/lib/email-templates/payment-confirmed-work-can-proceed';
 import { renderPaymentRecordedUpdateEmail } from '@/lib/email-templates/payment-recorded-update';
 import { renderCustomerPaymentReceivedEmail } from '@/lib/email-templates/customer-payment-received';
+import { renderCancellationRequestedEmail } from '@/lib/email-templates/cancellation-requested';
+import { renderCancellationDeclinedEmail } from '@/lib/email-templates/cancellation-declined';
+import { renderJobCardCancelledStaffEmail } from '@/lib/email-templates/job-card-cancelled-staff';
+import { renderCustomerJobCardCancelledEmail } from '@/lib/email-templates/customer-job-card-cancelled';
 
 class WorkshopActionError extends Error {}
 
@@ -2649,5 +2653,315 @@ export async function approvePaymentAndProceed(jobCardId: string): Promise<void>
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Failed to send payment-confirmed broadcast emails', jobCardId, err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CANCELLATION — a two-step request/decision workflow, same shape as every
+// other approval gate in this file: an employee (the creator, the assigned
+// supervisor, or a Master Admin) logs a cancellation request with a reason
+// — covering a request that arrived by phone, email, in person, or through
+// the customer's own dashboard — and a Workshop Manager approves or
+// declines it. JobCard.status is never touched until an actual approval
+// happens; a declined request needs nothing "reverted" because nothing
+// was ever changed in the first place.
+// ---------------------------------------------------------------------------
+
+async function requireJobCardCreatorOrSupervisor(jobCard: {
+  createdById: string;
+  supervisorId: string | null;
+}): Promise<{ id: string }> {
+  const user = await requireUser();
+  if (user.id === jobCard.createdById || user.id === jobCard.supervisorId) {
+    return user;
+  }
+  if (await currentUserIsMasterAdmin()) {
+    return user;
+  }
+  throw new WorkshopActionError(
+    "Only this Job Card's creator, its assigned supervisor, or a Master Administrator can request cancellation.",
+  );
+}
+
+export async function getCancellationRequests(jobCardId: string) {
+  await requireUser();
+  return prisma.cancellationRequest.findMany({
+    where: { jobCardId },
+    orderBy: { requestedAt: 'desc' },
+    include: {
+      requestedBy: { select: { fullName: true } },
+      decidedBy: { select: { fullName: true } },
+    },
+  });
+}
+
+/** Logs the request and notifies every eligible Manager for the
+ * branch — the Job Card's own status is deliberately untouched here. */
+export async function requestJobCardCancellation(jobCardId: string, reason: string): Promise<void> {
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) {
+    throw new WorkshopActionError('A reason is required to request cancellation.');
+  }
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: {
+      status: true,
+      branchId: true,
+      jobNumber: true,
+      createdById: true,
+      supervisorId: true,
+      customer: { select: { fullName: true } },
+      department: { select: { name: true } },
+    },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  if (jobCard.status === JobCardStatus.CANCELLED || jobCard.status === JobCardStatus.CLOSED) {
+    throw new WorkshopActionError('This Job Card is already cancelled or closed.');
+  }
+  const user = await requireJobCardCreatorOrSupervisor(jobCard);
+
+  const existingPending = await prisma.cancellationRequest.findFirst({
+    where: { jobCardId, status: 'PENDING' },
+    select: { id: true },
+  });
+  if (existingPending) {
+    throw new WorkshopActionError('A cancellation request is already pending for this Job Card.');
+  }
+
+  await prisma.cancellationRequest.create({
+    data: { jobCardId, reason: trimmedReason, requestedById: user.id },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'cancellation.requested',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { reason: trimmedReason },
+  });
+
+  try {
+    const requester = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const managers = await listEligibleManagersForBranch(jobCard.branchId);
+    for (const manager of managers.supervisors) {
+      await sendEmail(
+        manager.email,
+        `Cancellation requested — Job Card ${jobCard.jobNumber}`,
+        renderCancellationRequestedEmail({
+          managerName: manager.fullName,
+          jobNumber: jobCard.jobNumber,
+          customerName: jobCard.customer.fullName,
+          requestedByName: requester?.fullName ?? 'A team member',
+          reason: trimmedReason,
+          jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send cancellation-requested emails', jobCardId, err);
+  }
+}
+
+/** The Manager's approval — the one moment JobCard.status actually
+ * changes to CANCELLED, and the only moment the full broadcast (every
+ * real staff party, plus the customer, each their own appropriately-
+ * scoped email) goes out. */
+export async function approveCancellationRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  const request = await prisma.cancellationRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      id: true,
+      status: true,
+      reason: true,
+      jobCardId: true,
+      jobCard: {
+        select: {
+          branchId: true,
+          jobNumber: true,
+          createdById: true,
+          supervisorId: true,
+          assignedTechnicianId: true,
+          customer: { select: { fullName: true, email: true } },
+          vehicle: { select: { make: true, model: true } },
+          department: { select: { name: true } },
+        },
+      },
+    },
+  });
+  if (!request) {
+    throw new WorkshopActionError('Cancellation request not found.');
+  }
+  if (request.status !== 'PENDING') {
+    throw new WorkshopActionError('This cancellation request has already been decided.');
+  }
+  const user = await requireEligibleManager(request.jobCard.branchId);
+
+  await prisma.$transaction([
+    prisma.cancellationRequest.update({
+      where: { id: requestId },
+      data: {
+        status: 'APPROVED',
+        decidedById: user.id,
+        decidedAt: new Date(),
+        decisionNotes: decisionNotes?.trim() || null,
+      },
+    }),
+    prisma.jobCard.update({
+      where: { id: request.jobCardId },
+      data: { status: JobCardStatus.CANCELLED },
+    }),
+  ]);
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'cancellation.approved',
+    entityType: 'JobCard',
+    entityId: request.jobCardId,
+    metadata: { reason: request.reason, notes: decisionNotes?.trim() || undefined },
+  });
+
+  try {
+    const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+
+    const recipientIds = new Set<string>();
+    if (request.jobCard.createdById) recipientIds.add(request.jobCard.createdById);
+    if (request.jobCard.supervisorId) recipientIds.add(request.jobCard.supervisorId);
+    if (request.jobCard.assignedTechnicianId) recipientIds.add(request.jobCard.assignedTechnicianId);
+    const managers = await listEligibleManagersForBranch(request.jobCard.branchId);
+    for (const m of managers.supervisors) recipientIds.add(m.id);
+
+    const recipients = await prisma.user.findMany({
+      where: { id: { in: Array.from(recipientIds) } },
+      select: { id: true, fullName: true, email: true },
+    });
+
+    for (const recipient of recipients) {
+      await sendEmail(
+        recipient.email,
+        `Job Card ${request.jobCard.jobNumber} cancelled`,
+        renderJobCardCancelledStaffEmail({
+          recipientName: recipient.fullName,
+          jobNumber: request.jobCard.jobNumber,
+          customerName: request.jobCard.customer.fullName,
+          approvedByName: approver?.fullName ?? 'The manager',
+          reason: request.reason,
+          jobCardUrl: `${portalUrl}/workshop/job-cards/${request.jobCardId}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send staff cancellation-broadcast emails', request.jobCardId, err);
+  }
+
+  try {
+    const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
+    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    await sendEmail(
+      request.jobCard.customer.email,
+      `Job Card ${request.jobCard.jobNumber} cancelled`,
+      renderCustomerJobCardCancelledEmail({
+        customerName: request.jobCard.customer.fullName,
+        jobNumber: request.jobCard.jobNumber,
+        vehicleDescription: [request.jobCard.vehicle.make, request.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+        dashboardUrl: `${websiteUrl}/customer-portal/dashboard`,
+        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send customer cancellation email', request.jobCardId, err);
+  }
+}
+
+/** The Manager's decline — the Job Card's status is never touched,
+ * matching how nothing was ever changed by the request itself. Only
+ * the original requester is notified. */
+export async function declineCancellationRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  const request = await prisma.cancellationRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      id: true,
+      status: true,
+      requestedById: true,
+      jobCardId: true,
+      jobCard: {
+        select: {
+          branchId: true,
+          jobNumber: true,
+          customer: { select: { fullName: true } },
+          department: { select: { name: true } },
+        },
+      },
+    },
+  });
+  if (!request) {
+    throw new WorkshopActionError('Cancellation request not found.');
+  }
+  if (request.status !== 'PENDING') {
+    throw new WorkshopActionError('This cancellation request has already been decided.');
+  }
+  const user = await requireEligibleManager(request.jobCard.branchId);
+
+  await prisma.cancellationRequest.update({
+    where: { id: requestId },
+    data: {
+      status: 'DECLINED',
+      decidedById: user.id,
+      decidedAt: new Date(),
+      decisionNotes: decisionNotes?.trim() || null,
+    },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'cancellation.declined',
+    entityType: 'JobCard',
+    entityId: request.jobCardId,
+    metadata: { notes: decisionNotes?.trim() || undefined },
+  });
+
+  try {
+    const [decliner, requester] = await Promise.all([
+      prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
+      prisma.user.findUnique({ where: { id: request.requestedById }, select: { fullName: true, email: true } }),
+    ]);
+    if (!requester) return;
+    const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      requester.email,
+      `Cancellation request declined — Job Card ${request.jobCard.jobNumber}`,
+      renderCancellationDeclinedEmail({
+        recipientName: requester.fullName,
+        jobNumber: request.jobCard.jobNumber,
+        customerName: request.jobCard.customer.fullName,
+        declinedByName: decliner?.fullName ?? 'The manager',
+        decisionNotes,
+        jobCardUrl: `${portalUrl}/workshop/job-cards/${request.jobCardId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send cancellation-declined email', request.jobCardId, err);
   }
 }
