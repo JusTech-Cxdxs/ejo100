@@ -44,8 +44,6 @@ import {
   approveEstimateAsManager,
   notifyCustomerOfApprovedEstimate,
   recordPayment,
-  approvePaymentAndProceed,
-  type PaymentAmountPreset,
   requestJobCardCancellation,
   approveCancellationRequest,
   declineCancellationRequest,
@@ -327,32 +325,14 @@ export async function notifyCustomerOfApprovedEstimateFormAction(formData: FormD
 export async function recordPaymentFormAction(formData: FormData) {
   const jobCardId = str(formData, 'jobCardId');
   try {
-    const presetRaw = str(formData, 'amountPreset');
-    const preset: PaymentAmountPreset =
-      presetRaw === 'FULL' ? 'FULL'
-        : presetRaw === 'REMAINING' ? 'REMAINING'
-        : presetRaw === 'OTHER' ? 'OTHER'
-        : 'SEVENTY_PERCENT';
     await recordPayment(
       jobCardId,
-      preset,
-      num(formData, 'customAmount'),
+      num(formData, 'amount') ?? NaN,
       str(formData, 'method') === 'CASH' ? 'CASH' : 'BANK_TRANSFER',
       str(formData, 'notes') || undefined,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not record payment.';
-    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
-  }
-  revalidatePath(`/workshop/job-cards/${jobCardId}`);
-}
-
-export async function approvePaymentAndProceedFormAction(formData: FormData) {
-  const jobCardId = str(formData, 'jobCardId');
-  try {
-    await approvePaymentAndProceed(jobCardId);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve payment.';
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);

@@ -39,7 +39,6 @@ import { renderEstimateReadyForManagerEmail } from '@/lib/email-templates/estima
 import { renderCustomerEstimateApprovedEmail } from '@/lib/email-templates/customer-estimate-approved';
 import { renderEstimateReadyForCustomerNotificationEmail } from '@/lib/email-templates/estimate-ready-for-customer-notification';
 import { renderEstimateNudgeEmail } from '@/lib/email-templates/estimate-nudge';
-import { renderPaymentConfirmedEmail } from '@/lib/email-templates/payment-confirmed-work-can-proceed';
 import { renderPaymentRecordedUpdateEmail } from '@/lib/email-templates/payment-recorded-update';
 import { renderPaymentRequirementMetEmail } from '@/lib/email-templates/payment-requirement-met';
 import { renderPaymentCompletedInFullEmail } from '@/lib/email-templates/payment-completed-in-full';
@@ -2392,32 +2391,42 @@ export async function getJobCardPayments(jobCardId: string) {
 
 /** Records one payment toward a Job Card — only meaningful once the
  * customer has actually been asked to pay. */
-export type PaymentAmountPreset = 'SEVENTY_PERCENT' | 'FULL' | 'REMAINING' | 'OTHER';
-
-/** Records one payment toward a Job Card — the amount comes from one
- * of three presets: the exact 70% minimum deposit (auto-computed from
- * the real estimate total, never a bare guess), the full remaining
- * total, or a custom "Other" amount for whatever the customer actually
- * paid (e.g. 71–99%, or a smaller bit-by-bit installment). No
- * per-payment minimum is enforced here deliberately — payments
- * genuinely accumulate over multiple entries (a deposit, then a
- * balance later), and it's the *cumulative* total that has to clear
- * the minimum deposit before approvePaymentAndProceed() will move the
- * Job Card forward, not any single payment on its own.
+/** Records one payment toward a Job Card — `amount` is always exactly
+ * what's recorded, full stop. Any dropdown of suggestions in the UI
+ * (70%, full, remaining balance) is purely a convenience that fills
+ * this field in before the form is submitted; it is never a separate
+ * value the server trusts on its own. This function has no concept of
+ * "preset" at all — it only ever sees the final number, which is the
+ * actual, correct fix for a real reported bug where a stale dropdown
+ * selection silently overrode a manually-typed amount.
  *
- * Broadcasts twice on success: an informational update to everyone
- * real on the Job Card (creator, supervisor, technician, every
- * eligible branch Manager) showing where the cumulative total now
- * stands — never claiming work can start, since that's still Finance's
- * separate, deliberate approval — and a receipt confirmation to the
- * customer themselves, every time, exactly as asked. */
+ * Rejects any amount that would push the cumulative total past the
+ * estimate — recording ₦12,000.01 against a ₦12,000 estimate, or
+ * ₦3,700 against a ₦3,600 remaining balance, is refused with a clear
+ * message rather than silently accepted.
+ *
+ * No per-payment minimum otherwise — payments genuinely accumulate
+ * over multiple entries (a deposit, then a balance later, in
+ * whatever increments the customer actually pays in), and it's the
+ * *cumulative* total that matters.
+ *
+ * Approval is fully automatic: the moment the cumulative total first
+ * reaches the 70% minimum deposit, this same call moves the Job Card
+ * to IN_PROGRESS and sends the "requirement met" broadcast — there is
+ * no separate manual approval step for Finance to remember to click.
+ * A customer who pays in several small installments (₦1,000, then
+ * ₦2,000, then ₦3,000, and so on) is still recorded correctly every
+ * time; approval fires automatically the moment the running total
+ * first clears 70%, whichever specific payment that happens to be. */
 export async function recordPayment(
   jobCardId: string,
-  preset: PaymentAmountPreset,
-  customAmount: number | undefined,
+  amount: number,
   method: PaymentMethod,
   notes?: string,
 ): Promise<void> {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new WorkshopActionError('Enter a valid payment amount.');
+  }
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
     select: {
@@ -2438,11 +2447,9 @@ export async function recordPayment(
   }
   // Payments continue to accumulate even after the 70% deposit has
   // already moved the Job Card to IN_PROGRESS — a customer paying in
-  // installments (70%, then a bit more, then the rest) needs to keep
-  // recording right up until the full amount is reached, not just
-  // during the brief window before work starts. Blocked once the
-  // total already meets or exceeds the estimate — nothing left to
-  // record at that point.
+  // installments needs to keep recording right up until the full
+  // amount is reached, not just during the brief window before work
+  // starts.
   if (jobCard.status !== JobCardStatus.AWAITING_CUSTOMER_APPROVAL && jobCard.status !== JobCardStatus.IN_PROGRESS) {
     throw new WorkshopActionError('Payments can only be recorded once the customer has been notified and is awaiting approval, or while work is in progress.');
   }
@@ -2451,54 +2458,58 @@ export async function recordPayment(
   const total = (jobCard.estimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
   const alreadyPaid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount ?? 0), 0);
+  const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
   if (total > 0 && alreadyPaid >= total) {
     throw new WorkshopActionError('This estimate has already been paid in full — nothing left to record.');
   }
 
-  let amount: number;
-  if (preset === 'SEVENTY_PERCENT') {
-    amount = minimumDeposit;
-  } else if (preset === 'FULL') {
-    amount = total;
-  } else if (preset === 'REMAINING') {
-    amount = Math.round((total - alreadyPaid) * 100) / 100;
-  } else {
-    if (!customAmount || !Number.isFinite(customAmount) || customAmount <= 0) {
-      throw new WorkshopActionError('Enter a valid payment amount.');
-    }
-    amount = Math.round(customAmount * 100) / 100;
+  const roundedAmount = Math.round(amount * 100) / 100;
+  const prospectiveTotal = Math.round((alreadyPaid + roundedAmount) * 100) / 100;
+  const roundedTotal = Math.round(total * 100) / 100;
+  if (prospectiveTotal > roundedTotal) {
+    const remaining = Math.round((roundedTotal - alreadyPaid) * 100) / 100;
+    throw new WorkshopActionError(
+      `This amount exceeds the remaining balance on this estimate. Please review — up to ${formatNaira(remaining)} can be recorded.`,
+    );
   }
 
-  await prisma.payment.create({
-    data: {
-      jobCardId,
-      amount,
-      method,
-      notes: notes?.trim() || null,
-      recordedById: user.id,
-    },
-  });
+  const newTotal = prospectiveTotal;
+  const justMetDeposit = alreadyPaid < minimumDeposit && newTotal >= minimumDeposit;
+  const justCompletedFull = alreadyPaid < roundedTotal && newTotal >= roundedTotal;
+  const shouldAutoApprove = jobCard.status === JobCardStatus.AWAITING_CUSTOMER_APPROVAL && (justMetDeposit || justCompletedFull);
+
+  await prisma.$transaction([
+    prisma.payment.create({
+      data: {
+        jobCardId,
+        amount: roundedAmount,
+        method,
+        notes: notes?.trim() || null,
+        recordedById: user.id,
+      },
+    }),
+    ...(shouldAutoApprove
+      ? [prisma.jobCard.update({ where: { id: jobCardId }, data: { status: JobCardStatus.IN_PROGRESS } })]
+      : []),
+  ]);
 
   await writeAuditLog({
     userId: user.id,
     action: 'payment.recorded',
     entityType: 'JobCard',
     entityId: jobCardId,
-    metadata: { amount, method, notes: notes?.trim() || undefined },
+    metadata: { amount: roundedAmount, method, notes: notes?.trim() || undefined },
   });
-
-  const newTotal = alreadyPaid + amount;
-  const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-  // Two genuinely separate events, not one message that changes its
-  // own wording depending on the running total — that was the actual
-  // bug: every payment after the one that first crossed 70% kept
-  // repeating "this meets the deposit," which is misleading once it's
-  // already been met. Gated on the THRESHOLD BEING CROSSED, not on
-  // where the total currently stands, so each fires exactly once no
-  // matter how many further installments follow.
-  const justMetDeposit = alreadyPaid < minimumDeposit && newTotal >= minimumDeposit;
-  const justCompletedFull = alreadyPaid < total && newTotal >= total;
+  if (shouldAutoApprove) {
+    await writeAuditLog({
+      userId: user.id,
+      action: 'payment.approved',
+      entityType: 'JobCard',
+      entityId: jobCardId,
+      metadata: { totalPaid: newTotal },
+    });
+  }
 
   // "Recorded" — Finance and Manager only, every time, no threshold
   // language at all. The technician, supervisor, and Job Card creator
@@ -2508,7 +2519,7 @@ export async function recordPayment(
   try {
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const balance = total - newTotal;
+    const balance = roundedTotal - newTotal;
 
     const recipientIds = new Set<string>();
     const managers = await listEligibleManagersForBranch(jobCard.branchId);
@@ -2529,9 +2540,9 @@ export async function recordPayment(
           recipientName: recipient.fullName,
           jobNumber: jobCard.jobNumber,
           customerName: jobCard.customer.fullName,
-          amountReceived: formatNaira(amount),
+          amountReceived: formatNaira(roundedAmount),
           totalPaidSoFar: formatNaira(newTotal),
-          totalEstimate: formatNaira(total),
+          totalEstimate: formatNaira(roundedTotal),
           balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
           jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
           logoUrl: `${portalUrl}/images/logo/logo.png`,
@@ -2551,9 +2562,7 @@ export async function recordPayment(
   // eligible Finance Officer), but only ever ONE of these two, and
   // only on the specific payment that actually crosses the line. If a
   // single payment crosses both thresholds at once (paid in full in
-  // one go), only the more complete "paid in full" fact is sent —
-  // the intermediate "deposit met" would be redundant noise for the
-  // exact same payment.
+  // one go), only the more complete "paid in full" fact is sent.
   if (justMetDeposit || justCompletedFull) {
     try {
       const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
@@ -2599,7 +2608,7 @@ export async function recordPayment(
               jobNumber: jobCard.jobNumber,
               customerName: jobCard.customer.fullName,
               totalPaidSoFar: formatNaira(newTotal),
-              totalEstimate: formatNaira(total),
+              totalEstimate: formatNaira(roundedTotal),
               jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
               logoUrl: `${portalUrl}/images/logo/logo.png`,
               companyName: orgContext.companyName,
@@ -2618,16 +2627,16 @@ export async function recordPayment(
   try {
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
     const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-    const balance = total - newTotal;
+    const balance = roundedTotal - newTotal;
     await sendEmail(
       jobCard.customer.email,
       `Payment received — Job Card ${jobCard.jobNumber}`,
       renderCustomerPaymentReceivedEmail({
         customerName: jobCard.customer.fullName,
         jobNumber: jobCard.jobNumber,
-        amountReceived: formatNaira(amount),
+        amountReceived: formatNaira(roundedAmount),
         totalPaidSoFar: formatNaira(newTotal),
-        totalEstimate: formatNaira(total),
+        totalEstimate: formatNaira(roundedTotal),
         balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard`,
         logoUrl: `${websiteUrl}/images/logo/logo.png`,
@@ -2638,101 +2647,6 @@ export async function recordPayment(
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Failed to send customer payment-received email', jobCardId, err);
-  }
-}
-
-/** The deliberate act that actually unblocks the workshop's own work —
- * confirms the total recorded payments genuinely meet the minimum
- * deposit (never just trusting Finance's own judgment blindly, same
- * server-side validation discipline used everywhere else in this
- * file), moves the Job Card to IN_PROGRESS, and broadcasts to every
- * real party involved: the creator, the supervisor, the assigned
- * technician, and every eligible Manager for the branch — each their
- * own copy of the email, not a single CC'd send. */
-export async function approvePaymentAndProceed(jobCardId: string): Promise<void> {
-  const jobCard = await prisma.jobCard.findUnique({
-    where: { id: jobCardId },
-    select: {
-      status: true,
-      branchId: true,
-      jobNumber: true,
-      createdById: true,
-      supervisorId: true,
-      assignedTechnicianId: true,
-      customer: { select: { fullName: true } },
-      department: { select: { name: true } },
-      estimate: { select: { lineItems: { select: { amount: true } } } },
-      payments: { select: { amount: true } },
-    },
-  });
-  if (!jobCard) {
-    throw new WorkshopActionError('Job Card not found.');
-  }
-  if (jobCard.status !== JobCardStatus.AWAITING_CUSTOMER_APPROVAL) {
-    throw new WorkshopActionError('This Job Card is not currently awaiting customer approval.');
-  }
-  const user = await requireEligibleFinanceOfficer(jobCard.branchId);
-
-  const total = (jobCard.estimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
-  const totalPaid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount ?? 0), 0);
-  const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
-  if (totalPaid < minimumDeposit) {
-    const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    throw new WorkshopActionError(
-      `Recorded payments (${formatNaira(totalPaid)}) don't yet meet the minimum deposit (${formatNaira(minimumDeposit)}) — record the remaining amount first.`,
-    );
-  }
-
-  await prisma.jobCard.update({
-    where: { id: jobCardId },
-    data: { status: JobCardStatus.IN_PROGRESS },
-  });
-
-  await writeAuditLog({
-    userId: user.id,
-    action: 'payment.approved',
-    entityType: 'JobCard',
-    entityId: jobCardId,
-    metadata: { totalPaid },
-  });
-
-  try {
-    const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-    const recipientIds = new Set<string>();
-    if (jobCard.createdById) recipientIds.add(jobCard.createdById);
-    if (jobCard.supervisorId) recipientIds.add(jobCard.supervisorId);
-    if (jobCard.assignedTechnicianId) recipientIds.add(jobCard.assignedTechnicianId);
-    const managers = await listEligibleManagersForBranch(jobCard.branchId);
-    for (const m of managers.supervisors) recipientIds.add(m.id);
-
-    const recipients = await prisma.user.findMany({
-      where: { id: { in: Array.from(recipientIds) } },
-      select: { id: true, fullName: true, email: true },
-    });
-
-    for (const recipient of recipients) {
-      await sendEmail(
-        recipient.email,
-        `Payment confirmed on Job Card ${jobCard.jobNumber} — work can proceed`,
-        renderPaymentConfirmedEmail({
-          recipientName: recipient.fullName,
-          jobNumber: jobCard.jobNumber,
-          customerName: jobCard.customer.fullName,
-          amountPaid: formatNaira(totalPaid),
-          jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
-          companyName: orgContext.companyName,
-          branchName: orgContext.branchName,
-          departmentName: orgContext.departmentName,
-        }),
-      );
-    }
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to send payment-confirmed broadcast emails', jobCardId, err);
   }
 }
 
