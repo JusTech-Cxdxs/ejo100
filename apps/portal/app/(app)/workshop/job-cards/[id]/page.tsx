@@ -8,6 +8,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
+import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 
 const ALL_STATUSES = [
   'CHECKED_IN',
@@ -428,6 +429,7 @@ export default async function JobCardDetailPage({
                             <tr key={item.id} className="border-b border-[var(--ejo-border)] last:border-0">
                               <td colSpan={isEstimateContributor ? 7 : 6} className="py-2">
                                 <form action={updateEstimateLineItemFormAction} className="flex flex-wrap items-center gap-2">
+                                  <FormPendingOverlay />
                                   <input type="hidden" name="jobCardId" value={jobCard.id} />
                                   <input type="hidden" name="lineItemId" value={item.id} />
                                   <span className="w-24 shrink-0 text-xs text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</span>
@@ -492,6 +494,7 @@ export default async function JobCardDetailPage({
                                       Edit
                                     </LoadingLink>
                                     <form action={deleteEstimateLineItemFormAction} className="inline-flex items-center">
+                                      <FormPendingOverlay />
                                       <input type="hidden" name="jobCardId" value={jobCard.id} />
                                       <input type="hidden" name="lineItemId" value={item.id} />
                                       <button
@@ -547,6 +550,7 @@ export default async function JobCardDetailPage({
 
             {jobCard.approvalStatus === 'APPROVED' && isEstimateContributor && (!estimate || estimate.status === 'DRAFT') ? (
               <form action={addEstimateLineItemFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4 sm:grid-cols-5">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <select
                   name="type"
@@ -602,6 +606,7 @@ export default async function JobCardDetailPage({
 
             {estimate?.status === 'DRAFT' && isAssignedTechnician ? (
               <form action={notifySupervisorAboutEstimateFormAction} className="mt-4 flex flex-wrap items-end gap-2 border-t border-[var(--ejo-border)] pt-4">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <div className="flex-1 min-w-[180px]">
                   <label className="mb-1 block text-[11px] text-[var(--ejo-text-muted)]">Notify supervisor (optional note)</label>
@@ -621,6 +626,7 @@ export default async function JobCardDetailPage({
 
             {estimate?.status === 'DRAFT' && isApprover ? (
               <form action={notifyTechnicianAboutEstimateFormAction} className="mt-4 flex flex-wrap items-end gap-2 border-t border-[var(--ejo-border)] pt-4">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <div className="flex-1 min-w-[180px]">
                   <label className="mb-1 block text-[11px] text-[var(--ejo-text-muted)]">Notify technician (optional note)</label>
@@ -640,6 +646,7 @@ export default async function JobCardDetailPage({
 
             {estimate?.status === 'DRAFT' && isEstimateContributor && estimate.lineItems.length > 0 ? (
               <form action={submitEstimateForValidationFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
                   Every line needs a price before this can be submitted — a supervisor will validate it next.
@@ -654,6 +661,7 @@ export default async function JobCardDetailPage({
 
             {estimate?.status === 'SUBMITTED' && isApprover ? (
               <form action={approveEstimateFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <SubmitButton
                   label="Approve estimate"
@@ -665,6 +673,7 @@ export default async function JobCardDetailPage({
 
             {estimate?.status === 'APPROVED' && isEligibleManager ? (
               <form action={approveEstimateAsManagerFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
                   Approved by the supervisor — approving here notifies {jobCard.createdBy.fullName}, who created
@@ -680,6 +689,7 @@ export default async function JobCardDetailPage({
 
             {estimate?.status === 'MANAGER_APPROVED' && !estimate.customerNotifiedAt && isCreator ? (
               <form action={notifyCustomerOfApprovedEstimateFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
                   Approved by the manager. Once you&apos;re satisfied everything is in order, notify the customer
@@ -749,8 +759,9 @@ export default async function JobCardDetailPage({
                     amount below, or choose &quot;Other&quot; to enter one manually — either way, whatever the field
                     shows is exactly what gets recorded.
                   </p>
-                  <form action={recordPaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
+                  <form key={payments.length} action={recordPaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
                     <input type="hidden" name="jobCardId" value={jobCard.id} />
+                    <FormPendingOverlay />
                     <PaymentAmountField
                       options={
                         paymentsTotal > 0
@@ -841,6 +852,7 @@ export default async function JobCardDetailPage({
                 </p>
               ) : (
                 <form action={reassignSupervisorFormAction} className="mt-3 space-y-2">
+                  <FormPendingOverlay />
                   <input type="hidden" name="jobCardId" value={jobCard.id} />
                   <select
                     name="supervisorId"
@@ -878,6 +890,7 @@ export default async function JobCardDetailPage({
                 valid reasons too.
               </p>
               <form action={approveJobCardFormAction} className="mt-4 space-y-2">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <textarea
                   name="notes"
@@ -892,6 +905,7 @@ export default async function JobCardDetailPage({
                 />
               </form>
               <form action={rejectJobCardFormAction} className="mt-3 space-y-2">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <input
                   name="reason"
@@ -918,6 +932,7 @@ export default async function JobCardDetailPage({
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Status</h2>
             {editStatus === 'true' ? (
               <form action={updateJobCardStatusFormAction} className="mt-4 space-y-3">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <select
                   name="status"
@@ -965,6 +980,7 @@ export default async function JobCardDetailPage({
               Currently: {jobCard.assignedTechnician?.fullName ?? 'Unassigned'}
             </p>
             <form action={assignTechnicianFormAction} className="mt-4 space-y-3">
+              <FormPendingOverlay />
               <input type="hidden" name="jobCardId" value={jobCard.id} />
               <select
                 name="technicianId"
@@ -995,6 +1011,7 @@ export default async function JobCardDetailPage({
                 or reject with a reason if you can&apos;t take it on.
               </p>
               <form action={acceptTechnicianAssignmentFormAction} className="mt-4">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <SubmitButton
                   label="Accept"
@@ -1003,6 +1020,7 @@ export default async function JobCardDetailPage({
                 />
               </form>
               <form action={rejectTechnicianAssignmentFormAction} className="mt-3 space-y-2">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <input
                   name="reason"
@@ -1027,6 +1045,7 @@ export default async function JobCardDetailPage({
               </p>
               <div className="mt-3 space-y-2">
                 <form action={approveCancellationRequestFormAction} className="space-y-2">
+                  <FormPendingOverlay />
                   <input type="hidden" name="jobCardId" value={jobCard.id} />
                   <input type="hidden" name="requestId" value={pendingCancellationRequest.id} />
                   <input
@@ -1041,6 +1060,7 @@ export default async function JobCardDetailPage({
                   />
                 </form>
                 <form action={declineCancellationRequestFormAction} className="space-y-2">
+                  <FormPendingOverlay />
                   <input type="hidden" name="jobCardId" value={jobCard.id} />
                   <input type="hidden" name="requestId" value={pendingCancellationRequest.id} />
                   <input
@@ -1064,6 +1084,7 @@ export default async function JobCardDetailPage({
                 is actually cancelled.
               </p>
               <form action={requestJobCardCancellationFormAction} className="mt-3 space-y-2">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <textarea
                   name="reason"
@@ -1088,6 +1109,7 @@ export default async function JobCardDetailPage({
                 Permanently deletes this Job Card and its complaints. This cannot be undone.
               </p>
               <form action={deleteJobCardFormAction} className="mt-4">
+                <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <ConfirmDeleteButton
                   confirmMessage={`Delete Job Card ${jobCard.jobNumber}? This permanently removes it and its complaints. This cannot be undone.`}
