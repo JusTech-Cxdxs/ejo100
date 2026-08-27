@@ -133,10 +133,21 @@ export async function createJobCardFormAction(formData: FormData) {
 
 export async function updateJobCardStatusFormAction(formData: FormData) {
   const id = str(formData, 'jobCardId');
-  const status = str(formData, 'status') as JobCardStatus;
-  await updateJobCardStatus(id, status);
+  try {
+    const status = str(formData, 'status') as JobCardStatus;
+    await updateJobCardStatus(id, status);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not update status.';
+    redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
+  }
   revalidatePath(`/workshop/job-cards/${id}`);
   revalidatePath('/workshop/job-cards');
+  // Explicit success redirect back to the plain URL, clearing
+  // ?editStatus= — same fix as the estimate line-item edit form:
+  // without this, the page re-renders with the same URL still present,
+  // so the dropdown stays in edit mode even though the save genuinely
+  // succeeded.
+  redirect(`/workshop/job-cards/${id}`);
 }
 
 export async function approveJobCardFormAction(formData: FormData) {
