@@ -1,7 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
-import { COMMON_ESTIMATE_LINE_DESCRIPTIONS } from '@/lib/workshop-constants';
+import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, approvePaymentAndProceedFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -195,12 +195,13 @@ export default async function JobCardDetailPage({
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const estimateLineItems = estimate?.lineItems ?? [];
   const estimateTotal = estimateLineItems.reduce((sum: number, li: (typeof estimateLineItems)[number]) => sum + Number(li.amount ?? 0), 0);
+  const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
   const paymentStatus: 'AWAITING_PAYMENT' | 'PARTIAL' | 'DEPOSIT_MET' | 'PAID_IN_FULL' =
     paymentsTotal <= 0
       ? 'AWAITING_PAYMENT'
       : estimateTotal > 0 && paymentsTotal >= estimateTotal
         ? 'PAID_IN_FULL'
-        : estimateTotal > 0 && paymentsTotal >= estimateTotal * 0.7
+        : estimateTotal > 0 && paymentsTotal >= minimumDeposit
           ? 'DEPOSIT_MET'
           : 'PARTIAL';
 
@@ -753,7 +754,7 @@ export default async function JobCardDetailPage({
                         <option value="REMAINING">Remaining balance ({formatNaira(estimateTotal - paymentsTotal)})</option>
                       ) : (
                         <>
-                          <option value="SEVENTY_PERCENT">70% deposit ({formatNaira(estimateTotal * 0.7)})</option>
+                          <option value="SEVENTY_PERCENT">70% deposit ({formatNaira(minimumDeposit)})</option>
                           <option value="FULL">Full payment ({formatNaira(estimateTotal)})</option>
                         </>
                       )}
@@ -788,7 +789,7 @@ export default async function JobCardDetailPage({
                     />
                   </form>
 
-                  {jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
+                  {jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' && paymentsTotal >= minimumDeposit ? (
                     <form action={approvePaymentAndProceedFormAction} className="mt-3">
                       <input type="hidden" name="jobCardId" value={jobCard.id} />
                       <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
@@ -802,6 +803,11 @@ export default async function JobCardDetailPage({
                         className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                       />
                     </form>
+                  ) : jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
+                    <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">
+                      Recorded so far ({formatNaira(paymentsTotal)}) doesn't yet meet the minimum deposit
+                      ({formatNaira(minimumDeposit)}) — the approval option appears once it does.
+                    </p>
                   ) : null}
                 </>
               ) : null}
