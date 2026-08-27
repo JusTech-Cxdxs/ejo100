@@ -32,6 +32,22 @@ const STATUS_LABEL: Record<string, string> = {
   CANCELLED: 'Cancelled',
 };
 
+// This page never had its own color map before — the top-level status
+// badge was hardcoded to the primary (green) color for every single
+// status, Cancelled included. Matches the list page's own map exactly,
+// so the same status reads the same color everywhere in the app.
+const STATUS_COLOR: Record<string, string> = {
+  CHECKED_IN: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  IN_PROGRESS: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  AWAITING_PARTS: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  QUALITY_CHECK: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  AWAITING_CUSTOMER_APPROVAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  READY_FOR_COLLECTION: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+  CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
+};
+
 // Falls back to the raw action string for anything not listed — future
 // phases add more audit actions (assignment.*, estimate.*, etc.); this
 // map only needs updating for a nicer label, never to avoid breaking.
@@ -148,10 +164,10 @@ export default async function JobCardDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ status?: string; error?: string; editLineId?: string }>;
+  searchParams: Promise<{ status?: string; error?: string; editLineId?: string; editStatus?: string }>;
 }) {
   const { id } = await params;
-  const { status, error, editLineId } = await searchParams;
+  const { status, error, editLineId, editStatus } = await searchParams;
   const [jobCard, technicians, isMasterAdmin, viewerId] = await Promise.all([
     getJobCard(id),
     listTechnicianCandidates(),
@@ -208,7 +224,7 @@ export default async function JobCardDetailPage({
 
       <div className="mt-3 mb-6 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{jobCard.jobNumber}</h1>
-        <span className="rounded-full bg-[var(--ejo-primary)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-primary)]">
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[jobCard.status]}`}>
           {STATUS_LABEL[jobCard.status]}
         </span>
         <span
@@ -792,89 +808,37 @@ export default async function JobCardDetailPage({
             </div>
           ) : null}
 
-          {cancellationRequests.length > 0 || (canRequestCancellation && jobCard.status !== 'CANCELLED' && jobCard.status !== 'CLOSED') ? (
+          {cancellationRequests.length > 0 ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Cancellation</h2>
-
-              {cancellationRequests.length > 0 ? (
-                <div className="mt-3 space-y-3 text-sm">
-                  {cancellationRequests.map((r: (typeof cancellationRequests)[number]) => (
-                    <div key={r.id} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-3">
-                      <div className="flex items-center justify-between">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                            r.status === 'APPROVED'
-                              ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]'
-                              : r.status === 'DECLINED'
-                                ? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
-                                : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
-                          }`}
-                        >
-                          {r.status === 'APPROVED' ? 'Approved' : r.status === 'DECLINED' ? 'Declined' : 'Awaiting Manager Decision'}
-                        </span>
-                        <span className="text-xs text-[var(--ejo-text-muted)]">{formatDateTime(r.requestedAt)}</span>
-                      </div>
-                      <p className="mt-1 text-[var(--ejo-text)]">{r.reason}</p>
-                      <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Requested by {r.requestedBy.fullName}</p>
-                      {r.decidedBy ? (
-                        <p className="text-xs text-[var(--ejo-text-muted)]">
-                          {r.status === 'APPROVED' ? 'Approved' : 'Declined'} by {r.decidedBy.fullName}
-                          {r.decisionNotes ? ` — ${r.decisionNotes}` : ''}
-                        </p>
-                      ) : null}
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Cancellation history</h2>
+              <div className="mt-3 space-y-3 text-sm">
+                {cancellationRequests.map((r: (typeof cancellationRequests)[number]) => (
+                  <div key={r.id} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-3">
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          r.status === 'APPROVED'
+                            ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]'
+                            : r.status === 'DECLINED'
+                              ? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
+                              : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
+                        }`}
+                      >
+                        {r.status === 'APPROVED' ? 'Approved' : r.status === 'DECLINED' ? 'Declined' : 'Awaiting Manager Decision'}
+                      </span>
+                      <span className="text-xs text-[var(--ejo-text-muted)]">{formatDateTime(r.requestedAt)}</span>
                     </div>
-                  ))}
-                </div>
-              ) : null}
-
-              {pendingCancellationRequest && isEligibleManager ? (
-                <div className="mt-4 space-y-2 border-t border-[var(--ejo-border)] pt-4">
-                  <form action={approveCancellationRequestFormAction} className="space-y-2">
-                    <input type="hidden" name="jobCardId" value={jobCard.id} />
-                    <input type="hidden" name="requestId" value={pendingCancellationRequest.id} />
-                    <input
-                      name="decisionNotes"
-                      placeholder="Note (optional)"
-                      className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-                    />
-                    <SubmitButton
-                      label="Approve cancellation"
-                      pendingLabel="Approving…"
-                      className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-                    />
-                  </form>
-                  <form action={declineCancellationRequestFormAction} className="space-y-2">
-                    <input type="hidden" name="jobCardId" value={jobCard.id} />
-                    <input type="hidden" name="requestId" value={pendingCancellationRequest.id} />
-                    <input
-                      name="decisionNotes"
-                      placeholder="Note (optional)"
-                      className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-                    />
-                    <SubmitButton
-                      label="Decline"
-                      pendingLabel="Declining…"
-                      className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                    />
-                  </form>
-                </div>
-              ) : !pendingCancellationRequest && canRequestCancellation && jobCard.status !== 'CANCELLED' && jobCard.status !== 'CLOSED' ? (
-                <form action={requestJobCardCancellationFormAction} className="mt-4 space-y-2 border-t border-[var(--ejo-border)] pt-4">
-                  <input type="hidden" name="jobCardId" value={jobCard.id} />
-                  <textarea
-                    name="reason"
-                    required
-                    rows={2}
-                    placeholder="Reason for cancellation — e.g. customer found another workshop, could not afford repair, no longer needed"
-                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-                  />
-                  <SubmitButton
-                    label="Request cancellation"
-                    pendingLabel="Requesting…"
-                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
-                  />
-                </form>
-              ) : null}
+                    <p className="mt-1 text-[var(--ejo-text)]">{r.reason}</p>
+                    <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Requested by {r.requestedBy.fullName}</p>
+                    {r.decidedBy ? (
+                      <p className="text-xs text-[var(--ejo-text-muted)]">
+                        {r.status === 'APPROVED' ? 'Approved' : 'Declined'} by {r.decidedBy.fullName}
+                        {r.decisionNotes ? ` — ${r.decisionNotes}` : ''}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
 
@@ -973,26 +937,48 @@ export default async function JobCardDetailPage({
           ) : null}
 
           <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Update status</h2>
-            <form action={updateJobCardStatusFormAction} className="mt-4 space-y-3">
-              <input type="hidden" name="jobCardId" value={jobCard.id} />
-              <select
-                name="status"
-                defaultValue={jobCard.status}
-                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-              >
-                {ALL_STATUSES.map((s) => (
-                  <option key={s} value={s} style={s === 'CANCELLED' ? { color: 'var(--ejo-error)' } : undefined}>
-                    {STATUS_LABEL[s]}
-                  </option>
-                ))}
-              </select>
-              <SubmitButton
-                label="Update status"
-                pendingLabel="Updating…"
-                className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-              />
-            </form>
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Status</h2>
+            {editStatus === 'true' ? (
+              <form action={updateJobCardStatusFormAction} className="mt-4 space-y-3">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <select
+                  name="status"
+                  defaultValue={jobCard.status}
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                >
+                  {ALL_STATUSES.map((s) => (
+                    <option key={s} value={s} style={s === 'CANCELLED' ? { color: 'var(--ejo-error)' } : undefined}>
+                      {STATUS_LABEL[s]}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <SubmitButton
+                    label="Update status"
+                    pendingLabel="Updating…"
+                    className="flex-1 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                  />
+                  <LoadingLink
+                    href={`/workshop/job-cards/${jobCard.id}`}
+                    className="inline-flex items-center rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                  >
+                    Cancel
+                  </LoadingLink>
+                </div>
+              </form>
+            ) : (
+              <div className="mt-3 flex items-center justify-between">
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[jobCard.status]}`}>
+                  {STATUS_LABEL[jobCard.status]}
+                </span>
+                <LoadingLink
+                  href={`/workshop/job-cards/${jobCard.id}?editStatus=true`}
+                  className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+                >
+                  Edit
+                </LoadingLink>
+              </div>
+            )}
           </div>
 
           <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
@@ -1049,6 +1035,68 @@ export default async function JobCardDetailPage({
                 <SubmitButton
                   label="Reject"
                   pendingLabel="Rejecting…"
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
+                />
+              </form>
+            </div>
+          ) : null}
+
+          {pendingCancellationRequest && isEligibleManager ? (
+            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Cancellation requested</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                {pendingCancellationRequest.requestedBy.fullName}: {pendingCancellationRequest.reason}
+              </p>
+              <div className="mt-3 space-y-2">
+                <form action={approveCancellationRequestFormAction} className="space-y-2">
+                  <input type="hidden" name="jobCardId" value={jobCard.id} />
+                  <input type="hidden" name="requestId" value={pendingCancellationRequest.id} />
+                  <input
+                    name="decisionNotes"
+                    placeholder="Note (optional)"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                  />
+                  <SubmitButton
+                    label="Approve cancellation"
+                    pendingLabel="Approving…"
+                    className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                  />
+                </form>
+                <form action={declineCancellationRequestFormAction} className="space-y-2">
+                  <input type="hidden" name="jobCardId" value={jobCard.id} />
+                  <input type="hidden" name="requestId" value={pendingCancellationRequest.id} />
+                  <input
+                    name="decisionNotes"
+                    placeholder="Note (optional)"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                  />
+                  <SubmitButton
+                    label="Decline"
+                    pendingLabel="Declining…"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                  />
+                </form>
+              </div>
+            </div>
+          ) : !pendingCancellationRequest && canRequestCancellation && jobCard.status !== 'CANCELLED' && jobCard.status !== 'CLOSED' ? (
+            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Request cancellation</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                For a customer who called, emailed, or came in — requires Manager approval before this Job Card
+                is actually cancelled.
+              </p>
+              <form action={requestJobCardCancellationFormAction} className="mt-3 space-y-2">
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <textarea
+                  name="reason"
+                  required
+                  rows={2}
+                  placeholder="Reason — e.g. customer found another workshop, could not afford repair, no longer needed"
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                />
+                <SubmitButton
+                  label="Request cancellation"
+                  pendingLabel="Requesting…"
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
                 />
               </form>
