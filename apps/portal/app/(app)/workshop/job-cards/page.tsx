@@ -2,6 +2,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { listJobCards, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
 import { createJobCardFormAction, deleteJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
+import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { CustomerVehiclePicker } from '@/components/CustomerVehiclePicker';
 import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
@@ -121,6 +122,7 @@ export default async function WorkshopJobCardsPage({
                     {isMasterAdmin ? (
                       <td className="px-4 py-3">
                         <form action={deleteJobCardFormAction}>
+                          <FormPendingOverlay />
                           <input type="hidden" name="jobCardId" value={jc.id} />
                           <ConfirmDeleteButton
                             confirmMessage={`Delete Job Card ${jc.jobNumber}? This permanently removes it and its complaints. This cannot be undone.`}
@@ -139,6 +141,7 @@ export default async function WorkshopJobCardsPage({
         <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Open Job Card</h2>
           <form action={createJobCardFormAction} className="mt-4 space-y-3">
+            <FormPendingOverlay />
             <CustomerVehiclePicker />
             <div>
               <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Mileage at check-in (km)</label>
