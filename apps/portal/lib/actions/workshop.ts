@@ -41,6 +41,8 @@ import { renderEstimateReadyForCustomerNotificationEmail } from '@/lib/email-tem
 import { renderEstimateNudgeEmail } from '@/lib/email-templates/estimate-nudge';
 import { renderPaymentConfirmedEmail } from '@/lib/email-templates/payment-confirmed-work-can-proceed';
 import { renderPaymentRecordedUpdateEmail } from '@/lib/email-templates/payment-recorded-update';
+import { renderPaymentRequirementMetEmail } from '@/lib/email-templates/payment-requirement-met';
+import { renderPaymentCompletedInFullEmail } from '@/lib/email-templates/payment-completed-in-full';
 import { renderCustomerPaymentReceivedEmail } from '@/lib/email-templates/customer-payment-received';
 import { renderCancellationRequestedEmail } from '@/lib/email-templates/cancellation-requested';
 import { renderCancellationDeclinedEmail } from '@/lib/email-templates/cancellation-declined';
@@ -2488,22 +2490,31 @@ export async function recordPayment(
   const newTotal = alreadyPaid + amount;
   const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  const statusMessage = newTotal >= total
-    ? 'This completes payment in full.'
-    : newTotal >= minimumDeposit
-      ? 'This meets the required 70% deposit — work can begin once Finance approves.'
-      : 'This does not yet meet the required 70% deposit.';
+  // Two genuinely separate events, not one message that changes its
+  // own wording depending on the running total — that was the actual
+  // bug: every payment after the one that first crossed 70% kept
+  // repeating "this meets the deposit," which is misleading once it's
+  // already been met. Gated on the THRESHOLD BEING CROSSED, not on
+  // where the total currently stands, so each fires exactly once no
+  // matter how many further installments follow.
+  const justMetDeposit = alreadyPaid < minimumDeposit && newTotal >= minimumDeposit;
+  const justCompletedFull = alreadyPaid < total && newTotal >= total;
 
+  // "Recorded" — Finance and Manager only, every time, no threshold
+  // language at all. The technician, supervisor, and Job Card creator
+  // have no financial role and don't need every individual amount;
+  // what actually concerns them is the milestone below, not the raw
+  // recording event.
   try {
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const balance = total - newTotal;
 
     const recipientIds = new Set<string>();
-    if (jobCard.createdById) recipientIds.add(jobCard.createdById);
-    if (jobCard.supervisorId) recipientIds.add(jobCard.supervisorId);
-    if (jobCard.assignedTechnicianId) recipientIds.add(jobCard.assignedTechnicianId);
     const managers = await listEligibleManagersForBranch(jobCard.branchId);
     for (const m of managers.supervisors) recipientIds.add(m.id);
+    const financeOfficers = await listEligibleFinanceOfficersForBranch(jobCard.branchId);
+    for (const f of financeOfficers.supervisors) recipientIds.add(f.id);
 
     const recipients = await prisma.user.findMany({
       where: { id: { in: Array.from(recipientIds) } },
@@ -2513,7 +2524,7 @@ export async function recordPayment(
     for (const recipient of recipients) {
       await sendEmail(
         recipient.email,
-        `Payment update on Job Card ${jobCard.jobNumber}`,
+        `Payment recorded on Job Card ${jobCard.jobNumber}`,
         renderPaymentRecordedUpdateEmail({
           recipientName: recipient.fullName,
           jobNumber: jobCard.jobNumber,
@@ -2521,7 +2532,7 @@ export async function recordPayment(
           amountReceived: formatNaira(amount),
           totalPaidSoFar: formatNaira(newTotal),
           totalEstimate: formatNaira(total),
-          statusMessage,
+          balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
           jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
           logoUrl: `${portalUrl}/images/logo/logo.png`,
           companyName: orgContext.companyName,
@@ -2533,6 +2544,75 @@ export async function recordPayment(
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Failed to send payment-recorded update emails', jobCardId, err);
+  }
+
+  // The milestone broadcasts — every real party on the Job Card
+  // (creator, supervisor, technician, every eligible Manager, every
+  // eligible Finance Officer), but only ever ONE of these two, and
+  // only on the specific payment that actually crosses the line. If a
+  // single payment crosses both thresholds at once (paid in full in
+  // one go), only the more complete "paid in full" fact is sent —
+  // the intermediate "deposit met" would be redundant noise for the
+  // exact same payment.
+  if (justMetDeposit || justCompletedFull) {
+    try {
+      const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+
+      const recipientIds = new Set<string>();
+      if (jobCard.createdById) recipientIds.add(jobCard.createdById);
+      if (jobCard.supervisorId) recipientIds.add(jobCard.supervisorId);
+      if (jobCard.assignedTechnicianId) recipientIds.add(jobCard.assignedTechnicianId);
+      const managers = await listEligibleManagersForBranch(jobCard.branchId);
+      for (const m of managers.supervisors) recipientIds.add(m.id);
+      const financeOfficers = await listEligibleFinanceOfficersForBranch(jobCard.branchId);
+      for (const f of financeOfficers.supervisors) recipientIds.add(f.id);
+
+      const recipients = await prisma.user.findMany({
+        where: { id: { in: Array.from(recipientIds) } },
+        select: { id: true, fullName: true, email: true },
+      });
+
+      for (const recipient of recipients) {
+        if (justCompletedFull) {
+          await sendEmail(
+            recipient.email,
+            `Job Card ${jobCard.jobNumber} paid in full`,
+            renderPaymentCompletedInFullEmail({
+              recipientName: recipient.fullName,
+              jobNumber: jobCard.jobNumber,
+              customerName: jobCard.customer.fullName,
+              totalPaid: formatNaira(newTotal),
+              jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+              logoUrl: `${portalUrl}/images/logo/logo.png`,
+              companyName: orgContext.companyName,
+              branchName: orgContext.branchName,
+              departmentName: orgContext.departmentName,
+            }),
+          );
+        } else {
+          await sendEmail(
+            recipient.email,
+            `Deposit requirement met on Job Card ${jobCard.jobNumber}`,
+            renderPaymentRequirementMetEmail({
+              recipientName: recipient.fullName,
+              jobNumber: jobCard.jobNumber,
+              customerName: jobCard.customer.fullName,
+              totalPaidSoFar: formatNaira(newTotal),
+              totalEstimate: formatNaira(total),
+              jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+              logoUrl: `${portalUrl}/images/logo/logo.png`,
+              companyName: orgContext.companyName,
+              branchName: orgContext.branchName,
+              departmentName: orgContext.departmentName,
+            }),
+          );
+        }
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to send payment milestone emails', jobCardId, err);
+    }
   }
 
   try {
