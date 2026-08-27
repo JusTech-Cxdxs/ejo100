@@ -2,6 +2,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { listAllVehicles, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
 import { createVehicleFormAction, deleteVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
+import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
 import { CustomerSearchField } from '@/components/CustomerSearchField';
@@ -106,6 +107,7 @@ export default async function WorkshopVehiclesPage({
                     {isMasterAdmin ? (
                       <td className="px-4 py-3">
                         <form action={deleteVehicleFormAction}>
+                          <FormPendingOverlay />
                           <input type="hidden" name="vehicleId" value={v.id} />
                           <ConfirmDeleteButton
                             confirmMessage={`Delete ${v.plateNumber || v.chassisNumber || 'this vehicle'}? This permanently deletes it and every Job Card for it. This cannot be undone.`}
@@ -124,6 +126,7 @@ export default async function WorkshopVehiclesPage({
         <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Register vehicle</h2>
           <form action={createVehicleFormAction} className="mt-4 space-y-4">
+              <FormPendingOverlay />
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Owner</label>
                 <CustomerSearchField required />
