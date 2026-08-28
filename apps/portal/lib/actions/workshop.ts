@@ -23,7 +23,8 @@
 
 import { headers } from 'next/headers';
 import { prisma, JobCardStatus, Prisma } from '@ejo/database';
-import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
+import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
+import { workingDaysBetween, addWorkingDays } from '@/lib/utils/working-days';
 import { hashPassword } from 'better-auth/crypto';
 import { auth } from '@/lib/auth';
 import { sendEmail } from '@/lib/email';
@@ -47,6 +48,8 @@ import { renderCancellationRequestedEmail } from '@/lib/email-templates/cancella
 import { renderCancellationDeclinedEmail } from '@/lib/email-templates/cancellation-declined';
 import { renderJobCardCancelledStaffEmail } from '@/lib/email-templates/job-card-cancelled-staff';
 import { renderCustomerJobCardCancelledEmail } from '@/lib/email-templates/customer-job-card-cancelled';
+import { renderCustomerApprovalReminderEmail } from '@/lib/email-templates/customer-approval-reminder';
+import { renderCustomerCollectionOverdueEmail } from '@/lib/email-templates/customer-collection-overdue';
 
 class WorkshopActionError extends Error {}
 
@@ -225,7 +228,7 @@ async function notifyJobCardCreatorOfDecision(params: {
  * project's Phase-One rule — found by its Workshop department rather than
  * a hardcoded ID/name, so this keeps working unchanged once more Workshop
  * branches are added later. */
-async function getWorkshopBranchId(): Promise<string> {
+export async function getWorkshopBranchId(): Promise<string> {
   const department = await prisma.department.findFirst({
     where: { slug: 'workshop' },
     select: { branchId: true },
@@ -2958,4 +2961,291 @@ export async function declineCancellationRequest(requestId: string, decisionNote
     // eslint-disable-next-line no-console
     console.error('Failed to send cancellation-declined email', request.jobCardId, err);
   }
+}
+
+// ---------------------------------------------------------------------------
+// WORKSHOP CUSTODY — vehicles physically present and not yet checked out
+// (every Job Card not CLOSED), categorized for the "Vehicles In Custody"
+// dashboard, plus the approval-deadline and cancellation-collection-grace
+// engine described above each function.
+// ---------------------------------------------------------------------------
+
+export type WorkshopCustodyEntry = {
+  id: string;
+  jobNumber: string;
+  customerName: string;
+  vehicleDescription: string;
+  status: string;
+  /** Working days elapsed since the relevant anchor — customer
+   * notification for AWAITING_CUSTOMER_APPROVAL, cancellation approval
+   * for CANCELLED. Always 0 for In Service entries, which have no
+   * deadline of this kind. */
+  daysElapsed: number;
+  /** ISO date string — only set for AWAITING_CUSTOMER_APPROVAL, the
+   * real calendar date the approval deadline falls on. */
+  dueDate?: string;
+  /** Only set for AWAITING_CUSTOMER_APPROVAL entries — whether a
+   * reminder has already gone out, so the UI never offers to send a
+   * second one. */
+  reminderSent?: boolean;
+  isOverdue: boolean;
+};
+
+/** The data behind the "Vehicles In Custody" dashboard — every real
+ * vehicle physically present in the workshop and not yet checked out,
+ * categorized the way staff actually need to act on them: awaiting the
+ * customer's approval (with a real deadline), cancelled but not yet
+ * collected (with a real grace period), or genuinely in service
+ * (everything else still moving through the workshop's own process). */
+export async function getWorkshopCustodySummary(): Promise<{
+  total: number;
+  awaitingApproval: WorkshopCustodyEntry[];
+  cancelledPendingCollection: WorkshopCustodyEntry[];
+  inService: WorkshopCustodyEntry[];
+}> {
+  await requireUser();
+  const jobCards = await prisma.jobCard.findMany({
+    where: { status: { not: JobCardStatus.CLOSED } },
+    select: {
+      id: true,
+      jobNumber: true,
+      status: true,
+      customer: { select: { fullName: true } },
+      vehicle: { select: { make: true, model: true } },
+      estimate: { select: { customerNotifiedAt: true, reminderSentAt: true } },
+      cancellationRequests: {
+        where: { status: 'APPROVED' },
+        orderBy: { decidedAt: 'desc' },
+        take: 1,
+        select: { decidedAt: true },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const now = new Date();
+  const awaitingApproval: WorkshopCustodyEntry[] = [];
+  const cancelledPendingCollection: WorkshopCustodyEntry[] = [];
+  const inService: WorkshopCustodyEntry[] = [];
+
+  for (const jc of jobCards as Array<{
+    id: string;
+    jobNumber: string;
+    status: string;
+    customer: { fullName: string };
+    vehicle: { make: string | null; model: string | null };
+    estimate: { customerNotifiedAt: Date | null; reminderSentAt: Date | null } | null;
+    cancellationRequests: { decidedAt: Date | null }[];
+  }>) {
+    const vehicleDescription = [jc.vehicle.make, jc.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
+    const base = {
+      id: jc.id,
+      jobNumber: jc.jobNumber,
+      customerName: jc.customer.fullName,
+      vehicleDescription,
+      status: jc.status,
+    };
+
+    if (jc.status === JobCardStatus.AWAITING_CUSTOMER_APPROVAL && jc.estimate?.customerNotifiedAt) {
+      const anchor = jc.estimate.customerNotifiedAt;
+      const daysElapsed = workingDaysBetween(anchor, now);
+      const dueDate = addWorkingDays(anchor, APPROVAL_DEADLINE_WORKING_DAYS);
+      awaitingApproval.push({ ...base, daysElapsed, dueDate: dueDate.toISOString(), reminderSent: Boolean(jc.estimate.reminderSentAt), isOverdue: daysElapsed >= APPROVAL_DEADLINE_WORKING_DAYS });
+    } else if (jc.status === JobCardStatus.CANCELLED) {
+      const anchor = jc.cancellationRequests[0]?.decidedAt;
+      const daysElapsed = anchor ? workingDaysBetween(anchor, now) : 0;
+      cancelledPendingCollection.push({ ...base, daysElapsed, isOverdue: daysElapsed >= CANCELLED_COLLECTION_GRACE_WORKING_DAYS });
+    } else {
+      inService.push({ ...base, daysElapsed: 0, isOverdue: false });
+    }
+  }
+
+  awaitingApproval.sort((a, b) => b.daysElapsed - a.daysElapsed);
+  cancelledPendingCollection.sort((a, b) => b.daysElapsed - a.daysElapsed);
+
+  return { total: jobCards.length, awaitingApproval, cancelledPendingCollection, inService };
+}
+
+/** Sends the "action required" reminder to a customer whose estimate
+ * is awaiting approval — marks `reminderSentAt` so it's never sent
+ * twice for the same estimate. Callable directly by any Workshop
+ * staff (matches how routine, informational reminders work elsewhere
+ * in this project), and also called automatically by
+ * runApprovalDeadlineChecks() below. */
+export async function sendApprovalReminder(jobCardId: string): Promise<void> {
+  await requireUser();
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: {
+      status: true,
+      jobNumber: true,
+      customer: { select: { fullName: true, email: true } },
+      vehicle: { select: { make: true, model: true } },
+      estimate: {
+        select: {
+          id: true,
+          customerNotifiedAt: true,
+          reminderSentAt: true,
+          lineItems: { select: { amount: true } },
+        },
+      },
+    },
+  });
+  if (!jobCard || jobCard.status !== JobCardStatus.AWAITING_CUSTOMER_APPROVAL || !jobCard.estimate?.customerNotifiedAt) {
+    throw new WorkshopActionError('This Job Card is not currently awaiting customer approval.');
+  }
+  if (jobCard.estimate.reminderSentAt) {
+    throw new WorkshopActionError('A reminder has already been sent for this estimate.');
+  }
+
+  const total = jobCard.estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+  const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+  const dueDate = addWorkingDays(jobCard.estimate.customerNotifiedAt, APPROVAL_DEADLINE_WORKING_DAYS);
+  const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const orgContext = await getWorkshopOrgContext();
+
+  await prisma.estimate.update({ where: { id: jobCard.estimate.id }, data: { reminderSentAt: new Date() } });
+
+  await sendEmail(
+    jobCard.customer.email,
+    `Action required — Job Card ${jobCard.jobNumber} awaiting your approval`,
+    renderCustomerApprovalReminderEmail({
+      customerName: jobCard.customer.fullName,
+      jobNumber: jobCard.jobNumber,
+      vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+      totalEstimate: formatNaira(total),
+      minimumDepositAmount: formatNaira(minimumDeposit),
+      dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+      dashboardUrl: `${websiteUrl}/customer-portal/dashboard`,
+      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      companyName: orgContext.companyName,
+      branchName: orgContext.branchName,
+    }),
+  );
+}
+
+/** Stands in for the future scheduled job until Vercel Cron (or
+ * equivalent) is actually wired up — Master Admin only, since this
+ * represents "run today's automated checks now," not a normal staff
+ * action. Sends the reminder to anyone who's reached the reminder
+ * threshold and hasn't been sent one yet, and automatically cancels
+ * anyone who's passed the full deadline — reusing the exact same
+ * requestJobCardCancellation()/approveCancellationRequest() functions
+ * already built and verified for staff-initiated cancellation, rather
+ * than duplicating that logic. The Master Admin running this check is
+ * a real, authenticated user, so the resulting audit trail accurately
+ * shows who ran the check that triggered each cancellation — nothing
+ * is attributed to a phantom "system" actor. */
+export async function runApprovalDeadlineChecks(): Promise<{ remindersSent: number; autoCancelled: number }> {
+  if (!(await currentUserIsMasterAdmin())) {
+    throw new WorkshopActionError('Only a Master Administrator can run this check.');
+  }
+
+  const candidates = await prisma.jobCard.findMany({
+    where: { status: JobCardStatus.AWAITING_CUSTOMER_APPROVAL },
+    select: {
+      id: true,
+      estimate: { select: { customerNotifiedAt: true, reminderSentAt: true } },
+    },
+  });
+
+  const now = new Date();
+  let remindersSent = 0;
+  let autoCancelled = 0;
+
+  for (const jc of candidates as Array<{ id: string; estimate: { customerNotifiedAt: Date | null; reminderSentAt: Date | null } | null }>) {
+    if (!jc.estimate?.customerNotifiedAt) continue;
+    const daysElapsed = workingDaysBetween(jc.estimate.customerNotifiedAt, now);
+
+    if (daysElapsed >= APPROVAL_DEADLINE_WORKING_DAYS) {
+      try {
+        await requestJobCardCancellation(
+          jc.id,
+          `[Automatic] Estimate approval deadline of ${APPROVAL_DEADLINE_WORKING_DAYS} working days exceeded with no payment recorded.`,
+        );
+        const request = await prisma.cancellationRequest.findFirst({
+          where: { jobCardId: jc.id, status: 'PENDING' },
+          orderBy: { requestedAt: 'desc' },
+          select: { id: true },
+        });
+        if (request) {
+          await approveCancellationRequest(request.id, '[Automatic] Approval deadline exceeded.');
+          autoCancelled += 1;
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to auto-cancel overdue Job Card', jc.id, err);
+      }
+    } else if (daysElapsed >= APPROVAL_REMINDER_WORKING_DAYS && !jc.estimate.reminderSentAt) {
+      try {
+        await sendApprovalReminder(jc.id);
+        remindersSent += 1;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to send approval reminder', jc.id, err);
+      }
+    }
+  }
+
+  return { remindersSent, autoCancelled };
+}
+
+/** The deliberate, manual step for a cancelled Job Card's uncollected
+ * vehicle — never automatic. A Manager or HOD reviews what the
+ * dashboard surfaces and decides whether to actually notify the
+ * customer; this function is both the review action and the trigger,
+ * since only an eligible Manager (or Master Admin) can call it at
+ * all. */
+export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: string): Promise<void> {
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: {
+      status: true,
+      branchId: true,
+      jobNumber: true,
+      customer: { select: { fullName: true, email: true } },
+      vehicle: { select: { make: true, model: true } },
+      cancellationRequests: {
+        where: { status: 'APPROVED' },
+        orderBy: { decidedAt: 'desc' },
+        take: 1,
+        select: { decidedAt: true },
+      },
+    },
+  });
+  if (!jobCard || jobCard.status !== JobCardStatus.CANCELLED) {
+    throw new WorkshopActionError('This Job Card is not currently cancelled.');
+  }
+  const anchor = jobCard.cancellationRequests[0]?.decidedAt;
+  if (!anchor) {
+    throw new WorkshopActionError('No cancellation record found for this Job Card.');
+  }
+  const user = await requireEligibleManager(jobCard.branchId);
+  const daysElapsed = workingDaysBetween(anchor, new Date());
+
+  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const orgContext = await getWorkshopOrgContext();
+  await sendEmail(
+    jobCard.customer.email,
+    `Please arrange collection — Job Card ${jobCard.jobNumber}`,
+    renderCustomerCollectionOverdueEmail({
+      customerName: jobCard.customer.fullName,
+      jobNumber: jobCard.jobNumber,
+      vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+      daysSinceCancellation: String(daysElapsed),
+      dashboardUrl: `${websiteUrl}/customer-portal/dashboard`,
+      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      companyName: orgContext.companyName,
+      branchName: orgContext.branchName,
+    }),
+  );
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'collection.overdue_notice_sent',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { daysElapsed, notes: notes?.trim() || undefined },
+  });
 }

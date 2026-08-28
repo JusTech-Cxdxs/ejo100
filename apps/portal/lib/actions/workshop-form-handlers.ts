@@ -47,6 +47,9 @@ import {
   requestJobCardCancellation,
   approveCancellationRequest,
   declineCancellationRequest,
+  sendApprovalReminder,
+  runApprovalDeadlineChecks,
+  notifyOverdueCancelledVehicle,
   type EstimateLineItemType,
 } from './workshop';
 
@@ -407,4 +410,42 @@ export async function declineCancellationRequestFormAction(formData: FormData) {
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function sendApprovalReminderFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await sendApprovalReminder(jobCardId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not send reminder.';
+    redirect(`/workshop/custody?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/custody');
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function runApprovalDeadlineChecksFormAction() {
+  let remindersSent = 0;
+  let autoCancelled = 0;
+  try {
+    const result = await runApprovalDeadlineChecks();
+    remindersSent = result.remindersSent;
+    autoCancelled = result.autoCancelled;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not run deadline checks.';
+    redirect(`/workshop/custody?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/custody');
+  redirect(`/workshop/custody?status=deadline_checks_run&reminders=${remindersSent}&cancelled=${autoCancelled}`);
+}
+
+export async function notifyOverdueCancelledVehicleFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await notifyOverdueCancelledVehicle(jobCardId, str(formData, 'notes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not send collection notice.';
+    redirect(`/workshop/custody?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/custody');
 }
