@@ -1083,6 +1083,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus) {
     data: {
       status,
       closedAt: status === JobCardStatus.CLOSED ? new Date() : undefined,
+      readyForCollectionAt: status === JobCardStatus.READY_FOR_COLLECTION ? new Date() : undefined,
     },
   });
 
@@ -3085,29 +3086,43 @@ export type WorkshopCustodyEntry = {
   status: string;
   /** Working days elapsed since the relevant anchor — customer
    * notification for AWAITING_CUSTOMER_APPROVAL, cancellation approval
-   * for CANCELLED. Always 0 for In Service entries, which have no
-   * deadline of this kind. */
+   * for CANCELLED, the move to Ready for Collection for that status.
+   * Always 0 for In Service entries, which have no deadline of this
+   * kind. */
   daysElapsed: number;
-  /** ISO date string — only set for AWAITING_CUSTOMER_APPROVAL, the
-   * real calendar date the approval deadline falls on. */
+  /** The full working-day grace period this category allows — only
+   * set for the three action-required categories. */
+  totalGraceWorkingDays?: number;
+  /** MAX(0, totalGraceWorkingDays - daysElapsed) — never negative,
+   * reads naturally as "how much time is genuinely left." */
+  daysRemaining?: number;
+  /** How many reminder/notice emails have actually gone out for this
+   * entry, derived from the audit trail itself — never a separate
+   * counter that could drift out of sync with what was really sent. */
+  remindersSent?: number;
+  /** ISO date string — only set for AWAITING_CUSTOMER_APPROVAL and
+   * READY_FOR_COLLECTION, the real calendar date the deadline falls
+   * on. */
   dueDate?: string;
-  /** Only set for AWAITING_CUSTOMER_APPROVAL entries — whether a
-   * reminder has already gone out, so the UI never offers to send a
-   * second one. */
-  reminderSent?: boolean;
   isOverdue: boolean;
 };
 
+const CUSTODY_REMINDER_ACTIONS = ['approval.reminder_sent', 'collection.overdue_notice_sent', 'collection.ready_reminder_sent'] as const;
+
 /** The data behind the "Vehicles In Custody" dashboard — every real
  * vehicle physically present in the workshop and not yet checked out,
- * categorized the way staff actually need to act on them: awaiting the
- * customer's approval (with a real deadline), cancelled but not yet
- * collected (with a real grace period), or genuinely in service
- * (everything else still moving through the workshop's own process). */
+ * categorized the way staff actually need to act on them: the three
+ * genuinely time-sensitive, action-required categories (awaiting the
+ * customer's approval, cancelled but not yet collected, ready for
+ * collection but not yet collected — each with a real deadline, a
+ * real days-remaining figure, and a real reminder count pulled from
+ * the audit trail), and In Service as the simpler catch-all for
+ * everything still moving through the workshop's own process. */
 export async function getWorkshopCustodySummary(): Promise<{
   total: number;
   awaitingApproval: WorkshopCustodyEntry[];
   cancelledPendingCollection: WorkshopCustodyEntry[];
+  readyForCollection: WorkshopCustodyEntry[];
   inService: WorkshopCustodyEntry[];
 }> {
   await requireUser();
@@ -3122,9 +3137,10 @@ export async function getWorkshopCustodySummary(): Promise<{
       id: true,
       jobNumber: true,
       status: true,
+      readyForCollectionAt: true,
       customer: { select: { fullName: true } },
       vehicle: { select: { make: true, model: true } },
-      estimate: { select: { customerNotifiedAt: true, reminderSentAt: true } },
+      estimate: { select: { customerNotifiedAt: true } },
       cancellationRequests: {
         where: { status: 'APPROVED' },
         orderBy: { decidedAt: 'desc' },
@@ -3138,15 +3154,17 @@ export async function getWorkshopCustodySummary(): Promise<{
   const now = new Date();
   const awaitingApproval: WorkshopCustodyEntry[] = [];
   const cancelledPendingCollection: WorkshopCustodyEntry[] = [];
+  const readyForCollection: WorkshopCustodyEntry[] = [];
   const inService: WorkshopCustodyEntry[] = [];
 
   for (const jc of jobCards as Array<{
     id: string;
     jobNumber: string;
     status: string;
+    readyForCollectionAt: Date | null;
     customer: { fullName: string };
     vehicle: { make: string | null; model: string | null };
-    estimate: { customerNotifiedAt: Date | null; reminderSentAt: Date | null } | null;
+    estimate: { customerNotifiedAt: Date | null } | null;
     cancellationRequests: { decidedAt: Date | null }[];
   }>) {
     const vehicleDescription = [jc.vehicle.make, jc.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
@@ -3162,30 +3180,77 @@ export async function getWorkshopCustodySummary(): Promise<{
       const anchor = jc.estimate.customerNotifiedAt;
       const daysElapsed = workingDaysBetween(anchor, now);
       const dueDate = addWorkingDays(anchor, APPROVAL_DEADLINE_WORKING_DAYS);
-      awaitingApproval.push({ ...base, daysElapsed, dueDate: dueDate.toISOString(), reminderSent: Boolean(jc.estimate.reminderSentAt), isOverdue: daysElapsed >= APPROVAL_DEADLINE_WORKING_DAYS });
+      awaitingApproval.push({
+        ...base,
+        daysElapsed,
+        totalGraceWorkingDays: APPROVAL_DEADLINE_WORKING_DAYS,
+        daysRemaining: Math.max(0, APPROVAL_DEADLINE_WORKING_DAYS - daysElapsed),
+        dueDate: dueDate.toISOString(),
+        isOverdue: daysElapsed >= APPROVAL_DEADLINE_WORKING_DAYS,
+      });
     } else if (jc.status === JobCardStatus.CANCELLED) {
       const anchor = jc.cancellationRequests[0]?.decidedAt;
       const daysElapsed = anchor ? workingDaysBetween(anchor, now) : 0;
-      cancelledPendingCollection.push({ ...base, daysElapsed, isOverdue: daysElapsed >= CANCELLED_COLLECTION_GRACE_WORKING_DAYS });
+      cancelledPendingCollection.push({
+        ...base,
+        daysElapsed,
+        totalGraceWorkingDays: CANCELLED_COLLECTION_GRACE_WORKING_DAYS,
+        daysRemaining: Math.max(0, CANCELLED_COLLECTION_GRACE_WORKING_DAYS - daysElapsed),
+        isOverdue: daysElapsed >= CANCELLED_COLLECTION_GRACE_WORKING_DAYS,
+      });
+    } else if (jc.status === JobCardStatus.READY_FOR_COLLECTION && jc.readyForCollectionAt) {
+      const anchor = jc.readyForCollectionAt;
+      const daysElapsed = workingDaysBetween(anchor, now);
+      const dueDate = addWorkingDays(anchor, READY_FOR_COLLECTION_GRACE_WORKING_DAYS);
+      readyForCollection.push({
+        ...base,
+        daysElapsed,
+        totalGraceWorkingDays: READY_FOR_COLLECTION_GRACE_WORKING_DAYS,
+        daysRemaining: Math.max(0, READY_FOR_COLLECTION_GRACE_WORKING_DAYS - daysElapsed),
+        dueDate: dueDate.toISOString(),
+        isOverdue: daysElapsed >= READY_FOR_COLLECTION_GRACE_WORKING_DAYS,
+      });
     } else {
       inService.push({ ...base, daysElapsed: 0, isOverdue: false });
     }
   }
 
+  // One batched count query for every action-required entry's real
+  // reminder history, rather than one query per entry — the audit
+  // trail is the single source of truth for this count, never a
+  // separate field that could quietly drift out of sync with what was
+  // actually sent.
+  const actionRequiredIds = [...awaitingApproval, ...cancelledPendingCollection, ...readyForCollection].map((e) => e.id);
+  if (actionRequiredIds.length > 0) {
+    const counts = await prisma.auditLog.groupBy({
+      by: ['entityId'],
+      where: { entityId: { in: actionRequiredIds }, action: { in: [...CUSTODY_REMINDER_ACTIONS] } },
+      _count: { _all: true },
+    });
+    const countByEntityId = new Map<string, number>(counts.map((c: { entityId: string; _count: { _all: number } }) => [c.entityId, c._count._all]));
+    for (const entry of [...awaitingApproval, ...cancelledPendingCollection, ...readyForCollection]) {
+      entry.remindersSent = countByEntityId.get(entry.id) ?? 0;
+    }
+  }
+
   awaitingApproval.sort((a, b) => b.daysElapsed - a.daysElapsed);
   cancelledPendingCollection.sort((a, b) => b.daysElapsed - a.daysElapsed);
+  readyForCollection.sort((a, b) => b.daysElapsed - a.daysElapsed);
 
-  return { total: jobCards.length, awaitingApproval, cancelledPendingCollection, inService };
+  return { total: jobCards.length, awaitingApproval, cancelledPendingCollection, readyForCollection, inService };
 }
 
 /** Sends the "action required" reminder to a customer whose estimate
- * is awaiting approval — marks `reminderSentAt` so it's never sent
- * twice for the same estimate. Callable directly by any Workshop
- * staff (matches how routine, informational reminders work elsewhere
- * in this project), and also called automatically by
- * runApprovalDeadlineChecks() below. */
+ * is awaiting approval — repeatable, not a one-time send, since a
+ * single reminder isn't always enough to get a response. Every send
+ * is logged to the audit trail (`approval.reminder_sent`), which is
+ * also how the real count shown on the dashboard is derived — no
+ * separate counter field to keep in sync, the audit trail is the one
+ * source of truth. `reminderSentAt` still tracks the most recent send
+ * for display. Callable directly by any Workshop staff, and also
+ * called automatically by runApprovalDeadlineChecks() below. */
 export async function sendApprovalReminder(jobCardId: string): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
     select: {
@@ -3197,7 +3262,6 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
         select: {
           id: true,
           customerNotifiedAt: true,
-          reminderSentAt: true,
           lineItems: { select: { amount: true } },
         },
       },
@@ -3205,9 +3269,6 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
   });
   if (!jobCard || jobCard.status !== JobCardStatus.AWAITING_CUSTOMER_APPROVAL || !jobCard.estimate?.customerNotifiedAt) {
     throw new WorkshopActionError('This Job Card is not currently awaiting customer approval.');
-  }
-  if (jobCard.estimate.reminderSentAt) {
-    throw new WorkshopActionError('A reminder has already been sent for this estimate.');
   }
 
   const total = jobCard.estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
@@ -3218,6 +3279,13 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
   const orgContext = await getWorkshopOrgContext();
 
   await prisma.estimate.update({ where: { id: jobCard.estimate.id }, data: { reminderSentAt: new Date() } });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'approval.reminder_sent',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+  });
 
   await sendEmail(
     jobCard.customer.email,
@@ -3360,4 +3428,55 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
     entityId: jobCardId,
     metadata: { daysElapsed, notes: notes?.trim() || undefined },
   });
+}
+
+/** Sends a reminder to a customer whose vehicle is ready for
+ * collection — repeatable, same as the other two reminder actions,
+ * every send logged to the audit trail (`collection.ready_reminder_
+ * sent`), callable by any Workshop staff at any time this Job Card is
+ * READY_FOR_COLLECTION, not gated on being overdue first. Reuses the
+ * exact same customer email as the original "ready for collection"
+ * notice — the facts haven't changed, just that this is a repeat of
+ * them. */
+export async function sendReadyForCollectionReminder(jobCardId: string): Promise<void> {
+  const user = await requireUser();
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: {
+      status: true,
+      jobNumber: true,
+      readyForCollectionAt: true,
+      customer: { select: { fullName: true, email: true } },
+      vehicle: { select: { make: true, model: true } },
+    },
+  });
+  if (!jobCard || jobCard.status !== JobCardStatus.READY_FOR_COLLECTION || !jobCard.readyForCollectionAt) {
+    throw new WorkshopActionError('This Job Card is not currently ready for collection.');
+  }
+
+  const dueDate = addWorkingDays(jobCard.readyForCollectionAt, READY_FOR_COLLECTION_GRACE_WORKING_DAYS);
+  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const orgContext = await getWorkshopOrgContext();
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'collection.ready_reminder_sent',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+  });
+
+  await sendEmail(
+    jobCard.customer.email,
+    `Reminder — ready for collection, Job Card ${jobCard.jobNumber}`,
+    renderCustomerReadyForCollectionEmail({
+      customerName: jobCard.customer.fullName,
+      jobNumber: jobCard.jobNumber,
+      vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+      dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+      dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
+      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      companyName: orgContext.companyName,
+      branchName: orgContext.branchName,
+    }),
+  );
 }

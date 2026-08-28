@@ -50,6 +50,7 @@ import {
   sendApprovalReminder,
   runApprovalDeadlineChecks,
   notifyOverdueCancelledVehicle,
+  sendReadyForCollectionReminder,
   type EstimateLineItemType,
 } from './workshop';
 
@@ -445,6 +446,17 @@ export async function notifyOverdueCancelledVehicleFormAction(formData: FormData
     await notifyOverdueCancelledVehicle(jobCardId, str(formData, 'notes') || undefined);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not send collection notice.';
+    redirect(`/workshop/custody?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/custody');
+}
+
+export async function sendReadyForCollectionReminderFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await sendReadyForCollectionReminder(jobCardId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not send reminder.';
     redirect(`/workshop/custody?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/custody');
