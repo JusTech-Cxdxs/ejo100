@@ -138,7 +138,11 @@ export default async function CustomerDashboardPage() {
         ) : (
           <div className="mt-3 space-y-3">
             {customer.jobCards.map((jc: (typeof customer.jobCards)[number]) => (
-              <div key={jc.id} className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4">
+              <div
+                key={jc.id}
+                id={`jobcard-${jc.id}`}
+                className="scroll-mt-24 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 target:border-[var(--ejo-primary)] target:bg-[var(--ejo-primary)]/5 target:ring-2 target:ring-[var(--ejo-primary)]"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-medium text-[var(--ejo-text)]">{jc.jobNumber}</p>
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[jc.status]}`}>
