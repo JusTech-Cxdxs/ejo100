@@ -61,6 +61,7 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'job_card.approved': 'Job Card approved',
   'job_card.rejected': 'Job Card rejected',
   'job_card.supervisor_reassigned': 'Supervisor reassigned',
+  'job_card.status_updated': 'Status updated',
   'assignment.accepted': 'Technician accepted assignment',
   'assignment.rejected': 'Technician rejected assignment',
   'estimate.line_item_added': 'Estimate line added',
@@ -100,6 +101,11 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
     }
     case 'estimate.line_item_removed':
       return typeof meta.description === 'string' ? `"${meta.description}"` : null;
+    case 'job_card.status_updated': {
+      const from = typeof meta.from === 'string' ? (STATUS_LABEL[meta.from] ?? meta.from) : null;
+      const to = typeof meta.to === 'string' ? (STATUS_LABEL[meta.to] ?? meta.to) : null;
+      return from && to ? `${from} → ${to}` : null;
+    }
     case 'job_card.rejected':
     case 'job_card.supervisor_reassigned':
     case 'assignment.rejected':
