@@ -44,6 +44,12 @@ export default async function WorkshopCustodyPage({
 
   return (
     <div className="p-8">
+      <LoadingLink
+        href="/workshop"
+        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
+      >
+        ← Back to Workshop
+      </LoadingLink>
       <div className="mb-2">
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Vehicles In Custody</h1>
       </div>
