@@ -10,7 +10,7 @@ export default async function DashboardPage() {
 
   const stats = [
     { label: 'Active Job Cards', value: counts.activeJobCards },
-    { label: 'Vehicles Currently In Workshop', value: counts.inWorkshop },
+    { label: 'Total In Custody', value: counts.inWorkshop },
     { label: 'Total Customers', value: counts.totalCustomers },
     { label: 'Total Vehicles Registered', value: counts.totalVehicles },
   ];
