@@ -71,3 +71,13 @@ export const APPROVAL_REMINDER_WORKING_DAYS = 3;
  * customer), just a bounded window so the workshop isn't left tracking
  * abandoned vehicles indefinitely. */
 export const CANCELLED_COLLECTION_GRACE_WORKING_DAYS = 7;
+
+/** Working days a completed vehicle can stay in the workshop after
+ * being marked Ready for Collection before charges may apply —
+ * deliberately a separate, distinct constant from
+ * CANCELLED_COLLECTION_GRACE_WORKING_DAYS even though the value is
+ * currently the same: a happily-finished job and an abandoned
+ * cancelled one are genuinely different business situations, and
+ * naming each on its own terms means they can diverge later without
+ * one accidentally changing the other. */
+export const READY_FOR_COLLECTION_GRACE_WORKING_DAYS = 7;
