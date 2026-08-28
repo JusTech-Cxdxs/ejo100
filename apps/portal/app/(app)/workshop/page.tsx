@@ -4,6 +4,7 @@ const sections = [
   { name: 'Customers', href: '/workshop/customers', desc: 'Customer records and vehicle ownership history.' },
   { name: 'Vehicles', href: '/workshop/vehicles', desc: 'Vehicle registry, chassis/VIN, and service history.' },
   { name: 'Job Cards', href: '/workshop/job-cards', desc: 'Active and past case files for every vehicle in the shop.' },
+  { name: 'Vehicles In Custody', href: '/workshop/custody', desc: 'Every vehicle physically in the workshop, categorized by what needs attention.' },
 ];
 
 /**
