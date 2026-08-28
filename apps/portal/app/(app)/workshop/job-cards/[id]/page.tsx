@@ -9,6 +9,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
+import { pluralize } from '@/lib/utils/pluralize';
 
 const ALL_STATUSES = [
   'CHECKED_IN',
@@ -78,6 +79,9 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'cancellation.requested': 'Cancellation requested',
   'cancellation.approved': 'Cancellation approved',
   'cancellation.declined': 'Cancellation declined',
+  'approval.reminder_sent': 'Approval reminder sent',
+  'collection.overdue_notice_sent': 'Collection overdue notice sent',
+  'collection.ready_reminder_sent': 'Ready-for-collection reminder sent',
 };
 
 /** Turns the stored audit metadata into a real, field-level detail
@@ -126,6 +130,12 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
     }
     case 'payment.approved':
       return typeof meta.totalPaid === 'number' ? `Total confirmed: ${formatNaira(meta.totalPaid)}` : null;
+    case 'collection.overdue_notice_sent': {
+      const parts: string[] = [];
+      if (typeof meta.daysElapsed === 'number') parts.push(`${pluralize(meta.daysElapsed, 'working day')} since cancellation`);
+      if (typeof meta.notes === 'string' && meta.notes) parts.push(`Note: ${meta.notes}`);
+      return parts.join(' — ') || null;
+    }
     default:
       return typeof meta.notes === 'string' && meta.notes ? `Notes: ${meta.notes}` : null;
   }
