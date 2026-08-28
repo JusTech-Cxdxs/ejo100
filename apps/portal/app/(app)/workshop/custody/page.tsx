@@ -1,5 +1,5 @@
 import { getWorkshopCustodySummary, currentUserIsMasterAdmin, listEligibleManagersForBranch, getWorkshopBranchId, currentUserId } from '@/lib/actions/workshop';
-import { sendApprovalReminderFormAction, runApprovalDeadlineChecksFormAction, notifyOverdueCancelledVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
+import { sendApprovalReminderFormAction, runApprovalDeadlineChecksFormAction, notifyOverdueCancelledVehicleFormAction, sendReadyForCollectionReminderFormAction, requestJobCardCancellationFormAction } from '@/lib/actions/workshop-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
@@ -12,17 +12,48 @@ const STATUS_LABEL: Record<string, string> = {
   AWAITING_PARTS: 'Awaiting Parts',
   QUALITY_CHECK: 'Quality Check',
   COMPLETED: 'Completed',
-  READY_FOR_COLLECTION: 'Ready for Collection',
+  CLOSED: 'Closed',
 };
+
+type CustodyEntry = {
+  id: string;
+  jobNumber: string;
+  customerName: string;
+  vehicleDescription: string;
+  status: string;
+  daysElapsed: number;
+  totalGraceWorkingDays?: number;
+  daysRemaining?: number;
+  remindersSent?: number;
+  dueDate?: string;
+  isOverdue: boolean;
+};
+
+/** The shared "real data" line for an action-required entry — grace
+ * allowed, used, remaining, and how many reminders have actually gone
+ * out, all through pluralize() so a single day never reads as
+ * "1 days". */
+function AnalysisLine({ entry }: { entry: CustodyEntry }) {
+  return (
+    <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+      Grace: {pluralize(entry.totalGraceWorkingDays ?? 0, 'working day')} · Used: {pluralize(entry.daysElapsed, 'working day')} ·{' '}
+      {entry.isOverdue ? 'Remaining: none — overdue' : `Remaining: ${pluralize(entry.daysRemaining ?? 0, 'working day')}`} ·{' '}
+      Reminders sent: {entry.remindersSent ?? 0}
+    </p>
+  );
+}
 
 /**
  * "Vehicles In Custody" — every vehicle physically in the workshop and
  * not yet checked out, categorized the way staff actually need to act
- * on them. Deliberately a separate page from the Job Cards list: that
- * page is a general-purpose search/browse tool, this one is a
- * purpose-built action surface for two specific, time-sensitive
- * workflows (the approval deadline, and the cancellation collection
- * grace period).
+ * on them. The three genuinely time-sensitive, action-required
+ * categories (Awaiting Customer Approval, Cancelled — Pending
+ * Collection, Ready for Collection) each get real deadline tracking,
+ * a real days-remaining figure, and a repeatable reminder action whose
+ * count is pulled from the audit trail itself — never a separate
+ * counter that could drift out of sync with what was actually sent.
+ * In Service is the simpler catch-all for everything still moving
+ * through the workshop's own process.
  */
 export default async function WorkshopCustodyPage({
   searchParams,
@@ -32,6 +63,7 @@ export default async function WorkshopCustodyPage({
   const { error, status, reminders, cancelled, filter } = await searchParams;
   const showAwaiting = !filter || filter === 'awaiting';
   const showCancelled = !filter || filter === 'cancelled';
+  const showReadyForCollection = !filter || filter === 'ready_for_collection';
   const showInService = !filter || filter === 'in_service';
   const branchId = await getWorkshopBranchId();
   const [summary, isMasterAdmin, eligibleManagers, viewerId] = await Promise.all([
@@ -71,7 +103,7 @@ export default async function WorkshopCustodyPage({
         </div>
       ) : null}
 
-      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-5">
         <LoadingLink
           href="/workshop/custody"
           className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
@@ -100,6 +132,15 @@ export default async function WorkshopCustodyPage({
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-error)]">{summary.cancelledPendingCollection.length}</p>
         </LoadingLink>
         <LoadingLink
+          href="/workshop/custody?filter=ready_for_collection"
+          className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
+            filter === 'ready_for_collection' ? 'border-[var(--ejo-success)]' : 'border-[var(--ejo-success)]/30'
+          } bg-[var(--ejo-success)]/5`}
+        >
+          <p className="text-xs text-[var(--ejo-text-muted)]">Ready for Collection</p>
+          <p className="mt-1 text-2xl font-bold text-[var(--ejo-success)]">{summary.readyForCollection.length}</p>
+        </LoadingLink>
+        <LoadingLink
           href="/workshop/custody?filter=in_service"
           className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
             filter === 'in_service' ? 'border-[var(--ejo-info)]' : 'border-[var(--ejo-info)]/30'
@@ -121,8 +162,10 @@ export default async function WorkshopCustodyPage({
         <div className="mb-8 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Approval Deadline Checks</h2>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-            Stands in for a scheduled daily job until one is wired up — sends any due reminders and automatically
-            cancels any Job Card that has passed its approval deadline with no sufficient payment recorded.
+            Stands in for a scheduled daily job until one is wired up — sends any due approval reminders and
+            automatically cancels any Job Card that has passed its approval deadline with no sufficient payment
+            recorded. Cancelled-collection and Ready-for-Collection reminders stay a deliberate, manual action
+            below — sending those isn&apos;t automatic here.
           </p>
           <form action={runApprovalDeadlineChecksFormAction} className="mt-3">
             <FormPendingOverlay />
@@ -173,19 +216,39 @@ export default async function WorkshopCustodyPage({
                     ) : null}
                   </div>
                 </div>
-                {!entry.reminderSent && !entry.isOverdue ? (
-                  <form action={sendApprovalReminderFormAction} className="mt-3">
+                <AnalysisLine entry={entry} />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <form action={sendApprovalReminderFormAction}>
                     <FormPendingOverlay />
                     <input type="hidden" name="jobCardId" value={entry.id} />
                     <SubmitButton
-                      label="Send reminder now"
+                      label={entry.remindersSent && entry.remindersSent > 0 ? 'Send another reminder' : 'Send reminder'}
                       pendingLabel="Sending…"
                       className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
                     />
                   </form>
-                ) : entry.reminderSent ? (
-                  <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Reminder already sent.</p>
-                ) : null}
+                  <details className="group">
+                    <summary className="cursor-pointer list-none rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10">
+                      Request cancellation
+                    </summary>
+                    <form action={requestJobCardCancellationFormAction} className="mt-2 space-y-2">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="jobCardId" value={entry.id} />
+                      <textarea
+                        name="reason"
+                        required
+                        rows={2}
+                        placeholder="Reason — e.g. customer called to cancel, could not afford repair"
+                        className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                      />
+                      <SubmitButton
+                        label="Submit cancellation request"
+                        pendingLabel="Requesting…"
+                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                      />
+                    </form>
+                  </details>
+                </div>
               </div>
             ))}
           </div>
@@ -224,7 +287,8 @@ export default async function WorkshopCustodyPage({
                     {entry.isOverdue ? 'Overdue for review' : `${pluralize(entry.daysElapsed, 'working day')} since cancellation`}
                   </span>
                 </div>
-                {entry.isOverdue && isEligibleManager ? (
+                <AnalysisLine entry={entry} />
+                {isEligibleManager ? (
                   <form action={notifyOverdueCancelledVehicleFormAction} className="mt-3 flex gap-2">
                     <FormPendingOverlay />
                     <input type="hidden" name="jobCardId" value={entry.id} />
@@ -234,16 +298,71 @@ export default async function WorkshopCustodyPage({
                       className="flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                     />
                     <SubmitButton
-                      label="Notify customer"
+                      label={entry.remindersSent && entry.remindersSent > 0 ? 'Send another notice' : 'Notify customer'}
                       pendingLabel="Sending…"
                       className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
                     />
                   </form>
-                ) : entry.isOverdue ? (
+                ) : (
                   <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
-                    Overdue for review — only a Workshop Manager or HOD can notify the customer.
+                    Only a Workshop Manager or HOD can notify the customer.
                   </p>
-                ) : null}
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      ) : null}
+
+      {showReadyForCollection ? (
+      <section className="mb-10">
+        <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Ready for Collection</h2>
+        {summary.readyForCollection.length === 0 ? (
+          <p className="text-sm text-[var(--ejo-text-muted)]">Nothing currently ready for collection.</p>
+        ) : (
+          <div className="space-y-3">
+            {summary.readyForCollection.map((entry) => (
+              <div
+                key={entry.id}
+                className={`rounded-[var(--ejo-radius-lg)] border p-4 ${
+                  entry.isOverdue ? 'border-[var(--ejo-error)]/40 bg-[var(--ejo-error)]/5' : 'border-[var(--ejo-border)] bg-[var(--ejo-surface)]'
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <LoadingLink href={`/workshop/job-cards/${entry.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">
+                      {entry.jobNumber}
+                    </LoadingLink>
+                    <p className="text-sm text-[var(--ejo-text)]">{entry.customerName} — {entry.vehicleDescription}</p>
+                  </div>
+                  <div className="text-right">
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        entry.isOverdue
+                          ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]'
+                          : 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
+                      }`}
+                    >
+                      {entry.isOverdue ? 'Overdue — charges may apply' : `${pluralize(entry.daysElapsed, 'working day')} since ready`}
+                    </span>
+                    {entry.dueDate ? (
+                      <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                        Collect by {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' })}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <AnalysisLine entry={entry} />
+                <form action={sendReadyForCollectionReminderFormAction} className="mt-3">
+                  <FormPendingOverlay />
+                  <input type="hidden" name="jobCardId" value={entry.id} />
+                  <SubmitButton
+                    label={entry.remindersSent && entry.remindersSent > 0 ? 'Send another reminder' : 'Send reminder'}
+                    pendingLabel="Sending…"
+                    className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                  />
+                </form>
               </div>
             ))}
           </div>
