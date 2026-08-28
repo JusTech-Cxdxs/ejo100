@@ -536,6 +536,14 @@ enum JobCardStatus {
   COMPLETED
   READY_FOR_COLLECTION
   CLOSED
+  // The vehicle has physically left the workshop — the true "gate
+  // exit" moment, distinct from CLOSED above (which only means the
+  // job itself is administratively signed off; the vehicle can still
+  // be sitting in the yard at that point). Reachable two ways: the
+  // normal path (CLOSED, once collected and confirmed) or directly
+  // from CANCELLED once an uncollected, dead Job Card's vehicle is
+  // finally taken away — no other status is reachable from CANCELLED.
+  CHECKED_OUT
   CANCELLED
 }
 
