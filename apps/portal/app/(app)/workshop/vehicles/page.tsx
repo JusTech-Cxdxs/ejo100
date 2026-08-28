@@ -25,6 +25,12 @@ export default async function WorkshopVehiclesPage({
 
   return (
     <div className="p-8">
+      <LoadingLink
+        href="/workshop"
+        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
+      >
+        ← Back to Workshop
+      </LoadingLink>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Vehicles</h1>
         <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
@@ -175,13 +181,6 @@ export default async function WorkshopVehiclesPage({
             </form>
         </div>
       </div>
-
-      <LoadingLink
-        href="/workshop"
-        className="mt-6 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Workshop
-      </LoadingLink>
     </div>
   );
 }
