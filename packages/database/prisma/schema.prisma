@@ -621,6 +621,14 @@ model JobCard {
   approvalNotes    String?   // optional longer commentary, on either an approval or a rejection
 
   closedAt    DateTime?
+  // Set the moment status genuinely transitions to READY_FOR_COLLECTION
+  // — the anchor for that status's own collection-grace deadline
+  // (READY_FOR_COLLECTION_GRACE_WORKING_DAYS), the same pattern as
+  // Estimate.customerNotifiedAt and CancellationRequest.decidedAt
+  // anchoring their own deadlines. Nullable and safe on the existing
+  // populated table: no default needed, since every row that predates
+  // this field genuinely never reached this status under it.
+  readyForCollectionAt DateTime?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
