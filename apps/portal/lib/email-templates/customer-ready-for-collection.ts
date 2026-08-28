@@ -25,13 +25,15 @@ export function renderCustomerReadyForCollectionEmail(opts: CustomerReadyForColl
   const bodyHtml = `
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
     <p style="margin: 0 0 16px 0;">
-      Your ${escapeHtml(vehicleDescription)} (Job Card ${escapeHtml(jobNumber)}) is ready for collection.
+      Your ${escapeHtml(vehicleDescription)} (Job Card ${escapeHtml(jobNumber)}) is ready for collection. You're
+      welcome to come by any time from now — there's no need to wait for the date below, it's simply the last
+      day to collect before charges may apply.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #FEF3C7; border: 1px solid #FDE68A; border-radius: 12px;">
       <tr>
         <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #B45309;">Please Collect By</p>
+          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #B45309;">Collect On or Before</p>
           <p style="margin: 0; font-size: 18px; color: #0F172A; font-weight: bold;">${escapeHtml(dueDate)}</p>
           <p style="margin: 8px 0 0 0; font-size: 13px; color: #78350F;">
             Charges may apply for any period the vehicle stays with us beyond this date.
