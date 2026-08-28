@@ -18,6 +18,7 @@ const STATUS_LABEL: Record<string, string> = {
   COMPLETED: 'Completed',
   READY_FOR_COLLECTION: 'Ready for Collection',
   CLOSED: 'Closed',
+  CHECKED_OUT: 'Checked Out',
   CANCELLED: 'Cancelled',
 };
 
@@ -30,6 +31,7 @@ const STATUS_COLOR: Record<string, string> = {
   COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   READY_FOR_COLLECTION: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+  CHECKED_OUT: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
