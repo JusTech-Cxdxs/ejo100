@@ -25,6 +25,7 @@ import { headers } from 'next/headers';
 import { prisma, JobCardStatus, Prisma } from '@ejo/database';
 import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
 import { workingDaysBetween, addWorkingDays } from '@/lib/utils/working-days';
+import { pluralize } from '@/lib/utils/pluralize';
 import { hashPassword } from 'better-auth/crypto';
 import { auth } from '@/lib/auth';
 import { sendEmail } from '@/lib/email';
@@ -3257,7 +3258,7 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
       customerName: jobCard.customer.fullName,
       jobNumber: jobCard.jobNumber,
       vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
-      daysSinceCancellation: String(daysElapsed),
+      daysSinceCancellationLabel: pluralize(daysElapsed, 'working day'),
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard`,
       logoUrl: `${websiteUrl}/images/logo/logo.png`,
       companyName: orgContext.companyName,
