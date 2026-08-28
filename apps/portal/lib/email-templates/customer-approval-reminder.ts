@@ -28,17 +28,18 @@ export function renderCustomerApprovalReminderEmail(opts: CustomerApprovalRemind
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
     <p style="margin: 0 0 16px 0;">
       This is a reminder that the estimate for your ${escapeHtml(vehicleDescription)} (Job Card
-      ${escapeHtml(jobNumber)}) is still awaiting your approval. Please arrange payment soon so we can begin work.
+      ${escapeHtml(jobNumber)}) is still awaiting your approval. You're welcome to make payment any time from
+      now — there's no need to wait, and doing so lets us begin work sooner.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #FEF3C7; border: 1px solid #FDE68A; border-radius: 12px;">
       <tr>
         <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #B45309;">Action Required By</p>
+          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #B45309;">Please Pay On or Before</p>
           <p style="margin: 0; font-size: 18px; color: #0F172A; font-weight: bold;">${escapeHtml(dueDate)}</p>
           <p style="margin: 8px 0 0 0; font-size: 13px; color: #78350F;">
-            If no payment is recorded by then, this Job Card will be cancelled automatically and your vehicle
-            will need a new estimate before work can begin.
+            If no payment is recorded on or before this date, this Job Card will be cancelled automatically and
+            your vehicle will need a new estimate before work can begin.
           </p>
         </td>
       </tr>
@@ -57,7 +58,7 @@ export function renderCustomerApprovalReminderEmail(opts: CustomerApprovalRemind
   `;
 
   return renderEmailLayout({
-    previewText: `Action required — Job Card ${jobNumber} is awaiting your approval by ${dueDate}.`,
+    previewText: `Action required — Job Card ${jobNumber} is awaiting your approval, please pay on or before ${dueDate}.`,
     companyName,
     orgContext: [companyName, branchName],
     iconGlyph: '!',
