@@ -3227,7 +3227,16 @@ export async function getWorkshopCustodySummary(): Promise<{
       where: { entityId: { in: actionRequiredIds }, action: { in: [...CUSTODY_REMINDER_ACTIONS] } },
       _count: { _all: true },
     });
-    const countByEntityId = new Map<string, number>(counts.map((c: { entityId: string; _count: { _all: number } }) => [c.entityId, c._count._all]));
+    // entityId is nullable on AuditLog in general (some historical
+    // actions don't relate to a specific entity), even though every
+    // row this specific query returns is guaranteed non-null by the
+    // where clause above — the type system doesn't know that, so this
+    // filters defensively rather than asserting it.
+    const countByEntityId = new Map<string, number>(
+      counts
+        .filter((c: { entityId: string | null; _count: { _all: number } }): c is { entityId: string; _count: { _all: number } } => c.entityId !== null)
+        .map((c: { entityId: string; _count: { _all: number } }) => [c.entityId, c._count._all]),
+    );
     for (const entry of [...awaitingApproval, ...cancelledPendingCollection, ...readyForCollection]) {
       entry.remindersSent = countByEntityId.get(entry.id) ?? 0;
     }
