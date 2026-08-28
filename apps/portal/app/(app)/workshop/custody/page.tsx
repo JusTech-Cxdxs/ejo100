@@ -26,9 +26,12 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function WorkshopCustodyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; status?: string; reminders?: string; cancelled?: string }>;
+  searchParams: Promise<{ error?: string; status?: string; reminders?: string; cancelled?: string; filter?: string }>;
 }) {
-  const { error, status, reminders, cancelled } = await searchParams;
+  const { error, status, reminders, cancelled, filter } = await searchParams;
+  const showAwaiting = !filter || filter === 'awaiting';
+  const showCancelled = !filter || filter === 'cancelled';
+  const showInService = !filter || filter === 'in_service';
   const branchId = await getWorkshopBranchId();
   const [summary, isMasterAdmin, eligibleManagers, viewerId] = await Promise.all([
     getWorkshopCustodySummary(),
@@ -62,23 +65,50 @@ export default async function WorkshopCustodyPage({
       ) : null}
 
       <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+        <LoadingLink
+          href="/workshop/custody"
+          className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
+            !filter ? 'border-[var(--ejo-primary)]' : 'border-[var(--ejo-border)]'
+          } bg-[var(--ejo-surface)]`}
+        >
           <p className="text-xs text-[var(--ejo-text-muted)]">Total In Custody</p>
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">{summary.total}</p>
-        </div>
-        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
+        </LoadingLink>
+        <LoadingLink
+          href="/workshop/custody?filter=awaiting"
+          className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
+            filter === 'awaiting' ? 'border-[var(--ejo-warning)]' : 'border-[var(--ejo-warning)]/30'
+          } bg-[var(--ejo-warning)]/5`}
+        >
           <p className="text-xs text-[var(--ejo-text-muted)]">Awaiting Customer Approval</p>
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-warning)]">{summary.awaitingApproval.length}</p>
-        </div>
-        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
+        </LoadingLink>
+        <LoadingLink
+          href="/workshop/custody?filter=cancelled"
+          className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
+            filter === 'cancelled' ? 'border-[var(--ejo-error)]' : 'border-[var(--ejo-error)]/30'
+          } bg-[var(--ejo-error)]/5`}
+        >
           <p className="text-xs text-[var(--ejo-text-muted)]">Cancelled — Pending Collection</p>
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-error)]">{summary.cancelledPendingCollection.length}</p>
-        </div>
-        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/30 bg-[var(--ejo-info)]/5 p-5">
+        </LoadingLink>
+        <LoadingLink
+          href="/workshop/custody?filter=in_service"
+          className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
+            filter === 'in_service' ? 'border-[var(--ejo-info)]' : 'border-[var(--ejo-info)]/30'
+          } bg-[var(--ejo-info)]/5`}
+        >
           <p className="text-xs text-[var(--ejo-text-muted)]">In Service</p>
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-info)]">{summary.inService.length}</p>
-        </div>
+        </LoadingLink>
       </div>
+      {filter ? (
+        <div className="mb-6">
+          <LoadingLink href="/workshop/custody" className="text-xs text-[var(--ejo-primary)] hover:underline">
+            ← Clear filter, show everything
+          </LoadingLink>
+        </div>
+      ) : null}
 
       {isMasterAdmin ? (
         <div className="mb-8 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
@@ -98,6 +128,7 @@ export default async function WorkshopCustodyPage({
         </div>
       ) : null}
 
+      {showAwaiting ? (
       <section className="mb-10">
         <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Awaiting Customer Approval</h2>
         {summary.awaitingApproval.length === 0 ? (
@@ -153,7 +184,9 @@ export default async function WorkshopCustodyPage({
           </div>
         )}
       </section>
+      ) : null}
 
+      {showCancelled ? (
       <section className="mb-10">
         <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Cancelled — Pending Collection</h2>
         {summary.cancelledPendingCollection.length === 0 ? (
@@ -209,7 +242,9 @@ export default async function WorkshopCustodyPage({
           </div>
         )}
       </section>
+      ) : null}
 
+      {showInService ? (
       <section>
         <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">In Service</h2>
         {summary.inService.length === 0 ? (
@@ -243,6 +278,7 @@ export default async function WorkshopCustodyPage({
           </div>
         )}
       </section>
+      ) : null}
     </div>
   );
 }
