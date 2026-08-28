@@ -49,6 +49,12 @@ export default async function WorkshopJobCardsPage({
 
   return (
     <div className="p-8">
+      <LoadingLink
+        href="/workshop"
+        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
+      >
+        ← Back to Workshop
+      </LoadingLink>
       {status === 'job_card_deleted' ? (
         <FormFeedbackBanner kind="success" message="Job Card deleted." />
       ) : null}
@@ -163,13 +169,6 @@ export default async function WorkshopJobCardsPage({
           </form>
         </div>
       </div>
-
-      <LoadingLink
-        href="/workshop"
-        className="mt-6 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Workshop
-      </LoadingLink>
     </div>
   );
 }
