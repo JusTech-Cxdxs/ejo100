@@ -19,6 +19,7 @@ const ALL_STATUSES = [
   'COMPLETED',
   'READY_FOR_COLLECTION',
   'CLOSED',
+  'CHECKED_OUT',
   'CANCELLED',
 ] as const;
 
@@ -31,6 +32,7 @@ const STATUS_LABEL: Record<string, string> = {
   COMPLETED: 'Completed',
   READY_FOR_COLLECTION: 'Ready for Collection',
   CLOSED: 'Closed',
+  CHECKED_OUT: 'Checked Out',
   CANCELLED: 'Cancelled',
 };
 
@@ -47,6 +49,7 @@ const STATUS_COLOR: Record<string, string> = {
   COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   READY_FOR_COLLECTION: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+  CHECKED_OUT: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
@@ -206,6 +209,10 @@ export default async function JobCardDetailPage({
         : estimateTotal > 0 && paymentsTotal >= minimumDeposit
           ? 'DEPOSIT_MET'
           : 'PARTIAL';
+  // Cancelled is terminal — dead. The only status change still
+  // legitimately available is the vehicle's eventual physical exit.
+  const isCancelled = jobCard.status === 'CANCELLED';
+  const selectableStatuses = isCancelled ? (['CHECKED_OUT'] as const) : ALL_STATUSES;
 
   return (
     <div className="p-8">
@@ -939,7 +946,7 @@ export default async function JobCardDetailPage({
                   defaultValue={jobCard.status}
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                 >
-                  {ALL_STATUSES.map((s) => (
+                  {selectableStatuses.map((s) => (
                     <option key={s} value={s} style={s === 'CANCELLED' ? { color: 'var(--ejo-error)' } : undefined}>
                       {STATUS_LABEL[s]}
                     </option>
@@ -974,13 +981,14 @@ export default async function JobCardDetailPage({
             )}
           </div>
 
-          <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Assign technician</h2>
-            <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-              Currently: {jobCard.assignedTechnician?.fullName ?? 'Unassigned'}
-            </p>
-            <form action={assignTechnicianFormAction} className="mt-4 space-y-3">
-              <FormPendingOverlay />
+          {!isCancelled ? (
+            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Assign technician</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                Currently: {jobCard.assignedTechnician?.fullName ?? 'Unassigned'}
+              </p>
+              <form action={assignTechnicianFormAction} className="mt-4 space-y-3">
+                <FormPendingOverlay />
               <input type="hidden" name="jobCardId" value={jobCard.id} />
               <select
                 name="technicianId"
@@ -1002,8 +1010,9 @@ export default async function JobCardDetailPage({
               />
             </form>
           </div>
+          ) : null}
 
-          {isAssignedTechnician && jobCard.technicianAcceptanceStatus === 'PENDING' ? (
+          {!isCancelled && isAssignedTechnician && jobCard.technicianAcceptanceStatus === 'PENDING' ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Respond to this assignment</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
