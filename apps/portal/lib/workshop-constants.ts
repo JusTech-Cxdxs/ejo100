@@ -51,3 +51,23 @@ export const COMPANY_BANK_DETAILS = {
  * (and the exact amount computed from it) is never duplicated or
  * allowed to drift between the email and the dashboard. */
 export const MINIMUM_DEPOSIT_FRACTION = 0.7;
+
+/** Working days after the customer is notified of an approved estimate
+ * before it's due for automatic cancellation — 5 working days, a full
+ * work week, chosen to give real room for a bank transfer to clear
+ * without letting a vehicle sit indefinitely on an unmade decision.
+ * A reminder is sent partway through, not right before the deadline —
+ * see APPROVAL_REMINDER_WORKING_DAYS. */
+export const APPROVAL_DEADLINE_WORKING_DAYS = 5;
+
+/** Working days after notification before the "action required"
+ * reminder is sent — partway through the deadline window above, so
+ * the customer gets a genuine nudge rather than a last-minute warning. */
+export const APPROVAL_REMINDER_WORKING_DAYS = 3;
+
+/** Working days after a cancellation is approved before an
+ * uncollected vehicle is surfaced for staff review — deliberately not
+ * automatic (a Manager or HOD must review and choose to notify the
+ * customer), just a bounded window so the workshop isn't left tracking
+ * abandoned vehicles indefinitely. */
+export const CANCELLED_COLLECTION_GRACE_WORKING_DAYS = 7;
