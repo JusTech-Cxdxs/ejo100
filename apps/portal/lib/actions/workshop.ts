@@ -23,7 +23,7 @@
 
 import { headers } from 'next/headers';
 import { prisma, JobCardStatus, Prisma } from '@ejo/database';
-import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
+import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
 import { workingDaysBetween, addWorkingDays } from '@/lib/utils/working-days';
 import { pluralize } from '@/lib/utils/pluralize';
 import { hashPassword } from 'better-auth/crypto';
@@ -51,6 +51,10 @@ import { renderJobCardCancelledStaffEmail } from '@/lib/email-templates/job-card
 import { renderCustomerJobCardCancelledEmail } from '@/lib/email-templates/customer-job-card-cancelled';
 import { renderCustomerApprovalReminderEmail } from '@/lib/email-templates/customer-approval-reminder';
 import { renderCustomerCollectionOverdueEmail } from '@/lib/email-templates/customer-collection-overdue';
+import { renderCustomerJobInProgressEmail } from '@/lib/email-templates/customer-job-in-progress';
+import { renderCustomerQualityCheckEmail } from '@/lib/email-templates/customer-quality-check';
+import { renderCustomerJobCompletedEmail } from '@/lib/email-templates/customer-job-completed';
+import { renderCustomerReadyForCollectionEmail } from '@/lib/email-templates/customer-ready-for-collection';
 
 class WorkshopActionError extends Error {}
 
@@ -1051,8 +1055,18 @@ export async function createJobCard(input: CreateJobCardInput) {
 }
 
 export async function updateJobCardStatus(id: string, status: JobCardStatus) {
-  await requireUser();
-  const jobCard = await prisma.jobCard.findUnique({ where: { id }, select: { status: true } });
+  const user = await requireUser();
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id },
+    select: {
+      status: true,
+      jobNumber: true,
+      departmentId: true,
+      department: { select: { name: true } },
+      customer: { select: { fullName: true, email: true } },
+      vehicle: { select: { make: true, model: true } },
+    },
+  });
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
   }
@@ -1063,13 +1077,86 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus) {
   if (jobCard.status === JobCardStatus.CANCELLED && status !== JobCardStatus.CHECKED_OUT) {
     throw new WorkshopActionError('This Job Card is cancelled — the only status change available is checking the vehicle out.');
   }
-  return prisma.jobCard.update({
+  const priorStatus = jobCard.status;
+  const result = await prisma.jobCard.update({
     where: { id },
     data: {
       status,
       closedAt: status === JobCardStatus.CLOSED ? new Date() : undefined,
     },
   });
+
+  // Fires exactly once, on a real transition into one of these four
+  // statuses — never on a no-op re-save of the same status. AWAITING_
+  // PARTS deliberately has no customer email at all (internal-only by
+  // design — reflects on the portal, notifies the store/finance
+  // department once that system exists, not built yet).
+  if (priorStatus !== status && (
+    status === JobCardStatus.IN_PROGRESS
+    || status === JobCardStatus.QUALITY_CHECK
+    || status === JobCardStatus.COMPLETED
+    || status === JobCardStatus.READY_FOR_COLLECTION
+  )) {
+    try {
+      const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+      const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+      const vehicleDescription = [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
+      const dashboardUrl = `${websiteUrl}/customer-portal/dashboard`;
+      const logoUrl = `${websiteUrl}/images/logo/logo.png`;
+      const shared = {
+        customerName: jobCard.customer.fullName,
+        jobNumber: jobCard.jobNumber,
+        vehicleDescription,
+        dashboardUrl,
+        logoUrl,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+      };
+
+      if (status === JobCardStatus.IN_PROGRESS) {
+        await sendEmail(
+          jobCard.customer.email,
+          `Your vehicle is now in progress — Job Card ${jobCard.jobNumber}`,
+          renderCustomerJobInProgressEmail(shared),
+        );
+      } else if (status === JobCardStatus.QUALITY_CHECK) {
+        await sendEmail(
+          jobCard.customer.email,
+          `Quality assurance in progress — Job Card ${jobCard.jobNumber}`,
+          renderCustomerQualityCheckEmail(shared),
+        );
+      } else if (status === JobCardStatus.COMPLETED) {
+        await sendEmail(
+          jobCard.customer.email,
+          `Quality inspection passed — Job Card ${jobCard.jobNumber}`,
+          renderCustomerJobCompletedEmail(shared),
+        );
+      } else {
+        const dueDate = addWorkingDays(new Date(), READY_FOR_COLLECTION_GRACE_WORKING_DAYS);
+        await sendEmail(
+          jobCard.customer.email,
+          `Ready for collection — Job Card ${jobCard.jobNumber}`,
+          renderCustomerReadyForCollectionEmail({
+            ...shared,
+            dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+          }),
+        );
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to send status-lifecycle email', id, status, err);
+    }
+  }
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'job_card.status_updated',
+    entityType: 'JobCard',
+    entityId: id,
+    metadata: { from: priorStatus, to: status },
+  });
+
+  return result;
 }
 
 /** The supervisor (or Master Admin) signs off that the Job Card is
