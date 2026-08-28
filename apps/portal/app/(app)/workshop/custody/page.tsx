@@ -4,6 +4,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { pluralize } from '@/lib/utils/pluralize';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -59,7 +60,7 @@ export default async function WorkshopCustodyPage({
         <div className="mb-6">
           <FormFeedbackBanner
             kind="success"
-            message={`Deadline checks complete — ${reminders ?? 0} reminder(s) sent, ${cancelled ?? 0} Job Card(s) auto-cancelled.`}
+            message={`Deadline checks complete — ${pluralize(Number(reminders ?? 0), 'reminder')} sent, ${pluralize(Number(cancelled ?? 0), 'Job Card')} auto-cancelled.`}
           />
         </div>
       ) : null}
@@ -157,7 +158,7 @@ export default async function WorkshopCustodyPage({
                           : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
                       }`}
                     >
-                      {entry.isOverdue ? 'Overdue — due for auto-cancellation' : `${entry.daysElapsed} working day(s) elapsed`}
+                      {entry.isOverdue ? 'Overdue — due for auto-cancellation' : `${pluralize(entry.daysElapsed, 'working day')} elapsed`}
                     </span>
                     {entry.dueDate ? (
                       <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -214,7 +215,7 @@ export default async function WorkshopCustodyPage({
                         : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
                     }`}
                   >
-                    {entry.isOverdue ? 'Overdue for review' : `${entry.daysElapsed} working day(s) since cancellation`}
+                    {entry.isOverdue ? 'Overdue for review' : `${pluralize(entry.daysElapsed, 'working day')} since cancellation`}
                   </span>
                 </div>
                 {entry.isOverdue && isEligibleManager ? (
