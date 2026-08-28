@@ -1051,6 +1051,17 @@ export async function createJobCard(input: CreateJobCardInput) {
 
 export async function updateJobCardStatus(id: string, status: JobCardStatus) {
   await requireUser();
+  const jobCard = await prisma.jobCard.findUnique({ where: { id }, select: { status: true } });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  // A cancelled Job Card is terminal — dead, in the plainest sense.
+  // Nothing about it can be edited or re-progressed; the one thing
+  // that still legitimately happens to it is the vehicle's eventual
+  // physical exit, once whoever finally collects it does.
+  if (jobCard.status === JobCardStatus.CANCELLED && status !== JobCardStatus.CHECKED_OUT) {
+    throw new WorkshopActionError('This Job Card is cancelled — the only status change available is checking the vehicle out.');
+  }
   return prisma.jobCard.update({
     where: { id },
     data: {
@@ -1494,14 +1505,22 @@ export async function listTechnicianCandidates() {
 
 export async function getWorkshopDashboardCounts() {
   await requireUser();
+  // Same definitions as getWorkshopCustodySummary() below, so the two
+  // pages never quietly disagree about what "active" or "in the
+  // workshop" actually means. "Active" — the user's own framing,
+  // confirmed directly — is every Job Card that isn't dead
+  // (CANCELLED) and hasn't physically left (CHECKED_OUT). "In
+  // workshop" is broader: every vehicle still physically present,
+  // CANCELLED included, since an uncollected cancelled vehicle is
+  // still sitting right there taking up space.
   const [activeJobCards, totalCustomers, totalVehicles, inWorkshop] = await Promise.all([
     prisma.jobCard.count({
-      where: { status: { notIn: [JobCardStatus.CLOSED, JobCardStatus.CANCELLED] } },
+      where: { status: { notIn: [JobCardStatus.CANCELLED, JobCardStatus.CHECKED_OUT] } },
     }),
     prisma.customer.count(),
     prisma.customerVehicle.count(),
     prisma.jobCard.count({
-      where: { status: { in: [JobCardStatus.CHECKED_IN, JobCardStatus.IN_PROGRESS, JobCardStatus.AWAITING_PARTS, JobCardStatus.QUALITY_CHECK] } },
+      where: { status: { not: JobCardStatus.CHECKED_OUT } },
     }),
   ]);
   return { activeJobCards, totalCustomers, totalVehicles, inWorkshop };
@@ -3005,7 +3024,12 @@ export async function getWorkshopCustodySummary(): Promise<{
 }> {
   await requireUser();
   const jobCards = await prisma.jobCard.findMany({
-    where: { status: { not: JobCardStatus.CLOSED } },
+    // Excludes only CHECKED_OUT — the genuine "physically left the
+    // workshop" marker. CLOSED is deliberately still included: it's
+    // an administrative sign-off, not confirmation the vehicle has
+    // actually gone, so a Job Card can sit CLOSED with its vehicle
+    // still in the yard for a moment before check-out.
+    where: { status: { not: JobCardStatus.CHECKED_OUT } },
     select: {
       id: true,
       jobNumber: true,
