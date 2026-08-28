@@ -704,6 +704,13 @@ model Estimate {
   // workshop.ts.
   customerNotifiedAt   DateTime?
   customerNotifiedById String?
+  // Set the moment the approval-deadline reminder email is actually
+  // sent — exists purely to prevent sending it twice, not a general
+  // audit field. Nullable and safe on an already-populated table:
+  // no default needed for existing rows, since "no reminder sent yet"
+  // is the correct, meaningful state for every row that predates this
+  // field.
+  reminderSentAt       DateTime?
   createdById String
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
