@@ -52,15 +52,24 @@ function AnalysisLine({ entry }: { entry: CustodyEntry }) {
 function PendingCancellationBlock({ entry, isEligibleManager }: { entry: CustodyEntry; isEligibleManager: boolean }) {
   if (!entry.pendingCancellationRequest) return null;
   const request = entry.pendingCancellationRequest;
+  const badge = (
+    <span className="rounded-full bg-[var(--ejo-warning)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-warning)]">
+      Awaiting Cancellation Approval
+    </span>
+  );
   if (!isEligibleManager) {
     return (
-      <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">
-        Cancellation requested by {request.requestedByName} — awaiting a Manager&apos;s decision.
-      </p>
+      <div className="mt-3 space-y-1.5">
+        {badge}
+        <p className="text-xs text-[var(--ejo-text-muted)]">
+          Cancellation requested by {request.requestedByName} — awaiting a Manager&apos;s decision.
+        </p>
+      </div>
     );
   }
   return (
     <div className="mt-3 space-y-2 border-t border-[var(--ejo-border)] pt-3">
+      {badge}
       <p className="text-xs text-[var(--ejo-text-muted)]">
         Cancellation requested by {request.requestedByName}: {request.reason}
       </p>
@@ -113,9 +122,9 @@ function PendingCancellationBlock({ entry, isEligibleManager }: { entry: Custody
 export default async function WorkshopCustodyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; status?: string; reminders?: string; cancelled?: string; filter?: string; q?: string }>;
+  searchParams: Promise<{ error?: string; status?: string; reminders?: string; overdue?: string; filter?: string; q?: string }>;
 }) {
-  const { error, status, reminders, cancelled, filter, q } = await searchParams;
+  const { error, status, reminders, overdue, filter, q } = await searchParams;
   const showAwaiting = !filter || filter === 'awaiting';
   const showCancelled = !filter || filter === 'cancelled';
   const showReadyForCollection = !filter || filter === 'ready_for_collection';
@@ -178,7 +187,7 @@ export default async function WorkshopCustodyPage({
         <div className="mb-6">
           <FormFeedbackBanner
             kind="success"
-            message={`Deadline checks complete — ${pluralize(Number(reminders ?? 0), 'reminder')} sent, ${pluralize(Number(cancelled ?? 0), 'Job Card')} auto-cancelled.`}
+            message={`Deadline checks complete — ${pluralize(Number(reminders ?? 0), 'reminder')} sent. ${Number(overdue ?? 0) > 0 ? `${pluralize(Number(overdue ?? 0), 'Job Card')} past the approval deadline and awaiting a manual decision — review the overdue entries below.` : 'None currently past the approval deadline.'}`}
           />
         </div>
       ) : null}
@@ -243,9 +252,12 @@ export default async function WorkshopCustodyPage({
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Approval Deadline Checks</h2>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
             Stands in for a scheduled daily job until one is wired up — sends any due approval reminders and
-            automatically cancels any Job Card that has passed its approval deadline with no sufficient payment
-            recorded. Cancelled-collection and Ready-for-Collection reminders stay a deliberate, manual action
-            below — sending those isn&apos;t automatic here.
+            flags any Job Card that has passed its approval deadline for manual review. Nothing is ever
+            cancelled automatically here — a deliberate business choice, so a genuine reason (a customer who
+            calls to ask for a day&apos;s grace) is never overridden by a script. Actually cancelling an overdue
+            Job Card still goes through the normal, Manager-approved cancellation request below, the same as
+            any other cancellation. Cancelled-collection and Ready-for-Collection reminders stay their own
+            deliberate, manual action too — sending those isn&apos;t automatic here either.
           </p>
           <form action={runApprovalDeadlineChecksFormAction} className="mt-3">
             <FormPendingOverlay />
