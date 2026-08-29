@@ -1,5 +1,5 @@
 import { getWorkshopCustodySummary, currentUserIsMasterAdmin, listEligibleManagersForBranch, getWorkshopBranchId, currentUserId } from '@/lib/actions/workshop';
-import { sendApprovalReminderFormAction, runApprovalDeadlineChecksFormAction, notifyOverdueCancelledVehicleFormAction, sendReadyForCollectionReminderFormAction, requestJobCardCancellationFormAction } from '@/lib/actions/workshop-form-handlers';
+import { sendApprovalReminderFormAction, runApprovalDeadlineChecksFormAction, notifyOverdueCancelledVehicleFormAction, sendReadyForCollectionReminderFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
@@ -27,6 +27,7 @@ type CustodyEntry = {
   remindersSent?: number;
   dueDate?: string;
   isOverdue: boolean;
+  pendingCancellationRequest?: { id: string; reason: string; requestedByName: string };
 };
 
 /** The shared "real data" line for an action-required entry — grace
@@ -40,6 +41,60 @@ function AnalysisLine({ entry }: { entry: CustodyEntry }) {
       {entry.isOverdue ? 'Remaining: none — overdue' : `Remaining: ${pluralize(entry.daysRemaining ?? 0, 'working day')}`} ·{' '}
       Reminders sent: {entry.remindersSent ?? 0}
     </p>
+  );
+}
+
+/** The exact same pending-cancellation-request state the Job Card
+ * detail page already shows — a Manager sees Approve/Decline right
+ * here, so they can act from either place; anyone without that
+ * authority just sees that a decision is pending, with no reminder or
+ * new cancellation option shown at all while one already is. */
+function PendingCancellationBlock({ entry, isEligibleManager }: { entry: CustodyEntry; isEligibleManager: boolean }) {
+  if (!entry.pendingCancellationRequest) return null;
+  const request = entry.pendingCancellationRequest;
+  if (!isEligibleManager) {
+    return (
+      <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">
+        Cancellation requested by {request.requestedByName} — awaiting a Manager&apos;s decision.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-3 space-y-2 border-t border-[var(--ejo-border)] pt-3">
+      <p className="text-xs text-[var(--ejo-text-muted)]">
+        Cancellation requested by {request.requestedByName}: {request.reason}
+      </p>
+      <form action={approveCancellationRequestFormAction} className="flex gap-2">
+        <FormPendingOverlay />
+        <input type="hidden" name="jobCardId" value={entry.id} />
+        <input type="hidden" name="requestId" value={request.id} />
+        <input
+          name="decisionNotes"
+          placeholder="Note (optional)"
+          className="flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+        />
+        <SubmitButton
+          label="Approve"
+          pendingLabel="Approving…"
+          className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+        />
+      </form>
+      <form action={declineCancellationRequestFormAction} className="flex gap-2">
+        <FormPendingOverlay />
+        <input type="hidden" name="jobCardId" value={entry.id} />
+        <input type="hidden" name="requestId" value={request.id} />
+        <input
+          name="decisionNotes"
+          placeholder="Note (optional)"
+          className="flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+        />
+        <SubmitButton
+          label="Decline"
+          pendingLabel="Declining…"
+          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+        />
+      </form>
+    </div>
   );
 }
 
@@ -58,16 +113,16 @@ function AnalysisLine({ entry }: { entry: CustodyEntry }) {
 export default async function WorkshopCustodyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; status?: string; reminders?: string; cancelled?: string; filter?: string }>;
+  searchParams: Promise<{ error?: string; status?: string; reminders?: string; cancelled?: string; filter?: string; q?: string }>;
 }) {
-  const { error, status, reminders, cancelled, filter } = await searchParams;
+  const { error, status, reminders, cancelled, filter, q } = await searchParams;
   const showAwaiting = !filter || filter === 'awaiting';
   const showCancelled = !filter || filter === 'cancelled';
   const showReadyForCollection = !filter || filter === 'ready_for_collection';
   const showInService = !filter || filter === 'in_service';
   const branchId = await getWorkshopBranchId();
   const [summary, isMasterAdmin, eligibleManagers, viewerId] = await Promise.all([
-    getWorkshopCustodySummary(),
+    getWorkshopCustodySummary(q),
     currentUserIsMasterAdmin(),
     listEligibleManagersForBranch(branchId),
     currentUserId(),
@@ -85,9 +140,34 @@ export default async function WorkshopCustodyPage({
       <div className="mb-2">
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Vehicles In Custody</h1>
       </div>
-      <p className="mb-8 text-sm text-[var(--ejo-text-muted)]">
+      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Workshop
       </p>
+
+      <form className="mb-8 flex gap-2" action="/workshop/custody">
+        {filter ? <input type="hidden" name="filter" value={filter} /> : null}
+        <input
+          type="search"
+          name="q"
+          defaultValue={q ?? ''}
+          placeholder="Search by job number, VIN, or customer…"
+          className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+        />
+        <button
+          type="submit"
+          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+        >
+          Search
+        </button>
+        {q ? (
+          <LoadingLink
+            href={filter ? `/workshop/custody?filter=${filter}` : '/workshop/custody'}
+            className="inline-flex items-center rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+          >
+            Clear
+          </LoadingLink>
+        ) : null}
+      </form>
 
       {error ? (
         <div className="mb-6">
@@ -105,7 +185,7 @@ export default async function WorkshopCustodyPage({
 
       <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-5">
         <LoadingLink
-          href="/workshop/custody"
+          href={q ? `/workshop/custody?q=${encodeURIComponent(q)}` : '/workshop/custody'}
           className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
             !filter ? 'border-[var(--ejo-primary)]' : 'border-[var(--ejo-border)]'
           } bg-[var(--ejo-surface)]`}
@@ -114,7 +194,7 @@ export default async function WorkshopCustodyPage({
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">{summary.total}</p>
         </LoadingLink>
         <LoadingLink
-          href="/workshop/custody?filter=awaiting"
+          href={`/workshop/custody?filter=awaiting${q ? `&q=${encodeURIComponent(q)}` : ''}`}
           className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
             filter === 'awaiting' ? 'border-[var(--ejo-warning)]' : 'border-[var(--ejo-warning)]/30'
           } bg-[var(--ejo-warning)]/5`}
@@ -123,7 +203,7 @@ export default async function WorkshopCustodyPage({
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-warning)]">{summary.awaitingApproval.length}</p>
         </LoadingLink>
         <LoadingLink
-          href="/workshop/custody?filter=cancelled"
+          href={`/workshop/custody?filter=cancelled${q ? `&q=${encodeURIComponent(q)}` : ''}`}
           className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
             filter === 'cancelled' ? 'border-[var(--ejo-error)]' : 'border-[var(--ejo-error)]/30'
           } bg-[var(--ejo-error)]/5`}
@@ -132,7 +212,7 @@ export default async function WorkshopCustodyPage({
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-error)]">{summary.cancelledPendingCollection.length}</p>
         </LoadingLink>
         <LoadingLink
-          href="/workshop/custody?filter=ready_for_collection"
+          href={`/workshop/custody?filter=ready_for_collection${q ? `&q=${encodeURIComponent(q)}` : ''}`}
           className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
             filter === 'ready_for_collection' ? 'border-[var(--ejo-success)]' : 'border-[var(--ejo-success)]/30'
           } bg-[var(--ejo-success)]/5`}
@@ -141,7 +221,7 @@ export default async function WorkshopCustodyPage({
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-success)]">{summary.readyForCollection.length}</p>
         </LoadingLink>
         <LoadingLink
-          href="/workshop/custody?filter=in_service"
+          href={`/workshop/custody?filter=in_service${q ? `&q=${encodeURIComponent(q)}` : ''}`}
           className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
             filter === 'in_service' ? 'border-[var(--ejo-info)]' : 'border-[var(--ejo-info)]/30'
           } bg-[var(--ejo-info)]/5`}
@@ -152,8 +232,8 @@ export default async function WorkshopCustodyPage({
       </div>
       {filter ? (
         <div className="mb-6">
-          <LoadingLink href="/workshop/custody" className="text-xs text-[var(--ejo-primary)] hover:underline">
-            ← Clear filter, show everything
+          <LoadingLink href={q ? `/workshop/custody?q=${encodeURIComponent(q)}` : '/workshop/custody'} className="text-xs text-[var(--ejo-primary)] hover:underline">
+            ← Clear category filter, show everything
           </LoadingLink>
         </div>
       ) : null}
@@ -217,38 +297,42 @@ export default async function WorkshopCustodyPage({
                   </div>
                 </div>
                 <AnalysisLine entry={entry} />
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <form action={sendApprovalReminderFormAction}>
-                    <FormPendingOverlay />
-                    <input type="hidden" name="jobCardId" value={entry.id} />
-                    <SubmitButton
-                      label={entry.remindersSent && entry.remindersSent > 0 ? 'Send another reminder' : 'Send reminder'}
-                      pendingLabel="Sending…"
-                      className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                    />
-                  </form>
-                  <details className="group">
-                    <summary className="cursor-pointer list-none rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10">
-                      Request cancellation
-                    </summary>
-                    <form action={requestJobCardCancellationFormAction} className="mt-2 space-y-2">
+                {entry.pendingCancellationRequest ? (
+                  <PendingCancellationBlock entry={entry} isEligibleManager={isEligibleManager} />
+                ) : (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <form action={sendApprovalReminderFormAction}>
                       <FormPendingOverlay />
                       <input type="hidden" name="jobCardId" value={entry.id} />
-                      <textarea
-                        name="reason"
-                        required
-                        rows={2}
-                        placeholder="Reason — e.g. customer called to cancel, could not afford repair"
-                        className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-                      />
                       <SubmitButton
-                        label="Submit cancellation request"
-                        pendingLabel="Requesting…"
-                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                        label={entry.remindersSent && entry.remindersSent > 0 ? 'Send another reminder' : 'Send reminder'}
+                        pendingLabel="Sending…"
+                        className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
                       />
                     </form>
-                  </details>
-                </div>
+                    <details className="group">
+                      <summary className="cursor-pointer list-none rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10">
+                        Request cancellation
+                      </summary>
+                      <form action={requestJobCardCancellationFormAction} className="mt-2 space-y-2">
+                        <FormPendingOverlay />
+                        <input type="hidden" name="jobCardId" value={entry.id} />
+                        <textarea
+                          name="reason"
+                          required
+                          rows={2}
+                          placeholder="Reason — e.g. customer called to cancel, could not afford repair"
+                          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                        />
+                        <SubmitButton
+                          label="Submit cancellation request"
+                          pendingLabel="Requesting…"
+                          className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                        />
+                      </form>
+                    </details>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -277,15 +361,22 @@ export default async function WorkshopCustodyPage({
                     </LoadingLink>
                     <p className="text-sm text-[var(--ejo-text)]">{entry.customerName} — {entry.vehicleDescription}</p>
                   </div>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      entry.isOverdue
-                        ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]'
-                        : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
-                    }`}
-                  >
-                    {entry.isOverdue ? 'Overdue for review' : `${pluralize(entry.daysElapsed, 'working day')} since cancellation`}
-                  </span>
+                  <div className="text-right">
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        entry.isOverdue
+                          ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]'
+                          : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
+                      }`}
+                    >
+                      {entry.isOverdue ? 'Overdue for review' : `${pluralize(entry.daysElapsed, 'working day')} since cancellation`}
+                    </span>
+                    {entry.dueDate ? (
+                      <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                        Expected collection by {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' })}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
                 <AnalysisLine entry={entry} />
                 {isEligibleManager ? (
@@ -348,7 +439,7 @@ export default async function WorkshopCustodyPage({
                     </span>
                     {entry.dueDate ? (
                       <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                        Collect by {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        Expected collection by {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' })}
                       </p>
                     ) : null}
                   </div>
