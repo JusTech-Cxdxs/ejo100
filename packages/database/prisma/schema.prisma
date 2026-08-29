@@ -629,6 +629,20 @@ model JobCard {
   // populated table: no default needed, since every row that predates
   // this field genuinely never reached this status under it.
   readyForCollectionAt DateTime?
+  // Set the first time status genuinely reaches IN_PROGRESS — the
+  // real start of technical work, distinct from CHECKED_IN (which
+  // only means the vehicle has arrived and is being inspected/
+  // estimated, not yet worked on). Never overwritten on a later
+  // return to IN_PROGRESS (e.g. after AWAITING_PARTS resolves) — this
+  // marks when work genuinely began, not every moment it resumed.
+  workStartedAt DateTime?
+  // Set the first time status genuinely reaches COMPLETED — paired
+  // with workStartedAt to measure actual repair duration specifically
+  // (technician's own turnaround), deliberately distinct from the
+  // later, separate Ready for Collection step, since collection
+  // timing is a logistics/customer factor, not a reflection of how
+  // long the technical work itself took.
+  completedAt DateTime?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
