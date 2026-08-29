@@ -1,4 +1,5 @@
 import { renderEmailLayout, escapeHtml } from './layout';
+import { ordinal } from '../utils/ordinal';
 
 export type CustomerCollectionOverdueEmailOptions = {
   customerName: string;
@@ -8,6 +9,9 @@ export type CustomerCollectionOverdueEmailOptions = {
    * "7 working days" — computed by the caller with pluralize(), never
    * a bare number the template would have to guess a plural for. */
   daysSinceCancellationLabel: string;
+  /** Which notice this is (1 for the first, 2 for the second, and so
+   * on) — computed by the caller from the real audit trail. */
+  reminderNumber: number;
   dashboardUrl: string;
   logoUrl: string;
   companyName: string;
@@ -23,14 +27,14 @@ export type CustomerCollectionOverdueEmailOptions = {
  * customer, not a scheduled job.
  */
 export function renderCustomerCollectionOverdueEmail(opts: CustomerCollectionOverdueEmailOptions): string {
-  const { customerName, jobNumber, vehicleDescription, daysSinceCancellationLabel, dashboardUrl, logoUrl, companyName, branchName } = opts;
+  const { customerName, jobNumber, vehicleDescription, daysSinceCancellationLabel, reminderNumber, dashboardUrl, logoUrl, companyName, branchName } = opts;
 
   const bodyHtml = `
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
     <p style="margin: 0 0 16px 0;">
-      Job Card ${escapeHtml(jobNumber)} for your ${escapeHtml(vehicleDescription)} was cancelled
-      ${escapeHtml(daysSinceCancellationLabel)} ago, and the vehicle is still with us. Please arrange collection
-      as soon as you're able.
+      This is our ${escapeHtml(ordinal(reminderNumber))} notice that Job Card ${escapeHtml(jobNumber)} for your
+      ${escapeHtml(vehicleDescription)} was cancelled ${escapeHtml(daysSinceCancellationLabel)} ago, and the
+      vehicle is still with us. Please arrange collection as soon as you're able.
     </p>
     <p style="margin: 0 0 16px 0;">
       If you'd like to discuss timing or any other arrangement, please reach out to us directly.

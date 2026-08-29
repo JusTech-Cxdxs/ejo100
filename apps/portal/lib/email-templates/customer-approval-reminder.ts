@@ -1,4 +1,5 @@
 import { renderEmailLayout, escapeHtml } from './layout';
+import { ordinal } from '../utils/ordinal';
 
 export type CustomerApprovalReminderEmailOptions = {
   customerName: string;
@@ -7,6 +8,11 @@ export type CustomerApprovalReminderEmailOptions = {
   totalEstimate: string;
   minimumDepositAmount: string;
   dueDate: string;
+  /** Which reminder this is (1 for the first, 2 for the second, and
+   * so on) — computed by the caller from the real audit trail, never
+   * guessed. Shown plainly so the customer knows this isn't the first
+   * time we've reached out. */
+  reminderNumber: number;
   dashboardUrl: string;
   logoUrl: string;
   companyName: string;
@@ -22,14 +28,15 @@ export type CustomerApprovalReminderEmailOptions = {
  * once the deadline passes with no payment recorded.
  */
 export function renderCustomerApprovalReminderEmail(opts: CustomerApprovalReminderEmailOptions): string {
-  const { customerName, jobNumber, vehicleDescription, totalEstimate, minimumDepositAmount, dueDate, dashboardUrl, logoUrl, companyName, branchName } = opts;
+  const { customerName, jobNumber, vehicleDescription, totalEstimate, minimumDepositAmount, dueDate, reminderNumber, dashboardUrl, logoUrl, companyName, branchName } = opts;
 
   const bodyHtml = `
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
     <p style="margin: 0 0 16px 0;">
-      This is a reminder that the estimate for your ${escapeHtml(vehicleDescription)} (Job Card
-      ${escapeHtml(jobNumber)}) is still awaiting your approval. You're welcome to make payment any time from
-      now — there's no need to wait, and doing so lets us begin work sooner.
+      This is our ${escapeHtml(ordinal(reminderNumber))} reminder that the estimate for your
+      ${escapeHtml(vehicleDescription)} (Job Card ${escapeHtml(jobNumber)}) is still awaiting your approval.
+      You're welcome to make payment any time from now — there's no need to wait, and doing so lets us begin
+      work sooner.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #FEF3C7; border: 1px solid #FDE68A; border-radius: 12px;">

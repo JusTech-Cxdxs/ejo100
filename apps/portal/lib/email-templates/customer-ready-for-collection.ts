@@ -1,10 +1,16 @@
 import { renderEmailLayout, escapeHtml } from './layout';
+import { ordinal } from '../utils/ordinal';
 
 export type CustomerReadyForCollectionEmailOptions = {
   customerName: string;
   jobNumber: string;
   vehicleDescription: string;
   dueDate: string;
+  /** Only set when this is a repeat send (via the "send another
+   * reminder" action) — the initial "ready for collection" notice
+   * itself isn't really "a reminder" yet, so this stays undefined for
+   * that first send and the reminder-count line is skipped entirely. */
+  reminderNumber?: number;
   dashboardUrl: string;
   logoUrl: string;
   companyName: string;
@@ -15,17 +21,19 @@ export type CustomerReadyForCollectionEmailOptions = {
  * Fires once, the moment a Job Card's status genuinely transitions to
  * READY_FOR_COLLECTION — the real "come get it" call, a deliberate
  * step the Manager or QC department takes once everything is
- * genuinely ready, not automatic on Completed. States the real
- * collection deadline plainly, since that's the one thing a customer
- * actually needs to act on here.
+ * genuinely ready, not automatic on Completed. Also reused for every
+ * repeat reminder afterward, distinguished by `reminderNumber`.
+ * States the real collection deadline plainly, since that's the one
+ * thing a customer actually needs to act on here.
  */
 export function renderCustomerReadyForCollectionEmail(opts: CustomerReadyForCollectionEmailOptions): string {
-  const { customerName, jobNumber, vehicleDescription, dueDate, dashboardUrl, logoUrl, companyName, branchName } = opts;
+  const { customerName, jobNumber, vehicleDescription, dueDate, reminderNumber, dashboardUrl, logoUrl, companyName, branchName } = opts;
 
   const bodyHtml = `
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
     <p style="margin: 0 0 16px 0;">
-      Your ${escapeHtml(vehicleDescription)} (Job Card ${escapeHtml(jobNumber)}) is ready for collection. You're
+      ${reminderNumber ? `This is our ${escapeHtml(ordinal(reminderNumber))} reminder that your` : 'Your'}
+      ${escapeHtml(vehicleDescription)} (Job Card ${escapeHtml(jobNumber)}) is ready for collection. You're
       welcome to come by any time from now — there's no need to wait for the date below, it's simply the last
       day to collect before charges may apply.
     </p>
@@ -33,7 +41,7 @@ export function renderCustomerReadyForCollectionEmail(opts: CustomerReadyForColl
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #FEF3C7; border: 1px solid #FDE68A; border-radius: 12px;">
       <tr>
         <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #B45309;">Collect On or Before</p>
+          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #B45309;">Expected Collection By</p>
           <p style="margin: 0; font-size: 18px; color: #0F172A; font-weight: bold;">${escapeHtml(dueDate)}</p>
           <p style="margin: 8px 0 0 0; font-size: 13px; color: #78350F;">
             Charges may apply for any period the vehicle stays with us beyond this date.
@@ -44,7 +52,7 @@ export function renderCustomerReadyForCollectionEmail(opts: CustomerReadyForColl
   `;
 
   return renderEmailLayout({
-    previewText: `Ready for collection — Job Card ${jobNumber}, please collect by ${dueDate}.`,
+    previewText: `Ready for collection — Job Card ${jobNumber}, expected collection by ${dueDate}.`,
     companyName,
     orgContext: [companyName, branchName],
     iconGlyph: '✓',
