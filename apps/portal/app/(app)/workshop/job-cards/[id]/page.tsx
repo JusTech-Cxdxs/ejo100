@@ -280,27 +280,42 @@ export default async function JobCardDetailPage({
         {(() => {
           // "Days in workshop" — working days specifically, matching
           // how this workshop actually operates: no work happens on
-          // Saturday or Sunday, so counting those days doesn't
-          // reflect anything real about how long the vehicle has
-          // genuinely been in the shop's own working timeline.
-          const inWorkshopEnd = jobCard.closedAt ?? new Date();
+          // Saturday or Sunday. Ends at checkedOutAt specifically —
+          // the true physical-exit moment — not closedAt, which is
+          // only an administrative sign-off; the vehicle can be
+          // CLOSED and still genuinely sitting in the yard for a
+          // while before it's actually checked out. Once that's
+          // happened, the badge switches to plain past tense — the
+          // count is final, not still running.
+          const isCheckedOut = Boolean(jobCard.checkedOutAt);
+          const inWorkshopEnd = jobCard.checkedOutAt ?? new Date();
           const daysInWorkshop = workingDaysBetween(jobCard.createdAt, inWorkshopEnd);
           const badges = [
             <span key="in-workshop" className="rounded-full bg-[var(--ejo-info)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-info)]">
-              {pluralize(daysInWorkshop, 'working day')} in workshop since check-in
+              {isCheckedOut
+                ? `Total time in custody: ${pluralize(daysInWorkshop, 'working day')}`
+                : `${pluralize(daysInWorkshop, 'working day')} in workshop since check-in`}
             </span>,
           ];
+          // "In Service" — matches the same category name used on the
+          // Vehicles In Custody dashboard for this exact stretch of a
+          // Job Card's life. Ends at completedAt specifically, not
+          // Ready for Collection: that's a separate, later step a
+          // Manager or QC department takes once everything is ready,
+          // and its own timing (which can depend on their
+          // availability, not the technician's) shouldn't be folded
+          // into a technician's own turnaround figure.
           if (jobCard.workStartedAt) {
-            const repairEnd = jobCard.completedAt ?? new Date();
-            const repairDuration = workingDaysBetween(jobCard.workStartedAt, repairEnd);
+            const inServiceEnd = jobCard.completedAt ?? new Date();
+            const inServiceDuration = workingDaysBetween(jobCard.workStartedAt, inServiceEnd);
             badges.push(
               jobCard.completedAt ? (
-                <span key="repair-duration" className="rounded-full bg-[var(--ejo-text-muted)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-text-muted)]">
-                  Repair duration: {pluralize(repairDuration, 'working day')}
+                <span key="in-service-duration" className="rounded-full bg-[var(--ejo-text-muted)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-text-muted)]">
+                  In Service duration: {pluralize(inServiceDuration, 'working day')}
                 </span>
               ) : (
-                <span key="repair-in-progress" className="rounded-full bg-[var(--ejo-warning)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-warning)]">
-                  In progress: {pluralize(repairDuration, 'working day')} so far
+                <span key="in-service-ongoing" className="rounded-full bg-[var(--ejo-warning)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-warning)]">
+                  In Service: {pluralize(inServiceDuration, 'working day')} so far
                 </span>
               ),
             );
