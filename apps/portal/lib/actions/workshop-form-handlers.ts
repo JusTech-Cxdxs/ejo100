@@ -430,17 +430,17 @@ export async function sendApprovalReminderFormAction(formData: FormData) {
 
 export async function runApprovalDeadlineChecksFormAction() {
   let remindersSent = 0;
-  let autoCancelled = 0;
+  let overdueCount = 0;
   try {
     const result = await runApprovalDeadlineChecks();
     remindersSent = result.remindersSent;
-    autoCancelled = result.autoCancelled;
+    overdueCount = result.overdueCount;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not run deadline checks.';
     redirect(`/workshop/custody?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/custody');
-  redirect(`/workshop/custody?status=deadline_checks_run&reminders=${remindersSent}&cancelled=${autoCancelled}`);
+  redirect(`/workshop/custody?status=deadline_checks_run&reminders=${remindersSent}&overdue=${overdueCount}`);
 }
 
 export async function notifyOverdueCancelledVehicleFormAction(formData: FormData) {

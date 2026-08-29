@@ -1063,6 +1063,8 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus) {
       jobNumber: true,
       departmentId: true,
       branchId: true,
+      workStartedAt: true,
+      completedAt: true,
       department: { select: { name: true } },
       customer: { select: { fullName: true, email: true } },
       vehicle: { select: { make: true, model: true } },
@@ -1091,6 +1093,12 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus) {
       status,
       closedAt: status === JobCardStatus.CLOSED ? new Date() : undefined,
       readyForCollectionAt: status === JobCardStatus.READY_FOR_COLLECTION ? new Date() : undefined,
+      // Only ever set once — the first genuine arrival at each status
+      // — never overwritten by a later return to the same status
+      // (e.g. IN_PROGRESS after AWAITING_PARTS resolves), so these
+      // stay a true "when did this actually start/finish" record.
+      workStartedAt: status === JobCardStatus.IN_PROGRESS && !jobCard.workStartedAt ? new Date() : undefined,
+      completedAt: status === JobCardStatus.COMPLETED && !jobCard.completedAt ? new Date() : undefined,
     },
   });
 
@@ -3365,15 +3373,15 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
  * equivalent) is actually wired up — Master Admin only, since this
  * represents "run today's automated checks now," not a normal staff
  * action. Sends the reminder to anyone who's reached the reminder
- * threshold and hasn't been sent one yet, and automatically cancels
- * anyone who's passed the full deadline — reusing the exact same
- * requestJobCardCancellation()/approveCancellationRequest() functions
- * already built and verified for staff-initiated cancellation, rather
- * than duplicating that logic. The Master Admin running this check is
- * a real, authenticated user, so the resulting audit trail accurately
- * shows who ran the check that triggered each cancellation — nothing
- * is attributed to a phantom "system" actor. */
-export async function runApprovalDeadlineChecks(): Promise<{ remindersSent: number; autoCancelled: number }> {
+ * threshold and hasn't been sent one yet. Deliberately never
+ * auto-cancels anything, even once the full deadline has passed — a
+ * business shouldn't lose the ability to extend genuine grace (a
+ * customer who calls to explain, asks for one more day), so a Job
+ * Card past its deadline is only counted here, surfaced for a human
+ * to review. Actually cancelling it still goes through the normal,
+ * Manager-approved cancellation request, the same as any other
+ * cancellation — never this function's own decision. */
+export async function runApprovalDeadlineChecks(): Promise<{ remindersSent: number; overdueCount: number }> {
   if (!(await currentUserIsMasterAdmin())) {
     throw new WorkshopActionError('Only a Master Administrator can run this check.');
   }
@@ -3388,31 +3396,20 @@ export async function runApprovalDeadlineChecks(): Promise<{ remindersSent: numb
 
   const now = new Date();
   let remindersSent = 0;
-  let autoCancelled = 0;
+  let overdueCount = 0;
 
   for (const jc of candidates as Array<{ id: string; estimate: { customerNotifiedAt: Date | null; reminderSentAt: Date | null } | null }>) {
     if (!jc.estimate?.customerNotifiedAt) continue;
     const daysElapsed = workingDaysBetween(jc.estimate.customerNotifiedAt, now);
 
+    // Deliberately never auto-cancels — a business shouldn't lose the
+    // ability to extend grace for a genuine reason (a customer who
+    // calls to explain, asks for one more day). Past the deadline,
+    // this only counts the Job Card as needing a human decision;
+    // actually cancelling it still goes through the normal, Manager-
+    // approved cancellation request, same as any other cancellation.
     if (daysElapsed >= APPROVAL_DEADLINE_WORKING_DAYS) {
-      try {
-        await requestJobCardCancellation(
-          jc.id,
-          `[Automatic] Estimate approval deadline of ${APPROVAL_DEADLINE_WORKING_DAYS} working days exceeded with no payment recorded.`,
-        );
-        const request = await prisma.cancellationRequest.findFirst({
-          where: { jobCardId: jc.id, status: 'PENDING' },
-          orderBy: { requestedAt: 'desc' },
-          select: { id: true },
-        });
-        if (request) {
-          await approveCancellationRequest(request.id, '[Automatic] Approval deadline exceeded.');
-          autoCancelled += 1;
-        }
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('Failed to auto-cancel overdue Job Card', jc.id, err);
-      }
+      overdueCount += 1;
     } else if (daysElapsed >= APPROVAL_REMINDER_WORKING_DAYS && !jc.estimate.reminderSentAt) {
       try {
         await sendApprovalReminder(jc.id);
@@ -3424,7 +3421,7 @@ export async function runApprovalDeadlineChecks(): Promise<{ remindersSent: numb
     }
   }
 
-  return { remindersSent, autoCancelled };
+  return { remindersSent, overdueCount };
 }
 
 /** The deliberate, manual step for a cancelled Job Card's uncollected
