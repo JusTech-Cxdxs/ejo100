@@ -1062,6 +1062,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus) {
       status: true,
       jobNumber: true,
       departmentId: true,
+      branchId: true,
       department: { select: { name: true } },
       customer: { select: { fullName: true, email: true } },
       vehicle: { select: { make: true, model: true } },
@@ -1069,6 +1070,12 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus) {
   });
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
+  }
+  // Closed is the Manager's own sign-off that a completed job was
+  // genuinely collected and confirmed — not a routine status change
+  // any staff member should be able to set on their own.
+  if (status === JobCardStatus.CLOSED) {
+    await requireEligibleManager(jobCard.branchId);
   }
   // A cancelled Job Card is terminal — dead, in the plainest sense.
   // Nothing about it can be edited or re-progressed; the one thing
@@ -3100,11 +3107,17 @@ export type WorkshopCustodyEntry = {
    * entry, derived from the audit trail itself — never a separate
    * counter that could drift out of sync with what was really sent. */
   remindersSent?: number;
-  /** ISO date string — only set for AWAITING_CUSTOMER_APPROVAL and
-   * READY_FOR_COLLECTION, the real calendar date the deadline falls
-   * on. */
+  /** ISO date string — set for AWAITING_CUSTOMER_APPROVAL, CANCELLED,
+   * and READY_FOR_COLLECTION alike, the real calendar date the
+   * deadline falls on. */
   dueDate?: string;
   isOverdue: boolean;
+  /** Only ever set for an AWAITING_CUSTOMER_APPROVAL entry that
+   * currently has a cancellation request awaiting a Manager's
+   * decision — lets the dashboard show the exact same pending-request
+   * state (and the same Approve/Decline actions) the Job Card detail
+   * page already shows, so a Manager can act from either place. */
+  pendingCancellationRequest?: { id: string; reason: string; requestedByName: string };
 };
 
 const CUSTODY_REMINDER_ACTIONS = ['approval.reminder_sent', 'collection.overdue_notice_sent', 'collection.ready_reminder_sent'] as const;
@@ -3118,7 +3131,7 @@ const CUSTODY_REMINDER_ACTIONS = ['approval.reminder_sent', 'collection.overdue_
  * real days-remaining figure, and a real reminder count pulled from
  * the audit trail), and In Service as the simpler catch-all for
  * everything still moving through the workshop's own process. */
-export async function getWorkshopCustodySummary(): Promise<{
+export async function getWorkshopCustodySummary(search?: string): Promise<{
   total: number;
   awaitingApproval: WorkshopCustodyEntry[];
   cancelledPendingCollection: WorkshopCustodyEntry[];
@@ -3126,13 +3139,26 @@ export async function getWorkshopCustodySummary(): Promise<{
   inService: WorkshopCustodyEntry[];
 }> {
   await requireUser();
+  const trimmedSearch = search?.trim();
   const jobCards = await prisma.jobCard.findMany({
-    // Excludes only CHECKED_OUT — the genuine "physically left the
-    // workshop" marker. CLOSED is deliberately still included: it's
-    // an administrative sign-off, not confirmation the vehicle has
-    // actually gone, so a Job Card can sit CLOSED with its vehicle
-    // still in the yard for a moment before check-out.
-    where: { status: { not: JobCardStatus.CHECKED_OUT } },
+    where: {
+      // Excludes only CHECKED_OUT — the genuine "physically left the
+      // workshop" marker. CLOSED is deliberately still included: it's
+      // an administrative sign-off, not confirmation the vehicle has
+      // actually gone, so a Job Card can sit CLOSED with its vehicle
+      // still in the yard for a moment before check-out.
+      status: { not: JobCardStatus.CHECKED_OUT },
+      ...(trimmedSearch
+        ? {
+            OR: [
+              { jobNumber: { contains: trimmedSearch, mode: 'insensitive' } },
+              { customer: { fullName: { contains: trimmedSearch, mode: 'insensitive' } } },
+              { vehicle: { plateNumber: { contains: trimmedSearch, mode: 'insensitive' } } },
+              { vehicle: { chassisNumber: { contains: trimmedSearch, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    },
     select: {
       id: true,
       jobNumber: true,
@@ -3141,11 +3167,19 @@ export async function getWorkshopCustodySummary(): Promise<{
       customer: { select: { fullName: true } },
       vehicle: { select: { make: true, model: true } },
       estimate: { select: { customerNotifiedAt: true } },
+      // Every request, not just approved ones — the same array
+      // yields both the "most recent approval" anchor for a cancelled
+      // entry AND the current pending request (if any) for an
+      // awaiting-approval entry, without a second query.
       cancellationRequests: {
-        where: { status: 'APPROVED' },
-        orderBy: { decidedAt: 'desc' },
-        take: 1,
-        select: { decidedAt: true },
+        orderBy: { requestedAt: 'desc' },
+        select: {
+          id: true,
+          status: true,
+          reason: true,
+          decidedAt: true,
+          requestedBy: { select: { fullName: true } },
+        },
       },
     },
     orderBy: { createdAt: 'desc' },
@@ -3165,7 +3199,7 @@ export async function getWorkshopCustodySummary(): Promise<{
     customer: { fullName: string };
     vehicle: { make: string | null; model: string | null };
     estimate: { customerNotifiedAt: Date | null } | null;
-    cancellationRequests: { decidedAt: Date | null }[];
+    cancellationRequests: { id: string; status: string; reason: string; decidedAt: Date | null; requestedBy: { fullName: string } }[];
   }>) {
     const vehicleDescription = [jc.vehicle.make, jc.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     const base = {
@@ -3180,6 +3214,7 @@ export async function getWorkshopCustodySummary(): Promise<{
       const anchor = jc.estimate.customerNotifiedAt;
       const daysElapsed = workingDaysBetween(anchor, now);
       const dueDate = addWorkingDays(anchor, APPROVAL_DEADLINE_WORKING_DAYS);
+      const pending = jc.cancellationRequests.find((r) => r.status === 'PENDING');
       awaitingApproval.push({
         ...base,
         daysElapsed,
@@ -3187,15 +3222,19 @@ export async function getWorkshopCustodySummary(): Promise<{
         daysRemaining: Math.max(0, APPROVAL_DEADLINE_WORKING_DAYS - daysElapsed),
         dueDate: dueDate.toISOString(),
         isOverdue: daysElapsed >= APPROVAL_DEADLINE_WORKING_DAYS,
+        pendingCancellationRequest: pending ? { id: pending.id, reason: pending.reason, requestedByName: pending.requestedBy.fullName } : undefined,
       });
     } else if (jc.status === JobCardStatus.CANCELLED) {
-      const anchor = jc.cancellationRequests[0]?.decidedAt;
+      const approved = jc.cancellationRequests.find((r) => r.status === 'APPROVED');
+      const anchor = approved?.decidedAt;
       const daysElapsed = anchor ? workingDaysBetween(anchor, now) : 0;
+      const dueDate = anchor ? addWorkingDays(anchor, CANCELLED_COLLECTION_GRACE_WORKING_DAYS) : undefined;
       cancelledPendingCollection.push({
         ...base,
         daysElapsed,
         totalGraceWorkingDays: CANCELLED_COLLECTION_GRACE_WORKING_DAYS,
         daysRemaining: Math.max(0, CANCELLED_COLLECTION_GRACE_WORKING_DAYS - daysElapsed),
+        dueDate: dueDate?.toISOString(),
         isOverdue: daysElapsed >= CANCELLED_COLLECTION_GRACE_WORKING_DAYS,
       });
     } else if (jc.status === JobCardStatus.READY_FOR_COLLECTION && jc.readyForCollectionAt) {
@@ -3296,6 +3335,13 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
     entityId: jobCardId,
   });
 
+  // Counted after writing the audit entry above, so this send is
+  // itself included — "our 1st reminder" on the very first one, "our
+  // 2nd" on the next, and so on, always derived from the real trail.
+  const reminderNumber = await prisma.auditLog.count({
+    where: { entityId: jobCardId, action: 'approval.reminder_sent' },
+  });
+
   await sendEmail(
     jobCard.customer.email,
     `Action required — Job Card ${jobCard.jobNumber} awaiting your approval`,
@@ -3306,6 +3352,7 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
       totalEstimate: formatNaira(total),
       minimumDepositAmount: formatNaira(minimumDeposit),
       dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+      reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
       logoUrl: `${websiteUrl}/images/logo/logo.png`,
       companyName: orgContext.companyName,
@@ -3413,6 +3460,20 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
   const user = await requireEligibleManager(jobCard.branchId);
   const daysElapsed = workingDaysBetween(anchor, new Date());
 
+  await writeAuditLog({
+    userId: user.id,
+    action: 'collection.overdue_notice_sent',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { daysElapsed, notes: notes?.trim() || undefined },
+  });
+
+  // Counted after writing the audit entry above, so this send is
+  // itself included.
+  const reminderNumber = await prisma.auditLog.count({
+    where: { entityId: jobCardId, action: 'collection.overdue_notice_sent' },
+  });
+
   const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
   const orgContext = await getWorkshopOrgContext();
   await sendEmail(
@@ -3423,20 +3484,13 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
       jobNumber: jobCard.jobNumber,
       vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
       daysSinceCancellationLabel: pluralize(daysElapsed, 'working day'),
+      reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
       logoUrl: `${websiteUrl}/images/logo/logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),
   );
-
-  await writeAuditLog({
-    userId: user.id,
-    action: 'collection.overdue_notice_sent',
-    entityType: 'JobCard',
-    entityId: jobCardId,
-    metadata: { daysElapsed, notes: notes?.trim() || undefined },
-  });
 }
 
 /** Sends a reminder to a customer whose vehicle is ready for
@@ -3474,6 +3528,12 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
     entityId: jobCardId,
   });
 
+  // Counted after writing the audit entry above, so this send is
+  // itself included.
+  const reminderNumber = await prisma.auditLog.count({
+    where: { entityId: jobCardId, action: 'collection.ready_reminder_sent' },
+  });
+
   await sendEmail(
     jobCard.customer.email,
     `Reminder — ready for collection, Job Card ${jobCard.jobNumber}`,
@@ -3482,6 +3542,7 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
       jobNumber: jobCard.jobNumber,
       vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
       dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+      reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
       logoUrl: `${websiteUrl}/images/logo/logo.png`,
       companyName: orgContext.companyName,

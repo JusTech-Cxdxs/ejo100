@@ -389,6 +389,7 @@ export async function requestJobCardCancellationFormAction(formData: FormData) {
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  revalidatePath('/workshop/custody');
 }
 
 export async function approveCancellationRequestFormAction(formData: FormData) {
@@ -400,6 +401,7 @@ export async function approveCancellationRequestFormAction(formData: FormData) {
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  revalidatePath('/workshop/custody');
 }
 
 export async function declineCancellationRequestFormAction(formData: FormData) {
@@ -411,6 +413,7 @@ export async function declineCancellationRequestFormAction(formData: FormData) {
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  revalidatePath('/workshop/custody');
 }
 
 export async function sendApprovalReminderFormAction(formData: FormData) {
