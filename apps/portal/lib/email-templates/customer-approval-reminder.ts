@@ -22,10 +22,11 @@ export type CustomerApprovalReminderEmailOptions = {
 /**
  * "Action required" — a genuine nudge partway through the approval
  * window (APPROVAL_REMINDER_WORKING_DAYS), not a last-minute warning.
- * Named the real consequence plainly: the estimate is real and
- * approved, work is ready to begin, but nothing proceeds without at
- * least the 70% deposit, and the Job Card is cancelled automatically
- * once the deadline passes with no payment recorded.
+ * Deliberately does NOT threaten automatic cancellation — there isn't
+ * one. Past the deadline, a member of staff reviews the situation and
+ * decides, the same as any other cancellation; this email states that
+ * honestly rather than warning of an automatic action that won't
+ * actually happen.
  */
 export function renderCustomerApprovalReminderEmail(opts: CustomerApprovalReminderEmailOptions): string {
   const { customerName, jobNumber, vehicleDescription, totalEstimate, minimumDepositAmount, dueDate, reminderNumber, dashboardUrl, logoUrl, companyName, branchName } = opts;
@@ -45,8 +46,8 @@ export function renderCustomerApprovalReminderEmail(opts: CustomerApprovalRemind
           <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #B45309;">Please Pay On or Before</p>
           <p style="margin: 0; font-size: 18px; color: #0F172A; font-weight: bold;">${escapeHtml(dueDate)}</p>
           <p style="margin: 8px 0 0 0; font-size: 13px; color: #78350F;">
-            If no payment is recorded on or before this date, this Job Card will be cancelled automatically and
-            your vehicle will need a new estimate before work can begin.
+            If we don't hear from you or receive payment around this date, please reach out to us — if there's
+            a genuine reason for the delay, we're happy to work with you.
           </p>
         </td>
       </tr>
