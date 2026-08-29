@@ -133,6 +133,16 @@ async function main() {
     create: { branchId: isoloBranch.id, name: 'Workshop', slug: 'workshop' },
   });
 
+  // The Store department — a sibling of Workshop under the same branch,
+  // not a sub-department of it, matching how the real org structure was
+  // described: Isolo Branch is the facility, Workshop and Store are two
+  // separate departments under it that happen to work closely together.
+  await prisma.department.upsert({
+    where: { branchId_slug: { branchId: isoloBranch.id, slug: 'store' } },
+    update: {},
+    create: { branchId: isoloBranch.id, name: 'Store', slug: 'store' },
+  });
+
   // Two operational Workshop departments — Passenger vs Commercial — each
   // with its own HOD/Supervisor and specialists. Added alongside the
   // original single "workshop" department above, not replacing it:
@@ -156,7 +166,7 @@ async function main() {
   console.log(`Seeded Workshop departments: ${passengerWorkshop.name} (${passengerWorkshop.id}), ${commercialWorkshop.name} (${commercialWorkshop.id})`);
 
   // --- Baseline roles (system roles, cannot be deleted) --------------------
-  const roleNames = ['Administrator', 'Workshop Manager', 'Workshop Supervisor', 'Technician', 'Store Officer', 'Finance Officer'];
+  const roleNames = ['Administrator', 'Workshop Manager', 'Workshop Supervisor', 'Technician', 'Store Manager', 'Store Officer', 'Finance Officer'];
   for (const name of roleNames) {
     await prisma.role.upsert({
       where: { companyId_slug: { companyId: company.id, slug: slugify(name) } },

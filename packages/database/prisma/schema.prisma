@@ -197,6 +197,8 @@ model Branch {
   departments  Department[]
   users        User[]
   jobCards     JobCard[]
+  parts          Part[]
+  goodsReceipts  GoodsReceipt[]
 
   @@map("branches")
 }
@@ -306,6 +308,8 @@ model User {
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
+  partsCreated       Part[] @relation("PartCreatedBy")
+  goodsReceiptsTaken GoodsReceipt[] @relation("GoodsReceiptReceivedBy")
 
   @@map("users")
 }
@@ -1044,4 +1048,214 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@map("audit_logs")
+}
+
+// ----------------------------------------------------------------------------
+// STORE / INVENTORY — Phase 1: the part catalog, unit-of-measure conversion,
+// stock representation, and goods receipt (stock coming in). Deliberately
+// does NOT yet include the Issue Slip workflow (requesting/releasing stock
+// to a Job Card) or External Procurement (cash-advance sourcing) — those
+// are their own later phases, built once this foundation exists.
+//
+// Three tracking types cover every real item this store handles, matching
+// standard ERP Materials Management practice (SAP's own Quantity/Batch/
+// Serialized distinction) rather than forcing one model onto everything:
+//   QUANTITY   — a single running total, e.g. brake pads, filters, WD-40.
+//   BATCH      — stock grouped by the delivery it arrived in, e.g. engine
+//                oil, coolant, brake fluid — lets a bad batch be traced to
+//                exactly which vehicles received it, without serializing
+//                every bottle.
+//   SERIALIZED — every physical unit has its own identity, e.g. tyres,
+//                rims, and (later) higher-value parts like alternators.
+//
+// Unit of measure follows the same base-unit + alternative-unit-with-
+// conversion-factor pattern used everywhere in real inventory systems:
+// stock is always held in one base unit (e.g. Liters for engine oil), but
+// goods receipt can be recorded in whatever unit it actually arrived in
+// (a Drum, a Case) and is converted automatically — the same drum-and-cans
+// scenario described when this was designed.
+// ----------------------------------------------------------------------------
+
+enum PartTrackingType {
+  QUANTITY
+  BATCH
+  SERIALIZED
+}
+
+enum PartSerialStatus {
+  IN_STOCK
+  ISSUED
+}
+
+model Part {
+  id          String @id @default(cuid())
+  branchId    String
+  name        String
+  description String?
+  // A simple string, not a separate category table — this project's own
+  // pattern of not over-building a piece until it's genuinely needed
+  // (e.g. JobCard.approvalStatus vs status being kept as two simple
+  // dimensions rather than one complex one). Free text now; if real
+  // category-based reporting becomes a genuine need later, this can grow
+  // into its own model without breaking anything already stored.
+  category    String?
+  // Internal reference code — distinct from `barcode` below, which is
+  // reserved for the future barcode-scanning phase and unused for now.
+  partNumber  String?
+  barcode     String?
+  trackingType PartTrackingType @default(QUANTITY)
+  // The unit stock is always held in internally, regardless of what unit
+  // a delivery physically arrives in — e.g. "Liter" for engine oil,
+  // "Each" for brake pads. Never converted; alternativeUnits below convert
+  // TO this one, not the other way around.
+  baseUnitOfMeasure String
+  // Reserved for future replenishment automation — not yet acted on by
+  // any code, but present now so adding it later doesn't need a schema
+  // change once that automation is actually built.
+  reorderPoint Decimal? @db.Decimal(12, 3)
+  safetyStock  Decimal? @db.Decimal(12, 3)
+  isActive     Boolean  @default(true)
+  createdById  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("PartCreatedBy", fields: [createdById], references: [id])
+
+  alternativeUnits  PartUnitOfMeasure[]
+  stock             PartStock?
+  batches           PartBatch[]
+  serials           PartSerial[]
+  goodsReceiptLines GoodsReceiptLine[]
+
+  @@unique([branchId, partNumber])
+  @@map("parts")
+}
+
+// An alternative unit a delivery might arrive in, and the factor to
+// convert it to the part's own base unit — e.g. unitName "Drum",
+// conversionFactor 200, for a part whose base unit is "Liter" (1 Drum =
+// 200 Liters). Goods receipt looks these up so a storekeeper can enter a
+// delivery exactly as it physically arrived, not force-converted by hand.
+model PartUnitOfMeasure {
+  id               String  @id @default(cuid())
+  partId           String
+  unitName         String
+  conversionFactor Decimal @db.Decimal(12, 4)
+
+  part Part @relation(fields: [partId], references: [id], onDelete: Cascade)
+
+  @@unique([partId, unitName])
+  @@map("part_units_of_measure")
+}
+
+// The single, always-current aggregate for a part — works directly as the
+// real stock figure for QUANTITY-tracked parts, and doubles as a fast,
+// always-in-sync running total for BATCH/SERIALIZED parts (whose real
+// detail lives in PartBatch/PartSerial respectively) so a dashboard or
+// reorder check never has to sum every batch or serial row just to answer
+// "how much do we have."
+model PartStock {
+  id               String   @id @default(cuid())
+  partId           String   @unique
+  quantityOnHand   Decimal  @default(0) @db.Decimal(14, 4)
+  // Reserved for the future Issue Slip phase — the moment a request is
+  // approved, the requested quantity moves here so a second request
+  // can't be promised the same stock before the first is released.
+  // Present now, unused until that phase, matching reorderPoint/
+  // safetyStock above.
+  quantityReserved Decimal  @default(0) @db.Decimal(14, 4)
+  updatedAt        DateTime @updatedAt
+
+  part Part @relation(fields: [partId], references: [id], onDelete: Cascade)
+
+  @@map("part_stock")
+}
+
+// One row per delivery batch for a BATCH-tracked part — e.g. "received one
+// 200L drum of engine oil on 2026-08-29, 152L remaining after issues."
+// remainingQuantity is decremented at goods issue (the future Issue Slip
+// phase); receivedQuantity never changes once recorded, so the two
+// together always show both the original delivery size and what's left.
+model PartBatch {
+  id                 String    @id @default(cuid())
+  partId             String
+  batchNumber        String
+  receivedQuantity   Decimal   @db.Decimal(14, 4)
+  remainingQuantity  Decimal   @db.Decimal(14, 4)
+  receivedAt         DateTime  @default(now())
+  expiryDate         DateTime?
+  goodsReceiptLineId String?
+
+  part             Part              @relation(fields: [partId], references: [id], onDelete: Cascade)
+  goodsReceiptLine GoodsReceiptLine? @relation(fields: [goodsReceiptLineId], references: [id])
+
+  @@unique([partId, batchNumber])
+  @@map("part_batches")
+}
+
+// One row per physical unit for a SERIALIZED part — e.g. one tyre, one
+// rim. status flips to ISSUED at goods issue (the future Issue Slip
+// phase); a serial is never deleted once received, preserving a complete
+// history of every individual unit that ever passed through the store.
+model PartSerial {
+  id                 String           @id @default(cuid())
+  partId             String
+  serialNumber       String
+  status             PartSerialStatus @default(IN_STOCK)
+  receivedAt         DateTime         @default(now())
+  goodsReceiptLineId String?
+
+  part             Part              @relation(fields: [partId], references: [id], onDelete: Cascade)
+  goodsReceiptLine GoodsReceiptLine? @relation(fields: [goodsReceiptLineId], references: [id])
+
+  @@unique([partId, serialNumber])
+  @@map("part_serials")
+}
+
+// The header for a delivery of stock arriving into the store — mirrors
+// JobCard's own human-readable reference-number pattern (GRN-2026-000001,
+// same generation logic as JC-2026-000001) so it reads the same way
+// across the whole platform.
+model GoodsReceipt {
+  id              String   @id @default(cuid())
+  branchId        String
+  referenceNumber String   @unique
+  supplierName    String
+  receivedById    String
+  receivedAt      DateTime @default(now())
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  branch     Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  receivedBy User               @relation("GoodsReceiptReceivedBy", fields: [receivedById], references: [id])
+  lines      GoodsReceiptLine[]
+
+  @@map("goods_receipts")
+}
+
+// One line per part received on a single delivery. quantityReceivedInUnit
+// and unitUsed record exactly what the storekeeper actually entered (e.g.
+// "1 Drum"); quantityInBaseUnit is the converted amount that's genuinely
+// added to stock (e.g. "200 Liters") — both kept, so the original delivery
+// record and the real stock effect are each independently visible, never
+// only the converted figure with the original entry lost.
+model GoodsReceiptLine {
+  id                     String   @id @default(cuid())
+  goodsReceiptId         String
+  partId                 String
+  quantityReceivedInUnit Decimal  @db.Decimal(14, 4)
+  unitUsed               String
+  quantityInBaseUnit     Decimal  @db.Decimal(14, 4)
+  unitCost               Decimal? @db.Decimal(12, 2)
+  // Only meaningful for a BATCH-tracked part — the batch this line
+  // creates or adds to.
+  batchNumber            String?
+
+  goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  part         Part         @relation(fields: [partId], references: [id])
+  batches      PartBatch[]
+  serials      PartSerial[]
+
+  @@map("goods_receipt_lines")
 }
