@@ -224,13 +224,13 @@ export default async function WorkshopCustodyPage({
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-warning)]">{summary.awaitingApproval.length}</p>
         </LoadingLink>
         <LoadingLink
-          href={`/workshop/custody?filter=cancelled${q ? `&q=${encodeURIComponent(q)}` : ''}`}
+          href={`/workshop/custody?filter=in_service${q ? `&q=${encodeURIComponent(q)}` : ''}`}
           className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
-            filter === 'cancelled' ? 'border-[var(--ejo-error)]' : 'border-[var(--ejo-error)]/30'
-          } bg-[var(--ejo-error)]/5`}
+            filter === 'in_service' ? 'border-[var(--ejo-info)]' : 'border-[var(--ejo-info)]/30'
+          } bg-[var(--ejo-info)]/5`}
         >
-          <p className="text-xs text-[var(--ejo-text-muted)]">Cancelled — Pending Collection</p>
-          <p className="mt-1 text-2xl font-bold text-[var(--ejo-error)]">{summary.cancelledPendingCollection.length}</p>
+          <p className="text-xs text-[var(--ejo-text-muted)]">In Service</p>
+          <p className="mt-1 text-2xl font-bold text-[var(--ejo-info)]">{summary.inService.length}</p>
         </LoadingLink>
         <LoadingLink
           href={`/workshop/custody?filter=ready_for_collection${q ? `&q=${encodeURIComponent(q)}` : ''}`}
@@ -242,6 +242,15 @@ export default async function WorkshopCustodyPage({
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-success)]">{summary.readyForCollection.length}</p>
         </LoadingLink>
         <LoadingLink
+          href={`/workshop/custody?filter=cancelled${q ? `&q=${encodeURIComponent(q)}` : ''}`}
+          className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
+            filter === 'cancelled' ? 'border-[var(--ejo-error)]' : 'border-[var(--ejo-error)]/30'
+          } bg-[var(--ejo-error)]/5`}
+        >
+          <p className="text-xs text-[var(--ejo-text-muted)]">Cancelled — Pending Collection</p>
+          <p className="mt-1 text-2xl font-bold text-[var(--ejo-error)]">{summary.cancelledPendingCollection.length}</p>
+        </LoadingLink>
+        <LoadingLink
           href={`/workshop/custody?filter=overdue${q ? `&q=${encodeURIComponent(q)}` : ''}`}
           className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
             filter === 'overdue' ? 'border-[var(--ejo-error)]' : 'border-[var(--ejo-error)]/30'
@@ -249,15 +258,6 @@ export default async function WorkshopCustodyPage({
         >
           <p className="text-xs text-[var(--ejo-text-muted)]">Overdue</p>
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-error)]">{totalOverdue}</p>
-        </LoadingLink>
-        <LoadingLink
-          href={`/workshop/custody?filter=in_service${q ? `&q=${encodeURIComponent(q)}` : ''}`}
-          className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
-            filter === 'in_service' ? 'border-[var(--ejo-info)]' : 'border-[var(--ejo-info)]/30'
-          } bg-[var(--ejo-info)]/5`}
-        >
-          <p className="text-xs text-[var(--ejo-text-muted)]">In Service</p>
-          <p className="mt-1 text-2xl font-bold text-[var(--ejo-info)]">{summary.inService.length}</p>
         </LoadingLink>
       </div>
       {filter ? (
