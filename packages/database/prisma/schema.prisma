@@ -643,6 +643,13 @@ model JobCard {
   // timing is a logistics/customer factor, not a reflection of how
   // long the technical work itself took.
   completedAt DateTime?
+  // Set the first time status genuinely reaches CHECKED_OUT — the
+  // true physical-exit moment. This, not closedAt (an administrative
+  // sign-off that can happen while the vehicle is still sitting in
+  // the yard), is the real end of "time in custody": the vehicle can
+  // be CLOSED and still physically present for a while before this is
+  // set.
+  checkedOutAt DateTime?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
