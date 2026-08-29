@@ -10,6 +10,7 @@ import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { pluralize } from '@/lib/utils/pluralize';
+import { workingDaysBetween } from '@/lib/utils/working-days';
 
 const ALL_STATUSES = [
   'CHECKED_IN',
@@ -274,6 +275,29 @@ export default async function JobCardDetailPage({
           </span>
         ) : null}
       </div>
+
+      <p className="mb-6 text-xs text-[var(--ejo-text-muted)]">
+        {(() => {
+          // "Days in workshop" — calendar days, since the vehicle is
+          // physically present every day including weekends. "Repair
+          // duration" — working days specifically, since it reflects
+          // actual technician effort for future KPI/performance
+          // tracking, not calendar time technicians weren't working.
+          const inWorkshopEnd = jobCard.closedAt ?? new Date();
+          const daysInWorkshop = Math.max(0, Math.round((inWorkshopEnd.getTime() - jobCard.createdAt.getTime()) / (1000 * 60 * 60 * 24)));
+          const parts = [`${pluralize(daysInWorkshop, 'day')} in workshop since check-in`];
+          if (jobCard.workStartedAt) {
+            const repairEnd = jobCard.completedAt ?? new Date();
+            const repairDuration = workingDaysBetween(jobCard.workStartedAt, repairEnd);
+            parts.push(
+              jobCard.completedAt
+                ? `Repair duration: ${pluralize(repairDuration, 'working day')}`
+                : `Repair in progress: ${pluralize(repairDuration, 'working day')} so far`,
+            );
+          }
+          return parts.join(' · ');
+        })()}
+      </p>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
