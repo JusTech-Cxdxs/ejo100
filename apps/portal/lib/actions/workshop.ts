@@ -1065,6 +1065,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus) {
       branchId: true,
       workStartedAt: true,
       completedAt: true,
+      checkedOutAt: true,
       department: { select: { name: true } },
       customer: { select: { fullName: true, email: true } },
       vehicle: { select: { make: true, model: true } },
@@ -1099,6 +1100,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus) {
       // stay a true "when did this actually start/finish" record.
       workStartedAt: status === JobCardStatus.IN_PROGRESS && !jobCard.workStartedAt ? new Date() : undefined,
       completedAt: status === JobCardStatus.COMPLETED && !jobCard.completedAt ? new Date() : undefined,
+      checkedOutAt: status === JobCardStatus.CHECKED_OUT && !jobCard.checkedOutAt ? new Date() : undefined,
     },
   });
 
