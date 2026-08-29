@@ -70,7 +70,7 @@ class WorkshopActionError extends Error {}
  * of the actions below need anything but the id, claiming the full `User`
  * type here would be an unproven, unnecessary assumption — not something
  * this change should guess at. */
-async function requireUser(): Promise<{ id: string }> {
+export async function requireUser(): Promise<{ id: string }> {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
     throw new WorkshopActionError('Not authenticated.');
@@ -123,7 +123,7 @@ async function requireMasterAdmin(): Promise<{ id: string }> {
  * `action` follows a `entity.verb` convention (e.g. "job_card.created",
  * "job_card.approved", "job_card.rejected") so a later reporting view
  * can group/filter by entity or by verb consistently. */
-async function writeAuditLog(params: {
+export async function writeAuditLog(params: {
   userId: string;
   action: string;
   entityType: string;
