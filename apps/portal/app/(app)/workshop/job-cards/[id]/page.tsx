@@ -276,28 +276,38 @@ export default async function JobCardDetailPage({
         ) : null}
       </div>
 
-      <p className="mb-6 text-xs text-[var(--ejo-text-muted)]">
+      <div className="mb-6 flex flex-wrap items-center gap-2">
         {(() => {
-          // "Days in workshop" — calendar days, since the vehicle is
-          // physically present every day including weekends. "Repair
-          // duration" — working days specifically, since it reflects
-          // actual technician effort for future KPI/performance
-          // tracking, not calendar time technicians weren't working.
+          // "Days in workshop" — working days specifically, matching
+          // how this workshop actually operates: no work happens on
+          // Saturday or Sunday, so counting those days doesn't
+          // reflect anything real about how long the vehicle has
+          // genuinely been in the shop's own working timeline.
           const inWorkshopEnd = jobCard.closedAt ?? new Date();
-          const daysInWorkshop = Math.max(0, Math.round((inWorkshopEnd.getTime() - jobCard.createdAt.getTime()) / (1000 * 60 * 60 * 24)));
-          const parts = [`${pluralize(daysInWorkshop, 'day')} in workshop since check-in`];
+          const daysInWorkshop = workingDaysBetween(jobCard.createdAt, inWorkshopEnd);
+          const badges = [
+            <span key="in-workshop" className="rounded-full bg-[var(--ejo-info)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-info)]">
+              {pluralize(daysInWorkshop, 'working day')} in workshop since check-in
+            </span>,
+          ];
           if (jobCard.workStartedAt) {
             const repairEnd = jobCard.completedAt ?? new Date();
             const repairDuration = workingDaysBetween(jobCard.workStartedAt, repairEnd);
-            parts.push(
-              jobCard.completedAt
-                ? `Repair duration: ${pluralize(repairDuration, 'working day')}`
-                : `Repair in progress: ${pluralize(repairDuration, 'working day')} so far`,
+            badges.push(
+              jobCard.completedAt ? (
+                <span key="repair-duration" className="rounded-full bg-[var(--ejo-text-muted)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-text-muted)]">
+                  Repair duration: {pluralize(repairDuration, 'working day')}
+                </span>
+              ) : (
+                <span key="repair-in-progress" className="rounded-full bg-[var(--ejo-warning)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-warning)]">
+                  In progress: {pluralize(repairDuration, 'working day')} so far
+                </span>
+              ),
             );
           }
-          return parts.join(' · ');
+          return badges;
         })()}
-      </p>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
