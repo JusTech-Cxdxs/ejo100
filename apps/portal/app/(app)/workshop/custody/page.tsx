@@ -126,8 +126,8 @@ export default async function WorkshopCustodyPage({
 }) {
   const { error, status, reminders, overdue, filter, q } = await searchParams;
   const showAwaiting = !filter || filter === 'awaiting';
-  const showCancelled = !filter || filter === 'cancelled';
-  const showReadyForCollection = !filter || filter === 'ready_for_collection';
+  const showCancelled = !filter || filter === 'cancelled' || filter === 'overdue';
+  const showReadyForCollection = !filter || filter === 'ready_for_collection' || filter === 'overdue';
   const showInService = !filter || filter === 'in_service';
   const branchId = await getWorkshopBranchId();
   const [summary, isMasterAdmin, eligibleManagers, viewerId] = await Promise.all([
@@ -137,6 +137,18 @@ export default async function WorkshopCustodyPage({
     currentUserId(),
   ]);
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
+  // The combined overdue count spans two categories deliberately —
+  // Cancelled-pending-collection and Ready-for-Collection each have a
+  // real grace period that can be exceeded, and a business genuinely
+  // needs one place that says "here's everything overdue right now,"
+  // not two separate numbers to add up by hand. Awaiting Approval
+  // doesn't belong here: since auto-cancellation was removed, a Job
+  // Card past that particular deadline isn't "overdue" in the same
+  // sense — it's a normal, ongoing situation waiting on a human
+  // decision, already flagged clearly within its own section.
+  const overdueCancelled = summary.cancelledPendingCollection.filter((e) => e.isOverdue);
+  const overdueReadyForCollection = summary.readyForCollection.filter((e) => e.isOverdue);
+  const totalOverdue = overdueCancelled.length + overdueReadyForCollection.length;
 
   return (
     <div className="p-8">
@@ -192,7 +204,7 @@ export default async function WorkshopCustodyPage({
         </div>
       ) : null}
 
-      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-5">
+      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
         <LoadingLink
           href={q ? `/workshop/custody?q=${encodeURIComponent(q)}` : '/workshop/custody'}
           className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
@@ -228,6 +240,15 @@ export default async function WorkshopCustodyPage({
         >
           <p className="text-xs text-[var(--ejo-text-muted)]">Ready for Collection</p>
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-success)]">{summary.readyForCollection.length}</p>
+        </LoadingLink>
+        <LoadingLink
+          href={`/workshop/custody?filter=overdue${q ? `&q=${encodeURIComponent(q)}` : ''}`}
+          className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${
+            filter === 'overdue' ? 'border-[var(--ejo-error)]' : 'border-[var(--ejo-error)]/30'
+          } bg-[var(--ejo-error)]/5`}
+        >
+          <p className="text-xs text-[var(--ejo-text-muted)]">Overdue</p>
+          <p className="mt-1 text-2xl font-bold text-[var(--ejo-error)]">{totalOverdue}</p>
         </LoadingLink>
         <LoadingLink
           href={`/workshop/custody?filter=in_service${q ? `&q=${encodeURIComponent(q)}` : ''}`}
@@ -354,12 +375,16 @@ export default async function WorkshopCustodyPage({
 
       {showCancelled ? (
       <section className="mb-10">
-        <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Cancelled — Pending Collection</h2>
-        {summary.cancelledPendingCollection.length === 0 ? (
-          <p className="text-sm text-[var(--ejo-text-muted)]">No cancelled vehicles awaiting collection.</p>
+        <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">
+          Cancelled — Pending Collection{filter === 'overdue' ? ' (Overdue only)' : ''}
+        </h2>
+        {(filter === 'overdue' ? overdueCancelled : summary.cancelledPendingCollection).length === 0 ? (
+          <p className="text-sm text-[var(--ejo-text-muted)]">
+            {filter === 'overdue' ? 'No overdue cancelled vehicles right now.' : 'No cancelled vehicles awaiting collection.'}
+          </p>
         ) : (
           <div className="space-y-3">
-            {summary.cancelledPendingCollection.map((entry) => (
+            {(filter === 'overdue' ? overdueCancelled : summary.cancelledPendingCollection).map((entry) => (
               <div
                 key={entry.id}
                 className={`rounded-[var(--ejo-radius-lg)] border p-4 ${
@@ -420,12 +445,16 @@ export default async function WorkshopCustodyPage({
 
       {showReadyForCollection ? (
       <section className="mb-10">
-        <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Ready for Collection</h2>
-        {summary.readyForCollection.length === 0 ? (
-          <p className="text-sm text-[var(--ejo-text-muted)]">Nothing currently ready for collection.</p>
+        <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">
+          Ready for Collection{filter === 'overdue' ? ' (Overdue only)' : ''}
+        </h2>
+        {(filter === 'overdue' ? overdueReadyForCollection : summary.readyForCollection).length === 0 ? (
+          <p className="text-sm text-[var(--ejo-text-muted)]">
+            {filter === 'overdue' ? 'No overdue Ready-for-Collection vehicles right now.' : 'Nothing currently ready for collection.'}
+          </p>
         ) : (
           <div className="space-y-3">
-            {summary.readyForCollection.map((entry) => (
+            {(filter === 'overdue' ? overdueReadyForCollection : summary.readyForCollection).map((entry) => (
               <div
                 key={entry.id}
                 className={`rounded-[var(--ejo-radius-lg)] border p-4 ${
