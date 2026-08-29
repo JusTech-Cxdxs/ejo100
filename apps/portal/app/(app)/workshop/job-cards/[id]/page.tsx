@@ -1115,7 +1115,7 @@ export default async function JobCardDetailPage({
                   name="reason"
                   required
                   rows={2}
-                  placeholder="Reason — e.g. customer found another workshop, could not afford repair, no longer needed"
+                  placeholder="Reason — e.g. customer called to cancel, could not afford repair"
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
                 />
                 <SubmitButton
