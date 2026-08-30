@@ -128,7 +128,7 @@ export async function createPart(input: CreatePartInput): Promise<{ id: string }
     throw new StoreActionError('Base unit of measure is required.');
   }
 
-  const part = await prisma.$transaction(async (tx: typeof prisma) => {
+  const part = await prisma.$transaction(async (tx) => {
     const created = await tx.part.create({
       data: {
         branchId: input.branchId,
@@ -248,14 +248,13 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
     where: { id: { in: partIds } },
     include: { alternativeUnits: true },
   });
-  type PartWithUnits = {
-    id: string;
-    name: string;
-    baseUnitOfMeasure: string;
-    trackingType: string;
-    alternativeUnits: { unitName: string; conversionFactor: number }[];
-  };
-  const partById = new Map<string, PartWithUnits>(parts.map((p: PartWithUnits) => [p.id, p]));
+  // Derived from `parts`'s own real, Prisma-inferred type — not a
+  // hand-written approximation. That distinction matters concretely:
+  // an earlier version of this exact line declared conversionFactor as
+  // `number`, which is how it's actually *used* (via Number(...)), but
+  // its real type here is Prisma's own Decimal — a mismatch the real
+  // compiler correctly rejected even though it looked reasonable.
+  const partById = new Map<string, (typeof parts)[number]>(parts.map((p) => [p.id, p]));
 
   // Validated up front, before any writes — every line must resolve to a
   // real conversion and satisfy its tracking type's own requirement,
@@ -298,7 +297,7 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
 
   const referenceNumber = await generateGoodsReceiptNumber();
 
-  const receipt = await prisma.$transaction(async (tx: typeof prisma) => {
+  const receipt = await prisma.$transaction(async (tx) => {
     const created = await tx.goodsReceipt.create({
       data: {
         branchId: input.branchId,
