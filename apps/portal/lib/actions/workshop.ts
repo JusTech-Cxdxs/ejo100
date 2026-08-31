@@ -2170,7 +2170,7 @@ export async function listEligibleManagersForBranch(branchId: string): Promise<E
  * a Job Card the way there is a supervisor or technician, since a
  * Manager's oversight spans the whole branch; whichever eligible
  * manager acts first completes the review. */
-async function requireEligibleManager(branchId: string): Promise<{ id: string }> {
+export async function requireEligibleManager(branchId: string): Promise<{ id: string }> {
   const user = await requireUser();
   if (await currentUserIsMasterAdmin()) return user;
   const match = await prisma.user.findFirst({
@@ -2178,7 +2178,7 @@ async function requireEligibleManager(branchId: string): Promise<{ id: string }>
     select: { id: true },
   });
   if (!match) {
-    throw new WorkshopActionError('Only a Workshop Manager for this branch, or a Master Administrator, can approve this estimate.');
+    throw new WorkshopActionError('Only a Workshop Manager for this branch, or a Master Administrator, can approve this.');
   }
   return user;
 }

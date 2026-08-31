@@ -98,7 +98,7 @@ export async function listEligibleStoreOfficersForBranch(branchId: string): Prom
  * arrives into the Store's own stock — a real, financial-impact action
  * (it adds real stock value), gated the same way Closed requires a
  * Workshop Manager elsewhere in this project. */
-async function requireStoreStaff(branchId: string): Promise<{ id: string }> {
+export async function requireStoreStaff(branchId: string): Promise<{ id: string }> {
   const user = await requireUser();
   if (await currentUserIsMasterAdmin()) return user;
   const [managers, officers] = await Promise.all([
