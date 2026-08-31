@@ -145,6 +145,65 @@ async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
   }
 }
 
+export async function getPartRequestSlip(id: string) {
+  await requireUser();
+  return prisma.partRequestSlip.findUnique({
+    where: { id },
+    include: {
+      jobCard: { select: { id: true, jobNumber: true } },
+      requestedBy: { select: { fullName: true } },
+      hodApprovedBy: { select: { fullName: true } },
+      storeApprovedBy: { select: { fullName: true } },
+      releasedBy: { select: { fullName: true } },
+      receivedByUser: { select: { fullName: true } },
+      rejectedBy: { select: { fullName: true } },
+      lines: {
+        include: {
+          part: { select: { id: true, name: true, baseUnitOfMeasure: true, trackingType: true } },
+          estimateLineItem: { select: { description: true } },
+        },
+      },
+    },
+  });
+}
+
+export async function listPartRequestSlips(branchId: string) {
+  await requireUser();
+  return prisma.partRequestSlip.findMany({
+    where: { branchId },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      jobCard: { select: { jobNumber: true } },
+      requestedBy: { select: { fullName: true } },
+      lines: { select: { id: true } },
+    },
+  });
+}
+
+export async function getExternalProcurementRequest(id: string) {
+  await requireUser();
+  return prisma.externalProcurementRequest.findUnique({
+    where: { id },
+    include: {
+      jobCard: { select: { id: true, jobNumber: true } },
+      requestedBy: { select: { fullName: true } },
+      managerApprovedBy: { select: { fullName: true } },
+      disbursedBy: { select: { fullName: true } },
+      rejectedBy: { select: { fullName: true } },
+      estimateLineItem: { select: { description: true } },
+    },
+  });
+}
+
+export async function listExternalProcurementRequests(branchId: string) {
+  await requireUser();
+  return prisma.externalProcurementRequest.findMany({
+    where: { branchId },
+    orderBy: { createdAt: 'desc' },
+    include: { jobCard: { select: { jobNumber: true } }, requestedBy: { select: { fullName: true } } },
+  });
+}
+
 export type RequestPartRequestSlipLineInput = {
   partId: string;
   estimateLineItemId?: string;
