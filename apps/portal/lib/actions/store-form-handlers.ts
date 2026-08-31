@@ -52,10 +52,13 @@ export async function recordGoodsReceiptFormAction(formData: FormData) {
   const branchId = str(formData, 'branchId');
   const partId = str(formData, 'partId');
   try {
-    const serialNumbersRaw = str(formData, 'serialNumbers');
-    const serialNumbers = serialNumbersRaw
-      ? serialNumbersRaw.split(/[\n,]/).map((s) => s.trim()).filter(Boolean)
-      : undefined;
+    // Multiple real <input name="serialNumbers"> rows, the same
+    // getAll() pattern used for complaints on Job Card creation —
+    // never a single field a comma/newline had to be parsed back out
+    // of, which risked splitting a serial that genuinely contained one.
+    const serialNumbers = formData.getAll('serialNumbers')
+      .map((s) => (typeof s === 'string' ? s.trim() : ''))
+      .filter(Boolean);
     await recordGoodsReceipt({
       branchId,
       supplierName: str(formData, 'supplierName'),
@@ -67,7 +70,7 @@ export async function recordGoodsReceiptFormAction(formData: FormData) {
           unitUsed: str(formData, 'unitUsed'),
           unitCost: num(formData, 'unitCost'),
           batchNumber: str(formData, 'batchNumber') || undefined,
-          serialNumbers,
+          serialNumbers: serialNumbers.length > 0 ? serialNumbers : undefined,
         },
       ],
     });

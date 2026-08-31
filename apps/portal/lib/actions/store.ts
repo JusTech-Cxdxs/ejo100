@@ -15,9 +15,37 @@
  */
 
 import { prisma, PartTrackingType } from '@ejo/database';
+import { pluralize } from '@/lib/utils/pluralize';
 import { requireUser, writeAuditLog, currentUserIsMasterAdmin } from './workshop';
+import { sendEmail } from '@/lib/email';
+import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
 
 class StoreActionError extends Error {}
+
+/** Mirrors getWorkshopOrgContext() in workshop.ts exactly, scoped to
+ * the 'store' department slug instead — kept as its own small
+ * function rather than importing a workshop-specific one, since Store
+ * is genuinely its own department with its own name/context to show
+ * in its own emails. */
+async function getStoreOrgContext(): Promise<{ companyName: string; branchName: string; departmentName: string }> {
+  const department = await prisma.department.findFirstOrThrow({
+    where: { slug: 'store' },
+    select: {
+      name: true,
+      branch: {
+        select: {
+          name: true,
+          businessUnit: { select: { company: { select: { name: true } } } },
+        },
+      },
+    },
+  });
+  return {
+    companyName: department.branch.businessUnit.company.name,
+    branchName: department.branch.name,
+    departmentName: department.name,
+  };
+}
 
 /** Resolves the Store department's branch — mirrors getWorkshopBranchId()
  * exactly, same reasoning: a single lookup point so nothing hardcodes a
@@ -185,7 +213,7 @@ export async function listParts(branchId: string, search?: string) {
         : {}),
     },
     orderBy: { name: 'asc' },
-    include: { stock: true },
+    include: { stock: true, alternativeUnits: true },
   });
 }
 
@@ -290,6 +318,14 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
       if (uniqueSerials.size !== serials.length) {
         throw new StoreActionError(`Duplicate serial numbers entered for ${part.name}.`);
       }
+      // The real guarantee, not just the client-side hint — a
+      // serialized part's real quantity IS its serial count, so these
+      // two numbers disagreeing is never a valid receipt to record.
+      if (serials.length !== line.quantityReceivedInUnit) {
+        throw new StoreActionError(
+          `${part.name}: ${pluralize(serials.length, 'serial number')} entered, but quantity received was ${line.quantityReceivedInUnit}. These must match exactly.`,
+        );
+      }
     }
 
     return { ...line, part, quantityInBaseUnit };
@@ -357,6 +393,51 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
     entityId: receipt.id,
     metadata: { referenceNumber, supplierName, lineCount: resolvedLines.length },
   });
+
+  // Confirms what was recorded to the person who recorded it (a real
+  // written record, same reasoning every other "recorded" email in
+  // this project already follows) and their Store Manager, so stock
+  // arriving is never something a Manager only discovers by checking
+  // the catalog themselves. One email per line — matches the current
+  // single-line-per-receipt form exactly; if a future multi-line form
+  // ever submits several lines in one call, this sends one email per
+  // line rather than a combined summary, a known, honest limitation
+  // of the current single-part-focused template.
+  try {
+    const [recordedByUser, orgContext, storeManagers] = await Promise.all([
+      prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true, email: true } }),
+      getStoreOrgContext(),
+      listEligibleStoreManagersForBranch(input.branchId),
+    ]);
+    if (recordedByUser) {
+      const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const recipients = [...new Set([recordedByUser.email, ...storeManagers.staff.map((m) => m.email)])];
+      for (const line of resolvedLines) {
+        const html = renderStaffGoodsReceiptRecordedEmail({
+          recordedByName: recordedByUser.fullName,
+          referenceNumber,
+          supplierName,
+          partName: line.part.name,
+          quantityLabel: `${line.quantityReceivedInUnit} ${line.unitUsed}`,
+          quantityInBaseUnitLabel: `${line.quantityInBaseUnit} ${line.part.baseUnitOfMeasure}`,
+          batchNumber: line.part.trackingType === 'BATCH' ? line.batchNumber?.trim() : undefined,
+          serialNumbers: line.part.trackingType === 'SERIALIZED' ? (line.serialNumbers ?? []).map((s) => s.trim()).filter(Boolean) : undefined,
+          notes: input.notes?.trim() || undefined,
+          dashboardUrl: `${portalUrl}/inventory/parts/${line.partId}`,
+          logoUrl: `${websiteUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        });
+        for (const to of recipients) {
+          await sendEmail(to, `Goods receipt recorded — ${referenceNumber}`, html);
+        }
+      }
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send goods-receipt notification email', receipt.id, err);
+  }
 
   return { id: receipt.id, referenceNumber };
 }
