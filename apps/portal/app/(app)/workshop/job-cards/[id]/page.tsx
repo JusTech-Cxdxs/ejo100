@@ -1,6 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
+import { getJobCardSourcingNeeds } from '@/lib/actions/sourcing';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
@@ -83,6 +84,21 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'approval.reminder_sent': 'Approval reminder sent',
   'collection.overdue_notice_sent': 'Collection overdue notice sent',
   'collection.ready_reminder_sent': 'Ready-for-collection reminder sent',
+};
+
+const PART_REQUEST_STATUS_LABEL: Record<string, string> = {
+  PENDING_HOD_APPROVAL: 'Awaiting HOD approval',
+  PENDING_STORE_APPROVAL: 'Awaiting Store approval',
+  APPROVED: 'Approved — awaiting release',
+  RELEASED: 'Released',
+  REJECTED: 'Rejected',
+};
+
+const EXTERNAL_PROCUREMENT_STATUS_LABEL: Record<string, string> = {
+  PENDING_MANAGER_APPROVAL: 'Awaiting Manager approval',
+  APPROVED: 'Approved — awaiting disbursement',
+  DISBURSED: 'Disbursed',
+  REJECTED: 'Rejected',
 };
 
 /** Turns the stored audit metadata into a real, field-level detail
@@ -197,7 +213,7 @@ export default async function JobCardDetailPage({
     currentUserId(),
   ]);
   if (!jobCard) notFound();
-  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers, eligibleFinance, payments, cancellationRequests] = await Promise.all([
+  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers, eligibleFinance, payments, cancellationRequests, sourcingNeeds] = await Promise.all([
     getJobCardAuditTrail(id),
     listEligibleSupervisorsForJobCard(id),
     getJobCardEstimate(id),
@@ -205,6 +221,7 @@ export default async function JobCardDetailPage({
     listEligibleFinanceOfficersForBranch(jobCard.branchId),
     getJobCardPayments(id),
     getCancellationRequests(id),
+    getJobCardSourcingNeeds(id),
   ]);
   const isApprover = isMasterAdmin || jobCard.supervisor?.id === viewerId;
   const isAssignedTechnician = isMasterAdmin || jobCard.assignedTechnician?.id === viewerId;
@@ -865,6 +882,76 @@ export default async function JobCardDetailPage({
                     />
                   </form>
                 </>
+              ) : null}
+            </div>
+          ) : null}
+
+          {sourcingNeeds.isEligibleToSource && (sourcingNeeds.needsStoreParts || sourcingNeeds.needsExternalProcurement) ? (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Sourcing</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                Auto-detected from this Job Card&apos;s own estimate — Store parts and external procurement are tracked
+                as separate requests, each fully independent.
+              </p>
+
+              {sourcingNeeds.needsStoreParts ? (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-medium text-[var(--ejo-text-muted)]">Store Parts</h3>
+                    <LoadingLink
+                      href={`/workshop/job-cards/${id}/request-parts`}
+                      className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+                    >
+                      + Request Store Parts
+                    </LoadingLink>
+                  </div>
+                  {sourcingNeeds.existingPartRequestSlips.length === 0 ? (
+                    <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">No requests raised yet.</p>
+                  ) : (
+                    <div className="mt-2 space-y-1.5">
+                      {sourcingNeeds.existingPartRequestSlips.map((slip: (typeof sourcingNeeds.existingPartRequestSlips)[number]) => (
+                        <LoadingLink
+                          key={slip.id}
+                          href={`/workshop/parts-requests/${slip.id}`}
+                          className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs hover:opacity-80"
+                        >
+                          <span className="font-medium text-[var(--ejo-text)]">{slip.referenceNumber}</span>
+                          <span className="text-[var(--ejo-text-muted)]">{PART_REQUEST_STATUS_LABEL[slip.status] ?? slip.status}</span>
+                        </LoadingLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              {sourcingNeeds.needsExternalProcurement ? (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-medium text-[var(--ejo-text-muted)]">External Procurement</h3>
+                    <LoadingLink
+                      href={`/workshop/job-cards/${id}/request-procurement`}
+                      className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+                    >
+                      + Request Procurement
+                    </LoadingLink>
+                  </div>
+                  {sourcingNeeds.existingExternalProcurementRequests.length === 0 ? (
+                    <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">No requests raised yet.</p>
+                  ) : (
+                    <div className="mt-2 space-y-1.5">
+                      {sourcingNeeds.existingExternalProcurementRequests.map((req: (typeof sourcingNeeds.existingExternalProcurementRequests)[number]) => (
+                        <LoadingLink
+                          key={req.id}
+                          href={`/workshop/external-procurement/${req.id}`}
+                          className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs hover:opacity-80"
+                        >
+                          <span className="font-medium text-[var(--ejo-text)]">{req.referenceNumber}</span>
+                          <span className="text-[var(--ejo-text-muted)]">{EXTERNAL_PROCUREMENT_STATUS_LABEL[req.status] ?? req.status}</span>
+                        </LoadingLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ) : null}
             </div>
           ) : null}
