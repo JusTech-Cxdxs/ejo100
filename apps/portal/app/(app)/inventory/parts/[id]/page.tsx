@@ -1,6 +1,10 @@
 import { notFound } from 'next/navigation';
 import { getPart } from '@/lib/actions/store';
+import { createPartFitmentFormAction, deletePartFitmentFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
+import { SubmitButton } from '@/components/SubmitButton';
+import { FormPendingOverlay } from '@/components/FormPendingOverlay';
+import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 
 const TRACKING_TYPE_LABEL: Record<string, string> = {
   QUANTITY: 'Quantity',
@@ -18,8 +22,15 @@ function formatQty(value: unknown): string {
  * or the individual in-stock serials for a SERIALIZED one. A QUANTITY
  * part has neither — its PartStock total already is the whole story.
  */
-export default async function PartDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PartDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string; status?: string }>;
+}) {
   const { id } = await params;
+  const { error, status } = await searchParams;
   const part = await getPart(id);
   if (!part) notFound();
 
@@ -36,8 +47,35 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
         <span className="rounded-full bg-[var(--ejo-info)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-info)]">
           {TRACKING_TYPE_LABEL[part.trackingType] ?? part.trackingType}
         </span>
+        <LoadingLink
+          href={`/inventory/parts/${id}/edit`}
+          className="ml-auto text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+        >
+          Edit
+        </LoadingLink>
       </div>
       {part.category ? <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">{part.category}</p> : null}
+
+      {error ? (
+        <div className="mb-6 max-w-2xl">
+          <FormFeedbackBanner kind="error" message={error} />
+        </div>
+      ) : null}
+      {status === 'updated' ? (
+        <div className="mb-6 max-w-2xl">
+          <FormFeedbackBanner kind="success" message="Part updated." />
+        </div>
+      ) : null}
+      {status === 'fitment_added' ? (
+        <div className="mb-6 max-w-2xl">
+          <FormFeedbackBanner kind="success" message="Fitment added." />
+        </div>
+      ) : null}
+      {status === 'fitment_removed' ? (
+        <div className="mb-6 max-w-2xl">
+          <FormFeedbackBanner kind="success" message="Fitment removed." />
+        </div>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
@@ -105,6 +143,73 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
               </ul>
             </div>
           ) : null}
+
+          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Fitment</h2>
+            <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+              {part.fitments.length === 0
+                ? "No fitment recorded — this part is treated as fitting every vehicle, which is correct for universal parts like fluids. Add a fitment only if this part genuinely varies by vehicle."
+                : 'Only fits the vehicle configurations listed below.'}
+            </p>
+            {part.fitments.length > 0 ? (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
+                      <th className="px-2 py-1.5">Make</th>
+                      <th className="px-2 py-1.5">Model</th>
+                      <th className="px-2 py-1.5">Engine</th>
+                      <th className="px-2 py-1.5">Years</th>
+                      <th className="px-2 py-1.5" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {part.fitments.map((fitment: (typeof part.fitments)[number]) => (
+                      <tr key={fitment.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                        <td className="px-2 py-1.5 font-medium text-[var(--ejo-text)]">{fitment.make}</td>
+                        <td className="px-2 py-1.5 text-[var(--ejo-text)]">{fitment.model}</td>
+                        <td className="px-2 py-1.5 text-[var(--ejo-text-muted)]">{fitment.engineType ?? 'Any'}</td>
+                        <td className="px-2 py-1.5 text-[var(--ejo-text-muted)]">
+                          {fitment.yearFrom || fitment.yearTo ? `${fitment.yearFrom ?? '…'}–${fitment.yearTo ?? '…'}` : 'Any'}
+                        </td>
+                        <td className="px-2 py-1.5 text-right">
+                          <form action={deletePartFitmentFormAction} className="inline">
+                            <input type="hidden" name="partId" value={part.id} />
+                            <input type="hidden" name="fitmentId" value={fitment.id} />
+                            <button type="submit" className="text-xs text-[var(--ejo-error)] hover:underline">
+                              Remove
+                            </button>
+                          </form>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
+            <details className="mt-4 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-3">
+              <summary className="cursor-pointer text-xs font-medium text-[var(--ejo-text)]">+ Add a vehicle fitment</summary>
+              <form action={createPartFitmentFormAction} className="mt-3 space-y-2">
+                <FormPendingOverlay />
+                <input type="hidden" name="partId" value={part.id} />
+                <div className="grid grid-cols-2 gap-2">
+                  <input name="make" required placeholder="Make, e.g. Isuzu" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                  <input name="model" required placeholder="Model, e.g. NPR" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                </div>
+                <input name="engineType" placeholder="Engine (optional — leave blank to fit every engine of this make/model)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                <div className="grid grid-cols-2 gap-2">
+                  <input name="yearFrom" type="number" placeholder="Year from (optional)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                  <input name="yearTo" type="number" placeholder="Year to (optional)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                </div>
+                <SubmitButton
+                  label="Add Fitment"
+                  pendingLabel="Adding…"
+                  className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                />
+              </form>
+            </details>
+          </div>
         </div>
 
         <div className="h-fit space-y-4">
