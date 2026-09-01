@@ -69,7 +69,7 @@ export default async function WorkshopVehiclesPage({
       </form>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-hidden">
+        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-x-auto">
           {vehicles.length === 0 ? (
             <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
               {q || vehicleType
