@@ -24,6 +24,7 @@ import { JobCardStatus } from '@ejo/database';
 import {
   findOrCreateCustomer,
   createVehicle,
+  updateVehicle,
   createJobCard,
   updateJobCardStatus,
   assignTechnician,
@@ -112,6 +113,30 @@ export async function createVehicleFormAction(formData: FormData) {
   }
   revalidatePath('/workshop/vehicles');
   redirect('/workshop/vehicles?status=vehicle_created');
+}
+
+export async function updateVehicleFormAction(formData: FormData) {
+  const id = str(formData, 'id');
+  try {
+    const vehicleTypeRaw = str(formData, 'vehicleType');
+    await updateVehicle({
+      id,
+      make: str(formData, 'make') || undefined,
+      model: str(formData, 'model') || undefined,
+      vehicleType: vehicleTypeRaw === 'PASSENGER' || vehicleTypeRaw === 'COMMERCIAL' ? vehicleTypeRaw : undefined,
+      year: num(formData, 'year'),
+      plateNumber: str(formData, 'plateNumber') || undefined,
+      chassisNumber: str(formData, 'chassisNumber') || undefined,
+      engineNumber: str(formData, 'engineNumber') || undefined,
+      engineType: str(formData, 'engineType') || undefined,
+      mileage: num(formData, 'mileage'),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not update this vehicle.';
+    redirect(`/workshop/vehicles/${id}/edit?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/vehicles');
+  redirect('/workshop/vehicles?status=vehicle_updated');
 }
 
 export async function createJobCardFormAction(formData: FormData) {

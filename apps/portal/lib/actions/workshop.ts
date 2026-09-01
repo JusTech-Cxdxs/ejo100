@@ -631,6 +631,17 @@ export async function listAllVehicles(search?: string, vehicleType?: 'PASSENGER'
   });
 }
 
+export async function getVehicle(id: string) {
+  await requireUser();
+  return prisma.customerVehicle.findUnique({
+    where: { id },
+    include: {
+      customer: { select: { fullName: true } },
+      createdBy: { select: { fullName: true } },
+    },
+  });
+}
+
 export type CreateVehicleInput = {
   customerId: string;
   make?: string;
@@ -715,6 +726,100 @@ export async function createVehicle(input: CreateVehicleInput) {
       createdById: currentUser.id,
     },
   });
+}
+
+export type UpdateVehicleInput = {
+  id: string;
+  make?: string;
+  model?: string;
+  vehicleType?: 'PASSENGER' | 'COMMERCIAL';
+  year?: number;
+  plateNumber?: string;
+  chassisNumber?: string;
+  engineNumber?: string;
+  engineType?: string;
+  mileage?: number;
+};
+
+/** Mirrors createVehicle()'s own validation exactly — same required
+ * fields, same normalization, same 17-character VIN check — with the
+ * one necessary difference: duplicate plate/chassis checks exclude
+ * this vehicle's own current row, so saving a vehicle's existing
+ * plate/chassis back unchanged never wrongly flags itself as a
+ * duplicate. */
+export async function updateVehicle(input: UpdateVehicleInput): Promise<void> {
+  const currentUser = await requireUser();
+  const existing = await prisma.customerVehicle.findUnique({ where: { id: input.id } });
+  if (!existing) {
+    throw new WorkshopActionError('Vehicle not found.');
+  }
+
+  const make = input.make?.trim();
+  const model = input.model?.trim();
+  const plateNumberRaw = input.plateNumber?.trim();
+  const chassisNumberRaw = input.chassisNumber?.trim();
+  if (!make || !model || !input.year || !plateNumberRaw || !chassisNumberRaw || !input.vehicleType) {
+    throw new WorkshopActionError('Vehicle type, make, model, year, plate number, and chassis/VIN are all required.');
+  }
+
+  const plateNumber = normalizePlate(plateNumberRaw);
+  const chassisNumber = normalizeChassis(chassisNumberRaw);
+
+  if (chassisNumber.length !== 17) {
+    throw new WorkshopActionError('Chassis / VIN must be exactly 17 characters.');
+  }
+
+  const existingByPlate = await prisma.customerVehicle.findUnique({ where: { plateNumber } });
+  if (existingByPlate && existingByPlate.id !== input.id) {
+    throw new WorkshopActionError(`A vehicle with plate number "${plateNumber}" is already registered.`);
+  }
+  const existingByChassis = await prisma.customerVehicle.findUnique({ where: { chassisNumber } });
+  if (existingByChassis && existingByChassis.id !== input.id) {
+    throw new WorkshopActionError(`A vehicle with chassis/VIN "${chassisNumber}" is already registered.`);
+  }
+
+  await prisma.customerVehicle.update({
+    where: { id: input.id },
+    data: {
+      make,
+      model,
+      vehicleType: input.vehicleType,
+      year: input.year,
+      plateNumber,
+      chassisNumber,
+      engineNumber: input.engineNumber?.trim() || null,
+      engineType: input.engineType?.trim() || null,
+      mileage: input.mileage ?? null,
+    },
+  });
+
+  await writeAuditLog({
+    userId: currentUser.id,
+    action: 'vehicle.updated',
+    entityType: 'CustomerVehicle',
+    entityId: input.id,
+    metadata: { plateNumber, make, model },
+  });
+}
+
+/** The real "who last edited this, and when" — derived from AuditLog,
+ * the single source of truth already used everywhere else in this
+ * project for counts and history, never a separate updatedBy/updatedAt
+ * pair on the entity itself that could silently drift out of sync with
+ * what the audit trail actually says happened. Returns null when no
+ * matching entry exists yet — an entity that's never been edited since
+ * creation genuinely has no "last edited" story to tell. */
+export async function getLastEditInfo(entityType: string, entityId: string, action: string): Promise<{ userName: string; at: Date } | null> {
+  await requireUser();
+  const entry = await prisma.auditLog.findFirst({
+    where: { entityType, entityId, action },
+    orderBy: { createdAt: 'desc' },
+    select: { userId: true, createdAt: true },
+  });
+  if (!entry) return null;
+  if (!entry.userId) return { userName: 'Unknown', at: entry.createdAt };
+  const user = await prisma.user.findUnique({ where: { id: entry.userId }, select: { fullName: true } });
+  return { userName: user?.fullName ?? 'Unknown', at: entry.createdAt };
 }
 
 /** Permanently removes a vehicle and, via schema-level cascades, every
