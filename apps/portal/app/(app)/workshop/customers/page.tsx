@@ -58,7 +58,7 @@ export default async function WorkshopCustomersPage({
       </form>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-hidden">
+        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-x-auto">
           {customers.length === 0 ? (
             <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
               No customers yet. Add the first one using the form on the right.
