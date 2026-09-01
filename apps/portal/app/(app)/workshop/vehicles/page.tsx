@@ -41,6 +41,9 @@ export default async function WorkshopVehiclesPage({
       {status === 'vehicle_created' ? (
         <FormFeedbackBanner kind="success" message="Vehicle registered successfully." />
       ) : null}
+      {status === 'vehicle_updated' ? (
+        <FormFeedbackBanner kind="success" message="Vehicle updated." />
+      ) : null}
       {status === 'vehicle_deleted' ? (
         <FormFeedbackBanner kind="success" message="Vehicle deleted." />
       ) : null}
@@ -84,6 +87,7 @@ export default async function WorkshopVehiclesPage({
                   <th className="px-4 py-3 font-medium">Owner</th>
                   <th className="px-4 py-3 font-medium">Mileage</th>
                   <th className="px-4 py-3 font-medium">Registered</th>
+                  <th className="px-4 py-3 font-medium">&nbsp;</th>
                   {isMasterAdmin ? <th className="px-4 py-3 font-medium">&nbsp;</th> : null}
                 </tr>
               </thead>
@@ -109,6 +113,11 @@ export default async function WorkshopVehiclesPage({
                     <td className="px-4 py-3 text-xs text-[var(--ejo-text-muted)]">
                       {formatDateTimeCompact(v.createdAt)}
                       {v.createdBy ? <><br />by {v.createdBy.fullName}</> : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      <LoadingLink href={`/workshop/vehicles/${v.id}/edit`} className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">
+                        Edit
+                      </LoadingLink>
                     </td>
                     {isMasterAdmin ? (
                       <td className="px-4 py-3">
