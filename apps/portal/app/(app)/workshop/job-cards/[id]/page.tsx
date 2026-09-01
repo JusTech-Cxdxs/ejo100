@@ -84,6 +84,15 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'approval.reminder_sent': 'Approval reminder sent',
   'collection.overdue_notice_sent': 'Collection overdue notice sent',
   'collection.ready_reminder_sent': 'Ready-for-collection reminder sent',
+  'part_request_slip.requested': 'Parts request raised',
+  'part_request_slip.hod_approved': 'Parts request approved by HOD',
+  'part_request_slip.store_approved': 'Parts request approved by Store',
+  'part_request_slip.released': 'Parts request released',
+  'part_request_slip.rejected': 'Parts request rejected',
+  'external_procurement.requested': 'External procurement requested',
+  'external_procurement.approved': 'External procurement approved',
+  'external_procurement.disbursed': 'External procurement disbursed',
+  'external_procurement.rejected': 'External procurement rejected',
 };
 
 const PART_REQUEST_STATUS_LABEL: Record<string, string> = {
@@ -99,6 +108,21 @@ const EXTERNAL_PROCUREMENT_STATUS_LABEL: Record<string, string> = {
   APPROVED: 'Approved — awaiting disbursement',
   DISBURSED: 'Disbursed',
   REJECTED: 'Rejected',
+};
+
+const PART_REQUEST_STATUS_BADGE_CLASS: Record<string, string> = {
+  PENDING_HOD_APPROVAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  PENDING_STORE_APPROVAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  APPROVED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  RELEASED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  REJECTED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
+};
+
+const EXTERNAL_PROCUREMENT_STATUS_BADGE_CLASS: Record<string, string> = {
+  PENDING_MANAGER_APPROVAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  APPROVED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  DISBURSED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  REJECTED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
 /** Turns the stored audit metadata into a real, field-level detail
@@ -151,6 +175,42 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
       const parts: string[] = [];
       if (typeof meta.daysElapsed === 'number') parts.push(`${pluralize(meta.daysElapsed, 'working day')} since cancellation`);
       if (typeof meta.notes === 'string' && meta.notes) parts.push(`Note: ${meta.notes}`);
+      return parts.join(' — ') || null;
+    }
+    case 'part_request_slip.requested': {
+      const parts: string[] = [];
+      if (typeof meta.referenceNumber === 'string') parts.push(meta.referenceNumber);
+      if (typeof meta.lineCount === 'number') parts.push(pluralize(meta.lineCount, 'line'));
+      return parts.join(' — ') || null;
+    }
+    case 'part_request_slip.hod_approved':
+    case 'part_request_slip.store_approved':
+    case 'part_request_slip.released':
+      return typeof meta.referenceNumber === 'string' ? meta.referenceNumber : null;
+    case 'part_request_slip.rejected': {
+      const parts: string[] = [];
+      if (typeof meta.referenceNumber === 'string') parts.push(meta.referenceNumber);
+      if (typeof meta.stage === 'string') parts.push(`at ${meta.stage}`);
+      if (typeof meta.reason === 'string') parts.push(`Reason: ${meta.reason}`);
+      return parts.join(' — ') || null;
+    }
+    case 'external_procurement.requested':
+    case 'external_procurement.approved': {
+      const parts: string[] = [];
+      if (typeof meta.referenceNumber === 'string') parts.push(meta.referenceNumber);
+      if (typeof meta.estimatedAmount === 'number') parts.push(`Estimated: ${formatNaira(meta.estimatedAmount)}`);
+      return parts.join(' — ') || null;
+    }
+    case 'external_procurement.disbursed': {
+      const parts: string[] = [];
+      if (typeof meta.referenceNumber === 'string') parts.push(meta.referenceNumber);
+      if (typeof meta.disbursedAmount === 'number') parts.push(`Disbursed: ${formatNaira(meta.disbursedAmount)}`);
+      return parts.join(' — ') || null;
+    }
+    case 'external_procurement.rejected': {
+      const parts: string[] = [];
+      if (typeof meta.referenceNumber === 'string') parts.push(meta.referenceNumber);
+      if (typeof meta.reason === 'string') parts.push(`Reason: ${meta.reason}`);
       return parts.join(' — ') || null;
     }
     default:
@@ -894,65 +954,97 @@ export default async function JobCardDetailPage({
                 as separate requests, each fully independent.
               </p>
 
-              {sourcingNeeds.needsStoreParts ? (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-medium text-[var(--ejo-text-muted)]">Store Parts</h3>
-                    <LoadingLink
-                      href={`/workshop/job-cards/${id}/request-parts`}
-                      className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
-                    >
-                      + Request Store Parts
-                    </LoadingLink>
-                  </div>
-                  {sourcingNeeds.existingPartRequestSlips.length === 0 ? (
-                    <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">No requests raised yet.</p>
-                  ) : (
-                    <div className="mt-2 space-y-1.5">
-                      {sourcingNeeds.existingPartRequestSlips.map((slip: (typeof sourcingNeeds.existingPartRequestSlips)[number]) => (
+              {sourcingNeeds.needsStoreParts ? (() => {
+                const hasActivePartRequest = sourcingNeeds.existingPartRequestSlips.some(
+                  (slip: (typeof sourcingNeeds.existingPartRequestSlips)[number]) => slip.status !== 'RELEASED' && slip.status !== 'REJECTED',
+                );
+                return (
+                  <div className="mt-4 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-info)]/5 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-info)]">
+                          <path d="M3 6.5L10 3l7 3.5-7 3.5-7-3.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                          <path d="M3 6.5V14l7 3.5 7-3.5V6.5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                          <path d="M10 10v7.5" stroke="currentColor" strokeWidth="1.5" />
+                        </svg>
+                        <h3 className="text-xs font-semibold text-[var(--ejo-text)]">Store Parts</h3>
+                      </div>
+                      {!hasActivePartRequest ? (
                         <LoadingLink
-                          key={slip.id}
-                          href={`/workshop/parts-requests/${slip.id}`}
-                          className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs hover:opacity-80"
+                          href={`/workshop/job-cards/${id}/request-parts`}
+                          className="inline-flex items-center gap-1 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-2.5 py-1 text-xs font-medium text-white hover:opacity-90"
                         >
-                          <span className="font-medium text-[var(--ejo-text)]">{slip.referenceNumber}</span>
-                          <span className="text-[var(--ejo-text-muted)]">{PART_REQUEST_STATUS_LABEL[slip.status] ?? slip.status}</span>
+                          + Request Store Parts
                         </LoadingLink>
-                      ))}
+                      ) : null}
                     </div>
-                  )}
-                </div>
-              ) : null}
+                    {sourcingNeeds.existingPartRequestSlips.length === 0 ? (
+                      <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No requests raised yet.</p>
+                    ) : (
+                      <div className="mt-3 space-y-1.5">
+                        {sourcingNeeds.existingPartRequestSlips.map((slip: (typeof sourcingNeeds.existingPartRequestSlips)[number]) => (
+                          <LoadingLink
+                            key={slip.id}
+                            href={`/workshop/parts-requests/${slip.id}`}
+                            className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs hover:opacity-80"
+                          >
+                            <span className="font-medium text-[var(--ejo-text)]">{slip.referenceNumber}</span>
+                            <span className={`rounded-full px-2 py-0.5 font-medium ${PART_REQUEST_STATUS_BADGE_CLASS[slip.status] ?? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'}`}>
+                              {PART_REQUEST_STATUS_LABEL[slip.status] ?? slip.status}
+                            </span>
+                          </LoadingLink>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })() : null}
 
-              {sourcingNeeds.needsExternalProcurement ? (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-medium text-[var(--ejo-text-muted)]">External Procurement</h3>
-                    <LoadingLink
-                      href={`/workshop/job-cards/${id}/request-procurement`}
-                      className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
-                    >
-                      + Request Procurement
-                    </LoadingLink>
-                  </div>
-                  {sourcingNeeds.existingExternalProcurementRequests.length === 0 ? (
-                    <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">No requests raised yet.</p>
-                  ) : (
-                    <div className="mt-2 space-y-1.5">
-                      {sourcingNeeds.existingExternalProcurementRequests.map((req: (typeof sourcingNeeds.existingExternalProcurementRequests)[number]) => (
+              {sourcingNeeds.needsExternalProcurement ? (() => {
+                const hasActiveProcurementRequest = sourcingNeeds.existingExternalProcurementRequests.some(
+                  (req: (typeof sourcingNeeds.existingExternalProcurementRequests)[number]) => req.status !== 'DISBURSED' && req.status !== 'REJECTED',
+                );
+                return (
+                  <div className="mt-4 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)]/5 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-warning)]">
+                          <rect x="2.5" y="5" width="15" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                          <circle cx="10" cy="10" r="2" stroke="currentColor" strokeWidth="1.5" />
+                          <path d="M2.5 8h1.5M16 8h1.5M2.5 12h1.5M16 12h1.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        </svg>
+                        <h3 className="text-xs font-semibold text-[var(--ejo-text)]">External Procurement</h3>
+                      </div>
+                      {!hasActiveProcurementRequest ? (
                         <LoadingLink
-                          key={req.id}
-                          href={`/workshop/external-procurement/${req.id}`}
-                          className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs hover:opacity-80"
+                          href={`/workshop/job-cards/${id}/request-procurement`}
+                          className="inline-flex items-center gap-1 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-2.5 py-1 text-xs font-medium text-white hover:opacity-90"
                         >
-                          <span className="font-medium text-[var(--ejo-text)]">{req.referenceNumber}</span>
-                          <span className="text-[var(--ejo-text-muted)]">{EXTERNAL_PROCUREMENT_STATUS_LABEL[req.status] ?? req.status}</span>
+                          + Request Procurement
                         </LoadingLink>
-                      ))}
+                      ) : null}
                     </div>
-                  )}
-                </div>
-              ) : null}
+                    {sourcingNeeds.existingExternalProcurementRequests.length === 0 ? (
+                      <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No requests raised yet.</p>
+                    ) : (
+                      <div className="mt-3 space-y-1.5">
+                        {sourcingNeeds.existingExternalProcurementRequests.map((req: (typeof sourcingNeeds.existingExternalProcurementRequests)[number]) => (
+                          <LoadingLink
+                            key={req.id}
+                            href={`/workshop/external-procurement/${req.id}`}
+                            className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs hover:opacity-80"
+                          >
+                            <span className="font-medium text-[var(--ejo-text)]">{req.referenceNumber}</span>
+                            <span className={`rounded-full px-2 py-0.5 font-medium ${EXTERNAL_PROCUREMENT_STATUS_BADGE_CLASS[req.status] ?? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'}`}>
+                              {EXTERNAL_PROCUREMENT_STATUS_LABEL[req.status] ?? req.status}
+                            </span>
+                          </LoadingLink>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })() : null}
             </div>
           ) : null}
 
