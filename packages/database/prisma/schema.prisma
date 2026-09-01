@@ -514,6 +514,17 @@ model CustomerVehicle {
   plateNumber  String?  @unique // no two vehicles may share a plate — this is what caused the visible duplicate-vehicle bug: nothing stopped a second/third accidental submit from creating another row for the same real vehicle
   chassisNumber String? @unique // VIN — globally unique per vehicle by definition
   engineNumber String?
+  // The engine's own real-world spec/type (e.g. "ISF2.8", "4HK1") — the
+  // actual compatibility key for parts fitment, deliberately distinct
+  // from engineNumber above (the physical engine's own serial number,
+  // a different concept entirely — the same distinction as a VIN vs.
+  // a model name). Confirmed via real research: two vehicles sharing
+  // a model name can have different engines (Tunland Petrol vs.
+  // Diesel variants), while two different models can share the exact
+  // same engine and be fully interchangeable for parts (Isuzu NPR and
+  // NQR both on the 4HK1) — engine, not model name, is what actually
+  // determines whether a part fits.
+  engineType   String?
   mileage       Int?     // last known odometer reading, updated at each Job Card check-in
 
   createdById String? // staff member who registered this vehicle
@@ -1145,6 +1156,7 @@ model Part {
   serials           PartSerial[]
   goodsReceiptLines GoodsReceiptLine[]
   requestSlipLines  PartRequestSlipLine[]
+  fitments          PartFitment[]
 
   @@unique([branchId, partNumber])
   @@map("parts")
@@ -1433,4 +1445,42 @@ model ExternalProcurementRequest {
   retiredBy        User?             @relation("ExternalProcurementRetiredBy", fields: [retiredById], references: [id])
 
   @@map("external_procurement_requests")
+}
+
+// ----------------------------------------------------------------------------
+// PART FITMENT — which real vehicles a Part actually fits, confirmed via real
+// research on Isuzu NPR/NQR/QMR/QLR and Foton Tunland/TM3: the genuine
+// compatibility key is the ENGINE, not the marketing model name — two
+// different models can share an engine and be fully interchangeable (NPR and
+// NQR both use the 4HK1), while the same-looking model name across a fuel
+// variant can have a genuinely different engine. A rigid single Make/Model
+// field on Part can't express "fits two models but not a third," which is
+// exactly the real situation this was designed around — hence a real,
+// separate many-to-many table instead.
+//
+// A Part with ZERO fitment rows means "fits everything" — no extra rows
+// needed for the parts that are already universal (Engine Oil, Coolant,
+// Brake Fluid, Penetrating Oil never needed a fitment restriction in the
+// first place).
+// ----------------------------------------------------------------------------
+
+model PartFitment {
+  id     String @id @default(cuid())
+  partId String
+  make   String
+  model  String
+  // Null means "fits every engine of this make/model" — only set when a
+  // part genuinely varies by engine within the same model (the real case
+  // this was built for), never set as a formality when it doesn't matter.
+  engineType String?
+  // Optional year range — specs can change across model years even under
+  // the same name. Null on either end means unbounded in that direction.
+  yearFrom Int?
+  yearTo   Int?
+
+  createdAt DateTime @default(now())
+
+  part Part @relation(fields: [partId], references: [id], onDelete: Cascade)
+
+  @@map("part_fitments")
 }
