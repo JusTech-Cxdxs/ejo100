@@ -195,6 +195,189 @@ export async function createPart(input: CreatePartInput): Promise<{ id: string }
   return { id: part.id };
 }
 
+export type UpdatePartInput = {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  partNumber?: string;
+  reorderPoint?: number;
+  safetyStock?: number;
+};
+
+/** Edits an existing part's own descriptive fields — deliberately never
+ * trackingType or baseUnitOfMeasure, since changing either on a part
+ * that already has real stock recorded in its original base unit would
+ * be genuinely dangerous, not just inconvenient: existing PartStock/
+ * PartBatch/GoodsReceiptLine rows would silently disagree with a
+ * changed unit. Those two are fixed for the life of the part; everything
+ * else here is safe to correct at any time. */
+export async function updatePart(input: UpdatePartInput): Promise<void> {
+  const part = await prisma.part.findUnique({ where: { id: input.id }, select: { branchId: true } });
+  if (!part) {
+    throw new StoreActionError('Part not found.');
+  }
+  const user = await requireStoreStaff(part.branchId);
+  const name = input.name.trim();
+  if (!name) {
+    throw new StoreActionError('Part name is required.');
+  }
+  await prisma.part.update({
+    where: { id: input.id },
+    data: {
+      name,
+      description: input.description?.trim() || null,
+      category: input.category?.trim() || null,
+      partNumber: input.partNumber?.trim() || null,
+      reorderPoint: input.reorderPoint,
+      safetyStock: input.safetyStock,
+    },
+  });
+  await writeAuditLog({ userId: user.id, action: 'part.updated', entityType: 'Part', entityId: input.id, metadata: { name } });
+}
+
+/** Replaces a part's full set of alternative units in one call — the
+ * real correction this was built for: fixing a wrong conversion factor
+ * (e.g. a drum genuinely being 205L, not 208L, confirmed against a real
+ * carton photo) or adding a newly-discovered one (e.g. Brake Fluid
+ * arriving by the Carton as well as loose Bottles) both just mean
+ * submitting the corrected full list — never a partial patch that could
+ * leave a stale, wrong unit sitting alongside the fix. */
+export async function setPartAlternativeUnits(
+  partId: string,
+  units: { unitName: string; conversionFactor: number }[],
+): Promise<void> {
+  const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, baseUnitOfMeasure: true } });
+  if (!part) {
+    throw new StoreActionError('Part not found.');
+  }
+  const user = await requireStoreStaff(part.branchId);
+  const cleaned = units
+    .map((u) => ({ unitName: u.unitName.trim(), conversionFactor: u.conversionFactor }))
+    .filter((u) => u.unitName && u.conversionFactor > 0);
+  for (const u of cleaned) {
+    if (u.unitName === part.baseUnitOfMeasure) {
+      throw new StoreActionError(`"${u.unitName}" is already this part's base unit — an alternative unit must be genuinely different.`);
+    }
+  }
+  const names = cleaned.map((u) => u.unitName);
+  if (new Set(names).size !== names.length) {
+    throw new StoreActionError('Each alternative unit name must be unique for this part.');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.partUnitOfMeasure.deleteMany({ where: { partId } });
+    for (const u of cleaned) {
+      await tx.partUnitOfMeasure.create({ data: { partId, unitName: u.unitName, conversionFactor: u.conversionFactor } });
+    }
+  });
+  await writeAuditLog({ userId: user.id, action: 'part.alternative_units_updated', entityType: 'Part', entityId: partId, metadata: { units: cleaned } });
+}
+
+export type CreatePartFitmentInput = {
+  partId: string;
+  make: string;
+  model: string;
+  engineType?: string;
+  yearFrom?: number;
+  yearTo?: number;
+};
+
+/** Records one real vehicle configuration a part fits. A part with no
+ * fitment rows at all is treated as fitting everything (see
+ * getFittingPartsForVehicle below) — so this is only ever needed for
+ * parts that genuinely vary by vehicle, never as a formality for the
+ * universal ones (engine oil, coolant, brake fluid, penetrating oil). */
+export async function createPartFitment(input: CreatePartFitmentInput): Promise<{ id: string }> {
+  const part = await prisma.part.findUnique({ where: { id: input.partId }, select: { branchId: true } });
+  if (!part) {
+    throw new StoreActionError('Part not found.');
+  }
+  const user = await requireStoreStaff(part.branchId);
+  const make = input.make.trim();
+  const model = input.model.trim();
+  if (!make || !model) {
+    throw new StoreActionError('Make and Model are required.');
+  }
+  const fitment = await prisma.partFitment.create({
+    data: {
+      partId: input.partId,
+      make,
+      model,
+      engineType: input.engineType?.trim() || undefined,
+      yearFrom: input.yearFrom,
+      yearTo: input.yearTo,
+    },
+  });
+  await writeAuditLog({ userId: user.id, action: 'part.fitment_added', entityType: 'Part', entityId: input.partId, metadata: { make, model, engineType: input.engineType } });
+  return { id: fitment.id };
+}
+
+export async function deletePartFitment(fitmentId: string): Promise<void> {
+  const fitment = await prisma.partFitment.findUnique({ where: { id: fitmentId }, select: { partId: true, make: true, model: true, part: { select: { branchId: true } } } });
+  if (!fitment) {
+    throw new StoreActionError('Fitment record not found.');
+  }
+  const user = await requireStoreStaff(fitment.part.branchId);
+  await prisma.partFitment.delete({ where: { id: fitmentId } });
+  await writeAuditLog({ userId: user.id, action: 'part.fitment_removed', entityType: 'Part', entityId: fitment.partId, metadata: { make: fitment.make, model: fitment.model } });
+}
+
+export async function listPartFitments(partId: string) {
+  await requireUser();
+  return prisma.partFitment.findMany({ where: { partId }, orderBy: { createdAt: 'asc' } });
+}
+
+/** The real matching logic: a part with zero fitment rows fits every
+ * vehicle (the correct default for the universal parts — nothing extra
+ * to configure for them). A part WITH fitment rows fits a given vehicle
+ * only if at least one row matches its make+model, and (when that row
+ * specifies an engine) the vehicle's own engine too, and (when that row
+ * specifies a year range) the vehicle's own year falls inside it. A row
+ * that leaves engine/year unset is intentionally permissive on that
+ * dimension — "fits every engine of this make/model" or "fits every
+ * year of this make/model," not a row that silently never matches. */
+export async function getFittingPartsForVehicle(
+  branchId: string,
+  vehicle: { make?: string | null; model?: string | null; engineType?: string | null; year?: number | null },
+  search?: string,
+) {
+  await requireUser();
+  const q = search?.trim();
+  const parts = await prisma.part.findMany({
+    where: {
+      branchId,
+      isActive: true,
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { partNumber: { contains: q, mode: 'insensitive' } },
+              { category: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { name: 'asc' },
+    include: { stock: true, fitments: true },
+  });
+
+  const make = vehicle.make?.trim();
+  const model = vehicle.model?.trim();
+
+  return parts.filter((part: (typeof parts)[number]) => {
+    if (part.fitments.length === 0) return true;
+    if (!make || !model) return false;
+    return part.fitments.some((f: (typeof part.fitments)[number]) => {
+      if (f.make !== make || f.model !== model) return false;
+      if (f.engineType && f.engineType !== vehicle.engineType) return false;
+      if (f.yearFrom && (!vehicle.year || vehicle.year < f.yearFrom)) return false;
+      if (f.yearTo && (!vehicle.year || vehicle.year > f.yearTo)) return false;
+      return true;
+    });
+  });
+}
+
 export async function listParts(branchId: string, search?: string) {
   await requireUser();
   const q = search?.trim();
