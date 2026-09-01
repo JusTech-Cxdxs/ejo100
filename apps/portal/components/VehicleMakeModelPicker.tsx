@@ -4,20 +4,27 @@ import { useState } from 'react';
 import {
   getMakesForCategory,
   getModelsForMake,
+  getEngineTypesForModel,
   type VehicleCategory,
 } from '@/lib/data/vehicle-catalog';
 
 /**
- * Vehicle Type → Make → Model, with Kewalram's real brand/model
- * suggestions cascading at each step — built on native HTML <datalist>
- * rather than a custom dropdown: it's the standard, zero-dependency way
- * to get exactly "suggestions, but freely editable text" in one input,
- * which is precisely what was asked for (suggestions to make entry
- * fast, but anything outside the list can always be typed manually).
+ * Vehicle Type → Make → Model → Engine, with Kewalram's real
+ * brand/model/engine suggestions cascading at each step — built on
+ * native HTML <datalist> rather than a custom dropdown: it's the
+ * standard, zero-dependency way to get exactly "suggestions, but freely
+ * editable text" in one input, which is precisely what was asked for
+ * (suggestions to make entry fast, but anything outside the list can
+ * always be typed manually).
  *
- * Make and Model stay plain, real, named <input> fields — the catalog
- * only decides which <datalist> options are offered, never what's
- * actually allowed to be submitted.
+ * Engine is the real addition here — confirmed via real research as the
+ * genuine parts-fitment compatibility key, not the model name itself
+ * (two different models can share an engine and be fully
+ * interchangeable, while the same model name can hide a different
+ * engine across a fuel/trim variant). Make, Model, and Engine all stay
+ * plain, real, named <input> fields — the catalog only decides which
+ * <datalist> options are offered, never what's actually allowed to be
+ * submitted.
  */
 export function VehicleMakeModelPicker({
   defaultCategory,
@@ -26,9 +33,11 @@ export function VehicleMakeModelPicker({
 }) {
   const [category, setCategory] = useState<VehicleCategory>(defaultCategory ?? 'PASSENGER');
   const [make, setMake] = useState('');
+  const [model, setModel] = useState('');
 
   const makeOptions = getMakesForCategory(category);
   const modelOptions = getModelsForMake(category, make);
+  const engineOptions = getEngineTypesForModel(category, make, model);
 
   return (
     <>
@@ -43,6 +52,7 @@ export function VehicleMakeModelPicker({
           onChange={(e) => {
             setCategory(e.target.value as VehicleCategory);
             setMake(''); // switching type invalidates any make suggestion picked for the old type
+            setModel('');
           }}
           className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
         >
@@ -61,7 +71,10 @@ export function VehicleMakeModelPicker({
             required
             list="vehicle-make-suggestions"
             value={make}
-            onChange={(e) => setMake(e.target.value)}
+            onChange={(e) => {
+              setMake(e.target.value);
+              setModel(''); // switching make invalidates any model/engine suggestion picked for the old make
+            }}
             placeholder="Start typing or pick a suggestion…"
             className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
@@ -79,6 +92,8 @@ export function VehicleMakeModelPicker({
             name="model"
             required
             list="vehicle-model-suggestions"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
             placeholder={modelOptions.length > 0 ? 'Start typing or pick a suggestion…' : 'e.g. Corolla'}
             className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
@@ -89,8 +104,27 @@ export function VehicleMakeModelPicker({
           </datalist>
         </div>
       </div>
+
+      <div>
+        <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Engine</label>
+        <input
+          name="engineType"
+          list="vehicle-engine-suggestions"
+          placeholder={engineOptions.length > 0 ? 'Start typing or pick a suggestion…' : 'e.g. 4HK1, 2.0L Turbo Diesel'}
+          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+        />
+        <datalist id="vehicle-engine-suggestions">
+          {engineOptions.map((e) => (
+            <option key={e} value={e} />
+          ))}
+        </datalist>
+        <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
+          The real engine spec, not the engine&apos;s own serial number — this is what parts fitment actually matches against.
+        </p>
+      </div>
+
       <p className="text-[11px] text-[var(--ejo-text-muted)]">
-        Suggestions are based on brands Kewalram commonly services — any make or model can still be typed manually.
+        Suggestions are based on brands Kewalram commonly services — any make, model, or engine can still be typed manually.
       </p>
     </>
   );
