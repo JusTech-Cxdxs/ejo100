@@ -1,10 +1,12 @@
 import { notFound } from 'next/navigation';
 import { getPart } from '@/lib/actions/store';
+import { getLastEditInfo } from '@/lib/actions/workshop';
 import { createPartFitmentFormAction, deletePartFitmentFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { formatDateTimeCompact } from '@/lib/utils/format-date';
 
 const TRACKING_TYPE_LABEL: Record<string, string> = {
   QUANTITY: 'Quantity',
@@ -33,6 +35,7 @@ export default async function PartDetailPage({
   const { error, status } = await searchParams;
   const part = await getPart(id);
   if (!part) notFound();
+  const lastEdit = await getLastEditInfo('Part', id, 'part.updated');
 
   return (
     <div className="p-8">
@@ -249,6 +252,15 @@ export default async function PartDetailPage({
                 <dt className="text-xs text-[var(--ejo-text-muted)]">Added By</dt>
                 <dd className="text-[var(--ejo-text)]">{part.createdBy.fullName}</dd>
               </div>
+              {lastEdit ? (
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Last Edited</dt>
+                  <dd className="text-[var(--ejo-text)]">
+                    {formatDateTimeCompact(lastEdit.at)}
+                    <br />by {lastEdit.userName}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           </div>
         </div>
