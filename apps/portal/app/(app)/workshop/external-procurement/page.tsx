@@ -19,11 +19,16 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
 /**
  * Every External Procurement (cash advance) request raised across this
  * branch's Job Cards — Workshop Manager and Finance both work from this
- * same list.
+ * same list. Searchable by reference number or Job Card number.
  */
-export default async function ExternalProcurementPage() {
+export default async function ExternalProcurementPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
   const branchId = await getStoreBranchId();
-  const requests = await listExternalProcurementRequests(branchId);
+  const requests = await listExternalProcurementRequests(branchId, q);
 
   return (
     <div className="p-8">
@@ -33,8 +38,32 @@ export default async function ExternalProcurementPage() {
       <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">External Procurement</h1>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">Cash advance requests for externally-sourced parts and jobs.</p>
 
+      <form className="mb-6 flex gap-2" action="/workshop/external-procurement">
+        <input
+          type="search"
+          name="q"
+          defaultValue={q ?? ''}
+          placeholder="Search by reference or Job Card number…"
+          className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+        />
+        <button
+          type="submit"
+          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+        >
+          Search
+        </button>
+        {q ? (
+          <LoadingLink
+            href="/workshop/external-procurement"
+            className="inline-flex items-center rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+          >
+            Clear
+          </LoadingLink>
+        ) : null}
+      </form>
+
       {requests.length === 0 ? (
-        <p className="text-sm text-[var(--ejo-text-muted)]">No procurement requests raised yet.</p>
+        <p className="text-sm text-[var(--ejo-text-muted)]">{q ? 'No procurement requests match your search.' : 'No procurement requests raised yet.'}</p>
       ) : (
         <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
@@ -55,7 +84,11 @@ export default async function ExternalProcurementPage() {
                       {request.referenceNumber}
                     </LoadingLink>
                   </td>
-                  <td className="px-4 py-2 text-[var(--ejo-text)]">{request.jobCard.jobNumber}</td>
+                  <td className="px-4 py-2">
+                    <LoadingLink href={`/workshop/job-cards/${request.jobCard.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                      {request.jobCard.jobNumber}
+                    </LoadingLink>
+                  </td>
                   <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{request.requestedBy.fullName}</td>
                   <td className="px-4 py-2 text-[var(--ejo-text)]">₦{Number(request.estimatedAmount).toLocaleString('en-NG')}</td>
                   <td className="px-4 py-2">
