@@ -28,12 +28,25 @@ import {
  */
 export function VehicleMakeModelPicker({
   defaultCategory,
+  defaultMake,
+  defaultModel,
+  defaultEngineType,
 }: {
   defaultCategory?: VehicleCategory;
+  /** Pre-fills an existing vehicle's Make/Model/Engine for editing — a
+   * Server Component parent can't set a client component's internal
+   * state directly, so these seed useState's own initial value instead.
+   * Without these, reusing this picker for editing would always open
+   * to blank fields, forcing a full retype of values that already
+   * exist. */
+  defaultMake?: string;
+  defaultModel?: string;
+  defaultEngineType?: string;
 }) {
   const [category, setCategory] = useState<VehicleCategory>(defaultCategory ?? 'PASSENGER');
-  const [make, setMake] = useState('');
-  const [model, setModel] = useState('');
+  const [make, setMake] = useState(defaultMake ?? '');
+  const [model, setModel] = useState(defaultModel ?? '');
+  const [engineType, setEngineType] = useState(defaultEngineType ?? '');
 
   const makeOptions = getMakesForCategory(category);
   const modelOptions = getModelsForMake(category, make);
@@ -74,6 +87,7 @@ export function VehicleMakeModelPicker({
             onChange={(e) => {
               setMake(e.target.value);
               setModel(''); // switching make invalidates any model/engine suggestion picked for the old make
+              setEngineType('');
             }}
             placeholder="Start typing or pick a suggestion…"
             className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
@@ -93,7 +107,10 @@ export function VehicleMakeModelPicker({
             required
             list="vehicle-model-suggestions"
             value={model}
-            onChange={(e) => setModel(e.target.value)}
+            onChange={(e) => {
+              setModel(e.target.value);
+              setEngineType(''); // switching model invalidates any engine suggestion picked for the old model
+            }}
             placeholder={modelOptions.length > 0 ? 'Start typing or pick a suggestion…' : 'e.g. Corolla'}
             className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
@@ -110,6 +127,8 @@ export function VehicleMakeModelPicker({
         <input
           name="engineType"
           list="vehicle-engine-suggestions"
+          value={engineType}
+          onChange={(e) => setEngineType(e.target.value)}
           placeholder={engineOptions.length > 0 ? 'Start typing or pick a suggestion…' : 'e.g. 4HK1, 2.0L Turbo Diesel'}
           className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
         />
