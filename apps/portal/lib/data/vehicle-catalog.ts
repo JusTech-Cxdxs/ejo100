@@ -33,6 +33,37 @@ export const VEHICLE_CATALOG: Record<VehicleCategory, Record<string, string[]>> 
   },
 };
 
+/**
+ * Real, known engine-type suggestions per Make+Model — filled in only
+ * where the actual engine spec is genuinely known and confirmed (Foton
+ * Tunland/TM3, Isuzu N-series/Q-series), since this is precisely the
+ * real compatibility key parts fitment is built around: two different
+ * models can share an engine and be fully interchangeable (Isuzu NPR
+ * and NQR both on the 4HK1), while the same-looking model name across a
+ * fuel/trim variant can hide a genuinely different engine (Foton
+ * Tunland's Turbo Diesel vs. Petrol variants) — the model name alone is
+ * never enough to know what a part actually fits. Left empty for every
+ * other Make/Model, same reasoning as the rest of this catalog: a
+ * suggestion where one's confidently known, never a restriction where
+ * it isn't — Engine remains a plain free-text field regardless.
+ */
+export const ENGINE_TYPE_CATALOG: Record<VehicleCategory, Record<string, Record<string, string[]>>> = {
+  PASSENGER: {},
+  COMMERCIAL: {
+    Isuzu: {
+      NPR: ['4HK1 (5.2L Diesel)', '4JJ1/4JZ1 (3.0L Diesel)'],
+      NQR: ['4HK1 (5.2L Diesel)'],
+      QMR: ['4JB1-TC (2.8L Diesel)', '4JH1-TC (3.0L Diesel)'],
+      QLR: ['4JB1-TC (2.8L Diesel)', '4JH1-TC (3.0L Diesel)'],
+    },
+    Foton: {
+      'Tunland Luxury': ['2.0L Turbo Diesel', '2.4L Petrol'],
+      'Tunland Premium': ['2.0L Turbo Diesel', '2.4L Petrol'],
+      TM3: ['1.5L Petrol'],
+    },
+  },
+};
+
 export function getMakesForCategory(category: VehicleCategory): string[] {
   return Object.keys(VEHICLE_CATALOG[category]);
 }
@@ -46,4 +77,18 @@ export function getModelsForMake(category: VehicleCategory, make: string): strin
     ([knownMake]) => knownMake.toLowerCase() === make.trim().toLowerCase(),
   );
   return entry?.[1] ?? [];
+}
+
+/** Same case-insensitive, empty-array-when-unknown behavior as
+ * getModelsForMake — Engine stays free text regardless of whether a
+ * suggestion is found for the given Make+Model. */
+export function getEngineTypesForModel(category: VehicleCategory, make: string, model: string): string[] {
+  const makeEntry = Object.entries(ENGINE_TYPE_CATALOG[category]).find(
+    ([knownMake]) => knownMake.toLowerCase() === make.trim().toLowerCase(),
+  );
+  if (!makeEntry) return [];
+  const modelEntry = Object.entries(makeEntry[1]).find(
+    ([knownModel]) => knownModel.toLowerCase() === model.trim().toLowerCase(),
+  );
+  return modelEntry?.[1] ?? [];
 }
