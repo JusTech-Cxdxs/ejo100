@@ -23,11 +23,19 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
  * Every Parts Request Slip raised across this branch's Job Cards —
  * Workshop HOD, Store, and Storekeeper all work from this same list,
  * each seeing the action relevant to whichever stage a given slip is
- * actually at once they open it.
+ * actually at once they open it. Searchable by reference number or
+ * Job Card number, matching the standing rule that every list in this
+ * project gets a real search — this one wasn't originally built with
+ * it, since the very first version had nothing yet to search through.
  */
-export default async function PartsRequestsPage() {
+export default async function PartsRequestsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
   const branchId = await getStoreBranchId();
-  const slips = await listPartRequestSlips(branchId);
+  const slips = await listPartRequestSlips(branchId, q);
 
   return (
     <div className="p-8">
@@ -37,8 +45,32 @@ export default async function PartsRequestsPage() {
       <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Parts Requests</h1>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">Every Store Parts request raised across active Job Cards.</p>
 
+      <form className="mb-6 flex gap-2" action="/workshop/parts-requests">
+        <input
+          type="search"
+          name="q"
+          defaultValue={q ?? ''}
+          placeholder="Search by reference or Job Card number…"
+          className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+        />
+        <button
+          type="submit"
+          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+        >
+          Search
+        </button>
+        {q ? (
+          <LoadingLink
+            href="/workshop/parts-requests"
+            className="inline-flex items-center rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+          >
+            Clear
+          </LoadingLink>
+        ) : null}
+      </form>
+
       {slips.length === 0 ? (
-        <p className="text-sm text-[var(--ejo-text-muted)]">No parts requests raised yet.</p>
+        <p className="text-sm text-[var(--ejo-text-muted)]">{q ? 'No parts requests match your search.' : 'No parts requests raised yet.'}</p>
       ) : (
         <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
@@ -59,7 +91,11 @@ export default async function PartsRequestsPage() {
                       {slip.referenceNumber}
                     </LoadingLink>
                   </td>
-                  <td className="px-4 py-2 text-[var(--ejo-text)]">{slip.jobCard.jobNumber}</td>
+                  <td className="px-4 py-2">
+                    <LoadingLink href={`/workshop/job-cards/${slip.jobCard.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                      {slip.jobCard.jobNumber}
+                    </LoadingLink>
+                  </td>
                   <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{slip.requestedBy.fullName}</td>
                   <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{pluralize(slip.lines.length, 'line')}</td>
                   <td className="px-4 py-2">
