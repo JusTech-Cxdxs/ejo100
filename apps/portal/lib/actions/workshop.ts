@@ -640,6 +640,7 @@ export type CreateVehicleInput = {
   plateNumber?: string;
   chassisNumber?: string;
   engineNumber?: string;
+  engineType?: string;
   mileage?: number;
 };
 
@@ -709,6 +710,7 @@ export async function createVehicle(input: CreateVehicleInput) {
       plateNumber,
       chassisNumber,
       engineNumber: input.engineNumber?.trim() || null,
+      engineType: input.engineType?.trim() || null,
       mileage: input.mileage ?? null,
       createdById: currentUser.id,
     },

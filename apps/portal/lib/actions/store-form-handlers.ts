@@ -8,7 +8,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { createPart, recordGoodsReceipt } from './store';
+import { createPart, recordGoodsReceipt, updatePart, setPartAlternativeUnits, createPartFitment, deletePartFitment } from './store';
 
 function str(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -81,4 +81,69 @@ export async function recordGoodsReceiptFormAction(formData: FormData) {
   revalidatePath('/inventory/goods-receipts');
   revalidatePath('/inventory/parts');
   redirect('/inventory/goods-receipts?status=receipt_recorded');
+}
+
+export async function updatePartFormAction(formData: FormData) {
+  const id = str(formData, 'id');
+  try {
+    // Alternative units validated and applied first — if a duplicate
+    // name or a name matching the base unit slips through, this
+    // throws before any of the part's other fields are touched,
+    // avoiding a partial update where the description saved but the
+    // units silently didn't.
+    const unitNames = formData.getAll('altUnitName').map((v) => (typeof v === 'string' ? v : ''));
+    const unitFactors = formData.getAll('altUnitFactor').map((v) => (typeof v === 'string' ? v : ''));
+    const units = unitNames
+      .map((unitName, i) => ({ unitName, conversionFactor: Number(unitFactors[i]) }))
+      .filter((u) => u.unitName.trim() && u.conversionFactor > 0);
+    await setPartAlternativeUnits(id, units);
+
+    await updatePart({
+      id,
+      name: str(formData, 'name'),
+      description: str(formData, 'description') || undefined,
+      category: str(formData, 'category') || undefined,
+      partNumber: str(formData, 'partNumber') || undefined,
+      reorderPoint: num(formData, 'reorderPoint'),
+      safetyStock: num(formData, 'safetyStock'),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not update this part.';
+    redirect(`/inventory/parts/${id}/edit?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/inventory/parts/${id}`);
+  revalidatePath('/inventory/parts');
+  redirect(`/inventory/parts/${id}?status=updated`);
+}
+
+export async function createPartFitmentFormAction(formData: FormData) {
+  const partId = str(formData, 'partId');
+  try {
+    await createPartFitment({
+      partId,
+      make: str(formData, 'make'),
+      model: str(formData, 'model'),
+      engineType: str(formData, 'engineType') || undefined,
+      yearFrom: num(formData, 'yearFrom'),
+      yearTo: num(formData, 'yearTo'),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not add this fitment.';
+    redirect(`/inventory/parts/${partId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/inventory/parts/${partId}`);
+  redirect(`/inventory/parts/${partId}?status=fitment_added`);
+}
+
+export async function deletePartFitmentFormAction(formData: FormData) {
+  const partId = str(formData, 'partId');
+  const fitmentId = str(formData, 'fitmentId');
+  try {
+    await deletePartFitment(fitmentId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not remove this fitment.';
+    redirect(`/inventory/parts/${partId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/inventory/parts/${partId}`);
+  redirect(`/inventory/parts/${partId}?status=fitment_removed`);
 }

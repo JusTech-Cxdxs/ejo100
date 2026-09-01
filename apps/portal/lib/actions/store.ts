@@ -409,6 +409,7 @@ export async function getPart(id: string) {
       alternativeUnits: true,
       batches: { where: { remainingQuantity: { gt: 0 } }, orderBy: { receivedAt: 'asc' } },
       serials: { where: { status: 'IN_STOCK' }, orderBy: { receivedAt: 'asc' } },
+      fitments: { orderBy: { createdAt: 'asc' } },
       createdBy: { select: { fullName: true } },
     },
   });

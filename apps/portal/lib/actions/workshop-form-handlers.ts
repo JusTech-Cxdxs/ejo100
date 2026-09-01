@@ -103,6 +103,7 @@ export async function createVehicleFormAction(formData: FormData) {
       plateNumber: str(formData, 'plateNumber') || undefined,
       chassisNumber: str(formData, 'chassisNumber') || undefined,
       engineNumber: str(formData, 'engineNumber') || undefined,
+      engineType: str(formData, 'engineType') || undefined,
       mileage: num(formData, 'mileage'),
     });
   } catch (err) {
