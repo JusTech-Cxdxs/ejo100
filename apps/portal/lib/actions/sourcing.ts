@@ -167,13 +167,24 @@ export async function getPartRequestSlip(id: string) {
   });
 }
 
-export async function listPartRequestSlips(branchId: string) {
+export async function listPartRequestSlips(branchId: string, search?: string) {
   await requireUser();
+  const q = search?.trim();
   return prisma.partRequestSlip.findMany({
-    where: { branchId },
+    where: {
+      branchId,
+      ...(q
+        ? {
+            OR: [
+              { referenceNumber: { contains: q, mode: 'insensitive' } },
+              { jobCard: { jobNumber: { contains: q, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    },
     orderBy: { createdAt: 'desc' },
     include: {
-      jobCard: { select: { jobNumber: true } },
+      jobCard: { select: { id: true, jobNumber: true } },
       requestedBy: { select: { fullName: true } },
       lines: { select: { id: true } },
     },
@@ -195,12 +206,23 @@ export async function getExternalProcurementRequest(id: string) {
   });
 }
 
-export async function listExternalProcurementRequests(branchId: string) {
+export async function listExternalProcurementRequests(branchId: string, search?: string) {
   await requireUser();
+  const q = search?.trim();
   return prisma.externalProcurementRequest.findMany({
-    where: { branchId },
+    where: {
+      branchId,
+      ...(q
+        ? {
+            OR: [
+              { referenceNumber: { contains: q, mode: 'insensitive' } },
+              { jobCard: { jobNumber: { contains: q, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    },
     orderBy: { createdAt: 'desc' },
-    include: { jobCard: { select: { jobNumber: true } }, requestedBy: { select: { fullName: true } } },
+    include: { jobCard: { select: { id: true, jobNumber: true } }, requestedBy: { select: { fullName: true } } },
   });
 }
 
@@ -256,6 +278,19 @@ export async function requestPartRequestSlip(jobCardId: string, lines: RequestPa
     entityId: slip.id,
     metadata: { referenceNumber, lineCount: lines.length },
   });
+  // Every stage of this request also lands on the Job Card's own
+  // audit trail, with the real reference number — the Job Card is
+  // the "mother record" for everything that happens against it, so
+  // its own timeline should show that sourcing happened at all, even
+  // though the full, detailed timeline for this specific request
+  // still lives on the request's own page.
+  await writeAuditLog({
+    userId: user.id,
+    action: 'part_request_slip.requested',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { referenceNumber, lineCount: lines.length },
+  });
 
   return { id: slip.id, referenceNumber };
 }
@@ -263,7 +298,7 @@ export async function requestPartRequestSlip(jobCardId: string, lines: RequestPa
 /** Step one of three — the Workshop HOD confirming the request itself is
  * legitimate, before Store ever looks at stock availability. */
 export async function approvePartRequestSlipByHod(slipId: string, notes?: string): Promise<void> {
-  const slip = await prisma.partRequestSlip.findUnique({ where: { id: slipId }, select: { status: true, branchId: true } });
+  const slip = await prisma.partRequestSlip.findUnique({ where: { id: slipId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
   if (!slip) {
     throw new SourcingActionError('Request not found.');
   }
@@ -276,6 +311,13 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
     data: { status: 'PENDING_STORE_APPROVAL', hodApprovedById: user.id, hodApprovedAt: new Date(), hodNotes: notes?.trim() || undefined },
   });
   await writeAuditLog({ userId: user.id, action: 'part_request_slip.hod_approved', entityType: 'PartRequestSlip', entityId: slipId });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'part_request_slip.hod_approved',
+    entityType: 'JobCard',
+    entityId: slip.jobCardId,
+    metadata: { referenceNumber: slip.referenceNumber },
+  });
 }
 
 /** Step two of three — Store confirming and reserving the actual stock.
@@ -289,6 +331,8 @@ export async function approvePartRequestSlipByStore(slipId: string, notes?: stri
     select: {
       status: true,
       branchId: true,
+      jobCardId: true,
+      referenceNumber: true,
       lines: { select: { id: true, partId: true, quantityRequested: true, part: { select: { name: true } } } },
     },
   });
@@ -321,6 +365,13 @@ export async function approvePartRequestSlipByStore(slipId: string, notes?: stri
   });
 
   await writeAuditLog({ userId: user.id, action: 'part_request_slip.store_approved', entityType: 'PartRequestSlip', entityId: slipId });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'part_request_slip.store_approved',
+    entityType: 'JobCard',
+    entityId: slip.jobCardId,
+    metadata: { referenceNumber: slip.referenceNumber },
+  });
 }
 
 /** Step three of three — a Storekeeper physically releasing it. Full
@@ -342,6 +393,7 @@ export async function releasePartRequestSlip(
       status: true,
       branchId: true,
       jobCardId: true,
+      referenceNumber: true,
       lines: {
         select: {
           id: true,
@@ -445,6 +497,13 @@ export async function releasePartRequestSlip(
     entityId: slipId,
     metadata: { receivedByUserId: receivedBy.receivedByUserId, receivedByName: receivedBy.receivedByName },
   });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'part_request_slip.released',
+    entityType: 'JobCard',
+    entityId: slip.jobCardId,
+    metadata: { referenceNumber: slip.referenceNumber, receivedByUserId: receivedBy.receivedByUserId, receivedByName: receivedBy.receivedByName },
+  });
 }
 
 /** Rejectable at either stage still pending a decision — by whoever would
@@ -453,7 +512,7 @@ export async function releasePartRequestSlip(
  * since stock is reserved by then — a wrong reservation is unwound by a
  * real Manager/Store conversation, not a status flip. */
 export async function rejectPartRequestSlip(slipId: string, reason: string): Promise<void> {
-  const slip = await prisma.partRequestSlip.findUnique({ where: { id: slipId }, select: { status: true, branchId: true, jobCardId: true } });
+  const slip = await prisma.partRequestSlip.findUnique({ where: { id: slipId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
   if (!slip) {
     throw new SourcingActionError('Request not found.');
   }
@@ -478,6 +537,13 @@ export async function rejectPartRequestSlip(slipId: string, reason: string): Pro
     entityType: 'PartRequestSlip',
     entityId: slipId,
     metadata: { stage, reason: reason.trim() },
+  });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'part_request_slip.rejected',
+    entityType: 'JobCard',
+    entityId: slip.jobCardId,
+    metadata: { referenceNumber: slip.referenceNumber, stage, reason: reason.trim() },
   });
 }
 
@@ -527,6 +593,13 @@ export async function requestExternalProcurement(
     entityId: request.id,
     metadata: { referenceNumber, estimatedAmount },
   });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'external_procurement.requested',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { referenceNumber, estimatedAmount },
+  });
 
   return { id: request.id, referenceNumber };
 }
@@ -534,7 +607,7 @@ export async function requestExternalProcurement(
 /** A Workshop Manager confirming the request itself, before any money
  * moves — the same gate structure as the Store side's HOD step. */
 export async function approveExternalProcurementRequest(requestId: string, notes?: string): Promise<void> {
-  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true } });
+  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
   if (!request) {
     throw new SourcingActionError('Request not found.');
   }
@@ -547,13 +620,20 @@ export async function approveExternalProcurementRequest(requestId: string, notes
     data: { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: new Date(), managerNotes: notes?.trim() || undefined },
   });
   await writeAuditLog({ userId: user.id, action: 'external_procurement.approved', entityType: 'ExternalProcurementRequest', entityId: requestId });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'external_procurement.approved',
+    entityType: 'JobCard',
+    entityId: request.jobCardId,
+    metadata: { referenceNumber: request.referenceNumber },
+  });
 }
 
 /** Finance actually handing over the cash advance — the real amount
  * given, which may differ slightly from the original estimate, kept as
  * its own field rather than overwriting it. */
 export async function disburseExternalProcurementRequest(requestId: string, disbursedAmount: number): Promise<void> {
-  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true } });
+  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
   if (!request) {
     throw new SourcingActionError('Request not found.');
   }
@@ -577,6 +657,13 @@ export async function disburseExternalProcurementRequest(requestId: string, disb
     entityId: requestId,
     metadata: { disbursedAmount },
   });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'external_procurement.disbursed',
+    entityType: 'JobCard',
+    entityId: request.jobCardId,
+    metadata: { referenceNumber: request.referenceNumber, disbursedAmount },
+  });
 }
 
 /** Rejectable only before a Manager has approved it — once approved, an
@@ -584,7 +671,7 @@ export async function disburseExternalProcurementRequest(requestId: string, disb
  * status flip, the same reasoning as the Store side never un-reserving
  * via rejection either. */
 export async function rejectExternalProcurementRequest(requestId: string, reason: string): Promise<void> {
-  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true } });
+  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
   if (!request) {
     throw new SourcingActionError('Request not found.');
   }
@@ -607,5 +694,12 @@ export async function rejectExternalProcurementRequest(requestId: string, reason
     entityType: 'ExternalProcurementRequest',
     entityId: requestId,
     metadata: { reason: reason.trim() },
+  });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'external_procurement.rejected',
+    entityType: 'JobCard',
+    entityId: request.jobCardId,
+    metadata: { referenceNumber: request.referenceNumber, reason: reason.trim() },
   });
 }
