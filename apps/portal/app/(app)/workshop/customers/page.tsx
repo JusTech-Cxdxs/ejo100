@@ -112,11 +112,11 @@ export default async function WorkshopCustomersPage({
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               >
                 <option value="INDIVIDUAL">Individual</option>
-                <option value="COMPANY">Company</option>
+                <option value="ORGANIZATION">Organization</option>
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Full name / Company name</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Full name / Organization name</label>
               <input
                 name="fullName"
                 required
