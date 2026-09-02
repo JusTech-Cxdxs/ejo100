@@ -442,7 +442,7 @@ model RolePermission {
 // name fields, since that's what the paper form itself does.
 enum CustomerType {
   INDIVIDUAL
-  COMPANY
+  ORGANIZATION
 }
 
 model Customer {
