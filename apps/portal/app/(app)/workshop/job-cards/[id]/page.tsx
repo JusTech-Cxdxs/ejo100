@@ -410,11 +410,15 @@ export default async function JobCardDetailPage({
                 <dt className="text-[var(--ejo-text-muted)]">Customer</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
                   {jobCard.customer.fullName}
-                  {jobCard.customer.customerType === 'COMPANY' ? (
+                  {jobCard.customer.customerType === 'ORGANIZATION' ? (
                     <span className="ml-2 rounded-full bg-[var(--ejo-info)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--ejo-info)]">
-                      Company
+                      Organization
                     </span>
-                  ) : null}
+                  ) : (
+                    <span className="ml-2 rounded-full bg-[var(--ejo-text-muted)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--ejo-text-muted)]">
+                      Individual
+                    </span>
+                  )}
                 </dd>
               </div>
               {jobCard.customer.address ? (
