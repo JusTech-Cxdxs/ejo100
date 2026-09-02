@@ -3,6 +3,8 @@ import { LoadingLink } from '@/components/LoadingLink';
 const sections = [
   { name: 'Parts Catalog', href: '/inventory/parts', desc: 'Every part the store stocks — tracking type, unit of measure, and current stock on hand.' },
   { name: 'Goods Receipts', href: '/inventory/goods-receipts', desc: 'A complete record of every delivery received into the store.' },
+  { name: 'Part Categories & Types', href: '/inventory/part-types', desc: 'The generic classification technicians pick from when requesting Store Parts on an estimate.' },
+  { name: 'Estimate Matching', href: '/inventory/estimate-matching', desc: 'Store Part lines awaiting a real, vehicle-fitting catalog Part and price.' },
 ];
 
 /**
