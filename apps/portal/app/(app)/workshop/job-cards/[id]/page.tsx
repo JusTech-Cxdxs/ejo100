@@ -2,8 +2,10 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { getJobCardSourcingNeeds } from '@/lib/actions/sourcing';
+import { listPartCategories, listPartTypes } from '@/lib/actions/store';
+import { EstimateLineItemForm } from '@/components/EstimateLineItemForm';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, addEstimateLineItemFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
+import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -273,7 +275,7 @@ export default async function JobCardDetailPage({
     currentUserId(),
   ]);
   if (!jobCard) notFound();
-  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers, eligibleFinance, payments, cancellationRequests, sourcingNeeds] = await Promise.all([
+  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers, eligibleFinance, payments, cancellationRequests, sourcingNeeds, partCategories, partTypes] = await Promise.all([
     getJobCardAuditTrail(id),
     listEligibleSupervisorsForJobCard(id),
     getJobCardEstimate(id),
@@ -282,7 +284,14 @@ export default async function JobCardDetailPage({
     getJobCardPayments(id),
     getCancellationRequests(id),
     getJobCardSourcingNeeds(id),
+    listPartCategories(jobCard.branchId),
+    listPartTypes(jobCard.branchId),
   ]);
+  const partCategoriesWithTypes = partCategories.map((category: (typeof partCategories)[number]) => ({
+    id: category.id,
+    name: category.name,
+    types: partTypes.filter((t: (typeof partTypes)[number]) => t.categoryId === category.id).map((t: (typeof partTypes)[number]) => ({ id: t.id, name: t.name })),
+  }));
   const isApprover = isMasterAdmin || jobCard.supervisor?.id === viewerId;
   const isAssignedTechnician = isMasterAdmin || jobCard.assignedTechnician?.id === viewerId;
   const isCreator = isMasterAdmin || jobCard.createdBy.id === viewerId;
@@ -631,7 +640,16 @@ export default async function JobCardDetailPage({
                         return (
                           <tr key={item.id} className="border-b border-[var(--ejo-border)] last:border-0">
                             <td className="py-2 pr-3 text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</td>
-                            <td className="py-2 pr-3 text-[var(--ejo-text)]">{item.description}</td>
+                            <td className="py-2 pr-3 text-[var(--ejo-text)]">
+                              {item.description}
+                              {item.type === 'STORE_PART' ? (
+                                item.matchedPart ? (
+                                  <div className="mt-0.5 text-[11px] text-[var(--ejo-success)]">Matched: {item.matchedPart.name}</div>
+                                ) : (
+                                  <div className="mt-0.5 text-[11px] text-[var(--ejo-warning)]">Awaiting Store match</div>
+                                )
+                              ) : null}
+                            </td>
                             <td className="py-2 pr-3 text-right text-[var(--ejo-text)]">{item.quantity}</td>
                             <td className="py-2 pr-3 text-right text-[var(--ejo-text)]">{formatNaira(item.unitPrice)}</td>
                             <td className="py-2 pr-3 text-right font-medium text-[var(--ejo-text)]">{formatNaira(item.amount)}</td>
@@ -695,66 +713,14 @@ export default async function JobCardDetailPage({
               </>
             )}
 
-            <datalist id="internal-job-suggestions">
-              {COMMON_ESTIMATE_LINE_DESCRIPTIONS.map((d: string) => (
-                <option key={d} value={d} />
-              ))}
-            </datalist>
-
             {jobCard.approvalStatus === 'APPROVED' && isEstimateContributor && (!estimate || estimate.status === 'DRAFT') ? (
-              <form action={addEstimateLineItemFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4 sm:grid-cols-5">
-                <FormPendingOverlay />
-                <input type="hidden" name="jobCardId" value={jobCard.id} />
-                <select
-                  name="type"
-                  required
-                  defaultValue="STORE_PART"
-                  className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)] sm:col-span-1"
-                >
-                  <option value="STORE_PART">Store Part</option>
-                  <option value="EXTERNAL_PART">External Part</option>
-                  <option value="EXTERNAL_JOB">External Job</option>
-                  <option value="INTERNAL_JOB">Internal Job</option>
-                  <option value="LABOUR">Labour</option>
-                  {!estimate?.lineItems.some((li: (typeof estimateLineItems)[number]) => li.type === 'SUNDRY') ? (
-                    <option value="SUNDRY">Sundry</option>
-                  ) : null}
-                </select>
-                <input
-                  name="description"
-                  required
-                  list="internal-job-suggestions"
-                  placeholder="Description"
-                  className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)] sm:col-span-2"
-                />
-                <input
-                  name="quantity"
-                  type="number"
-                  step="1"
-                  min="1"
-                  required
-                  defaultValue="1"
-                  placeholder="Qty"
-                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-                />
-                <input
-                  name="unitPrice"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Unit Price (optional)"
-                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-                />
-                <SubmitButton
-                  label="Add"
-                  pendingLabel="Adding…"
-                  className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)] sm:col-span-5"
-                />
-                <p className="col-span-2 text-[11px] text-[var(--ejo-text-muted)] sm:col-span-5">
-                  Pricing: the technician prices External Part/Job lines (they sourced them); the supervisor
-                  prices Store Part, Labour, and Sundry.
-                </p>
-              </form>
+              <EstimateLineItemForm
+                jobCardId={jobCard.id}
+                categories={partCategoriesWithTypes}
+                descriptionSuggestions={COMMON_ESTIMATE_LINE_DESCRIPTIONS}
+                hasSundry={Boolean(estimate?.lineItems.some((li: (typeof estimateLineItems)[number]) => li.type === 'SUNDRY'))}
+                isTechnicianOnly={isAssignedTechnician && !isApprover}
+              />
             ) : null}
 
             {estimate?.status === 'DRAFT' && isAssignedTechnician ? (
