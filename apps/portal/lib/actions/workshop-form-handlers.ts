@@ -71,7 +71,7 @@ export async function createCustomerFormAction(formData: FormData) {
   let query: string;
   try {
     const { wasExisting, welcomeEmailSent } = await findOrCreateCustomer({
-      customerType: str(formData, 'customerType') === 'COMPANY' ? 'COMPANY' : 'INDIVIDUAL',
+      customerType: str(formData, 'customerType') === 'ORGANIZATION' ? 'ORGANIZATION' : 'INDIVIDUAL',
       fullName: str(formData, 'fullName'),
       address: str(formData, 'address') || undefined,
       email: str(formData, 'email'),

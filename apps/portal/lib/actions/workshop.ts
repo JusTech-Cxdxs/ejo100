@@ -469,7 +469,7 @@ export async function listRecentCustomers(): Promise<CustomerSearchResult[]> {
 }
 
 export type CreateCustomerInput = {
-  customerType: 'INDIVIDUAL' | 'COMPANY';
+  customerType: 'INDIVIDUAL' | 'ORGANIZATION';
   fullName: string;
   address?: string;
   email: string;
