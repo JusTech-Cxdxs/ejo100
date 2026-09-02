@@ -1,6 +1,6 @@
 import { LoadingLink } from '@/components/LoadingLink';
-import { listAllVehicles, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
-import { createVehicleFormAction, deleteVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
+import { listAllVehicles } from '@/lib/actions/workshop';
+import { createVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -8,7 +8,6 @@ import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
 import { CustomerSearchField } from '@/components/CustomerSearchField';
 import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
 import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
-import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 
 export default async function WorkshopVehiclesPage({
@@ -18,10 +17,10 @@ export default async function WorkshopVehiclesPage({
 }) {
   const { q, type, status, error } = await searchParams;
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
-  const [vehicles, isMasterAdmin] = await Promise.all([
-    listAllVehicles(q, vehicleType),
-    currentUserIsMasterAdmin(),
-  ]);
+  // Delete now lives in its own Danger Zone on the Edit Vehicle page,
+  // not here — this list no longer needs to know who's a Master Admin
+  // at all.
+  const vehicles = await listAllVehicles(q, vehicleType);
 
   return (
     <div className="p-8">
@@ -88,7 +87,6 @@ export default async function WorkshopVehiclesPage({
                   <th className="px-4 py-3 font-medium">Mileage</th>
                   <th className="px-4 py-3 font-medium">Registered</th>
                   <th className="px-4 py-3 font-medium">&nbsp;</th>
-                  {isMasterAdmin ? <th className="px-4 py-3 font-medium">&nbsp;</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -119,18 +117,6 @@ export default async function WorkshopVehiclesPage({
                         Edit
                       </LoadingLink>
                     </td>
-                    {isMasterAdmin ? (
-                      <td className="px-4 py-3">
-                        <form action={deleteVehicleFormAction}>
-                          <FormPendingOverlay />
-                          <input type="hidden" name="vehicleId" value={v.id} />
-                          <ConfirmDeleteButton
-                            confirmMessage={`Delete ${v.plateNumber || v.chassisNumber || 'this vehicle'}? This permanently deletes it and every Job Card for it. This cannot be undone.`}
-                            className="text-xs font-medium text-[var(--ejo-error)] hover:underline"
-                          />
-                        </form>
-                      </td>
-                    ) : null}
                   </tr>
                 ))}
               </tbody>
