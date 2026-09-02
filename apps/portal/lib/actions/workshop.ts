@@ -1847,7 +1847,11 @@ export async function getJobCardEstimate(jobCardId: string) {
     include: {
       lineItems: {
         orderBy: { createdAt: 'asc' },
-        include: { enteredBy: { select: { fullName: true } } },
+        include: {
+          enteredBy: { select: { fullName: true } },
+          partType: { select: { name: true, category: { select: { name: true } } } },
+          matchedPart: { select: { name: true } },
+        },
       },
       approvedBy: { select: { fullName: true } },
       managerApprovedBy: { select: { fullName: true } },
@@ -1864,8 +1868,14 @@ export async function getJobCardEstimate(jobCardId: string) {
  * from client input, and left null when unitPrice is still blank
  * (DRAFT-stage entries are allowed to have no price yet). */
 export async function addEstimateLineItem(jobCardId: string, input: EstimateLineItemInput): Promise<void> {
-  const description = input.description.trim();
-  if (!description) {
+  // A Store Part line's description is never trusted from client input
+  // — it's derived server-side from the real PartType's own name below,
+  // the same "never trust the client for something authoritative"
+  // principle as amount always being computed here, never taken as
+  // given. Every other line type still requires a real, non-empty
+  // description as before.
+  let description = input.description.trim();
+  if (input.type !== 'STORE_PART' && !description) {
     throw new WorkshopActionError('A description is required for this line item.');
   }
   if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
@@ -1924,6 +1934,16 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
   // right at creation, not left as a gap Store discovers downstream.
   if (input.type === 'STORE_PART' && !input.partTypeId) {
     throw new WorkshopActionError('A Store Part line must specify which Part Type is needed.');
+  }
+  if (input.type === 'STORE_PART' && input.partTypeId) {
+    // The real description, looked up here rather than trusted from
+    // whatever the client happened to send — the same principle as
+    // amount always being computed server-side below.
+    const partType = await prisma.partType.findUnique({ where: { id: input.partTypeId }, select: { name: true } });
+    if (!partType) {
+      throw new WorkshopActionError('That Part Type no longer exists.');
+    }
+    description = partType.name;
   }
 
   const amount = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;

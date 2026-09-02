@@ -8,7 +8,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { createPart, recordGoodsReceipt, updatePart, setPartAlternativeUnits, createPartFitment, deletePartFitment } from './store';
+import { createPart, recordGoodsReceipt, updatePart, setPartAlternativeUnits, createPartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine } from './store';
 
 function str(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -146,4 +146,46 @@ export async function deletePartFitmentFormAction(formData: FormData) {
   }
   revalidatePath(`/inventory/parts/${partId}`);
   redirect(`/inventory/parts/${partId}?status=fitment_removed`);
+}
+
+export async function createPartCategoryFormAction(formData: FormData) {
+  const branchId = str(formData, 'branchId');
+  try {
+    await createPartCategory(branchId, str(formData, 'name'), str(formData, 'description') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not create this Part Category.';
+    redirect(`/inventory/part-types?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/inventory/part-types');
+  redirect('/inventory/part-types?status=category_created');
+}
+
+export async function createPartTypeFormAction(formData: FormData) {
+  const branchId = str(formData, 'branchId');
+  try {
+    await createPartType(branchId, str(formData, 'categoryId'), str(formData, 'name'), str(formData, 'description') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not create this Part Type.';
+    redirect(`/inventory/part-types?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/inventory/part-types');
+  redirect('/inventory/part-types?status=type_created');
+}
+
+export async function matchEstimateStorePartLineFormAction(formData: FormData) {
+  const lineItemId = str(formData, 'lineItemId');
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    const partId = str(formData, 'partId');
+    if (!partId) {
+      throw new Error('Pick a Part to match this line to.');
+    }
+    await matchEstimateStorePartLine(lineItemId, partId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not match this line.';
+    redirect(`/inventory/estimate-matching?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/inventory/estimate-matching');
+  if (jobCardId) revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  redirect('/inventory/estimate-matching?status=line_matched');
 }

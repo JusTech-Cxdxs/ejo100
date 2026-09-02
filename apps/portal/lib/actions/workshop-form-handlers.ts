@@ -244,6 +244,7 @@ export async function addEstimateLineItemFormAction(formData: FormData) {
       // DRAFT-stage state), not become `NaN`, which addEstimateLineItem
       // would correctly reject as an invalid number.
       unitPrice: num(formData, 'unitPrice'),
+      partTypeId: str(formData, 'partTypeId') || undefined,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not add estimate line item.';

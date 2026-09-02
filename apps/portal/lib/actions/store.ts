@@ -479,6 +479,39 @@ export async function getLastKnownUnitCostForPart(partId: string): Promise<numbe
  * workshop.ts specifically to avoid a circular import: store.ts
  * already imports auth/audit helpers from workshop.ts, so the
  * dependency only ever needs to run one direction. */
+/** Every Store Part line, across every Job Card at this branch, that's
+ * genuinely ready for Store to act on — its estimate has been
+ * submitted, but this specific line hasn't been matched to a real
+ * catalog Part yet. Includes exactly the vehicle context
+ * getFittingPartsForVehicle needs (Make/Model/Engine/Year), so this
+ * list can go straight into a matching action without a second
+ * lookup. */
+export async function listUnmatchedStorePartLines(branchId: string) {
+  await requireUser();
+  return prisma.estimateLineItem.findMany({
+    where: {
+      type: 'STORE_PART',
+      matchedPartId: null,
+      estimate: { status: 'SUBMITTED', jobCard: { branchId } },
+    },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      partType: { select: { id: true, name: true, category: { select: { name: true } } } },
+      estimate: {
+        select: {
+          jobCard: {
+            select: {
+              id: true,
+              jobNumber: true,
+              vehicle: { select: { make: true, model: true, engineType: true, year: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
 export async function matchEstimateStorePartLine(lineItemId: string, partId: string): Promise<void> {
   const lineItem = await prisma.estimateLineItem.findUnique({
     where: { id: lineItemId },
