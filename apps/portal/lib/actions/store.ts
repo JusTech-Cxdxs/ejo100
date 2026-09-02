@@ -341,6 +341,7 @@ export async function getFittingPartsForVehicle(
   branchId: string,
   vehicle: { make?: string | null; model?: string | null; engineType?: string | null; year?: number | null },
   search?: string,
+  partTypeId?: string,
 ) {
   await requireUser();
   const q = search?.trim();
@@ -348,6 +349,7 @@ export async function getFittingPartsForVehicle(
     where: {
       branchId,
       isActive: true,
+      ...(partTypeId ? { partTypeId } : {}),
       ...(q
         ? {
             OR: [
@@ -375,6 +377,157 @@ export async function getFittingPartsForVehicle(
       if (f.yearTo && (!vehicle.year || vehicle.year > f.yearTo)) return false;
       return true;
     });
+  });
+}
+
+export async function createPartCategory(branchId: string, name: string, description?: string): Promise<{ id: string }> {
+  const user = await requireStoreStaff(branchId);
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    throw new StoreActionError('Part Category name is required.');
+  }
+  const category = await prisma.partCategory.create({
+    data: { branchId, name: trimmedName, description: description?.trim() || undefined, createdById: user.id },
+  });
+  await writeAuditLog({ userId: user.id, action: 'part_category.created', entityType: 'PartCategory', entityId: category.id, metadata: { name: trimmedName } });
+  return { id: category.id };
+}
+
+export async function listPartCategories(branchId: string) {
+  await requireUser();
+  return prisma.partCategory.findMany({ where: { branchId }, orderBy: { name: 'asc' } });
+}
+
+/** The specific, customer-facing kind of part a technician actually
+ * picks (e.g. "Fuel Filter") — always under exactly one parent
+ * PartCategory (e.g. "Filter"), confirmed as a genuine two-level tree,
+ * not a single flat list: "Filter" containing "Oil Filter"/"Fuel
+ * Filter", "Fluid" containing "Coolant"/"Engine Oil"/"Brake Fluid". */
+export async function createPartType(branchId: string, categoryId: string, name: string, description?: string): Promise<{ id: string }> {
+  const user = await requireStoreStaff(branchId);
+  const category = await prisma.partCategory.findUnique({ where: { id: categoryId }, select: { branchId: true } });
+  if (!category) {
+    throw new StoreActionError('Part Category not found.');
+  }
+  if (category.branchId !== branchId) {
+    throw new StoreActionError('This Part Category does not belong to this branch.');
+  }
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    throw new StoreActionError('Part Type name is required.');
+  }
+  const partType = await prisma.partType.create({
+    data: { branchId, categoryId, name: trimmedName, description: description?.trim() || undefined, createdById: user.id },
+  });
+  await writeAuditLog({ userId: user.id, action: 'part_type.created', entityType: 'PartType', entityId: partType.id, metadata: { name: trimmedName, categoryId } });
+  return { id: partType.id };
+}
+
+/** The generic, technician-facing catalog — what a technician actually
+ * searches when adding a STORE_PART line to an estimate. Deliberately
+ * a completely separate list from listParts()'s own real, vehicle-
+ * specific Parts: a technician should never see "Fuel Filter — Foton
+ * Tunland" as an option, only the generic "Fuel Filter" itself. Each
+ * result carries its own parent category's name, so the real two-
+ * level tree (Filter → Oil Filter/Fuel Filter, Fluid → Coolant/Engine
+ * Oil/Brake Fluid) is genuinely browsable, not flattened away. */
+export async function listPartTypes(branchId: string, search?: string) {
+  await requireUser();
+  const q = search?.trim();
+  return prisma.partType.findMany({
+    where: {
+      branchId,
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { category: { name: { contains: q, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
+    include: { category: { select: { id: true, name: true } } },
+  });
+}
+
+/** The real "price registered with the last goods receipt" — the exact
+ * source of truth this was built around: never a price Store retypes,
+ * always the most recent actual cost this Part was genuinely received
+ * at. Skips any receipt line that was recorded with no cost at all
+ * (unitCost is optional on a Goods Receipt), rather than treating a
+ * missing cost as if it were genuinely zero. Returns null when the
+ * Part has no cost on record at all — a real, honest "we don't know
+ * yet" rather than a silent, misleading zero. */
+export async function getLastKnownUnitCostForPart(partId: string): Promise<number | null> {
+  await requireUser();
+  const line = await prisma.goodsReceiptLine.findFirst({
+    where: { partId, unitCost: { not: null } },
+    orderBy: { goodsReceipt: { receivedAt: 'desc' } },
+    select: { unitCost: true },
+  });
+  return line ? Number(line.unitCost) : null;
+}
+
+/** Store's own real action on an estimate — matching a technician's
+ * generic request (a PartType, e.g. "Fuel Filter") to the one real,
+ * vehicle-fitting catalog Part that actually satisfies it, with the
+ * price pulled from that Part's own last real Goods Receipt cost.
+ * Never a price Store types in themselves — matches the same
+ * "auto-fill, never retype" principle already established for Goods
+ * Receipt's own price recording. Lives here in store.ts rather than
+ * workshop.ts specifically to avoid a circular import: store.ts
+ * already imports auth/audit helpers from workshop.ts, so the
+ * dependency only ever needs to run one direction. */
+export async function matchEstimateStorePartLine(lineItemId: string, partId: string): Promise<void> {
+  const lineItem = await prisma.estimateLineItem.findUnique({
+    where: { id: lineItemId },
+    select: {
+      type: true,
+      quantity: true,
+      partTypeId: true,
+      estimate: { select: { status: true, jobCard: { select: { branchId: true } } } },
+    },
+  });
+  if (!lineItem) {
+    throw new StoreActionError('Estimate line not found.');
+  }
+  if (lineItem.type !== 'STORE_PART') {
+    throw new StoreActionError('Only a Store Part line can be matched to a catalog Part.');
+  }
+  if (lineItem.estimate.status !== 'SUBMITTED') {
+    throw new StoreActionError('This estimate is not currently awaiting Store matching.');
+  }
+  const user = await requireStoreStaff(lineItem.estimate.jobCard.branchId);
+
+  const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, partTypeId: true, name: true } });
+  if (!part) {
+    throw new StoreActionError('Part not found.');
+  }
+  if (part.branchId !== lineItem.estimate.jobCard.branchId) {
+    throw new StoreActionError('This Part does not belong to the same branch as this Job Card.');
+  }
+  if (lineItem.partTypeId && part.partTypeId !== lineItem.partTypeId) {
+    throw new StoreActionError(`${part.name} is not the requested Part Type for this line.`);
+  }
+
+  const unitCost = await getLastKnownUnitCostForPart(partId);
+  if (unitCost === null) {
+    throw new StoreActionError(`${part.name} has no recorded cost yet — record a Goods Receipt for it before matching this line.`);
+  }
+  const amount = Math.round(unitCost * lineItem.quantity * 100) / 100;
+
+  await prisma.estimateLineItem.update({
+    where: { id: lineItemId },
+    data: { matchedPartId: partId, unitPrice: unitCost, amount },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'estimate_line.store_matched',
+    entityType: 'EstimateLineItem',
+    entityId: lineItemId,
+    metadata: { partId, partName: part.name, unitCost, amount },
   });
 }
 

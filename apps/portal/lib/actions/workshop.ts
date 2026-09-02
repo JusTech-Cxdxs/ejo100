@@ -1783,6 +1783,13 @@ export type EstimateLineItemInput = {
   /** Optional while the estimate is still DRAFT — see the lifecycle
    * note above. Required (validated) once submitForValidation() runs. */
   unitPrice?: number;
+  /** Only meaningful for a STORE_PART line — which generic kind of
+   * part the technician is actually requesting (e.g. "Fuel Filter"),
+   * for Store to later match against the real, vehicle-fitting
+   * catalog Part. `description` still gets filled in from the chosen
+   * PartType's own name for display, but this is the real, structured
+   * link Store's matching step depends on. */
+  partTypeId?: string;
 };
 
 /** Who can add to or edit a Job Card's estimate — the assigned
@@ -1900,7 +1907,23 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
     );
   }
   if (input.unitPrice !== undefined) {
+    // A Store Part line's price can only ever come from Store's own
+    // real match against the catalog (matchEstimateStorePartLine) —
+    // never typed directly here, not even by a Supervisor. Allowing
+    // it here would silently defeat the entire reason this exists:
+    // every store-sourced price staying tied to a real, current
+    // Goods Receipt cost, never a guess.
+    if (input.type === 'STORE_PART') {
+      throw new WorkshopActionError('A Store Part line is priced by Store matching it to a real catalog Part, not typed in directly.');
+    }
     await requirePricingAuthority(input.type, jobCard, contributor.id);
+  }
+  // A Store Part line is meaningless without a real PartType to match
+  // against later — this is the one thing that genuinely can't be
+  // filled in after the fact the way a price can, so it's enforced
+  // right at creation, not left as a gap Store discovers downstream.
+  if (input.type === 'STORE_PART' && !input.partTypeId) {
+    throw new WorkshopActionError('A Store Part line must specify which Part Type is needed.');
   }
 
   const amount = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
@@ -1914,6 +1937,7 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
       unitPrice: input.unitPrice ?? null,
       amount,
       enteredById: contributor.id,
+      partTypeId: input.type === 'STORE_PART' ? input.partTypeId : null,
     },
   });
 
@@ -1953,6 +1977,7 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
     where: { id: lineItemId },
     select: {
       type: true,
+      matchedPartId: true,
       estimate: {
         select: {
           jobCardId: true,
@@ -1968,8 +1993,20 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
   if (lineItem.estimate.status === 'MANAGER_APPROVED') {
     throw new WorkshopActionError('This estimate has already been approved by the manager and can no longer be edited.');
   }
+  // A quantity change on an already-matched Store Part line would
+  // silently leave its price computed against the old, now-wrong
+  // quantity — Store's own match is the only path allowed to set
+  // quantity and price together, correctly, in one place. Editing
+  // description here is still fine; it's purely informational once
+  // matched, the real request is the linked PartType/Part.
+  if (lineItem.type === 'STORE_PART' && lineItem.matchedPartId && input.quantity !== undefined) {
+    throw new WorkshopActionError('This line has already been matched by Store — Store must re-match it to change the quantity, not edit it directly.');
+  }
   const editor = await requireEstimateContributor(lineItem.estimate.jobCard);
   if (input.unitPrice !== undefined) {
+    if (lineItem.type === 'STORE_PART') {
+      throw new WorkshopActionError('A Store Part line is priced by Store matching it to a real catalog Part, not typed in directly.');
+    }
     await requirePricingAuthority(lineItem.type, lineItem.estimate.jobCard, editor.id);
   }
 
@@ -2296,6 +2333,7 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
     select: {
       id: true,
       status: true,
+      lineItems: { select: { type: true, matchedPartId: true, description: true } },
       jobCard: {
         select: {
           supervisorId: true,
@@ -2312,6 +2350,19 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
   }
   if (estimate.status !== 'SUBMITTED') {
     throw new WorkshopActionError('This estimate has not been submitted for validation yet.');
+  }
+  // Every Store Part line must have been matched to a real, priced
+  // catalog Part by Store before the Supervisor can give final sign-
+  // off — the whole reason for this gate: nothing should reach HOD,
+  // and nothing should reach the customer, with a store-sourced line
+  // still priced on nothing more than a technician's guess.
+  const unmatchedStoreParts = estimate.lineItems.filter(
+    (li: (typeof estimate.lineItems)[number]) => li.type === 'STORE_PART' && !li.matchedPartId,
+  );
+  if (unmatchedStoreParts.length > 0) {
+    throw new WorkshopActionError(
+      `${pluralize(unmatchedStoreParts.length, 'Store Part line')} still ${unmatchedStoreParts.length === 1 ? 'needs' : 'need'} to be matched by Store before this estimate can be approved.`,
+    );
   }
   const user = await requireJobCardApprover(estimate.jobCard);
 
