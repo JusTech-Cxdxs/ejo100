@@ -201,6 +201,8 @@ model Branch {
   goodsReceipts  GoodsReceipt[]
   partRequestSlips PartRequestSlip[]
   externalProcurementRequests ExternalProcurementRequest[]
+  partCategories PartCategory[]
+  partTypes      PartType[]
 
   @@map("branches")
 }
@@ -311,6 +313,8 @@ model User {
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
   partsCreated       Part[] @relation("PartCreatedBy")
+  partCategoriesCreated PartCategory[] @relation("PartCategoryCreatedBy")
+  partTypesCreated      PartType[] @relation("PartTypeCreatedBy")
   goodsReceiptsTaken GoodsReceipt[] @relation("GoodsReceiptReceivedBy")
   partRequestSlipsRequested    PartRequestSlip[] @relation("PartRequestSlipRequestedBy")
   partRequestSlipsHodApproved  PartRequestSlip[] @relation("PartRequestSlipHodApprovedBy")
@@ -867,11 +871,23 @@ model EstimateLineItem {
   // nothing to put in them — confirmed directly from the actual
   // deploy error, not guessed at. The explicit default fixes that.
   updatedAt   DateTime             @default(now()) @updatedAt
+  // Both only ever meaningful for a STORE_PART line — set by the
+  // technician (which generic kind of part is needed, e.g. "Fuel
+  // Filter") and by Store (which real, vehicle-fitting catalog Part
+  // actually satisfies it), two separate moments by two separate
+  // people. Null on every other line type, and null on a STORE_PART
+  // line until each step actually happens — a freshly-added
+  // STORE_PART line has a partType but not yet a matchedPart,
+  // exactly reflecting where it stands.
+  partTypeId    String?
+  matchedPartId String?
 
   estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   enteredBy   User     @relation(fields: [enteredById], references: [id])
   requestSlipLines PartRequestSlipLine[]
   externalProcurementRequests ExternalProcurementRequest[]
+  partType    PartType? @relation(fields: [partTypeId], references: [id])
+  matchedPart Part?     @relation("EstimateLineItemMatchedPart", fields: [matchedPartId], references: [id])
 
   @@map("estimate_line_items")
 }
@@ -1143,12 +1159,26 @@ model Part {
   reorderPoint Decimal? @db.Decimal(12, 3)
   safetyStock  Decimal? @db.Decimal(12, 3)
   isActive     Boolean  @default(true)
+  // Which generic, customer-facing PartType this Part actually is
+  // (e.g. "Fuel Filter") — nullable since a Part can exist in the
+  // catalog before ever being categorized this way, but this is what
+  // lets a technician's plain-language estimate request ("Fuel
+  // Filter") match against every real vehicle-specific Part that
+  // could satisfy it (this one, plus e.g. "Fuel Filter — Foton TM3" —
+  // same PartType, two genuinely different Parts). Deliberately
+  // separate from the free-text `category` field above: category is
+  // a simple, broad browsing bucket Store already uses for its own
+  // catalog search; PartType is a specific, structured, reusable
+  // classification with its own parent PartCategory (see below) —
+  // the two serve different purposes and neither replaces the other.
+  partTypeId   String?
   createdById  String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
   createdBy User     @relation("PartCreatedBy", fields: [createdById], references: [id])
+  partType  PartType? @relation(fields: [partTypeId], references: [id])
 
   alternativeUnits  PartUnitOfMeasure[]
   stock             PartStock?
@@ -1157,6 +1187,7 @@ model Part {
   goodsReceiptLines GoodsReceiptLine[]
   requestSlipLines  PartRequestSlipLine[]
   fitments          PartFitment[]
+  matchedOnEstimateLines EstimateLineItem[] @relation("EstimateLineItemMatchedPart")
 
   @@unique([branchId, partNumber])
   @@map("parts")
@@ -1483,4 +1514,72 @@ model PartFitment {
   part Part @relation(fields: [partId], references: [id], onDelete: Cascade)
 
   @@map("part_fitments")
+}
+
+// ----------------------------------------------------------------------------
+// PART CATEGORY / PART TYPE — the real, two-level hierarchy a technician
+// actually browses at estimate time, confirmed against a real example:
+//
+//   Filter (PartCategory)              Fluid (PartCategory)
+//   ├── Oil Filter (PartType)          ├── Coolant (PartType)
+//   └── Fuel Filter (PartType)         ├── Engine Oil (PartType)
+//                                      └── Brake Fluid (PartType)
+//
+// PartCategory is the broad, parent grouping ("Filter", "Fluid",
+// "Brakes"). PartType is the specific, customer-facing kind of part a
+// technician actually picks ("Fuel Filter", "Engine Oil") — this is what
+// appears on the estimate a customer sees, never a vehicle-specific
+// catalog Part or its price. One PartType can sit above several real
+// Parts — "Fuel Filter — Foton Tunland" and "Fuel Filter — Foton TM3"
+// are two genuinely different Parts (confirmed necessary in the Vehicle
+// Fitment phase — same engine family doesn't always mean the same
+// physical part), but both are the generic idea of "Fuel Filter" as far
+// as a technician needs to think about it. Store is the one who narrows
+// a PartType down to the one real, correct, vehicle-fitting Part — using
+// the fitment-matching logic already built.
+//
+// Deliberately separate from Part.category (a simple, free-text browsing
+// bucket Store's own catalog search already uses) — that field predates
+// this hierarchy and keeps working exactly as it did; this is a new,
+// structured classification built specifically for the technician/
+// estimate-facing side, not a replacement for it.
+// ----------------------------------------------------------------------------
+
+model PartCategory {
+  id          String   @id @default(cuid())
+  branchId    String
+  name        String
+  description String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branch    Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("PartCategoryCreatedBy", fields: [createdById], references: [id])
+
+  partTypes PartType[]
+
+  @@unique([branchId, name])
+  @@map("part_categories")
+}
+
+model PartType {
+  id          String   @id @default(cuid())
+  branchId    String
+  categoryId  String
+  name        String
+  description String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branch    Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  category  PartCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdBy User         @relation("PartTypeCreatedBy", fields: [createdById], references: [id])
+
+  parts             Part[]
+  estimateLineItems EstimateLineItem[]
+
+  @@unique([branchId, categoryId, name])
+  @@map("part_types")
 }
