@@ -1,0 +1,21 @@
+-- Renames CustomerType's "COMPANY" value to "ORGANIZATION" — run this
+-- once in Supabase's SQL Editor, at or before the deploy that includes
+-- this schema change.
+--
+-- This is the correct, safe way to do this: PostgreSQL's own
+-- ALTER TYPE ... RENAME VALUE relabels the existing enum value in
+-- place. Every Customer row currently recorded as COMPANY becomes
+-- ORGANIZATION automatically, because it is the exact same underlying
+-- value, just renamed — no UPDATE statement needed, no row is
+-- touched, and there is no window where old and new data disagree.
+--
+-- Deliberately NOT done as "add ORGANIZATION, then update rows, then
+-- drop COMPANY" — that three-step version needs an application
+-- deploy gap where either both or neither is momentarily valid, and
+-- has to update every existing row by hand. A rename needs neither.
+--
+-- Idempotent in spirit but not literally re-runnable: running this
+-- twice will fail the second time with "value already exists" —
+-- correct behavior; it means the rename already happened.
+
+ALTER TYPE "CustomerType" RENAME VALUE 'COMPANY' TO 'ORGANIZATION';
