@@ -1,12 +1,13 @@
 import { notFound } from 'next/navigation';
-import { getVehicle, getLastEditInfo } from '@/lib/actions/workshop';
-import { updateVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
+import { getVehicle, getLastEditInfo, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
+import { updateVehicleFormAction, deleteVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
+import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 
 /**
@@ -30,7 +31,10 @@ export default async function EditVehiclePage({
   const { error } = await searchParams;
   const vehicle = await getVehicle(id);
   if (!vehicle) notFound();
-  const lastEdit = await getLastEditInfo('CustomerVehicle', id, 'vehicle.updated');
+  const [lastEdit, isMasterAdmin] = await Promise.all([
+    getLastEditInfo('CustomerVehicle', id, 'vehicle.updated'),
+    currentUserIsMasterAdmin(),
+  ]);
 
   return (
     <div className="p-8">
@@ -116,7 +120,8 @@ export default async function EditVehiclePage({
           />
         </form>
 
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+        <div className="h-fit space-y-4">
+          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">History</h2>
           <dl className="mt-3 space-y-3 text-sm">
             <div>
@@ -138,6 +143,25 @@ export default async function EditVehiclePage({
               <p className="text-xs text-[var(--ejo-text-muted)]">Not edited since registration.</p>
             )}
           </dl>
+          </div>
+
+          {isMasterAdmin ? (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Danger zone</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                Permanently deletes this vehicle and every Job Card for it. This cannot be undone.
+              </p>
+              <form action={deleteVehicleFormAction} className="mt-4">
+                <FormPendingOverlay />
+                <input type="hidden" name="vehicleId" value={vehicle.id} />
+                <ConfirmDeleteButton
+                  confirmMessage={`Delete ${vehicle.plateNumber || vehicle.chassisNumber || 'this vehicle'}? This permanently removes it and every Job Card for it. This cannot be undone.`}
+                  label="Delete this vehicle"
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
+                />
+              </form>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
