@@ -4,6 +4,7 @@ import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayment
 import { getJobCardSourcingNeeds } from '@/lib/actions/sourcing';
 import { listPartCategories, listPartTypes } from '@/lib/actions/store';
 import { EstimateLineItemForm } from '@/components/EstimateLineItemForm';
+import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
@@ -574,6 +575,7 @@ export default async function JobCardDetailPage({
                         <th className="py-2 pr-3 font-medium">Type</th>
                         <th className="py-2 pr-3 font-medium">Description</th>
                         <th className="py-2 pr-3 text-right font-medium">Qty</th>
+                        <th className="py-2 pr-3 font-medium">Unit</th>
                         <th className="py-2 pr-3 text-right font-medium">Unit Price</th>
                         <th className="py-2 pr-3 text-right font-medium">Amount</th>
                         <th className="py-2 pr-3 font-medium">Entered By</th>
@@ -589,7 +591,7 @@ export default async function JobCardDetailPage({
                         if (isEditingThis) {
                           return (
                             <tr key={item.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                              <td colSpan={isEstimateContributor ? 7 : 6} className="py-2">
+                              <td colSpan={isEstimateContributor ? 8 : 7} className="py-2">
                                 <form action={updateEstimateLineItemFormAction} className="flex flex-wrap items-center gap-2">
                                   <FormPendingOverlay />
                                   <input type="hidden" name="jobCardId" value={jobCard.id} />
@@ -611,6 +613,13 @@ export default async function JobCardDetailPage({
                                     defaultValue={item.quantity}
                                     className="w-16 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                                   />
+                                  {item.type === 'STORE_PART' ? (
+                                    <span className="w-28 shrink-0 text-[11px] text-[var(--ejo-text-muted)]">Set by Store</span>
+                                  ) : (
+                                    <div className="w-28 shrink-0">
+                                      <UnitOfMeasureInput name="unitOfMeasure" defaultValue={item.unitOfMeasure ?? undefined} placeholder="Unit" />
+                                    </div>
+                                  )}
                                   <input
                                     name="unitPrice"
                                     type="number"
@@ -651,6 +660,7 @@ export default async function JobCardDetailPage({
                               ) : null}
                             </td>
                             <td className="py-2 pr-3 text-right text-[var(--ejo-text)]">{item.quantity}</td>
+                            <td className="py-2 pr-3 text-[var(--ejo-text-muted)]">{item.unitOfMeasure ?? '—'}</td>
                             <td className="py-2 pr-3 text-right text-[var(--ejo-text)]">{formatNaira(item.unitPrice)}</td>
                             <td className="py-2 pr-3 text-right font-medium text-[var(--ejo-text)]">{formatNaira(item.amount)}</td>
                             <td className="py-2 pr-3 text-xs text-[var(--ejo-text-muted)]">{item.enteredBy.fullName}</td>
