@@ -1,9 +1,10 @@
-import { listPartCategories, listPartTypes, getStoreBranchId } from '@/lib/actions/store';
+import { listPartCategories, listPartTypes, getStoreBranchId, searchPartCategoriesForSelect, listAllPartCategoriesForSelect } from '@/lib/actions/store';
 import { createPartCategoryFormAction, createPartTypeFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { SearchableSelect } from '@/components/SearchableSelect';
 
 const FOLDER_ICON = (
   <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-primary)]">
@@ -91,6 +92,11 @@ export default async function PartTypesPage({
                   <div className="flex items-center gap-2">
                     {FOLDER_ICON}
                     <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{category.name}</h2>
+                    {category.code ? (
+                      <span className="rounded-full bg-[var(--ejo-primary)]/15 px-2 py-0.5 font-mono text-[10px] font-medium text-[var(--ejo-primary)]">
+                        {category.code}
+                      </span>
+                    ) : null}
                     <span className="ml-auto rounded-full bg-[var(--ejo-text-muted)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--ejo-text-muted)]">
                       {children.length}
                     </span>
@@ -128,6 +134,14 @@ export default async function PartTypesPage({
                 placeholder="e.g. Filter, Fluid, Brakes"
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
+              <input
+                name="code"
+                required
+                maxLength={6}
+                placeholder="Short code, e.g. FIL"
+                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm uppercase text-[var(--ejo-text)]"
+              />
+              <p className="text-[11px] text-[var(--ejo-text-muted)]">Becomes every Part Number&apos;s prefix under this category — e.g. FIL-001, FIL-002.</p>
               <SubmitButton
                 label="Add Category"
                 pendingLabel="Adding…"
@@ -147,17 +161,15 @@ export default async function PartTypesPage({
               <form action={createPartTypeFormAction} className="mt-3 space-y-2">
                 <FormPendingOverlay />
                 <input type="hidden" name="branchId" value={branchId} />
-                <select
+                <SearchableSelect
                   name="categoryId"
                   required
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                >
-                  {categories.map((category: (typeof categories)[number]) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
+                  search={searchPartCategoriesForSelect.bind(null, branchId)}
+                  loadDefaultOptions={listAllPartCategoriesForSelect.bind(null, branchId)}
+                  defaultOptionsLabel="All Categories"
+                  placeholder="Search Categories…"
+                  emptyMessage="No Category matches."
+                />
                 <input
                   name="name"
                   required
