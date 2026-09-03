@@ -40,7 +40,19 @@ export const UNIT_OF_MEASURE_OPTIONS: UnitOfMeasureOption[] = [
 
   // Labor & Service — intangible, workshop-side units
   { code: 'HR', label: 'Hour', group: 'Labor & Service' },
+  // Multiple mechanics working the same job simultaneously — e.g. an
+  // engine overhaul with 2 mechanics for 4 hours is 8 Man-Hours, a
+  // genuinely different figure from Hour alone once more than one
+  // person is on the same job at once.
+  { code: 'MHR', label: 'Man-Hour', group: 'Labor & Service' },
   { code: 'JOB', label: 'Job / Activity', group: 'Labor & Service' },
+  // The real universal unit for Sundry specifically — small workshop
+  // consumables (rags, grease, cleaning solvent) too cheap or
+  // impractical to count individually per repair. Works equally as a
+  // bundled physical batch or a flat intangible charge, and is the
+  // one unit every major ERP (SAP, Oracle, Odoo, QuickBooks) already
+  // treats as standard for exactly this.
+  { code: 'LOT', label: 'Lot', group: 'Labor & Service' },
 ];
 
 export function findUnitOfMeasureOption(code: string): UnitOfMeasureOption | undefined {
