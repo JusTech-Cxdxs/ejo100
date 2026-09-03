@@ -4,7 +4,7 @@ export type CustomerEstimateApprovedEmailOptions = {
   customerName: string;
   jobNumber: string;
   vehicleDescription: string;
-  lineItems: { description: string; quantity: number; amount: string }[];
+  lineItems: { description: string; quantity: number; unitOfMeasure?: string | null; amount: string }[];
   /** Combined Store Part + External Part + External Job + Internal
    * Job — every kind of parts/work sourced or performed, merged into
    * one figure. Omit (undefined) when zero, so a Job Card with no
@@ -74,7 +74,7 @@ export function renderCustomerEstimateApprovedEmail(opts: CustomerEstimateApprov
 
   const lineItemsHtml = lineItems.length > 0
     ? `<ol style="margin: 0; padding-left: 20px;">${lineItems
-        .map((li) => `<li style="margin-bottom: 4px;">${escapeHtml(li.description)} (x${li.quantity}) — ${escapeHtml(li.amount)}</li>`)
+        .map((li) => `<li style="margin-bottom: 4px;">${escapeHtml(li.description)} (x${li.quantity}${li.unitOfMeasure ? ` ${escapeHtml(li.unitOfMeasure)}` : ''}) — ${escapeHtml(li.amount)}</li>`)
         .join('')}</ol>`
     : '<p style="margin: 0; color: #64748B;">No items recorded.</p>';
 
