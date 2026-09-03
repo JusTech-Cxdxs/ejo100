@@ -30,7 +30,7 @@ export const UNIT_OF_MEASURE_OPTIONS: UnitOfMeasureOption[] = [
   { code: 'L', label: 'Liter', group: 'Fluids & Chemicals' },
   { code: 'BTL', label: 'Bottle', group: 'Fluids & Chemicals' },
   { code: 'CAN', label: 'Can / Keg (4–5L)', group: 'Fluids & Chemicals' },
-  { code: 'DRM', label: 'Drum (200L)', group: 'Fluids & Chemicals' },
+  { code: 'DRM', label: 'Drum (205L)', group: 'Fluids & Chemicals' },
 
   // Hardware & Consumables — bulk items, sold by roll, packet, or weight
   { code: 'PKT', label: 'Packet', group: 'Hardware & Consumables' },
