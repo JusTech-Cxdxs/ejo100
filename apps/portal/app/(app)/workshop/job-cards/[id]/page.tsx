@@ -614,7 +614,9 @@ export default async function JobCardDetailPage({
                                     className="w-16 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                                   />
                                   {item.type === 'STORE_PART' ? (
-                                    <span className="w-28 shrink-0 text-[11px] text-[var(--ejo-text-muted)]">Set by Store</span>
+                                    <span className="w-28 shrink-0 text-xs text-[var(--ejo-text)]">
+                                      {item.unitOfMeasure ?? <span className="text-[11px] text-[var(--ejo-text-muted)]">Awaiting Store match</span>}
+                                    </span>
                                   ) : (
                                     <div className="w-28 shrink-0">
                                       <UnitOfMeasureInput name="unitOfMeasure" defaultValue={item.unitOfMeasure ?? undefined} placeholder="Unit" />
