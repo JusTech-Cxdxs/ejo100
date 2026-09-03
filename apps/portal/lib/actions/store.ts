@@ -619,7 +619,7 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
   }
   const user = await requireStoreStaff(lineItem.estimate.jobCard.branchId);
 
-  const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, partTypeId: true, name: true } });
+  const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, partTypeId: true, name: true, baseUnitOfMeasure: true } });
   if (!part) {
     throw new StoreActionError('Part not found.');
   }
@@ -638,7 +638,11 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
 
   await prisma.estimateLineItem.update({
     where: { id: lineItemId },
-    data: { matchedPartId: partId, unitPrice: unitCost, amount },
+    // The real unit, auto-synced from the matched Part's own
+    // baseUnitOfMeasure — this is the entire point of the request:
+    // the technician never enters it, it always matches exactly
+    // what's actually registered for the real part.
+    data: { matchedPartId: partId, unitPrice: unitCost, amount, unitOfMeasure: part.baseUnitOfMeasure },
   });
 
   await writeAuditLog({

@@ -245,6 +245,7 @@ export async function addEstimateLineItemFormAction(formData: FormData) {
       // would correctly reject as an invalid number.
       unitPrice: num(formData, 'unitPrice'),
       partTypeId: str(formData, 'partTypeId') || undefined,
+      unitOfMeasure: str(formData, 'unitOfMeasure') || undefined,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not add estimate line item.';
@@ -260,6 +261,7 @@ export async function updateEstimateLineItemFormAction(formData: FormData) {
       description: str(formData, 'description'),
       quantity: num(formData, 'quantity') ?? NaN,
       unitPrice: num(formData, 'unitPrice'),
+      unitOfMeasure: str(formData, 'unitOfMeasure') || undefined,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not update estimate line item.';

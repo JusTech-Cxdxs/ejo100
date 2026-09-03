@@ -1790,6 +1790,10 @@ export type EstimateLineItemInput = {
    * PartType's own name for display, but this is the real, structured
    * link Store's matching step depends on. */
   partTypeId?: string;
+  /** Only meaningful for a non-STORE_PART line — a STORE_PART line's
+   * unit is set automatically once Store matches it, never by
+   * whoever adds the line. */
+  unitOfMeasure?: string;
 };
 
 /** Who can add to or edit a Job Card's estimate — the assigned
@@ -1945,6 +1949,12 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
     }
     description = partType.name;
   }
+  if (input.type === 'STORE_PART' && input.unitOfMeasure) {
+    // Same principle as price: a Store Part's real unit can only ever
+    // come from the matched Part's own baseUnitOfMeasure once Store
+    // matches it — never set here, even if something was passed in.
+    throw new WorkshopActionError('A Store Part line\'s unit is set automatically once Store matches it, not entered directly.');
+  }
 
   const amount = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
 
@@ -1958,6 +1968,7 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
       amount,
       enteredById: contributor.id,
       partTypeId: input.type === 'STORE_PART' ? input.partTypeId : null,
+      unitOfMeasure: input.type === 'STORE_PART' ? null : input.unitOfMeasure?.trim() || null,
     },
   });
 
@@ -1974,6 +1985,9 @@ export type EstimateLineItemUpdateInput = {
   description: string;
   quantity: number;
   unitPrice?: number;
+  /** Only meaningful for a non-STORE_PART line — same reasoning as
+   * addEstimateLineItem's own unitOfMeasure field. */
+  unitOfMeasure?: string;
 };
 
 /** Edits an existing line — description, quantity, and/or price.
@@ -2029,6 +2043,9 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
     }
     await requirePricingAuthority(lineItem.type, lineItem.estimate.jobCard, editor.id);
   }
+  if (input.unitOfMeasure !== undefined && lineItem.type === 'STORE_PART') {
+    throw new WorkshopActionError('A Store Part line\'s unit is set automatically once Store matches it, not entered directly.');
+  }
 
   const amount = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
 
@@ -2039,6 +2056,7 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
       quantity: input.quantity,
       unitPrice: input.unitPrice ?? null,
       amount,
+      ...(lineItem.type !== 'STORE_PART' ? { unitOfMeasure: input.unitOfMeasure?.trim() || null } : {}),
     },
   });
 
@@ -2534,7 +2552,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
           branch: { select: { name: true, businessUnit: { select: { company: { select: { name: true } } } } } },
         },
       },
-      lineItems: { orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true } },
+      lineItems: { orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true, unitOfMeasure: true } },
     },
   });
   if (!estimate) {
@@ -2605,9 +2623,10 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
         customerName: estimate.jobCard.customer.fullName,
         jobNumber: estimate.jobCard.jobNumber,
         vehicleDescription,
-        lineItems: (estimate.lineItems as { description: string; quantity: number; amount: unknown }[]).map((li) => ({
+        lineItems: (estimate.lineItems as { description: string; quantity: number; unitOfMeasure: string | null; amount: unknown }[]).map((li) => ({
           description: li.description,
           quantity: li.quantity,
+          unitOfMeasure: li.unitOfMeasure,
           amount: formatNaira(Number(li.amount ?? 0)),
         })),
         servicesSubtotal: servicesTotal > 0 ? formatNaira(servicesTotal) : undefined,
