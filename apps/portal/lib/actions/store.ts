@@ -132,14 +132,40 @@ export type CreatePartInput = {
   branchId: string;
   name: string;
   description?: string;
-  category?: string;
-  partNumber?: string;
+  /** Every new Part now belongs to a real PartType — category (the
+   * free-text field Store's own catalog search already uses) and
+   * partNumber are both derived from it below, never typed in
+   * directly, so a Part can no longer exist with a category that
+   * doesn't correspond to anything real in the PartType hierarchy. */
+  partTypeId: string;
   trackingType: 'QUANTITY' | 'BATCH' | 'SERIALIZED';
   baseUnitOfMeasure: string;
   reorderPoint?: number;
   safetyStock?: number;
   alternativeUnits?: { unitName: string; conversionFactor: number }[];
 };
+
+/** FLU-001, FIL-001, BRK-001 — mirrors generateGoodsReceiptNumber()'s
+ * own pattern (same string-descending-sort-matches-numeric-order
+ * reasoning), but without a year prefix: a Part Number is a permanent
+ * identity for the life of the part, never scoped to when it was
+ * added, matching exactly how Kewalram's own real catalog already
+ * numbers things today. */
+async function generatePartNumber(branchId: string, categoryCode: string): Promise<string> {
+  const prefix = `${categoryCode}-`;
+  const latest = await prisma.part.findFirst({
+    where: { branchId, partNumber: { startsWith: prefix } },
+    orderBy: { partNumber: 'desc' },
+    select: { partNumber: true },
+  });
+  const parsedSequence = latest?.partNumber ? parseInt(latest.partNumber.slice(prefix.length), 10) : NaN;
+  // A part numbered outside this pattern (possible from before this
+  // was auto-generated, when partNumber was free text) shouldn't
+  // silently produce "NaN" here — treat it the same as no prior
+  // sequence existing at all, and start fresh from 1.
+  const nextSequence = Number.isFinite(parsedSequence) ? parsedSequence + 1 : 1;
+  return `${prefix}${String(nextSequence).padStart(3, '0')}`;
+}
 
 /** Creates a new part in the catalog, with its stock row initialized to
  * zero — a part always has exactly one PartStock row from the moment it
@@ -155,15 +181,35 @@ export async function createPart(input: CreatePartInput): Promise<{ id: string }
   if (!baseUnitOfMeasure) {
     throw new StoreActionError('Base unit of measure is required.');
   }
+  if (!input.partTypeId) {
+    throw new StoreActionError('Part Type is required.');
+  }
+  const partType = await prisma.partType.findUnique({
+    where: { id: input.partTypeId },
+    select: { branchId: true, name: true, category: { select: { name: true, code: true } } },
+  });
+  if (!partType) {
+    throw new StoreActionError('That Part Type no longer exists.');
+  }
+  if (partType.branchId !== input.branchId) {
+    throw new StoreActionError('This Part Type does not belong to this branch.');
+  }
+  if (!partType.category.code) {
+    throw new StoreActionError(`"${partType.category.name}" has no Part Number prefix set yet — add one to that category before registering parts under it.`);
+  }
+
+  const generatedPartNumber = await generatePartNumber(input.branchId, partType.category.code);
 
   const part = await prisma.$transaction(async (tx) => {
+    const partNumber = generatedPartNumber;
     const created = await tx.part.create({
       data: {
         branchId: input.branchId,
         name,
         description: input.description?.trim() || undefined,
-        category: input.category?.trim() || undefined,
-        partNumber: input.partNumber?.trim() || undefined,
+        category: partType.category.name,
+        partTypeId: input.partTypeId,
+        partNumber,
         trackingType: input.trackingType as PartTrackingType,
         baseUnitOfMeasure,
         reorderPoint: input.reorderPoint,
@@ -189,7 +235,7 @@ export async function createPart(input: CreatePartInput): Promise<{ id: string }
     action: 'part.created',
     entityType: 'Part',
     entityId: part.id,
-    metadata: { name, trackingType: input.trackingType, baseUnitOfMeasure },
+    metadata: { name, partNumber: part.partNumber, trackingType: input.trackingType, baseUnitOfMeasure },
   });
 
   return { id: part.id };
@@ -380,16 +426,24 @@ export async function getFittingPartsForVehicle(
   });
 }
 
-export async function createPartCategory(branchId: string, name: string, description?: string): Promise<{ id: string }> {
+export async function createPartCategory(branchId: string, name: string, code: string, description?: string): Promise<{ id: string }> {
   const user = await requireStoreStaff(branchId);
   const trimmedName = name.trim();
   if (!trimmedName) {
     throw new StoreActionError('Part Category name is required.');
   }
+  // Uppercased and stripped to letters/digits — this becomes a literal
+  // Part Number prefix (e.g. "FIL-001"), so it needs to be exactly
+  // what it looks like, not whatever casing or stray punctuation was
+  // typed.
+  const trimmedCode = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!trimmedCode) {
+    throw new StoreActionError('A short code is required — this becomes every Part Number\'s prefix under this category (e.g. "FIL" → FIL-001).');
+  }
   const category = await prisma.partCategory.create({
-    data: { branchId, name: trimmedName, description: description?.trim() || undefined, createdById: user.id },
+    data: { branchId, name: trimmedName, code: trimmedCode, description: description?.trim() || undefined, createdById: user.id },
   });
-  await writeAuditLog({ userId: user.id, action: 'part_category.created', entityType: 'PartCategory', entityId: category.id, metadata: { name: trimmedName } });
+  await writeAuditLog({ userId: user.id, action: 'part_category.created', entityType: 'PartCategory', entityId: category.id, metadata: { name: trimmedName, code: trimmedCode } });
   return { id: category.id };
 }
 
@@ -449,6 +503,38 @@ export async function listPartTypes(branchId: string, search?: string) {
     orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
     include: { category: { select: { id: true, name: true } } },
   });
+}
+
+/** SearchableOption-shaped wrapper around listPartTypes — the real
+ * search a technician's Store Part picker and a new Part's own
+ * registration form both actually use. Kept separate from
+ * listPartTypes itself (which stays exactly as it is for the
+ * management page's own full-tree view) since this is a genuinely
+ * different shape for a genuinely different purpose: a flat,
+ * searchable list of {value, label, sublabel} for SearchableSelect,
+ * not the nested category→type tree the management page renders. */
+export async function searchPartTypesForSelect(branchId: string, query: string): Promise<{ value: string; label: string; sublabel?: string }[]> {
+  const types = await listPartTypes(branchId, query);
+  return types.map((t: (typeof types)[number]) => ({ value: t.id, label: t.name, sublabel: t.category.name }));
+}
+
+/** Shown before the person has typed anything — every Part Type at
+ * this branch, so browsing the full (usually short) list needs zero
+ * typing, same reasoning as loadDefaultOptions everywhere else this
+ * component is used. */
+export async function listAllPartTypesForSelect(branchId: string): Promise<{ value: string; label: string; sublabel?: string }[]> {
+  return searchPartTypesForSelect(branchId, '');
+}
+
+export async function searchPartCategoriesForSelect(branchId: string, query: string): Promise<{ value: string; label: string }[]> {
+  const categories = await listPartCategories(branchId);
+  const q = query.trim().toLowerCase();
+  const filtered = q ? categories.filter((c: (typeof categories)[number]) => c.name.toLowerCase().includes(q)) : categories;
+  return filtered.map((c: (typeof categories)[number]) => ({ value: c.id, label: c.name }));
+}
+
+export async function listAllPartCategoriesForSelect(branchId: string): Promise<{ value: string; label: string }[]> {
+  return searchPartCategoriesForSelect(branchId, '');
 }
 
 /** The real "price registered with the last goods receipt" — the exact

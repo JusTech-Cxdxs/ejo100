@@ -32,8 +32,7 @@ export async function createPartFormAction(formData: FormData) {
       branchId,
       name: str(formData, 'name'),
       description: str(formData, 'description') || undefined,
-      category: str(formData, 'category') || undefined,
-      partNumber: str(formData, 'partNumber') || undefined,
+      partTypeId: str(formData, 'partTypeId'),
       trackingType: trackingType as 'QUANTITY' | 'BATCH' | 'SERIALIZED',
       baseUnitOfMeasure: str(formData, 'baseUnitOfMeasure'),
       reorderPoint: num(formData, 'reorderPoint'),
@@ -151,7 +150,7 @@ export async function deletePartFitmentFormAction(formData: FormData) {
 export async function createPartCategoryFormAction(formData: FormData) {
   const branchId = str(formData, 'branchId');
   try {
-    await createPartCategory(branchId, str(formData, 'name'), str(formData, 'description') || undefined);
+    await createPartCategory(branchId, str(formData, 'name'), str(formData, 'code'), str(formData, 'description') || undefined);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not create this Part Category.';
     redirect(`/inventory/part-types?error=${encodeURIComponent(message)}`);
