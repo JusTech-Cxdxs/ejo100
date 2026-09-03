@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import { UNIT_OF_MEASURE_OPTIONS } from '@/lib/data/unit-of-measure-catalog';
 
 /**
@@ -11,6 +12,14 @@ import { UNIT_OF_MEASURE_OPTIONS } from '@/lib/data/unit-of-measure-catalog';
  * PartType/PartCategory which need SearchableSelect's ID-resolving
  * behavior instead. Never a restriction: anything typed that isn't in
  * the list still submits exactly as typed.
+ *
+ * The datalist's own id comes from useId(), not from the `name` prop
+ * — this component can genuinely render more than once on the same
+ * page with the same field `name` (e.g. an estimate line's own Add
+ * form and its Edit-row form both use `name="unitOfMeasure"`, and
+ * both can be visible at once) — deriving the datalist id from `name`
+ * would collide in that case; useId() is guaranteed unique per real
+ * rendered instance regardless.
  */
 export function UnitOfMeasureInput({
   name,
@@ -23,7 +32,7 @@ export function UnitOfMeasureInput({
   placeholder?: string;
   required?: boolean;
 }) {
-  const listId = `${name}-uom-suggestions`;
+  const listId = useId();
   return (
     <>
       <input

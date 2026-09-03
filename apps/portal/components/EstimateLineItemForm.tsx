@@ -5,6 +5,7 @@ import { addEstimateLineItemFormAction } from '@/lib/actions/workshop-form-handl
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SearchableSelect, type SearchableOption } from '@/components/SearchableSelect';
+import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 
 type PartCategoryWithTypes = {
   id: string;
@@ -61,7 +62,7 @@ export function EstimateLineItemForm({
   }
 
   return (
-    <form action={addEstimateLineItemFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4 sm:grid-cols-5">
+    <form action={addEstimateLineItemFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4 sm:grid-cols-6">
       <FormPendingOverlay />
       <input type="hidden" name="jobCardId" value={jobCardId} />
       <select
@@ -112,6 +113,14 @@ export function EstimateLineItemForm({
         className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
       />
 
+      {isStorePart ? (
+        <div className="flex items-center rounded-[var(--ejo-radius-md)] border border-dashed border-[var(--ejo-border)] px-2 py-2 text-[11px] text-[var(--ejo-text-muted)]">
+          Unit set by Store
+        </div>
+      ) : (
+        <UnitOfMeasureInput name="unitOfMeasure" placeholder="Unit" />
+      )}
+
       {canShowPriceField ? (
         <input
           name="unitPrice"
@@ -130,9 +139,9 @@ export function EstimateLineItemForm({
       <SubmitButton
         label="Add"
         pendingLabel="Adding…"
-        className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)] sm:col-span-5"
+        className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)] sm:col-span-6"
       />
-      <p className="col-span-2 text-[11px] text-[var(--ejo-text-muted)] sm:col-span-5">
+      <p className="col-span-2 text-[11px] text-[var(--ejo-text-muted)] sm:col-span-6">
         {isStorePart
           ? 'Pick the kind of part needed — Store will match it to a real part in stock and set the price.'
           : 'Pricing: the technician prices External Part/Job lines (they sourced them); the supervisor prices Labour and Sundry.'}
