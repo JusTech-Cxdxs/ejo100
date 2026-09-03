@@ -1549,6 +1549,12 @@ model PartCategory {
   id          String   @id @default(cuid())
   branchId    String
   name        String
+  // Short prefix used to auto-generate every Part Number under this
+  // category (e.g. "FIL" for Filter → FIL-001, FIL-002...) — nullable
+  // for now so it's safe alongside any category created before this
+  // existed, but required going forward by the form that creates one:
+  // a category with no code can't drive part-number generation.
+  code        String?
   description String?
   createdById String
   createdAt   DateTime @default(now())
@@ -1560,6 +1566,7 @@ model PartCategory {
   partTypes PartType[]
 
   @@unique([branchId, name])
+  @@unique([branchId, code])
   @@map("part_categories")
 }
 
