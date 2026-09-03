@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { addEstimateLineItemFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
+import { SearchableSelect, type SearchableOption } from '@/components/SearchableSelect';
 
 type PartCategoryWithTypes = {
   id: string;
@@ -43,6 +44,22 @@ export function EstimateLineItemForm({
   // all, regardless of viewer, since that's Store's own job now.
   const canShowPriceField = !isStorePart && (!isTechnicianOnly || type === 'EXTERNAL_PART' || type === 'EXTERNAL_JOB');
 
+  // Every Part Type is already loaded via the `categories` prop — no
+  // server round-trip needed to search it, just a plain client-side
+  // filter wrapped as a Promise to match SearchableSelect's own
+  // (query) => Promise<SearchableOption[]> shape.
+  const allPartTypeOptions: SearchableOption[] = categories.flatMap((category) =>
+    category.types.map((t) => ({ value: t.id, label: t.name, sublabel: category.name })),
+  );
+  async function searchPartTypesLocal(query: string): Promise<SearchableOption[]> {
+    const q = query.trim().toLowerCase();
+    if (!q) return allPartTypeOptions;
+    return allPartTypeOptions.filter((o) => o.label.toLowerCase().includes(q) || o.sublabel?.toLowerCase().includes(q));
+  }
+  async function loadAllPartTypesLocal(): Promise<SearchableOption[]> {
+    return allPartTypeOptions;
+  }
+
   return (
     <form action={addEstimateLineItemFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4 sm:grid-cols-5">
       <FormPendingOverlay />
@@ -63,22 +80,17 @@ export function EstimateLineItemForm({
       </select>
 
       {isStorePart ? (
-        <select
-          name="partTypeId"
-          required
-          className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)] sm:col-span-2"
-        >
-          <option value="">Select a Part Type…</option>
-          {categories.map((category) => (
-            <optgroup key={category.id} label={category.name}>
-              {category.types.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        <div className="col-span-2 sm:col-span-2">
+          <SearchableSelect
+            name="partTypeId"
+            required
+            search={searchPartTypesLocal}
+            loadDefaultOptions={loadAllPartTypesLocal}
+            defaultOptionsLabel="All Part Types"
+            placeholder="Search Part Types…"
+            emptyMessage="No Part Type matches."
+          />
+        </div>
       ) : (
         <input
           name="description"
