@@ -115,7 +115,7 @@ export function EstimateLineItemForm({
 
       {isStorePart ? (
         <div className="flex items-center rounded-[var(--ejo-radius-md)] border border-dashed border-[var(--ejo-border)] px-2 py-2 text-[11px] text-[var(--ejo-text-muted)]">
-          Unit set by Store
+          Store sets this once matched
         </div>
       ) : (
         <UnitOfMeasureInput name="unitOfMeasure" placeholder="Unit" />
