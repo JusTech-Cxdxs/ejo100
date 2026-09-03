@@ -1,9 +1,11 @@
-import { listParts, getStoreBranchId } from '@/lib/actions/store';
+import { listParts, getStoreBranchId, listAllPartTypesForSelect, searchPartTypesForSelect } from '@/lib/actions/store';
 import { createPartFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { SearchableSelect } from '@/components/SearchableSelect';
+import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 
 const TRACKING_TYPE_LABEL: Record<string, string> = {
   QUANTITY: 'Quantity',
@@ -131,19 +133,19 @@ export default async function InventoryPartsPage({
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Category</label>
-              <input
-                name="category"
-                placeholder="e.g. Filters, Brakes, Fluids"
-                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+              <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Part Type</label>
+              <SearchableSelect
+                name="partTypeId"
+                required
+                search={searchPartTypesForSelect.bind(null, branchId)}
+                loadDefaultOptions={listAllPartTypesForSelect.bind(null, branchId)}
+                defaultOptionsLabel="All Part Types"
+                placeholder="Search Part Types…"
+                emptyMessage="No Part Type matches — add one under Part Categories & Types first."
               />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Part Number</label>
-              <input
-                name="partNumber"
-                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-              />
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                Category and Part Number are both derived from this — nothing else to fill in for either.
+              </p>
             </div>
             <div>
               <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Description</label>
@@ -168,12 +170,7 @@ export default async function InventoryPartsPage({
             </div>
             <div>
               <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Base Unit of Measure</label>
-              <input
-                name="baseUnitOfMeasure"
-                required
-                placeholder="e.g. Each, Liter, Kg"
-                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-              />
+              <UnitOfMeasureInput name="baseUnitOfMeasure" required />
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
                 Stock is always tracked in this unit, no matter what unit a delivery arrives in.
               </p>
@@ -183,11 +180,7 @@ export default async function InventoryPartsPage({
                 Alternative unit (optional) — e.g. a Drum or Case
               </summary>
               <div className="mt-3 space-y-2">
-                <input
-                  name="altUnitName"
-                  placeholder="Unit name, e.g. Drum"
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                />
+                <UnitOfMeasureInput name="altUnitName" placeholder="e.g. Drum, Carton, Can…" />
                 <input
                   name="altUnitFactor"
                   type="number"
