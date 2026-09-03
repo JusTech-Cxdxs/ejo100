@@ -881,6 +881,14 @@ model EstimateLineItem {
   // exactly reflecting where it stands.
   partTypeId    String?
   matchedPartId String?
+  // The real Unit of Measure for this line — for a STORE_PART line
+  // this is set automatically the moment Store matches it (copied
+  // from the real matched Part's own baseUnitOfMeasure, never typed
+  // by anyone), exactly mirroring how price already works; for every
+  // other line type it's set directly by whoever adds the line, from
+  // the real Nigerian UOM suggestions with free-text fallback. Null
+  // until either of those actually happens.
+  unitOfMeasure String?
 
   estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   enteredBy   User     @relation(fields: [enteredById], references: [id])
