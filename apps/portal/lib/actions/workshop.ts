@@ -1859,6 +1859,7 @@ export async function getJobCardEstimate(jobCardId: string) {
       },
       approvedBy: { select: { fullName: true } },
       managerApprovedBy: { select: { fullName: true } },
+      matchingRequestedBy: { select: { fullName: true } },
     },
   });
 }

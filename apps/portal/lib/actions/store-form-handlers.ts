@@ -8,7 +8,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { createPart, recordGoodsReceipt, updatePart, setPartAlternativeUnits, createPartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine } from './store';
+import { createPart, recordGoodsReceipt, updatePart, setPartAlternativeUnits, createPartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching, notifyStoreMatchingComplete } from './store';
 
 function str(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -187,4 +187,28 @@ export async function matchEstimateStorePartLineFormAction(formData: FormData) {
   revalidatePath('/inventory/estimate-matching');
   if (jobCardId) revalidatePath(`/workshop/job-cards/${jobCardId}`);
   redirect('/inventory/estimate-matching?status=line_matched');
+}
+
+export async function requestStoreMatchingFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await requestStoreMatching(jobCardId, str(formData, 'note') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not request Store matching.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  redirect(`/workshop/job-cards/${jobCardId}?status=matching_requested`);
+}
+
+export async function notifyStoreMatchingCompleteFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await notifyStoreMatchingComplete(jobCardId, str(formData, 'note') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not send this notification.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  redirect(`/workshop/job-cards/${jobCardId}?status=matching_complete_notified`);
 }

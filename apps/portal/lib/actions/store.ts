@@ -19,6 +19,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { requireUser, writeAuditLog, currentUserIsMasterAdmin } from './workshop';
 import { sendEmail } from '@/lib/email';
 import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
+import { renderStoreMatchingRequestedEmail, renderStoreMatchingStatusEmail } from '@/lib/email-templates/store-matching-status';
 
 class StoreActionError extends Error {}
 
@@ -597,7 +598,13 @@ export async function listUnmatchedStorePartLines(branchId: string) {
     where: {
       type: 'STORE_PART',
       matchedPartId: null,
-      estimate: { status: 'SUBMITTED', jobCard: { branchId } },
+      // DRAFT is included alongside SUBMITTED for the same reason
+      // matching itself now allows it — but matchingRequestedAt not
+      // being null is what actually keeps this queue honest: only
+      // estimates a technician has deliberately asked Store to act
+      // on show up here, not every in-progress draft someone's still
+      // mid-way through building.
+      estimate: { status: { in: ['DRAFT', 'SUBMITTED'] }, matchingRequestedAt: { not: null }, jobCard: { branchId } },
     },
     orderBy: { createdAt: 'asc' },
     include: {
@@ -617,6 +624,197 @@ export async function listUnmatchedStorePartLines(branchId: string) {
   });
 }
 
+/** The real fix for a genuine deadlock: a Store Part line only ever
+ * gets a price once Store matches it, but an estimate can't be
+ * submitted until every line already has one — so without this,
+ * submitting any estimate containing a Store Part was never actually
+ * possible. This is the explicit request that opens the door: notifies
+ * Store (with only this Job Card's own unmatched lines, never the
+ * whole estimate) and lets Supervisor/Technician know submission is on
+ * hold until Store is done. Repeatable — a newly-added Store Part line
+ * later, or a nudge Store missed, is a legitimate reason to call this
+ * again; matchingRequestedAt just gets refreshed, not re-validated
+ * against being already set. */
+export async function requestStoreMatching(jobCardId: string, note?: string): Promise<void> {
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: {
+      branchId: true,
+      jobNumber: true,
+      supervisorId: true,
+      assignedTechnicianId: true,
+      customer: { select: { fullName: true } },
+      estimate: {
+        select: {
+          id: true,
+          lineItems: {
+            where: { type: 'STORE_PART', matchedPartId: null },
+            select: { description: true, quantity: true },
+          },
+        },
+      },
+    },
+  });
+  if (!jobCard) {
+    throw new StoreActionError('Job Card not found.');
+  }
+  if (!jobCard.estimate) {
+    throw new StoreActionError('This Job Card has no estimate yet.');
+  }
+  if (jobCard.estimate.lineItems.length === 0) {
+    throw new StoreActionError('There are no Store Part lines currently awaiting a match.');
+  }
+  const user = await requireUser();
+  const isMasterAdmin = await currentUserIsMasterAdmin();
+  if (jobCard.supervisorId !== user.id && jobCard.assignedTechnicianId !== user.id && !isMasterAdmin) {
+    throw new StoreActionError('Only the assigned supervisor, the assigned technician, or a Master Administrator can request Store matching.');
+  }
+
+  await prisma.estimate.update({
+    where: { id: jobCard.estimate.id },
+    data: { matchingRequestedAt: new Date(), matchingRequestedById: user.id },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'estimate.store_matching_requested',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { lineCount: jobCard.estimate.lineItems.length, note: note?.trim() || undefined },
+  });
+
+  try {
+    const [storeOfficers, storeManagers, requestedByUser] = await Promise.all([
+      listEligibleStoreOfficersForBranch(jobCard.branchId),
+      listEligibleStoreManagersForBranch(jobCard.branchId),
+      prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
+    ]);
+    const storeRecipients = new Map<string, { fullName: string; email: string }>();
+    for (const staffMember of [...storeOfficers.staff, ...storeManagers.staff]) {
+      storeRecipients.set(staffMember.id, staffMember);
+    }
+    const orgContext = await getStoreOrgContext();
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+
+    for (const recipient of storeRecipients.values()) {
+      await sendEmail(
+        recipient.email,
+        `Store matching requested — Job Card ${jobCard.jobNumber}`,
+        renderStoreMatchingRequestedEmail({
+          recipientName: recipient.fullName,
+          requestedByName: requestedByUser?.fullName ?? 'A team member',
+          jobNumber: jobCard.jobNumber,
+          customerName: jobCard.customer.fullName,
+          lines: jobCard.estimate.lineItems,
+          note,
+          matchingUrl: `${portalUrl}/inventory/estimate-matching`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+
+    const statusRecipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
+    const statusRecipients = await prisma.user.findMany({ where: { id: { in: statusRecipientIds } }, select: { id: true, fullName: true, email: true } });
+    for (const recipient of statusRecipients) {
+      await sendEmail(
+        recipient.email,
+        `Awaiting Store match — Job Card ${jobCard.jobNumber}`,
+        renderStoreMatchingStatusEmail({
+          recipientName: recipient.fullName,
+          kind: 'awaiting',
+          jobNumber: jobCard.jobNumber,
+          customerName: jobCard.customer.fullName,
+          note,
+          jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Store matching request emails', jobCardId, err);
+  }
+}
+
+/** Store's own signal that they're done — the counterpart to
+ * requestStoreMatching above. Deliberately requires zero unmatched
+ * lines to remain (never a partial "some done" signal, which would
+ * just recreate the same ambiguity this whole feature exists to
+ * remove) and is itself repeatable, same reasoning as the request
+ * side. */
+export async function notifyStoreMatchingComplete(jobCardId: string, note?: string): Promise<void> {
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: {
+      branchId: true,
+      jobNumber: true,
+      supervisorId: true,
+      assignedTechnicianId: true,
+      customer: { select: { fullName: true } },
+      estimate: {
+        select: {
+          id: true,
+          lineItems: { where: { type: 'STORE_PART', matchedPartId: null }, select: { id: true } },
+        },
+      },
+    },
+  });
+  if (!jobCard) {
+    throw new StoreActionError('Job Card not found.');
+  }
+  if (!jobCard.estimate) {
+    throw new StoreActionError('This Job Card has no estimate yet.');
+  }
+  if (jobCard.estimate.lineItems.length > 0) {
+    throw new StoreActionError(`${pluralize(jobCard.estimate.lineItems.length, 'Store Part line')} still ${jobCard.estimate.lineItems.length === 1 ? 'needs' : 'need'} to be matched before this can be sent.`);
+  }
+  const user = await requireStoreStaff(jobCard.branchId);
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'estimate.store_matching_completed',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { note: note?.trim() || undefined },
+  });
+
+  try {
+    const orgContext = await getStoreOrgContext();
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const statusRecipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
+    const statusRecipients = await prisma.user.findMany({ where: { id: { in: statusRecipientIds } }, select: { fullName: true, email: true } });
+    for (const recipient of statusRecipients) {
+      await sendEmail(
+        recipient.email,
+        `Store matching complete — Job Card ${jobCard.jobNumber}`,
+        renderStoreMatchingStatusEmail({
+          recipientName: recipient.fullName,
+          kind: 'complete',
+          jobNumber: jobCard.jobNumber,
+          customerName: jobCard.customer.fullName,
+          note,
+          jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Store matching complete emails', jobCardId, err);
+  }
+}
+
 export async function matchEstimateStorePartLine(lineItemId: string, partId: string): Promise<void> {
   const lineItem = await prisma.estimateLineItem.findUnique({
     where: { id: lineItemId },
@@ -633,7 +831,14 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
   if (lineItem.type !== 'STORE_PART') {
     throw new StoreActionError('Only a Store Part line can be matched to a catalog Part.');
   }
-  if (lineItem.estimate.status !== 'SUBMITTED') {
+  // DRAFT is included deliberately, not just SUBMITTED — a Store Part
+  // line only ever gets a real price once matched, but submission
+  // itself requires every line already priced. Restricting matching
+  // to SUBMITTED-only would make submitting an estimate with any
+  // Store Part in it genuinely impossible: a real deadlock, not just
+  // an inconvenience. Matching has to be allowed to happen first,
+  // before submission, whenever Store Parts are involved.
+  if (lineItem.estimate.status !== 'DRAFT' && lineItem.estimate.status !== 'SUBMITTED') {
     throw new StoreActionError('This estimate is not currently awaiting Store matching.');
   }
   const user = await requireStoreStaff(lineItem.estimate.jobCard.branchId);
