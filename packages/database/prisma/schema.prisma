@@ -323,10 +323,12 @@ model User {
   partRequestSlipsRejected     PartRequestSlip[] @relation("PartRequestSlipRejectedBy")
   partRequestSlipsReceived     PartRequestSlip[] @relation("PartRequestSlipReceivedBy")
   externalProcurementRequested       ExternalProcurementRequest[] @relation("ExternalProcurementRequestedBy")
+  externalProcurementFinanceReviewed ExternalProcurementRequest[] @relation("ExternalProcurementFinanceReviewedBy")
   externalProcurementManagerApproved ExternalProcurementRequest[] @relation("ExternalProcurementManagerApprovedBy")
   externalProcurementDisbursed        ExternalProcurementRequest[] @relation("ExternalProcurementDisbursedBy")
   externalProcurementRejected         ExternalProcurementRequest[] @relation("ExternalProcurementRejectedBy")
   externalProcurementRetired          ExternalProcurementRequest[] @relation("ExternalProcurementRetiredBy")
+  externalProcurementSupplementaryLinesAdded ExternalProcurementSupplementaryLine[] @relation("ExternalProcurementSupplementaryLineAddedBy")
 
   @@map("users")
 }
@@ -1350,6 +1352,15 @@ enum PartRequestSlipStatus {
 }
 
 enum ExternalProcurementStatus {
+  // Real new first stage — Finance reviews and may add real supplementary
+  // costs (transport, logistics) before this ever reaches the Manager,
+  // matching the real workflow: Finance can add to the total, but can
+  // never touch what the technician themselves originally submitted.
+  // Added as a new value, not a rename of an existing one, deliberately
+  // — any request already sitting in PENDING_MANAGER_APPROVAL from
+  // before this existed simply continues through the original path
+  // unaffected; only new requests start here.
+  PENDING_FINANCE_REVIEW
   PENDING_MANAGER_APPROVAL
   APPROVED
   DISBURSED
@@ -1450,8 +1461,25 @@ model ExternalProcurementRequest {
   estimateLineItemId String?
   requestedById      String
   description        String
+  // The technician's own original figure — locked the moment this is
+  // submitted (there's deliberately no edit path for it at all, by
+  // any role, at any later stage): everything that happens
+  // afterward — Finance's own additions, the Manager's approval,
+  // the eventual disbursement — builds on top of this number, never
+  // rewrites it.
   estimatedAmount    Decimal                    @db.Decimal(12, 2)
-  status             ExternalProcurementStatus  @default(PENDING_MANAGER_APPROVAL)
+  status             ExternalProcurementStatus  @default(PENDING_FINANCE_REVIEW)
+
+  // The real combined total (estimatedAmount + every real
+  // supplementaryLines entry) as it stood at the exact moment the
+  // Manager approved it — locked in right there, never recomputed
+  // later, so a supplementary line added after approval (which
+  // shouldn't happen, but isn't physically prevented by the schema
+  // itself) could never silently change what was actually approved.
+  approvedTotal Decimal? @db.Decimal(12, 2)
+
+  financeReviewedById String?
+  financeReviewedAt   DateTime?
 
   managerApprovedById String?
   managerApprovedAt   DateTime?
@@ -1459,14 +1487,35 @@ model ExternalProcurementRequest {
 
   disbursedById     String?
   disbursedAt       DateTime?
-  // The real amount actually handed over — may differ slightly from
-  // estimatedAmount, which is why both are kept rather than one
-  // overwriting the other.
+  // The real amount actually handed over — copied directly from
+  // approvedTotal at the moment of disbursement, never a figure
+  // Finance types in themselves at this final stage. Kept as its own
+  // stored field anyway (not just read live from approvedTotal)
+  // because this is the genuine historical record of what was really
+  // disbursed, the same reasoning Goods Receipt's own unitCost is
+  // stored per-delivery rather than only ever read from a part's
+  // current price.
   disbursedAmount   Decimal? @db.Decimal(12, 2)
+  // Real payment method (e.g. "Cash", "Transfer") — suggested from a
+  // real short list, free text still always allowed for anything not
+  // on it, matching the same pattern already used for Unit of
+  // Measure. Only ever set at this final disbursement step, alongside
+  // the two fields below.
+  paymentMethod     String?
+  // The bank transaction reference — genuinely optional, since a cash
+  // disbursement has none, but recorded whenever a transfer means one
+  // actually exists.
+  paymentReference  String?
+  disbursementNotes String?
 
   rejectedById    String?
   rejectedAt      DateTime?
   rejectionReason String?
+  // Which stage this was rejected at — FINANCE_REVIEW or
+  // MANAGER_APPROVAL — the same "keep the individual per-request
+  // timeline honest about exactly where things stopped" reasoning
+  // already used for PartRequestSlip's own rejectionStage.
+  rejectionStage  String?
 
   retiredById String?
   retiredAt   DateTime?
@@ -1478,12 +1527,35 @@ model ExternalProcurementRequest {
   branch           Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
   estimateLineItem EstimateLineItem? @relation(fields: [estimateLineItemId], references: [id])
   requestedBy      User              @relation("ExternalProcurementRequestedBy", fields: [requestedById], references: [id])
+  financeReviewedBy User?            @relation("ExternalProcurementFinanceReviewedBy", fields: [financeReviewedById], references: [id])
   managerApprovedBy User?            @relation("ExternalProcurementManagerApprovedBy", fields: [managerApprovedById], references: [id])
   disbursedBy      User?             @relation("ExternalProcurementDisbursedBy", fields: [disbursedById], references: [id])
   rejectedBy       User?             @relation("ExternalProcurementRejectedBy", fields: [rejectedById], references: [id])
   retiredBy        User?             @relation("ExternalProcurementRetiredBy", fields: [retiredById], references: [id])
+  supplementaryLines ExternalProcurementSupplementaryLine[]
 
   @@map("external_procurement_requests")
+}
+
+// Finance's own real additions — transport, logistics, and similar real
+// supplementary costs a technician's own original request could never have
+// anticipated. Deliberately its own separate table rather than a single
+// number Finance edits on the request itself: each real cost gets its own
+// description, its own amount, and its own record of who added it and when
+// — exactly what "Finance can add, never touch the original" needs to mean
+// in the schema itself, not just in application logic.
+model ExternalProcurementSupplementaryLine {
+  id          String   @id @default(cuid())
+  requestId   String
+  description String
+  amount      Decimal  @db.Decimal(12, 2)
+  addedById   String
+  createdAt   DateTime @default(now())
+
+  request ExternalProcurementRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  addedBy User                       @relation("ExternalProcurementSupplementaryLineAddedBy", fields: [addedById], references: [id])
+
+  @@map("external_procurement_supplementary_lines")
 }
 
 // ----------------------------------------------------------------------------
