@@ -306,6 +306,7 @@ model User {
   estimatesApproved Estimate[] @relation("EstimateApprovedBy")
   estimatesManagerApproved Estimate[] @relation("EstimateManagerApprovedBy")
   estimatesCustomerNotified Estimate[] @relation("EstimateCustomerNotifiedBy")
+  estimatesMatchingRequested Estimate[] @relation("EstimateMatchingRequestedBy")
   paymentsRecorded Payment[]
   cancellationRequestsMade CancellationRequest[] @relation("CancellationRequestedBy")
   cancellationRequestsDecided CancellationRequest[] @relation("CancellationDecidedBy")
@@ -784,6 +785,17 @@ model Estimate {
   // is the correct, meaningful state for every row that predates this
   // field.
   reminderSentAt       DateTime?
+  // The moment Store Matching was requested — this is what actually
+  // gates whether a Store Part line appears in Store's own matching
+  // queue at all, deliberately separate from just "an unmatched line
+  // exists": a technician still mid-way through building up an
+  // estimate shouldn't have every draft line show up in Store's queue
+  // before they're actually ready for Store to act on it. Reused,
+  // never re-cleared, on every later matching round for this same
+  // estimate — a newly-added Store Part line after this is already
+  // set becomes visible to Store immediately, no need to re-request.
+  matchingRequestedAt   DateTime?
+  matchingRequestedById String?
   createdById String
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
@@ -793,6 +805,7 @@ model Estimate {
   approvedBy  User?              @relation("EstimateApprovedBy", fields: [approvedById], references: [id])
   managerApprovedBy User?        @relation("EstimateManagerApprovedBy", fields: [managerApprovedById], references: [id])
   customerNotifiedBy User?       @relation("EstimateCustomerNotifiedBy", fields: [customerNotifiedById], references: [id])
+  matchingRequestedBy User?      @relation("EstimateMatchingRequestedBy", fields: [matchingRequestedById], references: [id])
   lineItems   EstimateLineItem[]
 
   @@map("estimates")
