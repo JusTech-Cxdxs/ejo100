@@ -97,6 +97,9 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'external_procurement.approved': 'External procurement approved',
   'external_procurement.disbursed': 'External procurement disbursed',
   'external_procurement.rejected': 'External procurement rejected',
+  'estimate.store_matching_requested': 'Store matching requested',
+  'estimate.store_matching_completed': 'Store matching completed',
+  'estimate_line.store_matched': 'Store Part line matched',
 };
 
 const PART_REQUEST_STATUS_LABEL: Record<string, string> = {
@@ -108,6 +111,7 @@ const PART_REQUEST_STATUS_LABEL: Record<string, string> = {
 };
 
 const EXTERNAL_PROCUREMENT_STATUS_LABEL: Record<string, string> = {
+  PENDING_FINANCE_REVIEW: 'Awaiting Finance review',
   PENDING_MANAGER_APPROVAL: 'Awaiting Manager approval',
   APPROVED: 'Approved — awaiting disbursement',
   DISBURSED: 'Disbursed',
@@ -123,6 +127,7 @@ const PART_REQUEST_STATUS_BADGE_CLASS: Record<string, string> = {
 };
 
 const EXTERNAL_PROCUREMENT_STATUS_BADGE_CLASS: Record<string, string> = {
+  PENDING_FINANCE_REVIEW: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   PENDING_MANAGER_APPROVAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   APPROVED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
   DISBURSED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
@@ -150,6 +155,12 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
     }
     case 'estimate.line_item_removed':
       return typeof meta.description === 'string' ? `"${meta.description}"` : null;
+    case 'estimate_line.store_matched': {
+      const parts: string[] = [];
+      if (typeof meta.partName === 'string') parts.push(`matched to "${meta.partName}"`);
+      if (typeof meta.unitPrice === 'number') parts.push(`priced at ${formatNaira(meta.unitPrice)}`);
+      return parts.length > 0 ? parts.join(' — ') : null;
+    }
     case 'job_card.status_updated': {
       const from = typeof meta.from === 'string' ? (STATUS_LABEL[meta.from] ?? meta.from) : null;
       const to = typeof meta.to === 'string' ? (STATUS_LABEL[meta.to] ?? meta.to) : null;
