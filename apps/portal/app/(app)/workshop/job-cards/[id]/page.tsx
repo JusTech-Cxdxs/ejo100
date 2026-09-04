@@ -568,17 +568,27 @@ export default async function JobCardDetailPage({
               <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No estimate lines yet.</p>
             ) : (
               <>
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full text-sm">
+                <div className="mt-3">
+                  <table className="w-full table-fixed text-xs">
+                    <colgroup>
+                      <col className="w-[9%]" />
+                      <col className="w-[27%]" />
+                      <col className="w-[6%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[13%]" />
+                      {isEstimateContributor ? <col className="w-[10%]" /> : null}
+                    </colgroup>
                     <thead>
-                      <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
-                        <th className="py-2 pr-3 font-medium">Type</th>
-                        <th className="py-2 pr-3 font-medium">Description</th>
-                        <th className="py-2 pr-3 text-right font-medium">Qty</th>
-                        <th className="py-2 pr-3 font-medium">Unit</th>
-                        <th className="py-2 pr-3 text-right font-medium">Unit Price</th>
-                        <th className="py-2 pr-3 text-right font-medium">Amount</th>
-                        <th className="py-2 pr-3 font-medium">Entered By</th>
+                      <tr className="border-b border-[var(--ejo-border)] text-left text-[11px] text-[var(--ejo-text-muted)]">
+                        <th className="py-2 pr-2 font-medium">Type</th>
+                        <th className="py-2 pr-2 font-medium">Description</th>
+                        <th className="py-2 pr-2 text-right font-medium">Qty</th>
+                        <th className="py-2 pr-2 font-medium">Unit</th>
+                        <th className="py-2 pr-2 text-right font-medium">Unit Price</th>
+                        <th className="py-2 pr-2 text-right font-medium">Amount</th>
+                        <th className="py-2 pr-2 font-medium">Entered By</th>
                         {isEstimateContributor ? <th className="py-2 font-medium">&nbsp;</th> : null}
                       </tr>
                     </thead>
@@ -587,6 +597,16 @@ export default async function JobCardDetailPage({
                         const canModifyThis =
                           estimate.status !== 'MANAGER_APPROVED' && isEstimateContributor && (viewerId === item.enteredById || isApprover);
                         const isEditingThis = editLineId === item.id && canModifyThis;
+                        // The real unit once Store's matched this line, or a
+                        // genuine preview (from what's already in the real
+                        // catalog for this Part Type) before that — computed
+                        // once here so the read-only row and the edit-row
+                        // both show exactly the same thing, never a blank
+                        // that only fills in once you happen to click Edit.
+                        const storePartPreviewUnit =
+                          item.type === 'STORE_PART'
+                            ? (item.unitOfMeasure ?? partTypes.find((t: (typeof partTypes)[number]) => t.id === item.partTypeId)?.typicalUnit ?? null)
+                            : null;
 
                         if (isEditingThis) {
                           return (
@@ -602,7 +622,7 @@ export default async function JobCardDetailPage({
                                     defaultValue={item.description}
                                     required
                                     list="internal-job-suggestions"
-                                    className="min-w-[150px] flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                                    className="min-w-[120px] flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                                   />
                                   <input
                                     name="quantity"
@@ -614,30 +634,25 @@ export default async function JobCardDetailPage({
                                     className="w-16 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                                   />
                                   {item.type === 'STORE_PART' ? (
-                                    <span className="w-28 shrink-0 text-xs text-[var(--ejo-text)]">
-                                      {item.unitOfMeasure ?? (() => {
-                                        const previewUnit = partTypes.find((t: (typeof partTypes)[number]) => t.id === item.partTypeId)?.typicalUnit;
-                                        return previewUnit ? (
-                                          <span className="text-[var(--ejo-text-muted)]">{previewUnit} (preview)</span>
-                                        ) : (
-                                          <span className="text-[11px] text-[var(--ejo-text-muted)]">Awaiting Store match</span>
-                                        );
-                                      })()}
+                                    <span className="w-24 shrink-0 text-xs text-[var(--ejo-text)]">
+                                      {storePartPreviewUnit ?? <span className="text-[11px] text-[var(--ejo-text-muted)]">Awaiting Store match</span>}
                                     </span>
                                   ) : (
-                                    <div className="w-28 shrink-0">
+                                    <div className="w-24 shrink-0">
                                       <UnitOfMeasureInput name="unitOfMeasure" defaultValue={item.unitOfMeasure ?? undefined} placeholder="Unit" />
                                     </div>
                                   )}
-                                  <input
-                                    name="unitPrice"
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    placeholder="Unit Price"
-                                    defaultValue={item.unitPrice != null ? Number(item.unitPrice) : ''}
-                                    className="w-28 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
-                                  />
+                                  {item.type !== 'STORE_PART' ? (
+                                    <input
+                                      name="unitPrice"
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      placeholder="Unit Price"
+                                      defaultValue={item.unitPrice != null ? Number(item.unitPrice) : ''}
+                                      className="w-24 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                                    />
+                                  ) : null}
                                   <SubmitButton
                                     label="Save"
                                     pendingLabel="Saving…"
@@ -657,22 +672,22 @@ export default async function JobCardDetailPage({
 
                         return (
                           <tr key={item.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                            <td className="py-2 pr-3 text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</td>
-                            <td className="py-2 pr-3 text-[var(--ejo-text)]">
+                            <td className="py-2 pr-2 text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</td>
+                            <td className="py-2 pr-2 break-words text-[var(--ejo-text)]">
                               {item.description}
                               {item.type === 'STORE_PART' ? (
                                 item.matchedPart ? (
-                                  <div className="mt-0.5 text-[11px] text-[var(--ejo-success)]">Matched: {item.matchedPart.name}</div>
+                                  <div className="mt-0.5 text-[10px] text-[var(--ejo-success)]">Matched: {item.matchedPart.name}</div>
                                 ) : (
-                                  <div className="mt-0.5 text-[11px] text-[var(--ejo-warning)]">Awaiting Store match</div>
+                                  <div className="mt-0.5 text-[10px] text-[var(--ejo-warning)]">Awaiting Store match</div>
                                 )
                               ) : null}
                             </td>
-                            <td className="py-2 pr-3 text-right text-[var(--ejo-text)]">{item.quantity}</td>
-                            <td className="py-2 pr-3 text-[var(--ejo-text-muted)]">{item.unitOfMeasure ?? '—'}</td>
-                            <td className="py-2 pr-3 text-right text-[var(--ejo-text)]">{formatNaira(item.unitPrice)}</td>
-                            <td className="py-2 pr-3 text-right font-medium text-[var(--ejo-text)]">{formatNaira(item.amount)}</td>
-                            <td className="py-2 pr-3 text-xs text-[var(--ejo-text-muted)]">{item.enteredBy.fullName}</td>
+                            <td className="py-2 pr-2 text-right text-[var(--ejo-text)]">{item.quantity}</td>
+                            <td className="py-2 pr-2 text-[var(--ejo-text-muted)]">{item.type === 'STORE_PART' ? (storePartPreviewUnit ?? '—') : (item.unitOfMeasure ?? '—')}</td>
+                            <td className="py-2 pr-2 text-right text-[var(--ejo-text)]">{formatNaira(item.unitPrice)}</td>
+                            <td className="py-2 pr-2 text-right font-medium text-[var(--ejo-text)]">{formatNaira(item.amount)}</td>
+                            <td className="py-2 pr-2 truncate text-[11px] text-[var(--ejo-text-muted)]">{item.enteredBy.fullName}</td>
                             {isEstimateContributor ? (
                               <td className="py-2">
                                 {canModifyThis ? (
@@ -734,6 +749,7 @@ export default async function JobCardDetailPage({
 
             {jobCard.approvalStatus === 'APPROVED' && isEstimateContributor && (!estimate || estimate.status === 'DRAFT') ? (
               <EstimateLineItemForm
+                key={estimate?.lineItems.length ?? 0}
                 jobCardId={jobCard.id}
                 categories={partCategoriesWithTypes}
                 descriptionSuggestions={COMMON_ESTIMATE_LINE_DESCRIPTIONS}
