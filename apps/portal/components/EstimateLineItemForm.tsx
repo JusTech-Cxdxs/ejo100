@@ -10,7 +10,7 @@ import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 type PartCategoryWithTypes = {
   id: string;
   name: string;
-  types: { id: string; name: string }[];
+  types: { id: string; name: string; typicalUnit: string | null }[];
 };
 
 /**
@@ -39,6 +39,16 @@ export function EstimateLineItemForm({
 }) {
   const [type, setType] = useState('STORE_PART');
   const isStorePart = type === 'STORE_PART';
+  // A real preview of the unit a technician's about to be working
+  // with — genuinely looked up from what's already in the catalog for
+  // this Part Type, never guessed, and never the value that actually
+  // gets submitted (that's still set only by Store's own match on
+  // matching, exactly as before). This exists purely so a technician
+  // never has to type a quantity blind — "1" meaning one whole Set is
+  // a very different thing from "1" meaning one loose piece, and
+  // they should be able to see which one they're dealing with.
+  const [selectedPartTypeId, setSelectedPartTypeId] = useState('');
+  const selectedPartType = categories.flatMap((c) => c.types).find((t) => t.id === selectedPartTypeId);
   // A technician only ever has pricing authority for what they
   // personally sourced outside the workshop — everything else is
   // priced by the supervisor. Store Part never gets a price field at
@@ -90,6 +100,7 @@ export function EstimateLineItemForm({
             defaultOptionsLabel="All Part Types"
             placeholder="Search Part Types…"
             emptyMessage="No Part Type matches."
+            onChange={setSelectedPartTypeId}
           />
         </div>
       ) : (
@@ -114,8 +125,17 @@ export function EstimateLineItemForm({
       />
 
       {isStorePart ? (
-        <div className="flex items-center rounded-[var(--ejo-radius-md)] border border-dashed border-[var(--ejo-border)] px-2 py-2 text-[11px] text-[var(--ejo-text-muted)]">
-          Store sets this once matched
+        <div className="flex flex-col justify-center rounded-[var(--ejo-radius-md)] border border-dashed border-[var(--ejo-border)] px-2 py-1.5 text-[11px] text-[var(--ejo-text-muted)]">
+          {selectedPartType?.typicalUnit ? (
+            <>
+              <span className="font-medium text-[var(--ejo-text)]">Unit: {selectedPartType.typicalUnit}</span>
+              <span>Confirmed by Store</span>
+            </>
+          ) : selectedPartType ? (
+            <span>Unit varies — Store will confirm</span>
+          ) : (
+            <span>Pick a Part Type to see its unit</span>
+          )}
         </div>
       ) : (
         <UnitOfMeasureInput name="unitOfMeasure" placeholder="Unit" />
@@ -143,7 +163,7 @@ export function EstimateLineItemForm({
       />
       <p className="col-span-2 text-[11px] text-[var(--ejo-text-muted)] sm:col-span-6">
         {isStorePart
-          ? 'Pick the kind of part needed — Store will match it to a real part in stock and set the price.'
+          ? 'Pick the kind of part needed — the Unit shown is a preview from what\u2019s already in stock; Store still confirms the exact part and price.'
           : 'Pricing: the technician prices External Part/Job lines (they sourced them); the supervisor prices Labour and Sundry.'}
       </p>
 
