@@ -51,22 +51,24 @@ export function GoodsReceiptForm({
   parts: PartOption[];
   action: (formData: FormData) => void | Promise<void>;
 }) {
-  const [selectedPartId, setSelectedPartId] = useState(parts[0]?.id ?? '');
+  const [selectedPartId, setSelectedPartId] = useState('');
   const selectedPart = parts.find((p) => p.id === selectedPartId);
   const [quantity, setQuantity] = useState('');
-  const [unitUsed, setUnitUsed] = useState(parts[0]?.baseUnitOfMeasure ?? '');
+  const [unitUsed, setUnitUsed] = useState('');
   const [serials, setSerials] = useState<SerialRow[]>([{ key: 's0', value: '' }]);
   const nextSerialId = useRef(1);
 
   function selectPart(partId: string) {
     setSelectedPartId(partId);
-    // Reset to the newly-selected part's own base unit — a plain
-    // `defaultValue` here would only apply on first mount, not when
-    // the selection actually changes, the same class of bug already
-    // caught once before in this project on a status dropdown. Still
-    // freely editable afterward for a genuine alternative unit.
+    // Alternative unit first, base unit only when there isn't one —
+    // Store almost always receives a delivery of Engine Oil by the
+    // Drum, not counted out in Liters, so that's the real, useful
+    // default to start from. A plain `defaultValue` here would only
+    // apply on first mount, not when the selection actually changes,
+    // the same class of bug already caught once before in this
+    // project on a status dropdown. Still freely editable afterward.
     const newPart = parts.find((p) => p.id === partId);
-    setUnitUsed(newPart?.baseUnitOfMeasure ?? '');
+    setUnitUsed(newPart?.alternativeUnits[0]?.unitName ?? newPart?.baseUnitOfMeasure ?? '');
   }
 
   // Every real Part is already loaded via the `parts` prop — no
@@ -118,8 +120,6 @@ export function GoodsReceiptForm({
         <SearchableSelect
           name="partId"
           required
-          defaultValue={selectedPartId}
-          defaultLabel={parts.find((p) => p.id === selectedPartId)?.name}
           search={searchPartsLocal}
           loadDefaultOptions={loadAllPartsLocal}
           defaultOptionsLabel="All Parts"
@@ -159,12 +159,24 @@ export function GoodsReceiptForm({
           <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Unit</label>
           <input
             name="unitUsed"
+            list="goods-receipt-unit-suggestions"
             required
             value={unitUsed}
             onChange={(e) => setUnitUsed(e.target.value)}
             placeholder="e.g. Liter, or Drum"
             className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
+          {/* Exactly the real units this specific Part actually uses
+              — its alternative unit (if it has one) and its base unit
+              — never the full generic catalog, so clearing this by
+              mistake still leads straight back to a genuinely correct
+              choice, not a wall of unrelated suggestions. */}
+          <datalist id="goods-receipt-unit-suggestions">
+            {selectedPart?.alternativeUnits.map((u) => (
+              <option key={u.unitName} value={u.unitName} />
+            ))}
+            {selectedPart ? <option value={selectedPart.baseUnitOfMeasure} /> : null}
+          </datalist>
         </div>
       </div>
 
