@@ -1181,6 +1181,17 @@ model Part {
   // change once that automation is actually built.
   reorderPoint Decimal? @db.Decimal(12, 3)
   safetyStock  Decimal? @db.Decimal(12, 3)
+  // What the customer is actually charged, per base unit — a real,
+  // deliberate figure Store sets, genuinely separate from cost. A
+  // Goods Receipt's own unitCost is what was PAID for a delivery,
+  // never what a customer should be CHARGED — conflating the two (the
+  // real bug this field exists to fix) meant an estimate's price
+  // moved every time a new delivery arrived at a different cost, with
+  // zero markup and zero deliberate pricing decision ever made. Store
+  // matching a line to this Part now requires this to be set — no
+  // silent fallback to cost, since that would just recreate the exact
+  // problem this was built to solve.
+  sellingPrice Decimal? @db.Decimal(12, 2)
   isActive     Boolean  @default(true)
   // Which generic, customer-facing PartType this Part actually is
   // (e.g. "Fuel Filter") — nullable since a Part can exist in the
@@ -1293,7 +1304,14 @@ model PartSerial {
   part             Part              @relation(fields: [partId], references: [id], onDelete: Cascade)
   goodsReceiptLine GoodsReceiptLine? @relation(fields: [goodsReceiptLineId], references: [id])
 
-  @@unique([partId, serialNumber])
+  // Genuinely global, not scoped to one Part — the real gap this
+  // closes: the previous [partId, serialNumber] pairing still let two
+  // completely different Parts (a Tyre and a Rim, say) share the
+  // exact same serial number, which is precisely the mistake this
+  // whole field exists to catch. A serial is meant to identify one
+  // real physical unit across the entire catalog, not just within
+  // whichever Part it happens to be filed under.
+  @@unique([serialNumber])
   @@map("part_serials")
 }
 
