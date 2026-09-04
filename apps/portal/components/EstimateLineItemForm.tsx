@@ -72,7 +72,7 @@ export function EstimateLineItemForm({
   }
 
   return (
-    <form action={addEstimateLineItemFormAction} className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--ejo-border)] pt-4 sm:grid-cols-6">
+    <form action={addEstimateLineItemFormAction} className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--ejo-border)] pt-4 sm:grid-cols-6">
       <FormPendingOverlay />
       <input type="hidden" name="jobCardId" value={jobCardId} />
       <select
@@ -125,18 +125,13 @@ export function EstimateLineItemForm({
       />
 
       {isStorePart ? (
-        <div className="flex flex-col justify-center rounded-[var(--ejo-radius-md)] border border-dashed border-[var(--ejo-border)] px-2 py-1.5 text-[11px] text-[var(--ejo-text-muted)]">
-          {selectedPartType?.typicalUnit ? (
-            <>
-              <span className="font-medium text-[var(--ejo-text)]">Unit: {selectedPartType.typicalUnit}</span>
-              <span>Confirmed by Store</span>
-            </>
-          ) : selectedPartType ? (
-            <span>Unit varies — Store will confirm</span>
-          ) : (
-            <span>Pick a Part Type to see its unit</span>
-          )}
-        </div>
+        <input
+          type="text"
+          readOnly
+          value={selectedPartType?.typicalUnit ?? ''}
+          placeholder={selectedPartType ? 'Varies' : 'Unit'}
+          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+        />
       ) : (
         <UnitOfMeasureInput name="unitOfMeasure" placeholder="Unit" />
       )}
