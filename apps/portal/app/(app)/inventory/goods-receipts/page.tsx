@@ -67,7 +67,11 @@ export default async function GoodsReceiptsPage({
             <tbody>
               {receipts.map((receipt: (typeof receipts)[number]) => (
                 <tr key={receipt.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                  <td className="px-4 py-2 font-medium text-[var(--ejo-primary)]">{receipt.referenceNumber}</td>
+                  <td className="px-4 py-2 font-medium">
+                    <LoadingLink href={`/inventory/goods-receipts/${receipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                      {receipt.referenceNumber}
+                    </LoadingLink>
+                  </td>
                   <td className="px-4 py-2 text-[var(--ejo-text)]">{receipt.supplierName}</td>
                   <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{pluralize(receipt.lines.length, 'line')}</td>
                   <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{receipt.receivedBy.fullName}</td>
