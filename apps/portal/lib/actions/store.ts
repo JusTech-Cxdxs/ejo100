@@ -681,6 +681,25 @@ export async function listUnmatchedStorePartLines(branchId: string) {
   });
 }
 
+/** The same real queue, scoped to exactly one Job Card — what the
+ * dedicated per-Job-Card matching page actually uses, so opening one
+ * Job Card's own matching doesn't need to fetch (or discard) every
+ * other Job Card's own unmatched lines just to show this one. */
+export async function listUnmatchedStorePartLinesForJobCard(jobCardId: string) {
+  await requireUser();
+  return prisma.estimateLineItem.findMany({
+    where: {
+      type: 'STORE_PART',
+      matchedPartId: null,
+      estimate: { status: { in: ['DRAFT', 'SUBMITTED'] }, matchingRequestedAt: { not: null }, jobCardId },
+    },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      partType: { select: { id: true, name: true, category: { select: { name: true } } } },
+    },
+  });
+}
+
 /** The real fix for a genuine deadlock: a Store Part line only ever
  * gets a price once Store matches it, but an estimate can't be
  * submitted until every line already has one — so without this,
