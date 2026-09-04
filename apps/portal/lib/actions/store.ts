@@ -488,7 +488,7 @@ export async function createPartType(branchId: string, categoryId: string, name:
 export async function listPartTypes(branchId: string, search?: string) {
   await requireUser();
   const q = search?.trim();
-  return prisma.partType.findMany({
+  const types = await prisma.partType.findMany({
     where: {
       branchId,
       ...(q
@@ -501,7 +501,26 @@ export async function listPartTypes(branchId: string, search?: string) {
         : {}),
     },
     orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
-    include: { category: { select: { id: true, name: true } } },
+    include: {
+      category: { select: { id: true, name: true } },
+      // Only ever used to compute typicalUnit below — every real Part
+      // under a given Part Type almost always shares the same base
+      // unit (they're the same kind of thing, just different vehicle
+      // variants), which is what makes this a genuinely honest
+      // preview rather than a guess.
+      parts: { where: { isActive: true }, select: { baseUnitOfMeasure: true } },
+    },
+  });
+  return types.map((t: (typeof types)[number]) => {
+    const distinctUnits = new Set(t.parts.map((p: (typeof t.parts)[number]) => p.baseUnitOfMeasure));
+    return {
+      ...t,
+      // A confident preview only when every real Part under this type
+      // genuinely agrees — null (shown as "varies" or "not yet known"
+      // by callers) when there are zero Parts yet, or when they
+      // disagree, rather than ever guessing wrong.
+      typicalUnit: distinctUnits.size === 1 ? ([...distinctUnits][0] ?? null) : null,
+    };
   });
 }
 
