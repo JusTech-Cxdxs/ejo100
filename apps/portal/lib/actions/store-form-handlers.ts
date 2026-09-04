@@ -8,7 +8,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { createPart, recordGoodsReceipt, updatePart, setPartAlternativeUnits, createPartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching, notifyStoreMatchingComplete } from './store';
+import { createPart, recordGoodsReceipt, updatePart, setPartAlternativeUnits, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching, notifyStoreMatchingComplete } from './store';
 
 function str(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -132,6 +132,25 @@ export async function createPartFitmentFormAction(formData: FormData) {
   }
   revalidatePath(`/inventory/parts/${partId}`);
   redirect(`/inventory/parts/${partId}?status=fitment_added`);
+}
+
+export async function updatePartFitmentFormAction(formData: FormData) {
+  const partId = str(formData, 'partId');
+  const fitmentId = str(formData, 'fitmentId');
+  try {
+    await updatePartFitment(fitmentId, {
+      make: str(formData, 'make'),
+      model: str(formData, 'model'),
+      engineType: str(formData, 'engineType') || undefined,
+      yearFrom: num(formData, 'yearFrom'),
+      yearTo: num(formData, 'yearTo'),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not update this fitment.';
+    redirect(`/inventory/parts/${partId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/inventory/parts/${partId}`);
+  redirect(`/inventory/parts/${partId}?status=fitment_updated`);
 }
 
 export async function deletePartFitmentFormAction(formData: FormData) {

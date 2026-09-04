@@ -360,6 +360,43 @@ export async function createPartFitment(input: CreatePartFitmentInput): Promise<
   return { id: fitment.id };
 }
 
+/** Editing an existing fitment row in place — e.g. adding an Engine or
+ * Year range that was left blank the first time — rather than forcing
+ * a delete-and-recreate, which would needlessly lose the row's own
+ * history (createdAt, and the audit trail entry for when it was first
+ * added) for what's really just a correction. */
+export type UpdatePartFitmentInput = {
+  make: string;
+  model: string;
+  engineType?: string;
+  yearFrom?: number;
+  yearTo?: number;
+};
+
+export async function updatePartFitment(fitmentId: string, input: UpdatePartFitmentInput): Promise<void> {
+  const fitment = await prisma.partFitment.findUnique({ where: { id: fitmentId }, select: { partId: true, part: { select: { branchId: true } } } });
+  if (!fitment) {
+    throw new StoreActionError('Fitment record not found.');
+  }
+  const user = await requireStoreStaff(fitment.part.branchId);
+  const make = input.make.trim();
+  const model = input.model.trim();
+  if (!make || !model) {
+    throw new StoreActionError('Make and Model are required.');
+  }
+  await prisma.partFitment.update({
+    where: { id: fitmentId },
+    data: {
+      make,
+      model,
+      engineType: input.engineType?.trim() || null,
+      yearFrom: input.yearFrom ?? null,
+      yearTo: input.yearTo ?? null,
+    },
+  });
+  await writeAuditLog({ userId: user.id, action: 'part.fitment_updated', entityType: 'Part', entityId: fitment.partId, metadata: { make, model, engineType: input.engineType } });
+}
+
 export async function deletePartFitment(fitmentId: string): Promise<void> {
   const fitment = await prisma.partFitment.findUnique({ where: { id: fitmentId }, select: { partId: true, make: true, model: true, part: { select: { branchId: true } } } });
   if (!fitment) {
