@@ -3,6 +3,7 @@ import { getStoreBranchId } from '@/lib/actions/store';
 import { LoadingLink } from '@/components/LoadingLink';
 
 const STATUS_LABEL: Record<string, string> = {
+  PENDING_FINANCE_REVIEW: 'Awaiting Finance review',
   PENDING_MANAGER_APPROVAL: 'Awaiting Manager approval',
   APPROVED: 'Approved — awaiting disbursement',
   DISBURSED: 'Disbursed',
@@ -10,6 +11,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_BADGE_CLASS: Record<string, string> = {
+  PENDING_FINANCE_REVIEW: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   PENDING_MANAGER_APPROVAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   APPROVED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
   DISBURSED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
