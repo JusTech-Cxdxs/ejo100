@@ -46,7 +46,7 @@ export function UnitOfMeasureInput({
       <datalist id={listId}>
         {UNIT_OF_MEASURE_OPTIONS.map((u) => (
           <option key={u.code} value={u.label}>
-            {u.group}: {u.label} ({u.code})
+            {u.group}: {u.label}{u.hint ? ` — ${u.hint}` : ''} ({u.code})
           </option>
         ))}
       </datalist>

@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { SubmitButton } from './SubmitButton';
 import { FormPendingOverlay } from './FormPendingOverlay';
+import { SearchableSelect, type SearchableOption } from './SearchableSelect';
 
 type PartOption = {
   id: string;
@@ -68,6 +69,20 @@ export function GoodsReceiptForm({
     setUnitUsed(newPart?.baseUnitOfMeasure ?? '');
   }
 
+  // Every real Part is already loaded via the `parts` prop — no
+  // server round-trip needed to search it, just a plain client-side
+  // filter wrapped as a Promise to match SearchableSelect's own
+  // (query) => Promise<SearchableOption[]> shape.
+  const allPartOptions: SearchableOption[] = parts.map((p) => ({ value: p.id, label: p.name }));
+  async function searchPartsLocal(query: string): Promise<SearchableOption[]> {
+    const q = query.trim().toLowerCase();
+    if (!q) return allPartOptions;
+    return allPartOptions.filter((o) => o.label.toLowerCase().includes(q));
+  }
+  async function loadAllPartsLocal(): Promise<SearchableOption[]> {
+    return allPartOptions;
+  }
+
   function addSerialRow() {
     setSerials((prev) => [...prev, { key: `s${nextSerialId.current++}`, value: '' }]);
   }
@@ -100,19 +115,18 @@ export function GoodsReceiptForm({
 
       <div>
         <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Part</label>
-        <select
+        <SearchableSelect
           name="partId"
           required
-          value={selectedPartId}
-          onChange={(e) => selectPart(e.target.value)}
-          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-        >
-          {parts.map((part) => (
-            <option key={part.id} value={part.id}>
-              {part.name}
-            </option>
-          ))}
-        </select>
+          defaultValue={selectedPartId}
+          defaultLabel={parts.find((p) => p.id === selectedPartId)?.name}
+          search={searchPartsLocal}
+          loadDefaultOptions={loadAllPartsLocal}
+          defaultOptionsLabel="All Parts"
+          placeholder="Search Parts…"
+          emptyMessage="No Part matches."
+          onChange={selectPart}
+        />
         {selectedPart ? (
           <p className="mt-1.5 text-xs text-[var(--ejo-text-muted)]">
             Base unit: <span className="font-medium text-[var(--ejo-text)]">{selectedPart.baseUnitOfMeasure}</span>
