@@ -8,7 +8,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { createPart, recordGoodsReceipt, updatePart, setPartAlternativeUnits, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching, notifyStoreMatchingComplete } from './store';
+import { createPart, recordGoodsReceipt, updatePart, setPartAlternativeUnits, setPartSellingPrice, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching, notifyStoreMatchingComplete } from './store';
 
 function str(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -113,6 +113,18 @@ export async function updatePartFormAction(formData: FormData) {
   revalidatePath(`/inventory/parts/${id}`);
   revalidatePath('/inventory/parts');
   redirect(`/inventory/parts/${id}?status=updated`);
+}
+
+export async function setPartSellingPriceFormAction(formData: FormData) {
+  const id = str(formData, 'id');
+  try {
+    await setPartSellingPrice(id, num(formData, 'sellingPrice') ?? 0);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not set the selling price.';
+    redirect(`/inventory/parts/${id}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/inventory/parts/${id}`);
+  redirect(`/inventory/parts/${id}?status=selling_price_set`);
 }
 
 export async function createPartFitmentFormAction(formData: FormData) {

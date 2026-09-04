@@ -283,6 +283,26 @@ export async function updatePart(input: UpdatePartInput): Promise<void> {
   await writeAuditLog({ userId: user.id, action: 'part.updated', entityType: 'Part', entityId: input.id, metadata: { name } });
 }
 
+/** Setting the real, deliberate price a customer is actually charged
+ * — genuinely separate from cost (what Store paid a supplier), and
+ * the only thing Store matching a Store Part line is ever allowed to
+ * use for pricing. Never auto-derived from the last Goods Receipt
+ * cost, even as a convenience default — that's exactly the
+ * conflation this field exists to end, and a suggested figure has a
+ * way of becoming the actual figure nobody ever deliberately chose. */
+export async function setPartSellingPrice(partId: string, sellingPrice: number): Promise<void> {
+  const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, name: true } });
+  if (!part) {
+    throw new StoreActionError('Part not found.');
+  }
+  const user = await requireStoreStaff(part.branchId);
+  if (!(sellingPrice > 0)) {
+    throw new StoreActionError('Selling price must be greater than zero.');
+  }
+  await prisma.part.update({ where: { id: partId }, data: { sellingPrice } });
+  await writeAuditLog({ userId: user.id, action: 'part.selling_price_set', entityType: 'Part', entityId: partId, metadata: { name: part.name, sellingPrice } });
+}
+
 /** Replaces a part's full set of alternative units in one call — the
  * real correction this was built for: fixing a wrong conversion factor
  * (e.g. a drum genuinely being 205L, not 208L, confirmed against a real
@@ -859,7 +879,7 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
       type: true,
       quantity: true,
       partTypeId: true,
-      estimate: { select: { status: true, jobCard: { select: { branchId: true } } } },
+      estimate: { select: { status: true, jobCard: { select: { id: true, jobNumber: true, branchId: true } } } },
     },
   });
   if (!lineItem) {
@@ -880,7 +900,7 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
   }
   const user = await requireStoreStaff(lineItem.estimate.jobCard.branchId);
 
-  const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, partTypeId: true, name: true, baseUnitOfMeasure: true } });
+  const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, partTypeId: true, name: true, baseUnitOfMeasure: true, sellingPrice: true } });
   if (!part) {
     throw new StoreActionError('Part not found.');
   }
@@ -891,11 +911,18 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
     throw new StoreActionError(`${part.name} is not the requested Part Type for this line.`);
   }
 
-  const unitCost = await getLastKnownUnitCostForPart(partId);
-  if (unitCost === null) {
-    throw new StoreActionError(`${part.name} has no recorded cost yet — record a Goods Receipt for it before matching this line.`);
+  // The real, deliberately-set customer-facing price — never the raw
+  // Goods Receipt cost. Those are genuinely different numbers for a
+  // genuine reason: cost is what Store paid a supplier, selling price
+  // is what a customer is actually charged, and the gap between them
+  // is the whole business's real margin. No silent fallback to cost
+  // if this isn't set — that would just recreate the exact bug this
+  // was built to fix.
+  if (part.sellingPrice === null) {
+    throw new StoreActionError(`${part.name} has no selling price set yet — set one on the Part's own page before matching.`);
   }
-  const amount = Math.round(unitCost * lineItem.quantity * 100) / 100;
+  const unitPrice = Number(part.sellingPrice);
+  const amount = Math.round(unitPrice * lineItem.quantity * 100) / 100;
 
   await prisma.estimateLineItem.update({
     where: { id: lineItemId },
@@ -903,7 +930,7 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
     // baseUnitOfMeasure — this is the entire point of the request:
     // the technician never enters it, it always matches exactly
     // what's actually registered for the real part.
-    data: { matchedPartId: partId, unitPrice: unitCost, amount, unitOfMeasure: part.baseUnitOfMeasure },
+    data: { matchedPartId: partId, unitPrice, amount, unitOfMeasure: part.baseUnitOfMeasure },
   });
 
   await writeAuditLog({
@@ -911,7 +938,19 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
     action: 'estimate_line.store_matched',
     entityType: 'EstimateLineItem',
     entityId: lineItemId,
-    metadata: { partId, partName: part.name, unitCost, amount },
+    metadata: { partId, partName: part.name, unitPrice, amount },
+  });
+  // The real gap this closes: without this second entry, Store's own
+  // matching work never showed up on the Job Card's own timeline at
+  // all — only on the line item's own, effectively invisible record.
+  // Same "one entry against the real entity, one against the Job
+  // Card" pattern already proven throughout the Sourcing module.
+  await writeAuditLog({
+    userId: user.id,
+    action: 'estimate_line.store_matched',
+    entityType: 'JobCard',
+    entityId: lineItem.estimate.jobCard.id,
+    metadata: { partName: part.name, unitPrice, amount },
   });
 }
 
@@ -1017,14 +1056,28 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
       throw new StoreActionError(`Quantity received must be greater than zero for ${part.name}.`);
     }
     let quantityInBaseUnit: number;
+    let unitCostInBaseUnit: number | undefined;
     if (line.unitUsed === part.baseUnitOfMeasure) {
       quantityInBaseUnit = line.quantityReceivedInUnit;
+      unitCostInBaseUnit = line.unitCost;
     } else {
       const altUnit = part.alternativeUnits.find((u) => u.unitName === line.unitUsed);
       if (!altUnit) {
         throw new StoreActionError(`"${line.unitUsed}" is not a recognized unit for ${part.name}.`);
       }
-      quantityInBaseUnit = line.quantityReceivedInUnit * Number(altUnit.conversionFactor);
+      const conversionFactor = Number(altUnit.conversionFactor);
+      quantityInBaseUnit = line.quantityReceivedInUnit * conversionFactor;
+      // The real fix for a genuine bug: unitCost is always entered per
+      // the unit actually picked (e.g. "₦65,000 per Drum"), but stock
+      // — and every later price computed from it — is always tracked
+      // in the base unit (Liters). Storing the Drum price as if it
+      // were already a per-Liter price meant Store matching would
+      // later multiply a customer's real Liter quantity by a cost
+      // meant for a whole 205L Drum, producing wildly wrong estimate
+      // totals. Converting here, once, at the moment of entry, is
+      // what keeps unitCost and quantityInBaseUnit in the same real
+      // unit from here on.
+      unitCostInBaseUnit = line.unitCost !== undefined ? Math.round((line.unitCost / conversionFactor) * 1_000_000) / 1_000_000 : undefined;
     }
 
     if (part.trackingType === 'BATCH' && !line.batchNumber?.trim()) {
@@ -1049,8 +1102,27 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
       }
     }
 
-    return { ...line, part, quantityInBaseUnit };
+    return { ...line, part, quantityInBaseUnit, unitCostInBaseUnit };
   });
+
+  // Global, not just within this one receipt — a serial number is
+  // meant to be a real, permanent, one-of-a-kind identity for a
+  // single physical unit across the entire catalog, not just unique
+  // within whatever happened to be typed on this one form. Checked
+  // against every serial ever recorded for any Part, not just this
+  // one — the same real mistake (re-using a serial by accident) is
+  // just as wrong whether it collides with a Tyre or a Rim.
+  const allNewSerials = resolvedLines.flatMap((line) => (line.serialNumbers ?? []).map((s) => s.trim()).filter(Boolean));
+  if (allNewSerials.length > 0) {
+    const existingMatches = await prisma.partSerial.findMany({
+      where: { serialNumber: { in: allNewSerials } },
+      select: { serialNumber: true },
+    });
+    if (existingMatches.length > 0) {
+      const duplicateList = existingMatches.map((s: (typeof existingMatches)[number]) => s.serialNumber).join(', ');
+      throw new StoreActionError(`${pluralize(existingMatches.length, 'serial number')} already recorded elsewhere in the catalog: ${duplicateList}.`);
+    }
+  }
 
   const referenceNumber = await generateGoodsReceiptNumber();
 
@@ -1073,7 +1145,7 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
           quantityReceivedInUnit: line.quantityReceivedInUnit,
           unitUsed: line.unitUsed,
           quantityInBaseUnit: line.quantityInBaseUnit,
-          unitCost: line.unitCost,
+          unitCost: line.unitCostInBaseUnit,
           batchNumber: line.part.trackingType === 'BATCH' ? line.batchNumber?.trim() : undefined,
         },
       });
