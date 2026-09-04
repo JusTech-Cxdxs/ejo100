@@ -16,6 +16,12 @@
 export type UnitOfMeasureOption = {
   code: string;
   label: string;
+  // Shown only in the suggestion text, never part of the real
+  // submitted value — a genuine bug in the original version of this
+  // file put a descriptive detail like "(205L)" directly into `label`
+  // itself, meaning selecting a suggestion would store that literal
+  // parenthetical text as the real unit. Kept entirely separate now.
+  hint?: string;
   group: 'Parts & Components' | 'Fluids & Chemicals' | 'Hardware & Consumables' | 'Labor & Service';
 };
 
@@ -29,8 +35,8 @@ export const UNIT_OF_MEASURE_OPTIONS: UnitOfMeasureOption[] = [
   // Fluids & Chemicals — liquids, by real container size or precise volume
   { code: 'L', label: 'Liter', group: 'Fluids & Chemicals' },
   { code: 'BTL', label: 'Bottle', group: 'Fluids & Chemicals' },
-  { code: 'CAN', label: 'Can / Keg (4–5L)', group: 'Fluids & Chemicals' },
-  { code: 'DRM', label: 'Drum (205L)', group: 'Fluids & Chemicals' },
+  { code: 'CAN', label: 'Can', hint: 'Keg, 4–5L', group: 'Fluids & Chemicals' },
+  { code: 'DRM', label: 'Drum', hint: '205L', group: 'Fluids & Chemicals' },
 
   // Hardware & Consumables — bulk items, sold by roll, packet, or weight
   { code: 'PKT', label: 'Packet', group: 'Hardware & Consumables' },
@@ -45,7 +51,7 @@ export const UNIT_OF_MEASURE_OPTIONS: UnitOfMeasureOption[] = [
   // genuinely different figure from Hour alone once more than one
   // person is on the same job at once.
   { code: 'MHR', label: 'Man-Hour', group: 'Labor & Service' },
-  { code: 'JOB', label: 'Job / Activity', group: 'Labor & Service' },
+  { code: 'JOB', label: 'Job', hint: 'Activity', group: 'Labor & Service' },
   // The real universal unit for Sundry specifically — small workshop
   // consumables (rags, grease, cleaning solvent) too cheap or
   // impractical to count individually per repair. Works equally as a
