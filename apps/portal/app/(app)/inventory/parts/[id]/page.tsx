@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getPart } from '@/lib/actions/store';
 import { getLastEditInfo } from '@/lib/actions/workshop';
-import { createPartFitmentFormAction, deletePartFitmentFormAction } from '@/lib/actions/store-form-handlers';
+import { createPartFitmentFormAction, updatePartFitmentFormAction, deletePartFitmentFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
@@ -29,10 +29,10 @@ export default async function PartDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; status?: string }>;
+  searchParams: Promise<{ error?: string; status?: string; editFitmentId?: string }>;
 }) {
   const { id } = await params;
-  const { error, status } = await searchParams;
+  const { error, status, editFitmentId } = await searchParams;
   const part = await getPart(id);
   if (!part) notFound();
   const lastEdit = await getLastEditInfo('Part', id, 'part.updated');
@@ -77,6 +77,11 @@ export default async function PartDetailPage({
       {status === 'fitment_removed' ? (
         <div className="mb-6 max-w-2xl">
           <FormFeedbackBanner kind="success" message="Fitment removed." />
+        </div>
+      ) : null}
+      {status === 'fitment_updated' ? (
+        <div className="mb-6 max-w-2xl">
+          <FormFeedbackBanner kind="success" message="Fitment updated." />
         </div>
       ) : null}
 
@@ -167,25 +172,90 @@ export default async function PartDetailPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {part.fitments.map((fitment: (typeof part.fitments)[number]) => (
-                      <tr key={fitment.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                        <td className="px-2 py-1.5 font-medium text-[var(--ejo-text)]">{fitment.make}</td>
-                        <td className="px-2 py-1.5 text-[var(--ejo-text)]">{fitment.model}</td>
-                        <td className="px-2 py-1.5 text-[var(--ejo-text-muted)]">{fitment.engineType ?? 'Any'}</td>
-                        <td className="px-2 py-1.5 text-[var(--ejo-text-muted)]">
-                          {fitment.yearFrom || fitment.yearTo ? `${fitment.yearFrom ?? '…'}–${fitment.yearTo ?? '…'}` : 'Any'}
-                        </td>
-                        <td className="px-2 py-1.5 text-right">
-                          <form action={deletePartFitmentFormAction} className="inline">
-                            <input type="hidden" name="partId" value={part.id} />
-                            <input type="hidden" name="fitmentId" value={fitment.id} />
-                            <button type="submit" className="text-xs text-[var(--ejo-error)] hover:underline">
-                              Remove
-                            </button>
-                          </form>
-                        </td>
-                      </tr>
-                    ))}
+                    {part.fitments.map((fitment: (typeof part.fitments)[number]) =>
+                      editFitmentId === fitment.id ? (
+                        <tr key={fitment.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                          <td colSpan={5} className="py-2">
+                            <form action={updatePartFitmentFormAction} className="flex flex-wrap items-center gap-2">
+                              <FormPendingOverlay />
+                              <input type="hidden" name="partId" value={part.id} />
+                              <input type="hidden" name="fitmentId" value={fitment.id} />
+                              <input
+                                name="make"
+                                required
+                                defaultValue={fitment.make}
+                                placeholder="Make"
+                                className="w-24 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                              />
+                              <input
+                                name="model"
+                                required
+                                defaultValue={fitment.model}
+                                placeholder="Model"
+                                className="w-24 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                              />
+                              <input
+                                name="engineType"
+                                defaultValue={fitment.engineType ?? ''}
+                                placeholder="Engine (optional)"
+                                className="w-32 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                              />
+                              <input
+                                name="yearFrom"
+                                type="number"
+                                defaultValue={fitment.yearFrom ?? ''}
+                                placeholder="Year from"
+                                className="w-20 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                              />
+                              <input
+                                name="yearTo"
+                                type="number"
+                                defaultValue={fitment.yearTo ?? ''}
+                                placeholder="Year to"
+                                className="w-20 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                              />
+                              <SubmitButton
+                                label="Save"
+                                pendingLabel="Saving…"
+                                className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                              />
+                              <LoadingLink
+                                href={`/inventory/parts/${part.id}`}
+                                className="text-xs text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
+                              >
+                                Cancel
+                              </LoadingLink>
+                            </form>
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr key={fitment.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                          <td className="px-2 py-1.5 font-medium text-[var(--ejo-text)]">{fitment.make}</td>
+                          <td className="px-2 py-1.5 text-[var(--ejo-text)]">{fitment.model}</td>
+                          <td className="px-2 py-1.5 text-[var(--ejo-text-muted)]">{fitment.engineType ?? 'Any'}</td>
+                          <td className="px-2 py-1.5 text-[var(--ejo-text-muted)]">
+                            {fitment.yearFrom || fitment.yearTo ? `${fitment.yearFrom ?? '…'}–${fitment.yearTo ?? '…'}` : 'Any'}
+                          </td>
+                          <td className="px-2 py-1.5 text-right">
+                            <div className="flex items-center justify-end gap-3">
+                              <LoadingLink
+                                href={`/inventory/parts/${part.id}?editFitmentId=${fitment.id}`}
+                                className="text-xs text-[var(--ejo-primary)] hover:underline"
+                              >
+                                Edit
+                              </LoadingLink>
+                              <form action={deletePartFitmentFormAction} className="inline">
+                                <input type="hidden" name="partId" value={part.id} />
+                                <input type="hidden" name="fitmentId" value={fitment.id} />
+                                <button type="submit" className="text-xs text-[var(--ejo-error)] hover:underline">
+                                  Remove
+                                </button>
+                              </form>
+                            </div>
+                          </td>
+                        </tr>
+                      ),
+                    )}
                   </tbody>
                 </table>
               </div>
