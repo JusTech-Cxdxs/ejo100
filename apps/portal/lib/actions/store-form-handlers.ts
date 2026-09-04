@@ -8,7 +8,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { createPart, recordGoodsReceipt, updatePart, setPartAlternativeUnits, setPartSellingPrice, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching, notifyStoreMatchingComplete } from './store';
+import { createPart, recordGoodsReceipt, updateGoodsReceipt, updateGoodsReceiptLineCost, updatePart, setPartAlternativeUnits, setPartSellingPrice, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching, notifyStoreMatchingComplete } from './store';
 
 function str(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -242,4 +242,33 @@ export async function notifyStoreMatchingCompleteFormAction(formData: FormData) 
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
   redirect(`/workshop/job-cards/${jobCardId}?status=matching_complete_notified`);
+}
+
+export async function updateGoodsReceiptFormAction(formData: FormData) {
+  const id = str(formData, 'id');
+  try {
+    await updateGoodsReceipt(id, {
+      supplierName: str(formData, 'supplierName'),
+      notes: str(formData, 'notes') || undefined,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not update this Goods Receipt.';
+    redirect(`/inventory/goods-receipts/${id}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/inventory/goods-receipts/${id}`);
+  revalidatePath('/inventory/goods-receipts');
+  redirect(`/inventory/goods-receipts/${id}?status=updated`);
+}
+
+export async function updateGoodsReceiptLineCostFormAction(formData: FormData) {
+  const goodsReceiptId = str(formData, 'goodsReceiptId');
+  const lineId = str(formData, 'lineId');
+  try {
+    await updateGoodsReceiptLineCost(lineId, num(formData, 'unitCost') ?? 0);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not update this cost.';
+    redirect(`/inventory/goods-receipts/${goodsReceiptId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/inventory/goods-receipts/${goodsReceiptId}`);
+  redirect(`/inventory/goods-receipts/${goodsReceiptId}?status=cost_updated`);
 }

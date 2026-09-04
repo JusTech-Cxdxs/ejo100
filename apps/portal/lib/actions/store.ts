@@ -20,6 +20,7 @@ import { requireUser, writeAuditLog, currentUserIsMasterAdmin } from './workshop
 import { sendEmail } from '@/lib/email';
 import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
 import { renderStoreMatchingRequestedEmail, renderStoreMatchingStatusEmail } from '@/lib/email-templates/store-matching-status';
+import { renderGoodsReceiptEditedEmail } from '@/lib/email-templates/goods-receipt-edited';
 
 class StoreActionError extends Error {}
 
@@ -1272,4 +1273,134 @@ export async function getGoodsReceipt(id: string) {
       lines: { include: { part: { select: { name: true, baseUnitOfMeasure: true } } } },
     },
   });
+}
+
+export async function getGoodsReceiptAuditTrail(goodsReceiptId: string) {
+  await requireUser();
+  const entries = await prisma.auditLog.findMany({
+    where: { entityType: 'GoodsReceipt', entityId: goodsReceiptId },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  });
+  const userIds = [...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id)))];
+  const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } });
+  const userById = new Map(users.map((u: (typeof users)[number]) => [u.id, u.fullName]));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? (userById.get(e.userId) ?? 'Unknown') : 'System' }));
+}
+
+/** Notifies every real Store Officer/Manager at the branch whenever a
+ * recorded Goods Receipt is edited — deliberately more visible than a
+ * quiet audit-log-only trail, since this is genuinely delicate: it's
+ * a real historical financial record, and anyone editing it should
+ * know Store itself is watching, not just a log nobody reads. */
+async function notifyStoreOfGoodsReceiptEdit(branchId: string, editedByName: string, referenceNumber: string, changeSummary: string): Promise<void> {
+  try {
+    const [officers, managers] = await Promise.all([listEligibleStoreOfficersForBranch(branchId), listEligibleStoreManagersForBranch(branchId)]);
+    const recipients = new Map<string, { fullName: string; email: string }>();
+    for (const staffMember of [...officers.staff, ...managers.staff]) {
+      recipients.set(staffMember.id, staffMember);
+    }
+    const orgContext = await getStoreOrgContext();
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    for (const recipient of recipients.values()) {
+      await sendEmail(
+        recipient.email,
+        `Goods Receipt edited — ${referenceNumber}`,
+        renderGoodsReceiptEditedEmail({
+          recipientName: recipient.fullName,
+          editedByName,
+          referenceNumber,
+          changeSummary,
+          goodsReceiptUrl: `${portalUrl}/inventory/goods-receipts`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Goods Receipt edit notification emails', referenceNumber, err);
+  }
+}
+
+/** Editing only the header — Supplier and Notes — deliberately never
+ * quantity, unit, or which Part: those are real physical facts about
+ * what arrived, and correcting them safely would need real stock
+ * reconciliation this doesn't attempt. Supplier and Notes are safe:
+ * pure record-keeping, no effect on stock or price. */
+export async function updateGoodsReceipt(id: string, input: { supplierName: string; notes?: string }): Promise<void> {
+  const receipt = await prisma.goodsReceipt.findUnique({ where: { id }, select: { branchId: true, referenceNumber: true, supplierName: true, notes: true } });
+  if (!receipt) {
+    throw new StoreActionError('Goods Receipt not found.');
+  }
+  const user = await requireStoreStaff(receipt.branchId);
+  const supplierName = input.supplierName.trim();
+  if (!supplierName) {
+    throw new StoreActionError('Supplier name is required.');
+  }
+  await prisma.goodsReceipt.update({ where: { id }, data: { supplierName, notes: input.notes?.trim() || null } });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'goods_receipt.updated',
+    entityType: 'GoodsReceipt',
+    entityId: id,
+    metadata: { from: { supplierName: receipt.supplierName, notes: receipt.notes }, to: { supplierName, notes: input.notes } },
+  });
+  // requireStoreStaff() only guarantees `{ id }` in its own declared
+  // type — the real name for the email has to be looked up
+  // separately, not assumed to already be on hand.
+  const editedByUser = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+  await notifyStoreOfGoodsReceiptEdit(receipt.branchId, editedByUser?.fullName ?? 'A team member', receipt.referenceNumber, `Supplier/notes updated (was "${receipt.supplierName}")`);
+}
+
+/** The one field this whole page really exists for — correcting a
+ * mistyped cost, entered in the exact same unit the line was
+ * originally recorded in (e.g. "per Drum"), then re-converted to the
+ * Part's own base-unit cost the same way recordGoodsReceipt() already
+ * does it — never re-introducing the raw-unit-mismatch bug this
+ * whole delivery started with. */
+export async function updateGoodsReceiptLineCost(lineId: string, newUnitCostAsEntered: number): Promise<void> {
+  const line = await prisma.goodsReceiptLine.findUnique({
+    where: { id: lineId },
+    select: {
+      unitUsed: true,
+      unitCost: true,
+      goodsReceiptId: true,
+      part: { select: { branchId: true, name: true, baseUnitOfMeasure: true, alternativeUnits: true } },
+      goodsReceipt: { select: { referenceNumber: true } },
+    },
+  });
+  if (!line) {
+    throw new StoreActionError('Line not found.');
+  }
+  const user = await requireStoreStaff(line.part.branchId);
+  if (!(newUnitCostAsEntered > 0)) {
+    throw new StoreActionError('Unit cost must be greater than zero.');
+  }
+  let unitCostInBaseUnit = newUnitCostAsEntered;
+  if (line.unitUsed !== line.part.baseUnitOfMeasure) {
+    const altUnit = line.part.alternativeUnits.find((u: (typeof line.part.alternativeUnits)[number]) => u.unitName === line.unitUsed);
+    if (!altUnit) {
+      throw new StoreActionError(`"${line.unitUsed}" is no longer a recognized unit for ${line.part.name} — cannot safely re-convert this cost.`);
+    }
+    unitCostInBaseUnit = Math.round((newUnitCostAsEntered / Number(altUnit.conversionFactor)) * 1_000_000) / 1_000_000;
+  }
+  const previousCost = line.unitCost;
+  await prisma.goodsReceiptLine.update({ where: { id: lineId }, data: { unitCost: unitCostInBaseUnit } });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'goods_receipt.line_cost_updated',
+    entityType: 'GoodsReceipt',
+    entityId: line.goodsReceiptId,
+    metadata: { partName: line.part.name, from: previousCost !== null ? Number(previousCost) : null, to: unitCostInBaseUnit, enteredAs: `${newUnitCostAsEntered} per ${line.unitUsed}` },
+  });
+  const editedByUser = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+  await notifyStoreOfGoodsReceiptEdit(
+    line.part.branchId,
+    editedByUser?.fullName ?? 'A team member',
+    line.goodsReceipt.referenceNumber,
+    `${line.part.name}'s cost corrected to ${newUnitCostAsEntered} per ${line.unitUsed}`,
+  );
 }
