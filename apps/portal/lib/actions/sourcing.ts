@@ -198,10 +198,12 @@ export async function getExternalProcurementRequest(id: string) {
     include: {
       jobCard: { select: { id: true, jobNumber: true } },
       requestedBy: { select: { fullName: true } },
+      financeReviewedBy: { select: { fullName: true } },
       managerApprovedBy: { select: { fullName: true } },
       disbursedBy: { select: { fullName: true } },
       rejectedBy: { select: { fullName: true } },
       estimateLineItem: { select: { description: true } },
+      supplementaryLines: { orderBy: { createdAt: 'asc' }, include: { addedBy: { select: { fullName: true } } } },
     },
   });
 }
@@ -604,10 +606,112 @@ export async function requestExternalProcurement(
   return { id: request.id, referenceNumber };
 }
 
-/** A Workshop Manager confirming the request itself, before any money
- * moves — the same gate structure as the Store side's HOD step. */
-export async function approveExternalProcurementRequest(requestId: string, notes?: string): Promise<void> {
+/** Finance's own real addition — transport, logistics, or any other
+ * genuine supplementary cost the technician's original request could
+ * never have anticipated. Deliberately cannot touch the technician's
+ * own description or estimatedAmount at all — this only ever creates
+ * a new, separate line alongside it. */
+export async function addExternalProcurementSupplementaryLine(requestId: string, description: string, amount: number): Promise<void> {
+  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true } });
+  if (!request) {
+    throw new SourcingActionError('Request not found.');
+  }
+  if (request.status !== 'PENDING_FINANCE_REVIEW') {
+    throw new SourcingActionError('This request is not currently open for Finance to add to.');
+  }
+  const trimmedDescription = description?.trim();
+  if (!trimmedDescription) {
+    throw new SourcingActionError('A description is required for this line.');
+  }
+  if (!(amount > 0)) {
+    throw new SourcingActionError('Amount must be greater than zero.');
+  }
+  const user = await requireEligibleFinance(request.branchId);
+  const line = await prisma.externalProcurementSupplementaryLine.create({
+    data: { requestId, description: trimmedDescription, amount, addedById: user.id },
+  });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'external_procurement.supplementary_line_added',
+    entityType: 'ExternalProcurementRequest',
+    entityId: requestId,
+    metadata: { description: trimmedDescription, amount, lineId: line.id },
+  });
+}
+
+export async function removeExternalProcurementSupplementaryLine(lineId: string): Promise<void> {
+  const line = await prisma.externalProcurementSupplementaryLine.findUnique({
+    where: { id: lineId },
+    select: { requestId: true, description: true, request: { select: { status: true, branchId: true } } },
+  });
+  if (!line) {
+    throw new SourcingActionError('Line not found.');
+  }
+  if (line.request.status !== 'PENDING_FINANCE_REVIEW') {
+    throw new SourcingActionError('This request is not currently open for Finance to edit.');
+  }
+  const user = await requireEligibleFinance(line.request.branchId);
+  await prisma.externalProcurementSupplementaryLine.delete({ where: { id: lineId } });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'external_procurement.supplementary_line_removed',
+    entityType: 'ExternalProcurementRequest',
+    entityId: line.requestId,
+    metadata: { description: line.description },
+  });
+}
+
+/** Finance's own deliberate checkpoint — explicitly passing the
+ * request forward to the Manager once they're satisfied nothing more
+ * needs adding, rather than an ambiguous automatic handoff. Genuinely
+ * fine to send forward with zero supplementary lines added — not
+ * every request needs one. */
+export async function sendExternalProcurementToManager(requestId: string): Promise<void> {
   const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
+  if (!request) {
+    throw new SourcingActionError('Request not found.');
+  }
+  if (request.status !== 'PENDING_FINANCE_REVIEW') {
+    throw new SourcingActionError('This request is not currently awaiting Finance review.');
+  }
+  const user = await requireEligibleFinance(request.branchId);
+  await prisma.externalProcurementRequest.update({
+    where: { id: requestId },
+    data: { status: 'PENDING_MANAGER_APPROVAL', financeReviewedById: user.id, financeReviewedAt: new Date() },
+  });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'external_procurement.sent_to_manager',
+    entityType: 'ExternalProcurementRequest',
+    entityId: requestId,
+  });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'external_procurement.sent_to_manager',
+    entityType: 'JobCard',
+    entityId: request.jobCardId,
+    metadata: { referenceNumber: request.referenceNumber },
+  });
+}
+
+/** A Workshop Manager confirming the combined total — the technician's
+ * own original figure plus whatever real supplementary costs Finance
+ * has since added — before any money actually moves. The same gate
+ * structure as the Store side's HOD step, just now approving the
+ * genuine full picture rather than only the technician's initial
+ * guess. */
+export async function approveExternalProcurementRequest(requestId: string, notes?: string): Promise<void> {
+  const request = await prisma.externalProcurementRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      status: true,
+      branchId: true,
+      jobCardId: true,
+      referenceNumber: true,
+      estimatedAmount: true,
+      supplementaryLines: { select: { amount: true } },
+    },
+  });
   if (!request) {
     throw new SourcingActionError('Request not found.');
   }
@@ -615,38 +719,86 @@ export async function approveExternalProcurementRequest(requestId: string, notes
     throw new SourcingActionError('This request is not awaiting approval.');
   }
   const user = await requireEligibleManager(request.branchId);
+  // Locked in right here, at the exact moment of approval — never
+  // recomputed later, so nothing that happens afterward could ever
+  // silently change what the Manager actually approved.
+  const supplementaryTotal = request.supplementaryLines.reduce(
+    (sum: number, line: (typeof request.supplementaryLines)[number]) => sum + Number(line.amount),
+    0,
+  );
+  const approvedTotal = Math.round((Number(request.estimatedAmount) + supplementaryTotal) * 100) / 100;
   await prisma.externalProcurementRequest.update({
     where: { id: requestId },
-    data: { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: new Date(), managerNotes: notes?.trim() || undefined },
+    data: {
+      status: 'APPROVED',
+      managerApprovedById: user.id,
+      managerApprovedAt: new Date(),
+      managerNotes: notes?.trim() || undefined,
+      approvedTotal,
+    },
   });
-  await writeAuditLog({ userId: user.id, action: 'external_procurement.approved', entityType: 'ExternalProcurementRequest', entityId: requestId });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'external_procurement.approved',
+    entityType: 'ExternalProcurementRequest',
+    entityId: requestId,
+    metadata: { approvedTotal, estimatedAmount: Number(request.estimatedAmount), supplementaryTotal },
+  });
   await writeAuditLog({
     userId: user.id,
     action: 'external_procurement.approved',
     entityType: 'JobCard',
     entityId: request.jobCardId,
-    metadata: { referenceNumber: request.referenceNumber },
+    metadata: { referenceNumber: request.referenceNumber, approvedTotal },
   });
 }
 
 /** Finance actually handing over the cash advance — the real amount
  * given, which may differ slightly from the original estimate, kept as
  * its own field rather than overwriting it. */
-export async function disburseExternalProcurementRequest(requestId: string, disbursedAmount: number): Promise<void> {
-  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
+/** Finance's own final step — recording exactly how the already-
+ * approved total was actually paid out. Deliberately no amount
+ * parameter at all anymore: the real figure was locked in the moment
+ * the Manager approved it (approvedTotal), and is simply copied
+ * across here, never retyped — the one thing this step can genuinely
+ * never touch, by design. */
+export async function disburseExternalProcurementRequest(
+  requestId: string,
+  payment: { paymentMethod: string; paymentReference?: string; disbursementNotes?: string },
+): Promise<void> {
+  const request = await prisma.externalProcurementRequest.findUnique({
+    where: { id: requestId },
+    select: { status: true, branchId: true, jobCardId: true, referenceNumber: true, approvedTotal: true },
+  });
   if (!request) {
     throw new SourcingActionError('Request not found.');
   }
   if (request.status !== 'APPROVED') {
     throw new SourcingActionError('This request has not been approved for disbursement.');
   }
-  if (!(disbursedAmount > 0)) {
-    throw new SourcingActionError('Disbursed amount must be greater than zero.');
+  if (request.approvedTotal === null) {
+    // Should never genuinely happen — approval always sets this — but
+    // a missing approved total is a real data problem worth stopping
+    // on rather than silently disbursing an unknown amount.
+    throw new SourcingActionError('This request has no approved total on record — contact an administrator before disbursing.');
+  }
+  const paymentMethod = payment.paymentMethod?.trim();
+  if (!paymentMethod) {
+    throw new SourcingActionError('Payment method is required.');
   }
   const user = await requireEligibleFinance(request.branchId);
+  const disbursedAmount = request.approvedTotal;
   await prisma.externalProcurementRequest.update({
     where: { id: requestId },
-    data: { status: 'DISBURSED', disbursedById: user.id, disbursedAt: new Date(), disbursedAmount },
+    data: {
+      status: 'DISBURSED',
+      disbursedById: user.id,
+      disbursedAt: new Date(),
+      disbursedAmount,
+      paymentMethod,
+      paymentReference: payment.paymentReference?.trim() || undefined,
+      disbursementNotes: payment.disbursementNotes?.trim() || undefined,
+    },
   });
 
   await syncJobCardSourcingStatus(request.jobCardId);
@@ -655,14 +807,14 @@ export async function disburseExternalProcurementRequest(requestId: string, disb
     action: 'external_procurement.disbursed',
     entityType: 'ExternalProcurementRequest',
     entityId: requestId,
-    metadata: { disbursedAmount },
+    metadata: { disbursedAmount: Number(disbursedAmount), paymentMethod, paymentReference: payment.paymentReference },
   });
   await writeAuditLog({
     userId: user.id,
     action: 'external_procurement.disbursed',
     entityType: 'JobCard',
     entityId: request.jobCardId,
-    metadata: { referenceNumber: request.referenceNumber, disbursedAmount },
+    metadata: { referenceNumber: request.referenceNumber, disbursedAmount: Number(disbursedAmount), paymentMethod },
   });
 }
 
@@ -670,21 +822,25 @@ export async function disburseExternalProcurementRequest(requestId: string, disb
  * unwind is a real conversation between Manager and Finance, not a
  * status flip, the same reasoning as the Store side never un-reserving
  * via rejection either. */
+/** Rejectable at either real stage — Finance's own review, or the
+ * Manager's approval — mirroring exactly how a Store Parts request can
+ * be rejected at either HOD or Store's own stage. */
 export async function rejectExternalProcurementRequest(requestId: string, reason: string): Promise<void> {
   const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
   if (!request) {
     throw new SourcingActionError('Request not found.');
   }
-  if (request.status !== 'PENDING_MANAGER_APPROVAL') {
+  if (request.status !== 'PENDING_FINANCE_REVIEW' && request.status !== 'PENDING_MANAGER_APPROVAL') {
     throw new SourcingActionError('This request can no longer be rejected.');
   }
   if (!reason?.trim()) {
     throw new SourcingActionError('A reason is required.');
   }
-  const user = await requireEligibleManager(request.branchId);
+  const stage = request.status === 'PENDING_FINANCE_REVIEW' ? 'FINANCE_REVIEW' : 'MANAGER_APPROVAL';
+  const user = stage === 'FINANCE_REVIEW' ? await requireEligibleFinance(request.branchId) : await requireEligibleManager(request.branchId);
   await prisma.externalProcurementRequest.update({
     where: { id: requestId },
-    data: { status: 'REJECTED', rejectedById: user.id, rejectedAt: new Date(), rejectionReason: reason.trim() },
+    data: { status: 'REJECTED', rejectedById: user.id, rejectedAt: new Date(), rejectionStage: stage, rejectionReason: reason.trim() },
   });
 
   await syncJobCardSourcingStatus(request.jobCardId);
@@ -693,13 +849,13 @@ export async function rejectExternalProcurementRequest(requestId: string, reason
     action: 'external_procurement.rejected',
     entityType: 'ExternalProcurementRequest',
     entityId: requestId,
-    metadata: { reason: reason.trim() },
+    metadata: { stage, reason: reason.trim() },
   });
   await writeAuditLog({
     userId: user.id,
     action: 'external_procurement.rejected',
     entityType: 'JobCard',
     entityId: request.jobCardId,
-    metadata: { referenceNumber: request.referenceNumber, reason: reason.trim() },
+    metadata: { referenceNumber: request.referenceNumber, stage, reason: reason.trim() },
   });
 }

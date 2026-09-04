@@ -14,6 +14,9 @@ import {
   releasePartRequestSlip,
   rejectPartRequestSlip,
   requestExternalProcurement,
+  addExternalProcurementSupplementaryLine,
+  removeExternalProcurementSupplementaryLine,
+  sendExternalProcurementToManager,
   approveExternalProcurementRequest,
   disburseExternalProcurementRequest,
   rejectExternalProcurementRequest,
@@ -161,7 +164,11 @@ export async function disburseExternalProcurementRequestFormAction(formData: For
   const requestId = str(formData, 'requestId');
   const jobCardId = str(formData, 'jobCardId');
   try {
-    await disburseExternalProcurementRequest(requestId, num(formData, 'disbursedAmount') ?? 0);
+    await disburseExternalProcurementRequest(requestId, {
+      paymentMethod: str(formData, 'paymentMethod'),
+      paymentReference: str(formData, 'paymentReference') || undefined,
+      disbursementNotes: str(formData, 'disbursementNotes') || undefined,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not disburse this request.';
     redirect(`/workshop/external-procurement/${requestId}?error=${encodeURIComponent(message)}`);
@@ -170,6 +177,46 @@ export async function disburseExternalProcurementRequestFormAction(formData: For
   revalidatePath('/workshop/external-procurement');
   if (jobCardId) revalidatePath(`/workshop/job-cards/${jobCardId}`);
   redirect(`/workshop/external-procurement/${requestId}?status=disbursed`);
+}
+
+export async function addExternalProcurementSupplementaryLineFormAction(formData: FormData) {
+  const requestId = str(formData, 'requestId');
+  try {
+    await addExternalProcurementSupplementaryLine(requestId, str(formData, 'description'), num(formData, 'amount') ?? 0);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not add this line.';
+    redirect(`/workshop/external-procurement/${requestId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/external-procurement/${requestId}`);
+  redirect(`/workshop/external-procurement/${requestId}?status=line_added`);
+}
+
+export async function removeExternalProcurementSupplementaryLineFormAction(formData: FormData) {
+  const requestId = str(formData, 'requestId');
+  const lineId = str(formData, 'lineId');
+  try {
+    await removeExternalProcurementSupplementaryLine(lineId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not remove this line.';
+    redirect(`/workshop/external-procurement/${requestId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/external-procurement/${requestId}`);
+  redirect(`/workshop/external-procurement/${requestId}?status=line_removed`);
+}
+
+export async function sendExternalProcurementToManagerFormAction(formData: FormData) {
+  const requestId = str(formData, 'requestId');
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await sendExternalProcurementToManager(requestId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not send this request to the Manager.';
+    redirect(`/workshop/external-procurement/${requestId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/external-procurement/${requestId}`);
+  revalidatePath('/workshop/external-procurement');
+  if (jobCardId) revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  redirect(`/workshop/external-procurement/${requestId}?status=sent_to_manager`);
 }
 
 export async function rejectExternalProcurementRequestFormAction(formData: FormData) {
