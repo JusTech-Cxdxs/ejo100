@@ -291,7 +291,7 @@ export default async function JobCardDetailPage({
   const partCategoriesWithTypes = partCategories.map((category: (typeof partCategories)[number]) => ({
     id: category.id,
     name: category.name,
-    types: partTypes.filter((t: (typeof partTypes)[number]) => t.categoryId === category.id).map((t: (typeof partTypes)[number]) => ({ id: t.id, name: t.name })),
+    types: partTypes.filter((t: (typeof partTypes)[number]) => t.categoryId === category.id).map((t: (typeof partTypes)[number]) => ({ id: t.id, name: t.name, typicalUnit: t.typicalUnit })),
   }));
   const isApprover = isMasterAdmin || jobCard.supervisor?.id === viewerId;
   const isAssignedTechnician = isMasterAdmin || jobCard.assignedTechnician?.id === viewerId;
@@ -615,7 +615,14 @@ export default async function JobCardDetailPage({
                                   />
                                   {item.type === 'STORE_PART' ? (
                                     <span className="w-28 shrink-0 text-xs text-[var(--ejo-text)]">
-                                      {item.unitOfMeasure ?? <span className="text-[11px] text-[var(--ejo-text-muted)]">Awaiting Store match</span>}
+                                      {item.unitOfMeasure ?? (() => {
+                                        const previewUnit = partTypes.find((t: (typeof partTypes)[number]) => t.id === item.partTypeId)?.typicalUnit;
+                                        return previewUnit ? (
+                                          <span className="text-[var(--ejo-text-muted)]">{previewUnit} (preview)</span>
+                                        ) : (
+                                          <span className="text-[11px] text-[var(--ejo-text-muted)]">Awaiting Store match</span>
+                                        );
+                                      })()}
                                     </span>
                                   ) : (
                                     <div className="w-28 shrink-0">
