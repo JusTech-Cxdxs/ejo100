@@ -14,7 +14,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
-import { pluralize } from '@/lib/utils/pluralize';
+import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { workingDaysBetween } from '@/lib/utils/working-days';
 
 const ALL_STATUSES = [
@@ -454,7 +454,7 @@ export default async function JobCardDetailPage({
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Vehicle</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
-                  {[jobCard.vehicle.year, jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || '—'}
+                  {[jobCard.vehicle.year, jobCard.vehicle.make, jobCard.vehicle.model, jobCard.vehicle.engineType].filter(Boolean).join(' ') || '—'}
                 </dd>
               </div>
               <div>
@@ -615,6 +615,13 @@ export default async function JobCardDetailPage({
                           item.type === 'STORE_PART'
                             ? (item.unitOfMeasure ?? partTypes.find((t: (typeof partTypes)[number]) => t.id === item.partTypeId)?.typicalUnit ?? null)
                             : null;
+                        // The real, honest word for this line's own
+                        // quantity — "Set" for a single unit, "Sets"
+                        // for anything else — never a bare unit name
+                        // sitting next to a count as if English didn't
+                        // have plurals.
+                        const rawUnit = item.type === 'STORE_PART' ? storePartPreviewUnit : item.unitOfMeasure;
+                        const displayUnit = rawUnit ? pluralizeWord(item.quantity, rawUnit) : '—';
 
                         if (isEditingThis) {
                           return (
@@ -692,7 +699,7 @@ export default async function JobCardDetailPage({
                               ) : null}
                             </td>
                             <td className="py-2 pr-2 text-right text-[var(--ejo-text)]">{item.quantity}</td>
-                            <td className="py-2 pr-2 text-[var(--ejo-text-muted)]">{item.type === 'STORE_PART' ? (storePartPreviewUnit ?? '—') : (item.unitOfMeasure ?? '—')}</td>
+                            <td className="py-2 pr-2 text-[var(--ejo-text-muted)]">{displayUnit}</td>
                             <td className="py-2 pr-2 text-right text-[var(--ejo-text)]">{formatNaira(item.unitPrice)}</td>
                             <td className="py-2 pr-2 text-right font-medium text-[var(--ejo-text)]">{formatNaira(item.amount)}</td>
                             <td className="py-2 pr-2 truncate text-[11px] text-[var(--ejo-text-muted)]">{item.enteredBy.fullName}</td>
