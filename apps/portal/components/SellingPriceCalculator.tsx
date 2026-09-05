@@ -37,12 +37,19 @@ export function SellingPriceCalculator({
     unitUsed: string;
     quantityInBaseUnit: number;
     unitCostInBaseUnit: number | null;
+    totalCost: number | null;
   } | null;
 }) {
   const [sellingPriceInput, setSellingPriceInput] = useState(currentSellingPrice !== null ? String(currentSellingPrice) : '');
   const sellingPrice = Number(sellingPriceInput) || 0;
 
-  const totalBulkCost = lastReceipt?.unitCostInBaseUnit !== null && lastReceipt?.unitCostInBaseUnit !== undefined ? lastReceipt.unitCostInBaseUnit * lastReceipt.quantityInBaseUnit : null;
+  // The real, exact amount actually paid — read directly from the
+  // Goods Receipt's own stored totalCost, never recomputed by
+  // multiplying the (necessarily imprecise) per-base-unit cost back
+  // out. That round-trip is exactly what produced a real bug before:
+  // a genuine ₦650,000 payment for 205 Liters showing as ₦649,999.65,
+  // since 650,000 ÷ 205 has no exact 2-decimal answer.
+  const totalBulkCost = lastReceipt?.totalCost ?? null;
   const expectedRevenue = lastReceipt ? sellingPrice * lastReceipt.quantityInBaseUnit : null;
   const grossProfit = totalBulkCost !== null && expectedRevenue !== null ? expectedRevenue - totalBulkCost : null;
   const markupPercent = totalBulkCost !== null && totalBulkCost > 0 && grossProfit !== null ? (grossProfit / totalBulkCost) * 100 : null;
@@ -76,6 +83,11 @@ export function SellingPriceCalculator({
               System notes: cost is {formatNaira(lastReceipt.unitCostInBaseUnit)}/{baseUnitOfMeasure} — from {lastReceipt.referenceNumber}.
             </p>
           ) : null}
+          <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
+            This is the most recent delivery, shown here purely as pricing reference — the real, permanent record for
+            {' '}{lastReceipt.referenceNumber} itself lives on its own Goods Receipt page. If another batch arrives
+            later, this section updates to reflect that new delivery instead.
+          </p>
         </div>
       ) : (
         <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No Goods Receipt recorded yet — record one to see the real purchase cost here.</p>
