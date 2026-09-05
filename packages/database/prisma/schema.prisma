@@ -1349,7 +1349,31 @@ model GoodsReceiptLine {
   quantityReceivedInUnit Decimal  @db.Decimal(14, 4)
   unitUsed               String
   quantityInBaseUnit     Decimal  @db.Decimal(14, 4)
-  unitCost               Decimal? @db.Decimal(12, 2)
+  // The real, exact amount actually paid for this whole delivery —
+  // computed once, directly from what was typed (unitCost-as-entered
+  // × quantityReceivedInUnit, both exact inputs), and never
+  // recomputed from anything else afterward. This is the genuine
+  // fix for a real bug: unitCost below is a PER-BASE-UNIT figure,
+  // useful for pricing math but inherently imprecise whenever the
+  // conversion factor doesn't divide evenly (₦650,000 ÷ 205 Liters
+  // has no exact 2-decimal answer) — recomputing the total by
+  // multiplying that already-rounded per-unit figure back out
+  // reliably loses money in the display, exactly what happened here
+  // (₦649,999.65 shown instead of the real ₦650,000 that was typed).
+  // totalCost is the one number that's never subject to that
+  // round-trip error, because it's never derived from unitCost at
+  // all — both are computed independently from the same original,
+  // exact inputs.
+  totalCost              Decimal? @db.Decimal(14, 2)
+  // Per-base-unit cost, kept for pricing calculations and the
+  // "cost is ₦X/Liter" reference note — genuinely a derived,
+  // display/reference figure now, not the source of truth for what
+  // was actually paid. Higher precision than before (6 decimal
+  // places instead of 2) specifically so that when this DOES get
+  // used in a calculation, the rounding error stays in fractions of
+  // a kobo rather than compounding into visible naira, the way the
+  // old 2-decimal-place column allowed.
+  unitCost               Decimal? @db.Decimal(16, 6)
   // Only meaningful for a BATCH-tracked part — the batch this line
   // creates or adds to.
   batchNumber            String?
