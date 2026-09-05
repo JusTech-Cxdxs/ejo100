@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation';
 import { getPart } from '@/lib/actions/store';
 import { getLastEditInfo } from '@/lib/actions/workshop';
-import { createPartFitmentFormAction, updatePartFitmentFormAction, deletePartFitmentFormAction, setPartSellingPriceFormAction } from '@/lib/actions/store-form-handlers';
+import { createPartFitmentFormAction, updatePartFitmentFormAction, deletePartFitmentFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
+import { SellingPriceCalculator } from '@/components/SellingPriceCalculator';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -157,6 +158,24 @@ export default async function PartDetailPage({
             </div>
           ) : null}
 
+          <SellingPriceCalculator
+            partId={part.id}
+            partName={part.name}
+            baseUnitOfMeasure={part.baseUnitOfMeasure}
+            currentSellingPrice={part.sellingPrice !== null ? Number(part.sellingPrice) : null}
+            lastReceipt={
+              part.goodsReceiptLines[0]
+                ? {
+                    referenceNumber: part.goodsReceiptLines[0].goodsReceipt.referenceNumber,
+                    quantityReceivedInUnit: Number(part.goodsReceiptLines[0].quantityReceivedInUnit),
+                    unitUsed: part.goodsReceiptLines[0].unitUsed,
+                    quantityInBaseUnit: Number(part.goodsReceiptLines[0].quantityInBaseUnit),
+                    unitCostInBaseUnit: part.goodsReceiptLines[0].unitCost !== null ? Number(part.goodsReceiptLines[0].unitCost) : null,
+                  }
+                : null
+            }
+          />
+
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Fitment</h2>
             <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -310,34 +329,6 @@ export default async function PartDetailPage({
               <div>
                 <dt className="text-xs text-[var(--ejo-text-muted)]">Base Unit</dt>
                 <dd className="text-[var(--ejo-text)]">{part.baseUnitOfMeasure}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-[var(--ejo-text-muted)]">Selling Price (per {part.baseUnitOfMeasure})</dt>
-                <dd className="text-[var(--ejo-text)]">
-                  {part.sellingPrice ? `₦${Number(part.sellingPrice).toLocaleString('en-NG')}` : <span className="text-[var(--ejo-warning)]">Not set — Store Part matching is blocked until this is set</span>}
-                </dd>
-                <form action={setPartSellingPriceFormAction} className="mt-1.5 flex items-center gap-2">
-                  <FormPendingOverlay />
-                  <input type="hidden" name="id" value={part.id} />
-                  <input
-                    name="sellingPrice"
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    required
-                    placeholder={`e.g. 450 per ${part.baseUnitOfMeasure}`}
-                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
-                  />
-                  <SubmitButton
-                    label={part.sellingPrice ? 'Update' : 'Set'}
-                    pendingLabel="Saving…"
-                    className="shrink-0 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-                  />
-                </form>
-                <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
-                  What the customer is actually charged — genuinely separate from cost, and never auto-derived from
-                  a Goods Receipt.
-                </p>
               </div>
               {part.reorderPoint ? (
                 <div>
