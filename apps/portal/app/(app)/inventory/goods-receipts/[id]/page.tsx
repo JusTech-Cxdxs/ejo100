@@ -114,11 +114,16 @@ export default async function GoodsReceiptDetailPage({
                     </span>
                   </div>
                   {line.batchNumber ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Batch: {line.batchNumber}</p> : null}
+                  <p className="mt-2 text-sm text-[var(--ejo-text)]">
+                    Total Bulk Cost:{' '}
+                    <span className="font-medium">{formatNaira(line.totalCost !== null ? Number(line.totalCost) : null)}</span>
+                    {line.unitUsed !== line.part.baseUnitOfMeasure ? ` for ${Number(line.quantityReceivedInUnit).toLocaleString('en-NG')} ${line.unitUsed}` : ''}
+                  </p>
+                  <p className="text-xs text-[var(--ejo-text-muted)]">
+                    System notes: cost is {formatNaira(line.unitCost !== null ? Number(line.unitCost) : null)} per {line.part.baseUnitOfMeasure}.
+                  </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-[var(--ejo-text-muted)]">
-                      Cost on record: <span className="font-medium text-[var(--ejo-text)]">{formatNaira(line.unitCost !== null ? Number(line.unitCost) : null)} per {line.part.baseUnitOfMeasure}</span>
-                    </span>
-                    <form action={updateGoodsReceiptLineCostFormAction} className="ml-auto flex items-center gap-2">
+                    <form action={updateGoodsReceiptLineCostFormAction} className="flex items-center gap-2">
                       <FormPendingOverlay />
                       <input type="hidden" name="goodsReceiptId" value={receipt.id} />
                       <input type="hidden" name="lineId" value={line.id} />
@@ -128,8 +133,8 @@ export default async function GoodsReceiptDetailPage({
                         step="0.01"
                         min="0.01"
                         required
-                        placeholder={`Correct cost per ${line.unitUsed}`}
-                        className="w-40 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                        placeholder={`Correct total cost, per ${line.unitUsed}`}
+                        className="w-48 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                       />
                       <SubmitButton
                         label="Correct"
@@ -138,6 +143,10 @@ export default async function GoodsReceiptDetailPage({
                       />
                     </form>
                   </div>
+                  <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
+                    Enter the real cost per {line.unitUsed} — the same unit this line was originally received in — and both the Total
+                    Bulk Cost and the per-{line.part.baseUnitOfMeasure} figure above will be corrected together.
+                  </p>
                 </div>
               ))}
             </div>
