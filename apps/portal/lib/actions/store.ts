@@ -1105,6 +1105,15 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
       // unit from here on.
       unitCostInBaseUnit = line.unitCost !== undefined ? Math.round((line.unitCost / conversionFactor) * 1_000_000) / 1_000_000 : undefined;
     }
+    // The real, exact total — computed directly from the two numbers
+    // actually typed (unitCost-as-entered × the quantity in that same
+    // unit), never from the derived, necessarily-imprecise per-base-
+    // unit figure above. This is what fixes a genuine display bug: a
+    // real ₦650,000 payment for 205 Liters has no exact per-Liter
+    // price at 2 decimal places, so recomputing the total by
+    // multiplying that rounded per-Liter figure back out reliably
+    // loses a few kobo — or, at 2-decimal-place storage, whole naira.
+    const totalCost = line.unitCost !== undefined ? Math.round(line.unitCost * line.quantityReceivedInUnit * 100) / 100 : undefined;
 
     if (part.trackingType === 'BATCH' && !line.batchNumber?.trim()) {
       throw new StoreActionError(`A batch number is required for ${part.name}.`);
@@ -1128,7 +1137,7 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
       }
     }
 
-    return { ...line, part, quantityInBaseUnit, unitCostInBaseUnit };
+    return { ...line, part, quantityInBaseUnit, unitCostInBaseUnit, totalCost };
   });
 
   // Global, not just within this one receipt — a serial number is
@@ -1172,6 +1181,7 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
           unitUsed: line.unitUsed,
           quantityInBaseUnit: line.quantityInBaseUnit,
           unitCost: line.unitCostInBaseUnit,
+          totalCost: line.totalCost,
           batchNumber: line.part.trackingType === 'BATCH' ? line.batchNumber?.trim() : undefined,
         },
       });
@@ -1373,6 +1383,8 @@ export async function updateGoodsReceiptLineCost(lineId: string, newUnitCostAsEn
     select: {
       unitUsed: true,
       unitCost: true,
+      totalCost: true,
+      quantityReceivedInUnit: true,
       goodsReceiptId: true,
       part: { select: { branchId: true, name: true, baseUnitOfMeasure: true, alternativeUnits: true } },
       goodsReceipt: { select: { referenceNumber: true } },
@@ -1393,20 +1405,34 @@ export async function updateGoodsReceiptLineCost(lineId: string, newUnitCostAsEn
     }
     unitCostInBaseUnit = Math.round((newUnitCostAsEntered / Number(altUnit.conversionFactor)) * 1_000_000) / 1_000_000;
   }
+  // The real, exact total — computed directly from what was actually
+  // entered here (newUnitCostAsEntered × the quantity in that same
+  // unit), never re-derived from the imprecise per-base-unit figure
+  // above. The same fix as recordGoodsReceipt's own totalCost, kept
+  // consistent through every later correction too.
+  const totalCost = Math.round(newUnitCostAsEntered * Number(line.quantityReceivedInUnit) * 100) / 100;
   const previousCost = line.unitCost;
-  await prisma.goodsReceiptLine.update({ where: { id: lineId }, data: { unitCost: unitCostInBaseUnit } });
+  const previousTotalCost = line.totalCost;
+  await prisma.goodsReceiptLine.update({ where: { id: lineId }, data: { unitCost: unitCostInBaseUnit, totalCost } });
   await writeAuditLog({
     userId: user.id,
     action: 'goods_receipt.line_cost_updated',
     entityType: 'GoodsReceipt',
     entityId: line.goodsReceiptId,
-    metadata: { partName: line.part.name, from: previousCost !== null ? Number(previousCost) : null, to: unitCostInBaseUnit, enteredAs: `${newUnitCostAsEntered} per ${line.unitUsed}` },
+    metadata: {
+      partName: line.part.name,
+      from: previousCost !== null ? Number(previousCost) : null,
+      to: unitCostInBaseUnit,
+      fromTotalCost: previousTotalCost !== null ? Number(previousTotalCost) : null,
+      toTotalCost: totalCost,
+      enteredAs: `${newUnitCostAsEntered} per ${line.unitUsed}`,
+    },
   });
   const editedByUser = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
   await notifyStoreOfGoodsReceiptEdit(
     line.part.branchId,
     editedByUser?.fullName ?? 'A team member',
     line.goodsReceipt.referenceNumber,
-    `${line.part.name}'s cost corrected to ${newUnitCostAsEntered} per ${line.unitUsed}`,
+    `${line.part.name}'s cost corrected to ${newUnitCostAsEntered} per ${line.unitUsed} — real total now ₦${totalCost.toLocaleString('en-NG')}`,
   );
 }

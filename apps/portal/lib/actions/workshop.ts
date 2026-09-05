@@ -1854,7 +1854,7 @@ export async function getJobCardEstimate(jobCardId: string) {
         include: {
           enteredBy: { select: { fullName: true } },
           partType: { select: { name: true, category: { select: { name: true } } } },
-          matchedPart: { select: { name: true } },
+          matchedPart: { select: { name: true, sellingPrice: true, baseUnitOfMeasure: true } },
         },
       },
       approvedBy: { select: { fullName: true } },
@@ -2013,6 +2013,7 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
     select: {
       type: true,
       matchedPartId: true,
+      matchedPart: { select: { sellingPrice: true, name: true } },
       estimate: {
         select: {
           jobCardId: true,
@@ -2028,15 +2029,6 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
   if (lineItem.estimate.status === 'MANAGER_APPROVED') {
     throw new WorkshopActionError('This estimate has already been approved by the manager and can no longer be edited.');
   }
-  // A quantity change on an already-matched Store Part line would
-  // silently leave its price computed against the old, now-wrong
-  // quantity — Store's own match is the only path allowed to set
-  // quantity and price together, correctly, in one place. Editing
-  // description here is still fine; it's purely informational once
-  // matched, the real request is the linked PartType/Part.
-  if (lineItem.type === 'STORE_PART' && lineItem.matchedPartId && input.quantity !== undefined) {
-    throw new WorkshopActionError('This line has already been matched by Store — Store must re-match it to change the quantity, not edit it directly.');
-  }
   const editor = await requireEstimateContributor(lineItem.estimate.jobCard);
   if (input.unitPrice !== undefined) {
     if (lineItem.type === 'STORE_PART') {
@@ -2048,14 +2040,29 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
     throw new WorkshopActionError('A Store Part line\'s unit is set automatically once Store matches it, not entered directly.');
   }
 
-  const amount = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
+  // A matched Store Part line is a live link to Store's real catalog,
+  // not a one-time snapshot frozen the moment it was matched — while
+  // the estimate is still open for editing at all, its price always
+  // tracks the Part's own current selling price. Changing the
+  // quantity here recomputes against that current price; it never
+  // requires going back through Store to re-match just to adjust how
+  // many are needed.
+  let unitPrice = input.unitPrice;
+  let amount: number | null = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
+  if (lineItem.type === 'STORE_PART' && lineItem.matchedPartId) {
+    if (lineItem.matchedPart?.sellingPrice === null || lineItem.matchedPart?.sellingPrice === undefined) {
+      throw new WorkshopActionError(`${lineItem.matchedPart?.name ?? 'This Part'} no longer has a selling price set — set one before this line can be updated.`);
+    }
+    unitPrice = Number(lineItem.matchedPart.sellingPrice);
+    amount = Math.round(input.quantity * unitPrice * 100) / 100;
+  }
 
   await prisma.estimateLineItem.update({
     where: { id: lineItemId },
     data: {
       description,
       quantity: input.quantity,
-      unitPrice: input.unitPrice ?? null,
+      unitPrice: unitPrice ?? null,
       amount,
       ...(lineItem.type !== 'STORE_PART' ? { unitOfMeasure: input.unitOfMeasure?.trim() || null } : {}),
     },
@@ -2066,7 +2073,7 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
     action: 'estimate.line_item_updated',
     entityType: 'JobCard',
     entityId: lineItem.estimate.jobCardId,
-    metadata: { type: lineItem.type, description, quantity: input.quantity, unitPrice: input.unitPrice, amount },
+    metadata: { type: lineItem.type, description, quantity: input.quantity, unitPrice, amount },
   });
 }
 
@@ -2252,7 +2259,7 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
           supervisor: { select: { fullName: true, email: true } },
         },
       },
-      lineItems: { select: { unitPrice: true, amount: true, description: true } },
+      lineItems: { select: { id: true, type: true, matchedPartId: true, quantity: true, unitPrice: true, amount: true, description: true, matchedPart: { select: { sellingPrice: true } } } },
     },
   });
   if (!estimate) {
@@ -2263,6 +2270,26 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
   }
   if (estimate.lineItems.length === 0) {
     throw new WorkshopActionError('Add at least one line item before submitting the estimate.');
+  }
+  // The real transition from "live" to "locked" — a matched Store
+  // Part line's price has tracked Store's own current selling price
+  // the whole time it's been Draft; this is the one moment that
+  // number gets written down as the estimate's own permanent record,
+  // rather than the possibly-stale figure sitting in the database
+  // from whenever the line's quantity last happened to change.
+  for (const li of estimate.lineItems as (typeof estimate.lineItems)[number][]) {
+    if (li.type === 'STORE_PART' && li.matchedPartId && li.matchedPart?.sellingPrice !== null && li.matchedPart?.sellingPrice !== undefined) {
+      const liveUnitPrice = Number(li.matchedPart.sellingPrice);
+      const liveAmount = Math.round(li.quantity * liveUnitPrice * 100) / 100;
+      if (Number(li.unitPrice ?? -1) !== liveUnitPrice || Number(li.amount ?? -1) !== liveAmount) {
+        await prisma.estimateLineItem.update({ where: { id: li.id }, data: { unitPrice: liveUnitPrice, amount: liveAmount } });
+      }
+      // Also updated in memory, not just in the database — the
+      // "missing prices" check right below reads from this same
+      // in-memory array, and needs to see the just-corrected value,
+      // not the stale one this whole loop was fetched with.
+      (li as { unitPrice: unknown }).unitPrice = liveUnitPrice;
+    }
   }
   const missingPricesOn = estimate.lineItems.filter((li: { unitPrice: unknown }) => li.unitPrice === null);
   if (missingPricesOn.length > 0) {
