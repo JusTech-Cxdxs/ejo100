@@ -171,6 +171,7 @@ export default async function PartDetailPage({
                     unitUsed: part.goodsReceiptLines[0].unitUsed,
                     quantityInBaseUnit: Number(part.goodsReceiptLines[0].quantityInBaseUnit),
                     unitCostInBaseUnit: part.goodsReceiptLines[0].unitCost !== null ? Number(part.goodsReceiptLines[0].unitCost) : null,
+                    totalCost: part.goodsReceiptLines[0].totalCost !== null ? Number(part.goodsReceiptLines[0].totalCost) : null,
                   }
                 : null
             }
