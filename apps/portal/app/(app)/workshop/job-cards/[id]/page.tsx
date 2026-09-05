@@ -321,6 +321,19 @@ export default async function JobCardDetailPage({
   const pendingCancellationRequest = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'PENDING');
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const estimateLineItems = estimate?.lineItems ?? [];
+  // The one real source of truth for what a line is actually worth
+  // right now — a matched Store Part line tracks Store's own current
+  // selling price live, for as long as the estimate is still Draft,
+  // rather than a number frozen the instant it was first matched.
+  // Used both for each line's own display and for every subtotal/
+  // total below, so the two can never quietly disagree with each
+  // other.
+  function getLiveLineAmount(item: (typeof estimateLineItems)[number]): number {
+    if (item.type === 'STORE_PART' && item.matchedPart && estimate?.status === 'DRAFT' && item.matchedPart.sellingPrice !== null) {
+      return Math.round(item.quantity * Number(item.matchedPart.sellingPrice) * 100) / 100;
+    }
+    return item.amount !== null ? Number(item.amount) : 0;
+  }
   const hasUnmatchedStoreParts = estimateLineItems.some((li: (typeof estimateLineItems)[number]) => li.type === 'STORE_PART' && !li.matchedPartId);
   const estimateTotal = estimateLineItems.reduce((sum: number, li: (typeof estimateLineItems)[number]) => sum + Number(li.amount ?? 0), 0);
   const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
@@ -633,6 +646,23 @@ export default async function JobCardDetailPage({
                         // have plurals.
                         const rawUnit = item.type === 'STORE_PART' ? storePartPreviewUnit : item.unitOfMeasure;
                         const displayUnit = rawUnit ? pluralizeWord(item.quantity, rawUnit) : '—';
+                        // A matched Store Part line is a live link to
+                        // Store's real catalog, not a one-time snapshot —
+                        // for as long as the estimate is still open
+                        // (Draft), the price shown always tracks the
+                        // Part's own current selling price, even if
+                        // nobody has touched this line's own quantity
+                        // since Store changed it. Once the estimate
+                        // leaves Draft, the real stored figures are
+                        // shown as-is — the genuinely locked, historical
+                        // record from that point on.
+                        const liveUnitPrice =
+                          item.type === 'STORE_PART' && item.matchedPart && estimate?.status === 'DRAFT' && item.matchedPart.sellingPrice !== null
+                            ? Number(item.matchedPart.sellingPrice)
+                            : item.unitPrice !== null
+                              ? Number(item.unitPrice)
+                              : null;
+                        const liveAmount = liveUnitPrice !== null ? getLiveLineAmount(item) : null;
 
                         if (isEditingThis) {
                           return (
@@ -711,8 +741,13 @@ export default async function JobCardDetailPage({
                             </td>
                             <td className="py-2 pr-2 text-right text-[var(--ejo-text)]">{item.quantity}</td>
                             <td className="py-2 pr-2 text-[var(--ejo-text-muted)]">{displayUnit}</td>
-                            <td className="py-2 pr-2 text-right text-[var(--ejo-text)]">{formatNaira(item.unitPrice)}</td>
-                            <td className="py-2 pr-2 text-right font-medium text-[var(--ejo-text)]">{formatNaira(item.amount)}</td>
+                            <td className="py-2 pr-2 text-right text-[var(--ejo-text)]">
+                              {formatNaira(liveUnitPrice)}
+                              {item.type === 'STORE_PART' && item.matchedPart && estimate?.status === 'DRAFT' ? (
+                                <span className="ml-1 text-[9px] font-medium uppercase text-[var(--ejo-success)]">live</span>
+                              ) : null}
+                            </td>
+                            <td className="py-2 pr-2 text-right font-medium text-[var(--ejo-text)]">{formatNaira(liveAmount)}</td>
                             <td className="py-2 pr-2 truncate text-[11px] text-[var(--ejo-text-muted)]">{item.enteredBy.fullName}</td>
                             {isEstimateContributor ? (
                               <td className="py-2">
@@ -749,7 +784,7 @@ export default async function JobCardDetailPage({
                   {(['STORE_PART', 'EXTERNAL_PART', 'EXTERNAL_JOB', 'INTERNAL_JOB', 'LABOUR', 'SUNDRY'] as const).map((type) => {
                     const subtotal = estimate.lineItems
                       .filter((item: (typeof estimate.lineItems)[number]) => item.type === type)
-                      .reduce((sum: number, item: (typeof estimate.lineItems)[number]) => sum + Number(item.amount ?? 0), 0);
+                      .reduce((sum: number, item: (typeof estimate.lineItems)[number]) => sum + getLiveLineAmount(item), 0);
                     if (subtotal === 0) return null;
                     return (
                       <div key={type} className="flex justify-between text-[var(--ejo-text-muted)]">
@@ -763,7 +798,7 @@ export default async function JobCardDetailPage({
                     <span>
                       {formatNaira(
                         estimate.lineItems.reduce(
-                          (sum: number, item: (typeof estimate.lineItems)[number]) => sum + Number(item.amount ?? 0),
+                          (sum: number, item: (typeof estimate.lineItems)[number]) => sum + getLiveLineAmount(item),
                           0,
                         ),
                       )}
