@@ -1007,6 +1007,12 @@ export async function getPart(id: string) {
       serials: { where: { status: 'IN_STOCK' }, orderBy: { receivedAt: 'asc' } },
       fitments: { orderBy: { createdAt: 'asc' } },
       createdBy: { select: { fullName: true } },
+      // Just the single most recent real delivery — the "Purchase
+      // Details" side of the selling-price calculator needs a real
+      // Total Bulk Cost to show, and this is where that comes from:
+      // whatever was actually paid for the most recent batch, in
+      // whatever unit it actually arrived in.
+      goodsReceiptLines: { orderBy: { goodsReceipt: { receivedAt: 'desc' } }, take: 1, include: { goodsReceipt: { select: { referenceNumber: true } } } },
     },
   });
 }
