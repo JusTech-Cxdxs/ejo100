@@ -1,11 +1,12 @@
 import { notFound } from 'next/navigation';
 import { getGoodsReceipt, getGoodsReceiptAuditTrail } from '@/lib/actions/store';
-import { updateGoodsReceiptFormAction, updateGoodsReceiptLineCostFormAction } from '@/lib/actions/store-form-handlers';
+import { updateGoodsReceiptFormAction } from '@/lib/actions/store-form-handlers';
+import { GoodsReceiptLineCard } from '@/components/GoodsReceiptLineCard';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
-import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
+import { pluralize } from '@/lib/utils/pluralize';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
   'goods_receipt.recorded': 'Goods Receipt recorded',
@@ -13,9 +14,6 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'goods_receipt.line_cost_updated': 'Line cost corrected',
 };
 
-function formatNaira(amount: number | null): string {
-  return amount === null ? '—' : `₦${amount.toLocaleString('en-NG')}`;
-}
 
 /**
  * One Goods Receipt's own real, permanent record — click through from
@@ -106,53 +104,19 @@ export default async function GoodsReceiptDetailPage({
             <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">{pluralize(receipt.lines.length, 'Line')}</h2>
             <div className="space-y-3">
               {receipt.lines.map((line: (typeof receipt.lines)[number]) => (
-                <div key={line.id} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-[var(--ejo-text)]">{line.part.name}</span>
-                    <span className="text-xs text-[var(--ejo-text-muted)]">
-                      {Number(line.quantityReceivedInUnit).toLocaleString('en-NG')} {pluralizeWord(Number(line.quantityReceivedInUnit), line.unitUsed)}
-                      {line.unitUsed !== line.part.baseUnitOfMeasure
-                        ? ` (= ${Number(line.quantityInBaseUnit).toLocaleString('en-NG')} ${pluralizeWord(Number(line.quantityInBaseUnit), line.part.baseUnitOfMeasure)})`
-                        : ''}
-                    </span>
-                  </div>
-                  {line.batchNumber ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Batch: {line.batchNumber}</p> : null}
-                  <p className="mt-2 text-sm text-[var(--ejo-text)]">
-                    Total Bulk Cost:{' '}
-                    <span className="font-medium">{formatNaira(line.totalCost !== null ? Number(line.totalCost) : null)}</span>
-                    {line.unitUsed !== line.part.baseUnitOfMeasure
-                      ? ` for ${Number(line.quantityReceivedInUnit).toLocaleString('en-NG')} ${pluralizeWord(Number(line.quantityReceivedInUnit), line.unitUsed)}`
-                      : ''}
-                  </p>
-                  <p className="text-xs text-[var(--ejo-text-muted)]">
-                    System notes: cost is {formatNaira(line.unitCost !== null ? Number(line.unitCost) : null)} per {line.part.baseUnitOfMeasure}.
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <form action={updateGoodsReceiptLineCostFormAction} className="flex items-center gap-2">
-                      <FormPendingOverlay />
-                      <input type="hidden" name="goodsReceiptId" value={receipt.id} />
-                      <input type="hidden" name="lineId" value={line.id} />
-                      <input
-                        name="unitCost"
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        required
-                        placeholder={`Correct total cost, per ${line.unitUsed}`}
-                        className="w-48 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
-                      />
-                      <SubmitButton
-                        label="Correct"
-                        pendingLabel="Saving…"
-                        className="shrink-0 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                      />
-                    </form>
-                  </div>
-                  <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
-                    Enter the real cost per {line.unitUsed} — the same unit this line was originally received in — and both the Total
-                    Bulk Cost and the per-{line.part.baseUnitOfMeasure} figure above will be corrected together.
-                  </p>
-                </div>
+                <GoodsReceiptLineCard
+                  key={`${line.id}-${line.totalCost?.toString() ?? 'unset'}`}
+                  goodsReceiptId={receipt.id}
+                  lineId={line.id}
+                  partName={line.part.name}
+                  baseUnitOfMeasure={line.part.baseUnitOfMeasure}
+                  quantityReceivedInUnit={Number(line.quantityReceivedInUnit)}
+                  unitUsed={line.unitUsed}
+                  quantityInBaseUnit={Number(line.quantityInBaseUnit)}
+                  batchNumber={line.batchNumber}
+                  totalCost={line.totalCost !== null ? Number(line.totalCost) : null}
+                  unitCost={line.unitCost !== null ? Number(line.unitCost) : null}
+                />
               ))}
             </div>
           </div>
