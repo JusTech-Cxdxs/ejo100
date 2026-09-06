@@ -1,22 +1,26 @@
 import { notFound } from 'next/navigation';
-import { getJobCard, getJobCardEstimate } from '@/lib/actions/workshop';
-import { getJobCardSourcingNeeds } from '@/lib/actions/sourcing';
-import { listParts, getStoreBranchId } from '@/lib/actions/store';
+import { getJobCard } from '@/lib/actions/workshop';
+import { getJobCardSourcingNeeds, getRequestablePartRequestLines } from '@/lib/actions/sourcing';
 import { requestPartRequestSlipFormAction } from '@/lib/actions/sourcing-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { pluralize } from '@/lib/utils/pluralize';
+
+function formatNaira(value: number): string {
+  return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 /**
- * Raises a Store Parts request for a Job Card — one row per STORE_PART
- * line on its own estimate, each matched here to a real catalog Part and
- * confirmed quantity. Deliberately shows every store-type estimate line
- * regardless of whether an earlier request already covered it (a
- * technician can legitimately need a second round, or a first request
- * may have been rejected) — whoever's raising this picks which lines to
- * actually include this time by choosing a Part for them; a row left at
- * "— Skip —" isn't submitted.
+ * Deliberately nothing to pick, type, or search here — every real Store
+ * Part line on this estimate was already matched to a real catalog Part,
+ * priced, and approved long before this page exists to be visited at
+ * all. This is a real, read-only preview of exactly what's about to be
+ * requested, and one single action to actually raise it — the same
+ * "everything's already decided, just confirm and go" shape as, say,
+ * reviewing a cart before checkout, never a form asking you to re-enter
+ * facts the system already knows.
  */
 export default async function RequestPartsPage({
   params,
@@ -30,14 +34,8 @@ export default async function RequestPartsPage({
   const jobCard = await getJobCard(id);
   if (!jobCard) notFound();
 
-  const [estimate, sourcingNeeds, storeBranchId] = await Promise.all([
-    getJobCardEstimate(id),
-    getJobCardSourcingNeeds(id),
-    getStoreBranchId(),
-  ]);
-  const parts = await listParts(storeBranchId);
-  const allLineItems = estimate?.lineItems ?? [];
-  const storeLines = allLineItems.filter((li: (typeof allLineItems)[number]) => li.type === 'STORE_PART');
+  const [sourcingNeeds, requestableLines] = await Promise.all([getJobCardSourcingNeeds(id), getRequestablePartRequestLines(id)]);
+  const totalAmount = requestableLines.reduce((sum: number, l: (typeof requestableLines)[number]) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
 
   return (
     <div className="p-8">
@@ -49,7 +47,8 @@ export default async function RequestPartsPage({
       </LoadingLink>
       <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Request Store Parts</h1>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Job Card {jobCard.jobNumber} — match each estimate line to a real Part and confirm quantity.
+        Job Card {jobCard.jobNumber} — every Part below was already matched and priced by Store. Nothing here needs
+        editing; raising the request simply sends this exact list forward for approval.
       </p>
 
       {error ? (
@@ -62,60 +61,54 @@ export default async function RequestPartsPage({
         <p className="text-sm text-[var(--ejo-text-muted)]">
           This Job Card isn&apos;t far enough along to request parts yet — it needs to be at least In Progress.
         </p>
-      ) : storeLines.length === 0 ? (
-        <p className="text-sm text-[var(--ejo-text-muted)]">This estimate has no Store Part line items.</p>
-      ) : parts.length === 0 ? (
+      ) : requestableLines.length === 0 ? (
         <p className="text-sm text-[var(--ejo-text-muted)]">
-          No parts in the catalog yet — <LoadingLink href="/inventory/parts" className="text-[var(--ejo-primary)] hover:underline">add some first</LoadingLink>.
+          Nothing ready to request — either every matched Store Part line has already been requested, or none of this
+          estimate&apos;s Store Part lines are matched yet.
         </p>
       ) : (
-        <form action={requestPartRequestSlipFormAction} className="max-w-2xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-          <FormPendingOverlay />
-          <input type="hidden" name="jobCardId" value={id} />
-
-          <div className="space-y-4">
-            {storeLines.map((line: (typeof storeLines)[number]) => (
-              <div key={line.id} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-4">
-                <input type="hidden" name="lineEstimateLineItemId" value={line.id} />
-                <p className="text-sm font-medium text-[var(--ejo-text)]">{line.description}</p>
-                <p className="mb-3 text-xs text-[var(--ejo-text-muted)]">Estimate quantity: {line.quantity}</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Part</label>
-                    <select
-                      name="linePartId"
-                      defaultValue=""
-                      className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                    >
-                      <option value="">— Skip —</option>
-                      {parts.map((part: (typeof parts)[number]) => (
-                        <option key={part.id} value={part.id}>
-                          {part.name} ({part.baseUnitOfMeasure})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Quantity (in Part&apos;s base unit)</label>
-                    <input
-                      name="lineQuantity"
-                      type="number"
-                      step="0.0001"
-                      defaultValue={line.quantity}
-                      className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <SubmitButton
-            label="Raise Parts Request"
-            pendingLabel="Raising…"
-            className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          />
-        </form>
+        <div className="max-w-3xl overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-left text-xs text-[var(--ejo-text-muted)]">
+                <th className="px-4 py-2">Part</th>
+                <th className="px-4 py-2">Part No.</th>
+                <th className="px-4 py-2 text-right">Quantity</th>
+                <th className="px-4 py-2 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {requestableLines.map((line: (typeof requestableLines)[number]) => (
+                <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                  <td className="px-4 py-2 font-medium text-[var(--ejo-text)]">{line.matchedPart?.name ?? line.description}</td>
+                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{line.matchedPart?.partNumber ?? '—'}</td>
+                  <td className="px-4 py-2 text-right text-[var(--ejo-text)]">
+                    {line.quantity} {line.unitOfMeasure ?? ''}
+                  </td>
+                  <td className="px-4 py-2 text-right text-[var(--ejo-text)]">{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-[var(--ejo-border)] font-medium text-[var(--ejo-text)]">
+                <td className="px-4 py-2" colSpan={2}>
+                  {pluralize(requestableLines.length, 'Part')} total
+                </td>
+                <td />
+                <td className="px-4 py-2 text-right">{formatNaira(totalAmount)}</td>
+              </tr>
+            </tfoot>
+          </table>
+          <form action={requestPartRequestSlipFormAction} className="border-t border-[var(--ejo-border)] p-4">
+            <FormPendingOverlay />
+            <input type="hidden" name="jobCardId" value={id} />
+            <SubmitButton
+              label="Raise Parts Request"
+              pendingLabel="Raising…"
+              className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            />
+          </form>
+        </div>
       )}
     </div>
   );
