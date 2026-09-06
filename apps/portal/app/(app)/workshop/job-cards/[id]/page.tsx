@@ -2,10 +2,10 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { getJobCardSourcingNeeds } from '@/lib/actions/sourcing';
-import { listPartCategories, listPartTypes, listEligibleStoreOfficersForBranch, listEligibleStoreManagersForBranch } from '@/lib/actions/store';
+import { listPartCategories, listPartTypes } from '@/lib/actions/store';
 import { EstimateLineItemForm } from '@/components/EstimateLineItemForm';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
-import { requestStoreMatchingFormAction, notifyStoreMatchingCompleteFormAction } from '@/lib/actions/store-form-handlers';
+import { requestStoreMatchingFormAction } from '@/lib/actions/store-form-handlers';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
@@ -289,7 +289,7 @@ export default async function JobCardDetailPage({
     currentUserId(),
   ]);
   if (!jobCard) notFound();
-  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers, eligibleFinance, payments, cancellationRequests, sourcingNeeds, partCategories, partTypes, eligibleStoreOfficers, eligibleStoreManagers] = await Promise.all([
+  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers, eligibleFinance, payments, cancellationRequests, sourcingNeeds, partCategories, partTypes] = await Promise.all([
     getJobCardAuditTrail(id),
     listEligibleSupervisorsForJobCard(id),
     getJobCardEstimate(id),
@@ -300,13 +300,7 @@ export default async function JobCardDetailPage({
     getJobCardSourcingNeeds(id),
     listPartCategories(jobCard.branchId),
     listPartTypes(jobCard.branchId),
-    listEligibleStoreOfficersForBranch(jobCard.branchId),
-    listEligibleStoreManagersForBranch(jobCard.branchId),
   ]);
-  const isEligibleStoreStaff =
-    isMasterAdmin ||
-    eligibleStoreOfficers.staff.some((s: { id: string }) => s.id === viewerId) ||
-    eligibleStoreManagers.staff.some((s: { id: string }) => s.id === viewerId);
   const partCategoriesWithTypes = partCategories.map((category: (typeof partCategories)[number]) => ({
     id: category.id,
     name: category.name,
@@ -873,21 +867,6 @@ export default async function JobCardDetailPage({
                   label={estimate.matchingRequestedAt ? 'Request Store Matching Again' : 'Request Store Matching'}
                   pendingLabel="Sending…"
                   className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-                />
-              </form>
-            ) : null}
-
-            {estimate?.status === 'DRAFT' && isEligibleStoreStaff && estimate.matchingRequestedAt && !hasUnmatchedStoreParts && estimate.lineItems.length > 0 ? (
-              <form action={notifyStoreMatchingCompleteFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
-                <FormPendingOverlay />
-                <input type="hidden" name="jobCardId" value={jobCard.id} />
-                <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
-                  Every requested Store Part line is now matched — let the Supervisor and Technician know they can proceed.
-                </p>
-                <SubmitButton
-                  label="Notify — Matching Complete"
-                  pendingLabel="Sending…"
-                  className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 />
               </form>
             ) : null}
