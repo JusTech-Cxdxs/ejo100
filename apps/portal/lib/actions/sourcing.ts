@@ -44,7 +44,7 @@ async function getSourcingOrgContext(branchId: string, departmentName: string): 
  * shows the exact same real Job Card/vehicle picture, never a
  * slightly different one assembled separately each time. */
 async function getPartRequestEmailContext(jobCardId: string) {
-  return prisma.jobCard.findUniqueOrThrow({
+  const jobCard = await prisma.jobCard.findUniqueOrThrow({
     where: { id: jobCardId },
     select: {
       jobNumber: true,
@@ -56,6 +56,13 @@ async function getPartRequestEmailContext(jobCardId: string) {
       department: { select: { name: true } },
     },
   });
+  // A Job Card's own department is genuinely optional in the real
+  // schema (departmentId String?) — a real, live bug this fixes: the
+  // first version assumed it was always present and crashed in
+  // production the moment a Job Card with no department set actually
+  // reached this code. "Workshop" is an honest, generic fallback,
+  // never a guess at which specific department it might have been.
+  return { ...jobCard, departmentName: jobCard.department?.name ?? 'Workshop' };
 }
 
 /** The Technician and Supervisor both hear about every real stage
@@ -73,7 +80,7 @@ async function notifyTechnicianAndSupervisorOfPartRequestStatus(
     const jobCard = await getPartRequestEmailContext(jobCardId);
     const recipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
     const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
-    const orgContext = await getSourcingOrgContext(jobCard.branchId, jobCard.department.name);
+    const orgContext = await getSourcingOrgContext(jobCard.branchId, jobCard.departmentName);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const logoUrl = `${portalUrl}/images/logo/logo.png`;
     for (const recipient of recipients) {
@@ -424,7 +431,7 @@ export async function requestPartRequestSlip(jobCardId: string): Promise<{ id: s
         select: { quantityRequested: true, part: { select: { name: true, baseUnitOfMeasure: true } } },
       }),
     ]);
-    const orgContext = await getSourcingOrgContext(jobCard.branchId, emailContext.department.name);
+    const orgContext = await getSourcingOrgContext(jobCard.branchId, emailContext.departmentName);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const logoUrl = `${portalUrl}/images/logo/logo.png`;
     for (const manager of managers.supervisors) {
@@ -499,7 +506,7 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
     for (const staffMember of [...storeOfficers.staff, ...storeManagers.staff]) {
       storeRecipients.set(staffMember.id, staffMember);
     }
-    const orgContext = await getSourcingOrgContext(slip.branchId, emailContext.department.name);
+    const orgContext = await getSourcingOrgContext(slip.branchId, emailContext.departmentName);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const logoUrl = `${portalUrl}/images/logo/logo.png`;
     for (const recipient of storeRecipients.values()) {
