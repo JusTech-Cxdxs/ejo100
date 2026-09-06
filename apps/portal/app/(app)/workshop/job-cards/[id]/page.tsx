@@ -94,6 +94,7 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'part_request_slip.released': 'Parts request released',
   'part_request_slip.rejected': 'Parts request rejected',
   'external_procurement.requested': 'External procurement requested',
+  'external_procurement.sent_to_manager': 'External procurement sent to Manager',
   'external_procurement.approved': 'External procurement approved',
   'external_procurement.disbursed': 'External procurement disbursed',
   'external_procurement.rejected': 'External procurement rejected',
