@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { listUnmatchedStorePartLinesForJobCard, getFittingPartsForVehicle, getStoreBranchId } from '@/lib/actions/store';
 import { getJobCard } from '@/lib/actions/workshop';
-import { matchEstimateStorePartLineFormAction, notifyStoreMatchingCompleteFormAction } from '@/lib/actions/store-form-handlers';
+import { matchEstimateStorePartLineFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
@@ -82,27 +82,14 @@ export default async function JobCardMatchingPage({
           <FormFeedbackBanner kind="success" message="Matched." />
         </div>
       ) : null}
-      {status === 'matching_complete_notified' ? (
-        <div className="mb-6 max-w-xl">
-          <FormFeedbackBanner kind="success" message="Sent — the Supervisor and Technician have been notified." />
-        </div>
-      ) : null}
 
       {linesWithFittingParts.length === 0 ? (
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 p-6">
           <p className="text-sm font-medium text-[var(--ejo-text)]">Every requested line for this Job Card is matched.</p>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-            Let the Supervisor and Technician know they can proceed — this estimate is ready for submission.
+            The Supervisor and Technician were notified automatically the moment the last line was matched — this
+            estimate is ready for submission.
           </p>
-          <form action={notifyStoreMatchingCompleteFormAction} className="mt-3">
-            <FormPendingOverlay />
-            <input type="hidden" name="jobCardId" value={jobCard.id} />
-            <SubmitButton
-              label="Notify — Matching Complete"
-              pendingLabel="Sending…"
-              className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            />
-          </form>
         </div>
       ) : (
         <div className="space-y-4">
