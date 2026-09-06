@@ -345,6 +345,7 @@ export async function getRequestablePartRequestLines(jobCardId: string) {
             amount: true,
             matchedPartId: true,
             matchedPart: { select: { id: true, name: true, partNumber: true } },
+            partType: { select: { name: true } },
           },
         },
       },
@@ -855,6 +856,28 @@ export async function requestExternalProcurement(jobCardId: string, estimateLine
   });
 
   return { id: request.id, referenceNumber };
+}
+
+/** The real fix for a genuine complaint: raising a separate request,
+ * one button click at a time, for every External Part/Job line on
+ * the same Job Card was never sensible — a Lathe job and a Bushing
+ * both needed for the same repair are one real trip to Finance for
+ * cash, not two unrelated ones. This raises every currently-eligible
+ * line in one action; each still becomes its own real
+ * ExternalProcurementRequest record underneath (Finance may
+ * genuinely need to track and disburse each one separately), but the
+ * person raising them never has to click more than once. */
+export async function requestExternalProcurementBatch(jobCardId: string): Promise<{ referenceNumbers: string[] }> {
+  const requestableLines = await getRequestableExternalProcurementLines(jobCardId);
+  if (requestableLines.length === 0) {
+    throw new SourcingActionError('There is nothing ready to request — either every line has already been requested, or nothing is priced yet.');
+  }
+  const referenceNumbers: string[] = [];
+  for (const line of requestableLines) {
+    const { referenceNumber } = await requestExternalProcurement(jobCardId, line.id);
+    referenceNumbers.push(referenceNumber);
+  }
+  return { referenceNumbers };
 }
 
 /** Finance's own real addition — transport, logistics, or any other

@@ -13,7 +13,7 @@ import {
   approvePartRequestSlipByStore,
   releasePartRequestSlip,
   rejectPartRequestSlip,
-  requestExternalProcurement,
+  requestExternalProcurementBatch,
   addExternalProcurementSupplementaryLine,
   removeExternalProcurementSupplementaryLine,
   sendExternalProcurementToManager,
@@ -120,7 +120,7 @@ export async function rejectPartRequestSlipFormAction(formData: FormData) {
 export async function requestExternalProcurementFormAction(formData: FormData) {
   const jobCardId = str(formData, 'jobCardId');
   try {
-    await requestExternalProcurement(jobCardId, str(formData, 'estimateLineItemId'));
+    await requestExternalProcurementBatch(jobCardId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not raise the procurement request.';
     redirect(`/workshop/job-cards/${jobCardId}/request-procurement?error=${encodeURIComponent(message)}`);
