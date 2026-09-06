@@ -20,8 +20,86 @@
 
 import { prisma } from '@ejo/database';
 import { pluralize } from '@/lib/utils/pluralize';
-import { requireUser, writeAuditLog, requireEligibleManager, listEligibleFinanceOfficersForBranch } from './workshop';
-import { requireStoreStaff } from './store';
+import { requireUser, writeAuditLog, requireEligibleManager, listEligibleFinanceOfficersForBranch, listEligibleManagersForBranch } from './workshop';
+import { requireStoreStaff, listEligibleStoreOfficersForBranch, listEligibleStoreManagersForBranch } from './store';
+import { sendEmail } from '@/lib/email';
+import { renderPartRequestApprovalNeededEmail, renderPartRequestStatusEmail } from '@/lib/email-templates/part-request-status';
+
+/** Mirrors getStoreOrgContext()/getWorkshopOrgContext() exactly, but
+ * scoped directly to a real branchId rather than a fixed department
+ * slug — this workflow's own emails genuinely span both the Workshop
+ * side (requesting, HOD approval) and the Store side (approval,
+ * release), so no single department name would ever be honestly
+ * correct for every recipient. */
+async function getSourcingOrgContext(branchId: string, departmentName: string): Promise<{ companyName: string; branchName: string; departmentName: string }> {
+  const branch = await prisma.branch.findUniqueOrThrow({
+    where: { id: branchId },
+    select: { name: true, businessUnit: { select: { company: { select: { name: true } } } } },
+  });
+  return { companyName: branch.businessUnit.company.name, branchName: branch.name, departmentName };
+}
+
+/** The one real query every email this whole request chain sends
+ * needs — fetched once, reused everywhere, so every stage's own email
+ * shows the exact same real Job Card/vehicle picture, never a
+ * slightly different one assembled separately each time. */
+async function getPartRequestEmailContext(jobCardId: string) {
+  return prisma.jobCard.findUniqueOrThrow({
+    where: { id: jobCardId },
+    select: {
+      jobNumber: true,
+      branchId: true,
+      supervisorId: true,
+      assignedTechnicianId: true,
+      customer: { select: { fullName: true } },
+      vehicle: { select: { make: true, model: true, year: true, engineType: true, chassisNumber: true, plateNumber: true } },
+      department: { select: { name: true } },
+    },
+  });
+}
+
+/** The Technician and Supervisor both hear about every real stage
+ * this request moves through — the Supervisor's own genuine ability
+ * to follow up depends on actually knowing what's happening, not
+ * just the Technician who happened to raise it in the first place. */
+async function notifyTechnicianAndSupervisorOfPartRequestStatus(
+  jobCardId: string,
+  slipId: string,
+  referenceNumber: string,
+  kind: 'hod_approved' | 'store_approved' | 'released' | 'rejected',
+  rejectionReason?: string,
+): Promise<void> {
+  try {
+    const jobCard = await getPartRequestEmailContext(jobCardId);
+    const recipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
+    const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
+    const orgContext = await getSourcingOrgContext(jobCard.branchId, jobCard.department.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    for (const recipient of recipients) {
+      await sendEmail(
+        recipient.email,
+        `Parts request ${kind === 'rejected' ? 'rejected' : 'update'} — ${referenceNumber}`,
+        renderPartRequestStatusEmail({
+          recipientName: recipient.fullName,
+          kind,
+          referenceNumber,
+          jobNumber: jobCard.jobNumber,
+          customerName: jobCard.customer.fullName,
+          rejectionReason,
+          requestUrl: `${portalUrl}/workshop/parts-requests/${slipId}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Parts Request status emails', referenceNumber, err);
+  }
+}
 
 class SourcingActionError extends Error {}
 
@@ -150,7 +228,16 @@ export async function getPartRequestSlip(id: string) {
   return prisma.partRequestSlip.findUnique({
     where: { id },
     include: {
-      jobCard: { select: { id: true, jobNumber: true } },
+      jobCard: {
+        select: {
+          id: true,
+          jobNumber: true,
+          supervisorId: true,
+          assignedTechnicianId: true,
+          customer: { select: { fullName: true } },
+          vehicle: { select: { make: true, model: true, year: true, engineType: true, chassisNumber: true, plateNumber: true } },
+        },
+      },
       requestedBy: { select: { fullName: true } },
       hodApprovedBy: { select: { fullName: true } },
       storeApprovedBy: { select: { fullName: true } },
@@ -159,8 +246,8 @@ export async function getPartRequestSlip(id: string) {
       rejectedBy: { select: { fullName: true } },
       lines: {
         include: {
-          part: { select: { id: true, name: true, baseUnitOfMeasure: true, trackingType: true } },
-          estimateLineItem: { select: { description: true } },
+          part: { select: { id: true, name: true, partNumber: true, baseUnitOfMeasure: true, trackingType: true } },
+          estimateLineItem: { select: { description: true, unitPrice: true, amount: true } },
         },
       },
     },
@@ -228,16 +315,53 @@ export async function listExternalProcurementRequests(branchId: string, search?:
   });
 }
 
-export type RequestPartRequestSlipLineInput = {
-  partId: string;
-  estimateLineItemId?: string;
-  quantityRequested: number;
-};
+/** Every real Store Part line for this Job Card that's actually ready
+ * to request — matched to a real catalog Part (Store already did
+ * that work back at estimate time) and not already covered by an
+ * earlier, still-active request. There's genuinely nothing left for
+ * a human to pick here: the Part, the quantity, the unit, and the
+ * price were all decided the moment Store matched the line — this
+ * just finds what's real and waiting. */
+export async function getRequestablePartRequestLines(jobCardId: string) {
+  await requireUser();
+  const [estimate, existingSlips] = await Promise.all([
+    prisma.estimate.findUnique({
+      where: { jobCardId },
+      select: {
+        lineItems: {
+          where: { type: 'STORE_PART', matchedPartId: { not: null } },
+          select: {
+            id: true,
+            description: true,
+            quantity: true,
+            unitOfMeasure: true,
+            amount: true,
+            matchedPartId: true,
+            matchedPart: { select: { id: true, name: true, partNumber: true } },
+          },
+        },
+      },
+    }),
+    prisma.partRequestSlip.findMany({
+      where: { jobCardId, status: { not: 'REJECTED' } },
+      select: { lines: { select: { estimateLineItemId: true } } },
+    }),
+  ]);
+  const alreadyRequestedLineIds = new Set(
+    existingSlips.flatMap((s: (typeof existingSlips)[number]) => s.lines.map((l: { estimateLineItemId: string | null }) => l.estimateLineItemId).filter(Boolean)),
+  );
+  return (estimate?.lineItems ?? []).filter((li: { id: string }) => !alreadyRequestedLineIds.has(li.id));
+}
 
 /** Raises a Store parts request — the first of the three real approval
  * steps (Workshop HOD next, then Store, then release). Immediately moves
- * the Job Card to AWAITING_PARTS if it isn't already there. */
-export async function requestPartRequestSlip(jobCardId: string, lines: RequestPartRequestSlipLineInput[]): Promise<{ id: string; referenceNumber: string }> {
+ * the Job Card to AWAITING_PARTS if it isn't already there. Deliberately
+ * takes no Part/quantity input at all: everything real about what's
+ * being requested (which Part, how many, what it costs) was already
+ * decided the moment Store matched each line back at estimate time —
+ * this only ever pulls that, in full, never lets anyone re-enter or
+ * second-guess it here. */
+export async function requestPartRequestSlip(jobCardId: string): Promise<{ id: string; referenceNumber: string }> {
   const user = await requireUser();
   const jobCard = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { status: true, branchId: true } });
   if (!jobCard) {
@@ -246,13 +370,9 @@ export async function requestPartRequestSlip(jobCardId: string, lines: RequestPa
   if (!SOURCEABLE_STATUSES.includes(jobCard.status as (typeof SOURCEABLE_STATUSES)[number])) {
     throw new SourcingActionError("This Job Card isn't far enough along to request parts yet — it needs to be at least In Progress (70% paid).");
   }
-  if (!lines || lines.length === 0) {
-    throw new SourcingActionError('At least one line is required.');
-  }
-  for (const line of lines) {
-    if (!(line.quantityRequested > 0)) {
-      throw new SourcingActionError('Quantity requested must be greater than zero for every line.');
-    }
+  const requestableLines = await getRequestablePartRequestLines(jobCardId);
+  if (requestableLines.length === 0) {
+    throw new SourcingActionError('There are no matched Store Part lines ready to request — everything has already been requested, or nothing has been matched yet.');
   }
 
   const referenceNumber = await generatePartRequestSlipNumber();
@@ -263,10 +383,10 @@ export async function requestPartRequestSlip(jobCardId: string, lines: RequestPa
       branchId: jobCard.branchId,
       requestedById: user.id,
       lines: {
-        create: lines.map((l) => ({
-          partId: l.partId,
-          estimateLineItemId: l.estimateLineItemId,
-          quantityRequested: l.quantityRequested,
+        create: requestableLines.map((l: (typeof requestableLines)[number]) => ({
+          partId: l.matchedPartId as string,
+          estimateLineItemId: l.id,
+          quantityRequested: l.quantity,
         })),
       },
     },
@@ -278,7 +398,7 @@ export async function requestPartRequestSlip(jobCardId: string, lines: RequestPa
     action: 'part_request_slip.requested',
     entityType: 'PartRequestSlip',
     entityId: slip.id,
-    metadata: { referenceNumber, lineCount: lines.length },
+    metadata: { referenceNumber, lineCount: requestableLines.length },
   });
   // Every stage of this request also lands on the Job Card's own
   // audit trail, with the real reference number — the Job Card is
@@ -291,8 +411,47 @@ export async function requestPartRequestSlip(jobCardId: string, lines: RequestPa
     action: 'part_request_slip.requested',
     entityType: 'JobCard',
     entityId: jobCardId,
-    metadata: { referenceNumber, lineCount: lines.length },
+    metadata: { referenceNumber, lineCount: requestableLines.length },
   });
+
+  try {
+    const [emailContext, managers, requestedByUser, lineDetails] = await Promise.all([
+      getPartRequestEmailContext(jobCardId),
+      listEligibleManagersForBranch(jobCard.branchId),
+      prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
+      prisma.partRequestSlipLine.findMany({
+        where: { slipId: slip.id },
+        select: { quantityRequested: true, part: { select: { name: true, baseUnitOfMeasure: true } } },
+      }),
+    ]);
+    const orgContext = await getSourcingOrgContext(jobCard.branchId, emailContext.department.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    for (const manager of managers.supervisors) {
+      await sendEmail(
+        manager.email,
+        `Parts request needs your approval — ${referenceNumber}`,
+        renderPartRequestApprovalNeededEmail({
+          recipientName: manager.fullName,
+          requestedByName: requestedByUser?.fullName ?? 'A team member',
+          referenceNumber,
+          jobNumber: emailContext.jobNumber,
+          customerName: emailContext.customer.fullName,
+          vehicle: emailContext.vehicle,
+          requestedAt: new Date(),
+          lines: lineDetails.map((l: (typeof lineDetails)[number]) => ({ partName: l.part.name, quantity: Number(l.quantityRequested), baseUnitOfMeasure: l.part.baseUnitOfMeasure })),
+          approvalUrl: `${portalUrl}/workshop/parts-requests/${slip.id}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Parts Request approval-needed emails', referenceNumber, err);
+  }
 
   return { id: slip.id, referenceNumber };
 }
@@ -320,6 +479,54 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
     entityId: slip.jobCardId,
     metadata: { referenceNumber: slip.referenceNumber },
   });
+
+  await notifyTechnicianAndSupervisorOfPartRequestStatus(slip.jobCardId, slipId, slip.referenceNumber, 'hod_approved');
+
+  // Now Store's own turn — the same real "approval needed" email as
+  // the HOD's own, just addressed to whoever can actually approve and
+  // reserve stock next.
+  try {
+    const [emailContext, storeOfficers, storeManagers, lineDetails] = await Promise.all([
+      getPartRequestEmailContext(slip.jobCardId),
+      listEligibleStoreOfficersForBranch(slip.branchId),
+      listEligibleStoreManagersForBranch(slip.branchId),
+      prisma.partRequestSlipLine.findMany({
+        where: { slipId },
+        select: { quantityRequested: true, part: { select: { name: true, baseUnitOfMeasure: true } } },
+      }),
+    ]);
+    const storeRecipients = new Map<string, { fullName: string; email: string }>();
+    for (const staffMember of [...storeOfficers.staff, ...storeManagers.staff]) {
+      storeRecipients.set(staffMember.id, staffMember);
+    }
+    const orgContext = await getSourcingOrgContext(slip.branchId, emailContext.department.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    for (const recipient of storeRecipients.values()) {
+      await sendEmail(
+        recipient.email,
+        `Parts request needs your approval — ${slip.referenceNumber}`,
+        renderPartRequestApprovalNeededEmail({
+          recipientName: recipient.fullName,
+          requestedByName: 'The Workshop HOD',
+          referenceNumber: slip.referenceNumber,
+          jobNumber: emailContext.jobNumber,
+          customerName: emailContext.customer.fullName,
+          vehicle: emailContext.vehicle,
+          requestedAt: new Date(),
+          lines: lineDetails.map((l: (typeof lineDetails)[number]) => ({ partName: l.part.name, quantity: Number(l.quantityRequested), baseUnitOfMeasure: l.part.baseUnitOfMeasure })),
+          approvalUrl: `${portalUrl}/workshop/parts-requests/${slipId}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Parts Request Store-approval-needed emails', slip.referenceNumber, err);
+  }
 }
 
 /** Step two of three — Store confirming and reserving the actual stock.
@@ -374,6 +581,8 @@ export async function approvePartRequestSlipByStore(slipId: string, notes?: stri
     entityId: slip.jobCardId,
     metadata: { referenceNumber: slip.referenceNumber },
   });
+
+  await notifyTechnicianAndSupervisorOfPartRequestStatus(slip.jobCardId, slipId, slip.referenceNumber, 'store_approved');
 }
 
 /** Step three of three — a Storekeeper physically releasing it. Full
@@ -506,6 +715,8 @@ export async function releasePartRequestSlip(
     entityId: slip.jobCardId,
     metadata: { referenceNumber: slip.referenceNumber, receivedByUserId: receivedBy.receivedByUserId, receivedByName: receivedBy.receivedByName },
   });
+
+  await notifyTechnicianAndSupervisorOfPartRequestStatus(slip.jobCardId, slipId, slip.referenceNumber, 'released');
 }
 
 /** Rejectable at either stage still pending a decision — by whoever would
@@ -547,18 +758,42 @@ export async function rejectPartRequestSlip(slipId: string, reason: string): Pro
     entityId: slip.jobCardId,
     metadata: { referenceNumber: slip.referenceNumber, stage, reason: reason.trim() },
   });
+
+  await notifyTechnicianAndSupervisorOfPartRequestStatus(slip.jobCardId, slipId, slip.referenceNumber, 'rejected', reason.trim());
 }
 
 /** Raises an external procurement request — a genuine cash advance
  * (an imprest, in real accounting terms) for a part or job the Store
  * doesn't carry. Immediately moves the Job Card to AWAITING_PARTS if it
  * isn't already there. */
-export async function requestExternalProcurement(
-  jobCardId: string,
-  description: string,
-  estimatedAmount: number,
-  estimateLineItemId?: string,
-): Promise<{ id: string; referenceNumber: string }> {
+/** Every real External Part/External Job line on this Job Card's own
+ * estimate that's ready to request — already priced (by whoever had
+ * pricing authority for that line type, back at estimate time) and
+ * not already covered by an earlier, still-active request. Same
+ * reasoning as the Store Parts side: nothing here needs a human to
+ * re-enter it, it's a real fact the estimate already holds. */
+export async function getRequestableExternalProcurementLines(jobCardId: string) {
+  await requireUser();
+  const [estimate, existingRequests] = await Promise.all([
+    prisma.estimate.findUnique({
+      where: { jobCardId },
+      select: {
+        lineItems: {
+          where: { type: { in: ['EXTERNAL_PART', 'EXTERNAL_JOB'] }, amount: { not: null } },
+          select: { id: true, description: true, quantity: true, unitOfMeasure: true, amount: true, type: true },
+        },
+      },
+    }),
+    prisma.externalProcurementRequest.findMany({
+      where: { jobCardId, status: { not: 'REJECTED' } },
+      select: { estimateLineItemId: true },
+    }),
+  ]);
+  const alreadyRequestedLineIds = new Set(existingRequests.map((r: { estimateLineItemId: string | null }) => r.estimateLineItemId).filter(Boolean));
+  return (estimate?.lineItems ?? []).filter((li: { id: string }) => !alreadyRequestedLineIds.has(li.id));
+}
+
+export async function requestExternalProcurement(jobCardId: string, estimateLineItemId: string): Promise<{ id: string; referenceNumber: string }> {
   const user = await requireUser();
   const jobCard = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { status: true, branchId: true } });
   if (!jobCard) {
@@ -567,12 +802,21 @@ export async function requestExternalProcurement(
   if (!SOURCEABLE_STATUSES.includes(jobCard.status as (typeof SOURCEABLE_STATUSES)[number])) {
     throw new SourcingActionError("This Job Card isn't far enough along to request procurement yet — it needs to be at least In Progress (70% paid).");
   }
-  if (!description?.trim()) {
-    throw new SourcingActionError('A description is required.');
+  const line = await prisma.estimateLineItem.findUnique({
+    where: { id: estimateLineItemId },
+    select: { description: true, amount: true, estimateId: true, estimate: { select: { jobCardId: true } } },
+  });
+  if (!line || line.estimate.jobCardId !== jobCardId) {
+    throw new SourcingActionError('Estimate line not found on this Job Card.');
   }
-  if (!(estimatedAmount > 0)) {
-    throw new SourcingActionError('Estimated amount must be greater than zero.');
+  if (line.amount === null) {
+    throw new SourcingActionError('This line has no price on record yet.');
   }
+  // The real description and amount come directly from the estimate
+  // line itself — never re-typed here, so what gets requested can
+  // never quietly drift from what was actually approved.
+  const description = line.description;
+  const estimatedAmount = Number(line.amount);
 
   const referenceNumber = await generateExternalProcurementRequestNumber();
   const request = await prisma.externalProcurementRequest.create({
@@ -582,7 +826,7 @@ export async function requestExternalProcurement(
       branchId: jobCard.branchId,
       estimateLineItemId,
       requestedById: user.id,
-      description: description.trim(),
+      description,
       estimatedAmount,
     },
   });

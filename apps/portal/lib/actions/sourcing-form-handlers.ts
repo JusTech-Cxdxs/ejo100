@@ -37,17 +37,7 @@ function num(formData: FormData, key: string): number | undefined {
 export async function requestPartRequestSlipFormAction(formData: FormData) {
   const jobCardId = str(formData, 'jobCardId');
   try {
-    const partIds = formData.getAll('linePartId').map((v) => (typeof v === 'string' ? v : ''));
-    const quantities = formData.getAll('lineQuantity').map((v) => (typeof v === 'string' ? v : ''));
-    const estimateLineItemIds = formData.getAll('lineEstimateLineItemId').map((v) => (typeof v === 'string' ? v : ''));
-    const lines = partIds
-      .map((partId, i) => ({
-        partId,
-        quantityRequested: Number(quantities[i]),
-        estimateLineItemId: estimateLineItemIds[i] || undefined,
-      }))
-      .filter((l) => l.partId && l.quantityRequested > 0);
-    await requestPartRequestSlip(jobCardId, lines);
+    await requestPartRequestSlip(jobCardId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not raise the parts request.';
     redirect(`/workshop/job-cards/${jobCardId}/request-parts?error=${encodeURIComponent(message)}`);
@@ -130,12 +120,7 @@ export async function rejectPartRequestSlipFormAction(formData: FormData) {
 export async function requestExternalProcurementFormAction(formData: FormData) {
   const jobCardId = str(formData, 'jobCardId');
   try {
-    await requestExternalProcurement(
-      jobCardId,
-      str(formData, 'description'),
-      num(formData, 'estimatedAmount') ?? 0,
-      str(formData, 'estimateLineItemId') || undefined,
-    );
+    await requestExternalProcurement(jobCardId, str(formData, 'estimateLineItemId'));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not raise the procurement request.';
     redirect(`/workshop/job-cards/${jobCardId}/request-procurement?error=${encodeURIComponent(message)}`);
