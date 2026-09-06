@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { SubmitButton } from './SubmitButton';
 import { FormPendingOverlay } from './FormPendingOverlay';
 import { SearchableSelect, type SearchableOption } from './SearchableSelect';
+import { pluralizeWord } from '@/lib/utils/pluralize';
 
 type PartOption = {
   id: string;
@@ -151,7 +152,10 @@ export function GoodsReceiptForm({
               <>
                 {' '}— also accepts:{' '}
                 {selectedPart.alternativeUnits
-                  .map((u) => `${u.unitName} (1 ${u.unitName} = ${Number(u.conversionFactor).toLocaleString('en-NG', { maximumFractionDigits: 3 })} ${selectedPart.baseUnitOfMeasure})`)
+                  .map((u) => {
+                    const factor = Number(u.conversionFactor);
+                    return `${u.unitName} (1 ${u.unitName} = ${factor.toLocaleString('en-NG', { maximumFractionDigits: 3 })} ${pluralizeWord(factor, selectedPart.baseUnitOfMeasure)})`;
+                  })
                   .join(', ')}
               </>
             ) : null}
@@ -199,7 +203,10 @@ export function GoodsReceiptForm({
 
       <div>
         <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">
-          Total Cost{unitUsed ? ` (for the full ${quantity || '…'} ${unitUsed} received)` : ''}
+          Total Cost
+          {unitUsed
+            ? ` (for the full ${quantity || '…'} ${quantity ? pluralizeWord(Number(quantity), unitUsed) : pluralizeWord(2, unitUsed)} received)`
+            : ''}
         </label>
         <input
           name="totalCost"

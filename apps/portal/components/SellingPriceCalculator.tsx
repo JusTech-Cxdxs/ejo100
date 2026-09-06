@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { setPartSellingPriceFormAction } from '@/lib/actions/store-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
+import { pluralizeWord } from '@/lib/utils/pluralize';
 
 function formatNaira(amount: number): string {
   return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -69,8 +70,10 @@ export function SellingPriceCalculator({
             <div className="flex justify-between">
               <dt className="text-[var(--ejo-text-muted)]">Quantity Received</dt>
               <dd className="text-[var(--ejo-text)]">
-                {lastReceipt.quantityReceivedInUnit.toLocaleString('en-NG')} {lastReceipt.unitUsed}
-                {lastReceipt.unitUsed !== baseUnitOfMeasure ? ` (= ${lastReceipt.quantityInBaseUnit.toLocaleString('en-NG')} ${baseUnitOfMeasure})` : ''}
+                {lastReceipt.quantityReceivedInUnit.toLocaleString('en-NG')} {pluralizeWord(lastReceipt.quantityReceivedInUnit, lastReceipt.unitUsed)}
+                {lastReceipt.unitUsed !== baseUnitOfMeasure
+                  ? ` (= ${lastReceipt.quantityInBaseUnit.toLocaleString('en-NG')} ${pluralizeWord(lastReceipt.quantityInBaseUnit, baseUnitOfMeasure)})`
+                  : ''}
               </dd>
             </div>
             <div className="flex justify-between">
