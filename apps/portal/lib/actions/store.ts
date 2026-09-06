@@ -21,6 +21,7 @@ import { sendEmail } from '@/lib/email';
 import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
 import { renderStoreMatchingRequestedEmail, renderStoreMatchingStatusEmail } from '@/lib/email-templates/store-matching-status';
 import { renderGoodsReceiptEditedEmail } from '@/lib/email-templates/goods-receipt-edited';
+import { renderPartSellingPriceSetEmail } from '@/lib/email-templates/part-selling-price-set';
 
 class StoreActionError extends Error {}
 
@@ -292,7 +293,23 @@ export async function updatePart(input: UpdatePartInput): Promise<void> {
  * conflation this field exists to end, and a suggested figure has a
  * way of becoming the actual figure nobody ever deliberately chose. */
 export async function setPartSellingPrice(partId: string, sellingPrice: number): Promise<void> {
-  const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, name: true } });
+  const part = await prisma.part.findUnique({
+    where: { id: partId },
+    select: {
+      branchId: true,
+      name: true,
+      sellingPrice: true,
+      baseUnitOfMeasure: true,
+      // The most recent real delivery — same source the Selling Price
+      // Calculator's own margin insight already uses, so the email
+      // and the screen never tell two different stories.
+      goodsReceiptLines: {
+        orderBy: { goodsReceipt: { receivedAt: 'desc' } },
+        take: 1,
+        select: { quantityInBaseUnit: true, totalCost: true },
+      },
+    },
+  });
   if (!part) {
     throw new StoreActionError('Part not found.');
   }
@@ -300,8 +317,66 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
   if (!(sellingPrice > 0)) {
     throw new StoreActionError('Selling price must be greater than zero.');
   }
+  const previousSellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
   await prisma.part.update({ where: { id: partId }, data: { sellingPrice } });
-  await writeAuditLog({ userId: user.id, action: 'part.selling_price_set', entityType: 'Part', entityId: partId, metadata: { name: part.name, sellingPrice } });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'part.selling_price_set',
+    entityType: 'Part',
+    entityId: partId,
+    metadata: { name: part.name, from: previousSellingPrice, to: sellingPrice },
+  });
+
+  try {
+    const lastReceipt = part.goodsReceiptLines[0];
+    const margin =
+      lastReceipt && lastReceipt.totalCost !== null
+        ? (() => {
+            const quantityInBaseUnit = Number(lastReceipt.quantityInBaseUnit);
+            const totalBulkCost = Number(lastReceipt.totalCost);
+            const expectedRevenue = Math.round(sellingPrice * quantityInBaseUnit * 100) / 100;
+            const grossProfit = Math.round((expectedRevenue - totalBulkCost) * 100) / 100;
+            const markupPercent = totalBulkCost > 0 ? (grossProfit / totalBulkCost) * 100 : null;
+            return { quantityInBaseUnit, totalBulkCost, expectedRevenue, grossProfit, markupPercent };
+          })()
+        : null;
+
+    const [officers, managers, setByUser] = await Promise.all([
+      listEligibleStoreOfficersForBranch(part.branchId),
+      listEligibleStoreManagersForBranch(part.branchId),
+      prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
+    ]);
+    const recipients = new Map<string, { fullName: string; email: string }>();
+    for (const staffMember of [...officers.staff, ...managers.staff]) {
+      recipients.set(staffMember.id, staffMember);
+    }
+    const orgContext = await getStoreOrgContext();
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    for (const recipient of recipients.values()) {
+      await sendEmail(
+        recipient.email,
+        `Selling price ${previousSellingPrice === null ? 'set' : 'updated'} — ${part.name}`,
+        renderPartSellingPriceSetEmail({
+          recipientName: recipient.fullName,
+          setByName: setByUser?.fullName ?? 'A team member',
+          partName: part.name,
+          baseUnitOfMeasure: part.baseUnitOfMeasure,
+          previousSellingPrice,
+          newSellingPrice: sellingPrice,
+          margin,
+          partUrl: `${portalUrl}/inventory/parts/${partId}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send selling price notification emails', partId, err);
+  }
 }
 
 /** Replaces a part's full set of alternative units in one call — the
@@ -1026,7 +1101,15 @@ export async function getPart(id: string) {
     include: {
       stock: true,
       alternativeUnits: true,
-      batches: { where: { remainingQuantity: { gt: 0 } }, orderBy: { receivedAt: 'asc' } },
+      // Every batch, not just ones with stock left — a fully sold-out
+      // batch is exactly what the real sales/profit tracking below
+      // needs to show ("how much sold, how much remaining" genuinely
+      // means remaining can be zero), so filtering those out here
+      // would hide the very history this view exists to surface.
+      batches: {
+        orderBy: { receivedAt: 'asc' },
+        include: { goodsReceiptLine: { select: { unitCost: true } } },
+      },
       serials: { where: { status: 'IN_STOCK' }, orderBy: { receivedAt: 'asc' } },
       fitments: { orderBy: { createdAt: 'asc' } },
       createdBy: { select: { fullName: true } },
@@ -1331,6 +1414,24 @@ export async function getGoodsReceiptAuditTrail(goodsReceiptId: string) {
   await requireUser();
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'GoodsReceipt', entityId: goodsReceiptId },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  });
+  const userIds = [...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id)))];
+  const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } });
+  const userById = new Map(users.map((u: (typeof users)[number]) => [u.id, u.fullName]));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? (userById.get(e.userId) ?? 'Unknown') : 'System' }));
+}
+
+/** Mirrors getGoodsReceiptAuditTrail() exactly — the same real gap it
+ * closed applies here too: without this, every selling-price decision
+ * (and any future Part edit) would have a real audit_log row sitting
+ * in the database with nobody ever able to actually see it on the
+ * Part's own page. */
+export async function getPartAuditTrail(partId: string) {
+  await requireUser();
+  const entries = await prisma.auditLog.findMany({
+    where: { entityType: 'Part', entityId: partId },
     orderBy: { createdAt: 'desc' },
     take: 50,
   });
