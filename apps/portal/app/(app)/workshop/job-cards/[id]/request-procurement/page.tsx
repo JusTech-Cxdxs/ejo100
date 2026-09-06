@@ -6,7 +6,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
-import { pluralize } from '@/lib/utils/pluralize';
+import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 
 function formatNaira(value: number): string {
   return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -116,7 +116,7 @@ export default async function RequestProcurementPage({
                     <td className="px-4 py-2 font-medium text-[var(--ejo-text)]">{line.description}</td>
                     <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{TYPE_LABEL[line.type] ?? line.type}</td>
                     <td className="px-4 py-2 text-right text-[var(--ejo-text)]">
-                      {line.quantity} {line.unitOfMeasure ?? ''}
+                      {line.quantity} {line.unitOfMeasure ? pluralizeWord(line.quantity, line.unitOfMeasure) : ''}
                     </td>
                     <td className="px-4 py-2 text-right text-[var(--ejo-text)]">{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
                   </tr>
