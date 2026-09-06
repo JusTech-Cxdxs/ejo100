@@ -67,7 +67,7 @@ export async function recordGoodsReceiptFormAction(formData: FormData) {
           partId,
           quantityReceivedInUnit: num(formData, 'quantityReceivedInUnit') ?? 0,
           unitUsed: str(formData, 'unitUsed'),
-          unitCost: num(formData, 'unitCost'),
+          totalCost: num(formData, 'totalCost') ?? 0,
           batchNumber: str(formData, 'batchNumber') || undefined,
           serialNumbers: serialNumbers.length > 0 ? serialNumbers : undefined,
         },

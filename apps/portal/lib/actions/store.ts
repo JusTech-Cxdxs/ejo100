@@ -1021,7 +1021,14 @@ export type GoodsReceiptLineInput = {
   partId: string;
   quantityReceivedInUnit: number;
   unitUsed: string;
-  unitCost?: number;
+  // The real, primary figure Store actually knows and enters — what
+  // the whole delivery cost, in whatever unit it was received in
+  // (e.g. "₦650,000 for the 1 Drum received"), not a per-unit price
+  // nobody has to hand-calculate first. Required now, not optional —
+  // a Goods Receipt with no cost on record was never genuinely
+  // useful for anything downstream (pricing, valuation), so making
+  // it optional just meant catching the gap later instead of now.
+  totalCost: number;
   /** Required, and only meaningful, for a BATCH-tracked part. */
   batchNumber?: string;
   /** Required, and only meaningful, for a SERIALIZED part — one entry per
@@ -1081,11 +1088,21 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
     if (!(line.quantityReceivedInUnit > 0)) {
       throw new StoreActionError(`Quantity received must be greater than zero for ${part.name}.`);
     }
+    if (!(line.totalCost > 0)) {
+      throw new StoreActionError(`Total Cost must be greater than zero for ${part.name}.`);
+    }
+    // The one, real cost figure that's never subject to a round-trip
+    // precision loss — it's exactly what was typed, the total for the
+    // whole delivery. Everything else (a per-unit cost in whatever
+    // unit was actually used, and the per-base-unit cost used for
+    // pricing math) is derived FROM this, once, and never the other
+    // way around.
+    const unitCostAsEntered = line.totalCost / line.quantityReceivedInUnit;
     let quantityInBaseUnit: number;
-    let unitCostInBaseUnit: number | undefined;
+    let unitCostInBaseUnit: number;
     if (line.unitUsed === part.baseUnitOfMeasure) {
       quantityInBaseUnit = line.quantityReceivedInUnit;
-      unitCostInBaseUnit = line.unitCost;
+      unitCostInBaseUnit = unitCostAsEntered;
     } else {
       const altUnit = part.alternativeUnits.find((u) => u.unitName === line.unitUsed);
       if (!altUnit) {
@@ -1093,27 +1110,23 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
       }
       const conversionFactor = Number(altUnit.conversionFactor);
       quantityInBaseUnit = line.quantityReceivedInUnit * conversionFactor;
-      // The real fix for a genuine bug: unitCost is always entered per
-      // the unit actually picked (e.g. "₦65,000 per Drum"), but stock
-      // — and every later price computed from it — is always tracked
-      // in the base unit (Liters). Storing the Drum price as if it
-      // were already a per-Liter price meant Store matching would
-      // later multiply a customer's real Liter quantity by a cost
-      // meant for a whole 205L Drum, producing wildly wrong estimate
-      // totals. Converting here, once, at the moment of entry, is
-      // what keeps unitCost and quantityInBaseUnit in the same real
-      // unit from here on.
-      unitCostInBaseUnit = line.unitCost !== undefined ? Math.round((line.unitCost / conversionFactor) * 1_000_000) / 1_000_000 : undefined;
+      // The real fix for a genuine bug: cost is always entered for
+      // the unit actually picked (e.g. "₦650,000 for the Drum
+      // received"), but stock — and every later price computed from
+      // it — is always tracked in the base unit (Liters). Storing the
+      // Drum price as if it were already a per-Liter price meant
+      // Store matching would later multiply a customer's real Liter
+      // quantity by a cost meant for a whole 205L Drum, producing
+      // wildly wrong estimate totals. Converting here, once, at the
+      // moment of entry, is what keeps unitCost and quantityInBaseUnit
+      // in the same real unit from here on.
+      unitCostInBaseUnit = Math.round((unitCostAsEntered / conversionFactor) * 1_000_000) / 1_000_000;
     }
-    // The real, exact total — computed directly from the two numbers
-    // actually typed (unitCost-as-entered × the quantity in that same
-    // unit), never from the derived, necessarily-imprecise per-base-
-    // unit figure above. This is what fixes a genuine display bug: a
-    // real ₦650,000 payment for 205 Liters has no exact per-Liter
-    // price at 2 decimal places, so recomputing the total by
-    // multiplying that rounded per-Liter figure back out reliably
-    // loses a few kobo — or, at 2-decimal-place storage, whole naira.
-    const totalCost = line.unitCost !== undefined ? Math.round(line.unitCost * line.quantityReceivedInUnit * 100) / 100 : undefined;
+    // Rounded once, at the very end, purely for storage/display — the
+    // real value used throughout this function is still the exact
+    // line.totalCost the user actually typed, never recomputed from
+    // anything derived above.
+    const totalCost = Math.round(line.totalCost * 100) / 100;
 
     if (part.trackingType === 'BATCH' && !line.batchNumber?.trim()) {
       throw new StoreActionError(`A batch number is required for ${part.name}.`);
