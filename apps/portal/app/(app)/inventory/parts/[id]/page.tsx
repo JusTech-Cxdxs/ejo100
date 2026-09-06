@@ -4,6 +4,7 @@ import { getLastEditInfo } from '@/lib/actions/workshop';
 import { createPartFitmentFormAction, updatePartFitmentFormAction, deletePartFitmentFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SellingPriceCalculator } from '@/components/SellingPriceCalculator';
+import { pluralizeWord } from '@/lib/utils/pluralize';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -113,8 +114,12 @@ export default async function PartDetailPage({
                       {part.batches.map((batch: (typeof part.batches)[number]) => (
                         <tr key={batch.id} className="border-b border-[var(--ejo-border)] last:border-0">
                           <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{batch.batchNumber}</td>
-                          <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatQty(batch.receivedQuantity)} {part.baseUnitOfMeasure}</td>
-                          <td className="px-3 py-2 text-[var(--ejo-text)]">{formatQty(batch.remainingQuantity)} {part.baseUnitOfMeasure}</td>
+                          <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                            {formatQty(batch.receivedQuantity)} {pluralizeWord(Number(batch.receivedQuantity), part.baseUnitOfMeasure)}
+                          </td>
+                          <td className="px-3 py-2 text-[var(--ejo-text)]">
+                            {formatQty(batch.remainingQuantity)} {pluralizeWord(Number(batch.remainingQuantity), part.baseUnitOfMeasure)}
+                          </td>
                           <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{new Date(batch.receivedAt).toLocaleDateString('en-NG')}</td>
                         </tr>
                       ))}
@@ -151,7 +156,7 @@ export default async function PartDetailPage({
               <ul className="mt-3 space-y-1 text-sm text-[var(--ejo-text)]">
                 {part.alternativeUnits.map((unit: (typeof part.alternativeUnits)[number]) => (
                   <li key={unit.id}>
-                    1 {unit.unitName} = {formatQty(unit.conversionFactor)} {part.baseUnitOfMeasure}
+                    1 {unit.unitName} = {formatQty(unit.conversionFactor)} {pluralizeWord(Number(unit.conversionFactor), part.baseUnitOfMeasure)}
                   </li>
                 ))}
               </ul>
@@ -314,7 +319,10 @@ export default async function PartDetailPage({
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <p className="text-xs text-[var(--ejo-text-muted)]">On Hand</p>
             <p className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">
-              {part.stock ? formatQty(part.stock.quantityOnHand) : '0'} <span className="text-sm font-normal text-[var(--ejo-text-muted)]">{part.baseUnitOfMeasure}</span>
+              {part.stock ? formatQty(part.stock.quantityOnHand) : '0'}{' '}
+              <span className="text-sm font-normal text-[var(--ejo-text-muted)]">
+                {pluralizeWord(part.stock ? Number(part.stock.quantityOnHand) : 0, part.baseUnitOfMeasure)}
+              </span>
             </p>
             {part.stock && Number(part.stock.quantityReserved) > 0 ? (
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">{formatQty(part.stock.quantityReserved)} reserved</p>
