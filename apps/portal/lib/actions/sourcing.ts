@@ -337,13 +337,22 @@ export async function getExternalProcurementRequest(id: string) {
   return prisma.externalProcurementRequest.findUnique({
     where: { id },
     include: {
-      jobCard: { select: { id: true, jobNumber: true } },
+      jobCard: {
+        select: {
+          id: true,
+          jobNumber: true,
+          assignedTechnician: { select: { fullName: true } },
+          customer: { select: { fullName: true } },
+          vehicle: { select: { make: true, model: true, year: true, engineType: true, chassisNumber: true, plateNumber: true } },
+        },
+      },
       requestedBy: { select: { fullName: true } },
       financeReviewedBy: { select: { fullName: true } },
       managerApprovedBy: { select: { fullName: true } },
       disbursedBy: { select: { fullName: true } },
       rejectedBy: { select: { fullName: true } },
       estimateLineItem: { select: { description: true } },
+      lines: { include: { estimateLineItem: { select: { partType: { select: { name: true } } } } } },
       supplementaryLines: { orderBy: { createdAt: 'asc' }, include: { addedBy: { select: { fullName: true } } } },
     },
   });
@@ -841,14 +850,36 @@ export async function getRequestableExternalProcurementLines(jobCardId: string) 
     }),
     prisma.externalProcurementRequest.findMany({
       where: { jobCardId, status: { not: 'REJECTED' } },
-      select: { estimateLineItemId: true },
+      select: {
+        estimateLineItemId: true,
+        lines: { select: { estimateLineItemId: true } },
+      },
     }),
   ]);
-  const alreadyRequestedLineIds = new Set(existingRequests.map((r: { estimateLineItemId: string | null }) => r.estimateLineItemId).filter(Boolean));
+  // Covers both the legacy single-line shape (estimateLineItemId on
+  // the request itself) and the real, current multi-line shape (each
+  // real line has its own) — a request raised either way correctly
+  // keeps its covered lines out of what's still requestable.
+  const alreadyRequestedLineIds = new Set(
+    existingRequests.flatMap((r: { estimateLineItemId: string | null; lines: { estimateLineItemId: string | null }[] }) => [
+      r.estimateLineItemId,
+      ...r.lines.map((l) => l.estimateLineItemId),
+    ]).filter(Boolean),
+  );
   return (estimate?.lineItems ?? []).filter((li: { id: string }) => !alreadyRequestedLineIds.has(li.id));
 }
 
-export async function requestExternalProcurement(jobCardId: string, estimateLineItemId: string): Promise<{ id: string; referenceNumber: string }> {
+/** The real fix for a genuine complaint: a Lathe job and a Bushing
+ * both needed for the same repair are one real trip to Finance for
+ * cash, not two separate, unconnected ones — raising them one at a
+ * time, each its own request with its own reference number and its
+ * own approval chain, was never right. This raises every currently-
+ * eligible External Part/Job line together as ONE real request, with
+ * ONE reference number, ONE combined total, and ONE approval chain
+ * from here through disbursement — the same real shape Store Parts
+ * already has, not a UI convenience wrapped around several separate
+ * records underneath. */
+export async function requestExternalProcurementBatch(jobCardId: string): Promise<{ id: string; referenceNumber: string }> {
   const user = await requireUser();
   const jobCard = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { status: true, branchId: true } });
   if (!jobCard) {
@@ -857,21 +888,16 @@ export async function requestExternalProcurement(jobCardId: string, estimateLine
   if (!SOURCEABLE_STATUSES.includes(jobCard.status as (typeof SOURCEABLE_STATUSES)[number])) {
     throw new SourcingActionError("This Job Card isn't far enough along to request procurement yet — it needs to be at least In Progress (70% paid).");
   }
-  const line = await prisma.estimateLineItem.findUnique({
-    where: { id: estimateLineItemId },
-    select: { description: true, amount: true, estimateId: true, estimate: { select: { jobCardId: true } } },
-  });
-  if (!line || line.estimate.jobCardId !== jobCardId) {
-    throw new SourcingActionError('Estimate line not found on this Job Card.');
+  const requestableLines = await getRequestableExternalProcurementLines(jobCardId);
+  if (requestableLines.length === 0) {
+    throw new SourcingActionError('There is nothing ready to request — either every line has already been requested, or nothing is priced yet.');
   }
-  if (line.amount === null) {
-    throw new SourcingActionError('This line has no price on record yet.');
-  }
-  // The real description and amount come directly from the estimate
-  // line itself — never re-typed here, so what gets requested can
-  // never quietly drift from what was actually approved.
-  const description = line.description;
-  const estimatedAmount = Number(line.amount);
+  // The one real total for the whole request — the sum of every real
+  // line's own already-approved amount, locked in right here and
+  // never recomputed later, the same "locked the moment it's
+  // submitted" reasoning the single-line version always had.
+  const estimatedAmount = requestableLines.reduce((sum: number, l: (typeof requestableLines)[number]) => sum + Number(l.amount), 0);
+  const description = requestableLines.map((l: (typeof requestableLines)[number]) => l.description).join(', ');
 
   const referenceNumber = await generateExternalProcurementRequestNumber();
   const request = await prisma.externalProcurementRequest.create({
@@ -879,10 +905,18 @@ export async function requestExternalProcurement(jobCardId: string, estimateLine
       referenceNumber,
       jobCardId,
       branchId: jobCard.branchId,
-      estimateLineItemId,
       requestedById: user.id,
       description,
       estimatedAmount,
+      lines: {
+        create: requestableLines.map((l: (typeof requestableLines)[number]) => ({
+          estimateLineItemId: l.id,
+          description: l.description,
+          quantity: l.quantity,
+          unitOfMeasure: l.unitOfMeasure,
+          amount: Number(l.amount),
+        })),
+      },
     },
   });
 
@@ -892,21 +926,19 @@ export async function requestExternalProcurement(jobCardId: string, estimateLine
     action: 'external_procurement.requested',
     entityType: 'ExternalProcurementRequest',
     entityId: request.id,
-    metadata: { referenceNumber, estimatedAmount },
+    metadata: { referenceNumber, estimatedAmount, lineCount: requestableLines.length },
   });
   await writeAuditLog({
     userId: user.id,
     action: 'external_procurement.requested',
     entityType: 'JobCard',
     entityId: jobCardId,
-    metadata: { referenceNumber, estimatedAmount },
+    metadata: { referenceNumber, estimatedAmount, lineCount: requestableLines.length },
   });
 
-  // Finance reviews first, so they're the first real recipient — each
-  // request gets its own clear email with its own direct review link,
-  // even when several are raised together in one batch, since each is
-  // still its own independent decision (Finance might approve one and
-  // decline another).
+  // Finance reviews first, so they're the first real recipient — one
+  // real email for the whole request, showing every real line
+  // together, exactly the way the request itself now actually works.
   try {
     const [emailContext, financeOfficers, requestedByUser] = await Promise.all([
       getPartRequestEmailContext(jobCardId),
@@ -926,7 +958,7 @@ export async function requestExternalProcurement(jobCardId: string, estimateLine
           referenceNumber,
           jobNumber: emailContext.jobNumber,
           customerName: emailContext.customer.fullName,
-          description,
+          lines: requestableLines.map((l: (typeof requestableLines)[number]) => ({ description: l.description, quantity: Number(l.quantity), unitOfMeasure: l.unitOfMeasure, amount: Number(l.amount) })),
           estimatedAmount,
           approvalUrl: `${portalUrl}/workshop/external-procurement/${request.id}`,
           logoUrl,
@@ -942,28 +974,6 @@ export async function requestExternalProcurement(jobCardId: string, estimateLine
   }
 
   return { id: request.id, referenceNumber };
-}
-
-/** The real fix for a genuine complaint: raising a separate request,
- * one button click at a time, for every External Part/Job line on
- * the same Job Card was never sensible — a Lathe job and a Bushing
- * both needed for the same repair are one real trip to Finance for
- * cash, not two unrelated ones. This raises every currently-eligible
- * line in one action; each still becomes its own real
- * ExternalProcurementRequest record underneath (Finance may
- * genuinely need to track and disburse each one separately), but the
- * person raising them never has to click more than once. */
-export async function requestExternalProcurementBatch(jobCardId: string): Promise<{ referenceNumbers: string[] }> {
-  const requestableLines = await getRequestableExternalProcurementLines(jobCardId);
-  if (requestableLines.length === 0) {
-    throw new SourcingActionError('There is nothing ready to request — either every line has already been requested, or nothing is priced yet.');
-  }
-  const referenceNumbers: string[] = [];
-  for (const line of requestableLines) {
-    const { referenceNumber } = await requestExternalProcurement(jobCardId, line.id);
-    referenceNumbers.push(referenceNumber);
-  }
-  return { referenceNumbers };
 }
 
 /** Finance's own real addition — transport, logistics, or any other
@@ -1036,7 +1046,8 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
       referenceNumber: true,
       description: true,
       estimatedAmount: true,
-      supplementaryLines: { select: { amount: true } },
+      supplementaryLines: { select: { description: true, amount: true } },
+      lines: { select: { description: true, quantity: true, unitOfMeasure: true, amount: true } },
     },
   });
   if (!request) {
@@ -1089,7 +1100,18 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
           referenceNumber: request.referenceNumber,
           jobNumber: emailContext.jobNumber,
           customerName: emailContext.customer.fullName,
-          description: request.description,
+          lines: [
+            ...request.lines.map((l: (typeof request.lines)[number]) => ({ description: l.description, quantity: Number(l.quantity), unitOfMeasure: l.unitOfMeasure, amount: Number(l.amount) })),
+            // A legacy, single-line request has no real lines of its
+            // own — its one real fact is still the request's own
+            // description/estimatedAmount, shown the same way here.
+            ...(request.lines.length === 0 ? [{ description: request.description, quantity: 1, unitOfMeasure: null, amount: Number(request.estimatedAmount) }] : []),
+            // Finance's own real additions, shown the same way as
+            // every other item — the Manager approves the genuine
+            // full picture, not just the technician's own original
+            // figure.
+            ...request.supplementaryLines.map((l: { description?: string; amount: unknown }) => ({ description: (l as { description: string }).description, quantity: 1, unitOfMeasure: null, amount: Number(l.amount) })),
+          ],
           estimatedAmount: realTotal,
           approvalUrl: `${portalUrl}/workshop/external-procurement/${requestId}`,
           logoUrl,
