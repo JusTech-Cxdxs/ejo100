@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { getPartRequestSlip } from '@/lib/actions/sourcing';
 import { listEligibleManagersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { listEligibleStoreManagersForBranch, listEligibleStoreOfficersForBranch } from '@/lib/actions/store';
+import { pluralizeWord } from '@/lib/utils/pluralize';
 import {
   approvePartRequestSlipByHodFormAction,
   approvePartRequestSlipByStoreFormAction,
@@ -101,8 +102,10 @@ export default async function PartRequestSlipDetailPage({
                 <div key={line.id} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-3 text-sm">
                   <p className="font-medium text-[var(--ejo-text)]">{line.part.name}</p>
                   <p className="text-xs text-[var(--ejo-text-muted)]">
-                    Requested: {Number(line.quantityRequested)} {line.part.baseUnitOfMeasure}
-                    {line.quantityReleased !== null ? ` · Released: ${Number(line.quantityReleased)} ${line.part.baseUnitOfMeasure}` : ''}
+                    Requested: {Number(line.quantityRequested)} {pluralizeWord(Number(line.quantityRequested), line.part.baseUnitOfMeasure)}
+                    {line.quantityReleased !== null
+                      ? ` · Released: ${Number(line.quantityReleased)} ${pluralizeWord(Number(line.quantityReleased), line.part.baseUnitOfMeasure)}`
+                      : ''}
                   </p>
                   {line.estimateLineItem ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">From estimate: {line.estimateLineItem.description}</p> : null}
                 </div>
