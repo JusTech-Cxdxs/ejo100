@@ -43,6 +43,10 @@ export function SellingPriceCalculator({
 }) {
   const [sellingPriceInput, setSellingPriceInput] = useState(currentSellingPrice !== null ? String(currentSellingPrice) : '');
   const sellingPrice = Number(sellingPriceInput) || 0;
+  // Starts already editing only when there's genuinely nothing set
+  // yet — once a real price is on record, the default view is the
+  // clear, styled status, not an input box sitting open by default.
+  const [isEditingPrice, setIsEditingPrice] = useState(currentSellingPrice === null);
 
   // The real, exact amount actually paid — read directly from the
   // Goods Receipt's own stored totalCost, never recomputed by
@@ -101,34 +105,66 @@ export function SellingPriceCalculator({
         <p className="mt-1.5 text-sm text-[var(--ejo-text)]">
           Selling Unit: <span className="font-medium">{baseUnitOfMeasure}</span>
         </p>
-        <form action={setPartSellingPriceFormAction} className="mt-2 flex items-center gap-2">
-          <FormPendingOverlay />
-          <input type="hidden" name="id" value={partId} />
-          <div className="flex-1">
-            <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Selling Price per {baseUnitOfMeasure}</label>
-            <input
-              name="sellingPrice"
-              type="number"
-              step="0.01"
-              min="0.01"
-              required
-              value={sellingPriceInput}
-              onChange={(e) => setSellingPriceInput(e.target.value)}
-              placeholder={`e.g. 4500 per ${baseUnitOfMeasure}`}
-              className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-            />
+
+        {!isEditingPrice && currentSellingPrice !== null ? (
+          <div className="mt-2 flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 px-3 py-2.5">
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--ejo-success)]">Current Selling Price</p>
+              <p className="text-lg font-bold text-[var(--ejo-text)]">
+                {formatNaira(currentSellingPrice)}{' '}
+                <span className="text-xs font-normal text-[var(--ejo-text-muted)]">per {baseUnitOfMeasure}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsEditingPrice(true)}
+              className="shrink-0 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+            >
+              Edit
+            </button>
           </div>
-          <SubmitButton
-            label={currentSellingPrice !== null ? 'Update' : 'Set'}
-            pendingLabel="Saving…"
-            className="shrink-0 self-end rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          />
-        </form>
-        {currentSellingPrice !== null ? (
-          <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">Current selling price on record: {formatNaira(currentSellingPrice)}.</p>
         ) : (
-          <p className="mt-1 text-[11px] text-[var(--ejo-warning)]">Not set yet — Store Part matching is blocked until this is set.</p>
+          <form action={setPartSellingPriceFormAction} className="mt-2 flex items-center gap-2">
+            <FormPendingOverlay />
+            <input type="hidden" name="id" value={partId} />
+            <div className="flex-1">
+              <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Selling Price per {baseUnitOfMeasure}</label>
+              <input
+                name="sellingPrice"
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                autoFocus={currentSellingPrice !== null}
+                value={sellingPriceInput}
+                onChange={(e) => setSellingPriceInput(e.target.value)}
+                placeholder={`e.g. 4500 per ${baseUnitOfMeasure}`}
+                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+              />
+            </div>
+            <SubmitButton
+              label={currentSellingPrice !== null ? 'Save' : 'Set'}
+              pendingLabel="Saving…"
+              className="shrink-0 self-end rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            />
+            {currentSellingPrice !== null ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSellingPriceInput(String(currentSellingPrice));
+                  setIsEditingPrice(false);
+                }}
+                className="shrink-0 self-end rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-sm text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)]"
+              >
+                Cancel
+              </button>
+            ) : null}
+          </form>
         )}
+
+        {currentSellingPrice === null ? (
+          <p className="mt-1 text-[11px] text-[var(--ejo-warning)]">Not set yet — Store Part matching is blocked until this is set.</p>
+        ) : null}
       </div>
 
       {lastReceipt && sellingPrice > 0 ? (
