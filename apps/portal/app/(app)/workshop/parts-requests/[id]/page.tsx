@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getPartRequestSlip } from '@/lib/actions/sourcing';
 import { listEligibleManagersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { listEligibleStoreManagersForBranch, listEligibleStoreOfficersForBranch } from '@/lib/actions/store';
-import { pluralize } from '@/lib/utils/pluralize';
+import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import {
   approvePartRequestSlipByHodFormAction,
   approvePartRequestSlipByStoreFormAction,
@@ -167,13 +167,15 @@ export default async function PartRequestSlipDetailPage({
                   <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{line.part.name}</td>
                   <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{line.estimateLineItem?.description ?? '—'}</td>
                   <td className="px-3 py-2 text-right text-[var(--ejo-text)]">
-                    {Number(line.quantityRequested)} {line.part.baseUnitOfMeasure}
+                    {Number(line.quantityRequested)} {pluralizeWord(Number(line.quantityRequested), line.part.baseUnitOfMeasure)}
                   </td>
                   <td className="px-3 py-2 text-right text-[var(--ejo-text)]">
                     {line.estimateLineItem?.amount !== null && line.estimateLineItem?.amount !== undefined ? formatNaira(Number(line.estimateLineItem.amount)) : '—'}
                   </td>
                   <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)] print:hidden">
-                    {line.quantityReleased !== null ? `Released: ${Number(line.quantityReleased)} ${line.part.baseUnitOfMeasure}` : 'Pending'}
+                    {line.quantityReleased !== null
+                      ? `Released: ${Number(line.quantityReleased)} ${pluralizeWord(Number(line.quantityReleased), line.part.baseUnitOfMeasure)}`
+                      : 'Pending'}
                   </td>
                 </tr>
               ))}
