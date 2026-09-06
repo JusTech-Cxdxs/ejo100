@@ -5,7 +5,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
-import { pluralize } from '@/lib/utils/pluralize';
+import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
   'goods_receipt.recorded': 'Goods Receipt recorded',
@@ -110,15 +110,19 @@ export default async function GoodsReceiptDetailPage({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-sm font-medium text-[var(--ejo-text)]">{line.part.name}</span>
                     <span className="text-xs text-[var(--ejo-text-muted)]">
-                      {Number(line.quantityReceivedInUnit).toLocaleString('en-NG')} {line.unitUsed}
-                      {line.unitUsed !== line.part.baseUnitOfMeasure ? ` (= ${Number(line.quantityInBaseUnit).toLocaleString('en-NG')} ${line.part.baseUnitOfMeasure})` : ''}
+                      {Number(line.quantityReceivedInUnit).toLocaleString('en-NG')} {pluralizeWord(Number(line.quantityReceivedInUnit), line.unitUsed)}
+                      {line.unitUsed !== line.part.baseUnitOfMeasure
+                        ? ` (= ${Number(line.quantityInBaseUnit).toLocaleString('en-NG')} ${pluralizeWord(Number(line.quantityInBaseUnit), line.part.baseUnitOfMeasure)})`
+                        : ''}
                     </span>
                   </div>
                   {line.batchNumber ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Batch: {line.batchNumber}</p> : null}
                   <p className="mt-2 text-sm text-[var(--ejo-text)]">
                     Total Bulk Cost:{' '}
                     <span className="font-medium">{formatNaira(line.totalCost !== null ? Number(line.totalCost) : null)}</span>
-                    {line.unitUsed !== line.part.baseUnitOfMeasure ? ` for ${Number(line.quantityReceivedInUnit).toLocaleString('en-NG')} ${line.unitUsed}` : ''}
+                    {line.unitUsed !== line.part.baseUnitOfMeasure
+                      ? ` for ${Number(line.quantityReceivedInUnit).toLocaleString('en-NG')} ${pluralizeWord(Number(line.quantityReceivedInUnit), line.unitUsed)}`
+                      : ''}
                   </p>
                   <p className="text-xs text-[var(--ejo-text-muted)]">
                     System notes: cost is {formatNaira(line.unitCost !== null ? Number(line.unitCost) : null)} per {line.part.baseUnitOfMeasure}.
