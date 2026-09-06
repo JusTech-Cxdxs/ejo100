@@ -8,7 +8,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { createPart, recordGoodsReceipt, updateGoodsReceipt, updateGoodsReceiptLineCost, updatePart, setPartAlternativeUnits, setPartSellingPrice, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching, notifyStoreMatchingComplete } from './store';
+import { createPart, recordGoodsReceipt, updateGoodsReceipt, updateGoodsReceiptLineCost, updatePart, setPartAlternativeUnits, setPartSellingPrice, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching } from './store';
 
 function str(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -230,18 +230,6 @@ export async function requestStoreMatchingFormAction(formData: FormData) {
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
   redirect(`/workshop/job-cards/${jobCardId}?status=matching_requested`);
-}
-
-export async function notifyStoreMatchingCompleteFormAction(formData: FormData) {
-  const jobCardId = str(formData, 'jobCardId');
-  try {
-    await notifyStoreMatchingComplete(jobCardId, str(formData, 'note') || undefined);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not send this notification.';
-    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
-  }
-  revalidatePath(`/workshop/job-cards/${jobCardId}`);
-  redirect(`/workshop/job-cards/${jobCardId}?status=matching_complete_notified`);
 }
 
 export async function updateGoodsReceiptFormAction(formData: FormData) {

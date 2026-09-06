@@ -826,39 +826,32 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
  * just recreate the same ambiguity this whole feature exists to
  * remove) and is itself repeatable, same reasoning as the request
  * side. */
-export async function notifyStoreMatchingComplete(jobCardId: string, note?: string): Promise<void> {
-  const jobCard = await prisma.jobCard.findUnique({
-    where: { id: jobCardId },
-    select: {
-      branchId: true,
-      jobNumber: true,
-      supervisorId: true,
-      assignedTechnicianId: true,
-      customer: { select: { fullName: true } },
-      estimate: {
-        select: {
-          id: true,
-          lineItems: { where: { type: 'STORE_PART', matchedPartId: null }, select: { id: true } },
-        },
-      },
-    },
-  });
-  if (!jobCard) {
-    throw new StoreActionError('Job Card not found.');
-  }
-  if (!jobCard.estimate) {
-    throw new StoreActionError('This Job Card has no estimate yet.');
-  }
-  if (jobCard.estimate.lineItems.length > 0) {
-    throw new StoreActionError(`${pluralize(jobCard.estimate.lineItems.length, 'Store Part line')} still ${jobCard.estimate.lineItems.length === 1 ? 'needs' : 'need'} to be matched before this can be sent.`);
-  }
-  const user = await requireStoreStaff(jobCard.branchId);
-
+/** The real notification itself, factored out so it can fire two
+ * genuinely different ways: automatically, the instant the last real
+ * unmatched Store Part line for a Job Card gets matched (the same
+ * "the system notices and acts, nobody has to remember to click
+ * anything" pattern already proven for the 70%-payment auto-
+ * transition), or — kept for now as a fallback — through the
+ * existing manual action. Takes an already-verified actor rather than
+ * re-checking Store staff itself, since the automatic path is always
+ * called from inside an action that already did that check for its
+ * own reason (matching the line itself). */
+async function sendStoreMatchingCompleteNotification(
+  jobCard: {
+    id: string;
+    jobNumber: string;
+    supervisorId: string | null;
+    assignedTechnicianId: string | null;
+    customer: { fullName: string };
+  },
+  userId: string,
+  note?: string,
+): Promise<void> {
   await writeAuditLog({
-    userId: user.id,
+    userId,
     action: 'estimate.store_matching_completed',
     entityType: 'JobCard',
-    entityId: jobCardId,
+    entityId: jobCard.id,
     metadata: { note: note?.trim() || undefined },
   });
 
@@ -878,7 +871,7 @@ export async function notifyStoreMatchingComplete(jobCardId: string, note?: stri
           jobNumber: jobCard.jobNumber,
           customerName: jobCard.customer.fullName,
           note,
-          jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+          jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCard.id}`,
           logoUrl,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
@@ -888,7 +881,7 @@ export async function notifyStoreMatchingComplete(jobCardId: string, note?: stri
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Store matching complete emails', jobCardId, err);
+    console.error('Failed to send Store matching complete emails', jobCard.id, err);
   }
 }
 
@@ -899,7 +892,22 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
       type: true,
       quantity: true,
       partTypeId: true,
-      estimate: { select: { status: true, jobCard: { select: { id: true, jobNumber: true, branchId: true } } } },
+      estimate: {
+        select: {
+          id: true,
+          status: true,
+          jobCard: {
+            select: {
+              id: true,
+              jobNumber: true,
+              branchId: true,
+              supervisorId: true,
+              assignedTechnicianId: true,
+              customer: { select: { fullName: true } },
+            },
+          },
+        },
+      },
     },
   });
   if (!lineItem) {
@@ -972,6 +980,21 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
     entityId: lineItem.estimate.jobCard.id,
     metadata: { partName: part.name, unitPrice, amount },
   });
+
+  // The automatic replacement for what used to be a manual "Notify —
+  // Matching Complete" button — genuinely the same pattern already
+  // proven for the 70%-payment auto-transition: the system notices
+  // the real condition (nothing left unmatched for this estimate) the
+  // instant it becomes true, and acts on it right then, rather than
+  // waiting for someone to remember to click something. Checked fresh
+  // here rather than trusted from before this match, since this
+  // match itself is what might have just made it true.
+  const remainingUnmatched = await prisma.estimateLineItem.count({
+    where: { estimateId: lineItem.estimate.id, type: 'STORE_PART', matchedPartId: null },
+  });
+  if (remainingUnmatched === 0) {
+    await sendStoreMatchingCompleteNotification(lineItem.estimate.jobCard, user.id);
+  }
 }
 
 export async function listParts(branchId: string, search?: string) {
