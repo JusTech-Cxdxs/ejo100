@@ -1,7 +1,19 @@
 import { renderEmailLayout, escapeHtml } from './layout';
+import { pluralize } from '@/lib/utils/pluralize';
 
 function formatNaira(amount: number): string {
   return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+export type ExternalProcurementLineInfo = { description: string; quantity: number; unitOfMeasure: string | null; amount: number };
+
+function lineItemsList(lines: ExternalProcurementLineInfo[]): string {
+  return lines
+    .map(
+      (l) =>
+        `<li style="margin-bottom: 4px;">${escapeHtml(l.description)}${l.unitOfMeasure ? ` — ${escapeHtml(pluralize(l.quantity, l.unitOfMeasure))}` : ''} — ${formatNaira(l.amount)}</li>`,
+    )
+    .join('');
 }
 
 export type ExternalProcurementApprovalNeededEmailOptions = {
@@ -10,7 +22,7 @@ export type ExternalProcurementApprovalNeededEmailOptions = {
   referenceNumber: string;
   jobNumber: string;
   customerName: string;
-  description: string;
+  lines: ExternalProcurementLineInfo[];
   estimatedAmount: number;
   approvalUrl: string;
   logoUrl: string;
@@ -22,12 +34,14 @@ export type ExternalProcurementApprovalNeededEmailOptions = {
 /**
  * Sent at each of this request's own two real approval gates — first
  * to Finance for their review, then to the Manager once Finance has
- * sent it forward — with the real Job Card and the real amount right
+ * sent it forward — with the real Job Card and every real line right
  * there, so approving or declining never requires opening the portal
- * just to see what's actually being asked for.
+ * just to see what's actually being asked for. One real request, one
+ * real email — every item it covers shown together, the same way the
+ * request itself now actually works.
  */
 export function renderExternalProcurementApprovalNeededEmail(opts: ExternalProcurementApprovalNeededEmailOptions): string {
-  const { recipientName, requestedByName, referenceNumber, jobNumber, customerName, description, estimatedAmount, approvalUrl, logoUrl, companyName, branchName, departmentName } = opts;
+  const { recipientName, requestedByName, referenceNumber, jobNumber, customerName, lines, estimatedAmount, approvalUrl, logoUrl, companyName, branchName, departmentName } = opts;
 
   const bodyHtml = `
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
@@ -39,9 +53,10 @@ export function renderExternalProcurementApprovalNeededEmail(opts: ExternalProcu
       <tr>
         <td style="padding: 20px 24px;">
           <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Job Card</p>
-          <p style="margin: 0 0 8px 0; font-size: 15px; color: #0F172A;">${escapeHtml(jobNumber)} — ${escapeHtml(customerName)}</p>
-          <p style="margin: 0 0 4px 0; font-size: 13px; color: #64748B;">${escapeHtml(description)}</p>
-          <p style="margin: 0; font-size: 18px; font-weight: 700; color: #0F172A;">${formatNaira(estimatedAmount)}</p>
+          <p style="margin: 0 0 12px 0; font-size: 15px; color: #0F172A;">${escapeHtml(jobNumber)} — ${escapeHtml(customerName)}</p>
+          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">${escapeHtml(pluralize(lines.length, 'Item'))}</p>
+          <ul style="margin: 0 0 12px 0; padding-left: 20px; font-size: 14px; color: #0F172A;">${lineItemsList(lines)}</ul>
+          <p style="margin: 0; font-size: 18px; font-weight: 700; color: #0F172A;">Total: ${formatNaira(estimatedAmount)}</p>
         </td>
       </tr>
     </table>
