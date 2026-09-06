@@ -6,18 +6,24 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { pluralize } from '@/lib/utils/pluralize';
 
 function formatNaira(value: number): string {
   return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const TYPE_LABEL: Record<string, string> = {
+  EXTERNAL_PART: 'External Part',
+  EXTERNAL_JOB: 'External Job',
+};
+
 /**
- * One real, already-priced External Part/External Job line per card
- * — each its own request (the schema's own real one-to-one design,
- * a cash advance is genuinely tied to one specific line, never a
- * batch). Nothing here needs typing: the description and amount are
- * exactly what's already on the approved estimate, read-only, with a
- * single button to actually raise it.
+ * One real document for the whole Job Card, not a separate one-off
+ * click for every single line — a Lathe job and a Bushing both
+ * needed for the same repair are one real trip to Finance for cash,
+ * never two unconnected ones. Same shape as the Store Parts request:
+ * a real header carrying the Job Card's own facts, a real table,
+ * and exactly one action at the bottom.
  */
 export default async function RequestProcurementPage({
   params,
@@ -32,6 +38,9 @@ export default async function RequestProcurementPage({
   if (!jobCard) notFound();
 
   const [sourcingNeeds, requestableLines] = await Promise.all([getJobCardSourcingNeeds(id), getRequestableExternalProcurementLines(id)]);
+  const totalAmount = requestableLines.reduce((sum: number, l: (typeof requestableLines)[number]) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
+  const vehicle = jobCard.vehicle;
+  const vehicleSummary = [vehicle.year, vehicle.make, vehicle.model, vehicle.engineType].filter(Boolean).join(' ') || 'No vehicle details on file';
 
   return (
     <div className="p-8">
@@ -42,13 +51,13 @@ export default async function RequestProcurementPage({
         ← Back to Job Card {jobCard.jobNumber}
       </LoadingLink>
       <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Request External Procurement</h1>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Job Card {jobCard.jobNumber} — each line below is already priced on the approved estimate; raising a request
-        simply sends that exact line forward as a cash advance request.
+      <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
+        Every line below is already priced on the approved estimate. Nothing here needs editing; raising the request
+        sends this exact list forward as a cash advance request.
       </p>
 
       {error ? (
-        <div className="mb-6 max-w-xl">
+        <div className="mb-6 max-w-2xl">
           <FormFeedbackBanner kind="error" message={error} />
         </div>
       ) : null}
@@ -59,31 +68,80 @@ export default async function RequestProcurementPage({
         </p>
       ) : requestableLines.length === 0 ? (
         <p className="text-sm text-[var(--ejo-text-muted)]">
-          Nothing ready to request — either every External Part/Job line has already been requested, or none of
-          this estimate&apos;s external-type lines are priced yet.
+          Nothing ready to request — either every External Part/Job line has already been requested, or none of this
+          estimate&apos;s external-type lines are priced yet.
         </p>
       ) : (
-        <div className="max-w-xl space-y-3">
-          {requestableLines.map((line: (typeof requestableLines)[number]) => (
-            <div key={line.id} className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-              <p className="text-sm font-medium text-[var(--ejo-text)]">{line.description}</p>
-              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                {line.type === 'EXTERNAL_PART' ? 'External Part' : 'External Job'} · Qty {line.quantity}
-                {line.unitOfMeasure ? ` ${line.unitOfMeasure}` : ''}
-              </p>
-              <p className="mt-2 text-lg font-bold text-[var(--ejo-text)]">{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</p>
-              <form action={requestExternalProcurementFormAction} className="mt-3">
-                <FormPendingOverlay />
-                <input type="hidden" name="jobCardId" value={id} />
-                <input type="hidden" name="estimateLineItemId" value={line.id} />
-                <SubmitButton
-                  label="Raise Procurement Request"
-                  pendingLabel="Raising…"
-                  className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-                />
-              </form>
+        <div className="max-w-4xl overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+          <div className="grid gap-4 border-b border-[var(--ejo-border)] p-6 sm:grid-cols-2">
+            <div>
+              <dt className="text-xs text-[var(--ejo-text-muted)]">Job Card</dt>
+              <dd className="text-sm font-medium text-[var(--ejo-text)]">{jobCard.jobNumber}</dd>
             </div>
-          ))}
+            <div>
+              <dt className="text-xs text-[var(--ejo-text-muted)]">Customer</dt>
+              <dd className="text-sm font-medium text-[var(--ejo-text)]">{jobCard.customer.fullName}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--ejo-text-muted)]">Vehicle</dt>
+              <dd className="text-sm font-medium text-[var(--ejo-text)]">{vehicleSummary}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--ejo-text-muted)]">Plate No.</dt>
+              <dd className="text-sm font-medium text-[var(--ejo-text)]">{vehicle.plateNumber ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--ejo-text-muted)]">VIN / Chassis</dt>
+              <dd className="text-sm font-medium text-[var(--ejo-text)]">{vehicle.chassisNumber ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--ejo-text-muted)]">Technician in Charge</dt>
+              <dd className="text-sm font-medium text-[var(--ejo-text)]">{jobCard.assignedTechnician?.fullName ?? '—'}</dd>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-left text-xs text-[var(--ejo-text-muted)]">
+                  <th className="px-4 py-2">Description</th>
+                  <th className="px-4 py-2">Type</th>
+                  <th className="px-4 py-2 text-right">Quantity</th>
+                  <th className="px-4 py-2 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requestableLines.map((line: (typeof requestableLines)[number]) => (
+                  <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                    <td className="px-4 py-2 font-medium text-[var(--ejo-text)]">{line.description}</td>
+                    <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{TYPE_LABEL[line.type] ?? line.type}</td>
+                    <td className="px-4 py-2 text-right text-[var(--ejo-text)]">
+                      {line.quantity} {line.unitOfMeasure ?? ''}
+                    </td>
+                    <td className="px-4 py-2 text-right text-[var(--ejo-text)]">{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-[var(--ejo-border)] font-medium text-[var(--ejo-text)]">
+                  <td className="px-4 py-2" colSpan={2}>
+                    {pluralize(requestableLines.length, 'Line')} total
+                  </td>
+                  <td />
+                  <td className="px-4 py-2 text-right">{formatNaira(totalAmount)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <form action={requestExternalProcurementFormAction} className="border-t border-[var(--ejo-border)] p-4">
+            <FormPendingOverlay />
+            <input type="hidden" name="jobCardId" value={id} />
+            <SubmitButton
+              label="Raise Procurement Request"
+              pendingLabel="Raising…"
+              className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            />
+          </form>
         </div>
       )}
     </div>
