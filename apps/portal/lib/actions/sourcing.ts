@@ -24,6 +24,7 @@ import { requireUser, writeAuditLog, requireEligibleManager, listEligibleFinance
 import { requireStoreStaff, listEligibleStoreOfficersForBranch, listEligibleStoreManagersForBranch } from './store';
 import { sendEmail } from '@/lib/email';
 import { renderPartRequestApprovalNeededEmail, renderPartRequestStatusEmail } from '@/lib/email-templates/part-request-status';
+import { renderExternalProcurementApprovalNeededEmail, renderExternalProcurementStatusEmail } from '@/lib/email-templates/external-procurement-status';
 
 /** Mirrors getStoreOrgContext()/getWorkshopOrgContext() exactly, but
  * scoped directly to a real branchId rather than a fixed department
@@ -105,6 +106,52 @@ async function notifyTechnicianAndSupervisorOfPartRequestStatus(
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Failed to send Parts Request status emails', referenceNumber, err);
+  }
+}
+
+/** Mirrors notifyTechnicianAndSupervisorOfPartRequestStatus() exactly
+ * — External Procurement's own version, for its own four real
+ * stages. getPartRequestEmailContext() is reused as-is here rather
+ * than duplicated: it's already generic to any Job Card, nothing in
+ * it is specific to Store Parts. */
+async function notifyTechnicianAndSupervisorOfExternalProcurementStatus(
+  jobCardId: string,
+  requestId: string,
+  referenceNumber: string,
+  kind: 'sent_to_manager' | 'approved' | 'disbursed' | 'rejected',
+  amount?: number,
+  rejectionReason?: string,
+): Promise<void> {
+  try {
+    const jobCard = await getPartRequestEmailContext(jobCardId);
+    const recipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
+    const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
+    const orgContext = await getSourcingOrgContext(jobCard.branchId, jobCard.departmentName);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    for (const recipient of recipients) {
+      await sendEmail(
+        recipient.email,
+        `Procurement request ${kind === 'rejected' ? 'rejected' : 'update'} — ${referenceNumber}`,
+        renderExternalProcurementStatusEmail({
+          recipientName: recipient.fullName,
+          kind,
+          referenceNumber,
+          jobNumber: jobCard.jobNumber,
+          customerName: jobCard.customer.fullName,
+          amount,
+          rejectionReason,
+          requestUrl: `${portalUrl}/workshop/external-procurement/${requestId}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send External Procurement status emails', referenceNumber, err);
   }
 }
 
@@ -855,6 +902,45 @@ export async function requestExternalProcurement(jobCardId: string, estimateLine
     metadata: { referenceNumber, estimatedAmount },
   });
 
+  // Finance reviews first, so they're the first real recipient — each
+  // request gets its own clear email with its own direct review link,
+  // even when several are raised together in one batch, since each is
+  // still its own independent decision (Finance might approve one and
+  // decline another).
+  try {
+    const [emailContext, financeOfficers, requestedByUser] = await Promise.all([
+      getPartRequestEmailContext(jobCardId),
+      listEligibleFinanceOfficersForBranch(jobCard.branchId),
+      prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
+    ]);
+    const orgContext = await getSourcingOrgContext(jobCard.branchId, emailContext.departmentName);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    for (const officer of financeOfficers.supervisors) {
+      await sendEmail(
+        officer.email,
+        `Procurement request needs your review — ${referenceNumber}`,
+        renderExternalProcurementApprovalNeededEmail({
+          recipientName: officer.fullName,
+          requestedByName: requestedByUser?.fullName ?? 'A team member',
+          referenceNumber,
+          jobNumber: emailContext.jobNumber,
+          customerName: emailContext.customer.fullName,
+          description,
+          estimatedAmount,
+          approvalUrl: `${portalUrl}/workshop/external-procurement/${request.id}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send External Procurement approval-needed email', referenceNumber, err);
+  }
+
   return { id: request.id, referenceNumber };
 }
 
@@ -941,7 +1027,18 @@ export async function removeExternalProcurementSupplementaryLine(lineId: string)
  * fine to send forward with zero supplementary lines added — not
  * every request needs one. */
 export async function sendExternalProcurementToManager(requestId: string): Promise<void> {
-  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
+  const request = await prisma.externalProcurementRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      status: true,
+      branchId: true,
+      jobCardId: true,
+      referenceNumber: true,
+      description: true,
+      estimatedAmount: true,
+      supplementaryLines: { select: { amount: true } },
+    },
+  });
   if (!request) {
     throw new SourcingActionError('Request not found.');
   }
@@ -966,6 +1063,46 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
     entityId: request.jobCardId,
     metadata: { referenceNumber: request.referenceNumber },
   });
+
+  await notifyTechnicianAndSupervisorOfExternalProcurementStatus(request.jobCardId, requestId, request.referenceNumber, 'sent_to_manager');
+
+  // The real, full total — the technician's own original figure plus
+  // whatever real supplementary costs Finance has since added — is
+  // what the Manager actually needs to see, never just the smaller
+  // original estimate.
+  const realTotal = Number(request.estimatedAmount) + request.supplementaryLines.reduce((sum: number, l: { amount: unknown }) => sum + Number(l.amount), 0);
+  try {
+    const [emailContext, managers] = await Promise.all([
+      getPartRequestEmailContext(request.jobCardId),
+      listEligibleManagersForBranch(request.branchId),
+    ]);
+    const orgContext = await getSourcingOrgContext(request.branchId, emailContext.departmentName);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    for (const manager of managers.supervisors) {
+      await sendEmail(
+        manager.email,
+        `Procurement request needs your approval — ${request.referenceNumber}`,
+        renderExternalProcurementApprovalNeededEmail({
+          recipientName: manager.fullName,
+          requestedByName: 'Finance',
+          referenceNumber: request.referenceNumber,
+          jobNumber: emailContext.jobNumber,
+          customerName: emailContext.customer.fullName,
+          description: request.description,
+          estimatedAmount: realTotal,
+          approvalUrl: `${portalUrl}/workshop/external-procurement/${requestId}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send External Procurement Manager-approval-needed email', request.referenceNumber, err);
+  }
 }
 
 /** A Workshop Manager confirming the combined total — the technician's
@@ -1025,6 +1162,8 @@ export async function approveExternalProcurementRequest(requestId: string, notes
     entityId: request.jobCardId,
     metadata: { referenceNumber: request.referenceNumber, approvedTotal },
   });
+
+  await notifyTechnicianAndSupervisorOfExternalProcurementStatus(request.jobCardId, requestId, request.referenceNumber, 'approved', approvedTotal);
 }
 
 /** Finance actually handing over the cash advance — the real amount
@@ -1090,6 +1229,8 @@ export async function disburseExternalProcurementRequest(
     entityId: request.jobCardId,
     metadata: { referenceNumber: request.referenceNumber, disbursedAmount: Number(disbursedAmount), paymentMethod },
   });
+
+  await notifyTechnicianAndSupervisorOfExternalProcurementStatus(request.jobCardId, requestId, request.referenceNumber, 'disbursed', Number(disbursedAmount));
 }
 
 /** Rejectable only before a Manager has approved it — once approved, an
@@ -1132,4 +1273,6 @@ export async function rejectExternalProcurementRequest(requestId: string, reason
     entityId: request.jobCardId,
     metadata: { referenceNumber: request.referenceNumber, stage, reason: reason.trim() },
   });
+
+  await notifyTechnicianAndSupervisorOfExternalProcurementStatus(request.jobCardId, requestId, request.referenceNumber, 'rejected', undefined, reason.trim());
 }
