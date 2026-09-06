@@ -909,6 +909,11 @@ model EstimateLineItem {
   enteredBy   User     @relation(fields: [enteredById], references: [id])
   requestSlipLines PartRequestSlipLine[]
   externalProcurementRequests ExternalProcurementRequest[]
+  // Back-relation for the new, real multi-line request lines above —
+  // kept as its own separate field (not reusing the legacy relation
+  // just above) since these are genuinely two different foreign keys
+  // now: the old single request-level one, and the new per-line one.
+  externalProcurementRequestLines ExternalProcurementRequestLine[] @relation("ExternalProcurementRequestLineEstimate")
   partType    PartType? @relation(fields: [partTypeId], references: [id])
   matchedPart Part?     @relation("EstimateLineItemMatchedPart", fields: [matchedPartId], references: [id])
 
@@ -1513,6 +1518,10 @@ model ExternalProcurementRequest {
   referenceNumber    String                     @unique
   jobCardId          String
   branchId           String
+  // Legacy, single-line fields — kept exactly as they were so any
+  // request raised before this model gained real multi-line support
+  // keeps working unchanged. A new request never sets these anymore;
+  // it's real lines below that carry this same information per item.
   estimateLineItemId String?
   requestedById      String
   description        String
@@ -1521,7 +1530,11 @@ model ExternalProcurementRequest {
   // any role, at any later stage): everything that happens
   // afterward — Finance's own additions, the Manager's approval,
   // the eventual disbursement — builds on top of this number, never
-  // rewrites it.
+  // rewrites it. For a genuinely multi-line request, this is the sum
+  // of every real line below, computed once at creation and never
+  // recomputed later — the same "locked the moment it's submitted"
+  // reasoning, just now covering several real items at once instead
+  // of one.
   estimatedAmount    Decimal                    @db.Decimal(12, 2)
   status             ExternalProcurementStatus  @default(PENDING_FINANCE_REVIEW)
 
@@ -1588,8 +1601,35 @@ model ExternalProcurementRequest {
   rejectedBy       User?             @relation("ExternalProcurementRejectedBy", fields: [rejectedById], references: [id])
   retiredBy        User?             @relation("ExternalProcurementRetiredBy", fields: [retiredById], references: [id])
   supplementaryLines ExternalProcurementSupplementaryLine[]
+  // The real, multi-item content of a genuinely multi-line request —
+  // every request raised from this point forward stores its real
+  // items here (one row per External Part/Job estimate line), the
+  // same shape PartRequestSlip's own lines already use. A legacy,
+  // single-line request simply has none of these; its one real fact
+  // stays in description/estimatedAmount above exactly as before.
+  lines              ExternalProcurementRequestLine[]
 
   @@map("external_procurement_requests")
+}
+
+// One real item on a genuinely multi-line External Procurement
+// Request — mirrors PartRequestSlipLine's own shape exactly. A cash
+// advance request naming a Lathe job AND a Bushing both needed for
+// the same repair is one real trip to Finance, not two unconnected
+// ones; this is what makes that one real document possible.
+model ExternalProcurementRequestLine {
+  id                 String   @id @default(cuid())
+  requestId          String
+  estimateLineItemId String?
+  description        String
+  quantity           Decimal  @db.Decimal(14, 4)
+  unitOfMeasure      String?
+  amount             Decimal  @db.Decimal(12, 2)
+
+  request          ExternalProcurementRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  estimateLineItem EstimateLineItem?          @relation("ExternalProcurementRequestLineEstimate", fields: [estimateLineItemId], references: [id])
+
+  @@map("external_procurement_request_lines")
 }
 
 // Finance's own real additions — transport, logistics, and similar real
