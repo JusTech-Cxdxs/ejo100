@@ -8,6 +8,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'goods_receipt.recorded': 'Goods Receipt recorded',
   'goods_receipt.updated': 'Supplier / notes updated',
   'goods_receipt.line_cost_updated': 'Line cost corrected',
 };
