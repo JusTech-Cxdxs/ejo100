@@ -64,18 +64,9 @@ export default async function ExternalProcurementDetailPage({
         ← Back to External Procurement
       </LoadingLink>
       <div className="mb-2 flex items-center gap-2">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{request.referenceNumber}</h1>
-        <span className="rounded-full bg-[var(--ejo-info)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-info)]">
-          {STATUS_LABEL[request.status] ?? request.status}
-        </span>
+        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">External Procurement Request</h1>
       </div>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Job Card{' '}
-        <LoadingLink href={`/workshop/job-cards/${request.jobCard.id}`} className="text-[var(--ejo-primary)] hover:underline">
-          {request.jobCard.jobNumber}
-        </LoadingLink>{' '}
-        — requested by {request.requestedBy.fullName}
-      </p>
+      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">{request.referenceNumber}</p>
 
       {error ? (
         <div className="mb-6 max-w-xl">
@@ -113,62 +104,154 @@ export default async function ExternalProcurementDetailPage({
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="space-y-6">
-          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Details</h2>
-            <p className="mt-2 text-sm text-[var(--ejo-text)]">{request.description}</p>
-            {request.estimateLineItem ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">From estimate: {request.estimateLineItem.description}</p> : null}
-            <p className="mt-3 text-sm text-[var(--ejo-text)]">
-              Technician&apos;s original figure — locked, never edited: <span className="font-medium">{formatNaira(Number(request.estimatedAmount))}</span>
-            </p>
-
-            {request.supplementaryLines.length > 0 ? (
-              <div className="mt-4 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-3">
-                <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Finance&apos;s supplementary lines</p>
-                <div className="space-y-1.5">
-                  {request.supplementaryLines.map((line: (typeof request.supplementaryLines)[number]) => (
-                    <div key={line.id} className="flex items-center justify-between text-xs">
-                      <span className="text-[var(--ejo-text)]">
-                        {line.description} <span className="text-[var(--ejo-text-muted)]">— added by {line.addedBy.fullName}</span>
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-[var(--ejo-text)]">{formatNaira(Number(line.amount))}</span>
-                        {request.status === 'PENDING_FINANCE_REVIEW' && isEligibleFinance ? (
-                          <form action={removeExternalProcurementSupplementaryLineFormAction}>
-                            <input type="hidden" name="requestId" value={request.id} />
-                            <input type="hidden" name="lineId" value={line.id} />
-                            <button type="submit" className="text-[var(--ejo-error)] hover:underline">
-                              Remove
-                            </button>
-                          </form>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <p className="mt-3 border-t border-[var(--ejo-border)] pt-3 text-sm text-[var(--ejo-text)]">
-              {request.approvedTotal !== null ? (
-                <>
-                  Approved total — locked at Manager approval: <span className="font-medium">{formatNaira(Number(request.approvedTotal))}</span>
-                </>
-              ) : (
-                <>
-                  Running total so far: <span className="font-medium">{formatNaira(runningTotal)}</span>
-                </>
-              )}
-              {request.disbursedAmount !== null ? (
-                <>
-                  {' '}
-                  · Disbursed: <span className="font-medium">{formatNaira(Number(request.disbursedAmount))}</span>
-                </>
-              ) : null}
-            </p>
+      <div className="max-w-4xl overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--ejo-border)] p-6">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{request.referenceNumber}</h2>
           </div>
+          <span className="rounded-full bg-[var(--ejo-info)]/15 px-3 py-1 text-xs font-medium text-[var(--ejo-info)]">
+            {STATUS_LABEL[request.status] ?? request.status}
+          </span>
+        </div>
 
+        <div className="grid gap-4 border-b border-[var(--ejo-border)] p-6 sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-[var(--ejo-text-muted)]">Job Card</dt>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]">
+              <LoadingLink href={`/workshop/job-cards/${request.jobCard.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                {request.jobCard.jobNumber}
+              </LoadingLink>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--ejo-text-muted)]">Customer</dt>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]">{request.jobCard.customer.fullName}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--ejo-text-muted)]">Vehicle</dt>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]">
+              {[request.jobCard.vehicle.year, request.jobCard.vehicle.make, request.jobCard.vehicle.model, request.jobCard.vehicle.engineType].filter(Boolean).join(' ') || 'No vehicle details on file'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--ejo-text-muted)]">Plate No.</dt>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]">{request.jobCard.vehicle.plateNumber ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--ejo-text-muted)]">VIN / Chassis</dt>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]">{request.jobCard.vehicle.chassisNumber ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--ejo-text-muted)]">Date of Request</dt>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]">{new Date(request.createdAt).toLocaleString('en-NG')}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--ejo-text-muted)]">Requested By</dt>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]">{request.requestedBy.fullName}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--ejo-text-muted)]">Technician in Charge</dt>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]">{request.jobCard.assignedTechnician?.fullName ?? '—'}</dd>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto p-6">
+          {request.lines.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
+                  <th className="px-3 py-2">S/N</th>
+                  <th className="px-3 py-2">Description</th>
+                  <th className="px-3 py-2">Type</th>
+                  <th className="px-3 py-2 text-right">Quantity</th>
+                  <th className="px-3 py-2 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {request.lines.map((line: (typeof request.lines)[number], i: number) => (
+                  <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                    <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{i + 1}</td>
+                    <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{line.description}</td>
+                    <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{line.estimateLineItem?.partType?.name ?? '—'}</td>
+                    <td className="px-3 py-2 text-right text-[var(--ejo-text)]">
+                      {Number(line.quantity)} {line.unitOfMeasure ?? ''}
+                    </td>
+                    <td className="px-3 py-2 text-right text-[var(--ejo-text)]">{formatNaira(Number(line.amount))}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-[var(--ejo-border)] font-medium text-[var(--ejo-text)]">
+                  <td className="px-3 py-2" colSpan={3}>
+                    {request.lines.length} {request.lines.length === 1 ? 'Item' : 'Items'} total
+                  </td>
+                  <td />
+                  <td className="px-3 py-2 text-right">{formatNaira(Number(request.estimatedAmount))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          ) : (
+            // A legacy, single-line request from before this model
+            // gained real multi-line support — its one real fact
+            // stays exactly as it always was.
+            <div>
+              <p className="text-sm text-[var(--ejo-text)]">{request.description}</p>
+              {request.estimateLineItem ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">From estimate: {request.estimateLineItem.description}</p> : null}
+              <p className="mt-3 text-sm text-[var(--ejo-text)]">
+                Technician&apos;s original figure — locked, never edited: <span className="font-medium">{formatNaira(Number(request.estimatedAmount))}</span>
+              </p>
+            </div>
+          )}
+
+          {request.supplementaryLines.length > 0 ? (
+            <div className="mt-4 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-3">
+              <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Finance&apos;s supplementary lines</p>
+              <div className="space-y-1.5">
+                {request.supplementaryLines.map((line: (typeof request.supplementaryLines)[number]) => (
+                  <div key={line.id} className="flex items-center justify-between text-xs">
+                    <span className="text-[var(--ejo-text)]">
+                      {line.description} <span className="text-[var(--ejo-text-muted)]">— added by {line.addedBy.fullName}</span>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-[var(--ejo-text)]">{formatNaira(Number(line.amount))}</span>
+                      {request.status === 'PENDING_FINANCE_REVIEW' && isEligibleFinance ? (
+                        <form action={removeExternalProcurementSupplementaryLineFormAction}>
+                          <input type="hidden" name="requestId" value={request.id} />
+                          <input type="hidden" name="lineId" value={line.id} />
+                          <button type="submit" className="text-[var(--ejo-error)] hover:underline">
+                            Remove
+                          </button>
+                        </form>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <p className="mt-3 border-t border-[var(--ejo-border)] pt-3 text-sm text-[var(--ejo-text)]">
+            {request.approvedTotal !== null ? (
+              <>
+                Approved total — locked at Manager approval: <span className="font-medium">{formatNaira(Number(request.approvedTotal))}</span>
+              </>
+            ) : (
+              <>
+                Running total so far: <span className="font-medium">{formatNaira(runningTotal)}</span>
+              </>
+            )}
+            {request.disbursedAmount !== null ? (
+              <>
+                {' '}
+                · Disbursed: <span className="font-medium">{formatNaira(Number(request.disbursedAmount))}</span>
+              </>
+            ) : null}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 grid max-w-4xl gap-6 lg:grid-cols-[1fr_360px]">
+        <div className="space-y-6">
           {request.status === 'PENDING_FINANCE_REVIEW' && isEligibleFinance ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/30 bg-[var(--ejo-info)]/5 p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Finance Review</h2>
