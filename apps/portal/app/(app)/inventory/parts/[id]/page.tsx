@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getPart } from '@/lib/actions/store';
+import { getPart, getPartAuditTrail } from '@/lib/actions/store';
 import { getLastEditInfo } from '@/lib/actions/workshop';
 import { createPartFitmentFormAction, updatePartFitmentFormAction, deletePartFitmentFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -16,8 +16,22 @@ const TRACKING_TYPE_LABEL: Record<string, string> = {
   SERIALIZED: 'Serialized',
 };
 
+const PART_AUDIT_ACTION_LABEL: Record<string, string> = {
+  'part.created': 'Part created',
+  'part.updated': 'Part updated',
+  'part.alternative_units_updated': 'Alternative units updated',
+  'part.fitment_added': 'Vehicle fitment added',
+  'part.fitment_updated': 'Vehicle fitment updated',
+  'part.fitment_removed': 'Vehicle fitment removed',
+  'part.selling_price_set': 'Selling price updated',
+};
+
 function formatQty(value: unknown): string {
   return Number(value).toLocaleString('en-NG', { maximumFractionDigits: 3 });
+}
+
+function formatNaira(value: number): string {
+  return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /**
@@ -37,7 +51,7 @@ export default async function PartDetailPage({
   const { error, status, editFitmentId } = await searchParams;
   const part = await getPart(id);
   if (!part) notFound();
-  const lastEdit = await getLastEditInfo('Part', id, 'part.updated');
+  const [lastEdit, auditTrail] = await Promise.all([getLastEditInfo('Part', id, 'part.updated'), getPartAuditTrail(id)]);
 
   return (
     <div className="p-8">
@@ -96,9 +110,13 @@ export default async function PartDetailPage({
         <div className="space-y-6">
           {part.trackingType === 'BATCH' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Batches In Stock</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Batches</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                Revenue and Profit are estimates using the Part&apos;s current Selling Price — the real amount actually
+                charged for stock sold in the past may have differed if the price has changed since.
+              </p>
               {part.batches.length === 0 ? (
-                <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No batches with remaining stock.</p>
+                <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No batches recorded yet.</p>
               ) : (
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full text-sm">
@@ -106,23 +124,43 @@ export default async function PartDetailPage({
                       <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
                         <th className="px-3 py-2">Batch No.</th>
                         <th className="px-3 py-2">Received</th>
+                        <th className="px-3 py-2">Sold So Far</th>
                         <th className="px-3 py-2">Remaining</th>
+                        <th className="px-3 py-2">Revenue (Est.)</th>
+                        <th className="px-3 py-2">Profit (Est.)</th>
                         <th className="px-3 py-2">Received At</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {part.batches.map((batch: (typeof part.batches)[number]) => (
-                        <tr key={batch.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                          <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{batch.batchNumber}</td>
-                          <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
-                            {formatQty(batch.receivedQuantity)} {pluralizeWord(Number(batch.receivedQuantity), part.baseUnitOfMeasure)}
-                          </td>
-                          <td className="px-3 py-2 text-[var(--ejo-text)]">
-                            {formatQty(batch.remainingQuantity)} {pluralizeWord(Number(batch.remainingQuantity), part.baseUnitOfMeasure)}
-                          </td>
-                          <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{new Date(batch.receivedAt).toLocaleDateString('en-NG')}</td>
-                        </tr>
-                      ))}
+                      {part.batches.map((batch: (typeof part.batches)[number]) => {
+                        const received = Number(batch.receivedQuantity);
+                        const remaining = Number(batch.remainingQuantity);
+                        const soldSoFar = Math.max(0, received - remaining);
+                        const unitCostForBatch = batch.goodsReceiptLine?.unitCost !== null && batch.goodsReceiptLine?.unitCost !== undefined ? Number(batch.goodsReceiptLine.unitCost) : null;
+                        const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
+                        const revenue = sellingPrice !== null ? soldSoFar * sellingPrice : null;
+                        const cogs = unitCostForBatch !== null ? soldSoFar * unitCostForBatch : null;
+                        const profit = revenue !== null && cogs !== null ? revenue - cogs : null;
+                        return (
+                          <tr key={batch.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                            <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{batch.batchNumber}</td>
+                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                              {formatQty(received)} {pluralizeWord(received, part.baseUnitOfMeasure)}
+                            </td>
+                            <td className="px-3 py-2 text-[var(--ejo-text)]">
+                              {formatQty(soldSoFar)} {pluralizeWord(soldSoFar, part.baseUnitOfMeasure)}
+                            </td>
+                            <td className={`px-3 py-2 ${remaining === 0 ? 'text-[var(--ejo-text-muted)]' : 'text-[var(--ejo-text)]'}`}>
+                              {formatQty(remaining)} {pluralizeWord(remaining, part.baseUnitOfMeasure)}
+                            </td>
+                            <td className="px-3 py-2 text-[var(--ejo-text)]">{revenue !== null ? formatNaira(revenue) : '—'}</td>
+                            <td className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
+                              {profit !== null ? formatNaira(profit) : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{new Date(batch.receivedAt).toLocaleDateString('en-NG')}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -164,6 +202,7 @@ export default async function PartDetailPage({
           ) : null}
 
           <SellingPriceCalculator
+            key={part.sellingPrice?.toString() ?? 'unset'}
             partId={part.id}
             partName={part.name}
             baseUnitOfMeasure={part.baseUnitOfMeasure}
@@ -365,6 +404,23 @@ export default async function PartDetailPage({
                 </div>
               ) : null}
             </dl>
+          </div>
+
+          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit Trail</h2>
+            {auditTrail.length === 0 ? (
+              <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No edits recorded yet.</p>
+            ) : (
+              <ul className="mt-3 space-y-3">
+                {auditTrail.map((entry: (typeof auditTrail)[number]) => (
+                  <li key={entry.id} className="text-sm">
+                    <p className="font-medium text-[var(--ejo-text)]">{PART_AUDIT_ACTION_LABEL[entry.action] ?? entry.action}</p>
+                    <p className="text-xs text-[var(--ejo-text-muted)]">{entry.userName}</p>
+                    <p className="text-xs text-[var(--ejo-text-muted)]">{new Date(entry.createdAt).toLocaleString('en-NG')}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </div>
