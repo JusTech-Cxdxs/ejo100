@@ -3,6 +3,7 @@ import { getPart } from '@/lib/actions/store';
 import { updatePartFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
+import { pluralizeWord } from '@/lib/utils/pluralize';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 
@@ -111,7 +112,7 @@ export default async function EditPartPage({
                       type="number"
                       step="0.0001"
                       defaultValue={Number(unit.conversionFactor)}
-                      placeholder={`= how many ${part.baseUnitOfMeasure}`}
+                      placeholder={`= how many ${pluralizeWord(2, part.baseUnitOfMeasure)}`}
                       className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                     />
                   </div>
@@ -127,7 +128,7 @@ export default async function EditPartPage({
                 name="altUnitFactor"
                 type="number"
                 step="0.0001"
-                placeholder={`= how many ${part.baseUnitOfMeasure}`}
+                placeholder={`= how many ${pluralizeWord(2, part.baseUnitOfMeasure)}`}
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
             </div>
