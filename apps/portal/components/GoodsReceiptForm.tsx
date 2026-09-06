@@ -55,6 +55,7 @@ export function GoodsReceiptForm({
   const selectedPart = parts.find((p) => p.id === selectedPartId);
   const [quantity, setQuantity] = useState('');
   const [unitUsed, setUnitUsed] = useState('');
+  const [totalCost, setTotalCost] = useState('');
   const [serials, setSerials] = useState<SerialRow[]>([{ key: 's0', value: '' }]);
   const nextSerialId = useRef(1);
 
@@ -100,6 +101,22 @@ export function GoodsReceiptForm({
   const filledSerialCount = serials.filter((r) => r.value.trim()).length;
   const parsedQuantity = Number(quantity);
   const serialCountMatches = Number.isFinite(parsedQuantity) && parsedQuantity > 0 && filledSerialCount === parsedQuantity;
+
+  // Live-calculated the moment enough is filled in — the real point
+  // of asking for Total Cost instead of a per-unit price nobody wants
+  // to hand-calculate first: Store already knows what the whole
+  // delivery cost, and everything else (cost per Carton, cost per
+  // Bottle) should be worked out for them, not the other way around.
+  const parsedTotalCost = Number(totalCost);
+  const hasLiveCalc = Number.isFinite(parsedQuantity) && parsedQuantity > 0 && Number.isFinite(parsedTotalCost) && parsedTotalCost > 0;
+  const costPerUnitUsed = hasLiveCalc ? parsedTotalCost / parsedQuantity : null;
+  const conversionFactor = selectedPart?.alternativeUnits.find((u) => u.unitName === unitUsed);
+  const costPerBaseUnit =
+    hasLiveCalc && selectedPart && unitUsed !== selectedPart.baseUnitOfMeasure && conversionFactor
+      ? costPerUnitUsed !== null
+        ? costPerUnitUsed / Number(conversionFactor.conversionFactor)
+        : null
+      : costPerUnitUsed;
 
   return (
     <form action={action} className="max-w-xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
@@ -181,13 +198,29 @@ export function GoodsReceiptForm({
       </div>
 
       <div>
-        <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Unit Cost (optional)</label>
+        <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">
+          Total Cost{unitUsed ? ` (for the full ${quantity || '…'} ${unitUsed} received)` : ''}
+        </label>
         <input
-          name="unitCost"
+          name="totalCost"
           type="number"
           step="0.01"
+          required
+          value={totalCost}
+          onChange={(e) => setTotalCost(e.target.value)}
+          placeholder="e.g. 650000 — the real total actually paid"
           className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
         />
+        {hasLiveCalc && selectedPart ? (
+          <p className="mt-1.5 text-xs text-[var(--ejo-text-muted)]">
+            = <span className="font-medium text-[var(--ejo-text)]">₦{costPerUnitUsed!.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> per {unitUsed}
+            {costPerBaseUnit !== null && unitUsed !== selectedPart.baseUnitOfMeasure ? (
+              <>
+                {' '}(= ₦{costPerBaseUnit.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} per {selectedPart.baseUnitOfMeasure})
+              </>
+            ) : null}
+          </p>
+        ) : null}
       </div>
 
       {selectedPart?.trackingType === 'BATCH' ? (
