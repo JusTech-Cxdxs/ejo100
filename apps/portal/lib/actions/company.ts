@@ -26,9 +26,9 @@ export type UpdateCompanyInput = {
   name: string;
   legalName?: string;
   website?: string;
-  hotline?: string;
+  hotlines?: string[];
   hqAddress?: string;
-  pmb?: string;
+  poBox?: string;
   rcNumber?: string;
 };
 
@@ -48,15 +48,20 @@ export async function updateCompany(companyId: string, input: UpdateCompanyInput
   if (!trimmedName) {
     throw new CompanyActionError('Company name is required.');
   }
+  // Every real hotline the operator actually typed, in the order
+  // they entered them, with empty rows dropped — the same "only the
+  // real, filled-in ones" reasoning already used for a Job Card's own
+  // Complaints list.
+  const hotlines = (input.hotlines ?? []).map((h) => h.trim()).filter(Boolean);
   await prisma.company.update({
     where: { id: companyId },
     data: {
       name: trimmedName,
       legalName: input.legalName?.trim() || null,
       website: input.website?.trim() || null,
-      hotline: input.hotline?.trim() || null,
+      hotlines,
       hqAddress: input.hqAddress?.trim() || null,
-      pmb: input.pmb?.trim() || null,
+      poBox: input.poBox?.trim() || null,
       rcNumber: input.rcNumber?.trim() || null,
     },
   });

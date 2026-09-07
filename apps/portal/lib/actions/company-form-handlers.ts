@@ -9,6 +9,14 @@ function str(formData: FormData, key: string): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function strList(formData: FormData, key: string): string[] {
+  return formData
+    .getAll(key)
+    .filter((v): v is string => typeof v === 'string')
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
 export async function updateCompanyFormAction(formData: FormData) {
   const companyId = str(formData, 'companyId');
   try {
@@ -16,9 +24,9 @@ export async function updateCompanyFormAction(formData: FormData) {
       name: str(formData, 'name'),
       legalName: str(formData, 'legalName'),
       website: str(formData, 'website'),
-      hotline: str(formData, 'hotline'),
+      hotlines: strList(formData, 'hotlines'),
       hqAddress: str(formData, 'hqAddress'),
-      pmb: str(formData, 'pmb'),
+      poBox: str(formData, 'poBox'),
       rcNumber: str(formData, 'rcNumber'),
     });
   } catch (err) {
