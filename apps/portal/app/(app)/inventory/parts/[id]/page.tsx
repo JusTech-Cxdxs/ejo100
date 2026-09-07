@@ -172,6 +172,47 @@ export default async function PartDetailPage({
                         );
                       })}
                     </tbody>
+                    <tfoot>
+                      {(() => {
+                        const totalReceived = part.batches.reduce((sum: number, b: (typeof part.batches)[number]) => sum + Number(b.receivedQuantity), 0);
+                        const totalRemaining = part.batches.reduce((sum: number, b: (typeof part.batches)[number]) => sum + Number(b.remainingQuantity), 0);
+                        const totalSold = Math.max(0, totalReceived - totalRemaining);
+                        const totalRevenueAndProfit = part.batches.reduce(
+                          (acc: { revenue: number; profit: number }, batch: (typeof part.batches)[number]) => {
+                            const received = Number(batch.receivedQuantity);
+                            const remaining = Number(batch.remainingQuantity);
+                            const soldSoFar = Math.max(0, received - remaining);
+                            const unitCostForBatch = batch.goodsReceiptLine?.unitCost !== null && batch.goodsReceiptLine?.unitCost !== undefined ? Number(batch.goodsReceiptLine.unitCost) : null;
+                            const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
+                            const revenue = sellingPrice !== null ? soldSoFar * sellingPrice : 0;
+                            const cogs = unitCostForBatch !== null ? soldSoFar * unitCostForBatch : 0;
+                            return { revenue: acc.revenue + revenue, profit: acc.profit + (revenue - cogs) };
+                          },
+                          { revenue: 0, profit: 0 },
+                        );
+                        return (
+                          <tr className="border-t border-[var(--ejo-border)] font-medium text-[var(--ejo-text)]">
+                            <td className="px-3 py-2" colSpan={2}>
+                              Total
+                            </td>
+                            <td className="px-3 py-2">
+                              {formatQty(totalReceived)} {pluralizeWord(totalReceived, part.baseUnitOfMeasure)}
+                            </td>
+                            <td className="px-3 py-2">
+                              {formatQty(totalSold)} {pluralizeWord(totalSold, part.baseUnitOfMeasure)}
+                            </td>
+                            <td className="px-3 py-2">
+                              {formatQty(totalRemaining)} {pluralizeWord(totalRemaining, part.baseUnitOfMeasure)}
+                            </td>
+                            <td className="px-3 py-2">{formatNaira(totalRevenueAndProfit.revenue)}</td>
+                            <td className={totalRevenueAndProfit.profit < 0 ? 'px-3 py-2 text-[var(--ejo-error)]' : 'px-3 py-2 text-[var(--ejo-success)]'}>
+                              {formatNaira(totalRevenueAndProfit.profit)}
+                            </td>
+                            <td />
+                          </tr>
+                        );
+                      })()}
+                    </tfoot>
                   </table>
                   {part.batches.some((b: (typeof part.batches)[number]) => b.consumptions.length > 0) ? (
                     <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
@@ -265,6 +306,32 @@ export default async function PartDetailPage({
                         );
                       })}
                     </tbody>
+                    <tfoot>
+                      {(() => {
+                        const totalUnits = part.serials.length;
+                        const issuedCount = part.serials.filter((s: (typeof part.serials)[number]) => s.status !== 'IN_STOCK').length;
+                        const inStockCount = totalUnits - issuedCount;
+                        const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
+                        const totalProfit = part.serials.reduce((sum: number, s: (typeof part.serials)[number]) => {
+                          if (s.status === 'IN_STOCK') return sum;
+                          const unitCostForSerial = s.goodsReceiptLine?.unitCost !== null && s.goodsReceiptLine?.unitCost !== undefined ? Number(s.goodsReceiptLine.unitCost) : null;
+                          if (sellingPrice === null || unitCostForSerial === null) return sum;
+                          return sum + (sellingPrice - unitCostForSerial);
+                        }, 0);
+                        return (
+                          <tr className="border-t border-[var(--ejo-border)] font-medium text-[var(--ejo-text)]">
+                            <td className="px-3 py-2">
+                              {pluralizeWord(totalUnits, 'Unit')} total ({inStockCount} in stock, {issuedCount} issued)
+                            </td>
+                            <td />
+                            <td />
+                            <td />
+                            <td className={totalProfit < 0 ? 'px-3 py-2 text-[var(--ejo-error)]' : 'px-3 py-2 text-[var(--ejo-success)]'}>{formatNaira(totalProfit)}</td>
+                            <td />
+                          </tr>
+                        );
+                      })()}
+                    </tfoot>
                   </table>
                 </div>
               )}
