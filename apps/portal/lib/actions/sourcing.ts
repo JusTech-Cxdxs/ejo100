@@ -244,10 +244,23 @@ export async function getJobCardSourcingNeeds(jobCardId: string) {
     }),
   ]);
 
+  // The real, accurate signal for whether there's still something new
+  // to request — reusing the exact same eligibility check each
+  // request page already uses to decide what it can show, rather than
+  // a looser "is anything currently active" check that would keep
+  // showing the button even once every real line has already been
+  // successfully released or disbursed, with nothing new to raise.
+  const [requestablePartLines, requestableExternalLines] = await Promise.all([
+    getRequestablePartRequestLines(jobCardId),
+    getRequestableExternalProcurementLines(jobCardId),
+  ]);
+
   return {
     isEligibleToSource: SOURCEABLE_STATUSES.includes(jobCard.status as (typeof SOURCEABLE_STATUSES)[number]),
     needsStoreParts: storeLineItems.length > 0,
     needsExternalProcurement: externalLineItems.length > 0,
+    hasRequestablePartLines: requestablePartLines.length > 0,
+    hasRequestableExternalLines: requestableExternalLines.length > 0,
     storeLineItems,
     externalLineItems,
     existingPartRequestSlips,
