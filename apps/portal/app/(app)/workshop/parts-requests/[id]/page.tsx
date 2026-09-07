@@ -14,6 +14,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { PrintButton } from '@/components/PrintButton';
+import { SerialReleaseSelector } from '@/components/SerialReleaseSelector';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_HOD_APPROVAL: 'Awaiting HOD approval',
@@ -264,17 +265,11 @@ export default async function PartRequestSlipDetailPage({
                     <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">
                       Serial numbers for {line.part.name} ({Number(line.quantityRequested)} needed)
                     </label>
-                    <div className="space-y-1.5">
-                      {Array.from({ length: Number(line.quantityRequested) }).map((_, i) => (
-                        <input
-                          key={i}
-                          name={`serials_${line.id}`}
-                          required
-                          placeholder={`Serial ${i + 1}`}
-                          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                        />
-                      ))}
-                    </div>
+                    <SerialReleaseSelector
+                      lineId={line.id}
+                      quantityNeeded={Number(line.quantityRequested)}
+                      availableSerials={line.part.serials.map((s: { serialNumber: string }) => s.serialNumber)}
+                    />
                   </div>
                 ))}
                 <SubmitButton label="Release" pendingLabel="Releasing…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
