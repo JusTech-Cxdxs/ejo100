@@ -13,7 +13,6 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
-import { PrintButton } from '@/components/PrintButton';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SerialReleaseSelector } from '@/components/SerialReleaseSelector';
 
@@ -362,7 +361,26 @@ export default async function PartRequestSlipDetailPage({
         </div>
       </div>
 
-      <PrintButton />
+      {slip.status === 'RELEASED' ? (
+        <div className="mt-6 flex gap-2 print:hidden">
+          <a
+            href={`/print/parts-requests/${slip.id}?variant=company`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+          >
+            Print — Company Copy
+          </a>
+          <a
+            href={`/print/parts-requests/${slip.id}?variant=client`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+          >
+            Print — Collector Copy
+          </a>
+        </div>
+      ) : null}
     </div>
   );
 }
