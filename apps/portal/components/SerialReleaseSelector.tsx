@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { SearchableSelect, type SearchableOption } from './SearchableSelect';
+import { formatDateOnly } from '@/lib/utils/format-date';
 
 export type AvailableSerial = { serialNumber: string; receivedAt: string | Date };
 
@@ -73,7 +74,7 @@ export function SerialReleaseSelector({
             {suggestion ? (
               <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
                 Suggested (FIFO — earliest received in stock): <span className="font-medium text-[var(--ejo-text)]">{suggestion.serialNumber}</span>, received{' '}
-                {new Date(suggestion.receivedAt).toLocaleDateString('en-NG')}
+                {formatDateOnly(new Date(suggestion.receivedAt))}
               </p>
             ) : null}
           </div>
