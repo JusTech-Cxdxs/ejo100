@@ -3,10 +3,11 @@ import { updateCompanyFormAction } from '@/lib/actions/company-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { HotlineListInput } from '@/components/HotlineListInput';
 
 /**
  * The company's own real, printed identity — name, legal name,
- * hotline, HQ address, PMB, RC number. This is deliberately the one
+ * hotlines, HQ address, PO Box, RC number. This is deliberately the one
  * real source every printable document in the system (Job Card,
  * Store Parts Request, External Procurement, Payment) pulls its
  * header from, so a real letterhead detail only ever needs to be
@@ -70,13 +71,8 @@ export default async function CompanyPage({ searchParams }: { searchParams: Prom
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Hotline</label>
-            <input
-              name="hotline"
-              defaultValue={company.hotline ?? ''}
-              placeholder="e.g. +234 800 000 0000"
-              className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-            />
+            <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Hotlines</label>
+            <HotlineListInput initialValues={company.hotlines} />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">HQ Address</label>
@@ -89,11 +85,11 @@ export default async function CompanyPage({ searchParams }: { searchParams: Prom
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">PMB</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">PO Box</label>
               <input
-                name="pmb"
-                defaultValue={company.pmb ?? ''}
-                placeholder="e.g. PMB 1234"
+                name="poBox"
+                defaultValue={company.poBox ?? ''}
+                placeholder="e.g. PO Box 1234"
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
             </div>
