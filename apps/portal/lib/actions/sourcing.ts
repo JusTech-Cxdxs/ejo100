@@ -313,7 +313,7 @@ export async function getPartRequestSlip(id: string) {
               // Fetched here so the release form can offer a real,
               // live, searchable pick instead of free text that could
               // easily drift from what's actually in stock.
-              serials: { where: { status: 'IN_STOCK' }, orderBy: { receivedAt: 'asc' }, select: { serialNumber: true } },
+              serials: { where: { status: 'IN_STOCK' }, orderBy: { receivedAt: 'asc' }, select: { serialNumber: true, receivedAt: true } },
             },
           },
           estimateLineItem: { select: { description: true, unitPrice: true, amount: true } },

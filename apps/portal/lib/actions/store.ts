@@ -1152,6 +1152,20 @@ export type RecordGoodsReceiptInput = {
   lines: GoodsReceiptLineInput[];
 };
 
+/** The real-time counterpart to recordGoodsReceipt's own server-side
+ * duplicate check — a serial number is meant to be a genuine,
+ * permanent, one-of-a-kind identity for a single physical unit,
+ * checked against every serial ever recorded for any Part, so an
+ * operator sees the real problem the moment they type it, not only
+ * after submitting the whole form and getting a rejection back. */
+export async function checkSerialNumberExists(serialNumber: string): Promise<boolean> {
+  await requireUser();
+  const trimmed = serialNumber.trim();
+  if (!trimmed) return false;
+  const existing = await prisma.partSerial.findFirst({ where: { serialNumber: trimmed }, select: { id: true } });
+  return existing !== null;
+}
+
 /** Records a delivery of stock arriving into the store. Converts each
  * line's entered quantity into the part's own base unit before touching
  * stock — the same drum-to-liters conversion this was designed around —
