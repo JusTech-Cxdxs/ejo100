@@ -201,8 +201,14 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
     }
     case 'part_request_slip.hod_approved':
     case 'part_request_slip.store_approved':
-    case 'part_request_slip.released':
       return typeof meta.referenceNumber === 'string' ? meta.referenceNumber : null;
+    case 'part_request_slip.released': {
+      const parts: string[] = [];
+      if (typeof meta.referenceNumber === 'string') parts.push(meta.referenceNumber);
+      const collectedByName = typeof meta.receivedByName === 'string' ? meta.receivedByName : null;
+      if (collectedByName) parts.push(`Collected by ${collectedByName}`);
+      return parts.join(' — ') || null;
+    }
     case 'part_request_slip.rejected': {
       const parts: string[] = [];
       if (typeof meta.referenceNumber === 'string') parts.push(meta.referenceNumber);
@@ -1032,12 +1038,8 @@ export default async function JobCardDetailPage({
                 as separate requests, each fully independent.
               </p>
 
-              {sourcingNeeds.needsStoreParts ? (() => {
-                const hasActivePartRequest = sourcingNeeds.existingPartRequestSlips.some(
-                  (slip: (typeof sourcingNeeds.existingPartRequestSlips)[number]) => slip.status !== 'RELEASED' && slip.status !== 'REJECTED',
-                );
-                return (
-                  <div className="mt-4 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-info)]/5 p-4">
+              {sourcingNeeds.needsStoreParts ? (
+                <div className="mt-4 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-info)]/5 p-4">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-info)]">
@@ -1047,13 +1049,17 @@ export default async function JobCardDetailPage({
                         </svg>
                         <h3 className="text-xs font-semibold text-[var(--ejo-text)]">Store Parts</h3>
                       </div>
-                      {!hasActivePartRequest ? (
+                      {sourcingNeeds.hasRequestablePartLines ? (
                         <LoadingLink
                           href={`/workshop/job-cards/${id}/request-parts`}
                           className="inline-flex items-center gap-1 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-2.5 py-1 text-xs font-medium text-white hover:opacity-90"
                         >
                           + Request Store Parts
                         </LoadingLink>
+                      ) : sourcingNeeds.existingPartRequestSlips.length > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--ejo-success)]/15 px-2.5 py-1 text-xs font-medium text-[var(--ejo-success)]">
+                          All requested
+                        </span>
                       ) : null}
                     </div>
                     {sourcingNeeds.existingPartRequestSlips.length === 0 ? (
@@ -1075,15 +1081,10 @@ export default async function JobCardDetailPage({
                       </div>
                     )}
                   </div>
-                );
-              })() : null}
+              ) : null}
 
-              {sourcingNeeds.needsExternalProcurement ? (() => {
-                const hasActiveProcurementRequest = sourcingNeeds.existingExternalProcurementRequests.some(
-                  (req: (typeof sourcingNeeds.existingExternalProcurementRequests)[number]) => req.status !== 'DISBURSED' && req.status !== 'REJECTED',
-                );
-                return (
-                  <div className="mt-4 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)]/5 p-4">
+              {sourcingNeeds.needsExternalProcurement ? (
+                <div className="mt-4 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)]/5 p-4">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-warning)]">
@@ -1093,13 +1094,17 @@ export default async function JobCardDetailPage({
                         </svg>
                         <h3 className="text-xs font-semibold text-[var(--ejo-text)]">External Procurement</h3>
                       </div>
-                      {!hasActiveProcurementRequest ? (
+                      {sourcingNeeds.hasRequestableExternalLines ? (
                         <LoadingLink
                           href={`/workshop/job-cards/${id}/request-procurement`}
                           className="inline-flex items-center gap-1 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-2.5 py-1 text-xs font-medium text-white hover:opacity-90"
                         >
                           + Request Procurement
                         </LoadingLink>
+                      ) : sourcingNeeds.existingExternalProcurementRequests.length > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--ejo-success)]/15 px-2.5 py-1 text-xs font-medium text-[var(--ejo-success)]">
+                          All requested
+                        </span>
                       ) : null}
                     </div>
                     {sourcingNeeds.existingExternalProcurementRequests.length === 0 ? (
@@ -1121,8 +1126,7 @@ export default async function JobCardDetailPage({
                       </div>
                     )}
                   </div>
-                );
-              })() : null}
+              ) : null}
             </div>
           ) : null}
 
