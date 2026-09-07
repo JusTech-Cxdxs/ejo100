@@ -215,7 +215,7 @@ export default async function PartDetailPage({
                       <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
                         <th className="px-3 py-2">Serial Number</th>
                         <th className="px-3 py-2">Status</th>
-                        <th className="px-3 py-2">Issued To</th>
+                        <th className="px-3 py-2">Destination PRS</th>
                         <th className="px-3 py-2">Source GRN</th>
                         <th className="px-3 py-2">Profit (Est.)</th>
                         <th className="px-3 py-2">Received At</th>
@@ -242,7 +242,7 @@ export default async function PartDetailPage({
                             <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {serial.issuedToSlipLine ? (
                                 <LoadingLink href={`/workshop/parts-requests/${serial.issuedToSlipLine.slip.id}`} className="text-[var(--ejo-primary)] hover:underline">
-                                  {serial.issuedToSlipLine.slip.jobCard.customer.fullName} — {serial.issuedToSlipLine.slip.jobCard.jobNumber}
+                                  {serial.issuedToSlipLine.slip.referenceNumber}
                                 </LoadingLink>
                               ) : (
                                 '—'
@@ -323,26 +323,75 @@ export default async function PartDetailPage({
                       <thead>
                         <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
                           <th className="px-3 py-2">Source GRN</th>
-                          <th className="px-3 py-2">Quantity</th>
-                          <th className="px-3 py-2">Total Cost</th>
+                          <th className="px-3 py-2">Received</th>
+                          <th className="px-3 py-2">Sold So Far</th>
+                          <th className="px-3 py-2">Remaining</th>
+                          <th className="px-3 py-2">Revenue (Est.)</th>
+                          <th className="px-3 py-2">Profit (Est.)</th>
                           <th className="px-3 py-2">Received At</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {part.goodsReceiptLines.map((line: (typeof part.goodsReceiptLines)[number]) => (
-                          <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
-                              <LoadingLink href={`/inventory/goods-receipts/${line.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
-                                {line.goodsReceipt.referenceNumber}
-                              </LoadingLink>
-                            </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text)]">
-                              {formatQty(line.quantityInBaseUnit)} {pluralizeWord(Number(line.quantityInBaseUnit), part.baseUnitOfMeasure)}
-                            </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text)]">{line.totalCost !== null ? formatNaira(Number(line.totalCost)) : '—'}</td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(line.goodsReceipt.receivedAt))}</td>
-                          </tr>
-                        ))}
+                        {(() => {
+                          // A quantity-tracked Part keeps no real
+                          // batch of its own to hold a genuine
+                          // remainingQuantity the way BATCH-tracked
+                          // Parts do — so this walks the exact same
+                          // real FIFO order (oldest delivery first)
+                          // against the real total ever consumed, to
+                          // compute an honest virtual "how much of
+                          // THIS delivery is sold vs left" — the same
+                          // real reasoning the Batches table already
+                          // uses, just derived here rather than
+                          // stored, since there's no batch row to
+                          // store it on.
+                          const fifoLines = [...part.goodsReceiptLines].sort(
+                            (a: (typeof part.goodsReceiptLines)[number], b: (typeof part.goodsReceiptLines)[number]) =>
+                              new Date(a.goodsReceipt.receivedAt).getTime() - new Date(b.goodsReceipt.receivedAt).getTime(),
+                          );
+                          const totalConsumed = part.quantityConsumptions.reduce((sum: number, c: (typeof part.quantityConsumptions)[number]) => sum + Number(c.quantityTaken), 0);
+                          let remainingToAllocate = totalConsumed;
+                          const soldByLineId = new Map<string, number>();
+                          for (const line of fifoLines) {
+                            const receivedQty = Number(line.quantityInBaseUnit);
+                            const soldFromThisLine = Math.min(remainingToAllocate, receivedQty);
+                            soldByLineId.set(line.id, soldFromThisLine);
+                            remainingToAllocate -= soldFromThisLine;
+                          }
+                          const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
+                          return part.goodsReceiptLines.map((line: (typeof part.goodsReceiptLines)[number]) => {
+                            const received = Number(line.quantityInBaseUnit);
+                            const soldSoFar = soldByLineId.get(line.id) ?? 0;
+                            const remaining = received - soldSoFar;
+                            const unitCostForLine = received > 0 && line.totalCost !== null ? Number(line.totalCost) / received : null;
+                            const revenue = sellingPrice !== null ? soldSoFar * sellingPrice : null;
+                            const cogs = unitCostForLine !== null ? soldSoFar * unitCostForLine : null;
+                            const profit = revenue !== null && cogs !== null ? revenue - cogs : null;
+                            return (
+                              <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                                <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                                  <LoadingLink href={`/inventory/goods-receipts/${line.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                                    {line.goodsReceipt.referenceNumber}
+                                  </LoadingLink>
+                                </td>
+                                <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                                  {formatQty(received)} {pluralizeWord(received, part.baseUnitOfMeasure)}
+                                </td>
+                                <td className="px-3 py-2 text-[var(--ejo-text)]">
+                                  {formatQty(soldSoFar)} {pluralizeWord(soldSoFar, part.baseUnitOfMeasure)}
+                                </td>
+                                <td className={`px-3 py-2 ${remaining === 0 ? 'text-[var(--ejo-text-muted)]' : 'text-[var(--ejo-text)]'}`}>
+                                  {formatQty(remaining)} {pluralizeWord(remaining, part.baseUnitOfMeasure)}
+                                </td>
+                                <td className="px-3 py-2 text-[var(--ejo-text)]">{revenue !== null ? formatNaira(revenue) : '—'}</td>
+                                <td className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
+                                  {profit !== null ? formatNaira(profit) : '—'}
+                                </td>
+                                <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(line.goodsReceipt.receivedAt))}</td>
+                              </tr>
+                            );
+                          });
+                        })()}
                       </tbody>
                     </table>
                   </div>
