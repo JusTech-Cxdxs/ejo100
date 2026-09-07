@@ -277,46 +277,9 @@ export default async function PartDetailPage({
                 estimates using the Part&apos;s current Selling Price against the average real cost across every
                 delivery received so far.
               </p>
-              {(() => {
-                const totalReceived = part.goodsReceiptLines.reduce((sum: number, l: (typeof part.goodsReceiptLines)[number]) => sum + Number(l.quantityInBaseUnit), 0);
-                const onHand = part.stock ? Number(part.stock.quantityOnHand) : 0;
-                const soldToDate = Math.max(0, totalReceived - onHand);
-                const totalCostReceived = part.goodsReceiptLines.reduce((sum: number, l: (typeof part.goodsReceiptLines)[number]) => sum + (l.totalCost !== null ? Number(l.totalCost) : 0), 0);
-                const averageUnitCost = totalReceived > 0 ? totalCostReceived / totalReceived : null;
-                const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
-                const revenue = sellingPrice !== null ? soldToDate * sellingPrice : null;
-                const cogs = averageUnitCost !== null ? soldToDate * averageUnitCost : null;
-                const profit = revenue !== null && cogs !== null ? revenue - cogs : null;
-                return (
-                  <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    <div>
-                      <dt className="text-xs text-[var(--ejo-text-muted)]">Received to Date</dt>
-                      <dd className="text-sm font-medium text-[var(--ejo-text)]">
-                        {formatQty(totalReceived)} {pluralizeWord(totalReceived, part.baseUnitOfMeasure)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-[var(--ejo-text-muted)]">Sold to Date (Est.)</dt>
-                      <dd className="text-sm font-medium text-[var(--ejo-text)]">
-                        {formatQty(soldToDate)} {pluralizeWord(soldToDate, part.baseUnitOfMeasure)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-[var(--ejo-text-muted)]">Revenue (Est.)</dt>
-                      <dd className="text-sm font-medium text-[var(--ejo-text)]">{revenue !== null ? formatNaira(revenue) : '—'}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-[var(--ejo-text-muted)]">Profit (Est.)</dt>
-                      <dd className={`text-sm font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
-                        {profit !== null ? formatNaira(profit) : '—'}
-                      </dd>
-                    </div>
-                  </dl>
-                );
-              })()}
 
               {part.goodsReceiptLines.length > 0 ? (
-                <div className="mt-6 border-t border-[var(--ejo-border)] pt-4">
+                <div className="mt-4">
                   <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Deliveries — every real GRN this running total is built from</p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -393,6 +356,38 @@ export default async function PartDetailPage({
                           });
                         })()}
                       </tbody>
+                      <tfoot>
+                        {(() => {
+                          const totalReceived = part.goodsReceiptLines.reduce((sum: number, l: (typeof part.goodsReceiptLines)[number]) => sum + Number(l.quantityInBaseUnit), 0);
+                          const totalSold = part.quantityConsumptions.reduce((sum: number, c: (typeof part.quantityConsumptions)[number]) => sum + Number(c.quantityTaken), 0);
+                          const totalRemaining = Math.max(0, totalReceived - totalSold);
+                          const totalCostReceived = part.goodsReceiptLines.reduce((sum: number, l: (typeof part.goodsReceiptLines)[number]) => sum + (l.totalCost !== null ? Number(l.totalCost) : 0), 0);
+                          const averageUnitCost = totalReceived > 0 ? totalCostReceived / totalReceived : null;
+                          const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
+                          const totalRevenue = sellingPrice !== null ? totalSold * sellingPrice : null;
+                          const totalCogs = averageUnitCost !== null ? totalSold * averageUnitCost : null;
+                          const totalProfit = totalRevenue !== null && totalCogs !== null ? totalRevenue - totalCogs : null;
+                          return (
+                            <tr className="border-t border-[var(--ejo-border)] font-medium text-[var(--ejo-text)]">
+                              <td className="px-3 py-2">Total</td>
+                              <td className="px-3 py-2">
+                                {formatQty(totalReceived)} {pluralizeWord(totalReceived, part.baseUnitOfMeasure)}
+                              </td>
+                              <td className="px-3 py-2">
+                                {formatQty(totalSold)} {pluralizeWord(totalSold, part.baseUnitOfMeasure)}
+                              </td>
+                              <td className="px-3 py-2">
+                                {formatQty(totalRemaining)} {pluralizeWord(totalRemaining, part.baseUnitOfMeasure)}
+                              </td>
+                              <td className="px-3 py-2">{totalRevenue !== null ? formatNaira(totalRevenue) : '—'}</td>
+                              <td className={totalProfit !== null && totalProfit < 0 ? 'px-3 py-2 text-[var(--ejo-error)]' : 'px-3 py-2 text-[var(--ejo-success)]'}>
+                                {totalProfit !== null ? formatNaira(totalProfit) : '—'}
+                              </td>
+                              <td />
+                            </tr>
+                          );
+                        })()}
+                      </tfoot>
                     </table>
                   </div>
                 </div>
