@@ -1289,9 +1289,35 @@ model PartBatch {
 
   part             Part              @relation(fields: [partId], references: [id], onDelete: Cascade)
   goodsReceiptLine GoodsReceiptLine? @relation(fields: [goodsReceiptLineId], references: [id])
+  // Every real draw against this batch — a single release can span
+  // several partial draws across multiple batches (real FIFO), and a
+  // single batch can be drawn from by several different releases over
+  // its own lifetime, so this is genuinely a many-to-many relationship,
+  // not a single link on either side.
+  consumptions     PartBatchConsumption[]
 
   @@unique([partId, batchNumber])
   @@map("part_batches")
+}
+
+// The real, permanent record of exactly which batch a released
+// quantity actually came from — closes a genuine traceability gap:
+// before this, a batch's own remainingQuantity was correctly
+// decremented at release time, but nothing recorded which real
+// request/Job Card/customer that quantity actually went to, which is
+// exactly what's needed to answer "which customer got stock from this
+// specific delivery" for a warranty or quality-defect trace.
+model PartBatchConsumption {
+  id            String   @id @default(cuid())
+  batchId       String
+  slipLineId    String
+  quantityTaken Decimal  @db.Decimal(14, 4)
+  consumedAt    DateTime @default(now())
+
+  batch    PartBatch           @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  slipLine PartRequestSlipLine @relation(fields: [slipLineId], references: [id], onDelete: Cascade)
+
+  @@map("part_batch_consumptions")
 }
 
 // One row per physical unit for a SERIALIZED part — e.g. one tyre, one
@@ -1305,9 +1331,22 @@ model PartSerial {
   status             PartSerialStatus @default(IN_STOCK)
   receivedAt         DateTime         @default(now())
   goodsReceiptLineId String?
+  // The real, permanent record of exactly which request this specific
+  // physical unit was issued out against, the moment it's issued —
+  // closes a genuine traceability gap: before this, status correctly
+  // flipped to ISSUED, but nothing recorded which real Job Card,
+  // customer, or PRS this exact serial actually went to, which is
+  // exactly what's needed to answer "who has this unit" for a
+  // warranty or quality-defect trace. A single, direct link is
+  // correct here (unlike a batch's own many-to-many consumption
+  // table) since one physical serialized unit is only ever issued
+  // once under the current, real workflow — there's no returns/
+  // re-issue path yet for this to need to track more than one.
+  issuedToSlipLineId String?
 
-  part             Part              @relation(fields: [partId], references: [id], onDelete: Cascade)
-  goodsReceiptLine GoodsReceiptLine? @relation(fields: [goodsReceiptLineId], references: [id])
+  part             Part                 @relation(fields: [partId], references: [id], onDelete: Cascade)
+  goodsReceiptLine GoodsReceiptLine?    @relation(fields: [goodsReceiptLineId], references: [id])
+  issuedToSlipLine PartRequestSlipLine? @relation(fields: [issuedToSlipLineId], references: [id])
 
   // Genuinely global, not scoped to one Part — the real gap this
   // closes: the previous [partId, serialNumber] pairing still let two
@@ -1501,6 +1540,11 @@ model PartRequestSlipLine {
   slip             PartRequestSlip   @relation(fields: [slipId], references: [id], onDelete: Cascade)
   part             Part              @relation(fields: [partId], references: [id])
   estimateLineItem EstimateLineItem? @relation(fields: [estimateLineItemId], references: [id])
+  // Back-relations for the two new real traceability links above —
+  // exactly which batch quantities and which individual serials this
+  // one real release line actually fulfilled with.
+  batchConsumptions PartBatchConsumption[]
+  issuedSerials     PartSerial[]
 
   @@map("part_request_slip_lines")
 }
