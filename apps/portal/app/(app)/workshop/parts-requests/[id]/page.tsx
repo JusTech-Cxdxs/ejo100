@@ -179,18 +179,42 @@ export default async function PartRequestSlipDetailPage({
                       <>
                         Released: {Number(line.quantityReleased)} {pluralizeWord(Number(line.quantityReleased), line.part.baseUnitOfMeasure)}
                         {line.issuedSerials.length > 0 ? (
-                          <>
-                            <br />
-                            Serial{line.issuedSerials.length === 1 ? '' : 's'}: {line.issuedSerials.map((s: (typeof line.issuedSerials)[number]) => s.serialNumber).join(', ')}
-                          </>
+                          <div className="mt-1 space-y-0.5">
+                            {line.issuedSerials.map((s: (typeof line.issuedSerials)[number]) => (
+                              <div key={s.serialNumber}>
+                                Serial: <span className="font-medium text-[var(--ejo-text)]">{s.serialNumber}</span>
+                                {s.goodsReceiptLine?.goodsReceipt ? (
+                                  <>
+                                    {' '}
+                                    — from{' '}
+                                    <LoadingLink href={`/inventory/goods-receipts/${s.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                                      {s.goodsReceiptLine.goodsReceipt.referenceNumber}
+                                    </LoadingLink>
+                                  </>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
                         ) : null}
                         {line.batchConsumptions.length > 0 ? (
-                          <>
-                            <br />
-                            From: {line.batchConsumptions
-                              .map((c: (typeof line.batchConsumptions)[number]) => `${c.batch.batchNumber} (${Number(c.quantityTaken)} ${pluralizeWord(Number(c.quantityTaken), line.part.baseUnitOfMeasure)})`)
-                              .join(', ')}
-                          </>
+                          <div className="mt-1 space-y-0.5">
+                            {line.batchConsumptions.map((c: (typeof line.batchConsumptions)[number], i: number) => (
+                              <div key={i}>
+                                From batch <span className="font-medium text-[var(--ejo-text)]">{c.batch.batchNumber}</span> —{' '}
+                                {Number(c.quantityTaken)} {pluralizeWord(Number(c.quantityTaken), line.part.baseUnitOfMeasure)}
+                                {c.batch.goodsReceiptLine?.goodsReceipt ? (
+                                  <>
+                                    {' '}
+                                    (
+                                    <LoadingLink href={`/inventory/goods-receipts/${c.batch.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                                      {c.batch.goodsReceiptLine.goodsReceipt.referenceNumber}
+                                    </LoadingLink>
+                                    )
+                                  </>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
                         ) : null}
                       </>
                     ) : (
