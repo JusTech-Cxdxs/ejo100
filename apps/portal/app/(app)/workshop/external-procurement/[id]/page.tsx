@@ -14,6 +14,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SupplementaryLineRow } from '@/components/SupplementaryLineRow';
 import { pluralizeWord } from '@/lib/utils/pluralize';
+import { formatDateTime } from '@/lib/utils/format-date';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_FINANCE_REVIEW: 'Awaiting Finance review',
@@ -156,7 +157,7 @@ export default async function ExternalProcurementDetailPage({
           </div>
           <div>
             <dt className="text-xs text-[var(--ejo-text-muted)]">Date of Request</dt>
-            <dd className="text-sm font-medium text-[var(--ejo-text)]">{new Date(request.createdAt).toLocaleString('en-NG')}</dd>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]">{formatDateTime(new Date(request.createdAt))}</dd>
           </div>
           <div>
             <dt className="text-xs text-[var(--ejo-text-muted)]">Requested By</dt>
@@ -387,7 +388,7 @@ export default async function ExternalProcurementDetailPage({
           <dl className="mt-3 space-y-3 text-sm">
             <div>
               <dt className="text-xs text-[var(--ejo-text-muted)]">Requested</dt>
-              <dd className="text-[var(--ejo-text)]">{request.requestedBy.fullName} · {new Date(request.createdAt).toLocaleString('en-NG')}</dd>
+              <dd className="text-[var(--ejo-text)]">{request.requestedBy.fullName} · {formatDateTime(new Date(request.createdAt))}</dd>
             </div>
             {supplementaryLineEvents
               .slice()
@@ -404,7 +405,7 @@ export default async function ExternalProcurementDetailPage({
                   <div key={event.id}>
                     <dt className="text-xs text-[var(--ejo-text-muted)]">{label}</dt>
                     <dd className="text-[var(--ejo-text)]">
-                      {event.userName} · {new Date(event.createdAt).toLocaleString('en-NG')}
+                      {event.userName} · {formatDateTime(new Date(event.createdAt))}
                       {meta?.description ? <><br />{meta.description} — ₦{meta.amount?.toLocaleString('en-NG')}</> : null}
                       {meta?.to ? <><br />{meta.to.description} — ₦{meta.to.amount.toLocaleString('en-NG')} (was {meta.from?.description} — ₦{meta.from?.amount.toLocaleString('en-NG')})</> : null}
                     </dd>
@@ -414,20 +415,20 @@ export default async function ExternalProcurementDetailPage({
             {request.financeReviewedBy ? (
               <div>
                 <dt className="text-xs text-[var(--ejo-text-muted)]">Sent to Manager by Finance</dt>
-                <dd className="text-[var(--ejo-text)]">{request.financeReviewedBy.fullName} · {request.financeReviewedAt ? new Date(request.financeReviewedAt).toLocaleString('en-NG') : ''}</dd>
+                <dd className="text-[var(--ejo-text)]">{request.financeReviewedBy.fullName} · {request.financeReviewedAt ? formatDateTime(new Date(request.financeReviewedAt)) : ''}</dd>
               </div>
             ) : null}
             {request.managerApprovedBy ? (
               <div>
                 <dt className="text-xs text-[var(--ejo-text-muted)]">Manager Approved</dt>
-                <dd className="text-[var(--ejo-text)]">{request.managerApprovedBy.fullName} · {request.managerApprovedAt ? new Date(request.managerApprovedAt).toLocaleString('en-NG') : ''}</dd>
+                <dd className="text-[var(--ejo-text)]">{request.managerApprovedBy.fullName} · {request.managerApprovedAt ? formatDateTime(new Date(request.managerApprovedAt)) : ''}</dd>
               </div>
             ) : null}
             {request.disbursedBy ? (
               <div>
                 <dt className="text-xs text-[var(--ejo-text-muted)]">Disbursed</dt>
                 <dd className="text-[var(--ejo-text)]">
-                  {request.disbursedBy.fullName} · {request.disbursedAt ? new Date(request.disbursedAt).toLocaleString('en-NG') : ''}
+                  {request.disbursedBy.fullName} · {request.disbursedAt ? formatDateTime(new Date(request.disbursedAt)) : ''}
                   {request.paymentMethod ? <><br />via {request.paymentMethod}{request.paymentReference ? ` — ${request.paymentReference}` : ''}</> : null}
                 </dd>
               </div>
@@ -435,7 +436,7 @@ export default async function ExternalProcurementDetailPage({
             {request.rejectedBy ? (
               <div>
                 <dt className="text-xs text-[var(--ejo-error)]">Rejected ({request.rejectionStage === 'FINANCE_REVIEW' ? 'Finance Review' : 'Manager Approval'})</dt>
-                <dd className="text-[var(--ejo-text)]">{request.rejectedBy.fullName} · {request.rejectedAt ? new Date(request.rejectedAt).toLocaleString('en-NG') : ''}</dd>
+                <dd className="text-[var(--ejo-text)]">{request.rejectedBy.fullName} · {request.rejectedAt ? formatDateTime(new Date(request.rejectedAt)) : ''}</dd>
                 <dd className="mt-1 text-xs text-[var(--ejo-text-muted)]">{request.rejectionReason}</dd>
               </div>
             ) : null}
