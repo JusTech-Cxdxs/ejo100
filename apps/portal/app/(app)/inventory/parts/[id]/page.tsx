@@ -123,6 +123,7 @@ export default async function PartDetailPage({
                     <thead>
                       <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
                         <th className="px-3 py-2">Batch No.</th>
+                        <th className="px-3 py-2">Source GRN</th>
                         <th className="px-3 py-2">Received</th>
                         <th className="px-3 py-2">Sold So Far</th>
                         <th className="px-3 py-2">Remaining</th>
@@ -144,6 +145,15 @@ export default async function PartDetailPage({
                         return (
                           <tr key={batch.id} className="border-b border-[var(--ejo-border)] last:border-0">
                             <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{batch.batchNumber}</td>
+                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                              {batch.goodsReceiptLine?.goodsReceipt ? (
+                                <LoadingLink href={`/inventory/goods-receipts/${batch.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                                  {batch.goodsReceiptLine.goodsReceipt.referenceNumber}
+                                </LoadingLink>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                             <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {formatQty(received)} {pluralizeWord(received, part.baseUnitOfMeasure)}
                             </td>
@@ -238,7 +248,15 @@ export default async function PartDetailPage({
                                 '—'
                               )}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{serial.goodsReceiptLine?.goodsReceipt.referenceNumber ?? '—'}</td>
+                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                              {serial.goodsReceiptLine?.goodsReceipt ? (
+                                <LoadingLink href={`/inventory/goods-receipts/${serial.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                                  {serial.goodsReceiptLine.goodsReceipt.referenceNumber}
+                                </LoadingLink>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                             <td className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
                               {profit !== null ? formatNaira(profit) : '—'}
                             </td>
@@ -296,6 +314,60 @@ export default async function PartDetailPage({
                   </dl>
                 );
               })()}
+
+              {part.goodsReceiptLines.length > 0 ? (
+                <div className="mt-6 border-t border-[var(--ejo-border)] pt-4">
+                  <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Deliveries — every real GRN this running total is built from</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
+                          <th className="px-3 py-2">Source GRN</th>
+                          <th className="px-3 py-2">Quantity</th>
+                          <th className="px-3 py-2">Total Cost</th>
+                          <th className="px-3 py-2">Received At</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {part.goodsReceiptLines.map((line: (typeof part.goodsReceiptLines)[number]) => (
+                          <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                              <LoadingLink href={`/inventory/goods-receipts/${line.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                                {line.goodsReceipt.referenceNumber}
+                              </LoadingLink>
+                            </td>
+                            <td className="px-3 py-2 text-[var(--ejo-text)]">
+                              {formatQty(line.quantityInBaseUnit)} {pluralizeWord(Number(line.quantityInBaseUnit), part.baseUnitOfMeasure)}
+                            </td>
+                            <td className="px-3 py-2 text-[var(--ejo-text)]">{line.totalCost !== null ? formatNaira(Number(line.totalCost)) : '—'}</td>
+                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(line.goodsReceipt.receivedAt))}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+
+              {part.quantityConsumptions.length > 0 ? (
+                <div className="mt-6 border-t border-[var(--ejo-border)] pt-4">
+                  <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">
+                    Sold To — real trace of every real draw against this Part, for warranty or quality-defect reference
+                  </p>
+                  <div className="space-y-1.5">
+                    {part.quantityConsumptions.map((c: (typeof part.quantityConsumptions)[number]) => (
+                      <div key={c.id} className="flex items-center justify-between text-xs">
+                        <span className="text-[var(--ejo-text)]">
+                          {formatQty(Number(c.quantityTaken))} {pluralizeWord(Number(c.quantityTaken), part.baseUnitOfMeasure)} — {c.slipLine.slip.jobCard.customer.fullName}
+                        </span>
+                        <LoadingLink href={`/workshop/parts-requests/${c.slipLine.slip.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                          {c.slipLine.slip.referenceNumber} · {c.slipLine.slip.jobCard.jobNumber}
+                        </LoadingLink>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
 
