@@ -300,7 +300,22 @@ export async function getPartRequestSlip(id: string) {
       rejectedBy: { select: { fullName: true } },
       lines: {
         include: {
-          part: { select: { id: true, name: true, partNumber: true, baseUnitOfMeasure: true, trackingType: true } },
+          part: {
+            select: {
+              id: true,
+              name: true,
+              partNumber: true,
+              baseUnitOfMeasure: true,
+              trackingType: true,
+              // Every serial genuinely available right now, in real
+              // FIFO order (earliest-received first) — the same real
+              // order Store's own batch-tracked stock already uses.
+              // Fetched here so the release form can offer a real,
+              // live, searchable pick instead of free text that could
+              // easily drift from what's actually in stock.
+              serials: { where: { status: 'IN_STOCK' }, orderBy: { receivedAt: 'asc' }, select: { serialNumber: true } },
+            },
+          },
           estimateLineItem: { select: { description: true, unitPrice: true, amount: true } },
         },
       },
