@@ -1,4 +1,5 @@
 import { listGoodsReceipts, getStoreBranchId } from '@/lib/actions/store';
+import { formatDateOnly } from '@/lib/utils/format-date';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
@@ -75,7 +76,7 @@ export default async function GoodsReceiptsPage({
                   <td className="px-4 py-2 text-[var(--ejo-text)]">{receipt.supplierName}</td>
                   <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{pluralize(receipt.lines.length, 'line')}</td>
                   <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{receipt.receivedBy.fullName}</td>
-                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{new Date(receipt.receivedAt).toLocaleDateString('en-NG')}</td>
+                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(receipt.receivedAt))}</td>
                 </tr>
               ))}
             </tbody>
