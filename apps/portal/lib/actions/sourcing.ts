@@ -330,6 +330,13 @@ export async function getPartRequestSlip(id: string) {
             },
           },
           estimateLineItem: { select: { description: true, unitPrice: true, amount: true } },
+          // The real, permanent record of exactly what this line was
+          // fulfilled with — which specific serials, or which real
+          // batches and how much of each — so the released document
+          // itself becomes a genuine traceable record, not just a
+          // quantity.
+          issuedSerials: { select: { serialNumber: true } },
+          batchConsumptions: { select: { quantityTaken: true, batch: { select: { batchNumber: true } } } },
         },
       },
     },
@@ -757,6 +764,12 @@ export async function releasePartRequestSlip(
           if (remaining <= 0) break;
           const take = Math.min(remaining, Number(batch.remainingQuantity));
           await tx.partBatch.update({ where: { id: batch.id }, data: { remainingQuantity: { decrement: take } } });
+          // The real, permanent traceability record — exactly which
+          // batch this release actually drew from, and how much of
+          // it, so a later warranty or quality trace can genuinely
+          // answer "which delivery did this customer's stock come
+          // from," not just "how much is left."
+          await tx.partBatchConsumption.create({ data: { batchId: batch.id, slipLineId: line.id, quantityTaken: take } });
           remaining -= take;
         }
         if (remaining > 0) {
@@ -772,7 +785,11 @@ export async function releasePartRequestSlip(
         for (const serialNumber of serials) {
           await tx.partSerial.updateMany({
             where: { partId: line.partId, serialNumber, status: 'IN_STOCK' },
-            data: { status: 'ISSUED' },
+            // The real, permanent record of exactly which release this
+            // one physical unit was issued out against — the direct
+            // answer to "who has this serial" for a later warranty
+            // trace.
+            data: { status: 'ISSUED', issuedToSlipLineId: line.id },
           });
         }
       }

@@ -1108,7 +1108,29 @@ export async function getPart(id: string) {
       // would hide the very history this view exists to surface.
       batches: {
         orderBy: { receivedAt: 'asc' },
-        include: { goodsReceiptLine: { select: { unitCost: true } } },
+        include: {
+          goodsReceiptLine: { select: { unitCost: true } },
+          // Every real draw against this batch — who it actually went
+          // to, via which real request — the direct answer to "which
+          // customer got stock from this delivery" for a warranty or
+          // quality-defect trace.
+          consumptions: {
+            orderBy: { consumedAt: 'desc' },
+            include: {
+              slipLine: {
+                select: {
+                  slip: {
+                    select: {
+                      id: true,
+                      referenceNumber: true,
+                      jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
       // Every serial, not just the ones still in stock — the same
       // real reasoning as batches above: a fully issued-out serial is
@@ -1116,7 +1138,23 @@ export async function getPart(id: string) {
       // surface, not something to quietly hide.
       serials: {
         orderBy: { receivedAt: 'asc' },
-        include: { goodsReceiptLine: { select: { unitCost: true, goodsReceipt: { select: { referenceNumber: true } } } } },
+        include: {
+          goodsReceiptLine: { select: { unitCost: true, goodsReceipt: { select: { referenceNumber: true } } } },
+          // Exactly which real request this specific physical unit
+          // was issued out against — the direct answer to "who has
+          // this serial" for a warranty trace.
+          issuedToSlipLine: {
+            select: {
+              slip: {
+                select: {
+                  id: true,
+                  referenceNumber: true,
+                  jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
+                },
+              },
+            },
+          },
+        },
       },
       fitments: { orderBy: { createdAt: 'asc' } },
       createdBy: { select: { fullName: true } },
