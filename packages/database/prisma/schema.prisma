@@ -103,6 +103,15 @@ model Company {
   slug        String   @unique
   legalName   String?
   website     String?
+  // Real, printed contact and registration details — the exact
+  // information a genuine company letterhead or receipt carries, so
+  // a real printable document never has to fall back to placeholder
+  // text. All optional: filled in as the real business actually
+  // provides them, never invented.
+  hotline     String?
+  hqAddress   String?
+  pmb         String?
+  rcNumber    String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
