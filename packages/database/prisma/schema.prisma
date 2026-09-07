@@ -108,9 +108,15 @@ model Company {
   // a real printable document never has to fall back to placeholder
   // text. All optional: filled in as the real business actually
   // provides them, never invented.
-  hotline     String?
+  //
+  // A real business commonly has more than one real hotline — a
+  // native Postgres string array (not a separate table) is the
+  // right shape here: every entry is just the same one real kind of
+  // fact (a phone number), with no extra metadata worth its own
+  // table, printed in the order they're kept in.
+  hotlines    String[] @default([])
   hqAddress   String?
-  pmb         String?
+  poBox       String?
   rcNumber    String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
