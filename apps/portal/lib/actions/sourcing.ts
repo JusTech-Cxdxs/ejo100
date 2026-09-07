@@ -335,8 +335,23 @@ export async function getPartRequestSlip(id: string) {
           // batches and how much of each — so the released document
           // itself becomes a genuine traceable record, not just a
           // quantity.
-          issuedSerials: { select: { serialNumber: true } },
-          batchConsumptions: { select: { quantityTaken: true, batch: { select: { batchNumber: true } } } },
+          issuedSerials: {
+            select: {
+              serialNumber: true,
+              goodsReceiptLine: { select: { goodsReceipt: { select: { id: true, referenceNumber: true } } } },
+            },
+          },
+          batchConsumptions: {
+            select: {
+              quantityTaken: true,
+              batch: {
+                select: {
+                  batchNumber: true,
+                  goodsReceiptLine: { select: { goodsReceipt: { select: { id: true, referenceNumber: true } } } },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -792,6 +807,14 @@ export async function releasePartRequestSlip(
             data: { status: 'ISSUED', issuedToSlipLineId: line.id },
           });
         }
+      } else {
+        // QUANTITY-tracked — no batch or serial records exist to draw
+        // from, only the aggregate already decremented above, but the
+        // same real traceability still matters here: a permanent
+        // record of exactly which request took how much, so a later
+        // trace isn't limited to just "some of this Part left the
+        // store at some point."
+        await tx.partQuantityConsumption.create({ data: { partId: line.partId, slipLineId: line.id, quantityTaken: qty } });
       }
 
       await tx.partRequestSlipLine.update({ where: { id: line.id }, data: { quantityReleased: qty } });

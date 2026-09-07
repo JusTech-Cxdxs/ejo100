@@ -1109,7 +1109,7 @@ export async function getPart(id: string) {
       batches: {
         orderBy: { receivedAt: 'asc' },
         include: {
-          goodsReceiptLine: { select: { unitCost: true } },
+          goodsReceiptLine: { select: { unitCost: true, goodsReceipt: { select: { id: true, referenceNumber: true } } } },
           // Every real draw against this batch — who it actually went
           // to, via which real request — the direct answer to "which
           // customer got stock from this delivery" for a warranty or
@@ -1139,7 +1139,7 @@ export async function getPart(id: string) {
       serials: {
         orderBy: { receivedAt: 'asc' },
         include: {
-          goodsReceiptLine: { select: { unitCost: true, goodsReceipt: { select: { referenceNumber: true } } } },
+          goodsReceiptLine: { select: { unitCost: true, goodsReceipt: { select: { id: true, referenceNumber: true } } } },
           // Exactly which real request this specific physical unit
           // was issued out against — the direct answer to "who has
           // this serial" for a warranty trace.
@@ -1167,7 +1167,27 @@ export async function getPart(id: string) {
       // The most recent one (index 0, since this is already sorted
       // newest-first) is still what the Selling Price Calculator's
       // own "Purchase Details" uses, exactly as before.
-      goodsReceiptLines: { orderBy: { goodsReceipt: { receivedAt: 'desc' } }, include: { goodsReceipt: { select: { referenceNumber: true } } } },
+      goodsReceiptLines: { orderBy: { goodsReceipt: { receivedAt: 'desc' } }, include: { goodsReceipt: { select: { id: true, referenceNumber: true, receivedAt: true } } } },
+      // A QUANTITY-tracked Part's own real "who took what" trail —
+      // the same real answer batches/serials give above, for the one
+      // tracking type that otherwise has no per-delivery structure at
+      // all to hang it on.
+      quantityConsumptions: {
+        orderBy: { consumedAt: 'desc' },
+        include: {
+          slipLine: {
+            select: {
+              slip: {
+                select: {
+                  id: true,
+                  referenceNumber: true,
+                  jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 }
