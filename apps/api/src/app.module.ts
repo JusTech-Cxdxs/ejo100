@@ -7,7 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
-import { CompaniesModule } from './modules/companies/companies.module';
+import { OrganisationsModule } from './modules/organisations/organisations.module';
 import { BusinessUnitsModule } from './modules/business-units/business-units.module';
 import { CountriesModule } from './modules/countries/countries.module';
 import { StatesModule } from './modules/states/states.module';
@@ -40,7 +40,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     PermissionsModule,
 
     // Organization hierarchy
-    CompaniesModule,
+    OrganisationsModule,
     BusinessUnitsModule,
     CountriesModule,
     StatesModule,
