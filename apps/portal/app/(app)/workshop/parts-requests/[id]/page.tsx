@@ -175,9 +175,27 @@ export default async function PartRequestSlipDetailPage({
                     {line.estimateLineItem?.amount !== null && line.estimateLineItem?.amount !== undefined ? formatNaira(Number(line.estimateLineItem.amount)) : '—'}
                   </td>
                   <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)] print:hidden">
-                    {line.quantityReleased !== null
-                      ? `Released: ${Number(line.quantityReleased)} ${pluralizeWord(Number(line.quantityReleased), line.part.baseUnitOfMeasure)}`
-                      : 'Pending'}
+                    {line.quantityReleased !== null ? (
+                      <>
+                        Released: {Number(line.quantityReleased)} {pluralizeWord(Number(line.quantityReleased), line.part.baseUnitOfMeasure)}
+                        {line.issuedSerials.length > 0 ? (
+                          <>
+                            <br />
+                            Serial{line.issuedSerials.length === 1 ? '' : 's'}: {line.issuedSerials.map((s: (typeof line.issuedSerials)[number]) => s.serialNumber).join(', ')}
+                          </>
+                        ) : null}
+                        {line.batchConsumptions.length > 0 ? (
+                          <>
+                            <br />
+                            From: {line.batchConsumptions
+                              .map((c: (typeof line.batchConsumptions)[number]) => `${c.batch.batchNumber} (${Number(c.quantityTaken)} ${pluralizeWord(Number(c.quantityTaken), line.part.baseUnitOfMeasure)})`)
+                              .join(', ')}
+                          </>
+                        ) : null}
+                      </>
+                    ) : (
+                      'Pending'
+                    )}
                   </td>
                 </tr>
               ))}
