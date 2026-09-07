@@ -6,7 +6,7 @@ import { PageLoading } from '@/components/PageLoading';
  * boundary, showing this the moment a navigation starts and swapping
  * to the real page the instant its data is ready — no per-page wiring
  * needed. Placed at this level (not per-route) so ONE file covers every
- * sidebar link at once: Dashboard, Company, Business Units, Countries,
+ * sidebar link at once: Dashboard, Organisation, Business Units, Countries,
  * States, Cities, Branches, Departments, Teams, Users, Roles,
  * Permissions, all of Workshop, Notifications, Audit Logs, and
  * everything else under this layout — directly addressing "click a
