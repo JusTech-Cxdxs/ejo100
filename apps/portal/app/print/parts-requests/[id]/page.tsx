@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getPartRequestSlip } from '@/lib/actions/sourcing';
-import { getCompany } from '@/lib/actions/company';
+import { getOrganisation } from '@/lib/actions/organisation';
 import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/print/DocumentHeader';
 import { PrintOnLoad } from '@/components/print/PrintOnLoad';
 import { pluralizeWord, pluralize } from '@/lib/utils/pluralize';
@@ -41,8 +41,8 @@ export default async function PrintPartRequestSlipPage({
   const { variant } = await searchParams;
   const isCompanyVariant = variant !== 'client';
 
-  const [slip, company] = await Promise.all([getPartRequestSlip(id), getCompany()]);
-  if (!slip || !company) notFound();
+  const [slip, organisation] = await Promise.all([getPartRequestSlip(id), getOrganisation()]);
+  if (!slip || !organisation) notFound();
   if (slip.status !== 'RELEASED') notFound();
 
   const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
@@ -54,7 +54,7 @@ export default async function PrintPartRequestSlipPage({
     <div style={{ maxWidth: '780px', margin: '0 auto', padding: '32px 24px', fontFamily: 'Arial, Helvetica, sans-serif', color: '#0F172A' }}>
       <PrintOnLoad />
       <DocumentHeader
-        company={company}
+        organisation={organisation}
         logoUrl={logoUrl}
         documentTitle={isCompanyVariant ? 'Store Parts Request' : 'Parts Collection Receipt'}
         referenceNumber={slip.referenceNumber}
@@ -167,7 +167,7 @@ export default async function PrintPartRequestSlipPage({
         collectorName={collectorName}
       />
 
-      <DocumentFooter company={company} />
+      <DocumentFooter organisation={organisation} />
     </div>
   );
 }
