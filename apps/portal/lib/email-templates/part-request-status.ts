@@ -1,5 +1,6 @@
 import { renderEmailLayout, escapeHtml } from './layout';
 import { pluralize } from '@/lib/utils/pluralize';
+import { formatDateOnly } from '@/lib/utils/format-date';
 
 type VehicleInfo = {
   make: string | null;
@@ -74,7 +75,7 @@ export function renderPartRequestApprovalNeededEmail(opts: PartRequestApprovalNe
         </td>
       </tr>
     </table>
-    <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748B;">${escapeHtml(pluralize(lines.length, 'Part'))} requested, on ${requestedAt.toLocaleDateString('en-NG')}:</p>
+    <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748B;">${escapeHtml(pluralize(lines.length, 'Part'))} requested, on ${formatDateOnly(requestedAt)}:</p>
     <ul style="margin: 0 0 16px 0; padding-left: 20px;">${lineItemsList(lines)}</ul>
   `;
 
