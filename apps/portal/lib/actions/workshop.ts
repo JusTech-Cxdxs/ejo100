@@ -351,7 +351,7 @@ export async function listEligibleSupervisorsForJobCard(jobCardId: string): Prom
   return listEligibleSupervisorsForDepartmentId(jobCard.departmentId);
 }
 
-/** Real Company/Branch/Department names for the branded email layout's
+/** Real Organisation/Branch/Department names for the branded email layout's
  * organizational context line — e.g. "Kewalram Nigeria · Isolo Branch ·
  * Workshop". Kept separate from getWorkshopBranchId() above rather than
  * changing its return shape, since that function has another caller
@@ -373,13 +373,13 @@ async function getWorkshopOrgContext(departmentNameOverride?: string): Promise<{
       branch: {
         select: {
           name: true,
-          businessUnit: { select: { company: { select: { name: true } } } },
+          businessUnit: { select: { organisation: { select: { name: true } } } },
         },
       },
     },
   });
   return {
-    companyName: department.branch.businessUnit.company.name,
+    companyName: department.branch.businessUnit.organisation.name,
     branchName: department.branch.name,
     departmentName: departmentNameOverride ?? department.name,
   };
@@ -500,12 +500,12 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
   const branchId = await getWorkshopBranchId();
   const branch = await prisma.branch.findUniqueOrThrow({
     where: { id: branchId },
-    select: { businessUnit: { select: { companyId: true } } },
+    select: { businessUnit: { select: { organisationId: true } } },
   });
 
   const customer = await prisma.customer.create({
     data: {
-      companyId: branch.businessUnit.companyId,
+      organisationId: branch.businessUnit.organisationId,
       customerType: input.customerType,
       fullName: input.fullName.trim(),
       address,
@@ -2406,7 +2406,7 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
           branchId: true,
           jobNumber: true,
           customer: { select: { fullName: true } },
-          branch: { select: { name: true, businessUnit: { select: { company: { select: { name: true } } } } } },
+          branch: { select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } } },
         },
       },
     },
@@ -2455,7 +2455,7 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
     const lineItems = await prisma.estimateLineItem.findMany({ where: { estimateId: estimate.id }, select: { amount: true } });
     const total = lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const companyName = estimate.jobCard.branch.businessUnit.company.name;
+    const companyName = estimate.jobCard.branch.businessUnit.organisation.name;
     const branchName = estimate.jobCard.branch.name;
     for (const manager of managers.supervisors) {
       await sendEmail(
@@ -2502,7 +2502,7 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
           jobNumber: true,
           createdBy: { select: { fullName: true, email: true } },
           customer: { select: { fullName: true } },
-          branch: { select: { name: true, businessUnit: { select: { company: { select: { name: true } } } } } },
+          branch: { select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } } },
         },
       },
     },
@@ -2549,7 +2549,7 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
         totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
         logoUrl: `${portalUrl}/images/logo/logo.png`,
-        companyName: estimate.jobCard.branch.businessUnit.company.name,
+        companyName: estimate.jobCard.branch.businessUnit.organisation.name,
         branchName: estimate.jobCard.branch.name,
       }),
     );
@@ -2577,7 +2577,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
           jobNumber: true,
           vehicle: { select: { make: true, model: true, plateNumber: true } },
           customer: { select: { fullName: true, email: true } },
-          branch: { select: { name: true, businessUnit: { select: { company: { select: { name: true } } } } } },
+          branch: { select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } } },
         },
       },
       lineItems: { orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true, unitOfMeasure: true } },
@@ -2668,7 +2668,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
         paymentRemarkSuggestion,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
         logoUrl: `${websiteUrl}/images/logo/logo.png`,
-        companyName: estimate.jobCard.branch.businessUnit.company.name,
+        companyName: estimate.jobCard.branch.businessUnit.organisation.name,
         branchName: estimate.jobCard.branch.name,
       }),
     );

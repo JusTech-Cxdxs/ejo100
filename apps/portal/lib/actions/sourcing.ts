@@ -35,9 +35,18 @@ import { renderExternalProcurementApprovalNeededEmail, renderExternalProcurement
 async function getSourcingOrgContext(branchId: string, departmentName: string): Promise<{ companyName: string; branchName: string; departmentName: string }> {
   const branch = await prisma.branch.findUniqueOrThrow({
     where: { id: branchId },
-    select: { name: true, businessUnit: { select: { company: { select: { name: true } } } } },
+    select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } },
   });
-  return { companyName: branch.businessUnit.company.name, branchName: branch.name, departmentName };
+  // The returned field is still named companyName (not renamed to
+  // organisationName) deliberately — every one of the 32 email
+  // templates across this project already expects a `companyName`
+  // parameter, and renaming this one return value's field name would
+  // either break all of them or force a 32-file ripple for a purely
+  // internal parameter name that's never shown as literal text to
+  // anyone. Only the real underlying bug — this query still using the
+  // Prisma relation's old name (`company`, now `organisation` after
+  // the schema rename) — needed fixing here.
+  return { companyName: branch.businessUnit.organisation.name, branchName: branch.name, departmentName };
 }
 
 /** The one real query every email this whole request chain sends

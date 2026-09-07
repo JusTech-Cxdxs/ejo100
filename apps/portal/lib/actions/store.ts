@@ -38,13 +38,13 @@ async function getStoreOrgContext(): Promise<{ companyName: string; branchName: 
       branch: {
         select: {
           name: true,
-          businessUnit: { select: { company: { select: { name: true } } } },
+          businessUnit: { select: { organisation: { select: { name: true } } } },
         },
       },
     },
   });
   return {
-    companyName: department.branch.businessUnit.company.name,
+    companyName: department.branch.businessUnit.organisation.name,
     branchName: department.branch.name,
     departmentName: department.name,
   };
