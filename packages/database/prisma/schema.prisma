@@ -40,34 +40,34 @@ model PlatformModule {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
-  companyModules CompanyModule[]
+  organisationModules OrganisationModule[]
 
   @@map("platform_modules")
 }
 
-// Per-company override of a module's status (a module can be COMING_SOON
-// platform-wide but LIVE for one company once that company's build lands).
-model CompanyModule {
+// Per-organisation override of a module's status (a module can be COMING_SOON
+// platform-wide but LIVE for one organisation once that organisation's build lands).
+model OrganisationModule {
   id        String       @id @default(cuid())
-  companyId String
+  organisationId String
   moduleId  String
   status    ModuleStatus
-  company   Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  organisation Organisation        @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   module    PlatformModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
 
-  @@unique([companyId, moduleId])
-  @@map("company_modules")
+  @@unique([organisationId, moduleId])
+  @@map("organisation_modules")
 }
 
 // ----------------------------------------------------------------------------
-// BRANDING — the dynamic branding engine. One row per company; every UI
+// BRANDING — the dynamic branding engine. One row per organisation; every UI
 // surface (portal, PDF templates, emails) reads colours from here instead of
 // hardcoding them. Public website branding is also sourced from this model.
 // ----------------------------------------------------------------------------
 model Branding {
   id              String   @id @default(cuid())
-  companyId       String   @unique
-  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  organisationId       String   @unique
+  organisation Organisation  @relation(fields: [organisationId], references: [id], onDelete: Cascade)
 
   logoUrl         String?
   logoDarkUrl     String?
@@ -91,20 +91,20 @@ model Branding {
 
 // ----------------------------------------------------------------------------
 // ORGANIZATION HIERARCHY
-// Platform -> Company -> Business Unit -> Country -> State -> City -> Branch
+// Platform -> Organisation -> Business Unit -> Country -> State -> City -> Branch
 //   -> Department -> Team -> User
 // Every level is a normal configurable record — nothing here is hardcoded
 // to Kewalram; Kewalram Nigeria is simply the first row seeded into it.
 // ----------------------------------------------------------------------------
 
-model Company {
+model Organisation {
   id          String   @id @default(cuid())
   name        String
   slug        String   @unique
   legalName   String?
   website     String?
   // Real, printed contact and registration details — the exact
-  // information a genuine company letterhead or receipt carries, so
+  // information a genuine organisation letterhead or receipt carries, so
   // a real printable document never has to fall back to placeholder
   // text. All optional: filled in as the real business actually
   // provides them, never invented.
@@ -124,28 +124,28 @@ model Company {
 
   branding      Branding?
   businessUnits BusinessUnit[]
-  companyModules CompanyModule[]
+  organisationModules OrganisationModule[]
   users         User[]
   roles         Role[]
   customers     Customer[]
 
-  @@map("companies")
+  @@map("organisations")
 }
 
 model BusinessUnit {
   id        String   @id @default(cuid())
-  companyId String
+  organisationId String
   name      String   // e.g. "Automobile Division", "Afprint", "Sunola Foods"
   slug      String
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  organisation Organisation    @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   countries CountryLink[]
   branches  Branch[]
 
-  @@unique([companyId, slug])
+  @@unique([organisationId, slug])
   @@map("business_units")
 }
 
@@ -281,9 +281,9 @@ model User {
   id            String      @id @default(cuid())
   // Nullable: Better Auth creates this row on signup before an
   // administrator has necessarily assigned org placement (see
-  // apps/portal/lib/auth.ts). A user with no companyId yet is invisible
+  // apps/portal/lib/auth.ts). A user with no organisationId yet is invisible
   // everywhere except account settings until an admin assigns one.
-  companyId     String?
+  organisationId     String?
   branchId      String?
   departmentId  String?
   teamId        String?
@@ -304,7 +304,7 @@ model User {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  company    Company?    @relation(fields: [companyId], references: [id])
+  organisation Organisation?    @relation(fields: [organisationId], references: [id])
   branch     Branch?     @relation(fields: [branchId], references: [id])
   department Department? @relation(fields: [departmentId], references: [id])
   team       Team?       @relation(fields: [teamId], references: [id])
@@ -396,7 +396,7 @@ model EmployeeDocument {
 
 model Role {
   id          String   @id @default(cuid())
-  companyId   String
+  organisationId   String
   name        String   // e.g. "Technician", "Workshop Supervisor", "Administrator"
   slug        String
   description String?
@@ -408,11 +408,11 @@ model Role {
   // this to ordinary admin roles.
   isSuperAdmin Boolean @default(false)
 
-  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  organisation Organisation          @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   users       UserRole[]
   permissions RolePermission[]
 
-  @@unique([companyId, slug])
+  @@unique([organisationId, slug])
   @@map("roles")
 }
 
@@ -455,12 +455,12 @@ model RolePermission {
 // structurally cannot reach an employee-only route.
 // ----------------------------------------------------------------------------
 
-// Whether a customer is an individual person or a registered company —
+// Whether a customer is an individual person or a registered organisation —
 // real evidence for this distinction: an actual Kewalram paper estimate
-// form shows a company customer ("F Trading Nig. Ltd.") alongside
+// form shows a organisation customer ("F Trading Nig. Ltd.") alongside
 // individual customers. `fullName` on Customer below covers either case
-// as a single display name (a person's full name, or a company's name)
-// — kept as one field rather than split into separate person/company
+// as a single display name (a person's full name, or a organisation's name)
+// — kept as one field rather than split into separate person/organisation
 // name fields, since that's what the paper form itself does.
 enum CustomerType {
   INDIVIDUAL
@@ -469,7 +469,7 @@ enum CustomerType {
 
 model Customer {
   id            String       @id @default(cuid())
-  companyId     String       // which company this customer belongs to (Kewalram, etc.)
+  organisationId     String       // which organisation this customer belongs to (Kewalram, etc.)
 
   customerType  CustomerType @default(INDIVIDUAL)
   fullName      String
@@ -498,7 +498,7 @@ model Customer {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  company    Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  organisation Organisation            @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   sessions   CustomerSession[]
   accounts   CustomerAccount[]
 
@@ -512,7 +512,7 @@ model Customer {
 }
 
 // Optional: when the customer is a business (fleet account) rather than
-// an individual — e.g. a company that brings multiple vehicles in.
+// an individual — e.g. a organisation that brings multiple vehicles in.
 model CustomerCompany {
   id         String   @id @default(cuid())
   customerId String   @unique
@@ -746,7 +746,7 @@ model JobCardComplaint {
 // prices can be left blank at this stage, since real workshop practice
 // is that different people fill in their own portion at different
 // times (technician prices external/outside work, Store prices parts,
-// supervisor/company sets labour and sundry). SUBMITTED once the
+// supervisor/organisation sets labour and sundry). SUBMITTED once the
 // technician marks it done and sends it to the supervisor to validate
 // — every line must have a price by this point, enforced at the
 // transition, not before. APPROVED once the supervisor signs off.
@@ -852,21 +852,21 @@ model Estimate {
 //                   a relabeling of it. Plural by nature: one Job Card
 //                   can need several of these at once, so unlike
 //                   SUNDRY there is no one-line cap here. Priced by
-//                   the supervisor/company, never the technician.
-//   LABOUR        — the company's own labour/time charge for a
+//                   the supervisor/organisation, never the technician.
+//   LABOUR        — the organisation's own labour/time charge for a
 //                   specific piece of work — e.g. "Labour for
 //                   Service", "Labour for Brake" — confirmed by an
 //                   actual Kewalram paper estimate, which shows both
 //                   as separate lines on the same job. Also plural by
 //                   nature, same as INTERNAL_JOB, no one-line cap.
-//                   Priced by the supervisor/company.
+//                   Priced by the supervisor/organisation.
 //   SUNDRY        — miscellaneous small charges, naturally a single
 //                   aggregate rather than several distinct items — a
 //                   Job Card may only ever have ONE Sundry line
 //                   (enforced in code, not the schema — a second
 //                   attempt is rejected with a clear message pointing
 //                   at editing the existing one instead). Priced by
-//                   the supervisor/company.
+//                   the supervisor/organisation.
 // `enteredById` matters more here than usual precisely because these
 // types have different people accountable for getting them right.
 enum EstimateLineItemType {
