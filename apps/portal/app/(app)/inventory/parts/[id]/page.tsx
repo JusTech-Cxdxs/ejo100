@@ -166,7 +166,106 @@ export default async function PartDetailPage({
                 </div>
               )}
             </div>
-          ) : null}
+          ) : part.trackingType === 'SERIALIZED' ? (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Serial Numbers</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                Every real unit ever received, individually tracked — Profit is an estimate using the Part&apos;s current
+                Selling Price for each unit already issued out; a unit still In Stock has no profit yet since it
+                hasn&apos;t sold.
+              </p>
+              {part.serials.length === 0 ? (
+                <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No serial numbers recorded yet.</p>
+              ) : (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
+                        <th className="px-3 py-2">Serial Number</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Source GRN</th>
+                        <th className="px-3 py-2">Profit (Est.)</th>
+                        <th className="px-3 py-2">Received At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {part.serials.map((serial: (typeof part.serials)[number]) => {
+                        const unitCostForSerial = serial.goodsReceiptLine?.unitCost !== null && serial.goodsReceiptLine?.unitCost !== undefined ? Number(serial.goodsReceiptLine.unitCost) : null;
+                        const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
+                        const isIssued = serial.status !== 'IN_STOCK';
+                        const profit = isIssued && sellingPrice !== null && unitCostForSerial !== null ? sellingPrice - unitCostForSerial : null;
+                        return (
+                          <tr key={serial.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                            <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{serial.serialNumber}</td>
+                            <td className="px-3 py-2">
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  isIssued ? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]' : 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
+                                }`}
+                              >
+                                {isIssued ? 'Issued' : 'In Stock'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{serial.goodsReceiptLine?.goodsReceipt.referenceNumber ?? '—'}</td>
+                            <td className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
+                              {profit !== null ? formatNaira(profit) : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(serial.receivedAt))}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Stock Summary</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                This Part is tracked as a running total, not by individual batch or serial — Revenue and Profit are
+                estimates using the Part&apos;s current Selling Price against the average real cost across every
+                delivery received so far.
+              </p>
+              {(() => {
+                const totalReceived = part.goodsReceiptLines.reduce((sum: number, l: (typeof part.goodsReceiptLines)[number]) => sum + Number(l.quantityInBaseUnit), 0);
+                const onHand = part.stock ? Number(part.stock.quantityOnHand) : 0;
+                const soldToDate = Math.max(0, totalReceived - onHand);
+                const totalCostReceived = part.goodsReceiptLines.reduce((sum: number, l: (typeof part.goodsReceiptLines)[number]) => sum + (l.totalCost !== null ? Number(l.totalCost) : 0), 0);
+                const averageUnitCost = totalReceived > 0 ? totalCostReceived / totalReceived : null;
+                const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
+                const revenue = sellingPrice !== null ? soldToDate * sellingPrice : null;
+                const cogs = averageUnitCost !== null ? soldToDate * averageUnitCost : null;
+                const profit = revenue !== null && cogs !== null ? revenue - cogs : null;
+                return (
+                  <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <div>
+                      <dt className="text-xs text-[var(--ejo-text-muted)]">Received to Date</dt>
+                      <dd className="text-sm font-medium text-[var(--ejo-text)]">
+                        {formatQty(totalReceived)} {pluralizeWord(totalReceived, part.baseUnitOfMeasure)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-[var(--ejo-text-muted)]">Sold to Date (Est.)</dt>
+                      <dd className="text-sm font-medium text-[var(--ejo-text)]">
+                        {formatQty(soldToDate)} {pluralizeWord(soldToDate, part.baseUnitOfMeasure)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-[var(--ejo-text-muted)]">Revenue (Est.)</dt>
+                      <dd className="text-sm font-medium text-[var(--ejo-text)]">{revenue !== null ? formatNaira(revenue) : '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-[var(--ejo-text-muted)]">Profit (Est.)</dt>
+                      <dd className={`text-sm font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
+                        {profit !== null ? formatNaira(profit) : '—'}
+                      </dd>
+                    </div>
+                  </dl>
+                );
+              })()}
+            </div>
+          )}
 
           {part.trackingType === 'SERIALIZED' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
