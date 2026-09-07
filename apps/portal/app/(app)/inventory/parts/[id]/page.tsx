@@ -163,6 +163,28 @@ export default async function PartDetailPage({
                       })}
                     </tbody>
                   </table>
+                  {part.batches.some((b: (typeof part.batches)[number]) => b.consumptions.length > 0) ? (
+                    <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                      <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">
+                        Sold To — real trace of every real draw against a batch, for warranty or quality-defect reference
+                      </p>
+                      <div className="space-y-1.5">
+                        {part.batches
+                          .flatMap((batch: (typeof part.batches)[number]) => batch.consumptions.map((c: (typeof batch.consumptions)[number]) => ({ batch, c })))
+                          .map(({ batch, c }: { batch: (typeof part.batches)[number]; c: (typeof part.batches)[number]['consumptions'][number] }) => (
+                            <div key={c.id} className="flex items-center justify-between text-xs">
+                              <span className="text-[var(--ejo-text)]">
+                                {formatQty(Number(c.quantityTaken))} {pluralizeWord(Number(c.quantityTaken), part.baseUnitOfMeasure)} from{' '}
+                                <span className="font-medium">{batch.batchNumber}</span> — {c.slipLine.slip.jobCard.customer.fullName}
+                              </span>
+                              <LoadingLink href={`/workshop/parts-requests/${c.slipLine.slip.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                                {c.slipLine.slip.referenceNumber} · {c.slipLine.slip.jobCard.jobNumber}
+                              </LoadingLink>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -183,6 +205,7 @@ export default async function PartDetailPage({
                       <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
                         <th className="px-3 py-2">Serial Number</th>
                         <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Issued To</th>
                         <th className="px-3 py-2">Source GRN</th>
                         <th className="px-3 py-2">Profit (Est.)</th>
                         <th className="px-3 py-2">Received At</th>
@@ -205,6 +228,15 @@ export default async function PartDetailPage({
                               >
                                 {isIssued ? 'Issued' : 'In Stock'}
                               </span>
+                            </td>
+                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                              {serial.issuedToSlipLine ? (
+                                <LoadingLink href={`/workshop/parts-requests/${serial.issuedToSlipLine.slip.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                                  {serial.issuedToSlipLine.slip.jobCard.customer.fullName} — {serial.issuedToSlipLine.slip.jobCard.jobNumber}
+                                </LoadingLink>
+                              ) : (
+                                '—'
+                              )}
                             </td>
                             <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{serial.goodsReceiptLine?.goodsReceipt.referenceNumber ?? '—'}</td>
                             <td className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
@@ -270,20 +302,31 @@ export default async function PartDetailPage({
           {part.trackingType === 'SERIALIZED' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Units In Stock</h2>
-              {part.serials.length === 0 ? (
-                <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No units currently in stock.</p>
-              ) : (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {part.serials.map((serial: (typeof part.serials)[number]) => (
-                    <span
-                      key={serial.id}
-                      className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)]"
-                    >
-                      {serial.serialNumber}
-                    </span>
-                  ))}
-                </div>
-              )}
+              {(() => {
+                // A real bug fixed here: getPart()'s own serials query
+                // was widened to fetch every unit ever received (for
+                // the fuller Serial Numbers history table below), not
+                // just the ones still in stock — this section still
+                // needs its own explicit filter now that the upstream
+                // query no longer does it, or an already-issued unit
+                // would keep showing here as if it were still
+                // available to hand out again.
+                const inStockSerials = part.serials.filter((s: (typeof part.serials)[number]) => s.status === 'IN_STOCK');
+                return inStockSerials.length === 0 ? (
+                  <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No units currently in stock.</p>
+                ) : (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {inStockSerials.map((serial: (typeof part.serials)[number]) => (
+                      <span
+                        key={serial.id}
+                        className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)]"
+                      >
+                        {serial.serialNumber}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           ) : null}
 
