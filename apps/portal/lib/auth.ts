@@ -60,7 +60,7 @@ export const auth = betterAuth({
   user: {
     additionalFields: {
       accountType: { type: 'string', required: false, defaultValue: 'EMPLOYEE' },
-      companyId: { type: 'string', required: false },
+      organisationId: { type: 'string', required: false },
     },
   },
 

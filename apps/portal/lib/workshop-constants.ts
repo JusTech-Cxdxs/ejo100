@@ -32,12 +32,12 @@ export const COMMON_ESTIMATE_LINE_DESCRIPTIONS = [
   'Labour for Brake',
 ];
 
-/** Company bank details shown to customers for the deposit payment —
+/** Organisation bank details shown to customers for the deposit payment —
  * a real placeholder, not a guessed value: the account number is
- * deliberately "XXX" until the real one is supplied. No company-wide
- * settings model exists yet to store this properly (same standing gap
- * as the Users/Roles admin pages elsewhere in this project); once one
- * does, this moves there instead of living as a hardcoded constant.
+ * deliberately "XXX" until the real one is supplied. The real
+ * Organisation settings record (see /organisation) doesn't carry bank
+ * details yet — once it does, this moves there instead of living as a
+ * hardcoded constant.
  * Kept in one place so it's trivial to update everywhere it's used
  * once the real account number is known. */
 export const COMPANY_BANK_DETAILS = {

@@ -2,7 +2,7 @@ import type { PlatformModuleDescriptor } from '@ejo/types';
 
 /**
  * MODULE REGISTRY (Phase 1 client-side mirror of packages/database's
- * PlatformModule / CompanyModule tables).
+ * PlatformModule / OrganisationModule tables).
  *
  * This is the single source of truth the sidebar AND route guards read
  * from. To "activate" a module for a client, flip its status here (or,
@@ -11,7 +11,7 @@ import type { PlatformModuleDescriptor } from '@ejo/types';
  */
 export const platformModules: PlatformModuleDescriptor[] = [
   { key: 'dashboard', name: 'Dashboard', status: 'LIVE', href: '/dashboard', icon: 'layout-dashboard' },
-  { key: 'company', name: 'Company', status: 'LIVE', href: '/company', icon: 'building' },
+  { key: 'organisation', name: 'Organisation', status: 'LIVE', href: '/organisation', icon: 'building' },
   { key: 'business-units', name: 'Business Units', status: 'LIVE', href: '/business-units', icon: 'briefcase' },
   { key: 'countries', name: 'Countries', status: 'LIVE', href: '/countries', icon: 'globe' },
   { key: 'states', name: 'States', status: 'LIVE', href: '/states', icon: 'map' },
