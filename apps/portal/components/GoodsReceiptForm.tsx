@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { SubmitButton } from './SubmitButton';
 import { FormPendingOverlay } from './FormPendingOverlay';
 import { SearchableSelect, type SearchableOption } from './SearchableSelect';
+import { SerialNumberInput } from './SerialNumberInput';
 import { pluralizeWord } from '@/lib/utils/pluralize';
 
 type PartOption = {
@@ -98,6 +99,14 @@ export function GoodsReceiptForm({
   function updateSerialRow(key: string, value: string) {
     setSerials((prev) => prev.map((r) => (r.key === key ? { ...r, value } : r)));
   }
+
+  // Tracks whether each serial row currently has a real problem (a
+  // duplicate within this same form, or one already recorded
+  // elsewhere in the catalog) — submission stays blocked while any
+  // row does, the same "don't allow recording that" the real
+  // production system needs, not just a warning shown after the fact.
+  const [serialValidity, setSerialValidity] = useState<Record<string, boolean>>({});
+  const hasInvalidSerial = Object.values(serialValidity).some(Boolean);
 
   const filledSerialCount = serials.filter((r) => r.value.trim()).length;
   const parsedQuantity = Number(quantity);
@@ -254,13 +263,12 @@ export function GoodsReceiptForm({
             {serials.map((row, i) => (
               <div key={row.key} className="flex items-center gap-2">
                 <span className="w-14 shrink-0 text-xs font-medium text-[var(--ejo-text-muted)]">Serial {i + 1}</span>
-                <input
-                  name="serialNumbers"
-                  required={i === 0}
+                <SerialNumberInput
+                  index={i}
                   value={row.value}
-                  onChange={(e) => updateSerialRow(row.key, e.target.value)}
-                  placeholder="e.g. the DOT code or stamped serial"
-                  className="flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                  otherValues={serials.filter((r) => r.key !== row.key).map((r) => r.value)}
+                  onChange={(value) => updateSerialRow(row.key, value)}
+                  onValidityChange={(hasError) => setSerialValidity((prev) => ({ ...prev, [row.key]: hasError }))}
                 />
                 {serials.length > 1 ? (
                   <button
@@ -299,11 +307,25 @@ export function GoodsReceiptForm({
         />
       </div>
 
-      <SubmitButton
-        label="Record Goods Receipt"
-        pendingLabel="Recording…"
-        className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      />
+      {hasInvalidSerial ? (
+        <p className="text-xs text-[var(--ejo-error)]">Fix the serial number problem above before this can be recorded.</p>
+      ) : null}
+
+      {hasInvalidSerial ? (
+        <button
+          type="button"
+          disabled
+          className="w-full cursor-not-allowed rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white opacity-50"
+        >
+          Record Goods Receipt
+        </button>
+      ) : (
+        <SubmitButton
+          label="Record Goods Receipt"
+          pendingLabel="Recording…"
+          className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        />
+      )}
     </form>
   );
 }
