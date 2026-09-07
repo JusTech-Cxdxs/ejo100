@@ -1,18 +1,19 @@
 import { notFound } from 'next/navigation';
-import { getExternalProcurementRequest } from '@/lib/actions/sourcing';
+import { getExternalProcurementRequest, getExternalProcurementRequestAuditTrail } from '@/lib/actions/sourcing';
 import { listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import {
   approveExternalProcurementRequestFormAction,
   disburseExternalProcurementRequestFormAction,
   rejectExternalProcurementRequestFormAction,
   addExternalProcurementSupplementaryLineFormAction,
-  removeExternalProcurementSupplementaryLineFormAction,
   sendExternalProcurementToManagerFormAction,
 } from '@/lib/actions/sourcing-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { SupplementaryLineRow } from '@/components/SupplementaryLineRow';
+import { pluralizeWord } from '@/lib/utils/pluralize';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_FINANCE_REVIEW: 'Awaiting Finance review',
@@ -20,6 +21,11 @@ const STATUS_LABEL: Record<string, string> = {
   APPROVED: 'Approved — awaiting disbursement',
   DISBURSED: 'Disbursed',
   REJECTED: 'Rejected',
+};
+
+const TYPE_LABEL: Record<string, string> = {
+  EXTERNAL_PART: 'External Part',
+  EXTERNAL_JOB: 'External Job',
 };
 
 function formatNaira(amount: number): string {
@@ -38,14 +44,21 @@ export default async function ExternalProcurementDetailPage({
   const request = await getExternalProcurementRequest(id);
   if (!request) notFound();
 
-  const [isMasterAdmin, viewerId, eligibleManagers, eligibleFinance] = await Promise.all([
+  const [isMasterAdmin, viewerId, eligibleManagers, eligibleFinance, auditTrail] = await Promise.all([
     currentUserIsMasterAdmin(),
     currentUserId(),
     listEligibleManagersForBranch(request.branchId),
     listEligibleFinanceOfficersForBranch(request.branchId),
+    getExternalProcurementRequestAuditTrail(id),
   ]);
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
+  // Every real move Finance has made on their own supplementary
+  // lines — added, edited, removed — shown right on the Timeline
+  // alongside the request's own bigger milestones, so a removed line
+  // (which no longer exists to display anywhere else) still has a
+  // real, visible record of what happened and when.
+  const supplementaryLineEvents = auditTrail.filter((e: (typeof auditTrail)[number]) => e.action.startsWith('external_procurement.supplementary_line_'));
 
   // The real running total as it stands right now — the technician's
   // own original figure plus every real supplementary line Finance has
@@ -172,9 +185,9 @@ export default async function ExternalProcurementDetailPage({
                   <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
                     <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{i + 1}</td>
                     <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{line.description}</td>
-                    <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{line.estimateLineItem?.partType?.name ?? '—'}</td>
+                    <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{line.estimateLineItem?.type ? (TYPE_LABEL[line.estimateLineItem.type] ?? line.estimateLineItem.type) : '—'}</td>
                     <td className="px-3 py-2 text-right text-[var(--ejo-text)]">
-                      {Number(line.quantity)} {line.unitOfMeasure ?? ''}
+                      {Number(line.quantity)} {line.unitOfMeasure ? pluralizeWord(Number(line.quantity), line.unitOfMeasure) : ''}
                     </td>
                     <td className="px-3 py-2 text-right text-[var(--ejo-text)]">{formatNaira(Number(line.amount))}</td>
                   </tr>
@@ -208,23 +221,15 @@ export default async function ExternalProcurementDetailPage({
               <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Finance&apos;s supplementary lines</p>
               <div className="space-y-1.5">
                 {request.supplementaryLines.map((line: (typeof request.supplementaryLines)[number]) => (
-                  <div key={line.id} className="flex items-center justify-between text-xs">
-                    <span className="text-[var(--ejo-text)]">
-                      {line.description} <span className="text-[var(--ejo-text-muted)]">— added by {line.addedBy.fullName}</span>
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-[var(--ejo-text)]">{formatNaira(Number(line.amount))}</span>
-                      {request.status === 'PENDING_FINANCE_REVIEW' && isEligibleFinance ? (
-                        <form action={removeExternalProcurementSupplementaryLineFormAction}>
-                          <input type="hidden" name="requestId" value={request.id} />
-                          <input type="hidden" name="lineId" value={line.id} />
-                          <button type="submit" className="text-[var(--ejo-error)] hover:underline">
-                            Remove
-                          </button>
-                        </form>
-                      ) : null}
-                    </div>
-                  </div>
+                  <SupplementaryLineRow
+                    key={`${line.id}-${line.description}-${line.amount.toString()}`}
+                    requestId={request.id}
+                    lineId={line.id}
+                    description={line.description}
+                    amount={Number(line.amount)}
+                    addedByName={line.addedBy.fullName}
+                    canEdit={request.status === 'PENDING_FINANCE_REVIEW' && isEligibleFinance}
+                  />
                 ))}
               </div>
             </div>
@@ -384,6 +389,28 @@ export default async function ExternalProcurementDetailPage({
               <dt className="text-xs text-[var(--ejo-text-muted)]">Requested</dt>
               <dd className="text-[var(--ejo-text)]">{request.requestedBy.fullName} · {new Date(request.createdAt).toLocaleString('en-NG')}</dd>
             </div>
+            {supplementaryLineEvents
+              .slice()
+              .reverse()
+              .map((event: (typeof supplementaryLineEvents)[number]) => {
+                const meta = event.metadata as { description?: string; amount?: number; from?: { description: string; amount: number }; to?: { description: string; amount: number } } | null;
+                const label =
+                  event.action === 'external_procurement.supplementary_line_added'
+                    ? 'Supplementary line added'
+                    : event.action === 'external_procurement.supplementary_line_edited'
+                      ? 'Supplementary line edited'
+                      : 'Supplementary line removed';
+                return (
+                  <div key={event.id}>
+                    <dt className="text-xs text-[var(--ejo-text-muted)]">{label}</dt>
+                    <dd className="text-[var(--ejo-text)]">
+                      {event.userName} · {new Date(event.createdAt).toLocaleString('en-NG')}
+                      {meta?.description ? <><br />{meta.description} — ₦{meta.amount?.toLocaleString('en-NG')}</> : null}
+                      {meta?.to ? <><br />{meta.to.description} — ₦{meta.to.amount.toLocaleString('en-NG')} (was {meta.from?.description} — ₦{meta.from?.amount.toLocaleString('en-NG')})</> : null}
+                    </dd>
+                  </div>
+                );
+              })}
             {request.financeReviewedBy ? (
               <div>
                 <dt className="text-xs text-[var(--ejo-text-muted)]">Sent to Manager by Finance</dt>
