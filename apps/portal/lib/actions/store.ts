@@ -1110,15 +1110,26 @@ export async function getPart(id: string) {
         orderBy: { receivedAt: 'asc' },
         include: { goodsReceiptLine: { select: { unitCost: true } } },
       },
-      serials: { where: { status: 'IN_STOCK' }, orderBy: { receivedAt: 'asc' } },
+      // Every serial, not just the ones still in stock — the same
+      // real reasoning as batches above: a fully issued-out serial is
+      // exactly the kind of real history this tracking view exists to
+      // surface, not something to quietly hide.
+      serials: {
+        orderBy: { receivedAt: 'asc' },
+        include: { goodsReceiptLine: { select: { unitCost: true, goodsReceipt: { select: { referenceNumber: true } } } } },
+      },
       fitments: { orderBy: { createdAt: 'asc' } },
       createdBy: { select: { fullName: true } },
-      // Just the single most recent real delivery — the "Purchase
-      // Details" side of the selling-price calculator needs a real
-      // Total Bulk Cost to show, and this is where that comes from:
-      // whatever was actually paid for the most recent batch, in
-      // whatever unit it actually arrived in.
-      goodsReceiptLines: { orderBy: { goodsReceipt: { receivedAt: 'desc' } }, take: 1, include: { goodsReceipt: { select: { referenceNumber: true } } } },
+      // Every real delivery, not just the most recent — a
+      // quantity-tracked Part keeps no batch or serial records of its
+      // own, so this is the only real source for "how much has this
+      // Part ever received in total," used alongside the Part's own
+      // current on-hand total to show real sold-to-date/profit
+      // figures even for a tracking type with no per-delivery split.
+      // The most recent one (index 0, since this is already sorted
+      // newest-first) is still what the Selling Price Calculator's
+      // own "Purchase Details" uses, exactly as before.
+      goodsReceiptLines: { orderBy: { goodsReceipt: { receivedAt: 'desc' } }, include: { goodsReceipt: { select: { referenceNumber: true } } } },
     },
   });
 }
