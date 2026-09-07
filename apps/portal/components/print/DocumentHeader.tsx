@@ -2,9 +2,9 @@ type CompanyInfo = {
   name: string;
   legalName: string | null;
   website: string | null;
-  hotline: string | null;
+  hotlines: string[];
   hqAddress: string | null;
-  pmb: string | null;
+  poBox: string | null;
   rcNumber: string | null;
 };
 
@@ -31,8 +31,9 @@ export function DocumentHeader({
   statusLabel?: string;
   accentColor: string;
 }) {
-  const contactLine = [company.hotline ? `Hotline: ${company.hotline}` : null, company.website].filter(Boolean).join('   ·   ');
-  const registrationLine = [company.pmb, company.rcNumber].filter(Boolean).join('   ·   ');
+  const hotlinesLine = company.hotlines.length > 0 ? `${company.hotlines.length === 1 ? 'Hotline' : 'Hotlines'}: ${company.hotlines.join(', ')}` : null;
+  const contactLine = [hotlinesLine, company.website].filter(Boolean).join('   ·   ');
+  const registrationLine = [company.poBox, company.rcNumber].filter(Boolean).join('   ·   ');
 
   return (
     <div>
