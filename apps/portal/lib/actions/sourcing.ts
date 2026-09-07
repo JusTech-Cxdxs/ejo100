@@ -352,7 +352,7 @@ export async function getExternalProcurementRequest(id: string) {
       disbursedBy: { select: { fullName: true } },
       rejectedBy: { select: { fullName: true } },
       estimateLineItem: { select: { description: true } },
-      lines: { include: { estimateLineItem: { select: { partType: { select: { name: true } } } } } },
+      lines: { include: { estimateLineItem: { select: { type: true } } } },
       supplementaryLines: { orderBy: { createdAt: 'asc' }, include: { addedBy: { select: { fullName: true } } } },
     },
   });
@@ -1029,6 +1029,57 @@ export async function removeExternalProcurementSupplementaryLine(lineId: string)
     entityId: line.requestId,
     metadata: { description: line.description },
   });
+}
+
+/** The same real correction/edit path already proven elsewhere in this
+ * system (a Goods Receipt line's own cost, a Part's own selling
+ * price) — Finance can fix a genuine mistake in their own
+ * supplementary line without deleting and re-adding it, but only
+ * while the request is still genuinely theirs to edit. */
+export async function editExternalProcurementSupplementaryLine(lineId: string, description: string, amount: number): Promise<void> {
+  const line = await prisma.externalProcurementSupplementaryLine.findUnique({
+    where: { id: lineId },
+    select: { requestId: true, description: true, amount: true, request: { select: { status: true, branchId: true } } },
+  });
+  if (!line) {
+    throw new SourcingActionError('Line not found.');
+  }
+  if (line.request.status !== 'PENDING_FINANCE_REVIEW') {
+    throw new SourcingActionError('This request is not currently open for Finance to edit.');
+  }
+  const trimmedDescription = description?.trim();
+  if (!trimmedDescription) {
+    throw new SourcingActionError('A description is required for this line.');
+  }
+  if (!(amount > 0)) {
+    throw new SourcingActionError('Amount must be greater than zero.');
+  }
+  const user = await requireEligibleFinance(line.request.branchId);
+  await prisma.externalProcurementSupplementaryLine.update({ where: { id: lineId }, data: { description: trimmedDescription, amount } });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'external_procurement.supplementary_line_edited',
+    entityType: 'ExternalProcurementRequest',
+    entityId: line.requestId,
+    metadata: { from: { description: line.description, amount: Number(line.amount) }, to: { description: trimmedDescription, amount } },
+  });
+}
+
+/** Mirrors getPartAuditTrail()/getGoodsReceiptAuditTrail() exactly —
+ * the real, chronological record of everything Finance has done to
+ * this request's own supplementary lines (added, edited, removed),
+ * shown alongside the request's own real milestones on its Timeline. */
+export async function getExternalProcurementRequestAuditTrail(requestId: string) {
+  await requireUser();
+  const entries = await prisma.auditLog.findMany({
+    where: { entityType: 'ExternalProcurementRequest', entityId: requestId },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  });
+  const userIds = [...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id)))];
+  const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } });
+  const userById = new Map(users.map((u: (typeof users)[number]) => [u.id, u.fullName]));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? (userById.get(e.userId) ?? 'Unknown') : 'System' }));
 }
 
 /** Finance's own deliberate checkpoint — explicitly passing the

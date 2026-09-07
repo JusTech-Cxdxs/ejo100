@@ -16,6 +16,7 @@ import {
   requestExternalProcurementBatch,
   addExternalProcurementSupplementaryLine,
   removeExternalProcurementSupplementaryLine,
+  editExternalProcurementSupplementaryLine,
   sendExternalProcurementToManager,
   approveExternalProcurementRequest,
   disburseExternalProcurementRequest,
@@ -187,6 +188,19 @@ export async function removeExternalProcurementSupplementaryLineFormAction(formD
   }
   revalidatePath(`/workshop/external-procurement/${requestId}`);
   redirect(`/workshop/external-procurement/${requestId}?status=line_removed`);
+}
+
+export async function editExternalProcurementSupplementaryLineFormAction(formData: FormData) {
+  const requestId = str(formData, 'requestId');
+  const lineId = str(formData, 'lineId');
+  try {
+    await editExternalProcurementSupplementaryLine(lineId, str(formData, 'description'), num(formData, 'amount') ?? 0);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not update this line.';
+    redirect(`/workshop/external-procurement/${requestId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/external-procurement/${requestId}`);
+  redirect(`/workshop/external-procurement/${requestId}?status=line_edited`);
 }
 
 export async function sendExternalProcurementToManagerFormAction(formData: FormData) {
