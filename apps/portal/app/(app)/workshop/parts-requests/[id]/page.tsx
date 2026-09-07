@@ -14,6 +14,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { PrintButton } from '@/components/PrintButton';
+import { formatDateTime } from '@/lib/utils/format-date';
 import { SerialReleaseSelector } from '@/components/SerialReleaseSelector';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -139,7 +140,7 @@ export default async function PartRequestSlipDetailPage({
           </div>
           <div>
             <dt className="text-xs text-[var(--ejo-text-muted)]">Date of Request</dt>
-            <dd className="text-sm font-medium text-[var(--ejo-text)]">{new Date(slip.createdAt).toLocaleString('en-NG')}</dd>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]">{formatDateTime(new Date(slip.createdAt))}</dd>
           </div>
           <div>
             <dt className="text-xs text-[var(--ejo-text-muted)]">Requested By</dt>
@@ -283,25 +284,25 @@ export default async function PartRequestSlipDetailPage({
           <dl className="mt-3 space-y-3 text-sm">
             <div>
               <dt className="text-xs text-[var(--ejo-text-muted)]">Requested</dt>
-              <dd className="text-[var(--ejo-text)]">{slip.requestedBy.fullName} · {new Date(slip.createdAt).toLocaleString('en-NG')}</dd>
+              <dd className="text-[var(--ejo-text)]">{slip.requestedBy.fullName} · {formatDateTime(new Date(slip.createdAt))}</dd>
             </div>
             {slip.hodApprovedBy ? (
               <div>
                 <dt className="text-xs text-[var(--ejo-text-muted)]">HOD Approved</dt>
-                <dd className="text-[var(--ejo-text)]">{slip.hodApprovedBy.fullName} · {slip.hodApprovedAt ? new Date(slip.hodApprovedAt).toLocaleString('en-NG') : ''}</dd>
+                <dd className="text-[var(--ejo-text)]">{slip.hodApprovedBy.fullName} · {slip.hodApprovedAt ? formatDateTime(new Date(slip.hodApprovedAt)) : ''}</dd>
               </div>
             ) : null}
             {slip.storeApprovedBy ? (
               <div>
                 <dt className="text-xs text-[var(--ejo-text-muted)]">Store Approved</dt>
-                <dd className="text-[var(--ejo-text)]">{slip.storeApprovedBy.fullName} · {slip.storeApprovedAt ? new Date(slip.storeApprovedAt).toLocaleString('en-NG') : ''}</dd>
+                <dd className="text-[var(--ejo-text)]">{slip.storeApprovedBy.fullName} · {slip.storeApprovedAt ? formatDateTime(new Date(slip.storeApprovedAt)) : ''}</dd>
               </div>
             ) : null}
             {slip.releasedBy ? (
               <div>
                 <dt className="text-xs text-[var(--ejo-text-muted)]">Released</dt>
                 <dd className="text-[var(--ejo-text)]">
-                  {slip.releasedBy.fullName} · {slip.releasedAt ? new Date(slip.releasedAt).toLocaleString('en-NG') : ''}
+                  {slip.releasedBy.fullName} · {slip.releasedAt ? formatDateTime(new Date(slip.releasedAt)) : ''}
                   {slip.receivedByUser ? <> · Received by {slip.receivedByUser.fullName}</> : slip.receivedByName ? <> · Received by {slip.receivedByName}</> : null}
                 </dd>
               </div>
@@ -310,7 +311,7 @@ export default async function PartRequestSlipDetailPage({
               <div>
                 <dt className="text-xs text-[var(--ejo-error)]">Rejected ({slip.rejectionStage})</dt>
                 <dd className="text-[var(--ejo-text)]">
-                  {slip.rejectedBy.fullName} · {slip.rejectedAt ? new Date(slip.rejectedAt).toLocaleString('en-NG') : ''}
+                  {slip.rejectedBy.fullName} · {slip.rejectedAt ? formatDateTime(new Date(slip.rejectedAt)) : ''}
                 </dd>
                 <dd className="mt-1 text-xs text-[var(--ejo-text-muted)]">{slip.rejectionReason}</dd>
               </div>
