@@ -3,7 +3,14 @@
 import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog } from './workshop';
 
-export class CompanyActionError extends Error {}
+// Deliberately NOT exported — a 'use server' file may only export
+// async functions or types, per the standing rule this project
+// already follows everywhere else (sourcing.ts's own
+// SourcingActionError uses this exact same private-class pattern).
+// Exporting this class the first time around was a real mistake that
+// broke the Vercel build with a webpack error; callers still catch it
+// fine as a generic Error via `err instanceof Error ? err.message : ...`.
+class CompanyActionError extends Error {}
 
 /** The one real Company record this whole portal is scoped to — there's
  * deliberately only ever one, so this fetches it directly rather than
