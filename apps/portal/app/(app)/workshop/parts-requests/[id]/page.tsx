@@ -268,7 +268,7 @@ export default async function PartRequestSlipDetailPage({
                     <SerialReleaseSelector
                       lineId={line.id}
                       quantityNeeded={Number(line.quantityRequested)}
-                      availableSerials={line.part.serials.map((s: { serialNumber: string }) => s.serialNumber)}
+                      availableSerials={line.part.serials}
                     />
                   </div>
                 ))}
