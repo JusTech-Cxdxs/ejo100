@@ -8,7 +8,7 @@ import { pluralizeWord } from '@/lib/utils/pluralize';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
-import { formatDateTimeCompact } from '@/lib/utils/format-date';
+import { formatDateTimeCompact, formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
 
 const TRACKING_TYPE_LABEL: Record<string, string> = {
   QUANTITY: 'Quantity',
@@ -157,7 +157,7 @@ export default async function PartDetailPage({
                             <td className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
                               {profit !== null ? formatNaira(profit) : '—'}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{new Date(batch.receivedAt).toLocaleDateString('en-NG')}</td>
+                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(batch.receivedAt))}</td>
                           </tr>
                         );
                       })}
@@ -416,7 +416,7 @@ export default async function PartDetailPage({
                   <li key={entry.id} className="text-sm">
                     <p className="font-medium text-[var(--ejo-text)]">{PART_AUDIT_ACTION_LABEL[entry.action] ?? entry.action}</p>
                     <p className="text-xs text-[var(--ejo-text-muted)]">{entry.userName}</p>
-                    <p className="text-xs text-[var(--ejo-text-muted)]">{new Date(entry.createdAt).toLocaleString('en-NG')}</p>
+                    <p className="text-xs text-[var(--ejo-text-muted)]">{formatDateTime(new Date(entry.createdAt))}</p>
                   </li>
                 ))}
               </ul>
