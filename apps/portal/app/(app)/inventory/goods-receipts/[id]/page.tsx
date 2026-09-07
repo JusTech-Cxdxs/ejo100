@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getGoodsReceipt, getGoodsReceiptAuditTrail } from '@/lib/actions/store';
 import { updateGoodsReceiptFormAction } from '@/lib/actions/store-form-handlers';
+import { formatDateTime } from '@/lib/utils/format-date';
 import { GoodsReceiptLineCard } from '@/components/GoodsReceiptLineCard';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -48,7 +49,7 @@ export default async function GoodsReceiptDetailPage({
       </LoadingLink>
       <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">{receipt.referenceNumber}</h1>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Received by {receipt.receivedBy.fullName} on {new Date(receipt.receivedAt).toLocaleString('en-NG')}
+        Received by {receipt.receivedBy.fullName} on {formatDateTime(new Date(receipt.receivedAt))}
       </p>
 
       {error ? (
@@ -132,7 +133,7 @@ export default async function GoodsReceiptDetailPage({
                 <li key={entry.id} className="text-sm">
                   <p className="font-medium text-[var(--ejo-text)]">{AUDIT_ACTION_LABEL[entry.action] ?? entry.action}</p>
                   <p className="text-xs text-[var(--ejo-text-muted)]">{entry.userName}</p>
-                  <p className="text-xs text-[var(--ejo-text-muted)]">{new Date(entry.createdAt).toLocaleString('en-NG')}</p>
+                  <p className="text-xs text-[var(--ejo-text-muted)]">{formatDateTime(new Date(entry.createdAt))}</p>
                 </li>
               ))}
             </ul>
