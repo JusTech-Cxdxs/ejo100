@@ -700,6 +700,14 @@ model JobCard {
   // be CLOSED and still physically present for a while before this is
   // set.
   checkedOutAt DateTime?
+  // Exactly who physically walked out with the vehicle — the same
+  // real "who actually collected this" question PartRequestSlip's own
+  // receivedByName/receivedByUserId already answer for a parts
+  // release, now answered here too. A free-text name (the customer
+  // themselves, or an agent they sent) since whoever collects a
+  // vehicle very often has no real account in this system at all —
+  // never required to be a real User.
+  collectedByName String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
