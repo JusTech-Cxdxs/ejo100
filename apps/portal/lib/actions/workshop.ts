@@ -918,7 +918,7 @@ export async function getJobCard(id: string) {
       approvedBy: { select: { id: true, fullName: true } },
       department: { select: { id: true, name: true } },
       createdBy: { select: { id: true, fullName: true } },
-      branch: { select: { name: true } },
+      branch: { select: { name: true, address: true, hotlines: true } },
       complaints: { orderBy: { sequenceNumber: 'asc' } },
       // The real, full estimate breakdown and every real payment made
       // against it — the two things a genuine Vehicle Collection
