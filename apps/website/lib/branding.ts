@@ -3,8 +3,8 @@ import type { BrandingTokens } from '@ejo/types';
 /**
  * Phase 1 stub for the dynamic branding engine.
  *
- * In later phases this fetches the active company's Branding row (see
- * packages/database schema) via the API using NEXT_PUBLIC_ACTIVE_COMPANY_SLUG
+ * In later phases this fetches the active organisation's Branding row (see
+ * packages/database schema) via the API using NEXT_PUBLIC_ACTIVE_ORGANISATION_SLUG
  * and returns it. Every page reads colours through this function (and the
  * CSS variables it powers in app/layout.tsx) instead of hardcoding hex
  * values, so swapping this stub for a real fetch is the ONLY change needed
@@ -12,7 +12,7 @@ import type { BrandingTokens } from '@ejo/types';
  */
 export function getActiveBranding(): BrandingTokens {
   return {
-    companySlug: process.env.NEXT_PUBLIC_ACTIVE_COMPANY_SLUG ?? 'kewalram-nigeria',
+    organisationSlug: process.env.NEXT_PUBLIC_ACTIVE_ORGANISATION_SLUG ?? 'kewalram-nigeria',
     primaryColor: '#16A34A', // Kewalram green
     secondaryColor: '#0F172A',
     accentColor: '#22C55E',
