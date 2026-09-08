@@ -8,16 +8,34 @@ type OrganisationInfo = {
   rcNumber: string | null;
 };
 
+type BranchInfo = {
+  name: string;
+  address: string | null;
+  hotlines: string[];
+};
+
+function hotlinesText(hotlines: string[]): string | null {
+  return hotlines.length > 0 ? hotlines.join('  |  ') : null;
+}
+
 /**
  * The one real, shared masthead every printable document in the
  * system starts with — a genuine letterhead, not a screenshot of the
- * dashboard. Deliberately quiet: the organisation's own accent color marks
- * only the document title and the one rule beneath the header, never
- * a full-width colored band, since this needs to read cleanly even on
- * a black-and-white office printer.
+ * dashboard. Two real tiers, confirmed directly from a real printed
+ * Kewalram Job Card: the Organisation's own legal identity (name,
+ * legal entity, HQ address, RC number, general hotlines) is the
+ * masthead itself; the specific executing Branch — its own real
+ * address and its own real hotlines, genuinely different from the
+ * Organisation's general ones — follows as its own block underneath.
+ * Deliberately quiet: the organisation's own accent color marks only
+ * the document title and the section rules, never a full-width
+ * colored band, since this needs to read cleanly even on a
+ * black-and-white office printer.
  */
 export function DocumentHeader({
   organisation,
+  branch,
+  divisionName,
   logoUrl,
   documentTitle,
   referenceNumber,
@@ -25,15 +43,17 @@ export function DocumentHeader({
   accentColor,
 }: {
   organisation: OrganisationInfo;
+  branch: BranchInfo;
+  divisionName?: string;
   logoUrl: string;
   documentTitle: string;
   referenceNumber: string;
   statusLabel?: string;
   accentColor: string;
 }) {
-  const hotlinesLine = organisation.hotlines.length > 0 ? `${organisation.hotlines.length === 1 ? 'Hotline' : 'Hotlines'}: ${organisation.hotlines.join(', ')}` : null;
-  const contactLine = [hotlinesLine, organisation.website].filter(Boolean).join('   ·   ');
-  const registrationLine = [organisation.poBox, organisation.rcNumber].filter(Boolean).join('   ·   ');
+  const orgHotlinesText = hotlinesText(organisation.hotlines);
+  const branchHotlinesText = hotlinesText(branch.hotlines);
+  const registrationLine = [organisation.poBox, organisation.rcNumber ? `RC Number: ${organisation.rcNumber}` : null].filter(Boolean).join('   ·   ');
 
   return (
     <div>
@@ -45,20 +65,37 @@ export function DocumentHeader({
               <img src={logoUrl} alt={organisation.name} style={{ width: '56px', height: '56px', objectFit: 'contain' }} />
             </td>
             <td style={{ verticalAlign: 'top' }}>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: '#0F172A' }}>{organisation.legalName ?? organisation.name}</div>
-              {organisation.hqAddress ? <div style={{ fontSize: '11px', color: '#475569', marginTop: '2px' }}>{organisation.hqAddress}</div> : null}
-              {contactLine ? <div style={{ fontSize: '11px', color: '#475569', marginTop: '1px' }}>{contactLine}</div> : null}
-              {registrationLine ? <div style={{ fontSize: '10px', color: '#94A3B8', marginTop: '1px' }}>{registrationLine}</div> : null}
+              <div style={{ fontSize: '18px', fontWeight: 700, color: '#0F172A' }}>{organisation.name}</div>
             </td>
             <td style={{ verticalAlign: 'top', textAlign: 'right', whiteSpace: 'nowrap' }}>
               <div style={{ fontSize: '15px', fontWeight: 700, color: accentColor }}>{documentTitle}</div>
+              {divisionName ? <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginTop: '1px' }}>{divisionName}</div> : null}
               <div style={{ fontSize: '13px', color: '#0F172A', marginTop: '2px' }}>{referenceNumber}</div>
               {statusLabel ? <div style={{ fontSize: '11px', color: '#475569', marginTop: '2px' }}>{statusLabel}</div> : null}
             </td>
           </tr>
         </tbody>
       </table>
-      <div style={{ borderTop: `2px solid ${accentColor}`, marginTop: '12px' }} />
+      <div style={{ borderTop: `2px solid ${accentColor}`, marginTop: '10px', paddingTop: '10px' }}>
+        <div style={{ fontSize: '10px', fontWeight: 700, color: '#94A3B8', letterSpacing: '0.03em' }}>
+          {organisation.legalName ? 'LEGAL OPERATIONAL LEDGER / CORPORATE HQ' : null}
+        </div>
+        {organisation.legalName ? <div style={{ fontSize: '13px', fontWeight: 600, color: '#0F172A', marginTop: '2px' }}>{organisation.legalName}</div> : null}
+        {organisation.hqAddress ? <div style={{ fontSize: '11px', color: '#475569', marginTop: '1px' }}>{organisation.hqAddress}</div> : null}
+        {registrationLine ? <div style={{ fontSize: '10px', color: '#94A3B8', marginTop: '1px' }}>{registrationLine}</div> : null}
+        {orgHotlinesText ? (
+          <div style={{ fontSize: '11px', color: '#475569', marginTop: '4px' }}>
+            General Hotlines: {orgHotlinesText}
+            {organisation.website ? `   ·   ${organisation.website}` : ''}
+          </div>
+        ) : null}
+      </div>
+      <div style={{ borderTop: '1px solid #E2E8F0', marginTop: '10px', paddingTop: '10px' }}>
+        <div style={{ fontSize: '10px', fontWeight: 700, color: '#94A3B8', letterSpacing: '0.03em' }}>EXECUTING FACILITY / BRANCH</div>
+        <div style={{ fontSize: '13px', fontWeight: 600, color: '#0F172A', marginTop: '2px' }}>{branch.name}</div>
+        {branch.address ? <div style={{ fontSize: '11px', color: '#475569', marginTop: '1px' }}>{branch.address}</div> : null}
+        {branchHotlinesText ? <div style={{ fontSize: '11px', color: '#475569', marginTop: '4px' }}>Facility Hotlines: {branchHotlinesText}</div> : null}
+      </div>
     </div>
   );
 }
