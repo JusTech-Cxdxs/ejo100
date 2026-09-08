@@ -7,7 +7,7 @@ interface BrandLogoProps {
 }
 
 /**
- * Portal's own copy of the company logo component (mirrors
+ * Portal's own copy of the organisation logo component (mirrors
  * apps/website/components/BrandLogo.tsx). Looks for a real logo at
  * public/images/logo/logo.png; falls back to the "K" monogram if it
  * hasn't been uploaded yet.
