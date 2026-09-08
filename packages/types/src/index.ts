@@ -17,9 +17,9 @@ export interface PlatformModuleDescriptor {
   href: string;
 }
 
-/** Branding tokens resolved for the active company (dynamic branding engine). */
+/** Branding tokens resolved for the active organisation (dynamic branding engine). */
 export interface BrandingTokens {
-  companySlug: string;
+  organisationSlug: string;
   logoUrl?: string;
   logoDarkUrl?: string;
   faviconUrl?: string;
@@ -45,7 +45,7 @@ export interface AuthenticatedUser {
   id: string;
   fullName: string;
   email: string;
-  companyId: string;
+  organisationId: string;
   branchId?: string;
   departmentId?: string;
   roles: string[];
