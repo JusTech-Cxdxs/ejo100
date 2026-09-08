@@ -359,7 +359,7 @@ export async function listEligibleSupervisorsForJobCard(jobCardId: string): Prom
  *
  * `departmentNameOverride` lets a caller show the actual routed
  * department (e.g. "Passenger Vehicle Workshop") instead of the generic
- * "Workshop" — the company/branch lookup is identical either way, only
+ * "Workshop" — the organisation/branch lookup is identical either way, only
  * the department label in the returned context changes. */
 async function getWorkshopOrgContext(departmentNameOverride?: string): Promise<{
   companyName: string;
@@ -1822,7 +1822,7 @@ async function requireEstimateContributor(jobCard: {
  * above, which only governs adding/editing a line at all. A technician
  * only knows the true cost of what they personally sourced or had done
  * outside the workshop (EXTERNAL_PART/EXTERNAL_JOB) — everything else
- * (Store's own parts, the company's Labour/Sundry charges) is priced
+ * (Store's own parts, the organisation's Labour/Sundry charges) is priced
  * by the supervisor, who has broader pricing authority across every
  * type, matching the same supervisor-outranks-technician hierarchy
  * already established everywhere else in this file. Only checked when
