@@ -62,6 +62,7 @@ export default async function PrintJobCardPage({
       <PrintOnLoad />
       <DocumentHeader
         organisation={organisation}
+        branch={jobCard.branch}
         logoUrl={`${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app'}/images/logo/logo.png`}
         documentTitle={isCompanyVariant ? 'Job Card — Vehicle Collection Record' : 'Vehicle Collection Receipt'}
         referenceNumber={jobCard.jobNumber}
