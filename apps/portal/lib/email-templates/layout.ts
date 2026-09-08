@@ -198,7 +198,7 @@ export function renderEmailLayout(opts: EmailLayoutOptions): string {
 }
 
 /** Shared HTML-escaping — every dynamic string passed into the layout
- * (company name, org context, heading, footer note, preview text) now
+ * (organisation name, org context, heading, footer note, preview text) now
  * goes through this, not just the values individual templates happened
  * to escape themselves. A branch or department name is real,
  * user-entered data too, just like a customer's name — it deserves the
