@@ -1,4 +1,5 @@
 import { LoadingLink } from '@/components/LoadingLink';
+import { JobCardStatusForm } from '@/components/JobCardStatusForm';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { getJobCardSourcingNeeds } from '@/lib/actions/sourcing';
@@ -7,7 +8,7 @@ import { EstimateLineItemForm } from '@/components/EstimateLineItemForm';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { requestStoreMatchingFormAction } from '@/lib/actions/store-form-handlers';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
-import { updateJobCardStatusFormAction, assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
+import { assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -1264,34 +1265,12 @@ export default async function JobCardDetailPage({
           <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Status</h2>
             {editStatus === 'true' ? (
-              <form action={updateJobCardStatusFormAction} className="mt-4 space-y-3">
-                <FormPendingOverlay />
-                <input type="hidden" name="jobCardId" value={jobCard.id} />
-                <select
-                  name="status"
-                  defaultValue={jobCard.status}
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                >
-                  {selectableStatuses.map((s) => (
-                    <option key={s} value={s} style={s === 'CANCELLED' ? { color: 'var(--ejo-error)' } : undefined}>
-                      {STATUS_LABEL[s]}
-                    </option>
-                  ))}
-                </select>
-                <div className="flex gap-2">
-                  <SubmitButton
-                    label="Update status"
-                    pendingLabel="Updating…"
-                    className="flex-1 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-                  />
-                  <LoadingLink
-                    href={`/workshop/job-cards/${jobCard.id}`}
-                    className="inline-flex items-center rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                  >
-                    Cancel
-                  </LoadingLink>
-                </div>
-              </form>
+              <JobCardStatusForm
+                jobCardId={jobCard.id}
+                currentStatus={jobCard.status}
+                selectableStatuses={selectableStatuses}
+                statusLabels={STATUS_LABEL}
+              />
             ) : (
               <div className="mt-3 flex items-center justify-between">
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[jobCard.status]}`}>
@@ -1434,6 +1413,33 @@ export default async function JobCardDetailPage({
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
                 />
               </form>
+            </div>
+          ) : null}
+
+          {jobCard.status === 'CHECKED_OUT' ? (
+            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 print:hidden">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Collection Receipt</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                The vehicle has been checked out — the final record for this Job Card is ready to print.
+              </p>
+              <div className="mt-3 flex flex-col gap-2">
+                <a
+                  href={`/print/job-cards/${jobCard.id}?variant=company`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-center text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                >
+                  Print — Company Copy
+                </a>
+                <a
+                  href={`/print/job-cards/${jobCard.id}?variant=client`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-center text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                >
+                  Print — Customer Copy
+                </a>
+              </div>
             </div>
           ) : null}
 
