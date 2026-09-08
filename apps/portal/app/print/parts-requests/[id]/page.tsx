@@ -55,6 +55,7 @@ export default async function PrintPartRequestSlipPage({
       <PrintOnLoad />
       <DocumentHeader
         organisation={organisation}
+        branch={slip.jobCard.branch}
         logoUrl={logoUrl}
         documentTitle={isCompanyVariant ? 'Store Parts Request' : 'Parts Collection Receipt'}
         referenceNumber={slip.referenceNumber}
