@@ -203,6 +203,13 @@ model Branch {
   name           String   // e.g. "Isolo Branch"
   code           String?  // short code used in document numbering, e.g. "KWL-WS"
   address        String?
+  // A branch's own real contact hotlines — genuinely different from
+  // the Organisation's own general lines (confirmed directly from a
+  // real Kewalram Job Card: the VI head office and the Isolo Workshop
+  // print two entirely separate hotline blocks on the same document).
+  // Same real string-array shape as Organisation.hotlines, for the
+  // same reason: a branch commonly has more than one real line.
+  hotlines       String[] @default([])
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
