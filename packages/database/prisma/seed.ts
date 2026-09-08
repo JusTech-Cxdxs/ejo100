@@ -49,7 +49,7 @@ async function main() {
   // --- Module registry -----------------------------------------------------
   const modules: { key: string; name: string; status: ModuleStatus; sortOrder: number }[] = [
     { key: 'dashboard', name: 'Dashboard', status: 'LIVE', sortOrder: 0 },
-    { key: 'company', name: 'Company', status: 'LIVE', sortOrder: 1 },
+    { key: 'organisation', name: 'Organisation', status: 'LIVE', sortOrder: 1 },
     { key: 'business-units', name: 'Business Units', status: 'LIVE', sortOrder: 2 },
     { key: 'workshop', name: 'Workshop', status: 'LIVE', sortOrder: 10 },
     { key: 'inventory', name: 'Inventory', status: 'COMING_SOON', sortOrder: 11 },
@@ -68,7 +68,7 @@ async function main() {
   }
 
   // --- Kewalram Nigeria hierarchy ------------------------------------------
-  const company = await prisma.company.upsert({
+  const organisation = await prisma.organisation.upsert({
     where: { slug: 'kewalram-nigeria' },
     update: {},
     create: {
@@ -92,9 +92,9 @@ async function main() {
   });
 
   const automobile = await prisma.businessUnit.upsert({
-    where: { companyId_slug: { companyId: company.id, slug: 'automobile-division' } },
+    where: { organisationId_slug: { organisationId: organisation.id, slug: 'automobile-division' } },
     update: {},
-    create: { companyId: company.id, name: 'Automobile Division', slug: 'automobile-division' },
+    create: { organisationId: organisation.id, name: 'Automobile Division', slug: 'automobile-division' },
   });
 
   await prisma.countryLink.upsert({
@@ -169,9 +169,9 @@ async function main() {
   const roleNames = ['Administrator', 'Workshop Manager', 'Workshop Supervisor', 'Technician', 'Store Manager', 'Store Officer', 'Finance Officer'];
   for (const name of roleNames) {
     await prisma.role.upsert({
-      where: { companyId_slug: { companyId: company.id, slug: slugify(name) } },
+      where: { organisationId_slug: { organisationId: organisation.id, slug: slugify(name) } },
       update: {},
-      create: { companyId: company.id, name, slug: slugify(name), isSystem: true },
+      create: { organisationId: organisation.id, name, slug: slugify(name), isSystem: true },
     });
   }
 
@@ -181,13 +181,13 @@ async function main() {
   // unrestricted access to every current and future module without
   // needing an explicit RolePermission row per permission.
   const superAdminRole = await prisma.role.upsert({
-    where: { companyId_slug: { companyId: company.id, slug: 'master-administrator' } },
+    where: { organisationId_slug: { organisationId: organisation.id, slug: 'master-administrator' } },
     update: { isSuperAdmin: true, isSystem: true },
     create: {
-      companyId: company.id,
+      organisationId: organisation.id,
       name: 'Master Administrator',
       slug: 'master-administrator',
-      description: 'System owner. Unrestricted access to every company, module, and setting.',
+      description: 'System owner. Unrestricted access to every organisation, module, and setting.',
       isSystem: true,
       isSuperAdmin: true,
     },
@@ -197,7 +197,7 @@ async function main() {
     where: { email: MASTER_ADMIN.email },
     update: {},
     create: {
-      companyId: company.id,
+      organisationId: organisation.id,
       accountType: 'ADMIN',
       fullName: MASTER_ADMIN.name,
       email: MASTER_ADMIN.email,
