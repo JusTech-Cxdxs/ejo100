@@ -920,6 +920,12 @@ export async function getJobCard(id: string) {
       createdBy: { select: { id: true, fullName: true } },
       branch: { select: { name: true } },
       complaints: { orderBy: { sequenceNumber: 'asc' } },
+      // The real, full estimate breakdown and every real payment made
+      // against it — the two things a genuine Vehicle Collection
+      // Receipt needs to show what was actually done and what was
+      // actually paid, not just the vehicle's own details.
+      estimate: { include: { lineItems: { orderBy: { createdAt: 'asc' } } } },
+      payments: { orderBy: { recordedAt: 'asc' }, include: { recordedBy: { select: { fullName: true } } } },
     },
   });
 }
@@ -1161,7 +1167,7 @@ export async function createJobCard(input: CreateJobCardInput) {
   return created;
 }
 
-export async function updateJobCardStatus(id: string, status: JobCardStatus) {
+export async function updateJobCardStatus(id: string, status: JobCardStatus, collectedByName?: string) {
   const user = await requireUser();
   const jobCard = await prisma.jobCard.findUnique({
     where: { id },
@@ -1195,6 +1201,13 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus) {
     throw new WorkshopActionError('This Job Card is cancelled — the only status change available is checking the vehicle out.');
   }
   const priorStatus = jobCard.status;
+  // A real name for whoever's physically walking out with the vehicle
+  // is required the moment this transition genuinely happens — the
+  // same "can't release without knowing who to" reasoning already
+  // enforced on a parts release.
+  if (status === JobCardStatus.CHECKED_OUT && priorStatus !== JobCardStatus.CHECKED_OUT && !collectedByName?.trim()) {
+    throw new WorkshopActionError('The name of whoever is collecting the vehicle is required to check it out.');
+  }
   const result = await prisma.jobCard.update({
     where: { id },
     data: {
@@ -1208,6 +1221,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus) {
       workStartedAt: status === JobCardStatus.IN_PROGRESS && !jobCard.workStartedAt ? new Date() : undefined,
       completedAt: status === JobCardStatus.COMPLETED && !jobCard.completedAt ? new Date() : undefined,
       checkedOutAt: status === JobCardStatus.CHECKED_OUT && !jobCard.checkedOutAt ? new Date() : undefined,
+      collectedByName: status === JobCardStatus.CHECKED_OUT ? collectedByName?.trim() : undefined,
     },
   });
 

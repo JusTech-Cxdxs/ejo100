@@ -162,7 +162,7 @@ export async function updateJobCardStatusFormAction(formData: FormData) {
   const id = str(formData, 'jobCardId');
   try {
     const status = str(formData, 'status') as JobCardStatus;
-    await updateJobCardStatus(id, status);
+    await updateJobCardStatus(id, status, str(formData, 'collectedByName'));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not update status.';
     redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
