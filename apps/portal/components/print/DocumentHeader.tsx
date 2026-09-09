@@ -70,11 +70,11 @@ export function DocumentHeader({
       <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <tbody>
           <tr>
-            <td style={{ verticalAlign: 'middle', width: '104px', padding: 0 }}>
+            <td style={{ verticalAlign: 'middle', width: '1%', padding: 0 }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logoUrl} alt={organisation.name} style={{ width: '104px', height: '104px', objectFit: 'contain', display: 'block' }} />
+              <img src={logoUrl} alt={organisation.name} style={{ height: '108px', width: 'auto', display: 'block' }} />
             </td>
-            <td style={{ verticalAlign: 'middle' }}>
+            <td style={{ verticalAlign: 'middle', paddingLeft: '2px' }}>
               {/* Real logo-lockup technique, not an approximation: an
                   inline-flex column with align-items:stretch sizes
                   itself to its widest child (the wordmark), then
@@ -96,7 +96,7 @@ export function DocumentHeader({
                 <div style={{ fontSize: '26px', fontWeight: 800, color: '#0F172A', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>{wordmarkTop}</div>
                 {wordmarkBottom ? (
                   <div style={{ display: 'flex', alignItems: 'center', marginTop: '1px' }}>
-                    <div style={{ flex: 1, borderBottom: `2.5px solid ${accentColor}`, marginRight: '6px' }} />
+                    <div style={{ flex: 1, borderBottom: `1.25px solid ${accentColor}`, marginRight: '6px' }} />
                     <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{wordmarkBottom}</span>
                   </div>
                 ) : null}
