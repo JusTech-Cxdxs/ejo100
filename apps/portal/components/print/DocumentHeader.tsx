@@ -72,21 +72,12 @@ export function DocumentHeader({
           <tr>
             <td style={{ verticalAlign: 'middle', padding: 0 }}>
               {/* A real flexbox here, not table cells, for the
-                  logo+wordmark pairing specifically — table cells
-                  don't reliably respect a negative margin the way a
-                  flex row does (confirmed directly: the same negative
-                  margin on a <td> barely moved anything, on a flex
-                  row it worked exactly as expected), and a negative
-                  margin is what's actually needed here: the logo is a
-                  real, irregular leaf shape, not a rectangle, so even
-                  a perfectly tight crop still leaves genuine visual
-                  "air" on its right side at most heights — only one
-                  point of the icon actually reaches the edge of its
-                  own bounding box. The pull-in amount was measured
-                  directly against the real image's own alpha channel
-                  at the height the text sits, with a safety buffer
-                  left in, so it closes the visual gap without ever
-                  touching a visible pixel of the icon itself. */}
+                  logo+wordmark pairing — a real flex row is what makes
+                  a precise, equal 4px gap actually reliable, matched
+                  intentionally to the same 4px vertical gap between
+                  "Kewalram" and "Chanrai Group" below, so the spacing
+                  reads as one consistent design decision rather than
+                  two different numbers that happen to look similar. */}
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 {/* A hard-coded width AND height, both matching the real
                     cropped logo file's own exact aspect ratio, not
@@ -95,18 +86,18 @@ export function DocumentHeader({
                     ratio the way a normal browser window does, which is
                     exactly what squashed the logo flat on the actual
                     printed output despite rendering correctly
-                    everywhere this was checked on screen. Sized to
-                    roughly 1.4x the full two-line wordmark stack's own
-                    height — the same real ratio the live website's own
-                    header already uses between its logo and its
-                    "Kewalram / Chanrai Group" text, not picked
-                    arbitrarily. */}
+                    everywhere this was checked on screen. Height is
+                    set to the wordmark stack's own real measured
+                    height (rendered and measured directly, not
+                    estimated) — equal to it, not larger, so the logo
+                    reads as matched to the text rather than dominating
+                    it. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={logoUrl} alt={organisation.name} style={{ width: '56px', height: '68px', display: 'block', marginRight: '-3px' }} />
+                <img src={logoUrl} alt={organisation.name} style={{ width: '39px', height: '47px', display: 'block', marginRight: '4px' }} />
                 <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch' }}>
                   <div style={{ fontSize: '26px', fontWeight: 800, color: '#0F172A', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>{wordmarkTop}</div>
                   {wordmarkBottom ? (
-                    <div style={{ display: 'flex', alignItems: 'center', marginTop: '1px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginTop: '4px' }}>
                       {/* The rule itself is a real border, not a
                           background color — browsers suppress
                           background-color by default when printing
