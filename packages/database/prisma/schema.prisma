@@ -118,6 +118,7 @@ model Organisation {
   hqAddress   String?
   poBox       String?
   rcNumber    String?
+  email       String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -210,6 +211,7 @@ model Branch {
   // Same real string-array shape as Organisation.hotlines, for the
   // same reason: a branch commonly has more than one real line.
   hotlines       String[] @default([])
+  email          String?
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
