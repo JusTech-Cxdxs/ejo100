@@ -1182,6 +1182,8 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       department: { select: { name: true } },
       customer: { select: { fullName: true, email: true } },
       vehicle: { select: { make: true, model: true } },
+      estimate: { select: { lineItems: { select: { amount: true } } } },
+      payments: { select: { amount: true } },
     },
   });
   if (!jobCard) {
@@ -1199,6 +1201,23 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   // physical exit, once whoever finally collects it does.
   if (jobCard.status === JobCardStatus.CANCELLED && status !== JobCardStatus.CHECKED_OUT) {
     throw new WorkshopActionError('This Job Card is cancelled — the only status change available is checking the vehicle out.');
+  }
+  // A non-cancelled Job Card can't be genuinely finished — closed or
+  // physically checked out — while real money is still owed on it.
+  // Enforced here, server-side, not just hidden from the status
+  // dropdown — the same "don't just hide the option, actually refuse
+  // it" standard already applied to every other real business rule in
+  // this system. A cancelled Job Card is exempt: there's no service
+  // being paid for anymore, only a vehicle waiting to be collected.
+  if (
+    (status === JobCardStatus.CLOSED || status === JobCardStatus.CHECKED_OUT)
+    && jobCard.status !== JobCardStatus.CANCELLED
+  ) {
+    const totalEstimate = (jobCard.estimate?.lineItems ?? []).reduce((sum: number, l: { amount: unknown }) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
+    const totalPaid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
+    if (totalPaid < totalEstimate) {
+      throw new WorkshopActionError('Payment must be completed in full before this Job Card can be closed or checked out.');
+    }
   }
   const priorStatus = jobCard.status;
   // A real name for whoever's physically walking out with the vehicle
