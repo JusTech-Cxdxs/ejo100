@@ -61,8 +61,34 @@ export function Footer() {
       <div className="mx-auto grid max-w-7xl gap-10 px-6 py-16 md:grid-cols-6">
         {/* Column 1 — logo, name, description, badge row, social icons */}
         <div className="md:col-span-2">
-          <BrandLogo size={40} />
-          <p className="mt-3 text-lg font-bold">{t('footer.companyName')}</p>
+          {/* Same real logo-lockup technique as the print document's
+              own DocumentHeader and the site's own Header — an
+              inline-flex column sized to its widest child ("Kewalram"),
+              with the row below itself a flex row where the
+              accent-colored rule is set to flex:1, growing to fill
+              exactly the leftover space so "Chanrai Group" ends flush
+              with "Kewalram" above it. Logo height matches the real
+              measured two-line stack height exactly, not larger — the
+              same real design rule used everywhere else this wordmark
+              appears.
+              Note: this replaces the single i18n `footer.companyName`
+              string with the same hardcoded "Kewalram" / "Chanrai
+              Group" split the Header already uses for its own wordmark
+              — matching print and the Header exactly meant the brand
+              name here no longer flows through the Arabic/Hindi/Chinese
+              translations that string previously had (the Header's own
+              wordmark already works this same way, so this makes both
+              consistent with each other, not a new inconsistency). */}
+          <div className="flex items-center gap-0.5">
+            <BrandLogo size={36} />
+            <span className="inline-flex flex-col items-stretch whitespace-nowrap">
+              <span className="block text-lg font-bold leading-tight">Kewalram</span>
+              <span className="mt-0.5 flex items-center">
+                <span className="mr-1.5 flex-1 border-b border-[var(--ejo-primary)]" />
+                <span className="block text-xs leading-tight text-white/70">Chanrai Group</span>
+              </span>
+            </span>
+          </div>
           <p className="mt-3 max-w-xs text-sm text-white/60">{t('footer.companyDescription')}</p>
 
           <div className="mt-5 flex items-center justify-start gap-4">

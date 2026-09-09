@@ -67,12 +67,24 @@ export function Header() {
               <span className="lg:origin-left lg:scale-125">
                 <BrandLogo transparent={transparent} size={31} />
               </span>
-              <span className="whitespace-nowrap">
+              {/* Same real logo-lockup technique as the print document's
+                  own DocumentHeader — an inline-flex column sized to its
+                  widest child ("Kewalram"), with the row below itself a
+                  flex row where the accent-colored rule is set to
+                  flex:1, automatically growing to fill exactly the
+                  leftover space so "Chanrai Group" ends flush with
+                  "Kewalram" above it. Ported here deliberately so the
+                  website and the printed documents show the exact same
+                  wordmark, not two different approximations of it. */}
+              <span className="inline-flex flex-col items-stretch whitespace-nowrap">
                 <span className={`block text-base font-bold leading-tight ${transparent ? 'text-white' : 'text-[var(--ejo-text)]'}`}>
                   Kewalram
                 </span>
-                <span className={`mt-0.5 block text-[11px] leading-tight ${transparent ? 'text-white/70' : 'text-[var(--ejo-text-muted)]'}`}>
-                  Chanrai Group
+                <span className="mt-0.5 flex items-center">
+                  <span className={`mr-1.5 flex-1 border-b ${transparent ? 'border-white/70' : 'border-[var(--ejo-primary)]'}`} />
+                  <span className={`block text-[11px] leading-tight ${transparent ? 'text-white/70' : 'text-[var(--ejo-text-muted)]'}`}>
+                    Chanrai Group
+                  </span>
                 </span>
               </span>
             </Link>
