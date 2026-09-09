@@ -70,9 +70,17 @@ export function DocumentHeader({
       <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <tbody>
           <tr>
-            <td style={{ verticalAlign: 'middle', width: '1%', padding: 0 }}>
+            <td style={{ verticalAlign: 'middle', padding: 0 }}>
+              {/* A hard-coded width AND height, both matching the real
+                  cropped logo file's own exact aspect ratio (569:682),
+                  not width:'auto' — some print/PDF rendering engines
+                  don't reliably preserve an image's natural aspect
+                  ratio through a table cell the way a normal browser
+                  window does, which is exactly what squashed the logo
+                  flat on the actual printed output despite rendering
+                  correctly everywhere this was checked on screen. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logoUrl} alt={organisation.name} style={{ height: '108px', width: 'auto', display: 'block' }} />
+              <img src={logoUrl} alt={organisation.name} style={{ width: '90px', height: '108px', display: 'block' }} />
             </td>
             <td style={{ verticalAlign: 'middle', paddingLeft: '2px' }}>
               {/* Real logo-lockup technique, not an approximation: an
