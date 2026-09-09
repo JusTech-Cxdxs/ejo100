@@ -26,6 +26,18 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
   CHEQUE: 'Cheque',
 };
 
+/** One label-above-value pair — tight spacing between the two, since
+ * a label sitting far from its own value was the single most common
+ * complaint about the first version of this document. */
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: '10px', color: '#94A3B8', fontWeight: 600, letterSpacing: '0.02em' }}>{label}</div>
+      <div style={{ fontSize: '13px', fontWeight: 600, color: '#0F172A', marginTop: '1px' }}>{value}</div>
+    </div>
+  );
+}
+
 /**
  * A real, standalone printable document for a Job Card, outside the
  * app's own dashboard layout entirely — the same isolated-route
@@ -46,7 +58,7 @@ export default async function PrintJobCardPage({
 }) {
   const { id } = await params;
   const { variant } = await searchParams;
-  const isCompanyVariant = variant !== 'client';
+  const isOrgCopy = variant !== 'client';
 
   const [jobCard, organisation] = await Promise.all([getJobCard(id), getOrganisation()]);
   if (!jobCard || !organisation) notFound();
@@ -64,45 +76,29 @@ export default async function PrintJobCardPage({
         organisation={organisation}
         branch={jobCard.branch}
         logoUrl={`${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app'}/images/logo/logo.png`}
-        documentTitle={isCompanyVariant ? 'Job Card — Vehicle Collection Record' : 'Vehicle Collection Receipt'}
+        documentTitle={isOrgCopy ? 'Job Card — Vehicle Collection Record' : 'Vehicle Collection Receipt'}
         referenceNumber={jobCard.jobNumber}
         statusLabel="Checked Out"
         accentColor="#16A34A"
       />
 
-      <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px', fontSize: '12px' }}>
-        <tbody>
-          <tr>
-            <td style={{ padding: '4px 0', color: '#475569', width: '30%' }}>Customer</td>
-            <td style={{ padding: '4px 0', fontWeight: 600 }}>{jobCard.customer.fullName}</td>
-            <td style={{ padding: '4px 0', color: '#475569', width: '30%' }}>Vehicle</td>
-            <td style={{ padding: '4px 0', fontWeight: 600 }}>{vehicleSummary}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: '4px 0', color: '#475569' }}>Plate No.</td>
-            <td style={{ padding: '4px 0', fontWeight: 600 }}>{jobCard.vehicle.plateNumber ?? '—'}</td>
-            <td style={{ padding: '4px 0', color: '#475569' }}>VIN / Chassis</td>
-            <td style={{ padding: '4px 0', fontWeight: 600 }}>{jobCard.vehicle.chassisNumber ?? '—'}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: '4px 0', color: '#475569' }}>Checked In</td>
-            <td style={{ padding: '4px 0', fontWeight: 600 }}>{formatDateTime(new Date(jobCard.createdAt))}</td>
-            <td style={{ padding: '4px 0', color: '#475569' }}>Checked Out</td>
-            <td style={{ padding: '4px 0', fontWeight: 600 }}>{jobCard.checkedOutAt ? formatDateTime(new Date(jobCard.checkedOutAt)) : '—'}</td>
-          </tr>
-          {isCompanyVariant ? (
-            <tr>
-              <td style={{ padding: '4px 0', color: '#475569' }}>Technician in Charge</td>
-              <td style={{ padding: '4px 0', fontWeight: 600 }}>{jobCard.assignedTechnician?.fullName ?? '—'}</td>
-              <td style={{ padding: '4px 0', color: '#475569' }}>Workshop Supervisor</td>
-              <td style={{ padding: '4px 0', fontWeight: 600 }}>{jobCard.supervisor?.fullName ?? '—'}</td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginTop: '20px' }}>
+        <Field label="CUSTOMER" value={jobCard.customer.fullName} />
+        <Field label="VEHICLE" value={vehicleSummary} />
+        <Field label="PLATE NO." value={jobCard.vehicle.plateNumber ?? '—'} />
+        <Field label="VIN / CHASSIS" value={jobCard.vehicle.chassisNumber ?? '—'} />
+        <Field label="CHECKED IN" value={formatDateTime(new Date(jobCard.createdAt))} />
+        <Field label="CHECKED OUT" value={jobCard.checkedOutAt ? formatDateTime(new Date(jobCard.checkedOutAt)) : '—'} />
+        {isOrgCopy ? (
+          <>
+            <Field label="TECHNICIAN IN CHARGE" value={jobCard.assignedTechnician?.fullName ?? '—'} />
+            <Field label="WORKSHOP SUPERVISOR" value={jobCard.supervisor?.fullName ?? '—'} />
+          </>
+        ) : null}
+      </div>
 
       {jobCard.complaints.length > 0 ? (
-        <div style={{ marginTop: '16px' }}>
+        <div style={{ marginTop: '20px' }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>REPORTED COMPLAINTS</div>
           <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '12px' }}>
             {jobCard.complaints.map((c: (typeof jobCard.complaints)[number]) => (
@@ -158,7 +154,7 @@ export default async function PrintJobCardPage({
         </tbody>
       </table>
 
-      {isCompanyVariant && jobCard.payments.length > 0 ? (
+      {isOrgCopy && jobCard.payments.length > 0 ? (
         <div style={{ marginTop: '16px' }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>PAYMENT RECORD</div>
           <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
@@ -174,9 +170,9 @@ export default async function PrintJobCardPage({
         </div>
       ) : null}
 
-      {isCompanyVariant ? (
+      {isOrgCopy ? (
         <div style={{ marginTop: '20px' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>AUDIT TRAIL</div>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>DOCUMENT TRAIL</div>
           <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
             <tbody>
               <tr>
