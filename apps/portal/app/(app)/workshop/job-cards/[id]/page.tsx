@@ -351,7 +351,18 @@ export default async function JobCardDetailPage({
   // Cancelled is terminal — dead. The only status change still
   // legitimately available is the vehicle's eventual physical exit.
   const isCancelled = jobCard.status === 'CANCELLED';
-  const selectableStatuses = isCancelled ? (['CHECKED_OUT'] as const) : ALL_STATUSES;
+  // A non-cancelled Job Card can't be genuinely finished — closed or
+  // physically checked out — while real money is still owed on it.
+  // READY_FOR_COLLECTION is the honest ceiling until payment actually
+  // clears; CLOSED/CHECKED_OUT simply aren't real options yet, so they
+  // don't appear as choices at all rather than being offered and then
+  // rejected.
+  const isPaidInFull = paymentStatus === 'PAID_IN_FULL';
+  const selectableStatuses = isCancelled
+    ? (['CHECKED_OUT'] as const)
+    : isPaidInFull
+      ? ALL_STATUSES
+      : ALL_STATUSES.filter((s) => s !== 'CLOSED' && s !== 'CHECKED_OUT');
 
   return (
     <div className="p-8">
