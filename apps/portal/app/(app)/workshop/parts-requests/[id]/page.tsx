@@ -14,6 +14,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { PrintMenu } from '@/components/print/PrintMenu';
 import { SerialReleaseSelector } from '@/components/SerialReleaseSelector';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -362,23 +363,8 @@ export default async function PartRequestSlipDetailPage({
       </div>
 
       {slip.status === 'RELEASED' ? (
-        <div className="mt-6 flex gap-2 print:hidden">
-          <a
-            href={`/print/parts-requests/${slip.id}?variant=company`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-          >
-            Print — Company Copy
-          </a>
-          <a
-            href={`/print/parts-requests/${slip.id}?variant=client`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-          >
-            Print — Collector Copy
-          </a>
+        <div className="mt-6">
+          <PrintMenu orgHref={`/print/parts-requests/${slip.id}`} clientHref={`/print/parts-requests/${slip.id}?variant=client`} clientLabel="Collector Copy" />
         </div>
       ) : null}
     </div>
