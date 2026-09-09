@@ -17,7 +17,15 @@ export function JobCardStatusForm({
   selectableStatuses: readonly string[];
   statusLabels: Record<string, string>;
 }) {
-  const [selected, setSelected] = useState(currentStatus);
+  // Real bug this fixes: when the only selectable status is different
+  // from the Job Card's own current one (a cancelled Job Card, where
+  // the dropdown's only real option is CHECKED_OUT but currentStatus
+  // is still CANCELLED), initializing state to currentStatus left the
+  // form silently believing CANCELLED was still selected even though
+  // the dropdown visually showed CHECKED_OUT as the only choice — so
+  // the Collected By field never appeared. Default to the real
+  // selectable option whenever currentStatus itself isn't one.
+  const [selected, setSelected] = useState(selectableStatuses.includes(currentStatus) ? currentStatus : selectableStatuses[0]);
 
   return (
     <form action={updateJobCardStatusFormAction} className="mt-4 space-y-3">
