@@ -97,6 +97,7 @@ export default async function PrintPartRequestSlipPage({
             <th style={{ padding: '6px 4px' }}>S/N</th>
             <th style={{ padding: '6px 4px' }}>Part No.</th>
             <th style={{ padding: '6px 4px' }}>Part Name</th>
+            <th style={{ padding: '6px 4px' }}>Description</th>
             <th style={{ padding: '6px 4px', textAlign: 'right' }}>Quantity</th>
             <th style={{ padding: '6px 4px', textAlign: 'right' }}>Amount</th>
           </tr>
@@ -107,6 +108,7 @@ export default async function PrintPartRequestSlipPage({
               <td style={{ padding: '6px 4px' }}>{i + 1}</td>
               <td style={{ padding: '6px 4px' }}>{line.part.partNumber ?? '—'}</td>
               <td style={{ padding: '6px 4px' }}>{line.part.name}</td>
+              <td style={{ padding: '6px 4px' }}>{line.estimateLineItem?.description ?? '—'}</td>
               <td style={{ padding: '6px 4px', textAlign: 'right' }}>
                 {Number(line.quantityRequested)} {pluralizeWord(Number(line.quantityRequested), line.part.baseUnitOfMeasure)}
               </td>
@@ -118,7 +120,7 @@ export default async function PrintPartRequestSlipPage({
         </tbody>
         <tfoot>
           <tr style={{ borderTop: '1.5px solid #0F172A', fontWeight: 700 }}>
-            <td style={{ padding: '6px 4px' }} colSpan={4}>
+            <td style={{ padding: '6px 4px' }} colSpan={5}>
               {pluralize(slip.lines.length, 'Part')} total
             </td>
             <td style={{ padding: '6px 4px', textAlign: 'right' }}>{formatNaira(totalAmount)}</td>
