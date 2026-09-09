@@ -70,9 +70,9 @@ export function DocumentHeader({
       <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <tbody>
           <tr>
-            <td style={{ verticalAlign: 'middle', width: '90px', paddingRight: '2px' }}>
+            <td style={{ verticalAlign: 'middle', width: '104px', padding: 0 }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logoUrl} alt={organisation.name} style={{ width: '88px', height: '88px', objectFit: 'contain' }} />
+              <img src={logoUrl} alt={organisation.name} style={{ width: '104px', height: '104px', objectFit: 'contain', display: 'block' }} />
             </td>
             <td style={{ verticalAlign: 'middle' }}>
               {/* Real logo-lockup technique, not an approximation: an
@@ -83,12 +83,20 @@ export function DocumentHeader({
                   flex:1 — it automatically grows to fill exactly the
                   leftover space, which is what pushes "Chanrai Group"
                   to end flush with "Kewalram" above it, on any name,
-                  at any size, without hand-tuned pixel widths. */}
+                  at any size, without hand-tuned pixel widths.
+                  The rule itself is a real border, not a background
+                  color — browsers suppress background-color by
+                  default when printing unless the person manually
+                  enables "Background graphics" in their print dialog,
+                  which is off by default. Borders always print
+                  regardless of that setting, so this is the only
+                  reliable way to guarantee the line actually shows up
+                  on a real printed page, not just on screen. */}
               <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                <div style={{ fontSize: '24px', fontWeight: 800, color: '#0F172A', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>{wordmarkTop}</div>
+                <div style={{ fontSize: '26px', fontWeight: 800, color: '#0F172A', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>{wordmarkTop}</div>
                 {wordmarkBottom ? (
-                  <div style={{ display: 'flex', alignItems: 'center', marginTop: '3px' }}>
-                    <div style={{ flex: 1, height: '1.5px', backgroundColor: accentColor, marginRight: '6px' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', marginTop: '1px' }}>
+                    <div style={{ flex: 1, borderBottom: `2.5px solid ${accentColor}`, marginRight: '6px' }} />
                     <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{wordmarkBottom}</span>
                   </div>
                 ) : null}
