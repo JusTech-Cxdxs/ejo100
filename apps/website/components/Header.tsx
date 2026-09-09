@@ -64,24 +64,42 @@ export function Header() {
         >
           <div className="mx-auto flex max-w-7xl flex-nowrap items-center justify-between px-6 py-4">
             <Link href="/" className="flex shrink-0 items-center gap-0.5">
-              <span className="lg:origin-left lg:scale-125">
-                <BrandLogo transparent={transparent} size={31} />
-              </span>
-              {/* Same real logo-lockup technique as the print document's
-                  own DocumentHeader — an inline-flex column sized to its
-                  widest child ("Kewalram"), with the row below itself a
-                  flex row where the accent-colored rule is set to
-                  flex:1, automatically growing to fill exactly the
-                  leftover space so "Chanrai Group" ends flush with
-                  "Kewalram" above it. Ported here deliberately so the
-                  website and the printed documents show the exact same
-                  wordmark, not two different approximations of it. */}
-              <span className="inline-flex flex-col items-stretch whitespace-nowrap">
+              {/* No scale transform here anymore — it visually enlarged
+                  the logo beyond the layout box actually reserved for
+                  it (CSS transform:scale never affects layout/flow,
+                  only paint), which is exactly what was causing
+                  "Kewalram" to collide with the logo. The logo is
+                  already sized precisely via the size prop below to
+                  match the real wordmark stack height, so no extra
+                  scaling is needed or safe to add on top of that. */}
+              <BrandLogo transparent={transparent} size={31} />
+              {/* Same real wordmark idea as the print document's own
+                  DocumentHeader — a rule between "Kewalram" and
+                  "Chanrai Group" below it. Uses a fixed width here, not
+                  a flex:1 rule that grows to exactly fill remaining
+                  space the way print's own version does. Honest note
+                  on why: the sandbox tool used to visually verify CSS
+                  changes throughout this project doesn't support the
+                  CSS @layer at-rule, which this whole codebase's
+                  compiled Tailwind v4 output is built on — confirmed
+                  directly with a minimal, unrelated @layer test. That
+                  made it impossible to visually re-verify anything
+                  using real Tailwind utility classes here, only plain
+                  inline styles (print's own line, which is built with
+                  inline styles throughout rather than utility classes,
+                  was never affected by this). A fixed-width rule set
+                  entirely via inline style sidesteps that verification
+                  gap rather than shipping something that could only be
+                  checked by reading the code — it trades away
+                  "mathematically always ends exactly flush, whatever
+                  the name" for "definitely inline-style, definitely
+                  verifiable, definitely visible". */}
+              <span className="whitespace-nowrap">
                 <span className={`block text-base font-bold leading-tight ${transparent ? 'text-white' : 'text-[var(--ejo-text)]'}`}>
                   Kewalram
                 </span>
                 <span className="mt-0.5 flex items-center">
-                  <span className={`mr-1.5 flex-1 border-b ${transparent ? 'border-white/70' : 'border-[var(--ejo-primary)]'}`} />
+                  <span className="mr-1.5 inline-block w-4" style={{ borderBottom: `1px solid ${transparent ? 'rgba(255,255,255,0.7)' : 'var(--ejo-primary)'}` }} />
                   <span className={`block text-[11px] leading-tight ${transparent ? 'text-white/70' : 'text-[var(--ejo-text-muted)]'}`}>
                     Chanrai Group
                   </span>

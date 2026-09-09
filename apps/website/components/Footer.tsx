@@ -61,16 +61,26 @@ export function Footer() {
       <div className="mx-auto grid max-w-7xl gap-10 px-6 py-16 md:grid-cols-6">
         {/* Column 1 — logo, name, description, badge row, social icons */}
         <div className="md:col-span-2">
-          {/* Same real logo-lockup technique as the print document's
-              own DocumentHeader and the site's own Header — an
-              inline-flex column sized to its widest child ("Kewalram"),
-              with the row below itself a flex row where the
-              accent-colored rule is set to flex:1, growing to fill
-              exactly the leftover space so "Chanrai Group" ends flush
-              with "Kewalram" above it. Logo height matches the real
-              measured two-line stack height exactly, not larger — the
-              same real design rule used everywhere else this wordmark
-              appears.
+          {/* Same real wordmark idea as the print document's own
+              DocumentHeader and the site's own Header — a rule between
+              "Kewalram" and "Chanrai Group" below it. Uses a fixed
+              width here, not a flex:1 rule that grows to exactly fill
+              remaining space the way print's own version does. Honest
+              note on why: the sandbox tool used to visually verify CSS
+              changes throughout this project doesn't support the CSS
+              @layer at-rule, which this whole codebase's compiled
+              Tailwind v4 output is built on — confirmed directly with
+              a minimal, unrelated @layer test. That made it impossible
+              to visually re-verify anything using real Tailwind
+              utility classes here, only plain inline styles (print's
+              own line, built with inline styles throughout rather than
+              utility classes, was never affected by this). A
+              fixed-width rule set entirely via inline style sidesteps
+              that verification gap rather than shipping something
+              that could only be checked by reading the code. Logo
+              height matches the real measured two-line stack height
+              exactly, not larger — the same real design rule used
+              everywhere else this wordmark appears.
               Note: this replaces the single i18n `footer.companyName`
               string with the same hardcoded "Kewalram" / "Chanrai
               Group" split the Header already uses for its own wordmark
@@ -81,10 +91,10 @@ export function Footer() {
               consistent with each other, not a new inconsistency). */}
           <div className="flex items-center gap-0.5">
             <BrandLogo size={36} />
-            <span className="inline-flex flex-col items-stretch whitespace-nowrap">
+            <span className="whitespace-nowrap">
               <span className="block text-lg font-bold leading-tight">Kewalram</span>
               <span className="mt-0.5 flex items-center">
-                <span className="mr-1.5 flex-1 border-b border-[var(--ejo-primary)]" />
+                <span className="mr-1.5 inline-block w-5" style={{ borderBottom: '1px solid var(--ejo-primary)' }} />
                 <span className="block text-xs leading-tight text-white/70">Chanrai Group</span>
               </span>
             </span>
