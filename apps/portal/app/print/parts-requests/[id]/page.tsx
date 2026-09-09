@@ -18,6 +18,18 @@ const STATUS_LABEL: Record<string, string> = {
   REJECTED: 'Rejected',
 };
 
+/** One label-above-value pair — tight spacing between the two, since
+ * a label sitting far from its own value was the single most common
+ * complaint about the first version of this document. */
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: '10px', color: '#94A3B8', fontWeight: 600, letterSpacing: '0.02em' }}>{label}</div>
+      <div style={{ fontSize: '13px', fontWeight: 600, color: '#0F172A', marginTop: '1px' }}>{value}</div>
+    </div>
+  );
+}
+
 /**
  * A real, standalone printable document — deliberately outside the
  * app's own dashboard layout entirely (no sidebar, no nav, no other
@@ -39,7 +51,7 @@ export default async function PrintPartRequestSlipPage({
 }) {
   const { id } = await params;
   const { variant } = await searchParams;
-  const isCompanyVariant = variant !== 'client';
+  const isOrgCopy = variant !== 'client';
 
   const [slip, organisation] = await Promise.all([getPartRequestSlip(id), getOrganisation()]);
   if (!slip || !organisation) notFound();
@@ -49,6 +61,7 @@ export default async function PrintPartRequestSlipPage({
   const logoUrl = `${portalUrl}/images/logo/logo.png`;
   const totalAmount = slip.lines.reduce((sum: number, l: (typeof slip.lines)[number]) => sum + (l.estimateLineItem?.amount !== null && l.estimateLineItem?.amount !== undefined ? Number(l.estimateLineItem.amount) : 0), 0);
   const collectorName = slip.receivedByUser?.fullName ?? slip.receivedByName ?? null;
+  const vehicleSummary = [slip.jobCard.vehicle.year, slip.jobCard.vehicle.make, slip.jobCard.vehicle.model].filter(Boolean).join(' ') || '—';
 
   return (
     <div style={{ maxWidth: '780px', margin: '0 auto', padding: '32px 24px', fontFamily: 'Arial, Helvetica, sans-serif', color: '#0F172A' }}>
@@ -57,46 +70,28 @@ export default async function PrintPartRequestSlipPage({
         organisation={organisation}
         branch={slip.jobCard.branch}
         logoUrl={logoUrl}
-        documentTitle={isCompanyVariant ? 'Store Parts Request' : 'Parts Collection Receipt'}
+        documentTitle={isOrgCopy ? 'Store Parts Request' : 'Parts Collection Receipt'}
         referenceNumber={slip.referenceNumber}
         statusLabel={STATUS_LABEL[slip.status] ?? slip.status}
         accentColor="#16A34A"
       />
 
-      <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px', fontSize: '12px' }}>
-        <tbody>
-          <tr>
-            <td style={{ padding: '4px 0', color: '#475569', width: '30%' }}>Job Card</td>
-            <td style={{ padding: '4px 0', fontWeight: 600 }}>{slip.jobCard.jobNumber}</td>
-            <td style={{ padding: '4px 0', color: '#475569', width: '30%' }}>Customer</td>
-            <td style={{ padding: '4px 0', fontWeight: 600 }}>{slip.jobCard.customer.fullName}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: '4px 0', color: '#475569' }}>Vehicle</td>
-            <td style={{ padding: '4px 0', fontWeight: 600 }}>
-              {[slip.jobCard.vehicle.year, slip.jobCard.vehicle.make, slip.jobCard.vehicle.model].filter(Boolean).join(' ') || '—'}
-            </td>
-            <td style={{ padding: '4px 0', color: '#475569' }}>Plate No.</td>
-            <td style={{ padding: '4px 0', fontWeight: 600 }}>{slip.jobCard.vehicle.plateNumber ?? '—'}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: '4px 0', color: '#475569' }}>VIN / Chassis</td>
-            <td style={{ padding: '4px 0', fontWeight: 600 }}>{slip.jobCard.vehicle.chassisNumber ?? '—'}</td>
-            <td style={{ padding: '4px 0', color: '#475569' }}>Date of Request</td>
-            <td style={{ padding: '4px 0', fontWeight: 600 }}>{formatDateTime(new Date(slip.createdAt))}</td>
-          </tr>
-          {isCompanyVariant ? (
-            <tr>
-              <td style={{ padding: '4px 0', color: '#475569' }}>Requested By</td>
-              <td style={{ padding: '4px 0', fontWeight: 600 }}>{slip.requestedBy.fullName}</td>
-              <td style={{ padding: '4px 0', color: '#475569' }}>Released By</td>
-              <td style={{ padding: '4px 0', fontWeight: 600 }}>{slip.releasedBy?.fullName ?? '—'}</td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginTop: '20px' }}>
+        <Field label="JOB CARD" value={slip.jobCard.jobNumber} />
+        <Field label="CUSTOMER" value={slip.jobCard.customer.fullName} />
+        <Field label="VEHICLE" value={vehicleSummary} />
+        <Field label="PLATE NO." value={slip.jobCard.vehicle.plateNumber ?? '—'} />
+        <Field label="VIN / CHASSIS" value={slip.jobCard.vehicle.chassisNumber ?? '—'} />
+        <Field label="DATE OF REQUEST" value={formatDateTime(new Date(slip.createdAt))} />
+        {isOrgCopy ? (
+          <>
+            <Field label="REQUESTED BY" value={slip.requestedBy.fullName} />
+            <Field label="RELEASED BY" value={slip.releasedBy?.fullName ?? '—'} />
+          </>
+        ) : null}
+      </div>
 
-      <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px', fontSize: '12px' }}>
+      <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '24px', fontSize: '12px' }}>
         <thead>
           <tr style={{ borderBottom: '1.5px solid #0F172A', textAlign: 'left' }}>
             <th style={{ padding: '6px 4px' }}>S/N</th>
@@ -131,9 +126,9 @@ export default async function PrintPartRequestSlipPage({
         </tfoot>
       </table>
 
-      {isCompanyVariant ? (
+      {isOrgCopy ? (
         <div style={{ marginTop: '24px' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>APPROVAL TRAIL</div>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>DOCUMENT TRAIL</div>
           <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
             <tbody>
               <tr>
