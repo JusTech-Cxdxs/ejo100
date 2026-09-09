@@ -24,6 +24,7 @@ export async function updateOrganisationFormAction(formData: FormData) {
       name: str(formData, 'name'),
       legalName: str(formData, 'legalName'),
       website: str(formData, 'website'),
+      email: str(formData, 'email'),
       hotlines: strList(formData, 'hotlines'),
       hqAddress: str(formData, 'hqAddress'),
       poBox: str(formData, 'poBox'),

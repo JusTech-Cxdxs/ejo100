@@ -24,6 +24,7 @@ export async function updateBranchFormAction(formData: FormData) {
       name: str(formData, 'name'),
       code: str(formData, 'code'),
       address: str(formData, 'address'),
+      email: str(formData, 'email'),
       hotlines: strList(formData, 'hotlines'),
     });
   } catch (err) {

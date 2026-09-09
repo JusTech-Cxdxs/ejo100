@@ -31,6 +31,7 @@ export type UpdateBranchInput = {
   name: string;
   code?: string;
   address?: string;
+  email?: string;
   hotlines?: string[];
 };
 
@@ -58,6 +59,7 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
       name: trimmedName,
       code: input.code?.trim() || null,
       address: input.address?.trim() || null,
+      email: input.email?.trim() || null,
       hotlines,
     },
   });

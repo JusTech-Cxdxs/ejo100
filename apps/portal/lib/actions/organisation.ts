@@ -27,6 +27,7 @@ export type UpdateOrganisationInput = {
   name: string;
   legalName?: string;
   website?: string;
+  email?: string;
   hotlines?: string[];
   hqAddress?: string;
   poBox?: string;
@@ -60,6 +61,7 @@ export async function updateOrganisation(organisationId: string, input: UpdateOr
       name: trimmedName,
       legalName: input.legalName?.trim() || null,
       website: input.website?.trim() || null,
+      email: input.email?.trim() || null,
       hotlines,
       hqAddress: input.hqAddress?.trim() || null,
       poBox: input.poBox?.trim() || null,
