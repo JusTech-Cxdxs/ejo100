@@ -240,6 +240,9 @@ export default async function PartRequestSlipDetailPage({
 
       <div className="mt-6 grid max-w-4xl gap-6 lg:grid-cols-[1fr_360px] print:hidden">
         <div className="space-y-6">
+          {slip.status === 'RELEASED' ? (
+            <PrintMenu orgHref={`/print/parts-requests/${slip.id}`} clientHref={`/print/parts-requests/${slip.id}?variant=client`} clientLabel="Collector Copy" />
+          ) : null}
           {slip.status === 'PENDING_HOD_APPROVAL' && isEligibleManager ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Workshop HOD Approval</h2>
@@ -361,12 +364,6 @@ export default async function PartRequestSlipDetailPage({
           </dl>
         </div>
       </div>
-
-      {slip.status === 'RELEASED' ? (
-        <div className="mt-6">
-          <PrintMenu orgHref={`/print/parts-requests/${slip.id}`} clientHref={`/print/parts-requests/${slip.id}?variant=client`} clientLabel="Collector Copy" />
-        </div>
-      ) : null}
     </div>
   );
 }
