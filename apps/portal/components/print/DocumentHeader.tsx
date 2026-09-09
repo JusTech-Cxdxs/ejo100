@@ -71,48 +71,61 @@ export function DocumentHeader({
         <tbody>
           <tr>
             <td style={{ verticalAlign: 'middle', padding: 0 }}>
-              {/* A hard-coded width AND height, both matching the real
-                  cropped logo file's own exact aspect ratio (569:682),
-                  not width:'auto' — some print/PDF rendering engines
-                  don't reliably preserve an image's natural aspect
-                  ratio through a table cell the way a normal browser
-                  window does, which is exactly what squashed the logo
-                  flat on the actual printed output despite rendering
-                  correctly everywhere this was checked on screen.
-                  Sized to roughly 1.4x the full two-line wordmark
-                  stack's own height — the same real ratio the live
-                  website's own header already uses between its logo
-                  and its "Kewalram / Chanrai Group" text, not picked
-                  arbitrarily. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logoUrl} alt={organisation.name} style={{ width: '57px', height: '68px', display: 'block' }} />
-            </td>
-            <td style={{ verticalAlign: 'middle', paddingLeft: '0px' }}>
-              {/* Real logo-lockup technique, not an approximation: an
-                  inline-flex column with align-items:stretch sizes
-                  itself to its widest child (the wordmark), then
-                  forces every other child to that same width. The row
-                  below is itself a flex row with the green rule set to
-                  flex:1 — it automatically grows to fill exactly the
-                  leftover space, which is what pushes "Chanrai Group"
-                  to end flush with "Kewalram" above it, on any name,
-                  at any size, without hand-tuned pixel widths.
-                  The rule itself is a real border, not a background
-                  color — browsers suppress background-color by
-                  default when printing unless the person manually
-                  enables "Background graphics" in their print dialog,
-                  which is off by default. Borders always print
-                  regardless of that setting, so this is the only
-                  reliable way to guarantee the line actually shows up
-                  on a real printed page, not just on screen. */}
-              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                <div style={{ fontSize: '26px', fontWeight: 800, color: '#0F172A', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>{wordmarkTop}</div>
-                {wordmarkBottom ? (
-                  <div style={{ display: 'flex', alignItems: 'center', marginTop: '1px' }}>
-                    <div style={{ flex: 1, borderBottom: `1.25px solid ${accentColor}`, marginRight: '6px' }} />
-                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{wordmarkBottom}</span>
-                  </div>
-                ) : null}
+              {/* A real flexbox here, not table cells, for the
+                  logo+wordmark pairing specifically — table cells
+                  don't reliably respect a negative margin the way a
+                  flex row does (confirmed directly: the same negative
+                  margin on a <td> barely moved anything, on a flex
+                  row it worked exactly as expected), and a negative
+                  margin is what's actually needed here: the logo is a
+                  real, irregular leaf shape, not a rectangle, so even
+                  a perfectly tight crop still leaves genuine visual
+                  "air" on its right side at most heights — only one
+                  point of the icon actually reaches the edge of its
+                  own bounding box. The pull-in amount was measured
+                  directly against the real image's own alpha channel
+                  at the height the text sits, with a safety buffer
+                  left in, so it closes the visual gap without ever
+                  touching a visible pixel of the icon itself. */}
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                {/* A hard-coded width AND height, both matching the real
+                    cropped logo file's own exact aspect ratio, not
+                    width:'auto' — some print/PDF rendering engines
+                    don't reliably preserve an image's natural aspect
+                    ratio the way a normal browser window does, which is
+                    exactly what squashed the logo flat on the actual
+                    printed output despite rendering correctly
+                    everywhere this was checked on screen. Sized to
+                    roughly 1.4x the full two-line wordmark stack's own
+                    height — the same real ratio the live website's own
+                    header already uses between its logo and its
+                    "Kewalram / Chanrai Group" text, not picked
+                    arbitrarily. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={logoUrl} alt={organisation.name} style={{ width: '56px', height: '68px', display: 'block', marginRight: '-3px' }} />
+                <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch' }}>
+                  <div style={{ fontSize: '26px', fontWeight: 800, color: '#0F172A', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>{wordmarkTop}</div>
+                  {wordmarkBottom ? (
+                    <div style={{ display: 'flex', alignItems: 'center', marginTop: '1px' }}>
+                      {/* The rule itself is a real border, not a
+                          background color — browsers suppress
+                          background-color by default when printing
+                          unless the person manually enables
+                          "Background graphics" in their print dialog,
+                          which is off by default. Borders always print
+                          regardless of that setting, so this is the
+                          only reliable way to guarantee the line
+                          actually shows up on a real printed page, not
+                          just on screen. flex:1 automatically grows it
+                          to fill exactly the leftover space, which is
+                          what pushes "Chanrai Group" to end flush with
+                          "Kewalram" above it, on any name, at any
+                          size, without hand-tuned pixel widths. */}
+                      <div style={{ flex: 1, borderBottom: `1.25px solid ${accentColor}`, marginRight: '6px' }} />
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{wordmarkBottom}</span>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </td>
             <td style={{ verticalAlign: 'top', textAlign: 'right', whiteSpace: 'nowrap' }}>
