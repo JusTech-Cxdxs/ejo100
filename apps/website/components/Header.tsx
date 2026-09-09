@@ -63,15 +63,15 @@ export function Header() {
           }
         >
           <div className="mx-auto flex max-w-7xl flex-nowrap items-center justify-between px-6 py-4">
-            <Link href="/" className="flex shrink-0 items-center gap-2">
+            <Link href="/" className="flex shrink-0 items-center gap-0.5">
               <span className="lg:origin-left lg:scale-125">
-                <BrandLogo transparent={transparent} size={48} />
+                <BrandLogo transparent={transparent} size={31} />
               </span>
               <span className="whitespace-nowrap">
                 <span className={`block text-base font-bold leading-tight ${transparent ? 'text-white' : 'text-[var(--ejo-text)]'}`}>
                   Kewalram
                 </span>
-                <span className={`block text-[11px] leading-tight ${transparent ? 'text-white/70' : 'text-[var(--ejo-text-muted)]'}`}>
+                <span className={`mt-0.5 block text-[11px] leading-tight ${transparent ? 'text-white/70' : 'text-[var(--ejo-text-muted)]'}`}>
                   Chanrai Group
                 </span>
               </span>
