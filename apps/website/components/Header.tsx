@@ -63,7 +63,7 @@ export function Header() {
           }
         >
           <div className="mx-auto flex max-w-7xl flex-nowrap items-center justify-between px-6 py-4">
-            <Link href="/" className="flex shrink-0 items-center gap-1">
+            <Link href="/" className="flex shrink-0 items-center gap-2">
               <span className="lg:origin-left lg:scale-125">
                 <BrandLogo transparent={transparent} size={48} />
               </span>
