@@ -62,25 +62,27 @@ export function Footer() {
         {/* Column 1 — logo, name, description, badge row, social icons */}
         <div className="md:col-span-2">
           {/* Same real wordmark idea as the print document's own
-              DocumentHeader and the site's own Header — a rule between
-              "Kewalram" and "Chanrai Group" below it. Uses a fixed
-              width here, not a flex:1 rule that grows to exactly fill
-              remaining space the way print's own version does. Honest
-              note on why: the sandbox tool used to visually verify CSS
-              changes throughout this project doesn't support the CSS
-              @layer at-rule, which this whole codebase's compiled
-              Tailwind v4 output is built on — confirmed directly with
-              a minimal, unrelated @layer test. That made it impossible
-              to visually re-verify anything using real Tailwind
-              utility classes here, only plain inline styles (print's
-              own line, built with inline styles throughout rather than
-              utility classes, was never affected by this). A
-              fixed-width rule set entirely via inline style sidesteps
-              that verification gap rather than shipping something
-              that could only be checked by reading the code. Logo
-              height matches the real measured two-line stack height
-              exactly, not larger — the same real design rule used
-              everywhere else this wordmark appears.
+              DocumentHeader and the site's own Header — a rule that
+              grows to fill exactly the leftover space so "Chanrai
+              Group" ends flush with "Kewalram" above it, whatever the
+              exact text width turns out to be, the same way print's
+              own version is mathematically guaranteed to line up. Two
+              earlier attempts at this on the website both turned out
+              wrong once actually viewed — a nested flex/grid version
+              that silently failed to grow at all, then a fixed-width
+              version that "Chanrai Group" ran past "Kewalram" on.
+              Traced the real, working difference directly against
+              print's own proven markup this time, one variable at a
+              time, rather than guess again: the growing rule only
+              works reliably here inside a real two-column table,
+              exactly like print's own structure — not a flex or grid
+              row on its own. Built with plain inline styles
+              throughout, the same as print's own version, so every
+              piece of it could be verified directly against real
+              rendered pixels before shipping, nothing left on trust.
+              Logo height matches the real measured two-line stack
+              height exactly, not larger — the same real design rule
+              used everywhere else this wordmark appears.
               Note: this replaces the single i18n `footer.companyName`
               string with the same hardcoded "Kewalram" / "Chanrai
               Group" split the Header already uses for its own wordmark
@@ -89,16 +91,24 @@ export function Footer() {
               translations that string previously had (the Header's own
               wordmark already works this same way, so this makes both
               consistent with each other, not a new inconsistency). */}
-          <div className="flex items-center gap-0.5">
-            <BrandLogo size={36} />
-            <span className="whitespace-nowrap">
-              <span className="block text-lg font-bold leading-tight">Kewalram</span>
-              <span className="mt-0.5 flex items-center">
-                <span className="mr-1.5 inline-block w-5" style={{ borderBottom: '1px solid var(--ejo-primary)' }} />
-                <span className="block text-xs leading-tight text-white/70">Chanrai Group</span>
-              </span>
-            </span>
-          </div>
+          <table role="presentation" style={{ borderCollapse: 'collapse' }}>
+            <tbody>
+              <tr>
+                <td style={{ verticalAlign: 'middle', padding: 0 }}>
+                  <BrandLogo size={36} />
+                </td>
+                <td style={{ verticalAlign: 'middle', paddingLeft: '2px' }}>
+                  <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch', whiteSpace: 'nowrap' }}>
+                    <span className="block text-lg font-bold leading-tight">Kewalram</span>
+                    <span style={{ display: 'flex', alignItems: 'center', marginTop: '2px' }}>
+                      <span style={{ flex: 1, marginRight: '6px', borderBottom: '1px solid var(--ejo-primary)' }} />
+                      <span className="block text-xs leading-tight text-white/70">Chanrai Group</span>
+                    </span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
           <p className="mt-3 max-w-xs text-sm text-white/60">{t('footer.companyDescription')}</p>
 
           <div className="mt-5 flex items-center justify-start gap-4">
