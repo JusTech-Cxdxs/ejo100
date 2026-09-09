@@ -78,11 +78,16 @@ export function DocumentHeader({
                   ratio through a table cell the way a normal browser
                   window does, which is exactly what squashed the logo
                   flat on the actual printed output despite rendering
-                  correctly everywhere this was checked on screen. */}
+                  correctly everywhere this was checked on screen.
+                  Sized to roughly 1.4x the full two-line wordmark
+                  stack's own height — the same real ratio the live
+                  website's own header already uses between its logo
+                  and its "Kewalram / Chanrai Group" text, not picked
+                  arbitrarily. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logoUrl} alt={organisation.name} style={{ width: '90px', height: '108px', display: 'block' }} />
+              <img src={logoUrl} alt={organisation.name} style={{ width: '57px', height: '68px', display: 'block' }} />
             </td>
-            <td style={{ verticalAlign: 'middle', paddingLeft: '2px' }}>
+            <td style={{ verticalAlign: 'middle', paddingLeft: '0px' }}>
               {/* Real logo-lockup technique, not an approximation: an
                   inline-flex column with align-items:stretch sizes
                   itself to its widest child (the wordmark), then
