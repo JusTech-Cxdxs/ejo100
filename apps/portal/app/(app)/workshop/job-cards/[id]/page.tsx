@@ -1,5 +1,6 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { JobCardStatusForm } from '@/components/JobCardStatusForm';
+import { PrintMenu } from '@/components/print/PrintMenu';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { getJobCardSourcingNeeds } from '@/lib/actions/sourcing';
@@ -1422,23 +1423,8 @@ export default async function JobCardDetailPage({
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
                 The vehicle has been checked out — the final record for this Job Card is ready to print.
               </p>
-              <div className="mt-3 flex flex-col gap-2">
-                <a
-                  href={`/print/job-cards/${jobCard.id}?variant=company`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-center text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                >
-                  Print — Company Copy
-                </a>
-                <a
-                  href={`/print/job-cards/${jobCard.id}?variant=client`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-center text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                >
-                  Print — Customer Copy
-                </a>
+              <div className="mt-3">
+                <PrintMenu orgHref={`/print/job-cards/${jobCard.id}`} clientHref={`/print/job-cards/${jobCard.id}?variant=client`} clientLabel="Customer Copy" />
               </div>
             </div>
           ) : null}
