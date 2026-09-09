@@ -70,17 +70,29 @@ export function DocumentHeader({
       <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <tbody>
           <tr>
-            <td style={{ verticalAlign: 'middle', width: '76px', paddingRight: '12px' }}>
+            <td style={{ verticalAlign: 'middle', width: '90px', paddingRight: '2px' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logoUrl} alt={organisation.name} style={{ width: '72px', height: '72px', objectFit: 'contain' }} />
+              <img src={logoUrl} alt={organisation.name} style={{ width: '88px', height: '88px', objectFit: 'contain' }} />
             </td>
             <td style={{ verticalAlign: 'middle' }}>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#0F172A', letterSpacing: '0.01em' }}>{wordmarkTop}</div>
-              {wordmarkBottom ? (
-                <div style={{ borderTop: `2px solid ${accentColor}`, marginTop: '2px', paddingTop: '2px', display: 'inline-block' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#334155' }}>{wordmarkBottom}</span>
-                </div>
-              ) : null}
+              {/* Real logo-lockup technique, not an approximation: an
+                  inline-flex column with align-items:stretch sizes
+                  itself to its widest child (the wordmark), then
+                  forces every other child to that same width. The row
+                  below is itself a flex row with the green rule set to
+                  flex:1 — it automatically grows to fill exactly the
+                  leftover space, which is what pushes "Chanrai Group"
+                  to end flush with "Kewalram" above it, on any name,
+                  at any size, without hand-tuned pixel widths. */}
+              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch' }}>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: '#0F172A', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>{wordmarkTop}</div>
+                {wordmarkBottom ? (
+                  <div style={{ display: 'flex', alignItems: 'center', marginTop: '3px' }}>
+                    <div style={{ flex: 1, height: '1.5px', backgroundColor: accentColor, marginRight: '6px' }} />
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{wordmarkBottom}</span>
+                  </div>
+                ) : null}
+              </div>
             </td>
             <td style={{ verticalAlign: 'top', textAlign: 'right', whiteSpace: 'nowrap' }}>
               <div style={{ fontSize: '15px', fontWeight: 700, color: accentColor }}>{documentTitle}</div>
