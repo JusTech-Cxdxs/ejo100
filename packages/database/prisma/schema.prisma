@@ -334,6 +334,8 @@ model User {
   paymentsRecorded Payment[]
   cancellationRequestsMade CancellationRequest[] @relation("CancellationRequestedBy")
   cancellationRequestsDecided CancellationRequest[] @relation("CancellationDecidedBy")
+  closeRequestsMade CloseRequest[] @relation("CloseRequestedBy")
+  closeRequestsDecided CloseRequest[] @relation("CloseDecidedBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -732,6 +734,7 @@ model JobCard {
   estimate           Estimate?
   payments           Payment[]
   cancellationRequests CancellationRequest[]
+  closeRequests        CloseRequest[]
   partRequestSlips     PartRequestSlip[]
   externalProcurementRequests ExternalProcurementRequest[]
 
@@ -1017,6 +1020,33 @@ model CancellationRequest {
   decidedBy   User?   @relation("CancellationDecidedBy", fields: [decidedById], references: [id])
 
   @@map("cancellation_requests")
+}
+
+/** The same real request → Manager approve/decline shape as
+ * CancellationRequest, deliberately — requesting a close never
+ * changes JobCard.status by itself (mirrors requestJobCardCancellation
+ * never touching status either); status only ever moves to CLOSED on
+ * real Manager approval, and a decline simply leaves the Job Card
+ * exactly where it already was, since it was never touched. No
+ * `reason` field here (unlike cancellation) — closing isn't something
+ * that needs justifying the way ending a job early does. */
+model CloseRequest {
+  id            String                    @id @default(cuid())
+  jobCardId     String
+  requestedById String
+  requestedAt   DateTime                  @default(now())
+  status        CancellationRequestStatus @default(PENDING)
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNotes String?
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @default(now()) @updatedAt
+
+  jobCard     JobCard @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  requestedBy User    @relation("CloseRequestedBy", fields: [requestedById], references: [id])
+  decidedBy   User?   @relation("CloseDecidedBy", fields: [decidedById], references: [id])
+
+  @@map("close_requests")
 }
 
 model CustomerAddress {
