@@ -50,6 +50,10 @@ import { renderCancellationDeclinedEmail } from '@/lib/email-templates/cancellat
 import { renderJobCardCancelledStaffEmail } from '@/lib/email-templates/job-card-cancelled-staff';
 import { renderCustomerJobCardCancelledEmail } from '@/lib/email-templates/customer-job-card-cancelled';
 import { renderCustomerApprovalReminderEmail } from '@/lib/email-templates/customer-approval-reminder';
+import { renderCustomerJobCardClosedEmail } from '@/lib/email-templates/customer-job-card-closed';
+import { renderCustomerVehicleCheckedOutEmail } from '@/lib/email-templates/customer-vehicle-checked-out';
+import { renderJobCardClosedStaffEmail } from '@/lib/email-templates/job-card-closed-staff';
+import { renderVehicleCheckedOutStaffEmail } from '@/lib/email-templates/vehicle-checked-out-staff';
 import { renderCustomerCollectionOverdueEmail } from '@/lib/email-templates/customer-collection-overdue';
 import { renderCustomerJobInProgressEmail } from '@/lib/email-templates/customer-job-in-progress';
 import { renderCustomerQualityCheckEmail } from '@/lib/email-templates/customer-quality-check';
@@ -1179,6 +1183,9 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       workStartedAt: true,
       completedAt: true,
       checkedOutAt: true,
+      createdById: true,
+      supervisorId: true,
+      assignedTechnicianId: true,
       department: { select: { name: true } },
       customer: { select: { fullName: true, email: true } },
       vehicle: { select: { make: true, model: true } },
@@ -1303,6 +1310,109 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Failed to send status-lifecycle email', id, status, err);
+    }
+  }
+
+  // CLOSED and CHECKED_OUT each get their own real, separate email
+  // chain to the customer AND every real staff party on the Job Card
+  // — creator, supervisor, assigned technician, and every eligible
+  // branch Manager — the same broadcast pattern already proven for
+  // cancellation approval. Fires exactly once, on a real transition,
+  // same "never on a no-op re-save" rule as every other lifecycle
+  // email in this function.
+  if (priorStatus !== status && (status === JobCardStatus.CLOSED || status === JobCardStatus.CHECKED_OUT)) {
+    try {
+      const actingUser = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+      const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+      const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const vehicleDescription = [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
+      const dashboardUrl = `${websiteUrl}/customer-portal/dashboard`;
+      const jobCardUrl = `${portalUrl}/workshop/job-cards/${id}`;
+      const websiteLogoUrl = `${websiteUrl}/images/logo/logo.png`;
+      const portalLogoUrl = `${portalUrl}/images/logo/logo.png`;
+
+      if (status === JobCardStatus.CLOSED) {
+        await sendEmail(
+          jobCard.customer.email,
+          `Job Card ${jobCard.jobNumber} has been closed`,
+          renderCustomerJobCardClosedEmail({
+            customerName: jobCard.customer.fullName,
+            jobNumber: jobCard.jobNumber,
+            vehicleDescription,
+            dashboardUrl,
+            logoUrl: websiteLogoUrl,
+            companyName: orgContext.companyName,
+            branchName: orgContext.branchName,
+          }),
+        );
+      } else {
+        await sendEmail(
+          jobCard.customer.email,
+          `Your vehicle has been collected — Job Card ${jobCard.jobNumber}`,
+          renderCustomerVehicleCheckedOutEmail({
+            customerName: jobCard.customer.fullName,
+            jobNumber: jobCard.jobNumber,
+            vehicleDescription,
+            collectedByName: result.collectedByName ?? collectedByName?.trim() ?? 'the customer',
+            dashboardUrl,
+            logoUrl: websiteLogoUrl,
+            companyName: orgContext.companyName,
+            branchName: orgContext.branchName,
+          }),
+        );
+      }
+
+      const recipientIds = new Set<string>();
+      if (jobCard.createdById) recipientIds.add(jobCard.createdById);
+      if (jobCard.supervisorId) recipientIds.add(jobCard.supervisorId);
+      if (jobCard.assignedTechnicianId) recipientIds.add(jobCard.assignedTechnicianId);
+      const managers = await listEligibleManagersForBranch(jobCard.branchId);
+      for (const m of managers.supervisors) recipientIds.add(m.id);
+
+      const staffRecipients = await prisma.user.findMany({
+        where: { id: { in: Array.from(recipientIds) } },
+        select: { id: true, fullName: true, email: true },
+      });
+
+      for (const recipient of staffRecipients) {
+        if (status === JobCardStatus.CLOSED) {
+          await sendEmail(
+            recipient.email,
+            `Job Card ${jobCard.jobNumber} closed`,
+            renderJobCardClosedStaffEmail({
+              recipientName: recipient.fullName,
+              jobNumber: jobCard.jobNumber,
+              customerName: jobCard.customer.fullName,
+              closedByName: actingUser?.fullName ?? 'The manager',
+              jobCardUrl,
+              logoUrl: portalLogoUrl,
+              companyName: orgContext.companyName,
+              branchName: orgContext.branchName,
+              departmentName: orgContext.departmentName,
+            }),
+          );
+        } else {
+          await sendEmail(
+            recipient.email,
+            `Job Card ${jobCard.jobNumber} — vehicle checked out`,
+            renderVehicleCheckedOutStaffEmail({
+              recipientName: recipient.fullName,
+              jobNumber: jobCard.jobNumber,
+              customerName: jobCard.customer.fullName,
+              collectedByName: result.collectedByName ?? collectedByName?.trim() ?? 'the customer',
+              jobCardUrl,
+              logoUrl: portalLogoUrl,
+              companyName: orgContext.companyName,
+              branchName: orgContext.branchName,
+              departmentName: orgContext.departmentName,
+            }),
+          );
+        }
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to send close/checkout email chain', id, status, err);
     }
   }
 
