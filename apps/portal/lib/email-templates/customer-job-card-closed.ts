@@ -16,8 +16,15 @@ export type CustomerJobCardClosedEmailOptions = {
  * complete and settled. Deliberately distinct from the vehicle
  * physically leaving (that's CHECKED_OUT, its own separate email) —
  * the schema's own comments already settle that CLOSED can happen
- * while the vehicle is still sitting in the yard, so this email is
- * careful not to say the vehicle has left.
+ * while the vehicle is still sitting in the yard.
+ *
+ * Stays entirely off the subject of vehicle collection, on purpose —
+ * that's what the separate Ready For Collection and Vehicle Checked
+ * Out emails already cover, each at its own real moment. An earlier
+ * version of this email tried to also reassure the customer about
+ * collection ("if your vehicle is still with us...") and it read as
+ * contradicting the Ready For Collection email's own message instead
+ * — CLOSED is purely a settlement confirmation, nothing more.
  */
 export function renderCustomerJobCardClosedEmail(opts: CustomerJobCardClosedEmailOptions): string {
   const { customerName, jobNumber, vehicleDescription, dashboardUrl, logoUrl, companyName, branchName } = opts;
@@ -25,12 +32,8 @@ export function renderCustomerJobCardClosedEmail(opts: CustomerJobCardClosedEmai
   const bodyHtml = `
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
     <p style="margin: 0 0 16px 0;">
-      Your ${escapeHtml(vehicleDescription)} (Job Card ${escapeHtml(jobNumber)}) has now been closed — our
-      records show the work and payment on this job are fully settled.
-    </p>
-    <p style="margin: 0 0 16px 0;">
-      If your vehicle is still with us, this doesn't change anything about collecting it — please come by at
-      your convenience.
+      Your ${escapeHtml(vehicleDescription)} (Job Card ${escapeHtml(jobNumber)}) has now been closed — the work
+      and payment on this job are fully settled. Thank you for choosing ${escapeHtml(companyName)}.
     </p>
   `;
 
