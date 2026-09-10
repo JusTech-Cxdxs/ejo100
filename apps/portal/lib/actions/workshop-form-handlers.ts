@@ -48,6 +48,9 @@ import {
   requestJobCardCancellation,
   approveCancellationRequest,
   declineCancellationRequest,
+  requestJobCardClose,
+  approveCloseRequest,
+  declineCloseRequest,
   sendApprovalReminder,
   runApprovalDeadlineChecks,
   notifyOverdueCancelledVehicle,
@@ -439,6 +442,42 @@ export async function declineCancellationRequestFormAction(formData: FormData) {
     await declineCancellationRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not decline cancellation.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  revalidatePath('/workshop/custody');
+}
+
+export async function requestJobCardCloseFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await requestJobCardClose(jobCardId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not request close.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  revalidatePath('/workshop/custody');
+}
+
+export async function approveCloseRequestFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await approveCloseRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not approve close.';
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  revalidatePath('/workshop/custody');
+}
+
+export async function declineCloseRequestFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await declineCloseRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not decline close.';
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);

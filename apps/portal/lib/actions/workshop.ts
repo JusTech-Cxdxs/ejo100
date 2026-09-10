@@ -51,6 +51,8 @@ import { renderJobCardCancelledStaffEmail } from '@/lib/email-templates/job-card
 import { renderCustomerJobCardCancelledEmail } from '@/lib/email-templates/customer-job-card-cancelled';
 import { renderCustomerApprovalReminderEmail } from '@/lib/email-templates/customer-approval-reminder';
 import { renderCustomerJobCardClosedEmail } from '@/lib/email-templates/customer-job-card-closed';
+import { renderCloseRequestedEmail } from '@/lib/email-templates/close-requested';
+import { renderCloseRequestDeclinedEmail } from '@/lib/email-templates/close-request-declined';
 import { renderCustomerVehicleCheckedOutEmail } from '@/lib/email-templates/customer-vehicle-checked-out';
 import { renderJobCardClosedStaffEmail } from '@/lib/email-templates/job-card-closed-staff';
 import { renderVehicleCheckedOutStaffEmail } from '@/lib/email-templates/vehicle-checked-out-staff';
@@ -1196,11 +1198,20 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
   }
-  // Closed is the Manager's own sign-off that a completed job was
-  // genuinely collected and confirmed — not a routine status change
-  // any staff member should be able to set on their own.
+  // Closed and Cancelled are no longer things this function ever sets
+  // directly — both now go through their own real request → Manager
+  // approve/decline flow (requestJobCardClose/approveCloseRequest,
+  // requestJobCardCancellation/approveCancellationRequest), the exact
+  // same real workflow-integrity standard already applied to every
+  // other consequential decision in this system: never just hide an
+  // option from a form, actually refuse it server-side too. Genuinely
+  // reached only via those two functions, which update status
+  // themselves — never via a direct call here.
   if (status === JobCardStatus.CLOSED) {
-    await requireEligibleManager(jobCard.branchId);
+    throw new WorkshopActionError('A Job Card is closed by approving a close request, not directly — see Request Close.');
+  }
+  if (status === JobCardStatus.CANCELLED) {
+    throw new WorkshopActionError('A Job Card is cancelled by approving a cancellation request, not directly — see Request Cancellation.');
   }
   // A cancelled Job Card is terminal — dead, in the plainest sense.
   // Nothing about it can be edited or re-progressed; the one thing
@@ -1209,21 +1220,21 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   if (jobCard.status === JobCardStatus.CANCELLED && status !== JobCardStatus.CHECKED_OUT) {
     throw new WorkshopActionError('This Job Card is cancelled — the only status change available is checking the vehicle out.');
   }
-  // A non-cancelled Job Card can't be genuinely finished — closed or
-  // physically checked out — while real money is still owed on it.
-  // Enforced here, server-side, not just hidden from the status
+  // A non-cancelled Job Card can't genuinely be checked out — the
+  // vehicle physically leaving — while real money is still owed on
+  // it. Enforced here, server-side, not just hidden from the status
   // dropdown — the same "don't just hide the option, actually refuse
   // it" standard already applied to every other real business rule in
   // this system. A cancelled Job Card is exempt: there's no service
   // being paid for anymore, only a vehicle waiting to be collected.
   if (
-    (status === JobCardStatus.CLOSED || status === JobCardStatus.CHECKED_OUT)
+    status === JobCardStatus.CHECKED_OUT
     && jobCard.status !== JobCardStatus.CANCELLED
   ) {
     const totalEstimate = (jobCard.estimate?.lineItems ?? []).reduce((sum: number, l: { amount: unknown }) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
     const totalPaid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
     if (totalPaid < totalEstimate) {
-      throw new WorkshopActionError('Payment must be completed in full before this Job Card can be closed or checked out.');
+      throw new WorkshopActionError('Payment must be completed in full before this Job Card can be checked out.');
     }
   }
   const priorStatus = jobCard.status;
@@ -1238,7 +1249,6 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
     where: { id },
     data: {
       status,
-      closedAt: status === JobCardStatus.CLOSED ? new Date() : undefined,
       readyForCollectionAt: status === JobCardStatus.READY_FOR_COLLECTION ? new Date() : undefined,
       // Only ever set once — the first genuine arrival at each status
       // — never overwritten by a later return to the same status
@@ -1320,9 +1330,17 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   // cancellation approval. Fires exactly once, on a real transition,
   // same "never on a no-op re-save" rule as every other lifecycle
   // email in this function.
-  if (priorStatus !== status && (status === JobCardStatus.CLOSED || status === JobCardStatus.CHECKED_OUT)) {
+  // CHECKED_OUT gets its own real email chain to the customer AND
+  // every real staff party on the Job Card — creator, supervisor,
+  // assigned technician, and every eligible branch Manager — the
+  // same broadcast pattern already proven for cancellation approval.
+  // CLOSED never reaches here anymore (see the guard above) — its own
+  // email chain now fires from approveCloseRequest instead, the one
+  // real place status genuinely becomes CLOSED. Fires exactly once,
+  // on a real transition, same "never on a no-op re-save" rule as
+  // every other lifecycle email in this function.
+  if (priorStatus !== status && status === JobCardStatus.CHECKED_OUT) {
     try {
-      const actingUser = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
       const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
       const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
       const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
@@ -1331,37 +1349,22 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       const jobCardUrl = `${portalUrl}/workshop/job-cards/${id}`;
       const websiteLogoUrl = `${websiteUrl}/images/logo/logo.png`;
       const portalLogoUrl = `${portalUrl}/images/logo/logo.png`;
+      const realCollectedByName = result.collectedByName ?? collectedByName?.trim() ?? 'the customer';
 
-      if (status === JobCardStatus.CLOSED) {
-        await sendEmail(
-          jobCard.customer.email,
-          `Job Card ${jobCard.jobNumber} has been closed`,
-          renderCustomerJobCardClosedEmail({
-            customerName: jobCard.customer.fullName,
-            jobNumber: jobCard.jobNumber,
-            vehicleDescription,
-            dashboardUrl,
-            logoUrl: websiteLogoUrl,
-            companyName: orgContext.companyName,
-            branchName: orgContext.branchName,
-          }),
-        );
-      } else {
-        await sendEmail(
-          jobCard.customer.email,
-          `Your vehicle has been collected — Job Card ${jobCard.jobNumber}`,
-          renderCustomerVehicleCheckedOutEmail({
-            customerName: jobCard.customer.fullName,
-            jobNumber: jobCard.jobNumber,
-            vehicleDescription,
-            collectedByName: result.collectedByName ?? collectedByName?.trim() ?? 'the customer',
-            dashboardUrl,
-            logoUrl: websiteLogoUrl,
-            companyName: orgContext.companyName,
-            branchName: orgContext.branchName,
-          }),
-        );
-      }
+      await sendEmail(
+        jobCard.customer.email,
+        `Your vehicle has been collected — Job Card ${jobCard.jobNumber}`,
+        renderCustomerVehicleCheckedOutEmail({
+          customerName: jobCard.customer.fullName,
+          jobNumber: jobCard.jobNumber,
+          vehicleDescription,
+          collectedByName: realCollectedByName,
+          dashboardUrl,
+          logoUrl: websiteLogoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
 
       const recipientIds = new Set<string>();
       if (jobCard.createdById) recipientIds.add(jobCard.createdById);
@@ -1376,43 +1379,25 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       });
 
       for (const recipient of staffRecipients) {
-        if (status === JobCardStatus.CLOSED) {
-          await sendEmail(
-            recipient.email,
-            `Job Card ${jobCard.jobNumber} closed`,
-            renderJobCardClosedStaffEmail({
-              recipientName: recipient.fullName,
-              jobNumber: jobCard.jobNumber,
-              customerName: jobCard.customer.fullName,
-              closedByName: actingUser?.fullName ?? 'The manager',
-              jobCardUrl,
-              logoUrl: portalLogoUrl,
-              companyName: orgContext.companyName,
-              branchName: orgContext.branchName,
-              departmentName: orgContext.departmentName,
-            }),
-          );
-        } else {
-          await sendEmail(
-            recipient.email,
-            `Job Card ${jobCard.jobNumber} — vehicle checked out`,
-            renderVehicleCheckedOutStaffEmail({
-              recipientName: recipient.fullName,
-              jobNumber: jobCard.jobNumber,
-              customerName: jobCard.customer.fullName,
-              collectedByName: result.collectedByName ?? collectedByName?.trim() ?? 'the customer',
-              jobCardUrl,
-              logoUrl: portalLogoUrl,
-              companyName: orgContext.companyName,
-              branchName: orgContext.branchName,
-              departmentName: orgContext.departmentName,
-            }),
-          );
-        }
+        await sendEmail(
+          recipient.email,
+          `Job Card ${jobCard.jobNumber} — vehicle checked out`,
+          renderVehicleCheckedOutStaffEmail({
+            recipientName: recipient.fullName,
+            jobNumber: jobCard.jobNumber,
+            customerName: jobCard.customer.fullName,
+            collectedByName: realCollectedByName,
+            jobCardUrl,
+            logoUrl: portalLogoUrl,
+            companyName: orgContext.companyName,
+            branchName: orgContext.branchName,
+            departmentName: orgContext.departmentName,
+          }),
+        );
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send close/checkout email chain', id, status, err);
+      console.error('Failed to send checkout email chain', id, status, err);
     }
   }
 
@@ -3453,6 +3438,292 @@ export async function declineCancellationRequest(requestId: string, decisionNote
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Failed to send cancellation-declined email', request.jobCardId, err);
+  }
+}
+
+export async function getCloseRequests(jobCardId: string) {
+  await requireUser();
+  return prisma.closeRequest.findMany({
+    where: { jobCardId },
+    orderBy: { requestedAt: 'desc' },
+    include: {
+      requestedBy: { select: { fullName: true } },
+      decidedBy: { select: { fullName: true } },
+    },
+  });
+}
+
+/** Logs the request and notifies every eligible Manager for the
+ * branch — the Job Card's own status is deliberately untouched here,
+ * the exact same real reasoning as requestJobCardCancellation: a
+ * request is not a decision, only a real Manager's approval is. */
+export async function requestJobCardClose(jobCardId: string): Promise<void> {
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: {
+      status: true,
+      branchId: true,
+      jobNumber: true,
+      createdById: true,
+      supervisorId: true,
+      customer: { select: { fullName: true } },
+      department: { select: { name: true } },
+      estimate: { select: { lineItems: { select: { amount: true } } } },
+      payments: { select: { amount: true } },
+    },
+  });
+  if (!jobCard) {
+    throw new WorkshopActionError('Job Card not found.');
+  }
+  if (jobCard.status === JobCardStatus.CANCELLED || jobCard.status === JobCardStatus.CLOSED || jobCard.status === JobCardStatus.CHECKED_OUT) {
+    throw new WorkshopActionError('This Job Card is already cancelled, closed, or checked out.');
+  }
+  // The same real payment-completion rule that already gates
+  // CHECKED_OUT — a Job Card can't genuinely be closed while real
+  // money is still owed on it. Checked here, at the earliest possible
+  // point, rather than only at approval — no point routing a request
+  // to a Manager that could never legitimately be approved anyway.
+  const totalEstimate = (jobCard.estimate?.lineItems ?? []).reduce((sum: number, l: { amount: unknown }) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
+  const totalPaid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
+  if (totalPaid < totalEstimate) {
+    throw new WorkshopActionError('Payment must be completed in full before a close can be requested.');
+  }
+  const user = await requireJobCardCreatorOrSupervisor(jobCard);
+
+  const existingPending = await prisma.closeRequest.findFirst({
+    where: { jobCardId, status: 'PENDING' },
+    select: { id: true },
+  });
+  if (existingPending) {
+    throw new WorkshopActionError('A close request is already pending for this Job Card.');
+  }
+
+  await prisma.closeRequest.create({
+    data: { jobCardId, requestedById: user.id },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'close.requested',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+  });
+
+  try {
+    const requester = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const managers = await listEligibleManagersForBranch(jobCard.branchId);
+    for (const manager of managers.supervisors) {
+      await sendEmail(
+        manager.email,
+        `Close requested — Job Card ${jobCard.jobNumber}`,
+        renderCloseRequestedEmail({
+          managerName: manager.fullName,
+          jobNumber: jobCard.jobNumber,
+          customerName: jobCard.customer.fullName,
+          requestedByName: requester?.fullName ?? 'A team member',
+          jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send close-requested emails', jobCardId, err);
+  }
+}
+
+/** The Manager's approval — the one moment JobCard.status actually
+ * changes to CLOSED, and the only moment the full broadcast (every
+ * real staff party, plus the customer, each their own appropriately-
+ * scoped email) goes out. Sets status directly here, not through
+ * updateJobCardStatus — that function now refuses CLOSED outright,
+ * reachable only via this real approval path. */
+export async function approveCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  const request = await prisma.closeRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      id: true,
+      status: true,
+      jobCardId: true,
+      jobCard: {
+        select: {
+          branchId: true,
+          jobNumber: true,
+          createdById: true,
+          supervisorId: true,
+          assignedTechnicianId: true,
+          customer: { select: { fullName: true, email: true } },
+          vehicle: { select: { make: true, model: true } },
+          department: { select: { name: true } },
+        },
+      },
+    },
+  });
+  if (!request) {
+    throw new WorkshopActionError('Close request not found.');
+  }
+  if (request.status !== 'PENDING') {
+    throw new WorkshopActionError('This close request has already been decided.');
+  }
+  const user = await requireEligibleManager(request.jobCard.branchId);
+
+  await prisma.$transaction([
+    prisma.closeRequest.update({
+      where: { id: requestId },
+      data: {
+        status: 'APPROVED',
+        decidedById: user.id,
+        decidedAt: new Date(),
+        decisionNotes: decisionNotes?.trim() || null,
+      },
+    }),
+    prisma.jobCard.update({
+      where: { id: request.jobCardId },
+      data: { status: JobCardStatus.CLOSED, closedAt: new Date() },
+    }),
+  ]);
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'job_card.status_updated',
+    entityType: 'JobCard',
+    entityId: request.jobCardId,
+    metadata: { from: 'READY_FOR_COLLECTION', to: 'CLOSED', notes: decisionNotes?.trim() || undefined },
+  });
+
+  try {
+    const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
+    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const vehicleDescription = [request.jobCard.vehicle.make, request.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
+
+    await sendEmail(
+      request.jobCard.customer.email,
+      `Job Card ${request.jobCard.jobNumber} has been closed`,
+      renderCustomerJobCardClosedEmail({
+        customerName: request.jobCard.customer.fullName,
+        jobNumber: request.jobCard.jobNumber,
+        vehicleDescription,
+        dashboardUrl: `${websiteUrl}/customer-portal/dashboard`,
+        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+      }),
+    );
+
+    const recipientIds = new Set<string>();
+    if (request.jobCard.createdById) recipientIds.add(request.jobCard.createdById);
+    if (request.jobCard.supervisorId) recipientIds.add(request.jobCard.supervisorId);
+    if (request.jobCard.assignedTechnicianId) recipientIds.add(request.jobCard.assignedTechnicianId);
+    const managers = await listEligibleManagersForBranch(request.jobCard.branchId);
+    for (const m of managers.supervisors) recipientIds.add(m.id);
+
+    const staffRecipients = await prisma.user.findMany({
+      where: { id: { in: Array.from(recipientIds) } },
+      select: { id: true, fullName: true, email: true },
+    });
+
+    for (const recipient of staffRecipients) {
+      await sendEmail(
+        recipient.email,
+        `Job Card ${request.jobCard.jobNumber} closed`,
+        renderJobCardClosedStaffEmail({
+          recipientName: recipient.fullName,
+          jobNumber: request.jobCard.jobNumber,
+          customerName: request.jobCard.customer.fullName,
+          closedByName: approver?.fullName ?? 'The manager',
+          jobCardUrl: `${portalUrl}/workshop/job-cards/${request.jobCardId}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send close-approval emails', request.jobCardId, err);
+  }
+}
+
+/** The Manager's decline — the Job Card's status is never touched,
+ * matching how nothing was ever changed by the request itself. Only
+ * the original requester is notified. */
+export async function declineCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  const request = await prisma.closeRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      id: true,
+      status: true,
+      requestedById: true,
+      jobCardId: true,
+      jobCard: {
+        select: {
+          branchId: true,
+          jobNumber: true,
+          customer: { select: { fullName: true } },
+          department: { select: { name: true } },
+        },
+      },
+    },
+  });
+  if (!request) {
+    throw new WorkshopActionError('Close request not found.');
+  }
+  if (request.status !== 'PENDING') {
+    throw new WorkshopActionError('This close request has already been decided.');
+  }
+  const user = await requireEligibleManager(request.jobCard.branchId);
+
+  await prisma.closeRequest.update({
+    where: { id: requestId },
+    data: {
+      status: 'DECLINED',
+      decidedById: user.id,
+      decidedAt: new Date(),
+      decisionNotes: decisionNotes?.trim() || null,
+    },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'close.declined',
+    entityType: 'JobCard',
+    entityId: request.jobCardId,
+    metadata: { notes: decisionNotes?.trim() || undefined },
+  });
+
+  try {
+    const [decliner, requester] = await Promise.all([
+      prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
+      prisma.user.findUnique({ where: { id: request.requestedById }, select: { fullName: true, email: true } }),
+    ]);
+    if (!requester) return;
+    const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      requester.email,
+      `Close request declined — Job Card ${request.jobCard.jobNumber}`,
+      renderCloseRequestDeclinedEmail({
+        recipientName: requester.fullName,
+        jobNumber: request.jobCard.jobNumber,
+        customerName: request.jobCard.customer.fullName,
+        declinedByName: decliner?.fullName ?? 'The manager',
+        decisionNotes,
+        jobCardUrl: `${portalUrl}/workshop/job-cards/${request.jobCardId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send close-declined email', request.jobCardId, err);
   }
 }
 
