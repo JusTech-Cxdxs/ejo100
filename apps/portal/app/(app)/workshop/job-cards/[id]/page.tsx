@@ -2,14 +2,14 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { JobCardStatusForm } from '@/components/JobCardStatusForm';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { notFound } from 'next/navigation';
-import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
+import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, getCloseRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { getJobCardSourcingNeeds } from '@/lib/actions/sourcing';
 import { listPartCategories, listPartTypes } from '@/lib/actions/store';
 import { EstimateLineItemForm } from '@/components/EstimateLineItemForm';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { requestStoreMatchingFormAction } from '@/lib/actions/store-form-handlers';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
-import { assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
+import { assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction, requestJobCardCloseFormAction, approveCloseRequestFormAction, declineCloseRequestFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -19,6 +19,13 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { workingDaysBetween } from '@/lib/utils/working-days';
 
+// CLOSED and CANCELLED are deliberately absent — both now go through
+// their own real request → Manager approve/decline flow (see
+// requestJobCardClose/requestJobCardCancellation), never a direct
+// dropdown selection. CHECKED_OUT stays selectable directly: it's a
+// factual, physical event (the vehicle actually left), not a decision
+// that itself needs a separate sign-off the way ending a job early or
+// closing it out administratively does.
 const ALL_STATUSES = [
   'CHECKED_IN',
   'AWAITING_CUSTOMER_APPROVAL',
@@ -27,9 +34,7 @@ const ALL_STATUSES = [
   'QUALITY_CHECK',
   'COMPLETED',
   'READY_FOR_COLLECTION',
-  'CLOSED',
   'CHECKED_OUT',
-  'CANCELLED',
 ] as const;
 
 const STATUS_LABEL: Record<string, string> = {
@@ -297,7 +302,7 @@ export default async function JobCardDetailPage({
     currentUserId(),
   ]);
   if (!jobCard) notFound();
-  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers, eligibleFinance, payments, cancellationRequests, sourcingNeeds, partCategories, partTypes] = await Promise.all([
+  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers, eligibleFinance, payments, cancellationRequests, closeRequests, sourcingNeeds, partCategories, partTypes] = await Promise.all([
     getJobCardAuditTrail(id),
     listEligibleSupervisorsForJobCard(id),
     getJobCardEstimate(id),
@@ -305,6 +310,7 @@ export default async function JobCardDetailPage({
     listEligibleFinanceOfficersForBranch(jobCard.branchId),
     getJobCardPayments(id),
     getCancellationRequests(id),
+    getCloseRequests(id),
     getJobCardSourcingNeeds(id),
     listPartCategories(jobCard.branchId),
     listPartTypes(jobCard.branchId),
@@ -321,7 +327,9 @@ export default async function JobCardDetailPage({
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
   const canRequestCancellation = isCreator || isApprover;
+  const canRequestClose = isCreator || isApprover;
   const pendingCancellationRequest = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'PENDING');
+  const pendingCloseRequest = closeRequests.find((r: (typeof closeRequests)[number]) => r.status === 'PENDING');
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const estimateLineItems = estimate?.lineItems ?? [];
   // The one real source of truth for what a line is actually worth
@@ -351,18 +359,28 @@ export default async function JobCardDetailPage({
   // Cancelled is terminal — dead. The only status change still
   // legitimately available is the vehicle's eventual physical exit.
   const isCancelled = jobCard.status === 'CANCELLED';
-  // A non-cancelled Job Card can't be genuinely finished — closed or
-  // physically checked out — while real money is still owed on it.
-  // READY_FOR_COLLECTION is the honest ceiling until payment actually
-  // clears; CLOSED/CHECKED_OUT simply aren't real options yet, so they
-  // don't appear as choices at all rather than being offered and then
-  // rejected.
+  // Once checked out, the vehicle has genuinely, physically left —
+  // per the schema's own comments, this is the true end of the line
+  // for a Job Card. Nothing about it is still actionable from here:
+  // no more status edits, no more assignment/approval workflow, no
+  // more cancellation. Only its own real status display, the receipt
+  // it can still print, and — for a Master Admin only — the ability
+  // to delete it outright remain.
+  const isCheckedOut = jobCard.status === 'CHECKED_OUT';
+  // A non-cancelled Job Card can't genuinely be checked out — the
+  // vehicle physically leaving — while real money is still owed on
+  // it. READY_FOR_COLLECTION is the honest ceiling until payment
+  // actually clears; CHECKED_OUT simply isn't a real option yet, so
+  // it doesn't appear as a choice at all rather than being offered
+  // and then rejected. CLOSED no longer appears here at all — it's
+  // requested and approved through its own real flow now, never a
+  // direct dropdown selection.
   const isPaidInFull = paymentStatus === 'PAID_IN_FULL';
   const selectableStatuses = isCancelled
     ? (['CHECKED_OUT'] as const)
     : isPaidInFull
       ? ALL_STATUSES
-      : ALL_STATUSES.filter((s) => s !== 'CLOSED' && s !== 'CHECKED_OUT');
+      : ALL_STATUSES.filter((s) => s !== 'CHECKED_OUT');
 
   return (
     <div className="p-8">
@@ -1184,7 +1202,7 @@ export default async function JobCardDetailPage({
         </div>
 
         <div className="space-y-6">
-          {isCreator && !jobCard.supervisor ? (
+          {isCreator && !jobCard.supervisor && !isCheckedOut ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Reassign supervisor</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -1227,7 +1245,7 @@ export default async function JobCardDetailPage({
             </div>
           ) : null}
 
-          {isApprover && jobCard.approvalStatus === 'PENDING' ? (
+          {isApprover && jobCard.approvalStatus === 'PENDING' && !isCheckedOut ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Review this Job Card</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -1276,7 +1294,7 @@ export default async function JobCardDetailPage({
 
           <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Status</h2>
-            {editStatus === 'true' ? (
+            {editStatus === 'true' && !isCheckedOut ? (
               <JobCardStatusForm
                 jobCardId={jobCard.id}
                 currentStatus={jobCard.status}
@@ -1288,17 +1306,19 @@ export default async function JobCardDetailPage({
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[jobCard.status]}`}>
                   {STATUS_LABEL[jobCard.status]}
                 </span>
-                <LoadingLink
-                  href={`/workshop/job-cards/${jobCard.id}?editStatus=true`}
-                  className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
-                >
-                  Edit
-                </LoadingLink>
+                {!isCheckedOut ? (
+                  <LoadingLink
+                    href={`/workshop/job-cards/${jobCard.id}?editStatus=true`}
+                    className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+                  >
+                    Edit
+                  </LoadingLink>
+                ) : null}
               </div>
             )}
           </div>
 
-          {!isCancelled ? (
+          {!isCancelled && !isCheckedOut ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Assign technician</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -1329,7 +1349,7 @@ export default async function JobCardDetailPage({
           </div>
           ) : null}
 
-          {!isCancelled && isAssignedTechnician && jobCard.technicianAcceptanceStatus === 'PENDING' ? (
+          {!isCancelled && !isCheckedOut && isAssignedTechnician && jobCard.technicianAcceptanceStatus === 'PENDING' ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Respond to this assignment</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -1363,7 +1383,7 @@ export default async function JobCardDetailPage({
             </div>
           ) : null}
 
-          {pendingCancellationRequest && isEligibleManager ? (
+          {pendingCancellationRequest && isEligibleManager && !isCheckedOut ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Cancellation requested</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -1402,7 +1422,7 @@ export default async function JobCardDetailPage({
                 </form>
               </div>
             </div>
-          ) : !pendingCancellationRequest && canRequestCancellation && jobCard.status !== 'CANCELLED' && jobCard.status !== 'CLOSED' ? (
+          ) : !pendingCancellationRequest && canRequestCancellation && jobCard.status !== 'CANCELLED' && jobCard.status !== 'CLOSED' && !isCheckedOut ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Request cancellation</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -1423,6 +1443,64 @@ export default async function JobCardDetailPage({
                   label="Request cancellation"
                   pendingLabel="Requesting…"
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
+                />
+              </form>
+            </div>
+          ) : null}
+
+          {pendingCloseRequest && isEligibleManager && !isCheckedOut ? (
+            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-primary)]">Close requested</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                {pendingCloseRequest.requestedBy.fullName} has requested this Job Card be closed.
+              </p>
+              <div className="mt-3 space-y-2">
+                <form action={approveCloseRequestFormAction} className="space-y-2">
+                  <FormPendingOverlay />
+                  <input type="hidden" name="jobCardId" value={jobCard.id} />
+                  <input type="hidden" name="requestId" value={pendingCloseRequest.id} />
+                  <input
+                    name="decisionNotes"
+                    placeholder="Note (optional)"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                  />
+                  <SubmitButton
+                    label="Approve close"
+                    pendingLabel="Approving…"
+                    className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                  />
+                </form>
+                <form action={declineCloseRequestFormAction} className="space-y-2">
+                  <FormPendingOverlay />
+                  <input type="hidden" name="jobCardId" value={jobCard.id} />
+                  <input type="hidden" name="requestId" value={pendingCloseRequest.id} />
+                  <input
+                    name="decisionNotes"
+                    placeholder="Note (optional)"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                  />
+                  <SubmitButton
+                    label="Decline"
+                    pendingLabel="Declining…"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                  />
+                </form>
+              </div>
+            </div>
+          ) : !pendingCloseRequest && canRequestClose && jobCard.status !== 'CANCELLED' && jobCard.status !== 'CLOSED' && !isCheckedOut ? (
+            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-primary)]">Request close</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                Requires Manager approval before this Job Card is actually closed — the same real approval this
+                Job Card&apos;s own cancellation already needs.
+              </p>
+              <form action={requestJobCardCloseFormAction} className="mt-3">
+                <FormPendingOverlay />
+                <input type="hidden" name="jobCardId" value={jobCard.id} />
+                <SubmitButton
+                  label="Request close"
+                  pendingLabel="Requesting…"
+                  className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 />
               </form>
             </div>
