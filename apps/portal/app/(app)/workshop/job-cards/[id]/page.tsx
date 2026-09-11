@@ -1511,6 +1511,48 @@ export default async function JobCardDetailPage({
             </div>
           ) : null}
 
+          {sourcingNeeds.existingPartRequestSlips.length > 0 || sourcingNeeds.existingExternalProcurementRequests.length > 0 ? (
+            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 print:hidden">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Attached Records</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                Every Store Parts Request and External Procurement Request ever raised against this Job Card —
+                kept here for real record-keeping regardless of the Job Card&apos;s own current status.
+              </p>
+              {sourcingNeeds.existingPartRequestSlips.length > 0 ? (
+                <div className="mt-3 space-y-1.5">
+                  {sourcingNeeds.existingPartRequestSlips.map((slip: (typeof sourcingNeeds.existingPartRequestSlips)[number]) => (
+                    <LoadingLink
+                      key={slip.id}
+                      href={`/workshop/parts-requests/${slip.id}`}
+                      className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs hover:opacity-80"
+                    >
+                      <span className="font-medium text-[var(--ejo-text)]">{slip.referenceNumber}</span>
+                      <span className={`rounded-full px-2 py-0.5 font-medium ${PART_REQUEST_STATUS_BADGE_CLASS[slip.status] ?? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'}`}>
+                        {PART_REQUEST_STATUS_LABEL[slip.status] ?? slip.status}
+                      </span>
+                    </LoadingLink>
+                  ))}
+                </div>
+              ) : null}
+              {sourcingNeeds.existingExternalProcurementRequests.length > 0 ? (
+                <div className="mt-3 space-y-1.5">
+                  {sourcingNeeds.existingExternalProcurementRequests.map((request: (typeof sourcingNeeds.existingExternalProcurementRequests)[number]) => (
+                    <LoadingLink
+                      key={request.id}
+                      href={`/workshop/external-procurement/${request.id}`}
+                      className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs hover:opacity-80"
+                    >
+                      <span className="font-medium text-[var(--ejo-text)]">{request.referenceNumber}</span>
+                      <span className={`rounded-full px-2 py-0.5 font-medium ${EXTERNAL_PROCUREMENT_STATUS_BADGE_CLASS[request.status] ?? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'}`}>
+                        {EXTERNAL_PROCUREMENT_STATUS_LABEL[request.status] ?? request.status}
+                      </span>
+                    </LoadingLink>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {isMasterAdmin ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Danger zone</h2>
