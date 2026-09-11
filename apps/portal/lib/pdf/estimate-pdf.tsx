@@ -195,7 +195,7 @@ export function EstimatePdf(props: EstimatePdfProps) {
           <View style={styles.tHeadRow}>
             <Text style={[styles.th, styles.colSn]}>S/N</Text>
             <Text style={[styles.th, styles.colDesc]}>Description</Text>
-            <Text style={[styles.th, styles.colQty]}>Qty</Text>
+            <Text style={[styles.th, styles.colQty]}>Quantity</Text>
             <Text style={[styles.th, styles.colAmt]}>Amount</Text>
           </View>
           {lineItems.map((li, i) => (
