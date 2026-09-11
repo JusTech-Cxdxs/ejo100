@@ -149,7 +149,7 @@ export default async function PrintJobCardPage({
                   customer — the same real rule already applied to the
                   customer estimate email. Organisation copy only. */}
               {isOrgCopy ? <th style={{ padding: '6px 4px' }}>Type</th> : null}
-              <th style={{ padding: '6px 4px', textAlign: 'right' }}>Qty</th>
+              <th style={{ padding: '6px 4px', textAlign: 'right' }}>Quantity</th>
               <th style={{ padding: '6px 4px', textAlign: 'right' }}>Amount</th>
             </tr>
           </thead>
