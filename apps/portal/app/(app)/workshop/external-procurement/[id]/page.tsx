@@ -9,6 +9,7 @@ import {
   sendExternalProcurementToManagerFormAction,
 } from '@/lib/actions/sourcing-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
+import { PrintMenu } from '@/components/print/PrintMenu';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -258,6 +259,9 @@ export default async function ExternalProcurementDetailPage({
 
       <div className="mt-6 grid max-w-4xl gap-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-6">
+          {request.status === 'DISBURSED' ? (
+            <PrintMenu orgHref={`/print/external-procurement/${request.id}`} clientHref={`/print/external-procurement/${request.id}?variant=client`} clientLabel="Requester Copy" />
+          ) : null}
           {request.status === 'PENDING_FINANCE_REVIEW' && isEligibleFinance ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/30 bg-[var(--ejo-info)]/5 p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Finance Review</h2>
