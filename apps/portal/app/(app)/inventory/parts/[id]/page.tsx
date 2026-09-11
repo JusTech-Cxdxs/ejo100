@@ -4,6 +4,7 @@ import { getLastEditInfo } from '@/lib/actions/workshop';
 import { createPartFitmentFormAction, updatePartFitmentFormAction, deletePartFitmentFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SellingPriceCalculator } from '@/components/SellingPriceCalculator';
+import { TargetMarginEditor } from '@/components/TargetMarginEditor';
 import { pluralizeWord } from '@/lib/utils/pluralize';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
@@ -544,6 +545,12 @@ export default async function PartDetailPage({
                   }
                 : null
             }
+          />
+
+          <TargetMarginEditor
+            key={part.targetMarginPercent?.toString() ?? 'unset'}
+            partId={part.id}
+            currentTargetMarginPercent={part.targetMarginPercent !== null ? Number(part.targetMarginPercent) : null}
           />
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
