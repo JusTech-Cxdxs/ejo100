@@ -5,6 +5,7 @@ const sections = [
   { name: 'Goods Receipts', href: '/inventory/goods-receipts', desc: 'A complete record of every delivery received into the store.' },
   { name: 'Part Categories & Types', href: '/inventory/part-types', desc: 'The generic classification technicians pick from when requesting Store Parts on an estimate.' },
   { name: 'Estimate Matching', href: '/inventory/estimate-matching', desc: 'Store Part lines awaiting a real, vehicle-fitting catalog Part and price.' },
+  { name: 'Pricing Command Center', href: '/inventory/pricing', desc: 'Every delivery cost auto-compared against a Part\'s own target margin — real alerts, real analysis, one-click price sync.' },
 ];
 
 /**
