@@ -970,10 +970,18 @@ export type JobCardAuditEntry = {
  * read view onto the one shared audit log. */
 export async function getJobCardAuditTrail(jobCardId: string): Promise<JobCardAuditEntry[]> {
   await requireUser();
+  // No take limit here, deliberately — a Job Card's own real history
+  // is never something that gets quietly cut off once it accumulates
+  // enough entries. A 50-row cap here once silently dropped a Job
+  // Card's earliest entries (including, for a busy Job Card, its own
+  // real creation record) the moment it grew past that count — a real
+  // data-loss-looking bug, not a display choice. Fetching everything
+  // here and letting the UI decide how much to show at once is the
+  // right split: never lose the data itself, only ever limit what's
+  // rendered on screen at a time.
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'JobCard', entityId: jobCardId },
     orderBy: { createdAt: 'desc' },
-    take: 50,
   });
   const userIds = [
     ...new Set(
@@ -3008,6 +3016,7 @@ export async function recordPayment(
       createdById: true,
       supervisorId: true,
       assignedTechnicianId: true,
+      workStartedAt: true,
       customer: { select: { fullName: true, email: true } },
       department: { select: { name: true } },
       estimate: { select: { lineItems: { select: { amount: true } } } },
@@ -3062,7 +3071,21 @@ export async function recordPayment(
       },
     }),
     ...(shouldAutoApprove
-      ? [prisma.jobCard.update({ where: { id: jobCardId }, data: { status: JobCardStatus.IN_PROGRESS } })]
+      ? [prisma.jobCard.update({
+          where: { id: jobCardId },
+          data: {
+            status: JobCardStatus.IN_PROGRESS,
+            // The exact same real bug this closes: this auto-transition
+            // (payment crossing the deposit/full threshold) previously
+            // never set this at all, so a Job Card that reached
+            // IN_PROGRESS this way — the most common real path, not the
+            // exception — silently never started its own "In Service"
+            // clock. Only set once, the first real time work genuinely
+            // starts, matching updateJobCardStatus's own identical
+            // "first time only" guard for the manual path.
+            workStartedAt: jobCard.workStartedAt ? undefined : new Date(),
+          },
+        })]
       : []),
   ]);
 
