@@ -1022,14 +1022,14 @@ model CancellationRequest {
   @@map("cancellation_requests")
 }
 
-/** The same real request → Manager approve/decline shape as
- * CancellationRequest, deliberately — requesting a close never
- * changes JobCard.status by itself (mirrors requestJobCardCancellation
- * never touching status either); status only ever moves to CLOSED on
- * real Manager approval, and a decline simply leaves the Job Card
- * exactly where it already was, since it was never touched. No
- * `reason` field here (unlike cancellation) — closing isn't something
- * that needs justifying the way ending a job early does. */
+// The same real request → Manager approve/decline shape as
+// CancellationRequest, deliberately — requesting a close never
+// changes JobCard.status by itself (mirrors requestJobCardCancellation
+// never touching status either); status only ever moves to CLOSED on
+// real Manager approval, and a decline simply leaves the Job Card
+// exactly where it already was, since it was never touched. No
+// `reason` field here (unlike cancellation) — closing isn't something
+// that needs justifying the way ending a job early does.
 model CloseRequest {
   id            String                    @id @default(cuid())
   jobCardId     String
