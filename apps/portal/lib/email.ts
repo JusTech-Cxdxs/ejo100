@@ -14,11 +14,18 @@ const transporter = nodemailer.createTransport({
     : undefined,
 });
 
-export async function sendEmail(to: string, subject: string, html: string) {
+export type EmailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+};
+
+export async function sendEmail(to: string, subject: string, html: string, attachments?: EmailAttachment[]) {
   await transporter.sendMail({
     from: process.env.SMTP_FROM ?? 'EJO 100 Platform <no-reply@example.com>',
     to,
     subject,
     html,
+    attachments,
   });
 }
