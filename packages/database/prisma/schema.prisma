@@ -336,6 +336,7 @@ model User {
   cancellationRequestsDecided CancellationRequest[] @relation("CancellationDecidedBy")
   closeRequestsMade CloseRequest[] @relation("CloseRequestedBy")
   closeRequestsDecided CloseRequest[] @relation("CloseDecidedBy")
+  pricingAlertsResolved PricingAlert[] @relation("PricingAlertResolvedBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -1259,6 +1260,15 @@ model Part {
   // silent fallback to cost, since that would just recreate the exact
   // problem this was built to solve.
   sellingPrice Decimal? @db.Decimal(12, 2)
+  // The margin Store actually wants to hold on this Part, as a real
+  // percentage of sellingPrice — e.g. 30 means "cost should never be
+  // more than 70% of what we charge". Nullable, same reasoning as
+  // sellingPrice's own nullability: a Part can exist before anyone's
+  // deliberately set a real pricing target for it, and the Pricing
+  // Command Center simply has nothing to compare against until one
+  // is. Never a company-wide default silently assumed here — a
+  // missing target means "not yet reviewed", not "target is 0%".
+  targetMarginPercent Decimal? @db.Decimal(5, 2)
   isActive     Boolean  @default(true)
   // Which generic, customer-facing PartType this Part actually is
   // (e.g. "Fuel Filter") — nullable since a Part can exist in the
@@ -1295,6 +1305,7 @@ model Part {
   quantityConsumptions PartQuantityConsumption[]
   fitments          PartFitment[]
   matchedOnEstimateLines EstimateLineItem[] @relation("EstimateLineItemMatchedPart")
+  pricingAlerts     PricingAlert[]
 
   @@unique([branchId, partNumber])
   @@map("parts")
@@ -1514,8 +1525,80 @@ model GoodsReceiptLine {
   part         Part         @relation(fields: [partId], references: [id])
   batches      PartBatch[]
   serials      PartSerial[]
+  pricingAlert PricingAlert?
 
   @@map("goods_receipt_lines")
+}
+
+// ----------------------------------------------------------------------------
+// PRICING COMMAND CENTER — every real Goods Receipt line where a Part had
+// both a real sellingPrice and a real targetMarginPercent already set is
+// auto-compared against the new cost the moment that line is recorded (see
+// recordGoodsReceipt). A Part with either figure unset is silently skipped
+// — nothing to compare against yet, not a problem to flag.
+// ----------------------------------------------------------------------------
+
+enum PricingAlertSeverity {
+  // Real margin has fallen below the real target, but is still
+  // genuinely positive — a real problem worth a look, not an
+  // emergency.
+  DEFICIT
+  // Cost has genuinely fallen since the price was last set — margin
+  // is now comfortably above target. A real opportunity, not a
+  // warning — flagged the same way so it's never missed sitting
+  // buried in a goods-receipt log somewhere.
+  BOOST
+  // Real cost now exceeds sellingPrice outright — every sale of this
+  // Part at its current price is a real, genuine loss. The one real
+  // hard-stop case: matchEstimateStorePartLine refuses to match this
+  // Part at all while this is true, not just a dashboard warning.
+  CRITICAL_LOSS
+}
+
+enum PricingAlertStatus {
+  OPEN
+  // Store actually changed sellingPrice (or targetMarginPercent) in
+  // real response to this — the one real state a genuine "Sync
+  // Price" action moves an alert into, versus DISMISSED below which
+  // means someone looked and decided the current price is fine as it
+  // stands.
+  RESOLVED
+  DISMISSED
+}
+
+model PricingAlert {
+  id       String @id @default(cuid())
+  partId   String
+  // Which real delivery actually triggered this — the one real
+  // moment the cost changed enough to matter, not a recomputed
+  // snapshot that could drift from what genuinely happened.
+  goodsReceiptLineId String @unique
+  severity PricingAlertSeverity
+  status   PricingAlertStatus @default(OPEN)
+
+  // The real figures at the exact moment this was raised — kept as
+  // their own stored snapshot, not re-derived later from whatever
+  // sellingPrice/targetMarginPercent happen to be by the time someone
+  // actually looks at this, since either could have already changed
+  // by then for a genuinely unrelated reason.
+  previousUnitCost   Decimal? @db.Decimal(16, 6)
+  newUnitCost        Decimal @db.Decimal(16, 6)
+  sellingPriceAtAlert Decimal @db.Decimal(12, 2)
+  targetMarginPercentAtAlert Decimal @db.Decimal(5, 2)
+  actualMarginPercent Decimal @db.Decimal(6, 2)
+
+  resolvedById String?
+  resolvedAt   DateTime?
+  resolutionNotes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  part            Part             @relation(fields: [partId], references: [id], onDelete: Cascade)
+  goodsReceiptLine GoodsReceiptLine @relation(fields: [goodsReceiptLineId], references: [id], onDelete: Cascade)
+  resolvedBy      User?            @relation("PricingAlertResolvedBy", fields: [resolvedById], references: [id])
+
+  @@map("pricing_alerts")
 }
 
 // ----------------------------------------------------------------------------
