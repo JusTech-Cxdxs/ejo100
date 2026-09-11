@@ -83,6 +83,7 @@ export default async function PrintPartRequestSlipPage({
         <Field label="PLATE NO." value={slip.jobCard.vehicle.plateNumber ?? '—'} />
         <Field label="VIN / CHASSIS" value={slip.jobCard.vehicle.chassisNumber ?? '—'} />
         <Field label="DATE OF REQUEST" value={formatDateTime(new Date(slip.createdAt))} />
+        {slip.jobCard.customer.address ? <Field label="CUSTOMER ADDRESS" value={slip.jobCard.customer.address} /> : null}
         {isOrgCopy ? (
           <>
             <Field label="REQUESTED BY" value={slip.requestedBy.fullName} />
