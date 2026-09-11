@@ -953,6 +953,14 @@ export async function getJobCard(id: string) {
           decidedBy: { select: { fullName: true } },
         },
       },
+      // Only ever needed for one real thing: the Vehicle Collection
+      // Receipt's own organisation copy showing which real Store
+      // Parts Request / External Procurement Request documents are
+      // attached to this Job Card, for reference — the same real
+      // reciprocal link those two documents already show back to
+      // this Job Card's own number.
+      partRequestSlips: { select: { referenceNumber: true } },
+      externalProcurementRequests: { select: { referenceNumber: true } },
     },
   });
 }
