@@ -3,7 +3,7 @@ import { getJobCard } from '@/lib/actions/workshop';
 import { getOrganisation } from '@/lib/actions/organisation';
 import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/print/DocumentHeader';
 import { PrintOnLoad } from '@/components/print/PrintOnLoad';
-import { pluralize } from '@/lib/utils/pluralize';
+import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
 
 function formatNaira(amount: number): string {
@@ -114,7 +114,12 @@ export default async function PrintJobCardPage({
             <tr style={{ borderBottom: '1.5px solid #0F172A', textAlign: 'left' }}>
               <th style={{ padding: '6px 4px' }}>S/N</th>
               <th style={{ padding: '6px 4px' }}>Description</th>
-              <th style={{ padding: '6px 4px' }}>Type</th>
+              {/* The internal type breakdown (Store Part / External
+                  Part / External Job / Internal Job / Labour / Sundry)
+                  is company-internal detail, never shown to a
+                  customer — the same real rule already applied to the
+                  customer estimate email. Organisation copy only. */}
+              {isOrgCopy ? <th style={{ padding: '6px 4px' }}>Type</th> : null}
               <th style={{ padding: '6px 4px', textAlign: 'right' }}>Qty</th>
               <th style={{ padding: '6px 4px', textAlign: 'right' }}>Amount</th>
             </tr>
@@ -124,15 +129,17 @@ export default async function PrintJobCardPage({
               <tr key={line.id} style={{ borderBottom: '1px solid #E2E8F0' }}>
                 <td style={{ padding: '6px 4px' }}>{i + 1}</td>
                 <td style={{ padding: '6px 4px' }}>{line.description}</td>
-                <td style={{ padding: '6px 4px' }}>{TYPE_LABEL[line.type] ?? line.type}</td>
-                <td style={{ padding: '6px 4px', textAlign: 'right' }}>{line.quantity}</td>
+                {isOrgCopy ? <td style={{ padding: '6px 4px' }}>{TYPE_LABEL[line.type] ?? line.type}</td> : null}
+                <td style={{ padding: '6px 4px', textAlign: 'right' }}>
+                  {line.quantity}{line.unitOfMeasure ? ` ${pluralizeWord(line.quantity, line.unitOfMeasure)}` : ''}
+                </td>
                 <td style={{ padding: '6px 4px', textAlign: 'right' }}>{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr style={{ borderTop: '1.5px solid #0F172A', fontWeight: 700 }}>
-              <td style={{ padding: '6px 4px' }} colSpan={4}>
+              <td style={{ padding: '6px 4px' }} colSpan={isOrgCopy ? 4 : 3}>
                 {pluralize(lineItems.length, 'Item')} total
               </td>
               <td style={{ padding: '6px 4px', textAlign: 'right' }}>{formatNaira(totalEstimate)}</td>
