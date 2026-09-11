@@ -64,10 +64,19 @@ export default async function PrintJobCardPage({
   if (!jobCard || !organisation) notFound();
   if (jobCard.status !== 'CHECKED_OUT') notFound();
 
+  // Once a cancelled Job Card is checked out, its own status field
+  // becomes CHECKED_OUT too — identical to a normal completed one.
+  // The one real place "this was cancelled" still survives is an
+  // approved cancellation request against it, so that's the real
+  // signal this document's own cancelled variant is built on.
+  const cancellation = jobCard.cancellationRequests[0] ?? null;
+  const wasCancelled = Boolean(cancellation);
+
   const lineItems = jobCard.estimate?.lineItems ?? [];
   const totalEstimate = lineItems.reduce((sum: number, l: (typeof lineItems)[number]) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
   const totalPaid = jobCard.payments.reduce((sum: number, p: (typeof jobCard.payments)[number]) => sum + Number(p.amount), 0);
   const vehicleSummary = [jobCard.vehicle.year, jobCard.vehicle.make, jobCard.vehicle.model, jobCard.vehicle.engineType].filter(Boolean).join(' ') || 'No vehicle details on file';
+  const accentColor = wasCancelled ? '#DC2626' : '#16A34A';
 
   return (
     <div style={{ maxWidth: '780px', margin: '0 auto', padding: '32px 24px', fontFamily: 'Arial, Helvetica, sans-serif', color: '#0F172A' }}>
@@ -76,10 +85,14 @@ export default async function PrintJobCardPage({
         organisation={organisation}
         branch={jobCard.branch}
         logoUrl={`${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app'}/images/logo/logo.png`}
-        documentTitle={isOrgCopy ? 'Job Card — Vehicle Collection Record' : 'Vehicle Collection Receipt'}
+        documentTitle={
+          wasCancelled
+            ? (isOrgCopy ? 'Job Card — Cancelled, Vehicle Returned' : 'Vehicle Return Receipt (Cancelled)')
+            : (isOrgCopy ? 'Job Card — Vehicle Collection Record' : 'Vehicle Collection Receipt')
+        }
         referenceNumber={jobCard.jobNumber}
-        statusLabel="Checked Out"
-        accentColor="#16A34A"
+        statusLabel={wasCancelled ? 'Cancelled — Checked Out' : 'Checked Out'}
+        accentColor={accentColor}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginTop: '20px' }}>
@@ -97,6 +110,21 @@ export default async function PrintJobCardPage({
           </>
         ) : null}
       </div>
+
+      {wasCancelled && cancellation ? (
+        <div style={{ marginTop: '20px', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '14px 16px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#B91C1C', letterSpacing: '0.02em' }}>THIS JOB CARD WAS CANCELLED</div>
+          <div style={{ fontSize: '12px', color: '#7F1D1D', marginTop: '4px' }}>
+            Requested by {cancellation.requestedBy.fullName}, approved by {cancellation.decidedBy?.fullName ?? '—'}
+            {cancellation.decidedAt ? ` on ${formatDateTime(new Date(cancellation.decidedAt))}` : ''}.
+          </div>
+          {cancellation.reason ? (
+            <div style={{ fontSize: '12px', color: '#7F1D1D', marginTop: '4px' }}>
+              <span style={{ fontWeight: 600 }}>Reason: </span>{cancellation.reason}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {jobCard.complaints.length > 0 ? (
         <div style={{ marginTop: '20px' }}>
@@ -211,6 +239,15 @@ export default async function PrintJobCardPage({
                   <td style={{ padding: '2px 0' }}>{formatDateTime(new Date(jobCard.closedAt))}</td>
                 </tr>
               ) : null}
+              {wasCancelled && cancellation ? (
+                <tr>
+                  <td style={{ padding: '2px 0', color: '#475569' }}>Cancelled</td>
+                  <td style={{ padding: '2px 0' }}>
+                    {cancellation.decidedBy?.fullName ?? '—'}
+                    {cancellation.decidedAt ? ` — ${formatDateTime(new Date(cancellation.decidedAt))}` : ''}
+                  </td>
+                </tr>
+              ) : null}
               <tr>
                 <td style={{ padding: '2px 0', color: '#475569' }}>Checked Out</td>
                 <td style={{ padding: '2px 0' }}>{jobCard.checkedOutAt ? formatDateTime(new Date(jobCard.checkedOutAt)) : '—'} — collected by {jobCard.collectedByName ?? '—'}</td>
@@ -221,7 +258,7 @@ export default async function PrintJobCardPage({
       ) : null}
 
       <SignatureBlock
-        issuerLabel="Released By (Workshop)"
+        issuerLabel={wasCancelled ? 'Returned By (Workshop)' : 'Released By (Workshop)'}
         issuerName={jobCard.supervisor?.fullName ?? jobCard.assignedTechnician?.fullName ?? null}
         collectorLabel="Collected By"
         collectorName={jobCard.collectedByName}
