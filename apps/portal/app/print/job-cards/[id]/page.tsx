@@ -5,6 +5,7 @@ import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/pri
 import { PrintOnLoad } from '@/components/print/PrintOnLoad';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { workingDaysBetween } from '@/lib/utils/working-days';
 
 function formatNaira(amount: number): string {
   return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -77,6 +78,16 @@ export default async function PrintJobCardPage({
   const totalPaid = jobCard.payments.reduce((sum: number, p: (typeof jobCard.payments)[number]) => sum + Number(p.amount), 0);
   const vehicleSummary = [jobCard.vehicle.year, jobCard.vehicle.make, jobCard.vehicle.model, jobCard.vehicle.engineType].filter(Boolean).join(' ') || 'No vehicle details on file';
   const accentColor = wasCancelled ? '#DC2626' : '#16A34A';
+  // Same real logic as the Job Card's own detail page — working days
+  // only (no Saturday/Sunday), ending at checkedOutAt specifically
+  // (the true physical-exit moment). This document only ever exists
+  // once a Job Card is genuinely CHECKED_OUT (see the notFound() gate
+  // above), so both figures are always the real, final, frozen count
+  // here — never the still-running version.
+  const daysInCustody = workingDaysBetween(jobCard.createdAt, jobCard.checkedOutAt ?? new Date());
+  const inServiceDuration = jobCard.workStartedAt
+    ? workingDaysBetween(jobCard.workStartedAt, jobCard.completedAt ?? jobCard.checkedOutAt ?? new Date())
+    : null;
 
   return (
     <div style={{ maxWidth: '780px', margin: '0 auto', padding: '32px 24px', fontFamily: 'Arial, Helvetica, sans-serif', color: '#0F172A' }}>
@@ -107,6 +118,20 @@ export default async function PrintJobCardPage({
           <>
             <Field label="TECHNICIAN IN CHARGE" value={jobCard.assignedTechnician?.fullName ?? '—'} />
             <Field label="WORKSHOP SUPERVISOR" value={jobCard.supervisor?.fullName ?? '—'} />
+            <Field label="TOTAL TIME IN CUSTODY" value={pluralize(daysInCustody, 'working day')} />
+            {inServiceDuration !== null ? <Field label="IN SERVICE DURATION" value={pluralize(inServiceDuration, 'working day')} /> : null}
+            {jobCard.partRequestSlips.length > 0 ? (
+              <Field
+                label={pluralize(jobCard.partRequestSlips.length, 'STORE PARTS REQUEST REF', 'STORE PARTS REQUEST REFS')}
+                value={jobCard.partRequestSlips.map((s: (typeof jobCard.partRequestSlips)[number]) => s.referenceNumber).join(', ')}
+              />
+            ) : null}
+            {jobCard.externalProcurementRequests.length > 0 ? (
+              <Field
+                label={pluralize(jobCard.externalProcurementRequests.length, 'EXTERNAL PROCUREMENT REF', 'EXTERNAL PROCUREMENT REFS')}
+                value={jobCard.externalProcurementRequests.map((r: (typeof jobCard.externalProcurementRequests)[number]) => r.referenceNumber).join(', ')}
+              />
+            ) : null}
           </>
         ) : null}
       </div>
