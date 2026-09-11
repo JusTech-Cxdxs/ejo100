@@ -935,6 +935,23 @@ export async function getJobCard(id: string) {
       // actually paid, not just the vehicle's own details.
       estimate: { include: { lineItems: { orderBy: { createdAt: 'asc' } } } },
       payments: { orderBy: { recordedAt: 'asc' }, include: { recordedBy: { select: { fullName: true } } } },
+      // Only ever needed for one real thing: detecting whether this
+      // Job Card was ever cancelled at all, for the Vehicle Collection
+      // Receipt's own cancelled-vehicle variant. Once a cancelled Job
+      // Card is checked out, its own status field becomes CHECKED_OUT
+      // — identical to a normal completed one — so this is the only
+      // real place that fact still survives.
+      cancellationRequests: {
+        where: { status: 'APPROVED' },
+        orderBy: { decidedAt: 'desc' },
+        take: 1,
+        select: {
+          reason: true,
+          decidedAt: true,
+          requestedBy: { select: { fullName: true } },
+          decidedBy: { select: { fullName: true } },
+        },
+      },
     },
   });
 }
