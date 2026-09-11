@@ -8,7 +8,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { createPart, recordGoodsReceipt, updateGoodsReceipt, updateGoodsReceiptLineCost, updatePart, setPartAlternativeUnits, setPartSellingPrice, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching } from './store';
+import { createPart, recordGoodsReceipt, updateGoodsReceipt, updateGoodsReceiptLineCost, updatePart, setPartAlternativeUnits, setPartSellingPrice, setPartTargetMargin, dismissPricingAlert, syncPartPriceToTargetMargin, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching } from './store';
 
 function str(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -125,6 +125,44 @@ export async function setPartSellingPriceFormAction(formData: FormData) {
   }
   revalidatePath(`/inventory/parts/${id}`);
   redirect(`/inventory/parts/${id}?status=selling_price_set`);
+}
+
+export async function setPartTargetMarginFormAction(formData: FormData) {
+  const id = str(formData, 'id');
+  try {
+    await setPartTargetMargin(id, num(formData, 'targetMarginPercent') ?? 0);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not set the target margin.';
+    redirect(`/inventory/parts/${id}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/inventory/parts/${id}`);
+  redirect(`/inventory/parts/${id}?status=target_margin_set`);
+}
+
+export async function dismissPricingAlertFormAction(formData: FormData) {
+  const alertId = str(formData, 'alertId');
+  const branchId = str(formData, 'branchId');
+  try {
+    await dismissPricingAlert(alertId, str(formData, 'notes'));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not dismiss this pricing alert.';
+    redirect(`/inventory/pricing?branchId=${branchId}&error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/inventory/pricing');
+  redirect(`/inventory/pricing?branchId=${branchId}&status=dismissed`);
+}
+
+export async function syncPartPriceToTargetMarginFormAction(formData: FormData) {
+  const alertId = str(formData, 'alertId');
+  const branchId = str(formData, 'branchId');
+  try {
+    await syncPartPriceToTargetMargin(alertId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not sync the selling price.';
+    redirect(`/inventory/pricing?branchId=${branchId}&error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/inventory/pricing');
+  redirect(`/inventory/pricing?branchId=${branchId}&status=synced`);
 }
 
 export async function createPartFitmentFormAction(formData: FormData) {

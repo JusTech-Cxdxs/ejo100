@@ -379,6 +379,33 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
   }
 }
 
+/** The real margin Store wants to hold on this Part going forward —
+ * what the Pricing Command Center actually compares every new real
+ * delivery cost against. Deliberately its own separate action from
+ * setPartSellingPrice above, not folded into the same form: the two
+ * are genuinely different decisions (what to charge, versus how much
+ * margin is acceptable to hold), made at different times for
+ * different reasons. */
+export async function setPartTargetMargin(partId: string, targetMarginPercent: number): Promise<void> {
+  const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, name: true, targetMarginPercent: true } });
+  if (!part) {
+    throw new StoreActionError('Part not found.');
+  }
+  const user = await requireStoreStaff(part.branchId);
+  if (!(targetMarginPercent > 0) || targetMarginPercent > 100) {
+    throw new StoreActionError('Target margin must be a real percentage greater than 0 and no more than 100.');
+  }
+  const previousTargetMarginPercent = part.targetMarginPercent !== null ? Number(part.targetMarginPercent) : null;
+  await prisma.part.update({ where: { id: partId }, data: { targetMarginPercent } });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'part.target_margin_set',
+    entityType: 'Part',
+    entityId: partId,
+    metadata: { name: part.name, from: previousTargetMarginPercent, to: targetMarginPercent },
+  });
+}
+
 /** Replaces a part's full set of alternative units in one call — the
  * real correction this was built for: fixing a wrong conversion factor
  * (e.g. a drum genuinely being 205L, not 208L, confirmed against a real
@@ -1024,6 +1051,20 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
   if (part.sellingPrice === null) {
     throw new StoreActionError(`${part.name} has no selling price set yet — set one on the Part's own page before matching.`);
   }
+  // The one real hard-stop the Pricing Command Center enforces, not
+  // just a dashboard warning: a Part currently priced below its own
+  // real cost can never be matched onto a customer's estimate — every
+  // such match would be a genuine, real loss on this specific job,
+  // not a hypothetical one. Resolved (someone actually fixed the
+  // price) or dismissed (a real, deliberate decision to sell at this
+  // price anyway) alerts don't block anything — only a still-open one.
+  const openCriticalLoss = await prisma.pricingAlert.findFirst({
+    where: { partId, severity: 'CRITICAL_LOSS', status: 'OPEN' },
+    select: { id: true },
+  });
+  if (openCriticalLoss) {
+    throw new StoreActionError(`${part.name} is currently priced below its own real cost — resolve the open Pricing Alert on this Part before matching it to an estimate.`);
+  }
   const unitPrice = Number(part.sellingPrice);
   const amount = Math.round(unitPrice * lineItem.quantity * 100) / 100;
 
@@ -1363,6 +1404,25 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
 
   const referenceNumber = await generateGoodsReceiptNumber();
 
+  // The real, most recent prior cost on record for each real Part in
+  // this receipt — fetched once, up front, purely for the Pricing
+  // Command Center's own historical context on whatever alert gets
+  // raised below (what cost was this actually compared against
+  // before). A Part with no earlier delivery at all genuinely has no
+  // real prior cost — stays unset rather than a fabricated "0" or a
+  // copy of the new cost.
+  const priorLines = await prisma.goodsReceiptLine.findMany({
+    where: { partId: { in: partIds } },
+    orderBy: { goodsReceipt: { createdAt: 'desc' } },
+    select: { partId: true, unitCost: true },
+  });
+  const priorUnitCostByPart = new Map<string, number | null>();
+  for (const pl of priorLines) {
+    if (!priorUnitCostByPart.has(pl.partId)) {
+      priorUnitCostByPart.set(pl.partId, pl.unitCost !== null ? Number(pl.unitCost) : null);
+    }
+  }
+
   const receipt = await prisma.$transaction(async (tx) => {
     const created = await tx.goodsReceipt.create({
       data: {
@@ -1412,6 +1472,39 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
         update: { quantityOnHand: { increment: line.quantityInBaseUnit } },
         create: { partId: line.partId, quantityOnHand: line.quantityInBaseUnit, quantityReserved: 0 },
       });
+
+      // Pricing Command Center — auto-compared right here, the exact
+      // real moment a genuinely new cost is recorded, on every real
+      // Goods Receipt line. Silently skipped whenever the Part hasn't
+      // had a real sellingPrice AND a real targetMarginPercent set
+      // yet — nothing to genuinely compare against, not a problem.
+      if (line.part.sellingPrice !== null && line.part.targetMarginPercent !== null) {
+        const sellingPrice = Number(line.part.sellingPrice);
+        const targetMarginPercent = Number(line.part.targetMarginPercent);
+        const actualMarginPercent = ((sellingPrice - line.unitCostInBaseUnit) / sellingPrice) * 100;
+        const severity =
+          actualMarginPercent < 0
+            ? 'CRITICAL_LOSS'
+            : actualMarginPercent < targetMarginPercent
+              ? 'DEFICIT'
+              : actualMarginPercent > targetMarginPercent
+                ? 'BOOST'
+                : null;
+        if (severity) {
+          await tx.pricingAlert.create({
+            data: {
+              partId: line.partId,
+              goodsReceiptLineId: createdLine.id,
+              severity,
+              previousUnitCost: priorUnitCostByPart.get(line.partId) ?? undefined,
+              newUnitCost: line.unitCostInBaseUnit,
+              sellingPriceAtAlert: sellingPrice,
+              targetMarginPercentAtAlert: targetMarginPercent,
+              actualMarginPercent: Math.round(actualMarginPercent * 100) / 100,
+            },
+          });
+        }
+      }
     }
 
     return created;
@@ -1471,6 +1564,171 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
   }
 
   return { id: receipt.id, referenceNumber };
+}
+
+// ----------------------------------------------------------------------------
+// PRICING COMMAND CENTER — real alerts auto-raised on every Goods Receipt
+// (see recordGoodsReceipt), listed, resolved, dismissed, or acted on here.
+// ----------------------------------------------------------------------------
+
+export type PricingAlertSummary = {
+  openBySeverity: { CRITICAL_LOSS: number; DEFICIT: number; BOOST: number };
+  // The real, honest sum of what a genuine loss actually costs — every
+  // open CRITICAL_LOSS alert's own real per-unit shortfall, multiplied
+  // by however much of that Part is genuinely sitting in stock right
+  // now. Not a projection of future sales, since no one can honestly
+  // know those — just the real, current exposure if today's stock
+  // sold at today's price.
+  criticalLossExposure: number;
+  // The real, honest average of how far every open DEFICIT alert's
+  // own actual margin sits below its own real target — never a
+  // single global number pretending every Part has the same target,
+  // since they genuinely don't.
+  averageDeficitGapPercent: number | null;
+  // Real Parts with more than one open alert right now — the ones
+  // worth a genuine, deliberate look rather than a one-off delivery
+  // price swing.
+  partsWithMultipleOpenAlerts: { partId: string; partName: string; openCount: number }[];
+};
+
+/** The real, honest analysis behind the Pricing Command Center's own
+ * dashboard — computed fresh from whatever's genuinely open right
+ * now, never a stored, potentially-stale snapshot. */
+export async function getPricingAlertSummary(branchId: string): Promise<PricingAlertSummary> {
+  await requireUser();
+  const openAlerts = await prisma.pricingAlert.findMany({
+    where: { status: 'OPEN', part: { branchId } },
+    select: {
+      severity: true,
+      newUnitCost: true,
+      sellingPriceAtAlert: true,
+      targetMarginPercentAtAlert: true,
+      actualMarginPercent: true,
+      partId: true,
+      part: { select: { name: true, stock: { select: { quantityOnHand: true } } } },
+    },
+  });
+
+  const openBySeverity = { CRITICAL_LOSS: 0, DEFICIT: 0, BOOST: 0 };
+  let criticalLossExposure = 0;
+  let deficitGapSum = 0;
+  let deficitCount = 0;
+  const alertCountByPart = new Map<string, { partName: string; count: number }>();
+
+  for (const alert of openAlerts) {
+    openBySeverity[alert.severity as keyof typeof openBySeverity] += 1;
+    const existing = alertCountByPart.get(alert.partId);
+    alertCountByPart.set(alert.partId, { partName: alert.part.name, count: (existing?.count ?? 0) + 1 });
+
+    if (alert.severity === 'CRITICAL_LOSS') {
+      const perUnitLoss = Number(alert.newUnitCost) - Number(alert.sellingPriceAtAlert);
+      const quantityOnHand = alert.part.stock?.quantityOnHand !== undefined ? Number(alert.part.stock.quantityOnHand) : 0;
+      if (perUnitLoss > 0 && quantityOnHand > 0) {
+        criticalLossExposure += perUnitLoss * quantityOnHand;
+      }
+    } else if (alert.severity === 'DEFICIT') {
+      deficitGapSum += Number(alert.targetMarginPercentAtAlert) - Number(alert.actualMarginPercent);
+      deficitCount += 1;
+    }
+  }
+
+  const partsWithMultipleOpenAlerts = [...alertCountByPart.entries()]
+    .filter(([, v]) => v.count > 1)
+    .map(([partId, v]) => ({ partId, partName: v.partName, openCount: v.count }))
+    .sort((a, b) => b.openCount - a.openCount);
+
+  return {
+    openBySeverity,
+    criticalLossExposure: Math.round(criticalLossExposure * 100) / 100,
+    averageDeficitGapPercent: deficitCount > 0 ? Math.round((deficitGapSum / deficitCount) * 100) / 100 : null,
+    partsWithMultipleOpenAlerts,
+  };
+}
+
+export async function listPricingAlerts(branchId: string, filter?: { severity?: string; status?: string }) {
+  await requireUser();
+  return prisma.pricingAlert.findMany({
+    where: {
+      part: { branchId },
+      ...(filter?.severity ? { severity: filter.severity as never } : {}),
+      status: (filter?.status as never) ?? 'OPEN',
+    },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      part: { select: { id: true, name: true, baseUnitOfMeasure: true } },
+      goodsReceiptLine: { select: { goodsReceipt: { select: { referenceNumber: true } } } },
+      resolvedBy: { select: { fullName: true } },
+    },
+  });
+}
+
+/** A real, deliberate decision that the current price is fine as it
+ * stands — genuinely different from RESOLVED below, which means the
+ * price actually changed in response. Requires a real reason, the
+ * same "never a silent decision" standard already used for a
+ * cancellation or a rework. */
+export async function dismissPricingAlert(alertId: string, notes: string): Promise<void> {
+  const alert = await prisma.pricingAlert.findUnique({ where: { id: alertId }, select: { status: true, part: { select: { branchId: true, name: true } } } });
+  if (!alert) {
+    throw new StoreActionError('Pricing alert not found.');
+  }
+  if (alert.status !== 'OPEN') {
+    throw new StoreActionError('This alert has already been decided.');
+  }
+  const trimmedNotes = notes.trim();
+  if (!trimmedNotes) {
+    throw new StoreActionError('A real reason is required to dismiss a pricing alert.');
+  }
+  const user = await requireStoreStaff(alert.part.branchId);
+  await prisma.pricingAlert.update({
+    where: { id: alertId },
+    data: { status: 'DISMISSED', resolvedById: user.id, resolvedAt: new Date(), resolutionNotes: trimmedNotes },
+  });
+  await writeAuditLog({ userId: user.id, action: 'pricing_alert.dismissed', entityType: 'PricingAlert', entityId: alertId, metadata: { partName: alert.part.name, notes: trimmedNotes } });
+}
+
+/** The real "Pricing Action Advisor" one-click move — sets
+ * sellingPrice to exactly what's needed to hold the same real target
+ * margin against the new cost this alert was raised over, using the
+ * standard real formula (price = cost ÷ (1 − target÷100)), then marks
+ * the alert genuinely resolved, not just dismissed, since the price
+ * itself actually changed. */
+export async function syncPartPriceToTargetMargin(alertId: string): Promise<void> {
+  const alert = await prisma.pricingAlert.findUnique({
+    where: { id: alertId },
+    select: {
+      status: true,
+      newUnitCost: true,
+      targetMarginPercentAtAlert: true,
+      part: { select: { id: true, branchId: true, name: true, sellingPrice: true } },
+    },
+  });
+  if (!alert) {
+    throw new StoreActionError('Pricing alert not found.');
+  }
+  if (alert.status !== 'OPEN') {
+    throw new StoreActionError('This alert has already been decided.');
+  }
+  const user = await requireStoreStaff(alert.part.branchId);
+  const targetMargin = Number(alert.targetMarginPercentAtAlert);
+  const newUnitCost = Number(alert.newUnitCost);
+  const newSellingPrice = Math.round((newUnitCost / (1 - targetMargin / 100)) * 100) / 100;
+  const previousSellingPrice = alert.part.sellingPrice !== null ? Number(alert.part.sellingPrice) : null;
+
+  await prisma.$transaction([
+    prisma.part.update({ where: { id: alert.part.id }, data: { sellingPrice: newSellingPrice } }),
+    prisma.pricingAlert.update({
+      where: { id: alertId },
+      data: { status: 'RESOLVED', resolvedById: user.id, resolvedAt: new Date(), resolutionNotes: `Price synced to ${newSellingPrice} to hold ${targetMargin}% margin.` },
+    }),
+  ]);
+  await writeAuditLog({
+    userId: user.id,
+    action: 'part.selling_price_set',
+    entityType: 'Part',
+    entityId: alert.part.id,
+    metadata: { name: alert.part.name, from: previousSellingPrice, to: newSellingPrice, viaPricingAlert: alertId },
+  });
 }
 
 export async function listGoodsReceipts(branchId: string) {
