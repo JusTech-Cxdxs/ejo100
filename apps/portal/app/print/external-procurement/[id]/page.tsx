@@ -3,7 +3,7 @@ import { getExternalProcurementRequest } from '@/lib/actions/sourcing';
 import { getOrganisation } from '@/lib/actions/organisation';
 import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/print/DocumentHeader';
 import { PrintOnLoad } from '@/components/print/PrintOnLoad';
-import { pluralize } from '@/lib/utils/pluralize';
+import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
 
 function formatNaira(amount: number): string {
@@ -57,14 +57,27 @@ export default async function PrintExternalProcurementRequestPage({
   const logoUrl = `${portalUrl}/images/logo/logo.png`;
   const vehicleSummary = [request.jobCard.vehicle.year, request.jobCard.vehicle.make, request.jobCard.vehicle.model].filter(Boolean).join(' ') || '—';
 
-  // A genuinely multi-line request has real rows in `lines`; a
-  // legacy, single-line one has none — its one real item is its own
-  // top-level description/estimatedAmount instead. Either way, every
-  // supplementary line Finance genuinely added still applies on top.
+  // A genuinely multi-line request has real rows in `lines`, each
+  // with its own real quantity and unit — a legacy, single-line one
+  // has none of that at all, just its own top-level
+  // description/estimatedAmount, so quantity/unit stay unset for
+  // that one line rather than showing a fabricated "1". Supplementary
+  // lines (Finance's own real additions, like transport) never carry
+  // a quantity either — they're a cost, not a countable item.
   const baseLines = request.lines.length > 0
-    ? request.lines.map((l: (typeof request.lines)[number]) => ({ description: l.description, amount: Number(l.amount) }))
-    : [{ description: request.description, amount: Number(request.estimatedAmount) }];
-  const supplementaryLines = request.supplementaryLines.map((l: (typeof request.supplementaryLines)[number]) => ({ description: l.description, amount: Number(l.amount) }));
+    ? request.lines.map((l: (typeof request.lines)[number]) => ({
+        description: l.description,
+        amount: Number(l.amount),
+        quantity: Number(l.quantity),
+        unitOfMeasure: l.unitOfMeasure,
+      }))
+    : [{ description: request.description, amount: Number(request.estimatedAmount), quantity: null, unitOfMeasure: null }];
+  const supplementaryLines = request.supplementaryLines.map((l: (typeof request.supplementaryLines)[number]) => ({
+    description: l.description,
+    amount: Number(l.amount),
+    quantity: null,
+    unitOfMeasure: null,
+  }));
   const allLines = [...baseLines, ...supplementaryLines];
   const disbursedAmount = request.disbursedAmount !== null ? Number(request.disbursedAmount) : allLines.reduce((sum, l) => sum + l.amount, 0);
 
@@ -106,6 +119,7 @@ export default async function PrintExternalProcurementRequestPage({
           <tr style={{ borderBottom: '1.5px solid #0F172A', textAlign: 'left' }}>
             <th style={{ padding: '6px 4px' }}>S/N</th>
             <th style={{ padding: '6px 4px' }}>Description</th>
+            <th style={{ padding: '6px 4px', textAlign: 'right' }}>Quantity</th>
             <th style={{ padding: '6px 4px', textAlign: 'right' }}>Amount</th>
           </tr>
         </thead>
@@ -115,13 +129,16 @@ export default async function PrintExternalProcurementRequestPage({
             <tr key={i} style={{ borderBottom: '1px solid #E2E8F0' }}>
               <td style={{ padding: '6px 4px' }}>{i + 1}</td>
               <td style={{ padding: '6px 4px' }}>{line.description}</td>
+              <td style={{ padding: '6px 4px', textAlign: 'right' }}>
+                {line.quantity !== null && line.unitOfMeasure ? `${line.quantity} ${pluralizeWord(line.quantity, line.unitOfMeasure)}` : '—'}
+              </td>
               <td style={{ padding: '6px 4px', textAlign: 'right' }}>{formatNaira(line.amount)}</td>
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr style={{ borderTop: '1.5px solid #0F172A', fontWeight: 700 }}>
-            <td style={{ padding: '6px 4px' }} colSpan={2}>
+            <td style={{ padding: '6px 4px' }} colSpan={3}>
               {pluralize(allLines.length, 'Item')} total
             </td>
             <td style={{ padding: '6px 4px', textAlign: 'right' }}>{formatNaira(disbursedAmount)}</td>
