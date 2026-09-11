@@ -27,6 +27,7 @@ import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKI
 import { workingDaysBetween, addWorkingDays } from '@/lib/utils/working-days';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { getOrganisation } from '@/lib/actions/organisation';
+import { getSelectableJobCardStatuses, REWORK_TRANSITION } from '@/lib/job-card-status-rules';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
 import { hashPassword } from 'better-auth/crypto';
@@ -1201,7 +1202,7 @@ export async function createJobCard(input: CreateJobCardInput) {
   return created;
 }
 
-export async function updateJobCardStatus(id: string, status: JobCardStatus, collectedByName?: string) {
+export async function updateJobCardStatus(id: string, status: JobCardStatus, collectedByName?: string, reworkReason?: string) {
   const user = await requireUser();
   const jobCard = await prisma.jobCard.findUnique({
     where: { id },
@@ -1272,6 +1273,39 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   // enforced on a parts release.
   if (status === JobCardStatus.CHECKED_OUT && priorStatus !== JobCardStatus.CHECKED_OUT && !collectedByName?.trim()) {
     throw new WorkshopActionError('The name of whoever is collecting the vehicle is required to check it out.');
+  }
+  // The real, standard status progression — never just hidden from
+  // the dropdown, actually refused here too, the same standard
+  // already applied to every other real decision in this system.
+  // Master Admin bypasses this entirely, matching how that role
+  // already bypasses every other check here. Skipped for CHECKED_OUT
+  // and CANCELLED-related transitions already fully governed by their
+  // own guards above (payment gating, the cancelled-only-checkout
+  // rule) — this only needs to cover the plain, single-step moves.
+  if (priorStatus !== status && priorStatus !== JobCardStatus.CANCELLED) {
+    const isMasterAdmin = await currentUserIsMasterAdmin();
+    if (!isMasterAdmin) {
+      const managers = await listEligibleManagersForBranch(jobCard.branchId);
+      const roleContext = {
+        isMasterAdmin: false,
+        isSupervisor: jobCard.supervisorId === user.id,
+        isAssignedTechnician: jobCard.assignedTechnicianId === user.id,
+        isEligibleManager: managers.supervisors.some((m) => m.id === user.id),
+      };
+      const allowed = getSelectableJobCardStatuses(priorStatus, roleContext);
+      if (!allowed.includes(status)) {
+        throw new WorkshopActionError(`This Job Card can't move from ${priorStatus} to ${status} directly — that isn't one of the real next steps available to you from here.`);
+      }
+    }
+  }
+  // Rework — the one deliberate, named exception to "never move
+  // backward" (see job-card-status-rules.ts for the full reasoning).
+  // Requires a real reason and is logged as its own distinct action,
+  // not folded into a generic status-updated entry, so it's always
+  // genuinely auditable rather than a quiet loophole.
+  const isReworkTransition = priorStatus === REWORK_TRANSITION.from && status === REWORK_TRANSITION.to;
+  if (isReworkTransition && !reworkReason?.trim()) {
+    throw new WorkshopActionError('A reason is required to send this Job Card back for rework.');
   }
   const result = await prisma.jobCard.update({
     where: { id },
@@ -1431,10 +1465,12 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
 
   await writeAuditLog({
     userId: user.id,
-    action: 'job_card.status_updated',
+    action: isReworkTransition ? 'job_card.rework_requested' : 'job_card.status_updated',
     entityType: 'JobCard',
     entityId: id,
-    metadata: { from: priorStatus, to: status },
+    metadata: isReworkTransition
+      ? { from: priorStatus, to: status, reason: reworkReason?.trim() }
+      : { from: priorStatus, to: status },
   });
 
   return result;
