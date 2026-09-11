@@ -1,5 +1,6 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { JobCardStatusForm } from '@/components/JobCardStatusForm';
+import { AuditTrail } from '@/components/AuditTrail';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, getCloseRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
@@ -92,6 +93,8 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'cancellation.requested': 'Cancellation requested',
   'cancellation.approved': 'Cancellation approved',
   'cancellation.declined': 'Cancellation declined',
+  'close.requested': 'Close requested',
+  'close.declined': 'Close declined',
   'approval.reminder_sent': 'Approval reminder sent',
   'collection.overdue_notice_sent': 'Collection overdue notice sent',
   'collection.ready_reminder_sent': 'Ready-for-collection reminder sent',
@@ -1543,24 +1546,15 @@ export default async function JobCardDetailPage({
         {auditTrail.length === 0 ? (
           <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No recorded activity yet.</p>
         ) : (
-          <ol className="mt-3 space-y-3">
-            {auditTrail.map((entry) => {
-              const detail = formatAuditDetail(entry);
-              return (
-                <li key={entry.id} className="flex items-start gap-3 text-sm">
-                  <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--ejo-primary)]" />
-                  <div>
-                    <p className="text-[var(--ejo-text)]">
-                      <span className="font-medium">{AUDIT_ACTION_LABEL[entry.action] ?? entry.action}</span>
-                      {entry.user ? ` — ${entry.user.fullName}` : ''}
-                    </p>
-                    {detail ? <p className="text-xs text-[var(--ejo-text)]">{detail}</p> : null}
-                    <p className="text-xs text-[var(--ejo-text-muted)]">{formatDateTime(entry.createdAt)}</p>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
+          <AuditTrail
+            entries={auditTrail.map((entry) => ({
+              id: entry.id,
+              actionLabel: AUDIT_ACTION_LABEL[entry.action] ?? entry.action,
+              userName: entry.user?.fullName ?? null,
+              detail: formatAuditDetail(entry),
+              dateLabel: formatDateTime(entry.createdAt),
+            }))}
+          />
         )}
       </div>
     </div>
