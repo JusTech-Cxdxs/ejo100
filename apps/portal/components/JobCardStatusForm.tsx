@@ -5,6 +5,7 @@ import { updateJobCardStatusFormAction } from '@/lib/actions/workshop-form-handl
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { LoadingLink } from '@/components/LoadingLink';
+import { REWORK_TRANSITION } from '@/lib/job-card-status-rules';
 
 export function JobCardStatusForm({
   jobCardId,
@@ -26,6 +27,11 @@ export function JobCardStatusForm({
   // the Collected By field never appeared. Default to the real
   // selectable option whenever currentStatus itself isn't one.
   const [selected, setSelected] = useState(selectableStatuses.includes(currentStatus) ? currentStatus : selectableStatuses[0]);
+  // Rework — the one deliberate, named exception to "never move
+  // backward" in this system's own real status rules. Requires a real
+  // reason, same as requesting a cancellation already does, so it's
+  // always genuinely auditable rather than a silent loophole.
+  const isReworkTransition = currentStatus === REWORK_TRANSITION.from && selected === REWORK_TRANSITION.to;
 
   return (
     <form action={updateJobCardStatusFormAction} className="mt-4 space-y-3">
@@ -43,6 +49,22 @@ export function JobCardStatusForm({
           </option>
         ))}
       </select>
+      {isReworkTransition ? (
+        <div>
+          <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Reason for rework</label>
+          <textarea
+            name="reworkReason"
+            required
+            rows={2}
+            placeholder="What needs to be fixed before this can pass quality check?"
+            className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+          />
+          <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
+            This Job Card is being sent back to In Progress for rework — logged as its own real entry in the
+            audit trail, not a generic status change.
+          </p>
+        </div>
+      ) : null}
       {selected === 'CHECKED_OUT' ? (
         <div>
           <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Collected By (name)</label>
