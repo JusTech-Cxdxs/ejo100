@@ -89,6 +89,7 @@ export default async function PrintJobCardPage({
         <Field label="VIN / CHASSIS" value={jobCard.vehicle.chassisNumber ?? '—'} />
         <Field label="CHECKED IN" value={formatDateTime(new Date(jobCard.createdAt))} />
         <Field label="CHECKED OUT" value={jobCard.checkedOutAt ? formatDateTime(new Date(jobCard.checkedOutAt)) : '—'} />
+        {jobCard.customer.address ? <Field label="CUSTOMER ADDRESS" value={jobCard.customer.address} /> : null}
         {isOrgCopy ? (
           <>
             <Field label="TECHNICIAN IN CHARGE" value={jobCard.assignedTechnician?.fullName ?? '—'} />
