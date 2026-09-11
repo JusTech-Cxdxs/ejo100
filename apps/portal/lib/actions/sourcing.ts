@@ -310,7 +310,7 @@ export async function getPartRequestSlip(id: string) {
           jobNumber: true,
           supervisorId: true,
           assignedTechnicianId: true,
-          customer: { select: { fullName: true } },
+          customer: { select: { fullName: true, address: true } },
           vehicle: { select: { make: true, model: true, year: true, engineType: true, chassisNumber: true, plateNumber: true } },
           branch: { select: { name: true, address: true, hotlines: true, email: true } },
         },

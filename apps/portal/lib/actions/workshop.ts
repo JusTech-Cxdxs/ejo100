@@ -25,7 +25,10 @@ import { headers } from 'next/headers';
 import { prisma, JobCardStatus, Prisma } from '@ejo/database';
 import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
 import { workingDaysBetween, addWorkingDays } from '@/lib/utils/working-days';
-import { pluralize } from '@/lib/utils/pluralize';
+import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
+import { getOrganisation } from '@/lib/actions/organisation';
+import { renderToBuffer } from '@react-pdf/renderer';
+import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
 import { hashPassword } from 'better-auth/crypto';
 import { auth } from '@/lib/auth';
 import { sendEmail } from '@/lib/email';
@@ -2703,9 +2706,9 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
         select: {
           createdById: true,
           jobNumber: true,
-          vehicle: { select: { make: true, model: true, plateNumber: true } },
-          customer: { select: { fullName: true, email: true } },
-          branch: { select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } } },
+          vehicle: { select: { make: true, model: true, plateNumber: true, chassisNumber: true } },
+          customer: { select: { fullName: true, email: true, address: true } },
+          branch: { select: { name: true, address: true, hotlines: true, email: true, businessUnit: { select: { organisation: { select: { name: true } } } } } },
         },
       },
       lineItems: { orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true, unitOfMeasure: true } },
@@ -2765,12 +2768,23 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
     const total = servicesTotal + labourTotal + sundryTotal;
     const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
     const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    // The PDF's own default font (Helvetica, a standard built-in PDF
+    // font) has no glyph for ₦ — confirmed directly, it rendered as a
+    // broken character. Registering an external font just to fix one
+    // symbol would mean every single estimate email now depends on a
+    // font server being reachable at send time — a real, needless
+    // production risk for one character. "NGN" is what the PDF uses
+    // instead — a standard, genuinely professional currency code on
+    // real financial documents, not a downgrade.
+    const formatNairaForPdf = (value: number) => `NGN ${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
     const vehicleDescription = [estimate.jobCard.vehicle.make, estimate.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     const paymentRemarkSuggestion = [estimate.jobCard.jobNumber, vehicleDescription, estimate.jobCard.vehicle.plateNumber]
       .filter(Boolean)
       .join(' — ');
+
+    const rawLineItems = estimate.lineItems as { description: string; quantity: number; unitOfMeasure: string | null; amount: unknown }[];
 
     await sendEmail(
       estimate.jobCard.customer.email,
@@ -2779,7 +2793,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
         customerName: estimate.jobCard.customer.fullName,
         jobNumber: estimate.jobCard.jobNumber,
         vehicleDescription,
-        lineItems: (estimate.lineItems as { description: string; quantity: number; unitOfMeasure: string | null; amount: unknown }[]).map((li) => ({
+        lineItems: rawLineItems.map((li) => ({
           description: li.description,
           quantity: li.quantity,
           unitOfMeasure: li.unitOfMeasure,
@@ -2799,6 +2813,66 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
         companyName: estimate.jobCard.branch.businessUnit.organisation.name,
         branchName: estimate.jobCard.branch.name,
       }),
+      await (async () => {
+        // The real, styled PDF attachment — a genuine document, not
+        // just the HTML email body. Reuses the exact same real
+        // Organisation record the print system's own letterhead
+        // already pulls from, so the two never drift apart.
+        try {
+          const organisation = await getOrganisation();
+          if (!organisation) return undefined;
+          const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+          const pdfBuffer = await renderToBuffer(
+            EstimatePdf({
+              organisation: {
+                name: organisation.name,
+                legalName: organisation.legalName,
+                hqAddress: organisation.hqAddress,
+                poBox: organisation.poBox,
+                rcNumber: organisation.rcNumber,
+                hotlines: organisation.hotlines,
+                website: organisation.website,
+                email: organisation.email,
+              },
+              branch: {
+                name: estimate.jobCard.branch.name,
+                address: estimate.jobCard.branch.address,
+                hotlines: estimate.jobCard.branch.hotlines,
+                email: estimate.jobCard.branch.email,
+              },
+              logoUrl: `${portalUrl}/images/logo/logo.png`,
+              jobNumber: estimate.jobCard.jobNumber,
+              customerName: estimate.jobCard.customer.fullName,
+              customerAddress: estimate.jobCard.customer.address,
+              vehicleDescription,
+              plateNumber: estimate.jobCard.vehicle.plateNumber,
+              chassisNumber: estimate.jobCard.vehicle.chassisNumber,
+              lineItems: rawLineItems.map((li) => ({
+                description: li.description,
+                quantity: li.quantity,
+                unitLabel: li.unitOfMeasure ? pluralizeWord(li.quantity, li.unitOfMeasure) : null,
+                amount: formatNairaForPdf(Number(li.amount ?? 0)),
+              })),
+              servicesSubtotal: servicesTotal > 0 ? formatNairaForPdf(servicesTotal) : null,
+              labourSubtotal: labourTotal > 0 ? formatNairaForPdf(labourTotal) : null,
+              sundrySubtotal: sundryTotal > 0 ? formatNairaForPdf(sundryTotal) : null,
+              totalAmount: formatNairaForPdf(total),
+              minimumDepositAmount: formatNairaForPdf(minimumDeposit),
+              bankName: COMPANY_BANK_DETAILS.bankName,
+              accountName: COMPANY_BANK_DETAILS.accountName,
+              accountNumber: COMPANY_BANK_DETAILS.accountNumber,
+              paymentRemarkSuggestion,
+            }),
+          );
+          return [{ filename: `Estimate-${estimate.jobCard.jobNumber}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }];
+        } catch (pdfErr) {
+          // A failed PDF must never block the email itself — the
+          // customer still needs the approval notice either way.
+          // eslint-disable-next-line no-console
+          console.error('Failed to generate estimate PDF attachment', jobCardId, pdfErr);
+          return undefined;
+        }
+      })(),
     );
   } catch (err) {
     // eslint-disable-next-line no-console
