@@ -1,6 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { JobCardStatusForm } from '@/components/JobCardStatusForm';
 import { AuditTrail } from '@/components/AuditTrail';
+import { getSelectableJobCardStatuses } from '@/lib/job-card-status-rules';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, getCloseRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
@@ -20,23 +21,6 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { workingDaysBetween } from '@/lib/utils/working-days';
 
-// CLOSED and CANCELLED are deliberately absent — both now go through
-// their own real request → Manager approve/decline flow (see
-// requestJobCardClose/requestJobCardCancellation), never a direct
-// dropdown selection. CHECKED_OUT stays selectable directly: it's a
-// factual, physical event (the vehicle actually left), not a decision
-// that itself needs a separate sign-off the way ending a job early or
-// closing it out administratively does.
-const ALL_STATUSES = [
-  'CHECKED_IN',
-  'AWAITING_CUSTOMER_APPROVAL',
-  'IN_PROGRESS',
-  'AWAITING_PARTS',
-  'QUALITY_CHECK',
-  'COMPLETED',
-  'READY_FOR_COLLECTION',
-  'CHECKED_OUT',
-] as const;
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -95,6 +79,7 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'cancellation.declined': 'Cancellation declined',
   'close.requested': 'Close requested',
   'close.declined': 'Close declined',
+  'job_card.rework_requested': 'Sent back for rework',
   'approval.reminder_sent': 'Approval reminder sent',
   'collection.overdue_notice_sent': 'Collection overdue notice sent',
   'collection.ready_reminder_sent': 'Ready-for-collection reminder sent',
@@ -177,6 +162,8 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
       const to = typeof meta.to === 'string' ? (STATUS_LABEL[meta.to] ?? meta.to) : null;
       return from && to ? `${from} → ${to}` : null;
     }
+    case 'job_card.rework_requested':
+      return typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : null;
     case 'job_card.rejected':
     case 'job_card.supervisor_reassigned':
     case 'assignment.rejected':
@@ -381,9 +368,12 @@ export default async function JobCardDetailPage({
   const isPaidInFull = paymentStatus === 'PAID_IN_FULL';
   const selectableStatuses = isCancelled
     ? (['CHECKED_OUT'] as const)
-    : isPaidInFull
-      ? ALL_STATUSES
-      : ALL_STATUSES.filter((s) => s !== 'CHECKED_OUT');
+    : getSelectableJobCardStatuses(jobCard.status, {
+        isMasterAdmin,
+        isSupervisor: isApprover,
+        isAssignedTechnician,
+        isEligibleManager,
+      }).filter((s) => s !== 'CHECKED_OUT' || isPaidInFull);
 
   return (
     <div className="p-8">
