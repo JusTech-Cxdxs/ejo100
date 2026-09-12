@@ -611,9 +611,8 @@ export default async function PartDetailPage({
                               />
                               <input
                                 name="model"
-                                required
-                                defaultValue={fitment.model}
-                                placeholder="Model"
+                                defaultValue={fitment.model ?? ''}
+                                placeholder="Model (optional)"
                                 className="w-24 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                               />
                               <input
@@ -653,7 +652,7 @@ export default async function PartDetailPage({
                       ) : (
                         <tr key={fitment.id} className="border-b border-[var(--ejo-border)] last:border-0">
                           <td className="px-2 py-1.5 font-medium text-[var(--ejo-text)]">{fitment.make}</td>
-                          <td className="px-2 py-1.5 text-[var(--ejo-text)]">{fitment.model}</td>
+                          <td className="px-2 py-1.5 text-[var(--ejo-text)]">{fitment.model ?? 'Any'}</td>
                           <td className="px-2 py-1.5 text-[var(--ejo-text-muted)]">{fitment.engineType ?? 'Any'}</td>
                           <td className="px-2 py-1.5 text-[var(--ejo-text-muted)]">
                             {fitment.yearFrom || fitment.yearTo ? `${fitment.yearFrom ?? '…'}–${fitment.yearTo ?? '…'}` : 'Any'}
@@ -690,7 +689,7 @@ export default async function PartDetailPage({
                 <input type="hidden" name="partId" value={part.id} />
                 <div className="grid grid-cols-2 gap-2">
                   <input name="make" required placeholder="Make, e.g. Isuzu" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
-                  <input name="model" required placeholder="Model, e.g. NPR" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                  <input name="model" placeholder="Model (optional — leave blank to fit every model of this Make)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
                 </div>
                 <input name="engineType" placeholder="Engine (optional — leave blank to fit every engine of this make/model)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
                 <div className="grid grid-cols-2 gap-2">
