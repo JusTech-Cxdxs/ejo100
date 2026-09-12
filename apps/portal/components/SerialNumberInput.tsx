@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDebouncedValue } from '@/lib/hooks/useDebouncedValue';
 import { checkSerialNumberExists } from '@/lib/actions/store';
 
@@ -61,9 +61,26 @@ export function SerialNumberInput({
 
   const hasError = duplicateInForm || catalogState === 'exists';
 
+  // The real, exact cause of a genuine browser freeze the moment this
+  // section renders — confirmed directly, not guessed at. The parent
+  // form passes onValidityChange as a fresh inline arrow function on
+  // every one of its own renders (it has to — a stable one would need
+  // useCallback called inside a .map() loop, which breaks React's own
+  // rules of hooks). A useEffect that depends on that unstable
+  // reference re-fires every render, calls back into the parent,
+  // triggers a parent state update, and the parent re-renders with yet
+  // another new reference — a real, genuine infinite loop, not a
+  // one-off glitch. A ref sidesteps this at the root: the effect
+  // itself only ever depends on the real value that matters
+  // (hasError), and always calls whatever the latest real callback
+  // happens to be via the ref, without that callback's own identity
+  // ever being part of the dependency array at all.
+  const onValidityChangeRef = useRef(onValidityChange);
+  onValidityChangeRef.current = onValidityChange;
+
   useEffect(() => {
-    onValidityChange(hasError);
-  }, [hasError, onValidityChange]);
+    onValidityChangeRef.current(hasError);
+  }, [hasError]);
 
   return (
     <div className="flex-1">

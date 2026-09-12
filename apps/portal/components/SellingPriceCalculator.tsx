@@ -5,33 +5,48 @@ import { setPartSellingPriceFormAction } from '@/lib/actions/store-form-handlers
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { pluralizeWord } from '@/lib/utils/pluralize';
+import { actualMargin, actualMarkup, marginToMarkup, priceForTargetMargin } from '@/lib/pricing-math';
 
 function formatNaira(amount: number): string {
   return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function formatPercent(value: number | null): string {
+  return value !== null ? `${value.toFixed(1)}%` : '—';
+}
+
 /**
  * The real "how much did we pay, how much do we charge, what's the
- * margin" picture — kept genuinely separate the whole way through:
- * Total Bulk Cost is what was actually paid for the most recent real
- * delivery (a permanent Goods Receipt record, untouched here),
- * Selling Price is a deliberate, editable decision Store makes on
- * this Part specifically, and the margin insight is purely a live,
- * client-side calculation — never stored anywhere, recomputed fresh
- * from whatever's currently typed, the same way a real POS system's
- * own pricing screen would show it.
+ * real profitability" picture — kept genuinely separate the whole way
+ * through: Total Bulk Cost is what was actually paid for the most
+ * recent real delivery (a permanent Goods Receipt record, untouched
+ * here), Selling Price is a deliberate, editable decision Store makes
+ * on this Part specifically, and every figure in the insight panel
+ * below is purely a live, client-side calculation — never stored
+ * anywhere, recomputed fresh from whatever's currently typed.
+ *
+ * Confirmed directly, from a real, live case: showing only "Markup"
+ * here, next to a Target Margin field that means something
+ * genuinely different, was a real, live source of confusion — a real
+ * 41.9% Markup was mistakenly entered as a 41.9% Target Margin,
+ * quietly asking for a materially higher real profitability than
+ * intended. This panel now shows Margin and Markup side by side,
+ * always both, always clearly labeled, so neither number is ever the
+ * only one on screen.
  */
 export function SellingPriceCalculator({
   partId,
   partName,
   baseUnitOfMeasure,
   currentSellingPrice,
+  targetMarginPercent,
   lastReceipt,
 }: {
   partId: string;
   partName: string;
   baseUnitOfMeasure: string;
   currentSellingPrice: number | null;
+  targetMarginPercent: number | null;
   lastReceipt: {
     referenceNumber: string;
     quantityReceivedInUnit: number;
@@ -55,9 +70,26 @@ export function SellingPriceCalculator({
   // a genuine ₦650,000 payment for 205 Liters showing as ₦649,999.65,
   // since 650,000 ÷ 205 has no exact 2-decimal answer.
   const totalBulkCost = lastReceipt?.totalCost ?? null;
+  const unitCost = lastReceipt?.unitCostInBaseUnit ?? null;
   const expectedRevenue = lastReceipt ? sellingPrice * lastReceipt.quantityInBaseUnit : null;
   const grossProfit = totalBulkCost !== null && expectedRevenue !== null ? expectedRevenue - totalBulkCost : null;
-  const markupPercent = totalBulkCost !== null && totalBulkCost > 0 && grossProfit !== null ? (grossProfit / totalBulkCost) * 100 : null;
+
+  // Real, current profitability at whatever price is currently
+  // showing (typed or saved) against the most recent real cost —
+  // Margin and Markup always shown together, on purpose, never one
+  // without the other.
+  const currentMarginPercent = unitCost !== null && sellingPrice > 0 ? actualMargin(unitCost, sellingPrice) : null;
+  const currentMarkupPercent = unitCost !== null && sellingPrice > 0 ? actualMarkup(unitCost, sellingPrice) : null;
+
+  // The real target this Part is actually held to, and what it would
+  // recommend right now against the most recent real cost — shown
+  // even while just viewing, not only when a Pricing Alert has
+  // already been raised, so the real gap is always visible, not just
+  // after the fact.
+  const equivalentTargetMarkup = targetMarginPercent !== null ? marginToMarkup(targetMarginPercent) : null;
+  const marginGap = currentMarginPercent !== null && targetMarginPercent !== null ? currentMarginPercent - targetMarginPercent : null;
+  const recommendedPrice = unitCost !== null && targetMarginPercent !== null ? priceForTargetMargin(unitCost, targetMarginPercent) : null;
+  const recommendedMarkup = recommendedPrice !== null && unitCost !== null ? actualMarkup(unitCost, recommendedPrice) : null;
 
   return (
     <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
@@ -81,13 +113,13 @@ export function SellingPriceCalculator({
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-[var(--ejo-text-muted)]">Total Bulk Cost</dt>
+              <dt className="text-[var(--ejo-text-muted)]">Total Purchase Cost</dt>
               <dd className="font-medium text-[var(--ejo-text)]">{totalBulkCost !== null ? formatNaira(totalBulkCost) : '—'}</dd>
             </div>
           </dl>
-          {lastReceipt.unitCostInBaseUnit !== null ? (
+          {unitCost !== null ? (
             <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
-              System notes: cost is {formatNaira(lastReceipt.unitCostInBaseUnit)}/{baseUnitOfMeasure} — from {lastReceipt.referenceNumber}.
+              System notes: cost is {formatNaira(unitCost)}/{baseUnitOfMeasure} — from {lastReceipt.referenceNumber}.
             </p>
           ) : null}
           <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
@@ -169,20 +201,76 @@ export function SellingPriceCalculator({
 
       {lastReceipt && sellingPrice > 0 ? (
         <div className="mt-4 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 p-4">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--ejo-success)]">Live Margin Insight</p>
-          <dl className="mt-1.5 space-y-1 text-sm">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--ejo-success)]">Profitability &amp; Pricing Insight</p>
+
+          <dl className="mt-2 space-y-1 text-sm">
             <div className="flex justify-between">
               <dt className="text-[var(--ejo-text-muted)]">Expected Revenue</dt>
               <dd className="font-medium text-[var(--ejo-text)]">{expectedRevenue !== null ? formatNaira(expectedRevenue) : '—'}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-[var(--ejo-text-muted)]">Gross Profit</dt>
+              <dt className="text-[var(--ejo-text-muted)]">Expected Gross Profit</dt>
               <dd className={`font-medium ${grossProfit !== null && grossProfit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
                 {grossProfit !== null ? formatNaira(grossProfit) : '—'}
-                {markupPercent !== null ? ` (${markupPercent.toFixed(1)}% Markup)` : ''}
               </dd>
             </div>
           </dl>
+          <p className="mt-1 text-[10px] text-[var(--ejo-text-muted)]">
+            A real projection using the current Selling Price and current stock — not actual historical revenue.
+            What was genuinely charged on a past sale may have differed if the price has changed since.
+          </p>
+
+          <dl className="mt-3 space-y-1 border-t border-[var(--ejo-success)]/20 pt-2 text-sm">
+            <div className="flex justify-between">
+              <dt className="text-[var(--ejo-text-muted)]">Current Margin (of Price)</dt>
+              <dd className="font-medium text-[var(--ejo-text)]">{formatPercent(currentMarginPercent)}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-[var(--ejo-text-muted)]">Current Markup (of Cost)</dt>
+              <dd className="font-medium text-[var(--ejo-text)]">{formatPercent(currentMarkupPercent)}</dd>
+            </div>
+          </dl>
+
+          {targetMarginPercent !== null ? (
+            <dl className="mt-3 space-y-1 border-t border-[var(--ejo-success)]/20 pt-2 text-sm">
+              <div className="flex justify-between">
+                <dt className="text-[var(--ejo-text-muted)]">Target Margin</dt>
+                <dd className="font-medium text-[var(--ejo-text)]">{formatPercent(targetMarginPercent)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-[var(--ejo-text-muted)]">Equivalent Target Markup</dt>
+                <dd className="font-medium text-[var(--ejo-text)]">{formatPercent(equivalentTargetMarkup)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-[var(--ejo-text-muted)]">Margin Gap</dt>
+                <dd className={`font-medium ${marginGap !== null && marginGap < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
+                  {marginGap !== null ? `${marginGap >= 0 ? '+' : ''}${marginGap.toFixed(1)} points` : '—'}
+                </dd>
+              </div>
+              {recommendedPrice !== null && Math.abs((currentSellingPrice ?? 0) - recommendedPrice) > 0.01 ? (
+                <>
+                  <div className="flex justify-between">
+                    <dt className="text-[var(--ejo-text-muted)]">Recommended Price</dt>
+                    <dd className="font-medium text-[var(--ejo-text)]">{formatNaira(recommendedPrice)}/{baseUnitOfMeasure}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-[var(--ejo-text-muted)]">Recommended Markup</dt>
+                    <dd className="font-medium text-[var(--ejo-text)]">{formatPercent(recommendedMarkup)}</dd>
+                  </div>
+                </>
+              ) : null}
+            </dl>
+          ) : (
+            <p className="mt-3 border-t border-[var(--ejo-success)]/20 pt-2 text-[11px] text-[var(--ejo-text-muted)]">
+              Set a Target below to see the real gap against this Part&apos;s own current pricing.
+            </p>
+          )}
+
+          <p className="mt-3 text-[11px] text-[var(--ejo-text-muted)]">
+            <span className="font-medium text-[var(--ejo-text)]">Margin</span> — profit compared with selling
+            price. <span className="font-medium text-[var(--ejo-text)]">Markup</span> — profit compared with
+            cost. Same real profit, two real ways to measure it.
+          </p>
         </div>
       ) : null}
     </div>
