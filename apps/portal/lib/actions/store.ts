@@ -1077,6 +1077,7 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
               supervisorId: true,
               assignedTechnicianId: true,
               customer: { select: { fullName: true } },
+              vehicle: { select: { make: true, model: true, engineType: true, year: true } },
             },
           },
         },
@@ -1101,12 +1102,54 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
   }
   const user = await requireStoreStaff(lineItem.estimate.jobCard.branchId);
 
-  const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, partTypeId: true, name: true, baseUnitOfMeasure: true, sellingPrice: true } });
+  const part = await prisma.part.findUnique({
+    where: { id: partId },
+    select: {
+      branchId: true, partTypeId: true, name: true, baseUnitOfMeasure: true, sellingPrice: true,
+      fitments: { select: { make: true, model: true, engineType: true, yearFrom: true, yearTo: true } },
+    },
+  });
   if (!part) {
     throw new StoreActionError('Part not found.');
   }
   if (part.branchId !== lineItem.estimate.jobCard.branchId) {
     throw new StoreActionError('This Part does not belong to the same branch as this Job Card.');
+  }
+  // The one real, deliberate safeguard fitment exists for: a Part
+  // with no fitment rows at all is genuinely treated as universal
+  // (fluids, cleaners, generic consumables — real parts that fit
+  // every vehicle, not an oversight) and always allowed through
+  // untouched, exactly as already documented and displayed on the
+  // Part's own page. A Part that DOES have real fitment rows on
+  // record, though, is a real, discrete component this workshop has
+  // deliberately said only fits specific vehicles — matching it onto
+  // a Job Card whose own vehicle isn't on that list is the exact
+  // real mistake this was built to prevent, so it's a genuine block
+  // here, not just a warning that's easy to click past.
+  if (part.fitments.length > 0) {
+    const vehicle = lineItem.estimate.jobCard.vehicle;
+    // A Job Card whose own vehicle record is missing make/model
+    // entirely can't be checked either way — blocking here would
+    // punish an incomplete vehicle record that was never the Store
+    // operator's own mistake, so this one real case is let through.
+    const canCheck = vehicle?.make && vehicle?.model;
+    const fits = !canCheck || part.fitments.some((f: { make: string; model: string; engineType: string | null; yearFrom: number | null; yearTo: number | null }) => {
+      if (f.make.toLowerCase() !== vehicle!.make!.toLowerCase()) return false;
+      if (f.model.toLowerCase() !== vehicle!.model!.toLowerCase()) return false;
+      if (f.engineType && vehicle!.engineType && f.engineType.toLowerCase() !== vehicle!.engineType.toLowerCase()) return false;
+      if (f.engineType && !vehicle!.engineType) return false;
+      if (vehicle!.year !== null) {
+        if (f.yearFrom !== null && vehicle!.year < f.yearFrom) return false;
+        if (f.yearTo !== null && vehicle!.year > f.yearTo) return false;
+      }
+      return true;
+    });
+    if (!fits) {
+      const vehicleLabel = [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(' ') || 'this Job Card\'s own vehicle';
+      throw new StoreActionError(
+        `${part.name} is only recorded to fit specific vehicles, and ${vehicleLabel} isn't one of them — this would be the exact real mistake Vehicle Fitment exists to prevent. If this Part genuinely does fit, add ${vehicleLabel} to its Vehicle Fitment list first.`,
+      );
+    }
   }
   if (lineItem.partTypeId && part.partTypeId !== lineItem.partTypeId) {
     throw new StoreActionError(`${part.name} is not the requested Part Type for this line.`);
