@@ -1269,6 +1269,11 @@ model Part {
   // is. Never a company-wide default silently assumed here — a
   // missing target means "not yet reviewed", not "target is 0%".
   targetMarginPercent Decimal? @db.Decimal(5, 2)
+  // Which real unit this Part's own target is entered and shown in —
+  // Margin or Markup. Defaults to Margin, matching what
+  // targetMarginPercent itself has always stored; a Part only ever
+  // switches once someone deliberately picks Markup instead.
+  pricingMethod PricingMethod @default(MARGIN)
   isActive     Boolean  @default(true)
   // Which generic, customer-facing PartType this Part actually is
   // (e.g. "Fuel Filter") — nullable since a Part can exist in the
@@ -1537,6 +1542,21 @@ model GoodsReceiptLine {
 // recordGoodsReceipt). A Part with either figure unset is silently skipped
 // — nothing to compare against yet, not a problem to flag.
 // ----------------------------------------------------------------------------
+
+// Purely a real display/input preference — never a second source of
+// truth. Part.targetMarginPercent always stores the real, true margin
+// (profit ÷ selling price) regardless of this setting; a Part whose
+// business genuinely thinks in Markup (profit ÷ cost) instead just
+// sees and types that number, with the system converting both ways
+// automatically. Confirmed directly this distinction is real and
+// easy to get wrong: entering a real Markup figure into a field that
+// actually means Margin produces a genuinely different, higher target
+// than intended — the exact real confusion this field exists to
+// prevent from happening silently again.
+enum PricingMethod {
+  MARGIN
+  MARKUP
+}
 
 enum PricingAlertSeverity {
   // Real margin has fallen below the real target, but is still
