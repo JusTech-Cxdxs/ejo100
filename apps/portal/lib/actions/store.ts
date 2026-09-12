@@ -16,11 +16,12 @@
 
 import { prisma, PartTrackingType } from '@ejo/database';
 import { pluralize } from '@/lib/utils/pluralize';
-import { markupToMargin, actualMarkup, priceForTargetMargin } from '@/lib/pricing-math';
+import { markupToMargin, marginToMarkup, actualMargin, actualMarkup, priceForTargetMargin } from '@/lib/pricing-math';
 import { requireUser, writeAuditLog, currentUserIsMasterAdmin } from './workshop';
 import { sendEmail } from '@/lib/email';
 import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
 import { renderPricingAlertRaisedEmail } from '@/lib/email-templates/pricing-alert-raised';
+import { renderPartTargetMarginSetEmail } from '@/lib/email-templates/part-target-margin-set';
 import { renderStoreMatchingRequestedEmail, renderStoreMatchingStatusEmail } from '@/lib/email-templates/store-matching-status';
 import { renderGoodsReceiptEditedEmail } from '@/lib/email-templates/goods-receipt-edited';
 import { renderPartSellingPriceSetEmail } from '@/lib/email-templates/part-selling-price-set';
@@ -302,13 +303,14 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
       name: true,
       sellingPrice: true,
       baseUnitOfMeasure: true,
+      targetMarginPercent: true,
       // The most recent real delivery — same source the Selling Price
       // Calculator's own margin insight already uses, so the email
       // and the screen never tell two different stories.
       goodsReceiptLines: {
         orderBy: { goodsReceipt: { receivedAt: 'desc' } },
         take: 1,
-        select: { quantityInBaseUnit: true, totalCost: true },
+        select: { quantityInBaseUnit: true, totalCost: true, unitCost: true },
       },
     },
   });
@@ -331,6 +333,7 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
 
   try {
     const lastReceipt = part.goodsReceiptLines[0];
+    const targetMarginPercent = part.targetMarginPercent !== null ? Number(part.targetMarginPercent) : null;
     const margin =
       lastReceipt && lastReceipt.totalCost !== null
         ? (() => {
@@ -338,8 +341,10 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
             const totalBulkCost = Number(lastReceipt.totalCost);
             const expectedRevenue = Math.round(sellingPrice * quantityInBaseUnit * 100) / 100;
             const grossProfit = Math.round((expectedRevenue - totalBulkCost) * 100) / 100;
-            const markupPercent = totalBulkCost > 0 ? (grossProfit / totalBulkCost) * 100 : null;
-            return { quantityInBaseUnit, totalBulkCost, expectedRevenue, grossProfit, markupPercent };
+            const unitCost = lastReceipt.unitCost !== null ? Number(lastReceipt.unitCost) : null;
+            const markupPercent = unitCost !== null && unitCost > 0 ? actualMarkup(unitCost, sellingPrice) : null;
+            const marginPercent = unitCost !== null ? actualMargin(unitCost, sellingPrice) : null;
+            return { quantityInBaseUnit, totalBulkCost, expectedRevenue, grossProfit, markupPercent, marginPercent };
           })()
         : null;
 
@@ -367,6 +372,7 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
           previousSellingPrice,
           newSellingPrice: sellingPrice,
           margin,
+          targetMarginPercent,
           partUrl: `${portalUrl}/inventory/parts/${partId}`,
           logoUrl,
           companyName: orgContext.companyName,
@@ -425,6 +431,50 @@ export async function setPartTargetMargin(partId: string, targetValue: number, p
       enteredValue: targetValue,
     },
   });
+
+  // Every genuine pricing decision on a Part notifies Store — a
+  // Target change is just as real a decision as the selling price
+  // itself, since it's the exact number every future Pricing Alert
+  // on this Part gets compared against. Never blocks the save if
+  // sending fails.
+  try {
+    const [officers, managers, setByUser] = await Promise.all([
+      listEligibleStoreOfficersForBranch(part.branchId),
+      listEligibleStoreManagersForBranch(part.branchId),
+      prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
+    ]);
+    const recipients = new Map<string, { fullName: string; email: string }>();
+    for (const staffMember of [...officers.staff, ...managers.staff]) {
+      recipients.set(staffMember.id, staffMember);
+    }
+    const orgContext = await getStoreOrgContext();
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const equivalentMarkup = marginToMarkup(targetMarginPercent);
+    for (const recipient of recipients.values()) {
+      await sendEmail(
+        recipient.email,
+        `Target pricing updated — ${part.name}`,
+        renderPartTargetMarginSetEmail({
+          recipientName: recipient.fullName,
+          setByName: setByUser?.fullName ?? 'A team member',
+          partName: part.name,
+          previousTargetMarginPercent,
+          newTargetMarginPercent: Math.round(targetMarginPercent * 100) / 100,
+          newTargetMarkupPercent: equivalentMarkup !== null ? Math.round(equivalentMarkup * 100) / 100 : 0,
+          enteredAs: pricingMethod,
+          enteredValue: targetValue,
+          partUrl: `${portalUrl}/inventory/parts/${partId}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send target-margin-set notification emails', partId, err);
+  }
 }
 
 /** Replaces a part's full set of alternative units in one call — the
@@ -1867,6 +1917,7 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
           // insight gracefully; passing the bare target margin number
           // here instead would have been the wrong shape entirely.
           margin: null,
+          targetMarginPercent: targetMargin,
           partUrl: `${portalUrl}/inventory/parts/${alert.part.id}`,
           logoUrl,
           companyName: orgContext.companyName,
