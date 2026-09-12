@@ -44,17 +44,18 @@ export default async function PricingCommandCenterPage({
 
   return (
     <div className="p-8">
-      <div className="mb-2 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Pricing Command Center</h1>
-          <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
-            Every real delivery cost, auto-compared against each Part&apos;s own target margin the moment it&apos;s
-            recorded.
-          </p>
-        </div>
-        <LoadingLink href="/inventory" className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">
-          ← Back to Inventory
-        </LoadingLink>
+      <LoadingLink
+        href="/inventory"
+        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
+      >
+        ← Back to Inventory
+      </LoadingLink>
+      <div className="mb-2">
+        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Pricing Command Center</h1>
+        <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
+          Every real delivery cost, auto-compared against each Part&apos;s own target margin the moment it&apos;s
+          recorded.
+        </p>
       </div>
 
       {params.error ? (
