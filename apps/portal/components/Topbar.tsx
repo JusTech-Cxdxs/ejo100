@@ -2,8 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
+import { NotificationBell } from '@/components/NotificationBell';
+import type { DashboardNotification } from '@/lib/actions/dashboard';
 
-export function Topbar({ userName, roleName }: { userName: string; roleName: string }) {
+export function Topbar({ userName, roleName, notifications }: { userName: string; roleName: string; notifications: DashboardNotification[] }) {
   const router = useRouter();
 
   async function handleSignOut() {
@@ -19,9 +21,7 @@ export function Topbar({ userName, roleName }: { userName: string; roleName: str
         className="w-80 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-4 py-2 text-sm outline-none focus:border-[var(--ejo-primary)]"
       />
       <div className="flex items-center gap-4">
-        <button aria-label="Notifications" className="text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-          🔔
-        </button>
+        <NotificationBell notifications={notifications} />
         <div className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-full bg-[var(--ejo-primary)]/20" />
           <div className="text-sm">
