@@ -138,24 +138,38 @@ export function SellingPriceCalculator({
           Selling Unit: <span className="font-medium">{baseUnitOfMeasure}</span>
         </p>
 
-        {!isEditingPrice && currentSellingPrice !== null ? (
-          <div className="mt-2 flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 px-3 py-2.5">
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--ejo-success)]">Current Selling Price</p>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {unitCost !== null ? (
+            <div className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--ejo-text-muted)]">Unit Cost</p>
               <p className="text-lg font-bold text-[var(--ejo-text)]">
-                {formatNaira(currentSellingPrice)}{' '}
-                <span className="text-xs font-normal text-[var(--ejo-text-muted)]">per {baseUnitOfMeasure}</span>
+                {formatNaira(unitCost)}
+                <span className="text-xs font-normal text-[var(--ejo-text-muted)]"> /{baseUnitOfMeasure}</span>
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsEditingPrice(true)}
-              className="shrink-0 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-            >
-              Edit
-            </button>
-          </div>
-        ) : (
+          ) : null}
+
+          {!isEditingPrice && currentSellingPrice !== null ? (
+            <div className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 px-3 py-2.5">
+              <div>
+                <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--ejo-success)]">Selling Price</p>
+                <p className="text-lg font-bold text-[var(--ejo-text)]">
+                  {formatNaira(currentSellingPrice)}
+                  <span className="text-xs font-normal text-[var(--ejo-text-muted)]"> /{baseUnitOfMeasure}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditingPrice(true)}
+                className="shrink-0 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-2 py-1 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+              >
+                Edit
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        {isEditingPrice || currentSellingPrice === null ? (
           <form action={setPartSellingPriceFormAction} className="mt-2 flex items-center gap-2">
             <FormPendingOverlay />
             <input type="hidden" name="id" value={partId} />
@@ -192,7 +206,7 @@ export function SellingPriceCalculator({
               </button>
             ) : null}
           </form>
-        )}
+        ) : null}
 
         {currentSellingPrice === null ? (
           <p className="mt-1 text-[11px] text-[var(--ejo-warning)]">Not set yet — Store Part matching is blocked until this is set.</p>
