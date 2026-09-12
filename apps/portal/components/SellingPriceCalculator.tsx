@@ -271,6 +271,24 @@ export function SellingPriceCalculator({
                     <dt className="text-[var(--ejo-text-muted)]">Recommended Markup</dt>
                     <dd className="font-medium text-[var(--ejo-text)]">{formatPercent(recommendedMarkup)}</dd>
                   </div>
+                  <div className="mt-1 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Pre-fills the real, existing Selling Price
+                        // form with the recommended figure — the
+                        // actual save still goes through the same
+                        // real setPartSellingPrice action (and its
+                        // own real notification email) as any manual
+                        // edit, never a separate, parallel path.
+                        setSellingPriceInput(String(Math.round(recommendedPrice * 100) / 100));
+                        setIsEditingPrice(true);
+                      }}
+                      className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-success)]/40 bg-[var(--ejo-success)]/10 px-3 py-1 text-xs font-medium text-[var(--ejo-success)] hover:bg-[var(--ejo-success)]/20"
+                    >
+                      Use Recommended Price
+                    </button>
+                  </div>
                 </>
               ) : null}
             </dl>

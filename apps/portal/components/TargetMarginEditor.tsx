@@ -101,7 +101,22 @@ export function TargetMarginEditor({
               <button
                 key={m}
                 type="button"
-                onClick={() => setPricingMethod(m)}
+                onClick={() => {
+                  // The real fix: switching units has to convert
+                  // whatever's actually sitting in the box right now,
+                  // not just relabel it. Typing 7.1 as Margin and
+                  // then clicking Markup must show the real Markup
+                  // equivalent (~7.7), never leave "7.1" sitting
+                  // there silently reinterpreted as a different real
+                  // number — that was the exact real bug.
+                  if (m !== pricingMethod && hasValidInput) {
+                    const converted = pricingMethod === 'MARGIN' ? marginToMarkup(parsedValue) : markupToMargin(parsedValue);
+                    if (converted !== null) {
+                      setValueInput(String(Math.round(converted * 10) / 10));
+                    }
+                  }
+                  setPricingMethod(m);
+                }}
                 className={`flex-1 rounded-[var(--ejo-radius-md)] px-3 py-1.5 text-xs font-medium ${
                   pricingMethod === m ? 'bg-[var(--ejo-primary)] text-white' : 'text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]'
                 }`}
