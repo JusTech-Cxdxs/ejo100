@@ -135,7 +135,17 @@ export default async function PartDetailPage({
                       </tr>
                     </thead>
                     <tbody>
-                      {part.batches.map((batch: (typeof part.batches)[number]) => {
+                      {(() => {
+                        // The first real batch, in real FIFO order,
+                        // that still has stock left — the one
+                        // warehouse should genuinely be drawing from
+                        // right now, matching the exact same real
+                        // order actual issuance already draws from
+                        // (see requestStoreMatching's own FIFO logic).
+                        // Found once, outside the render loop itself,
+                        // so only ever one real batch gets the tag.
+                        const activeBatchId = part.batches.find((b: (typeof part.batches)[number]) => Number(b.remainingQuantity) > 0)?.id ?? null;
+                        return part.batches.map((batch: (typeof part.batches)[number]) => {
                         const received = Number(batch.receivedQuantity);
                         const remaining = Number(batch.remainingQuantity);
                         const soldSoFar = Math.max(0, received - remaining);
@@ -146,7 +156,14 @@ export default async function PartDetailPage({
                         const profit = revenue !== null && cogs !== null ? revenue - cogs : null;
                         return (
                           <tr key={batch.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                            <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{batch.batchNumber}</td>
+                            <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">
+                              {batch.batchNumber}
+                              {batch.id === activeBatchId ? (
+                                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[var(--ejo-success)]/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--ejo-success)]">
+                                  ● Active / Selling Now
+                                </span>
+                              ) : null}
+                            </td>
                             <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {batch.goodsReceiptLine?.goodsReceipt ? (
                                 <LoadingLink href={`/inventory/goods-receipts/${batch.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
@@ -172,7 +189,8 @@ export default async function PartDetailPage({
                             <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(batch.receivedAt))}</td>
                           </tr>
                         );
-                      })}
+                        });
+                      })()}
                     </tbody>
                     <tfoot>
                       {(() => {
