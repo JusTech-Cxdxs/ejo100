@@ -1910,13 +1910,25 @@ model PartFitment {
   id     String @id @default(cuid())
   partId String
   make   String
-  model  String
+  // Null means "fits every model of this make" — the exact real
+  // fix for a genuine bug: this used to be required even on an
+  // edit, so narrowing a fitment to Foton+TM3 and later deciding it
+  // should really cover every Foton model meant the save was
+  // silently refused, with no way to widen a fitment row back out
+  // once it had been narrowed. Same real reasoning already applied
+  // to engineType below — a field left blank means "don't restrict
+  // on this", never a formality.
+  model  String?
   // Null means "fits every engine of this make/model" — only set when a
   // part genuinely varies by engine within the same model (the real case
   // this was built for), never set as a formality when it doesn't matter.
+  // Real, standing rule: never set without model also being set — an
+  // engine type is specific to a model, not just a make.
   engineType String?
   // Optional year range — specs can change across model years even under
   // the same name. Null on either end means unbounded in that direction.
+  // Real, standing rule: never set without model also being set — a
+  // year range narrows a specific model, not a whole make.
   yearFrom Int?
   yearTo   Int?
 
