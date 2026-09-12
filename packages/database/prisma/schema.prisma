@@ -129,6 +129,7 @@ model Organisation {
   users         User[]
   roles         Role[]
   customers     Customer[]
+  announcements Announcement[]
 
   @@map("organisations")
 }
@@ -337,6 +338,7 @@ model User {
   closeRequestsMade CloseRequest[] @relation("CloseRequestedBy")
   closeRequestsDecided CloseRequest[] @relation("CloseDecidedBy")
   pricingAlertsResolved PricingAlert[] @relation("PricingAlertResolvedBy")
+  announcementsCreated Announcement[] @relation("AnnouncementCreatedBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -1183,6 +1185,36 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@map("audit_logs")
+}
+
+// ----------------------------------------------------------------------------
+// DASHBOARD BROADCASTS — a real Master Admin/Manager-authored announcement,
+// shown in the dashboard's own marquee alongside real, auto-generated recent
+// activity. Deliberately its own separate, simple model rather than folded
+// into AuditLog above: an announcement is a genuine, deliberate message
+// someone wrote on purpose, not a system-recorded event — the two are
+// different real things even though they end up in the same visual ticker.
+// ----------------------------------------------------------------------------
+
+model Announcement {
+  id        String   @id @default(cuid())
+  organisationId String
+  message   String
+  // Real, deliberate expiry — an announcement genuinely stops being
+  // relevant after its own real event has passed (e.g. "Warehouse
+  // closed for stock count on Friday"), so this isn't left to someone
+  // remembering to manually take it down. Null means it stays active
+  // until manually deactivated instead.
+  expiresAt DateTime?
+  isActive  Boolean  @default(true)
+
+  createdById String
+  createdAt   DateTime @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("AnnouncementCreatedBy", fields: [createdById], references: [id])
+
+  @@map("announcements")
 }
 
 // ----------------------------------------------------------------------------
