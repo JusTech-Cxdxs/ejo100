@@ -518,7 +518,7 @@ export async function setPartAlternativeUnits(
 export type CreatePartFitmentInput = {
   partId: string;
   make: string;
-  model: string;
+  model?: string;
   engineType?: string;
   yearFrom?: number;
   yearTo?: number;
@@ -536,21 +536,34 @@ export async function createPartFitment(input: CreatePartFitmentInput): Promise<
   }
   const user = await requireStoreStaff(part.branchId);
   const make = input.make.trim();
-  const model = input.model.trim();
-  if (!make || !model) {
-    throw new StoreActionError('Make and Model are required.');
+  const model = input.model?.trim() || null;
+  const engineType = input.engineType?.trim() || null;
+  if (!make) {
+    throw new StoreActionError('Make is required.');
+  }
+  // The real, standing hierarchy: each narrower field is only ever
+  // meaningful once every broader one is genuinely set too — an
+  // Engine or a Year range without a real Model doesn't describe
+  // anything real (which model's engine? which model's year range?).
+  // Model itself has no such requirement beyond Make, which is
+  // already always required above.
+  if (!model && engineType) {
+    throw new StoreActionError('Set a Model before adding a specific Engine — an engine type on its own, without a model, isn\'t a real vehicle configuration.');
+  }
+  if (!model && (input.yearFrom || input.yearTo)) {
+    throw new StoreActionError('Set a Model before adding a Year range — a year range on its own, without a model, isn\'t a real vehicle configuration.');
   }
   const fitment = await prisma.partFitment.create({
     data: {
       partId: input.partId,
       make,
       model,
-      engineType: input.engineType?.trim() || undefined,
+      engineType: engineType ?? undefined,
       yearFrom: input.yearFrom,
       yearTo: input.yearTo,
     },
   });
-  await writeAuditLog({ userId: user.id, action: 'part.fitment_added', entityType: 'Part', entityId: input.partId, metadata: { make, model, engineType: input.engineType } });
+  await writeAuditLog({ userId: user.id, action: 'part.fitment_added', entityType: 'Part', entityId: input.partId, metadata: { make, model, engineType } });
   return { id: fitment.id };
 }
 
@@ -561,7 +574,7 @@ export async function createPartFitment(input: CreatePartFitmentInput): Promise<
  * added) for what's really just a correction. */
 export type UpdatePartFitmentInput = {
   make: string;
-  model: string;
+  model?: string;
   engineType?: string;
   yearFrom?: number;
   yearTo?: number;
@@ -574,21 +587,32 @@ export async function updatePartFitment(fitmentId: string, input: UpdatePartFitm
   }
   const user = await requireStoreStaff(fitment.part.branchId);
   const make = input.make.trim();
-  const model = input.model.trim();
-  if (!make || !model) {
-    throw new StoreActionError('Make and Model are required.');
+  const model = input.model?.trim() || null;
+  const engineType = input.engineType?.trim() || null;
+  if (!make) {
+    throw new StoreActionError('Make is required.');
+  }
+  // The exact same real hierarchy as createPartFitment above — a
+  // genuine edit that clears Model back out (the real bug this
+  // fixes) is only refused if it would leave a real Engine or Year
+  // range behind with nothing real left for them to describe.
+  if (!model && engineType) {
+    throw new StoreActionError('Set a Model before adding a specific Engine — an engine type on its own, without a model, isn\'t a real vehicle configuration.');
+  }
+  if (!model && (input.yearFrom || input.yearTo)) {
+    throw new StoreActionError('Set a Model before adding a Year range — a year range on its own, without a model, isn\'t a real vehicle configuration.');
   }
   await prisma.partFitment.update({
     where: { id: fitmentId },
     data: {
       make,
       model,
-      engineType: input.engineType?.trim() || null,
+      engineType,
       yearFrom: input.yearFrom ?? null,
       yearTo: input.yearTo ?? null,
     },
   });
-  await writeAuditLog({ userId: user.id, action: 'part.fitment_updated', entityType: 'Part', entityId: fitment.partId, metadata: { make, model, engineType: input.engineType } });
+  await writeAuditLog({ userId: user.id, action: 'part.fitment_updated', entityType: 'Part', entityId: fitment.partId, metadata: { make, model, engineType } });
 }
 
 export async function deletePartFitment(fitmentId: string): Promise<void> {
@@ -1133,9 +1157,12 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
     // punish an incomplete vehicle record that was never the Store
     // operator's own mistake, so this one real case is let through.
     const canCheck = vehicle?.make && vehicle?.model;
-    const fits = !canCheck || part.fitments.some((f: { make: string; model: string; engineType: string | null; yearFrom: number | null; yearTo: number | null }) => {
+    const fits = !canCheck || part.fitments.some((f: { make: string; model: string | null; engineType: string | null; yearFrom: number | null; yearTo: number | null }) => {
       if (f.make.toLowerCase() !== vehicle!.make!.toLowerCase()) return false;
-      if (f.model.toLowerCase() !== vehicle!.model!.toLowerCase()) return false;
+      // Null model means "fits every model of this make" — the exact
+      // real fix for a genuine bug where a fitment row could never be
+      // widened back out to this once it had a real model set.
+      if (f.model && f.model.toLowerCase() !== vehicle!.model!.toLowerCase()) return false;
       if (f.engineType && vehicle!.engineType && f.engineType.toLowerCase() !== vehicle!.engineType.toLowerCase()) return false;
       if (f.engineType && !vehicle!.engineType) return false;
       if (vehicle!.year !== null) {
