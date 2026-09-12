@@ -130,9 +130,10 @@ export async function setPartSellingPriceFormAction(formData: FormData) {
 export async function setPartTargetMarginFormAction(formData: FormData) {
   const id = str(formData, 'id');
   try {
-    await setPartTargetMargin(id, num(formData, 'targetMarginPercent') ?? 0);
+    const pricingMethod = str(formData, 'pricingMethod') === 'MARKUP' ? 'MARKUP' : 'MARGIN';
+    await setPartTargetMargin(id, num(formData, 'targetValue') ?? 0, pricingMethod);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not set the target margin.';
+    const message = err instanceof Error ? err.message : 'Could not set the target.';
     redirect(`/inventory/parts/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/inventory/parts/${id}`);

@@ -16,9 +16,11 @@
 
 import { prisma, PartTrackingType } from '@ejo/database';
 import { pluralize } from '@/lib/utils/pluralize';
+import { markupToMargin, actualMarkup, priceForTargetMargin } from '@/lib/pricing-math';
 import { requireUser, writeAuditLog, currentUserIsMasterAdmin } from './workshop';
 import { sendEmail } from '@/lib/email';
 import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
+import { renderPricingAlertRaisedEmail } from '@/lib/email-templates/pricing-alert-raised';
 import { renderStoreMatchingRequestedEmail, renderStoreMatchingStatusEmail } from '@/lib/email-templates/store-matching-status';
 import { renderGoodsReceiptEditedEmail } from '@/lib/email-templates/goods-receipt-edited';
 import { renderPartSellingPriceSetEmail } from '@/lib/email-templates/part-selling-price-set';
@@ -386,23 +388,42 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
  * are genuinely different decisions (what to charge, versus how much
  * margin is acceptable to hold), made at different times for
  * different reasons. */
-export async function setPartTargetMargin(partId: string, targetMarginPercent: number): Promise<void> {
+/** Accepts the target in whichever real unit the business actually
+ * thinks in — Margin or Markup — and always converts to the real
+ * Margin that gets stored, using the one shared, canonical formula in
+ * pricing-math.ts. This is the one real place that conversion has to
+ * happen correctly: get it wrong here and every Pricing Alert this
+ * Part ever raises compares against the wrong real number, silently,
+ * for as long as it goes unnoticed — confirmed directly this is
+ * exactly the real mistake a user can otherwise make by hand. */
+export async function setPartTargetMargin(partId: string, targetValue: number, pricingMethod: 'MARGIN' | 'MARKUP'): Promise<void> {
   const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, name: true, targetMarginPercent: true } });
   if (!part) {
     throw new StoreActionError('Part not found.');
   }
   const user = await requireStoreStaff(part.branchId);
-  if (!(targetMarginPercent > 0) || targetMarginPercent > 100) {
-    throw new StoreActionError('Target margin must be a real percentage greater than 0 and no more than 100.');
+  if (!(targetValue > 0) || targetValue > (pricingMethod === 'MARGIN' ? 100 : 100000)) {
+    throw new StoreActionError(
+      pricingMethod === 'MARGIN'
+        ? 'Target Margin must be a real percentage greater than 0 and no more than 100.'
+        : 'Target Markup must be a real percentage greater than 0.',
+    );
   }
+  const targetMarginPercent = pricingMethod === 'MARGIN' ? targetValue : markupToMargin(targetValue);
   const previousTargetMarginPercent = part.targetMarginPercent !== null ? Number(part.targetMarginPercent) : null;
-  await prisma.part.update({ where: { id: partId }, data: { targetMarginPercent } });
+  await prisma.part.update({ where: { id: partId }, data: { targetMarginPercent, pricingMethod } });
   await writeAuditLog({
     userId: user.id,
     action: 'part.target_margin_set',
     entityType: 'Part',
     entityId: partId,
-    metadata: { name: part.name, from: previousTargetMarginPercent, to: targetMarginPercent },
+    metadata: {
+      name: part.name,
+      from: previousTargetMarginPercent,
+      to: Math.round(targetMarginPercent * 100) / 100,
+      enteredAs: pricingMethod,
+      enteredValue: targetValue,
+    },
   });
 }
 
@@ -1423,6 +1444,21 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
     }
   }
 
+  // Collected here, sent only after the transaction genuinely
+  // commits — a real, immediate email about a Pricing Alert that
+  // then rolled back would be a real, honest lie. Never sent from
+  // inside the transaction itself for exactly that reason.
+  const newAlertsForEmail: {
+    partId: string;
+    partName: string;
+    severity: 'CRITICAL_LOSS' | 'DEFICIT' | 'BOOST';
+    previousUnitCost: number | null;
+    newUnitCost: number;
+    sellingPrice: number;
+    actualMarginPercent: number;
+    targetMarginPercent: number;
+  }[] = [];
+
   const receipt = await prisma.$transaction(async (tx) => {
     const created = await tx.goodsReceipt.create({
       data: {
@@ -1503,6 +1539,16 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
               actualMarginPercent: Math.round(actualMarginPercent * 100) / 100,
             },
           });
+          newAlertsForEmail.push({
+            partId: line.partId,
+            partName: line.part.name,
+            severity,
+            previousUnitCost: priorUnitCostByPart.get(line.partId) ?? null,
+            newUnitCost: line.unitCostInBaseUnit,
+            sellingPrice,
+            actualMarginPercent: Math.round(actualMarginPercent * 100) / 100,
+            targetMarginPercent,
+          });
         }
       }
     }
@@ -1561,6 +1607,57 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Failed to send goods-receipt notification email', receipt.id, err);
+  }
+
+  // The real, immediate first notice for any genuinely new Pricing
+  // Alert this delivery just raised — a real, separate email from the
+  // one above (that one confirms a delivery happened; this one flags
+  // a real pricing situation that needs a human decision), sent to
+  // the same real Store audience. Never blocks the receipt itself if
+  // sending fails.
+  if (newAlertsForEmail.length > 0) {
+    try {
+      const [orgContext, officers, managers] = await Promise.all([
+        getStoreOrgContext(),
+        listEligibleStoreOfficersForBranch(input.branchId),
+        listEligibleStoreManagersForBranch(input.branchId),
+      ]);
+      const recipients = new Map<string, { fullName: string; email: string }>();
+      for (const staffMember of [...officers.staff, ...managers.staff]) {
+        recipients.set(staffMember.id, staffMember);
+      }
+      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const logoUrl = `${portalUrl}/images/logo/logo.png`;
+      const formatNairaForAlert = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      for (const alert of newAlertsForEmail) {
+        const recommendedPrice = priceForTargetMargin(alert.newUnitCost, alert.targetMarginPercent);
+        const recommendedMarkup = recommendedPrice !== null ? actualMarkup(alert.newUnitCost, recommendedPrice) : null;
+        for (const recipient of recipients.values()) {
+          const html = renderPricingAlertRaisedEmail({
+            recipientName: recipient.fullName,
+            partName: alert.partName,
+            severity: alert.severity,
+            goodsReceiptReference: referenceNumber,
+            previousUnitCost: alert.previousUnitCost !== null ? formatNairaForAlert(alert.previousUnitCost) : null,
+            newUnitCost: formatNairaForAlert(alert.newUnitCost),
+            sellingPrice: formatNairaForAlert(alert.sellingPrice),
+            actualMarginPercent: alert.actualMarginPercent.toFixed(1),
+            targetMarginPercent: alert.targetMarginPercent.toFixed(1),
+            recommendedPrice: recommendedPrice !== null ? formatNairaForAlert(recommendedPrice) : null,
+            recommendedMarkupPercent: recommendedMarkup !== null ? recommendedMarkup.toFixed(1) : null,
+            alertUrl: `${portalUrl}/inventory/pricing?branchId=${input.branchId}`,
+            dashboardUrl: `${portalUrl}/inventory/pricing?branchId=${input.branchId}`,
+            logoUrl,
+            companyName: orgContext.companyName,
+            branchName: orgContext.branchName,
+          });
+          await sendEmail(recipient.email, `${alert.severity === 'CRITICAL_LOSS' ? 'Critical Loss' : alert.severity === 'DEFICIT' ? 'Margin Deficit' : 'Margin Boost'} — ${alert.partName}`, html);
+        }
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to send pricing-alert-raised emails', receipt.id, err);
+    }
   }
 
   return { id: receipt.id, referenceNumber };
@@ -1729,6 +1826,59 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
     entityId: alert.part.id,
     metadata: { name: alert.part.name, from: previousSellingPrice, to: newSellingPrice, viaPricingAlert: alertId },
   });
+
+  // Real notification that price genuinely changed — the same
+  // real email setPartSellingPrice's own manual-edit path already
+  // sends, since this is genuinely the same kind of event (a Part's
+  // selling price actually changed), just reached through a
+  // different real path (a Pricing Alert's own "Sync Price" action,
+  // not a manual edit). Never blocks the price change itself if it
+  // fails.
+  try {
+    const part = await prisma.part.findUnique({ where: { id: alert.part.id }, select: { baseUnitOfMeasure: true } });
+    const [officers, managers, syncedByUser] = await Promise.all([
+      listEligibleStoreOfficersForBranch(alert.part.branchId),
+      listEligibleStoreManagersForBranch(alert.part.branchId),
+      prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
+    ]);
+    const recipients = new Map<string, { fullName: string; email: string }>();
+    for (const staffMember of [...officers.staff, ...managers.staff]) {
+      recipients.set(staffMember.id, staffMember);
+    }
+    const orgContext = await getStoreOrgContext();
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    for (const recipient of recipients.values()) {
+      await sendEmail(
+        recipient.email,
+        `Selling price updated — ${alert.part.name}`,
+        renderPartSellingPriceSetEmail({
+          recipientName: recipient.fullName,
+          setByName: syncedByUser?.fullName ?? 'A team member',
+          partName: alert.part.name,
+          baseUnitOfMeasure: part?.baseUnitOfMeasure ?? '',
+          previousSellingPrice,
+          newSellingPrice,
+          // Genuinely null here, not a fabricated insight — this
+          // function only ever has the alert's own stored snapshot
+          // (cost, price, margin), not the full quantity/revenue
+          // context setPartSellingPrice's own manual-edit path has
+          // available. The template already handles a null margin
+          // insight gracefully; passing the bare target margin number
+          // here instead would have been the wrong shape entirely.
+          margin: null,
+          partUrl: `${portalUrl}/inventory/parts/${alert.part.id}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send price-sync notification emails', alert.part.id, err);
+  }
 }
 
 export type PricingAlertDigestGroup = {
