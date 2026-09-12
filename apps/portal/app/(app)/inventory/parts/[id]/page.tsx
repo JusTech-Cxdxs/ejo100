@@ -25,6 +25,7 @@ const PART_AUDIT_ACTION_LABEL: Record<string, string> = {
   'part.fitment_updated': 'Vehicle fitment updated',
   'part.fitment_removed': 'Vehicle fitment removed',
   'part.selling_price_set': 'Selling price updated',
+  'part.target_margin_set': 'Target margin updated',
 };
 
 function formatQty(value: unknown): string {
@@ -533,6 +534,7 @@ export default async function PartDetailPage({
             partName={part.name}
             baseUnitOfMeasure={part.baseUnitOfMeasure}
             currentSellingPrice={part.sellingPrice !== null ? Number(part.sellingPrice) : null}
+            targetMarginPercent={part.targetMarginPercent !== null ? Number(part.targetMarginPercent) : null}
             lastReceipt={
               part.goodsReceiptLines[0]
                 ? {
@@ -548,9 +550,10 @@ export default async function PartDetailPage({
           />
 
           <TargetMarginEditor
-            key={part.targetMarginPercent?.toString() ?? 'unset'}
+            key={`${part.targetMarginPercent?.toString() ?? 'unset'}-${part.pricingMethod}`}
             partId={part.id}
             currentTargetMarginPercent={part.targetMarginPercent !== null ? Number(part.targetMarginPercent) : null}
+            currentPricingMethod={part.pricingMethod}
           />
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
