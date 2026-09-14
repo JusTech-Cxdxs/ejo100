@@ -95,7 +95,7 @@ export default async function WorkshopCustomersPage({
           )}
         </div>
 
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Add customer</h2>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
             If the email already belongs to an existing customer, their existing record is reused —
