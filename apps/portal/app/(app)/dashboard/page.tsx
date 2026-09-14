@@ -1,5 +1,5 @@
 import { getWorkshopDashboardCounts, currentUserIsMasterAdmin, currentUserId, listEligibleManagersForBranch } from '@/lib/actions/workshop';
-import { getDashboardTrend, getNeedsAttentionSummary, listActiveAnnouncements } from '@/lib/actions/dashboard';
+import { getDashboardTrend, getDashboardNotifications, listActiveAnnouncements } from '@/lib/actions/dashboard';
 import { createAnnouncementFormAction, deactivateAnnouncementFormAction } from '@/lib/actions/dashboard-form-handlers';
 import { DashboardTrendChart } from '@/components/DashboardTrendChart';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -27,10 +27,10 @@ export default async function DashboardPage() {
     isManager = managers.supervisors.some((m) => m.id === userId);
   }
 
-  const [counts, trend, attention, announcements] = await Promise.all([
+  const [counts, trend, notifications, announcements] = await Promise.all([
     getWorkshopDashboardCounts(),
     getDashboardTrend(),
-    getNeedsAttentionSummary(),
+    getDashboardNotifications(),
     user?.organisationId ? listActiveAnnouncements(user.organisationId) : Promise.resolve([]),
   ]);
 
@@ -40,12 +40,6 @@ export default async function DashboardPage() {
     { label: 'Total Customers', value: counts.totalCustomers, href: '/workshop/customers' },
     { label: 'Total Vehicles Registered', value: counts.totalVehicles, href: '/workshop/vehicles' },
   ];
-
-  const attentionItems = [
-    { label: 'Open Pricing Alerts', value: attention.openPricingAlerts, href: '/inventory/pricing', show: isManager },
-    { label: 'Pending Approvals', value: attention.pendingApprovals, href: '/workshop/job-cards', show: true },
-    { label: 'Pending Assignments', value: attention.pendingAssignments, href: '/workshop/job-cards', show: true },
-  ].filter((i) => i.show);
 
   return (
     <div className="p-8">
@@ -67,22 +61,31 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {attentionItems.some((i) => i.value > 0) ? (
+      {notifications.length > 0 ? (
         <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Needs Your Attention</h2>
-          <div className="mt-3 flex flex-wrap gap-3">
-            {attentionItems
-              .filter((i) => i.value > 0)
-              .map((i) => (
-                <LoadingLink
-                  key={i.label}
-                  href={i.href}
-                  className="flex items-center gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-surface)] px-3 py-2 text-sm hover:opacity-80"
-                >
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--ejo-warning)] text-xs font-bold text-white">{i.value}</span>
-                  <span className="text-[var(--ejo-text)]">{i.label}</span>
-                </LoadingLink>
-              ))}
+          <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+            Each one goes straight to the real, exact place it needs resolving — the same real list the
+            notification bell shows.
+          </p>
+          <div className="mt-3 space-y-2">
+            {notifications.slice(0, 6).map((n) => (
+              <LoadingLink
+                key={n.id}
+                href={n.url}
+                className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-surface)] px-3 py-2.5 text-sm hover:opacity-80"
+              >
+                <div>
+                  <p className="font-medium text-[var(--ejo-text)]">{n.title}</p>
+                  <p className="text-xs text-[var(--ejo-text-muted)]">{n.detail}</p>
+                </div>
+              </LoadingLink>
+            ))}
+            {notifications.length > 6 ? (
+              <p className="text-xs text-[var(--ejo-text-muted)]">
+                +{notifications.length - 6} more — open the notification bell above to see the full list.
+              </p>
+            ) : null}
           </div>
         </div>
       ) : (
