@@ -6,7 +6,7 @@
  * library for what's genuinely a two-function need.
  */
 
-function isWeekend(date: Date): boolean {
+export function isWeekend(date: Date): boolean {
   const day = date.getUTCDay();
   return day === 0 || day === 6; // Sunday, Saturday
 }
