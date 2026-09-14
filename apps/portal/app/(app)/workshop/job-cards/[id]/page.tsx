@@ -1194,7 +1194,7 @@ export default async function JobCardDetailPage({
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6">
           {isCreator && !jobCard.supervisor && !isCheckedOut ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Reassign supervisor</h2>
@@ -1239,7 +1239,7 @@ export default async function JobCardDetailPage({
           ) : null}
 
           {isApprover && jobCard.approvalStatus === 'PENDING' && !isCheckedOut ? (
-            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
+            <div id="review-approval" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Review this Job Card</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
                 Approve to confirm this Job Card can proceed, or reject it back to {jobCard.createdBy.fullName} with
@@ -1343,7 +1343,7 @@ export default async function JobCardDetailPage({
           ) : null}
 
           {!isCancelled && !isCheckedOut && isAssignedTechnician && jobCard.technicianAcceptanceStatus === 'PENDING' ? (
-            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
+            <div id="technician-response" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Respond to this assignment</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
                 {jobCard.assignedTechnician?.fullName}, you&apos;ve been assigned to this Job Card. Accept to begin,
@@ -1377,7 +1377,7 @@ export default async function JobCardDetailPage({
           ) : null}
 
           {pendingCancellationRequest && isEligibleManager && !isCheckedOut ? (
-            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
+            <div id="cancellation-request" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Cancellation requested</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
                 {pendingCancellationRequest.requestedBy.fullName}: {pendingCancellationRequest.reason}
@@ -1442,7 +1442,7 @@ export default async function JobCardDetailPage({
           ) : null}
 
           {pendingCloseRequest && isEligibleManager && !isCheckedOut ? (
-            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-5">
+            <div id="close-request" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-primary)]">Close requested</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
                 {pendingCloseRequest.requestedBy.fullName} has requested this Job Card be closed.
