@@ -35,10 +35,10 @@ export default async function DashboardPage() {
   ]);
 
   const stats = [
-    { label: 'Active Job Cards', value: counts.activeJobCards },
-    { label: 'Total In Custody', value: counts.inWorkshop },
-    { label: 'Total Customers', value: counts.totalCustomers },
-    { label: 'Total Vehicles Registered', value: counts.totalVehicles },
+    { label: 'Active Job Cards', value: counts.activeJobCards, href: '/workshop/custody' },
+    { label: 'Total In Custody', value: counts.inWorkshop, href: '/workshop/custody' },
+    { label: 'Total Customers', value: counts.totalCustomers, href: '/workshop/customers' },
+    { label: 'Total Vehicles Registered', value: counts.totalVehicles, href: '/workshop/vehicles' },
   ];
 
   const attentionItems = [
@@ -56,10 +56,14 @@ export default async function DashboardPage() {
 
       <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+          <LoadingLink
+            key={s.label}
+            href={s.href}
+            className="block rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 hover:border-[var(--ejo-primary)]/50"
+          >
             <p className="text-2xl font-bold text-[var(--ejo-primary)]">{s.value}</p>
             <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{s.label}</p>
-          </div>
+          </LoadingLink>
         ))}
       </div>
 
@@ -89,7 +93,7 @@ export default async function DashboardPage() {
 
       <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
         <h2 className="text-sm font-semibold text-[var(--ejo-text)]">
-          {isManager ? 'Job Cards & Revenue' : 'Job Cards'} — Last 14 Days
+          {isManager ? 'Job Cards & Revenue' : 'Job Cards'} — Last 14 Working Days
         </h2>
         <div className="mt-3">
           <DashboardTrendChart data={trend} showRevenue={isManager} />
