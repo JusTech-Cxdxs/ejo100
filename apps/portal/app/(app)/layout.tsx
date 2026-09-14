@@ -47,16 +47,16 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   ]);
 
   return (
-    <div className="flex">
+    <div className="flex h-screen overflow-hidden">
       <Sidebar />
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar
           userName={user?.fullName ?? 'Unknown user'}
           roleName={user?.roles[0]?.role.name ?? 'No role assigned'}
           notifications={notifications}
         />
         <Marquee items={marqueeItems} />
-        <main className="flex-1 bg-[var(--ejo-bg)] flex">
+        <main className="flex flex-1 overflow-y-auto bg-[var(--ejo-bg)]">
           <NavigationLoadingProvider>{children}</NavigationLoadingProvider>
         </main>
       </div>
