@@ -28,8 +28,10 @@ const NavigationLoadingContext = createContext<NavigationLoadingContextValue | n
  * independent of whatever the ambient Suspense boundary happens to do.
  *
  * Wraps `<main>` in the shared (app) layout, not the whole viewport —
- * Sidebar and Topbar stay mounted and visible during navigation, same
- * principle as every other loading UI in this app.
+ * Sidebar and Topbar stay mounted (never unmount/remount) during
+ * navigation, but the loading overlay itself is deliberately full
+ * viewport (fixed, not scoped to just the main content area) — see
+ * the real reasoning on that inside the component below.
  */
 export function NavigationLoadingProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -43,7 +45,22 @@ export function NavigationLoadingProvider({ children }: { children: ReactNode })
     <NavigationLoadingContext.Provider value={{ isPending, navigate }}>
       <div className="relative flex-1">
         {isPending ? (
-          <div className="absolute inset-0 z-10 bg-[var(--ejo-bg)]">
+          // Fixed, not absolute — the real bug this fixes. `absolute`
+          // was positioned relative to this own div, which (before a
+          // separate real fix made every column scroll independently)
+          // could genuinely stretch to the full height of a very long
+          // page's content — meaning the loader centered itself in the
+          // middle of the WHOLE page, not the visible viewport, and
+          // scrolled off-screen above on a long page. `fixed` is
+          // always relative to the real viewport, regardless of how
+          // tall the page's own content is or how far it's scrolled.
+          // Deliberately covers the full viewport (Sidebar/Topbar
+          // included) rather than trying to carve out a Sidebar-width,
+          // Topbar-height-aware inset — those dimensions can change,
+          // and a loader that's occasionally, briefly full-screen is a
+          // far smaller real problem than one that's sometimes
+          // invisible.
+          <div className="fixed inset-0 z-10 bg-[var(--ejo-bg)]">
             <PageLoading />
           </div>
         ) : null}

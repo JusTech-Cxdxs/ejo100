@@ -17,7 +17,7 @@ export function Marquee({ items }: { items: MarqueeItem[] }) {
   const doubled = [...items, ...items];
 
   return (
-    <div className="overflow-hidden border-b border-[var(--ejo-border)] bg-[var(--ejo-surface)] py-1.5">
+    <div className="w-full overflow-hidden border-b border-[var(--ejo-border)] bg-[var(--ejo-surface)] py-1.5">
       <div className="ejo-marquee-track flex w-max gap-8">
         {doubled.map((item, i) => (
           // eslint-disable-next-line react/no-array-index-key
