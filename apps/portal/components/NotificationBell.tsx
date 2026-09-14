@@ -1,7 +1,7 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
-import { LoadingLink } from '@/components/LoadingLink';
 import type { DashboardNotification } from '@/lib/actions/dashboard';
 
 function timeAgo(date: Date): string {
@@ -64,15 +64,26 @@ export function NotificationBell({ notifications }: { notifications: DashboardNo
               <p className="px-4 py-6 text-center text-xs text-[var(--ejo-text-muted)]">You&apos;re all caught up.</p>
             ) : (
               notifications.map((n) => (
-                <LoadingLink
+                // Real, plain next/link, not LoadingLink — the actual
+                // real bug this fixes. LoadingLink calls a React hook
+                // (useNavigationLoading) that throws immediately if no
+                // NavigationLoadingProvider is above it in the tree,
+                // and this whole bell lives inside Topbar, which sits
+                // outside that provider on purpose (same real reason
+                // Sidebar's own links are plain next/link too, not
+                // LoadingLink). The crash only showed up once there was
+                // a real notification to render, since the empty-state
+                // text above never touched LoadingLink at all.
+                <Link
                   key={n.id}
                   href={n.url}
+                  onClick={() => setOpen(false)}
                   className="block border-b border-[var(--ejo-border)] px-4 py-3 last:border-0 hover:bg-[var(--ejo-bg)]"
                 >
                   <p className="text-sm font-medium text-[var(--ejo-text)]">{n.title}</p>
                   <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">{n.detail}</p>
                   <p className="mt-1 text-[10px] text-[var(--ejo-text-muted)]">{timeAgo(n.createdAt)}</p>
-                </LoadingLink>
+                </Link>
               ))
             )}
           </div>
