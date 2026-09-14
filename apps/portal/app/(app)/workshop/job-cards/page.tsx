@@ -146,7 +146,7 @@ export default async function WorkshopJobCardsPage({
           )}
         </div>
 
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Open Job Card</h2>
           <form action={createJobCardFormAction} className="mt-4 space-y-3">
             <FormPendingOverlay />
