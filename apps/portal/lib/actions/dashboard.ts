@@ -2,6 +2,7 @@
 
 import { prisma } from '@ejo/database';
 import { requireUser, currentUserIsMasterAdmin, writeAuditLog, listEligibleManagersForBranch } from './workshop';
+import { isWeekend } from '@/lib/utils/working-days';
 
 export type DashboardNotification = {
   id: string;
@@ -21,6 +22,22 @@ export type DashboardNotification = {
  * role already works everywhere else in this system.
  */
 export async function getDashboardNotifications(): Promise<DashboardNotification[]> {
+  try {
+    return await getDashboardNotificationsInner();
+  } catch (err) {
+    // A genuinely broken notification fetch must never take the
+    // entire app's layout down with it — every single page depends
+    // on this same function succeeding, so a real failure here (a
+    // migration not yet applied, a transient database hiccup) now
+    // degrades to "no notifications shown" instead of a real "server
+    // issue" error blocking navigation everywhere.
+    // eslint-disable-next-line no-console
+    console.error('Failed to load dashboard notifications', err);
+    return [];
+  }
+}
+
+async function getDashboardNotificationsInner(): Promise<DashboardNotification[]> {
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
   const notifications: DashboardNotification[] = [];
@@ -76,7 +93,7 @@ export async function getDashboardNotifications(): Promise<DashboardNotification
         kind: 'CANCELLATION_REQUEST',
         title: `Cancellation requested — ${req.jobCard.jobNumber}`,
         detail: 'Waiting on your approve or decline.',
-        url: `/workshop/job-cards/${req.jobCard.id}`,
+        url: `/workshop/job-cards/${req.jobCard.id}#cancellation-request`,
         createdAt: req.requestedAt,
       });
     }
@@ -86,7 +103,7 @@ export async function getDashboardNotifications(): Promise<DashboardNotification
         kind: 'CLOSE_REQUEST',
         title: `Close requested — ${req.jobCard.jobNumber}`,
         detail: 'Waiting on your approve or decline.',
-        url: `/workshop/job-cards/${req.jobCard.id}`,
+        url: `/workshop/job-cards/${req.jobCard.id}#close-request`,
         createdAt: req.requestedAt,
       });
     }
@@ -117,7 +134,7 @@ export async function getDashboardNotifications(): Promise<DashboardNotification
       kind: 'JOB_CARD_APPROVAL',
       title: `Review needed — ${jc.jobNumber}`,
       detail: 'This Job Card is waiting on your own review.',
-      url: `/workshop/job-cards/${jc.id}`,
+      url: `/workshop/job-cards/${jc.id}#review-approval`,
       createdAt: jc.createdAt,
     });
   }
@@ -127,7 +144,7 @@ export async function getDashboardNotifications(): Promise<DashboardNotification
       kind: 'TECHNICIAN_ASSIGNMENT',
       title: `New assignment — ${jc.jobNumber}`,
       detail: 'Respond to accept or reject this Job Card.',
-      url: `/workshop/job-cards/${jc.id}`,
+      url: `/workshop/job-cards/${jc.id}#technician-response`,
       createdAt: jc.createdAt,
     });
   }
@@ -140,6 +157,20 @@ export type MarqueeItem = { id: string; text: string; kind: 'ANNOUNCEMENT' | 'AC
 /** Real, live announcements plus real recent activity, mixed into one
  * real feed — never fabricated filler when either list is thin. */
 export async function getMarqueeItems(organisationId: string): Promise<MarqueeItem[]> {
+  try {
+    return await getMarqueeItemsInner(organisationId);
+  } catch (err) {
+    // Same real reasoning as getDashboardNotifications above — this
+    // also runs on every single page via the shared layout, so a
+    // real failure here must degrade to "no marquee shown", never a
+    // "server issue" blocking the whole app.
+    // eslint-disable-next-line no-console
+    console.error('Failed to load marquee items', err);
+    return [];
+  }
+}
+
+async function getMarqueeItemsInner(organisationId: string): Promise<MarqueeItem[]> {
   await requireUser();
   const [announcements, recentActivity] = await Promise.all([
     prisma.announcement.findMany({
@@ -234,9 +265,15 @@ export type DashboardTrendPoint = { label: string; jobCardsOpened: number; reven
  * calendar. */
 export async function getDashboardTrend(): Promise<DashboardTrendPoint[]> {
   await requireUser();
-  const days = 14;
+  const workingDays = 14;
+  // No real work happens Saturday or Sunday, so a real "last 14 days"
+  // trend has to mean 14 real WORKING days, not 14 calendar days —
+  // showing two dead, always-zero weekend points per week would just
+  // be visual noise, not a real trend. A generous 25-calendar-day
+  // starting window comfortably covers 14 real working days (roughly
+  // 19-20 calendar days), with real room to spare.
   const start = new Date();
-  start.setDate(start.getDate() - (days - 1));
+  start.setDate(start.getDate() - 24);
   start.setHours(0, 0, 0, 0);
 
   const [jobCards, payments]: [{ createdAt: Date }[], { recordedAt: Date; amount: unknown }[]] = await Promise.all([
@@ -245,17 +282,24 @@ export async function getDashboardTrend(): Promise<DashboardTrendPoint[]> {
   ]);
 
   const points: DashboardTrendPoint[] = [];
-  for (let i = 0; i < days; i++) {
-    const day = new Date(start);
-    day.setDate(day.getDate() + i);
-    const dayEnd = new Date(day);
-    dayEnd.setDate(dayEnd.getDate() + 1);
-    const label = day.toLocaleDateString('en-NG', { month: 'short', day: 'numeric', timeZone: 'Africa/Lagos' });
-    const jobCardsOpened = jobCards.filter((jc) => jc.createdAt >= day && jc.createdAt < dayEnd).length;
-    const revenue = payments
-      .filter((p) => p.recordedAt >= day && p.recordedAt < dayEnd)
-      .reduce((sum, p) => sum + Number(p.amount), 0);
-    points.push({ label, jobCardsOpened, revenue: Math.round(revenue * 100) / 100 });
+  const cursor = new Date(start);
+  while (points.length < workingDays) {
+    if (!isWeekend(cursor)) {
+      const day = new Date(cursor);
+      const dayEnd = new Date(day);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      const label = day.toLocaleDateString('en-NG', { month: 'short', day: 'numeric', timeZone: 'Africa/Lagos' });
+      const jobCardsOpened = jobCards.filter((jc) => jc.createdAt >= day && jc.createdAt < dayEnd).length;
+      const revenue = payments
+        .filter((p) => p.recordedAt >= day && p.recordedAt < dayEnd)
+        .reduce((sum, p) => sum + Number(p.amount), 0);
+      points.push({ label, jobCardsOpened, revenue: Math.round(revenue * 100) / 100 });
+    }
+    cursor.setDate(cursor.getDate() + 1);
+    // Real safety valve — never actually reached in practice (25
+    // calendar days always contains at least 14 working days), but a
+    // genuinely broken date somewhere must never spin this forever.
+    if (cursor.getTime() - start.getTime() > 60 * 24 * 60 * 60 * 1000) break;
   }
   return points;
 }
