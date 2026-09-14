@@ -119,7 +119,7 @@ export default async function PartTypesPage({
           )}
         </div>
 
-        <div className="h-fit space-y-4">
+        <div className="h-fit space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <div className="flex items-center gap-2">
               {FOLDER_ICON}
