@@ -706,7 +706,7 @@ export default async function PartDetailPage({
           </div>
         </div>
 
-        <div className="h-fit space-y-4">
+        <div className="h-fit space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <p className="text-xs text-[var(--ejo-text-muted)]">On Hand</p>
             <p className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">
