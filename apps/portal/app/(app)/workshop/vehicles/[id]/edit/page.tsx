@@ -120,7 +120,7 @@ export default async function EditVehiclePage({
           />
         </form>
 
-        <div className="h-fit space-y-4">
+        <div className="h-fit space-y-4 lg:sticky lg:top-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">History</h2>
           <dl className="mt-3 space-y-3 text-sm">
