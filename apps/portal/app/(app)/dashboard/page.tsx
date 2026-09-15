@@ -65,8 +65,7 @@ export default async function DashboardPage() {
         <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Needs Your Attention</h2>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-            Each one goes straight to the real, exact place it needs resolving — the same real list the
-            notification bell shows.
+            Click any item to open it and take care of it.
           </p>
           <div className="mt-3 space-y-2">
             {notifications.slice(0, 6).map((n) => (
@@ -90,7 +89,7 @@ export default async function DashboardPage() {
         </div>
       ) : (
         <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 p-5">
-          <p className="text-sm font-medium text-[var(--ejo-text)]">Nothing genuinely needs your attention right now — you&apos;re all caught up.</p>
+          <p className="text-sm font-medium text-[var(--ejo-text)]">Nothing needs your attention right now — you&apos;re all caught up.</p>
         </div>
       )}
 
@@ -106,7 +105,7 @@ export default async function DashboardPage() {
       {isManager ? (
         <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Post an Announcement</h2>
-          <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Shown to everyone in the scrolling bar at the top of every real page.</p>
+          <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Shown to everyone in the scrolling bar at the top of every page.</p>
           <form action={createAnnouncementFormAction} className="mt-3 flex flex-wrap items-end gap-2">
             <FormPendingOverlay />
             <div className="flex-1" style={{ minWidth: '240px' }}>
