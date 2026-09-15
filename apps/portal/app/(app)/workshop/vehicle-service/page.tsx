@@ -69,9 +69,9 @@ export default async function VehicleServicePage({
         </LoadingLink>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Routine maintenance and minor requests — oil, filters, brake adjustment, AC top-up. A genuinely
-        separate, lighter workflow from Job Card; a real repair discovered along the way escalates into its
-        own real Job Card instead of staying here.
+        Routine maintenance and minor customer requests — oil, filters, brake adjustment, AC top-up. If a
+        technician finds a real repair job along the way, send it to Job Card from the service page instead
+        of handling it here.
       </p>
 
       {error ? (
