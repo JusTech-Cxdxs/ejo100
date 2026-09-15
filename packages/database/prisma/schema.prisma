@@ -1096,6 +1096,18 @@ model ServiceType {
   category       String   // e.g. "Filters", "Brake & Safety", "AC", "Fluids", "Other" — free text on purpose, not an enum, since the real category list is the business's own to define and grow
   intervalKm     Int?
   intervalDays   Int?
+  // The real, deliberate simplification this schema converged on: only
+  // a genuine PRIMARY/periodic service item (Engine Oil, the real
+  // anchor of most routine visits) drives the vehicle's own next
+  // routine-service prediction. A minor item performed the same
+  // visit — brake pads, AC gas, a filter replaced on inspection —
+  // still carries its own real interval if one's genuinely set, but
+  // never contributes to the vehicle's own next-service clock unless
+  // it's deliberately marked primary too. This matches how the real
+  // workshop actually operates: the customer comes back because the
+  // engine oil is due, not because of an average of everything ever
+  // performed on the vehicle.
+  isPrimary      Boolean  @default(false)
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
 
@@ -1127,6 +1139,10 @@ model VehicleService {
   // "adjust my brakes", "AC not cooling" — kept as free text since
   // this is the customer's own real request, not yet classified into
   // a real ServiceType until the technician has actually looked.
+  // Legacy single-field complaint — kept for any real Vehicle Service
+  // created before per-item complaints existed, the exact same real
+  // reasoning Job Card's own legacy `complaint` field already uses.
+  // New Vehicle Services use `complaints` below instead.
   customerComplaint String?
   technicianNotes   String?
 
@@ -1165,6 +1181,7 @@ model VehicleService {
   escalatedToJobCard JobCard? @relation("VehicleServiceEscalatedJobCard", fields: [escalatedToJobCardId], references: [id])
 
   items VehicleServiceItem[]
+  complaints VehicleServiceComplaint[]
 
   @@map("vehicle_services")
 }
@@ -1185,6 +1202,22 @@ model VehicleServiceItem {
 
   @@unique([vehicleServiceId, serviceTypeId])
   @@map("vehicle_service_items")
+}
+
+// Each real, distinct thing the customer actually asked for this
+// visit — "AC not cooling well" and "brake pedal feels soft" as two
+// separate, numbered rows, the same real reasoning JobCardComplaint
+// already uses for Job Card: not one free-text paragraph mixing
+// multiple real requests together.
+model VehicleServiceComplaint {
+  id               String   @id @default(cuid())
+  vehicleServiceId String
+  vehicleService   VehicleService @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
+  sequenceNumber   Int
+  description      String
+  createdAt        DateTime @default(now())
+
+  @@map("vehicle_service_complaints")
 }
 
 model CustomerAddress {
