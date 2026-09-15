@@ -242,11 +242,15 @@ export async function createServiceType(
   const name = input.name.trim();
   const category = input.category.trim();
   if (!name || !category) {
-    throw new VehicleServiceActionError('A Service Type needs a real name and category.');
+    throw new VehicleServiceActionError('Enter a name and a category before saving.');
+  }
+  const isPrimary = input.isPrimary ?? false;
+  if (isPrimary && !input.intervalKm && !input.intervalDays) {
+    throw new VehicleServiceActionError('A Primary Service Anchor needs at least one interval — kilometres, days, or both — otherwise the system has no way to calculate when the vehicle is next due.');
   }
   const serviceType = await prisma.serviceType.create({
-    data: { organisationId, name, category, intervalKm: input.intervalKm ?? null, intervalDays: input.intervalDays ?? null, isPrimary: input.isPrimary ?? false },
+    data: { organisationId, name, category, intervalKm: input.intervalKm ?? null, intervalDays: input.intervalDays ?? null, isPrimary },
   });
-  await writeAuditLog({ userId: user.id, action: 'service_type.created', entityType: 'ServiceType', entityId: serviceType.id, metadata: { name, category, isPrimary: input.isPrimary ?? false } });
+  await writeAuditLog({ userId: user.id, action: 'service_type.created', entityType: 'ServiceType', entityId: serviceType.id, metadata: { name, category, isPrimary } });
   return { id: serviceType.id };
 }
