@@ -7,6 +7,7 @@ import { CustomerVehiclePicker } from '@/components/CustomerVehiclePicker';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
+import { ServiceComplaintListInput } from '@/components/ServiceComplaintListInput';
 import { formatDateOnly } from '@/lib/utils/format-date';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -58,8 +59,14 @@ export default async function VehicleServicePage({
       >
         ← Back to Workshop
       </LoadingLink>
-      <div className="mb-2">
+      <div className="mb-2 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Vehicle Service</h1>
+        <LoadingLink
+          href="/workshop/vehicle-service/service-types"
+          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+        >
+          Manage Service Types
+        </LoadingLink>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         Routine maintenance and minor requests — oil, filters, brake adjustment, AC top-up. A genuinely
@@ -125,6 +132,9 @@ export default async function VehicleServicePage({
                     <label key={t.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
                       <input type="checkbox" name="serviceTypeIds" value={t.id} className="rounded border-[var(--ejo-border)]" />
                       {t.name} <span className="text-[var(--ejo-text-muted)]">— {t.category}</span>
+                      {t.isPrimary ? (
+                        <span className="rounded-full bg-[var(--ejo-primary)]/15 px-1.5 py-0.5 text-[10px] font-medium text-[var(--ejo-primary)]">Primary</span>
+                      ) : null}
                     </label>
                   ))}
                 </div>
@@ -139,13 +149,8 @@ export default async function VehicleServicePage({
               </p>
             )}
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Customer&apos;s Request (optional)</label>
-              <textarea
-                name="customerComplaint"
-                rows={3}
-                placeholder="e.g. Please adjust my brakes, AC not cooling well…"
-                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-              />
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Customer&apos;s Requests</label>
+              <ServiceComplaintListInput />
             </div>
             <SubmitButton
               label="Open Vehicle Service"
