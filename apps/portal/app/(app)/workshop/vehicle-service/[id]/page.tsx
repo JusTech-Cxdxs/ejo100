@@ -79,10 +79,16 @@ export default async function VehicleServiceDetailPage({ params }: { params: Pro
                   {service.vehicle.plateNumber ? ` — ${service.vehicle.plateNumber}` : ''}
                 </dd>
               </div>
-              {service.customerComplaint ? (
+              {service.complaints.length > 0 ? (
                 <div className="col-span-2">
-                  <dt className="text-[var(--ejo-text-muted)]">Customer&apos;s Request</dt>
-                  <dd className="mt-0.5 text-[var(--ejo-text)]">{service.customerComplaint}</dd>
+                  <dt className="text-[var(--ejo-text-muted)]">Customer&apos;s Requests</dt>
+                  <dd className="mt-1 space-y-1">
+                    {service.complaints.map((c: (typeof service.complaints)[number]) => (
+                      <p key={c.id} className="flex gap-2 text-sm text-[var(--ejo-text)]">
+                        <span className="text-[var(--ejo-text-muted)]">{c.sequenceNumber}.</span> {c.description}
+                      </p>
+                    ))}
+                  </dd>
                 </div>
               ) : null}
             </dl>
