@@ -21,7 +21,7 @@ async function generateServiceNumber(): Promise<string> {
 export type CreateVehicleServiceInput = {
   customerId: string;
   vehicleId: string;
-  customerComplaint?: string;
+  customerComplaints: string[];
   serviceTypeIds: string[];
 };
 
@@ -36,6 +36,7 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
     throw new VehicleServiceActionError('This vehicle does not genuinely belong to the selected customer.');
   }
   const serviceNumber = await generateServiceNumber();
+  const realComplaints = input.customerComplaints.map((c) => c.trim()).filter((c) => c.length > 0);
   const service = await prisma.$transaction(async (tx) => {
     const created = await tx.vehicleService.create({
       data: {
@@ -43,13 +44,17 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
         branchId: fullUser.branchId!,
         customerId: input.customerId,
         vehicleId: input.vehicleId,
-        customerComplaint: input.customerComplaint?.trim() || null,
         createdById: user.id,
       },
     });
     if (input.serviceTypeIds.length > 0) {
       await tx.vehicleServiceItem.createMany({
         data: input.serviceTypeIds.map((serviceTypeId) => ({ vehicleServiceId: created.id, serviceTypeId })),
+      });
+    }
+    if (realComplaints.length > 0) {
+      await tx.vehicleServiceComplaint.createMany({
+        data: realComplaints.map((description, i) => ({ vehicleServiceId: created.id, sequenceNumber: i + 1, description })),
       });
     }
     return created;
@@ -86,6 +91,7 @@ export async function getVehicleService(serviceId: string) {
       assignedTechnician: { select: { id: true, fullName: true } },
       escalatedToJobCard: { select: { id: true, jobNumber: true } },
       items: { include: { serviceType: true } },
+      complaints: { orderBy: { sequenceNumber: 'asc' } },
     },
   });
 }
@@ -135,12 +141,12 @@ export async function updateVehicleServiceStatus(
     const odometerAtService = input?.odometerAtService ?? service.odometerAtService;
     const performedTypes = await prisma.vehicleServiceItem.findMany({
       where: { vehicleServiceId: serviceId },
-      select: { serviceType: { select: { intervalKm: true, intervalDays: true } } },
+      select: { serviceType: { select: { intervalKm: true, intervalDays: true, isPrimary: true } } },
     });
     const nextDue = calculateNextServiceDue(
       odometerAtService,
       new Date(),
-      performedTypes.map((p: { serviceType: { intervalKm: number | null; intervalDays: number | null } }) => p.serviceType),
+      performedTypes.map((p: { serviceType: { intervalKm: number | null; intervalDays: number | null; isPrimary: boolean } }) => p.serviceType),
     );
     data.nextServiceDueOdometer = nextDue.dueOdometer;
     data.nextServiceDueDate = nextDue.dueDate;
@@ -180,7 +186,15 @@ export async function escalateVehicleServiceToJobCard(
   const user = await requireUser();
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
-    select: { serviceNumber: true, customerId: true, vehicleId: true, customerComplaint: true, status: true, escalatedToJobCardId: true, odometerAtService: true },
+    select: {
+      serviceNumber: true,
+      customerId: true,
+      vehicleId: true,
+      status: true,
+      escalatedToJobCardId: true,
+      odometerAtService: true,
+      complaints: { orderBy: { sequenceNumber: 'asc' }, select: { description: true } },
+    },
   });
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
@@ -192,7 +206,7 @@ export async function escalateVehicleServiceToJobCard(
     throw new VehicleServiceActionError(`A Vehicle Service that's already ${service.status.toLowerCase()} cannot be escalated.`);
   }
 
-  const complaints = [service.customerComplaint, additionalComplaint?.trim()].filter((c): c is string => Boolean(c));
+  const complaints = [...service.complaints.map((c: { description: string }) => c.description), additionalComplaint?.trim()].filter((c): c is string => Boolean(c));
   const jobCard = await createJobCard({
     customerId: service.customerId,
     vehicleId: service.vehicleId,
@@ -222,7 +236,7 @@ export async function listServiceTypes(organisationId: string) {
 
 export async function createServiceType(
   organisationId: string,
-  input: { name: string; category: string; intervalKm?: number; intervalDays?: number },
+  input: { name: string; category: string; intervalKm?: number; intervalDays?: number; isPrimary?: boolean },
 ): Promise<{ id: string }> {
   const user = await requireUser();
   const name = input.name.trim();
@@ -231,8 +245,8 @@ export async function createServiceType(
     throw new VehicleServiceActionError('A Service Type needs a real name and category.');
   }
   const serviceType = await prisma.serviceType.create({
-    data: { organisationId, name, category, intervalKm: input.intervalKm ?? null, intervalDays: input.intervalDays ?? null },
+    data: { organisationId, name, category, intervalKm: input.intervalKm ?? null, intervalDays: input.intervalDays ?? null, isPrimary: input.isPrimary ?? false },
   });
-  await writeAuditLog({ userId: user.id, action: 'service_type.created', entityType: 'ServiceType', entityId: serviceType.id, metadata: { name, category } });
+  await writeAuditLog({ userId: user.id, action: 'service_type.created', entityType: 'ServiceType', entityId: serviceType.id, metadata: { name, category, isPrimary: input.isPrimary ?? false } });
   return { id: serviceType.id };
 }

@@ -26,10 +26,11 @@ export async function createVehicleServiceFormAction(formData: FormData) {
   let serviceId = '';
   try {
     const serviceTypeIds = formData.getAll('serviceTypeIds').filter((v): v is string => typeof v === 'string');
+    const customerComplaints = formData.getAll('customerComplaints').filter((v): v is string => typeof v === 'string');
     const result = await createVehicleService({
       customerId,
       vehicleId,
-      customerComplaint: str(formData, 'customerComplaint') || undefined,
+      customerComplaints,
       serviceTypeIds,
     });
     serviceId = result.id;
@@ -80,6 +81,7 @@ export async function createServiceTypeFormAction(formData: FormData) {
       category: str(formData, 'category'),
       intervalKm: num(formData, 'intervalKm'),
       intervalDays: num(formData, 'intervalDays'),
+      isPrimary: formData.get('isPrimary') === 'on',
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not create this Service Type.';
