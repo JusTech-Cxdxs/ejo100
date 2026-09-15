@@ -55,11 +55,11 @@ export default async function VehicleServiceDetailPage({ params }: { params: Pro
 
       {service.escalatedToJobCard ? (
         <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-4 text-sm">
-          A real repair was found beyond routine maintenance — this visit was escalated to{' '}
+          A repair beyond routine maintenance was found — this visit was sent to{' '}
           <LoadingLink href={`/workshop/job-cards/${service.escalatedToJobCard.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">
             Job Card {service.escalatedToJobCard.jobNumber}
           </LoadingLink>
-          , which now carries the real repair forward.
+          , which now handles the repair.
         </div>
       ) : null}
 
@@ -172,9 +172,10 @@ export default async function VehicleServiceDetailPage({ params }: { params: Pro
 
           {canEscalate ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
-              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Found a Real Repair?</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Found a Repair Job?</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Something beyond routine maintenance leaves Vehicle Service entirely and becomes a real Job Card.
+                If the vehicle needs more than routine maintenance, send it to Job Card so the repair gets
+                handled properly.
               </p>
               <form action={escalateVehicleServiceFormAction} className="mt-3 space-y-3">
                 <FormPendingOverlay />
