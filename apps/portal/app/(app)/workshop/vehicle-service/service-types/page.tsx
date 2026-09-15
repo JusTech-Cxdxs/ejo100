@@ -5,26 +5,58 @@ import { listServiceTypes } from '@/lib/actions/vehicle-service';
 import { createServiceTypeFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
+import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SubmitButton } from '@/components/SubmitButton';
 
+const FOLDER_ICON = (
+  <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-primary)]">
+    <path
+      d="M2.5 5.5A1.5 1.5 0 014 4h3.086a1.5 1.5 0 011.06.44l1.415 1.413a1.5 1.5 0 001.06.44H16a1.5 1.5 0 011.5 1.5v6.5a1.5 1.5 0 01-1.5 1.5H4a1.5 1.5 0 01-1.5-1.5v-9z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const TAG_ICON = (
+  <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-text-muted)]">
+    <path
+      d="M10.5 3H4.5A1.5 1.5 0 003 4.5v6l7.086 7.086a1.5 1.5 0 002.121 0l4.379-4.379a1.5 1.5 0 000-2.121L10.5 3z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+    <circle cx="7" cy="7" r="1.25" stroke="currentColor" strokeWidth="1.5" />
+  </svg>
+);
+
 /**
- * Real, configurable master data — never hardcoded service names, so
- * the business can add a new one (or retune an interval) without a
- * real code change, matching this module's own standing design
- * principle.
+ * Every Service Type the workshop actually offers, grouped by
+ * category — same visual pattern as Part Categories & Types, since
+ * this is the same kind of screen: browse what already exists on the
+ * left, add something new on the right.
  */
 export default async function ServiceTypesPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string; status?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, status } = await searchParams;
   const session = await auth.api.getSession({ headers: await headers() });
   const user = session?.user?.id
     ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { organisationId: true } })
     : null;
   const organisationId = user?.organisationId ?? null;
   const serviceTypes = organisationId ? await listServiceTypes(organisationId) : [];
+
+  const typesByCategory = new Map<string, typeof serviceTypes>();
+  for (const t of serviceTypes) {
+    const list = typesByCategory.get(t.category) ?? [];
+    list.push(t);
+    typesByCategory.set(t.category, list);
+  }
+  const categories = [...typesByCategory.keys()].sort((a, b) => a.localeCompare(b));
 
   return (
     <div className="p-8">
@@ -34,57 +66,61 @@ export default async function ServiceTypesPage({
       >
         ← Back to Vehicle Service
       </LoadingLink>
-      <div className="mb-2">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Service Types</h1>
-      </div>
+      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Service Types</h1>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Real, configurable service items — engine oil, filters, brake work, and similar. Mark the one (or few)
-        that genuinely drive when the vehicle comes back — usually just Engine Oil — as{' '}
-        <span className="font-medium text-[var(--ejo-text)]">Primary</span>. Only a Primary item&apos;s own real
-        interval sets the vehicle&apos;s next-routine-service prediction; a minor item (a filter, brake pads, AC
-        gas) still carries its own real interval if it genuinely has one, but never moves the vehicle&apos;s own
-        service clock unless it&apos;s Primary too — the same real principle as how the actual workshop operates.
+        Every job the workshop offers as part of a vehicle service — engine oil, filters, brake work, and so
+        on. Staff pick from this list when opening a service for a customer.
       </p>
 
       {error ? (
-        <div className="mb-4 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 px-4 py-2.5 text-sm text-[var(--ejo-error)]">
-          {error}
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="error" message={error} />
+        </div>
+      ) : null}
+      {status === 'created' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Service Type added." />
         </div>
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-x-auto">
-          {serviceTypes.length === 0 ? (
-            <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">No Service Types yet — add the first one.</div>
+        <div className="space-y-3">
+          {categories.length === 0 ? (
+            <p className="text-sm text-[var(--ejo-text-muted)]">No Service Types yet — add the first one on the right.</p>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Category</th>
-                  <th className="px-4 py-3 font-medium">Interval (km)</th>
-                  <th className="px-4 py-3 font-medium">Interval (days)</th>
-                  <th className="px-4 py-3 font-medium">Primary</th>
-                </tr>
-              </thead>
-              <tbody>
-                {serviceTypes.map((t: (typeof serviceTypes)[number]) => (
-                  <tr key={t.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                    <td className="px-4 py-3 font-medium text-[var(--ejo-text)]">{t.name}</td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{t.category}</td>
-                    <td className="px-4 py-3 text-[var(--ejo-text)]">{t.intervalKm ? `${t.intervalKm.toLocaleString('en-NG')} km` : '—'}</td>
-                    <td className="px-4 py-3 text-[var(--ejo-text)]">{t.intervalDays ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      {t.isPrimary ? (
-                        <span className="rounded-full bg-[var(--ejo-primary)]/15 px-2 py-0.5 text-xs font-medium text-[var(--ejo-primary)]">Primary</span>
-                      ) : (
-                        <span className="text-xs text-[var(--ejo-text-muted)]">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            categories.map((category) => {
+              const children = typesByCategory.get(category) ?? [];
+              return (
+                <div key={category} className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+                  <div className="flex items-center gap-2">
+                    {FOLDER_ICON}
+                    <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{category}</h2>
+                    <span className="ml-auto rounded-full bg-[var(--ejo-text-muted)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--ejo-text-muted)]">
+                      {children.length}
+                    </span>
+                  </div>
+                  <ul className="mt-2 space-y-1.5 pl-6">
+                    {children.map((t: (typeof serviceTypes)[number]) => (
+                      <li key={t.id} className="flex flex-wrap items-center gap-2 text-sm text-[var(--ejo-text)]">
+                        {TAG_ICON}
+                        {t.name}
+                        {t.isPrimary ? (
+                          <span className="rounded-full bg-[var(--ejo-primary)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--ejo-primary)]">
+                            Primary anchor
+                          </span>
+                        ) : null}
+                        <span className="text-xs text-[var(--ejo-text-muted)]">
+                          {t.intervalKm ? `Every ${t.intervalKm.toLocaleString('en-NG')} km` : null}
+                          {t.intervalKm && t.intervalDays ? ' or ' : null}
+                          {t.intervalDays ? `every ${t.intervalDays} days` : null}
+                          {!t.intervalKm && !t.intervalDays ? 'No fixed schedule' : null}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })
           )}
         </div>
 
@@ -95,33 +131,42 @@ export default async function ServiceTypesPage({
             <input type="hidden" name="organisationId" value={organisationId ?? ''} />
             <div>
               <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Name</label>
-              <input name="name" required placeholder="e.g. Engine Oil" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+              <input name="name" required placeholder="e.g. Engine Oil Service" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
             </div>
             <div>
               <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Category</label>
-              <input name="category" required placeholder="e.g. Filters, Brake & Safety, AC, Fluids" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+              <input name="category" required placeholder="e.g. Filters, Brakes, AC, Fluids" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+              <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">Groups this Service Type on the list, the same way it&apos;s grouped here.</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Interval (km)</label>
+                <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Every (km)</label>
                 <input name="intervalKm" type="number" min="0" placeholder="e.g. 10000" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Interval (days)</label>
+                <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Every (days)</label>
                 <input name="intervalDays" type="number" min="0" placeholder="e.g. 180" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
               </div>
             </div>
-            <p className="text-[11px] text-[var(--ejo-text-muted)]">Both optional — leave blank for a genuine one-off with no real recurring due date.</p>
+            <p className="text-[11px] text-[var(--ejo-text-muted)]">
+              Leave both blank if this is one-off or condition-based work, like an AC gas top-up or a brake
+              adjustment.
+            </p>
             <label className="flex items-start gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-xs text-[var(--ejo-text)]">
               <input type="checkbox" name="isPrimary" className="mt-0.5 rounded border-[var(--ejo-border)]" />
               <span>
-                <span className="font-medium">This is a Primary (periodic) service.</span>
+                <span className="font-medium">Primary service anchor</span>
                 <span className="block text-[var(--ejo-text-muted)]">
-                  Only Primary items drive the vehicle&apos;s own next-routine-service prediction. Usually just
-                  Engine Oil — check this only for whatever genuinely anchors when the customer comes back.
+                  Check this only if this Service Type determines when the vehicle is next due for service.
+                  For most vehicles, this is Engine Oil. Other work performed on the same visit should
+                  normally stay unchecked.
                 </span>
               </span>
             </label>
+            <p className="text-[11px] text-[var(--ejo-text-muted)]">
+              Only a Primary service anchor sets the vehicle&apos;s next-service due mileage or date — it needs
+              at least one interval above.
+            </p>
             <SubmitButton
               label="Add Service Type"
               pendingLabel="Adding…"
