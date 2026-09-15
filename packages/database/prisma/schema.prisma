@@ -130,6 +130,7 @@ model Organisation {
   roles         Role[]
   customers     Customer[]
   announcements Announcement[]
+  serviceTypes  ServiceType[]
 
   @@map("organisations")
 }
@@ -228,6 +229,7 @@ model Branch {
   externalProcurementRequests ExternalProcurementRequest[]
   partCategories PartCategory[]
   partTypes      PartType[]
+  vehicleServices VehicleService[]
 
   @@map("branches")
 }
@@ -339,6 +341,8 @@ model User {
   closeRequestsDecided CloseRequest[] @relation("CloseDecidedBy")
   pricingAlertsResolved PricingAlert[] @relation("PricingAlertResolvedBy")
   announcementsCreated Announcement[] @relation("AnnouncementCreatedBy")
+  vehicleServicesCreated VehicleService[] @relation("VehicleServiceCreatedBy")
+  vehicleServicesAssigned VehicleService[] @relation("VehicleServiceTechnician")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -521,6 +525,7 @@ model Customer {
   addresses       CustomerAddress[]
   contacts        CustomerContact[]
   jobCards        JobCard[]
+  vehicleServices VehicleService[]
 
   @@map("customers")
 }
@@ -568,6 +573,7 @@ model CustomerVehicle {
   createdAt    DateTime @default(now())
 
   jobCards JobCard[]
+  vehicleServices VehicleService[]
 
   @@map("customer_vehicles")
 }
@@ -740,6 +746,10 @@ model JobCard {
   closeRequests        CloseRequest[]
   partRequestSlips     PartRequestSlip[]
   externalProcurementRequests ExternalProcurementRequest[]
+  // The real, reciprocal side of VehicleService.escalatedToJobCard —
+  // lets this Job Card's own page show plainly "this started life as
+  // a Vehicle Service visit" when that's genuinely true, never hidden.
+  escalatedFromVehicleService VehicleService? @relation("VehicleServiceEscalatedJobCard")
 
   @@map("job_cards")
 }
@@ -1050,6 +1060,131 @@ model CloseRequest {
   decidedBy   User?   @relation("CloseDecidedBy", fields: [decidedById], references: [id])
 
   @@map("close_requests")
+}
+
+// ----------------------------------------------------------------------------
+// VEHICLE SERVICE — a genuinely separate, deliberately lighter workflow from
+// Job Card, for routine maintenance and minor customer-requested work (oil
+// changes, filters, brake adjustment/bleeding, AC gas top-up, and similar).
+// Never a second Job Card system: a real Job Card discovered mid-service
+// (see escalatedToJobCardId below) leaves Vehicle Service entirely and
+// becomes a genuine Job Card from that point on. Reuses the existing real
+// Customer and CustomerVehicle records directly — never its own separate
+// customer/vehicle rows, matching this project's own standing rule against
+// duplicating identity data across modules.
+// ----------------------------------------------------------------------------
+
+enum VehicleServiceStatus {
+  SCHEDULED
+  CHECKED_IN
+  IN_SERVICE
+  COMPLETED
+  COLLECTED
+  CANCELLED
+}
+
+// Real, configurable master data — never hardcoded service names, so the
+// business can add a new one (or retune an interval) without a real code
+// change. intervalKm/intervalDays are both nullable since a one-off request
+// (e.g. "top up my AC gas") genuinely has no real recurring interval of its
+// own; a service built only from interval-less types produces no real next-
+// service prediction, which is the honest, correct outcome, not a bug.
+model ServiceType {
+  id             String   @id @default(cuid())
+  organisationId String
+  name           String   // e.g. "Engine Oil", "Brake Adjustment", "AC Gas Top-up"
+  category       String   // e.g. "Filters", "Brake & Safety", "AC", "Fluids", "Other" — free text on purpose, not an enum, since the real category list is the business's own to define and grow
+  intervalKm     Int?
+  intervalDays   Int?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  serviceItems VehicleServiceItem[]
+
+  @@unique([organisationId, name])
+  @@map("service_types")
+}
+
+model VehicleService {
+  id            String @id @default(cuid())
+  serviceNumber String @unique // human-facing, e.g. "SV-2026-000001" — generated server-side, its own real sequence, entirely separate from Job Card's "JC-" numbering
+  branchId      String
+
+  customerId String
+  vehicleId  String
+
+  status VehicleServiceStatus @default(SCHEDULED)
+
+  // The real odometer reading at THIS service — the one true source
+  // the whole next-service calculation is built from. Also written
+  // back onto CustomerVehicle.mileage on completion, the same real
+  // "last known reading" field Job Card check-in already updates —
+  // one real shared value, never a second, competing one.
+  odometerAtService Int?
+
+  // What the customer actually asked for, in their own real words —
+  // "adjust my brakes", "AC not cooling" — kept as free text since
+  // this is the customer's own real request, not yet classified into
+  // a real ServiceType until the technician has actually looked.
+  customerComplaint String?
+  technicianNotes   String?
+
+  assignedTechnicianId String?
+
+  // Set only when a real Job Card was genuinely created from this
+  // service visit because the technician found something beyond
+  // routine maintenance — the one real, deliberate door out of this
+  // lighter workflow, never a silent status change. A Service that's
+  // escalated stops progressing on its own; the real Job Card takes
+  // over from here.
+  escalatedToJobCardId String? @unique
+
+  // Both computed once, at real completion, from whichever of the
+  // service types actually performed on this visit has a real
+  // interval set, taking the EARLIEST real due point among them —
+  // never averaged, never the longest: the honest "something on this
+  // vehicle is due" moment is whichever real trigger comes first.
+  // Both null when nothing performed carries any real interval at all
+  // (an honest reflection of that, not a bug).
+  nextServiceDueOdometer Int?
+  nextServiceDueDate     DateTime?
+
+  createdById String
+  createdAt   DateTime  @default(now())
+  checkedInAt DateTime?
+  completedAt DateTime?
+  collectedAt DateTime?
+  cancelledAt DateTime?
+
+  branch      Branch          @relation(fields: [branchId], references: [id])
+  customer    Customer        @relation(fields: [customerId], references: [id])
+  vehicle     CustomerVehicle @relation(fields: [vehicleId], references: [id])
+  createdBy   User            @relation("VehicleServiceCreatedBy", fields: [createdById], references: [id])
+  assignedTechnician User?    @relation("VehicleServiceTechnician", fields: [assignedTechnicianId], references: [id])
+  escalatedToJobCard JobCard? @relation("VehicleServiceEscalatedJobCard", fields: [escalatedToJobCardId], references: [id])
+
+  items VehicleServiceItem[]
+
+  @@map("vehicle_services")
+}
+
+// Which real ServiceTypes were actually performed on a given
+// VehicleService — a real many-to-many with its own notes per line,
+// since "Brake Fluid" performed on one visit might carry a real note
+// ("topped up only, not fully bled") that has nothing to do with the
+// next visit's own use of the same ServiceType.
+model VehicleServiceItem {
+  id               String  @id @default(cuid())
+  vehicleServiceId String
+  serviceTypeId    String
+  notes            String?
+
+  vehicleService VehicleService @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
+  serviceType    ServiceType    @relation(fields: [serviceTypeId], references: [id])
+
+  @@unique([vehicleServiceId, serviceTypeId])
+  @@map("vehicle_service_items")
 }
 
 model CustomerAddress {
