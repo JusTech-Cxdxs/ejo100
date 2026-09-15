@@ -4,6 +4,7 @@ const sections = [
   { name: 'Customers', href: '/workshop/customers', desc: 'Customer records and vehicle ownership history.' },
   { name: 'Vehicles', href: '/workshop/vehicles', desc: 'Vehicle registry, chassis/VIN, and service history.' },
   { name: 'Job Cards', href: '/workshop/job-cards', desc: 'Active and past case files for every vehicle in the shop.' },
+  { name: 'Vehicle Service', href: '/workshop/vehicle-service', desc: 'Routine maintenance and minor requests — a genuinely lighter workflow than Job Card, with a real repair escalating into one.' },
   { name: 'Vehicles In Custody', href: '/workshop/custody', desc: 'Every vehicle physically in the workshop, categorized by what needs attention.' },
   { name: 'Parts Requests', href: '/workshop/parts-requests', desc: 'Store parts requested for Job Cards — Workshop HOD, Store, and release, in one place.' },
   { name: 'External Procurement', href: '/workshop/external-procurement', desc: 'Cash advance requests for externally-sourced parts and jobs.' },
