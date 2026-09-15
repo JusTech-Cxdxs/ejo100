@@ -38,9 +38,12 @@ export default async function ServiceTypesPage({
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Service Types</h1>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Real, configurable service items — engine oil, filters, brake work, and similar. A real interval (in
-        kilometres, days, or both) is what drives the next-service calculation; leave both blank for a genuine
-        one-off request with no real recurring due date.
+        Real, configurable service items — engine oil, filters, brake work, and similar. Mark the one (or few)
+        that genuinely drive when the vehicle comes back — usually just Engine Oil — as{' '}
+        <span className="font-medium text-[var(--ejo-text)]">Primary</span>. Only a Primary item&apos;s own real
+        interval sets the vehicle&apos;s next-routine-service prediction; a minor item (a filter, brake pads, AC
+        gas) still carries its own real interval if it genuinely has one, but never moves the vehicle&apos;s own
+        service clock unless it&apos;s Primary too — the same real principle as how the actual workshop operates.
       </p>
 
       {error ? (
@@ -61,6 +64,7 @@ export default async function ServiceTypesPage({
                   <th className="px-4 py-3 font-medium">Category</th>
                   <th className="px-4 py-3 font-medium">Interval (km)</th>
                   <th className="px-4 py-3 font-medium">Interval (days)</th>
+                  <th className="px-4 py-3 font-medium">Primary</th>
                 </tr>
               </thead>
               <tbody>
@@ -70,6 +74,13 @@ export default async function ServiceTypesPage({
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{t.category}</td>
                     <td className="px-4 py-3 text-[var(--ejo-text)]">{t.intervalKm ? `${t.intervalKm.toLocaleString('en-NG')} km` : '—'}</td>
                     <td className="px-4 py-3 text-[var(--ejo-text)]">{t.intervalDays ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      {t.isPrimary ? (
+                        <span className="rounded-full bg-[var(--ejo-primary)]/15 px-2 py-0.5 text-xs font-medium text-[var(--ejo-primary)]">Primary</span>
+                      ) : (
+                        <span className="text-xs text-[var(--ejo-text-muted)]">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -101,6 +112,16 @@ export default async function ServiceTypesPage({
               </div>
             </div>
             <p className="text-[11px] text-[var(--ejo-text-muted)]">Both optional — leave blank for a genuine one-off with no real recurring due date.</p>
+            <label className="flex items-start gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-xs text-[var(--ejo-text)]">
+              <input type="checkbox" name="isPrimary" className="mt-0.5 rounded border-[var(--ejo-border)]" />
+              <span>
+                <span className="font-medium">This is a Primary (periodic) service.</span>
+                <span className="block text-[var(--ejo-text-muted)]">
+                  Only Primary items drive the vehicle&apos;s own next-routine-service prediction. Usually just
+                  Engine Oil — check this only for whatever genuinely anchors when the customer comes back.
+                </span>
+              </span>
+            </label>
             <SubmitButton
               label="Add Service Type"
               pendingLabel="Adding…"
