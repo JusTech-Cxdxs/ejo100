@@ -2,8 +2,10 @@ import { listVehicleServices } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/actions/workshop';
 import { createVehicleServiceFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { CustomerVehiclePicker } from '@/components/CustomerVehiclePicker';
+import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
+import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SubmitButton } from '@/components/SubmitButton';
 import { ServiceComplaintListInput } from '@/components/ServiceComplaintListInput';
 import { formatDateOnly } from '@/lib/utils/format-date';
@@ -30,16 +32,19 @@ const STATUS_CLASS: Record<string, string> = {
  * actually needs after inspecting the vehicle, from the service's own
  * detail page. This screen only ever records who came in, which
  * vehicle, the mileage, and why — the same real shape as Open Job
- * Card, on purpose.
+ * Card, on purpose. CustomerVehiclePicker already includes the real
+ * supervisor picker, tied to the vehicle's own Passenger/Commercial
+ * type — the exact same component Job Card creation uses.
  */
 export default async function VehicleServicePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; error?: string; status?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { q, type, error, status } = await searchParams;
+  const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   const branchId = await getWorkshopBranchId().catch(() => null);
-  const services = branchId ? await listVehicleServices(branchId) : [];
+  const services = branchId ? await listVehicleServices(branchId, q, vehicleType) : [];
 
   return (
     <div className="p-8">
@@ -60,20 +65,46 @@ export default async function VehicleServicePage({
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         Routine maintenance and minor customer requests — oil, filters, brake adjustment, AC top-up. If a
-        technician finds a real repair job along the way, send it to Job Card from the service page instead
-        of handling it here.
+        technician finds a repair job along the way, send it to Job Card from the service page instead of
+        handling it here.
       </p>
 
-      {error ? (
-        <div className="mb-4 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 px-4 py-2.5 text-sm text-[var(--ejo-error)]">
-          {error}
+      {status === 'vehicle_service_deleted' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Vehicle Service deleted." />
         </div>
       ) : null}
+      {error ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="error" message={error} />
+        </div>
+      ) : null}
+
+      <CategoryFilterTabs basePath="/workshop/vehicle-service" currentType={vehicleType} preserveParams={{ q }} />
+
+      <form className="mb-6 flex gap-2" action="/workshop/vehicle-service">
+        {vehicleType ? <input type="hidden" name="type" value={vehicleType} /> : null}
+        <input
+          type="search"
+          name="q"
+          defaultValue={q ?? ''}
+          placeholder="Search by service number, customer, vehicle/VIN, or technician…"
+          className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+        />
+        <button
+          type="submit"
+          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+        >
+          Search
+        </button>
+      </form>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-x-auto">
           {services.length === 0 ? (
-            <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">No Vehicle Service records yet.</div>
+            <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
+              {q || vehicleType ? 'No Vehicle Service matches this search or filter.' : 'No Vehicle Service records yet.'}
+            </div>
           ) : (
             <table className="w-full text-sm">
               <thead>
