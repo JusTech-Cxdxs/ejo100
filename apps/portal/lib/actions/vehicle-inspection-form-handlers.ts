@@ -53,11 +53,12 @@ export async function cancelVehicleInspectionFormAction(formData: FormData) {
   redirect(`${redirectTo}?status=inspection_cancelled`);
 }
 
-/** One form per section on the inspection page — item IDs travel as
- * a hidden, comma-separated list so this single handler can save an
- * entire section's rows in one real transaction, without a separate
- * server action per item. */
-export async function saveInspectionSectionFormAction(formData: FormData) {
+/** One real save action for the whole inspection page — item IDs
+ * travel as a hidden, comma-separated list so this single handler
+ * can save every currently-editable item across every zone/category
+ * in one real transaction, without a separate server action per
+ * section or per item. */
+export async function saveInspectionFormAction(formData: FormData) {
   const inspectionId = str(formData, 'inspectionId');
   const vehicleServiceId = str(formData, 'vehicleServiceId');
   const itemIds = str(formData, 'itemIds').split(',').filter(Boolean);
@@ -71,11 +72,11 @@ export async function saveInspectionSectionFormAction(formData: FormData) {
   try {
     await updateInspectionItems(inspectionId, items);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not save this section.';
+    const message = err instanceof Error ? err.message : 'Could not save these changes.';
     redirect(`/workshop/vehicle-service/${vehicleServiceId}/inspection?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}/inspection`);
-  redirect(`/workshop/vehicle-service/${vehicleServiceId}/inspection?status=section_saved`);
+  redirect(`/workshop/vehicle-service/${vehicleServiceId}/inspection?status=saved`);
 }
 
 export async function completeVehicleInspectionFormAction(formData: FormData) {
