@@ -12,6 +12,7 @@ import {
   rejectVehicleService,
   assignTechnicianToVehicleService,
   deleteVehicleService,
+  updatePrimaryServiceInterval,
 } from './vehicle-service';
 
 function str(formData: FormData, key: string): string {
@@ -98,6 +99,7 @@ export async function updateVehicleServiceStatusFormAction(formData: FormData) {
     await updateVehicleServiceStatus(serviceId, newStatus, {
       odometerAtService: num(formData, 'odometerAtService'),
       technicianNotes: str(formData, 'technicianNotes') || undefined,
+      primaryServiceCompleted: formData.get('primaryServiceCompleted') === 'on',
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not update this Vehicle Service.';
@@ -130,7 +132,6 @@ export async function createServiceTypeFormAction(formData: FormData) {
       category: str(formData, 'category'),
       intervalKm: num(formData, 'intervalKm'),
       intervalDays: num(formData, 'intervalDays'),
-      isPrimary: formData.get('isPrimary') === 'on',
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not create this Service Type.';
@@ -138,6 +139,18 @@ export async function createServiceTypeFormAction(formData: FormData) {
   }
   revalidatePath('/workshop/vehicle-service/service-types');
   redirect('/workshop/vehicle-service/service-types?status=created');
+}
+
+export async function updatePrimaryServiceIntervalFormAction(formData: FormData) {
+  const organisationId = str(formData, 'organisationId');
+  try {
+    await updatePrimaryServiceInterval(organisationId, num(formData, 'primaryServiceIntervalKm'), num(formData, 'primaryServiceIntervalDays'));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not update the Primary Service interval.';
+    redirect(`/workshop/vehicle-service/service-types?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/vehicle-service/service-types');
+  redirect('/workshop/vehicle-service/service-types?status=interval_updated');
 }
 
 export async function addServiceItemsFormAction(formData: FormData) {

@@ -466,12 +466,18 @@ export async function addServiceItemsToVehicleService(serviceId: string, service
 export async function updateVehicleServiceStatus(
   serviceId: string,
   newStatus: 'CHECKED_IN' | 'IN_SERVICE' | 'COMPLETED' | 'COLLECTED' | 'CANCELLED',
-  input?: { odometerAtService?: number; technicianNotes?: string },
+  input?: { odometerAtService?: number; technicianNotes?: string; primaryServiceCompleted?: boolean },
 ): Promise<void> {
   const user = await requireUser();
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
-    select: { status: true, serviceNumber: true, vehicleId: true, odometerAtService: true },
+    select: {
+      status: true,
+      serviceNumber: true,
+      vehicleId: true,
+      odometerAtService: true,
+      branch: { select: { businessUnit: { select: { organisation: { select: { id: true, primaryServiceIntervalKm: true, primaryServiceIntervalDays: true } } } } } },
+    },
   });
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
@@ -498,17 +504,15 @@ export async function updateVehicleServiceStatus(
     if (input?.technicianNotes !== undefined) data.technicianNotes = input.technicianNotes.trim() || null;
 
     const odometerAtService = input?.odometerAtService ?? service.odometerAtService;
-    const performedTypes = await prisma.vehicleServiceItem.findMany({
-      where: { vehicleServiceId: serviceId },
-      select: { serviceType: { select: { intervalKm: true, intervalDays: true, isPrimary: true } } },
-    });
-    const nextDue = calculateNextServiceDue(
-      odometerAtService,
-      new Date(),
-      performedTypes.map((p: { serviceType: { intervalKm: number | null; intervalDays: number | null; isPrimary: boolean } }) => p.serviceType),
-    );
-    data.nextServiceDueOdometer = nextDue.dueOdometer;
-    data.nextServiceDueDate = nextDue.dueDate;
+    if (input?.primaryServiceCompleted) {
+      const now = new Date();
+      const org = service.branch.businessUnit.organisation;
+      const nextDue = calculateNextServiceDue(odometerAtService, now, org.primaryServiceIntervalKm, org.primaryServiceIntervalDays);
+      data.primaryServiceMileage = odometerAtService;
+      data.primaryServiceDate = now;
+      data.nextServiceDueOdometer = nextDue.dueOdometer;
+      data.nextServiceDueDate = nextDue.dueDate;
+    }
   }
   if (newStatus === 'COLLECTED') data.collectedAt = new Date();
   if (newStatus === 'CANCELLED') data.cancelledAt = new Date();
@@ -595,7 +599,7 @@ export async function listServiceTypes(organisationId: string) {
 
 export async function createServiceType(
   organisationId: string,
-  input: { name: string; category: string; intervalKm?: number; intervalDays?: number; isPrimary?: boolean },
+  input: { name: string; category: string; intervalKm?: number; intervalDays?: number },
 ): Promise<{ id: string }> {
   const user = await requireUser();
   const name = input.name.trim();
@@ -603,13 +607,36 @@ export async function createServiceType(
   if (!name || !category) {
     throw new VehicleServiceActionError('Enter a name and a category before saving.');
   }
-  const isPrimary = input.isPrimary ?? false;
-  if (isPrimary && !input.intervalKm && !input.intervalDays) {
-    throw new VehicleServiceActionError('A Primary Service Anchor needs at least one interval — kilometres, days, or both — otherwise the system has no way to calculate when the vehicle is next due.');
-  }
   const serviceType = await prisma.serviceType.create({
-    data: { organisationId, name, category, intervalKm: input.intervalKm ?? null, intervalDays: input.intervalDays ?? null, isPrimary },
+    data: { organisationId, name, category, intervalKm: input.intervalKm ?? null, intervalDays: input.intervalDays ?? null },
   });
-  await writeAuditLog({ userId: user.id, action: 'service_type.created', entityType: 'ServiceType', entityId: serviceType.id, metadata: { name, category, isPrimary } });
+  await writeAuditLog({ userId: user.id, action: 'service_type.created', entityType: 'ServiceType', entityId: serviceType.id, metadata: { name, category } });
   return { id: serviceType.id };
+}
+
+/** The organisation's own configured Primary Service policy — the
+ * real "whichever comes first" rule Vehicle Service's own
+ * next-service prediction is anchored to. Master Admin only, same
+ * real trust level as everything else in this module. */
+export async function updatePrimaryServiceInterval(
+  organisationId: string,
+  intervalKm: number | undefined,
+  intervalDays: number | undefined,
+): Promise<void> {
+  const user = await requireUser();
+  const isMasterAdmin = await currentUserIsMasterAdmin();
+  if (!isMasterAdmin) {
+    throw new VehicleServiceActionError('Only a Master Administrator can change the Primary Service interval.');
+  }
+  await prisma.organisation.update({
+    where: { id: organisationId },
+    data: { primaryServiceIntervalKm: intervalKm ?? null, primaryServiceIntervalDays: intervalDays ?? null },
+  });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'organisation.primary_service_interval_updated',
+    entityType: 'Organisation',
+    entityId: organisationId,
+    metadata: { intervalKm: intervalKm ?? null, intervalDays: intervalDays ?? null },
+  });
 }
