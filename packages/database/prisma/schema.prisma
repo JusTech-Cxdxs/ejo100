@@ -247,6 +247,7 @@ model Department {
   teams  Team[]
   users  User[]
   jobCards JobCard[]
+  vehicleServices VehicleService[]
 
   @@unique([branchId, slug])
   @@map("departments")
@@ -343,6 +344,8 @@ model User {
   announcementsCreated Announcement[] @relation("AnnouncementCreatedBy")
   vehicleServicesCreated VehicleService[] @relation("VehicleServiceCreatedBy")
   vehicleServicesAssigned VehicleService[] @relation("VehicleServiceTechnician")
+  vehicleServicesSupervised VehicleService[] @relation("VehicleServiceSupervisor")
+  vehicleServicesApproved VehicleService[] @relation("VehicleServiceApprovedBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -1148,6 +1151,23 @@ model VehicleService {
 
   assignedTechnicianId String?
 
+  // The routed department, derived from the vehicle's own recorded
+  // Passenger/Commercial type — same real pattern as Job Card,
+  // structurally impossible to route to the wrong department by a
+  // client-side mistake since this is set server-side from the
+  // vehicle, never taken directly from client input.
+  departmentId String?
+  // Required at creation, same real reasoning as Job Card — every
+  // Vehicle Service visit has one real accountable supervisor from
+  // the start, not assigned later.
+  supervisorId String?
+
+  approvalStatus   JobCardApprovalStatus @default(PENDING)
+  approvedById     String?
+  approvedAt       DateTime? // when the current approvalStatus was set
+  rejectionReason  String?
+  approvalNotes    String?
+
   // Set only when a real Job Card was genuinely created from this
   // service visit because the technician found something beyond
   // routine maintenance — the one real, deliberate door out of this
@@ -1178,6 +1198,9 @@ model VehicleService {
   vehicle     CustomerVehicle @relation(fields: [vehicleId], references: [id])
   createdBy   User            @relation("VehicleServiceCreatedBy", fields: [createdById], references: [id])
   assignedTechnician User?    @relation("VehicleServiceTechnician", fields: [assignedTechnicianId], references: [id])
+  department  Department?     @relation(fields: [departmentId], references: [id])
+  supervisor  User?           @relation("VehicleServiceSupervisor", fields: [supervisorId], references: [id])
+  approvedBy  User?           @relation("VehicleServiceApprovedBy", fields: [approvedById], references: [id])
   escalatedToJobCard JobCard? @relation("VehicleServiceEscalatedJobCard", fields: [escalatedToJobCardId], references: [id])
 
   items VehicleServiceItem[]
