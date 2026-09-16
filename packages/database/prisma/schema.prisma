@@ -119,6 +119,14 @@ model Organisation {
   poBox       String?
   rcNumber    String?
   email       String?
+  // The organisation's own configured Primary Service policy — the
+  // real "whichever comes first" rule Vehicle Service's own
+  // next-service prediction is anchored to. Both nullable: until the
+  // business actually sets a real interval, no prediction can
+  // honestly be made, and that's the correct state to show, not a
+  // fabricated default.
+  primaryServiceIntervalKm   Int?
+  primaryServiceIntervalDays Int?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1099,18 +1107,6 @@ model ServiceType {
   category       String   // e.g. "Filters", "Brake & Safety", "AC", "Fluids", "Other" — free text on purpose, not an enum, since the real category list is the business's own to define and grow
   intervalKm     Int?
   intervalDays   Int?
-  // The real, deliberate simplification this schema converged on: only
-  // a genuine PRIMARY/periodic service item (Engine Oil, the real
-  // anchor of most routine visits) drives the vehicle's own next
-  // routine-service prediction. A minor item performed the same
-  // visit — brake pads, AC gas, a filter replaced on inspection —
-  // still carries its own real interval if one's genuinely set, but
-  // never contributes to the vehicle's own next-service clock unless
-  // it's deliberately marked primary too. This matches how the real
-  // workshop actually operates: the customer comes back because the
-  // engine oil is due, not because of an average of everything ever
-  // performed on the vehicle.
-  isPrimary      Boolean  @default(false)
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
 
@@ -1176,13 +1172,23 @@ model VehicleService {
   // over from here.
   escalatedToJobCardId String? @unique
 
-  // Both computed once, at real completion, from whichever of the
-  // service types actually performed on this visit has a real
-  // interval set, taking the EARLIEST real due point among them —
-  // never averaged, never the longest: the honest "something on this
-  // vehicle is due" moment is whichever real trigger comes first.
-  // Both null when nothing performed carries any real interval at all
-  // (an honest reflection of that, not a bug).
+  // The real Primary Service event — Engine Oil, in practice — set
+  // only when the supervisor/technician confirms it was actually
+  // done on THIS visit, at completion. This replaces an earlier
+  // design where a catalogue item's own isPrimary flag decided this;
+  // that inference is gone in favour of an explicit, deliberate
+  // record of the one real event that actually anchors the vehicle's
+  // own next-service clock. Null means Primary Service wasn't done
+  // this visit — an honest, real state, not a bug.
+  primaryServiceMileage Int?
+  primaryServiceDate    DateTime?
+
+  // Computed once, at the same real moment primaryServiceMileage/
+  // Date above are set, from the organisation's own configured
+  // interval (Organisation.primaryServiceIntervalKm/Days). Null
+  // whenever Primary Service wasn't done this visit, or the
+  // organisation hasn't configured a real interval yet — an honest
+  // reflection of that, never a fabricated guess.
   nextServiceDueOdometer Int?
   nextServiceDueDate     DateTime?
 
