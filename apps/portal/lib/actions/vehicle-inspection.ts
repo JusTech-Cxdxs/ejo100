@@ -6,6 +6,24 @@ import { getApplicableTemplate, VEHICLE_INSPECTION_TEMPLATE } from '@/lib/vehicl
 
 class VehicleInspectionActionError extends Error {}
 
+/** Every inspection event is logged twice on purpose — once against
+ * the inspection itself, once against the Vehicle Service it belongs
+ * to — so it shows up on both real timelines, matching the user's
+ * own explicit request that nothing on the inspection side goes
+ * unrecorded on the Vehicle Service's own audit trail. */
+async function logInspectionEvent(params: {
+  userId: string;
+  action: string;
+  inspectionId: string;
+  vehicleServiceId: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  await Promise.all([
+    writeAuditLog({ userId: params.userId, action: params.action, entityType: 'VehicleInspection', entityId: params.inspectionId, metadata: params.metadata }),
+    writeAuditLog({ userId: params.userId, action: params.action, entityType: 'VehicleService', entityId: params.vehicleServiceId, metadata: params.metadata }),
+  ]);
+}
+
 /**
  * Creates the one real inspection record for a Vehicle Service and
  * generates its items from the vehicle-type-aware template — called
@@ -43,11 +61,11 @@ export async function startVehicleInspection(vehicleServiceId: string): Promise<
     return created;
   });
 
-  await writeAuditLog({
+  await logInspectionEvent({
     userId: user.id,
     action: 'vehicle_inspection.started',
-    entityType: 'VehicleInspection',
-    entityId: inspection.id,
+    inspectionId: inspection.id,
+    vehicleServiceId,
     metadata: { serviceNumber: service.serviceNumber },
   });
   return { id: inspection.id };
@@ -65,7 +83,9 @@ export type InspectionItemInput = {
  * still creates a real record, so a skip is exactly as visible and
  * accountable in the audit trail as a completed inspection, never a
  * silent absence. Calling it on an already-started or already-decided
- * inspection is refused rather than silently overwriting real work. */
+ * inspection is refused rather than silently overwriting real work —
+ * cancelVehicleInspection is the real way to undo a prior choice
+ * first. */
 export async function skipVehicleInspection(vehicleServiceId: string, reason?: string): Promise<{ id: string }> {
   const user = await requireUser();
   const existing = await prisma.vehicleInspection.findUnique({ where: { vehicleServiceId }, select: { id: true, status: true } });
@@ -79,29 +99,59 @@ export async function skipVehicleInspection(vehicleServiceId: string, reason?: s
   const inspection = await prisma.vehicleInspection.create({
     data: { vehicleServiceId, inspectedById: user.id, status: 'SKIPPED', skippedAt: new Date(), skipReason: reason?.trim() || null },
   });
-  await writeAuditLog({
+  await logInspectionEvent({
     userId: user.id,
     action: 'vehicle_inspection.skipped',
-    entityType: 'VehicleInspection',
-    entityId: inspection.id,
+    inspectionId: inspection.id,
+    vehicleServiceId,
     metadata: { serviceNumber: service.serviceNumber, reason: reason?.trim() || undefined },
   });
   return { id: inspection.id };
+}
+
+/**
+ * The one real, deliberate way to undo a prior choice — whether that
+ * was starting an inspection, completing one, or skipping one. Never
+ * a soft "cancelled" status: the record is genuinely removed, so the
+ * next visit to this Vehicle Service starts clean at the real
+ * Start/Skip choice again. What actually happened is never lost —
+ * logged against the Vehicle Service's own timeline (and, for the
+ * historical record, against the inspection's own id) before the row
+ * itself is deleted.
+ */
+export async function cancelVehicleInspection(vehicleServiceId: string, reason?: string): Promise<void> {
+  const user = await requireUser();
+  const inspection = await prisma.vehicleInspection.findUnique({ where: { vehicleServiceId }, select: { id: true, status: true } });
+  if (!inspection) {
+    throw new VehicleInspectionActionError('No inspection exists yet for this Vehicle Service.');
+  }
+  const service = await prisma.vehicleService.findUnique({ where: { id: vehicleServiceId }, select: { serviceNumber: true } });
+  await logInspectionEvent({
+    userId: user.id,
+    action: 'vehicle_inspection.cancelled',
+    inspectionId: inspection.id,
+    vehicleServiceId,
+    metadata: { serviceNumber: service?.serviceNumber, previousStatus: inspection.status, reason: reason?.trim() || undefined },
+  });
+  await prisma.vehicleInspection.delete({ where: { id: inspection.id } });
 }
 
 /** One real save per section — a technician reviews a group of
  * related items together and saves them at once, rather than firing
  * a server action per keystroke. Items with nothing entered at all
  * are left exactly as they were (still genuinely not-yet-reviewed),
- * never overwritten with empty values. */
+ * never overwritten with empty values. Deliberately allowed even
+ * after the inspection's own status is Completed — completing marks
+ * "done for now," it doesn't lock the record; clearing an item's
+ * severity here genuinely moves it back to Not Reviewed. */
 export async function updateInspectionItems(inspectionId: string, items: InspectionItemInput[]): Promise<void> {
   const user = await requireUser();
-  const inspection = await prisma.vehicleInspection.findUnique({ where: { id: inspectionId }, select: { status: true } });
+  const inspection = await prisma.vehicleInspection.findUnique({ where: { id: inspectionId }, select: { vehicleServiceId: true, status: true } });
   if (!inspection) {
     throw new VehicleInspectionActionError('Inspection record not found.');
   }
-  if (inspection.status === 'COMPLETED') {
-    throw new VehicleInspectionActionError('This inspection is already completed — nothing further can be changed here.');
+  if (inspection.status === 'SKIPPED') {
+    throw new VehicleInspectionActionError('This inspection was skipped — cancel the skip first to start a real inspection.');
   }
   await prisma.$transaction(
     items.map((item) =>
@@ -116,29 +166,32 @@ export async function updateInspectionItems(inspectionId: string, items: Inspect
       }),
     ),
   );
-  await writeAuditLog({
+  await logInspectionEvent({
     userId: user.id,
     action: 'vehicle_inspection.items_updated',
-    entityType: 'VehicleInspection',
-    entityId: inspectionId,
+    inspectionId,
+    vehicleServiceId: inspection.vehicleServiceId,
     metadata: { count: items.length },
   });
 }
 
+/** Also deliberately re-callable — marking "done for now" a second
+ * time (after editing an already-completed inspection further) just
+ * updates the real completedAt/notes rather than refusing. */
 export async function completeVehicleInspection(inspectionId: string, notes?: string): Promise<void> {
   const user = await requireUser();
-  const inspection = await prisma.vehicleInspection.findUnique({ where: { id: inspectionId }, select: { status: true } });
+  const inspection = await prisma.vehicleInspection.findUnique({ where: { id: inspectionId }, select: { vehicleServiceId: true, status: true } });
   if (!inspection) {
     throw new VehicleInspectionActionError('Inspection record not found.');
   }
-  if (inspection.status === 'COMPLETED') {
-    throw new VehicleInspectionActionError('This inspection is already completed.');
+  if (inspection.status === 'SKIPPED') {
+    throw new VehicleInspectionActionError('This inspection was skipped — there is nothing to complete.');
   }
   await prisma.vehicleInspection.update({
     where: { id: inspectionId },
     data: { status: 'COMPLETED', completedAt: new Date(), notes: notes?.trim() || null },
   });
-  await writeAuditLog({ userId: user.id, action: 'vehicle_inspection.completed', entityType: 'VehicleInspection', entityId: inspectionId });
+  await logInspectionEvent({ userId: user.id, action: 'vehicle_inspection.completed', inspectionId, vehicleServiceId: inspection.vehicleServiceId });
 }
 
 export async function getVehicleInspection(vehicleServiceId: string) {
