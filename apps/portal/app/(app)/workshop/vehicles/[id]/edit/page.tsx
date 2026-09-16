@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getVehicle, getLastEditInfo, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
+import { getVehicle, getLastEditInfo, getVehicleAuditTrail, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
 import { getVehicleServiceHealth } from '@/lib/actions/vehicle-service';
 import { updateVehicleFormAction, deleteVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -9,118 +9,272 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
-import { formatDateTimeCompact, formatDateOnly } from '@/lib/utils/format-date';
+import { AuditTrail } from '@/components/AuditTrail';
+import { formatDateTime, formatDateTimeCompact, formatDateOnly } from '@/lib/utils/format-date';
+
+const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'vehicle.created': 'Vehicle registered',
+  'vehicle.updated': 'Vehicle details updated',
+};
+
+function formatAuditDetail(entry: { action: string; metadata: unknown }): string | null {
+  const meta = entry.metadata as Record<string, unknown> | null;
+  if (!meta) return null;
+  if (typeof meta.plateNumber === 'string') return meta.plateNumber;
+  return null;
+}
 
 /**
- * Edits an existing vehicle — the same required fields as registration
- * (Type/Make/Model/Year/Plate/Chassis), same validation rules,
- * duplicate plate/chassis checks correctly excluding this vehicle's
- * own current row. Shows real "registered by" and "last edited by"
- * info — the second derived from the audit trail (the single source
- * of truth already used everywhere else in this project for history),
- * not a separate field that could drift out of sync with what actually
- * happened.
+ * The vehicle's own real page — read-only by default, the same
+ * standard view/edit toggle every other detail page in this project
+ * uses, rather than opening straight into an editable form. Shows
+ * real Service Health, this vehicle's own genuine mileage-interval
+ * override (separate from the organisation's own default), and its
+ * full real audit trail.
  */
-export default async function EditVehiclePage({
+export default async function VehiclePage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; edit?: string; status?: string }>;
 }) {
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, edit, status } = await searchParams;
   const vehicle = await getVehicle(id);
   if (!vehicle) notFound();
-  const [lastEdit, isMasterAdmin, serviceHealth] = await Promise.all([
+  const [lastEdit, auditTrail, isMasterAdmin, serviceHealth] = await Promise.all([
     getLastEditInfo('CustomerVehicle', id, 'vehicle.updated'),
+    getVehicleAuditTrail(id),
     currentUserIsMasterAdmin(),
     getVehicleServiceHealth(id),
   ]);
+  const isEditing = edit === 'true';
 
   return (
     <div className="p-8">
       <LoadingLink href="/workshop/vehicles" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
         ← Back to Vehicles
       </LoadingLink>
-      <h1 className="mb-1 text-2xl font-bold text-[var(--ejo-text)]">Edit Vehicle</h1>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        {vehicle.plateNumber || vehicle.chassisNumber} — owned by {vehicle.customer.fullName}
-      </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="mb-1 text-2xl font-bold text-[var(--ejo-text)]">
+            {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}
+          </h1>
+          <p className="text-sm text-[var(--ejo-text-muted)]">
+            {vehicle.plateNumber || vehicle.chassisNumber} — owned by {vehicle.customer.fullName}
+          </p>
+        </div>
+        {!isEditing ? (
+          <LoadingLink
+            href={`/workshop/vehicles/${id}/edit?edit=true`}
+            className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+          >
+            Edit
+          </LoadingLink>
+        ) : null}
+      </div>
 
       {error ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="error" message={error} />
         </div>
       ) : null}
+      {status === 'vehicle_updated' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Vehicle updated." />
+        </div>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
-        <form action={updateVehicleFormAction} className="max-w-xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-          <FormPendingOverlay />
-          <input type="hidden" name="id" value={vehicle.id} />
+        {isEditing ? (
+          <form action={updateVehicleFormAction} className="max-w-xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+            <FormPendingOverlay />
+            <input type="hidden" name="id" value={vehicle.id} />
 
-          <VehicleMakeModelPicker
-            defaultCategory={vehicle.vehicleType ?? undefined}
-            defaultMake={vehicle.make ?? undefined}
-            defaultModel={vehicle.model ?? undefined}
-            defaultEngineType={vehicle.engineType ?? undefined}
-          />
+            <VehicleMakeModelPicker
+              defaultCategory={vehicle.vehicleType ?? undefined}
+              defaultMake={vehicle.make ?? undefined}
+              defaultModel={vehicle.model ?? undefined}
+              defaultEngineType={vehicle.engineType ?? undefined}
+            />
 
-          <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">
+                  Year <span className="text-[var(--ejo-error)]">*</span>
+                </label>
+                <input
+                  name="year"
+                  type="number"
+                  required
+                  defaultValue={vehicle.year ?? undefined}
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Current Mileage (km)</label>
+                <input
+                  name="mileage"
+                  type="number"
+                  defaultValue={vehicle.mileage ?? undefined}
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                />
+              </div>
+            </div>
+
             <div>
               <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">
-                Year <span className="text-[var(--ejo-error)]">*</span>
+                Plate number <span className="text-[var(--ejo-error)]">*</span>{' '}
+                <span className="text-[var(--ejo-text-muted)] font-normal">(AAA 000 AA)</span>
               </label>
-              <input
-                name="year"
-                type="number"
-                required
-                defaultValue={vehicle.year ?? undefined}
-                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-              />
+              <SegmentedCodeInput name="plateNumber" length={8} groups={[3, 3, 2]} defaultValue={vehicle.plateNumber ?? ''} placeholder="LAGXXXAA" />
             </div>
+
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Mileage (km)</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">
+                Chassis / VIN <span className="text-[var(--ejo-error)]">*</span>{' '}
+                <span className="text-[var(--ejo-text-muted)] font-normal">(17 characters)</span>
+              </label>
+              <SegmentedCodeInput name="chassisNumber" length={17} groups={[9, 8]} defaultValue={vehicle.chassisNumber ?? ''} />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Engine number</label>
               <input
-                name="mileage"
-                type="number"
-                defaultValue={vehicle.mileage ?? undefined}
+                name="engineNumber"
+                defaultValue={vehicle.engineNumber ?? ''}
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
             </div>
-          </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">
-              Plate number <span className="text-[var(--ejo-error)]">*</span>{' '}
-              <span className="text-[var(--ejo-text-muted)] font-normal">(AAA 000 AA)</span>
-            </label>
-            <SegmentedCodeInput name="plateNumber" length={8} groups={[3, 3, 2]} defaultValue={vehicle.plateNumber ?? ''} placeholder="LAGXXXAA" />
-          </div>
+            <div className="border-t border-[var(--ejo-border)] pt-4">
+              <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">This vehicle&apos;s own service interval</p>
+              <p className="mb-3 text-[11px] text-[var(--ejo-text-muted)]">
+                Leave both blank to use the workshop&apos;s own default interval. Only set these if this
+                particular vehicle&apos;s manufacturer manual actually calls for something different.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Every (km)</label>
+                  <input
+                    name="serviceIntervalKm"
+                    type="number"
+                    min="0"
+                    defaultValue={vehicle.serviceIntervalKm ?? undefined}
+                    placeholder="e.g. 10000"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Every (days)</label>
+                  <input
+                    name="serviceIntervalDays"
+                    type="number"
+                    min="0"
+                    defaultValue={vehicle.serviceIntervalDays ?? undefined}
+                    placeholder="e.g. 180"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                  />
+                </div>
+              </div>
+            </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">
-              Chassis / VIN <span className="text-[var(--ejo-error)]">*</span>{' '}
-              <span className="text-[var(--ejo-text-muted)] font-normal">(17 characters)</span>
-            </label>
-            <SegmentedCodeInput name="chassisNumber" length={17} groups={[9, 8]} defaultValue={vehicle.chassisNumber ?? ''} />
-          </div>
+            <div className="flex gap-2">
+              <SubmitButton
+                label="Save Changes"
+                pendingLabel="Saving…"
+                className="flex-1 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              />
+              <LoadingLink
+                href={`/workshop/vehicles/${id}/edit`}
+                className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+              >
+                Cancel
+              </LoadingLink>
+            </div>
+          </form>
+        ) : (
+          <div className="max-w-xl space-y-6">
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Details</h2>
+              <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Type</dt>
+                  <dd className="text-[var(--ejo-text)]">{vehicle.vehicleType === 'COMMERCIAL' ? 'Commercial' : vehicle.vehicleType === 'PASSENGER' ? 'Passenger' : '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Year</dt>
+                  <dd className="text-[var(--ejo-text)]">{vehicle.year ?? '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Make</dt>
+                  <dd className="text-[var(--ejo-text)]">{vehicle.make ?? '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Model</dt>
+                  <dd className="text-[var(--ejo-text)]">{vehicle.model ?? '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Plate Number</dt>
+                  <dd className="text-[var(--ejo-text)]">{vehicle.plateNumber ?? '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Chassis / VIN</dt>
+                  <dd className="font-mono text-xs text-[var(--ejo-text)]">{vehicle.chassisNumber ?? '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Engine Number</dt>
+                  <dd className="text-[var(--ejo-text)]">{vehicle.engineNumber ?? '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Engine Type</dt>
+                  <dd className="text-[var(--ejo-text)]">{vehicle.engineType ?? '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Current Mileage</dt>
+                  <dd className="text-[var(--ejo-text)]">{vehicle.mileage != null ? `${vehicle.mileage.toLocaleString('en-NG')} km` : '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Owner</dt>
+                  <dd className="text-[var(--ejo-text)]">{vehicle.customer.fullName}</dd>
+                </div>
+              </dl>
+              <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                <dt className="text-xs text-[var(--ejo-text-muted)]">Service Interval</dt>
+                <dd className="mt-0.5 text-sm text-[var(--ejo-text)]">
+                  {vehicle.serviceIntervalKm || vehicle.serviceIntervalDays ? (
+                    <>
+                      {vehicle.serviceIntervalKm ? `${vehicle.serviceIntervalKm.toLocaleString('en-NG')} km` : null}
+                      {vehicle.serviceIntervalKm && vehicle.serviceIntervalDays ? ' or ' : null}
+                      {vehicle.serviceIntervalDays ? `${vehicle.serviceIntervalDays} days` : null}
+                      <span className="ml-1 text-xs text-[var(--ejo-text-muted)]">(this vehicle&apos;s own)</span>
+                    </>
+                  ) : (
+                    <span className="text-[var(--ejo-text-muted)]">Using the workshop&apos;s default interval</span>
+                  )}
+                </dd>
+              </div>
+            </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Engine number</label>
-            <input
-              name="engineNumber"
-              defaultValue={vehicle.engineNumber ?? ''}
-              className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-            />
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit Trail</h2>
+              {auditTrail.length === 0 ? (
+                <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No recorded activity yet.</p>
+              ) : (
+                <AuditTrail
+                  entries={auditTrail.map((entry: (typeof auditTrail)[number]) => ({
+                    id: entry.id,
+                    actionLabel: AUDIT_ACTION_LABEL[entry.action] ?? entry.action,
+                    userName: entry.user?.fullName ?? null,
+                    detail: formatAuditDetail(entry),
+                    dateLabel: formatDateTime(entry.createdAt),
+                  }))}
+                />
+              )}
+            </div>
           </div>
-
-          <SubmitButton
-            label="Save Changes"
-            pendingLabel="Saving…"
-            className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          />
-        </form>
+        )}
 
         <div className="h-fit space-y-4 lg:sticky lg:top-6">
           {serviceHealth ? (
