@@ -1,4 +1,4 @@
-import { listVehicleServices } from '@/lib/actions/vehicle-service';
+import { listVehicleServices, listVehiclesDueForService } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/actions/workshop';
 import { createVehicleServiceFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { CustomerVehiclePicker } from '@/components/CustomerVehiclePicker';
@@ -44,7 +44,10 @@ export default async function VehicleServicePage({
   const { q, type, error, status } = await searchParams;
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   const branchId = await getWorkshopBranchId().catch(() => null);
-  const services = branchId ? await listVehicleServices(branchId, q, vehicleType) : [];
+  const [services, dueVehicles] = await Promise.all([
+    branchId ? listVehicleServices(branchId, q, vehicleType) : Promise.resolve([]),
+    branchId ? listVehiclesDueForService(branchId) : Promise.resolve([]),
+  ]);
 
   return (
     <div className="p-8">
@@ -77,6 +80,28 @@ export default async function VehicleServicePage({
       {error ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="error" message={error} />
+        </div>
+      ) : null}
+
+      {dueVehicles.length > 0 ? (
+        <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
+          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicles Due for Service</h2>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {dueVehicles.map((v: (typeof dueVehicles)[number]) => (
+              <LoadingLink
+                key={v.vehicleId}
+                href={`/workshop/vehicles/${v.vehicleId}/edit`}
+                className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2.5 text-sm hover:opacity-80"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>{v.status === 'OVERDUE' ? '🔴' : '🟡'}</span>
+                  <span className="font-medium text-[var(--ejo-text)]">{v.vehicleDescription}</span>
+                  {v.plateNumber ? <span className="text-xs text-[var(--ejo-text-muted)]">— {v.plateNumber}</span> : null}
+                </div>
+                <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">{v.customerName}</p>
+              </LoadingLink>
+            ))}
+          </div>
         </div>
       ) : null}
 
