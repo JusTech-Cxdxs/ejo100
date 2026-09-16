@@ -2,7 +2,7 @@ import { headers } from 'next/headers';
 import { auth } from '@/lib/auth';
 import { prisma } from '@ejo/database';
 import { listServiceTypes } from '@/lib/actions/vehicle-service';
-import { createServiceTypeFormAction } from '@/lib/actions/vehicle-service-form-handlers';
+import { createServiceTypeFormAction, updatePrimaryServiceIntervalFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -34,9 +34,11 @@ const TAG_ICON = (
 
 /**
  * Every Service Type the workshop actually offers, grouped by
- * category — same visual pattern as Part Categories & Types, since
- * this is the same kind of screen: browse what already exists on the
- * left, add something new on the right.
+ * category — same visual pattern as Part Categories & Types. Also
+ * where the organisation sets its own real Primary Service interval
+ * — the one real policy every Vehicle Service's own next-service
+ * prediction is anchored to, entirely separate from this catalogue
+ * now.
  */
 export default async function ServiceTypesPage({
   searchParams,
@@ -49,7 +51,12 @@ export default async function ServiceTypesPage({
     ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { organisationId: true } })
     : null;
   const organisationId = user?.organisationId ?? null;
-  const serviceTypes = organisationId ? await listServiceTypes(organisationId) : [];
+  const [serviceTypes, organisation] = await Promise.all([
+    organisationId ? listServiceTypes(organisationId) : Promise.resolve([]),
+    organisationId
+      ? prisma.organisation.findUnique({ where: { id: organisationId }, select: { primaryServiceIntervalKm: true, primaryServiceIntervalDays: true } })
+      : Promise.resolve(null),
+  ]);
 
   const typesByCategory = new Map<string, typeof serviceTypes>();
   for (const t of serviceTypes) {
@@ -70,7 +77,7 @@ export default async function ServiceTypesPage({
       <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Service Types</h1>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         Every job the workshop offers as part of a vehicle service — engine oil, filters, brake work, and so
-        on. Staff pick from this list when opening a service for a customer.
+        on. Staff pick from this list once they&apos;ve actually inspected a vehicle.
       </p>
 
       {error ? (
@@ -83,6 +90,51 @@ export default async function ServiceTypesPage({
           <FormFeedbackBanner kind="success" message="Service Type added." />
         </div>
       ) : null}
+      {status === 'interval_updated' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Primary Service interval updated." />
+        </div>
+      ) : null}
+
+      <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-5">
+        <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Primary Service interval</h2>
+        <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+          This is what decides when a vehicle is next due — usually the engine oil interval. When a
+          technician confirms Primary Service was done on a visit, the vehicle&apos;s next-due mileage and
+          date are calculated from this real interval, not from anything else performed that day.
+        </p>
+        <form action={updatePrimaryServiceIntervalFormAction} className="mt-3 flex flex-wrap items-end gap-2">
+          <FormPendingOverlay />
+          <input type="hidden" name="organisationId" value={organisationId ?? ''} />
+          <div>
+            <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Every (km)</label>
+            <input
+              name="primaryServiceIntervalKm"
+              type="number"
+              min="0"
+              defaultValue={organisation?.primaryServiceIntervalKm ?? undefined}
+              placeholder="e.g. 10000"
+              className="w-40 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Every (days)</label>
+            <input
+              name="primaryServiceIntervalDays"
+              type="number"
+              min="0"
+              defaultValue={organisation?.primaryServiceIntervalDays ?? undefined}
+              placeholder="e.g. 180"
+              className="w-40 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+            />
+          </div>
+          <SubmitButton
+            label="Save interval"
+            pendingLabel="Saving…"
+            className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          />
+        </form>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-3">
@@ -105,11 +157,6 @@ export default async function ServiceTypesPage({
                       <li key={t.id} className="flex flex-wrap items-center gap-2 text-sm text-[var(--ejo-text)]">
                         {TAG_ICON}
                         {t.name}
-                        {t.isPrimary ? (
-                          <span className="rounded-full bg-[var(--ejo-primary)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--ejo-primary)]">
-                            Primary anchor
-                          </span>
-                        ) : null}
                         <span className="text-xs text-[var(--ejo-text-muted)]">
                           {t.intervalKm ? `Every ${t.intervalKm.toLocaleString('en-NG')} km` : null}
                           {t.intervalKm && t.intervalDays ? ' or ' : null}
@@ -151,22 +198,8 @@ export default async function ServiceTypesPage({
             </div>
             <p className="text-[11px] text-[var(--ejo-text-muted)]">
               Leave both blank if this is one-off or condition-based work, like an AC gas top-up or a brake
-              adjustment.
-            </p>
-            <label className="flex items-start gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-xs text-[var(--ejo-text)]">
-              <input type="checkbox" name="isPrimary" className="mt-0.5 rounded border-[var(--ejo-border)]" />
-              <span>
-                <span className="font-medium">Primary service anchor</span>
-                <span className="block text-[var(--ejo-text-muted)]">
-                  Check this only if this Service Type determines when the vehicle is next due for service.
-                  For most vehicles, this is Engine Oil. Other work performed on the same visit should
-                  normally stay unchecked.
-                </span>
-              </span>
-            </label>
-            <p className="text-[11px] text-[var(--ejo-text-muted)]">
-              Only a Primary service anchor sets the vehicle&apos;s next-service due mileage or date — it needs
-              at least one interval above.
+              adjustment. This interval is just for reference here — it&apos;s the Primary Service interval
+              above that actually decides when a vehicle is next due.
             </p>
             <SubmitButton
               label="Add Service Type"
