@@ -6,7 +6,7 @@ import { isWeekend } from '@/lib/utils/working-days';
 
 export type DashboardNotification = {
   id: string;
-  kind: 'PRICING_ALERT' | 'CANCELLATION_REQUEST' | 'CLOSE_REQUEST' | 'JOB_CARD_APPROVAL' | 'TECHNICIAN_ASSIGNMENT';
+  kind: 'PRICING_ALERT' | 'CANCELLATION_REQUEST' | 'CLOSE_REQUEST' | 'JOB_CARD_APPROVAL' | 'TECHNICIAN_ASSIGNMENT' | 'VEHICLE_SERVICE_APPROVAL';
   title: string;
   detail: string;
   url: string;
@@ -114,7 +114,7 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   // THIS viewer's own accept/reject as its assigned Technician. Shown
   // regardless of management status, since these are personal, not
   // management-level, responsibilities.
-  const [pendingReviews, pendingAssignments] = await Promise.all([
+  const [pendingReviews, pendingAssignments, pendingServiceReviews] = await Promise.all([
     prisma.jobCard.findMany({
       where: { supervisorId: user.id, approvalStatus: 'PENDING' },
       orderBy: { createdAt: 'desc' },
@@ -126,6 +126,12 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
       orderBy: { createdAt: 'desc' },
       take: 10,
       select: { id: true, jobNumber: true, createdAt: true },
+    }),
+    prisma.vehicleService.findMany({
+      where: { supervisorId: user.id, approvalStatus: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: { id: true, serviceNumber: true, createdAt: true },
     }),
   ]);
   for (const jc of pendingReviews) {
@@ -146,6 +152,16 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
       detail: 'Respond to accept or reject this Job Card.',
       url: `/workshop/job-cards/${jc.id}#technician-response`,
       createdAt: jc.createdAt,
+    });
+  }
+  for (const sv of pendingServiceReviews) {
+    notifications.push({
+      id: `service-review-${sv.id}`,
+      kind: 'VEHICLE_SERVICE_APPROVAL',
+      title: `Review needed — ${sv.serviceNumber}`,
+      detail: 'This Vehicle Service is waiting on your own review.',
+      url: `/workshop/vehicle-service/${sv.id}#review-approval`,
+      createdAt: sv.createdAt,
     });
   }
 

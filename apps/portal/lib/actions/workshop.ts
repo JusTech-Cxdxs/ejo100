@@ -371,7 +371,7 @@ export async function listEligibleSupervisorsForJobCard(jobCardId: string): Prom
  * department (e.g. "Passenger Vehicle Workshop") instead of the generic
  * "Workshop" — the organisation/branch lookup is identical either way, only
  * the department label in the returned context changes. */
-async function getWorkshopOrgContext(departmentNameOverride?: string): Promise<{
+export async function getWorkshopOrgContext(departmentNameOverride?: string): Promise<{
   companyName: string;
   branchName: string;
   departmentName: string;

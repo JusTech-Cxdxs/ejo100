@@ -10,8 +10,13 @@ import {
   isEligibleSupervisor,
   currentUserIsMasterAdmin,
   requireJobCardApprover,
+  getWorkshopOrgContext,
 } from './workshop';
 import { calculateNextServiceDue } from '@/lib/vehicle-service-due';
+import { sendEmail } from '@/lib/email';
+import { renderSupervisorVehicleServiceAssignedEmail } from '@/lib/email-templates/supervisor-vehicle-service-assigned';
+import { renderVehicleServiceDecisionEmail } from '@/lib/email-templates/vehicle-service-decision';
+import { renderTechnicianVehicleServiceAssignedEmail } from '@/lib/email-templates/technician-vehicle-service-assigned';
 
 class VehicleServiceActionError extends Error {}
 
@@ -84,6 +89,43 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
     return created;
   });
   await writeAuditLog({ userId: user.id, action: 'vehicle_service.created', entityType: 'VehicleService', entityId: service.id, metadata: { serviceNumber } });
+
+  // Notify the assigned supervisor — best-effort, fail-soft, matching
+  // the exact same pattern createJobCard already uses: a transient
+  // SMTP hiccup is never a reason to undo a real, already-successful
+  // Vehicle Service creation.
+  try {
+    const [supervisor, customer, vehicleFull, complaints] = await Promise.all([
+      prisma.user.findUnique({ where: { id: input.supervisorId }, select: { fullName: true, email: true } }),
+      prisma.customer.findUnique({ where: { id: input.customerId }, select: { fullName: true } }),
+      prisma.customerVehicle.findUnique({ where: { id: input.vehicleId }, select: { make: true, model: true } }),
+      prisma.vehicleServiceComplaint.findMany({ where: { vehicleServiceId: service.id }, orderBy: { sequenceNumber: 'asc' }, select: { description: true } }),
+    ]);
+    if (supervisor && customer) {
+      const orgContext = await getWorkshopOrgContext(department.name);
+      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      await sendEmail(
+        supervisor.email,
+        `New Vehicle Service ${serviceNumber} assigned to you`,
+        renderSupervisorVehicleServiceAssignedEmail({
+          supervisorName: supervisor.fullName,
+          serviceNumber,
+          customerName: customer.fullName,
+          vehicleDescription: [vehicleFull?.make, vehicleFull?.model].filter(Boolean).join(' ') || 'Vehicle',
+          reasons: complaints.map((c: (typeof complaints)[number]) => c.description),
+          serviceUrl: `${portalUrl}/workshop/vehicle-service/${service.id}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send supervisor notification email for Vehicle Service', serviceNumber, err);
+  }
+
   return { id: service.id, serviceNumber };
 }
 
@@ -124,7 +166,13 @@ export async function getVehicleServiceAuditTrail(serviceId: string): Promise<Ve
 export async function approveVehicleService(serviceId: string, notes?: string): Promise<void> {
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
-    select: { supervisorId: true, serviceNumber: true },
+    select: {
+      supervisorId: true,
+      serviceNumber: true,
+      createdById: true,
+      customer: { select: { fullName: true } },
+      department: { select: { name: true } },
+    },
   });
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
@@ -141,6 +189,16 @@ export async function approveVehicleService(serviceId: string, notes?: string): 
     entityId: serviceId,
     metadata: { serviceNumber: service.serviceNumber, notes: notes?.trim() || undefined },
   });
+  await notifyVehicleServiceCreatorOfDecision({
+    serviceId,
+    serviceNumber: service.serviceNumber,
+    createdById: service.createdById,
+    customerName: service.customer.fullName,
+    departmentName: service.department?.name,
+    decision: 'APPROVED',
+    approverId: approver.id,
+    notes,
+  });
 }
 
 /** The required `reason` is what would show in a real status badge —
@@ -154,7 +212,13 @@ export async function rejectVehicleService(serviceId: string, reason: string, no
   }
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
-    select: { supervisorId: true, serviceNumber: true },
+    select: {
+      supervisorId: true,
+      serviceNumber: true,
+      createdById: true,
+      customer: { select: { fullName: true } },
+      department: { select: { name: true } },
+    },
   });
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
@@ -171,6 +235,66 @@ export async function rejectVehicleService(serviceId: string, reason: string, no
     entityId: serviceId,
     metadata: { serviceNumber: service.serviceNumber, reason: trimmedReason },
   });
+  await notifyVehicleServiceCreatorOfDecision({
+    serviceId,
+    serviceNumber: service.serviceNumber,
+    createdById: service.createdById,
+    customerName: service.customer.fullName,
+    departmentName: service.department?.name,
+    decision: 'REJECTED',
+    approverId: approver.id,
+    rejectionReason: trimmedReason,
+    notes,
+  });
+}
+
+/** Shared by approveVehicleService/rejectVehicleService above rather
+ * than duplicated — the "fetch context, build the email, send it"
+ * logic is identical either way, only the content differs. Fail-soft,
+ * matching every other notification in this file: a transient SMTP
+ * hiccup is never a reason to undo a real, already-successful
+ * approval/rejection. */
+async function notifyVehicleServiceCreatorOfDecision(params: {
+  serviceId: string;
+  serviceNumber: string;
+  createdById: string;
+  customerName: string;
+  departmentName?: string;
+  decision: 'APPROVED' | 'REJECTED';
+  approverId: string;
+  rejectionReason?: string;
+  notes?: string;
+}): Promise<void> {
+  try {
+    const [creator, approver] = await Promise.all([
+      prisma.user.findUnique({ where: { id: params.createdById }, select: { fullName: true, email: true } }),
+      prisma.user.findUnique({ where: { id: params.approverId }, select: { fullName: true } }),
+    ]);
+    if (!creator || !approver) return;
+    const orgContext = await getWorkshopOrgContext(params.departmentName);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      creator.email,
+      params.decision === 'APPROVED' ? `Vehicle Service ${params.serviceNumber} approved` : `Vehicle Service ${params.serviceNumber} rejected`,
+      renderVehicleServiceDecisionEmail({
+        decision: params.decision,
+        recipientName: creator.fullName,
+        serviceNumber: params.serviceNumber,
+        customerName: params.customerName,
+        approverName: approver.fullName,
+        rejectionReason: params.rejectionReason,
+        notes: params.notes,
+        serviceUrl: `${portalUrl}/workshop/vehicle-service/${params.serviceId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send decision email for Vehicle Service', params.serviceNumber, err);
+  }
 }
 
 /** Never enforced server-side that approval must happen first — same
@@ -180,11 +304,20 @@ export async function rejectVehicleService(serviceId: string, reason: string, no
  * real practice. */
 export async function assignTechnicianToVehicleService(serviceId: string, technicianId: string): Promise<void> {
   const user = await requireUser();
-  const service = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { serviceNumber: true } });
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: serviceId },
+    select: {
+      serviceNumber: true,
+      customer: { select: { fullName: true } },
+      vehicle: { select: { make: true, model: true } },
+      supervisor: { select: { fullName: true } },
+      department: { select: { name: true } },
+    },
+  });
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
   }
-  const technician = await prisma.user.findUnique({ where: { id: technicianId }, select: { fullName: true } });
+  const technician = await prisma.user.findUnique({ where: { id: technicianId }, select: { fullName: true, email: true } });
   if (!technician) {
     throw new VehicleServiceActionError('That technician could not be found.');
   }
@@ -196,6 +329,30 @@ export async function assignTechnicianToVehicleService(serviceId: string, techni
     entityId: serviceId,
     metadata: { serviceNumber: service.serviceNumber, technicianName: technician.fullName },
   });
+
+  try {
+    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      technician.email,
+      `You've been assigned to Vehicle Service ${service.serviceNumber}`,
+      renderTechnicianVehicleServiceAssignedEmail({
+        technicianName: technician.fullName,
+        serviceNumber: service.serviceNumber,
+        customerName: service.customer.fullName,
+        vehicleDescription: [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+        supervisorName: service.supervisor?.fullName ?? 'Supervisor',
+        serviceUrl: `${portalUrl}/workshop/vehicle-service/${serviceId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send technician notification email for Vehicle Service', service.serviceNumber, err);
+  }
 }
 
 export async function deleteVehicleService(serviceId: string): Promise<void> {
