@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getVehicle, getLastEditInfo, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
+import { getVehicleServiceHealth } from '@/lib/actions/vehicle-service';
 import { updateVehicleFormAction, deleteVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -8,7 +9,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
-import { formatDateTimeCompact } from '@/lib/utils/format-date';
+import { formatDateTimeCompact, formatDateOnly } from '@/lib/utils/format-date';
 
 /**
  * Edits an existing vehicle — the same required fields as registration
@@ -31,9 +32,10 @@ export default async function EditVehiclePage({
   const { error } = await searchParams;
   const vehicle = await getVehicle(id);
   if (!vehicle) notFound();
-  const [lastEdit, isMasterAdmin] = await Promise.all([
+  const [lastEdit, isMasterAdmin, serviceHealth] = await Promise.all([
     getLastEditInfo('CustomerVehicle', id, 'vehicle.updated'),
     currentUserIsMasterAdmin(),
+    getVehicleServiceHealth(id),
   ]);
 
   return (
@@ -121,6 +123,49 @@ export default async function EditVehiclePage({
         </form>
 
         <div className="h-fit space-y-4 lg:sticky lg:top-6">
+          {serviceHealth ? (
+            <div
+              className={`rounded-[var(--ejo-radius-lg)] border p-5 ${
+                serviceHealth.status === 'OVERDUE'
+                  ? 'border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5'
+                  : serviceHealth.status === 'DUE_SOON'
+                    ? 'border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5'
+                    : 'border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5'
+              }`}
+            >
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Service Health</h2>
+              <p className="mt-2 flex items-center gap-2 text-sm font-medium text-[var(--ejo-text)]">
+                <span>{serviceHealth.status === 'OVERDUE' ? '🔴' : serviceHealth.status === 'DUE_SOON' ? '🟡' : '🟢'}</span>
+                {serviceHealth.status === 'OVERDUE' ? 'Overdue' : serviceHealth.status === 'DUE_SOON' ? 'Due Soon' : 'Up to Date'}
+              </p>
+              <dl className="mt-3 space-y-2 text-xs">
+                {serviceHealth.primaryServiceMileage != null ? (
+                  <div>
+                    <dt className="text-[var(--ejo-text-muted)]">Last Service</dt>
+                    <dd className="text-[var(--ejo-text)]">
+                      {serviceHealth.primaryServiceMileage.toLocaleString('en-NG')} km
+                      {serviceHealth.primaryServiceDate ? ` — ${formatDateOnly(serviceHealth.primaryServiceDate)}` : ''}
+                    </dd>
+                  </div>
+                ) : null}
+                <div>
+                  <dt className="text-[var(--ejo-text-muted)]">Next Service Due</dt>
+                  <dd className="text-[var(--ejo-text)]">
+                    {serviceHealth.nextServiceDueOdometer ? `${serviceHealth.nextServiceDueOdometer.toLocaleString('en-NG')} km` : null}
+                    {serviceHealth.nextServiceDueOdometer && serviceHealth.nextServiceDueDate ? ' or ' : null}
+                    {serviceHealth.nextServiceDueDate ? formatDateOnly(serviceHealth.nextServiceDueDate) : null}
+                  </dd>
+                </div>
+              </dl>
+              <LoadingLink
+                href={`/workshop/vehicle-service/${serviceHealth.serviceId}`}
+                className="mt-3 inline-block text-xs text-[var(--ejo-primary)] hover:underline"
+              >
+                View {serviceHealth.serviceNumber}
+              </LoadingLink>
+            </div>
+          ) : null}
+
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">History</h2>
           <dl className="mt-3 space-y-3 text-sm">
