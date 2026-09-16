@@ -138,7 +138,6 @@ model Organisation {
   roles         Role[]
   customers     Customer[]
   announcements Announcement[]
-  serviceTypes  ServiceType[]
 
   @@map("organisations")
 }
@@ -599,6 +598,7 @@ enum VehicleInspectionStatus {
   NOT_STARTED
   IN_PROGRESS
   COMPLETED
+  SKIPPED
 }
 
 // Deliberately just 4 levels, matching the same real visual language
@@ -1118,23 +1118,6 @@ enum VehicleServiceStatus {
 // (e.g. "top up my AC gas") genuinely has no real recurring interval of its
 // own; a service built only from interval-less types produces no real next-
 // service prediction, which is the honest, correct outcome, not a bug.
-model ServiceType {
-  id             String   @id @default(cuid())
-  organisationId String
-  name           String   // e.g. "Engine Oil", "Brake Adjustment", "AC Gas Top-up"
-  category       String   // e.g. "Filters", "Brake & Safety", "AC", "Fluids", "Other" — free text on purpose, not an enum, since the real category list is the business's own to define and grow
-  intervalKm     Int?
-  intervalDays   Int?
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-
-  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
-  serviceItems VehicleServiceItem[]
-
-  @@unique([organisationId, name])
-  @@map("service_types")
-}
-
 model VehicleService {
   id            String @id @default(cuid())
   serviceNumber String @unique // human-facing, e.g. "SV-2026-000001" — generated server-side, its own real sequence, entirely separate from Job Card's "JC-" numbering
@@ -1153,9 +1136,8 @@ model VehicleService {
   odometerAtService Int?
 
   // What the customer actually asked for, in their own real words —
-  // "adjust my brakes", "AC not cooling" — kept as free text since
-  // this is the customer's own real request, not yet classified into
-  // a real ServiceType until the technician has actually looked.
+  // "adjust my brakes", "AC not cooling" — kept as free text, the
+  // customer's own real request.
   // Legacy single-field complaint — kept for any real Vehicle Service
   // created before per-item complaints existed, the exact same real
   // reasoning Job Card's own legacy `complaint` field already uses.
@@ -1227,29 +1209,10 @@ model VehicleService {
   approvedBy  User?           @relation("VehicleServiceApprovedBy", fields: [approvedById], references: [id])
   escalatedToJobCard JobCard? @relation("VehicleServiceEscalatedJobCard", fields: [escalatedToJobCardId], references: [id])
 
-  items VehicleServiceItem[]
   complaints VehicleServiceComplaint[]
   inspection VehicleInspection?
 
   @@map("vehicle_services")
-}
-
-// Which real ServiceTypes were actually performed on a given
-// VehicleService — a real many-to-many with its own notes per line,
-// since "Brake Fluid" performed on one visit might carry a real note
-// ("topped up only, not fully bled") that has nothing to do with the
-// next visit's own use of the same ServiceType.
-model VehicleServiceItem {
-  id               String  @id @default(cuid())
-  vehicleServiceId String
-  serviceTypeId    String
-  notes            String?
-
-  vehicleService VehicleService @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
-  serviceType    ServiceType    @relation(fields: [serviceTypeId], references: [id])
-
-  @@unique([vehicleServiceId, serviceTypeId])
-  @@map("vehicle_service_items")
 }
 
 // Each real, distinct thing the customer actually asked for this
@@ -1269,10 +1232,9 @@ model VehicleServiceComplaint {
 }
 
 // One real inspection per Vehicle Service — the technical truth
-// between the visit being opened and any work being decided.
-// Deliberately separate from VehicleServiceItem (the actual/
-// recommended work lines): this is what was found, not yet what was
-// decided to do about it.
+// between the visit being opened and any work being decided. This is
+// what was found; VehicleService's own status/notes record what was
+// decided and done about it.
 model VehicleInspection {
   id               String                  @id @default(cuid())
   vehicleServiceId String                  @unique
@@ -1280,6 +1242,12 @@ model VehicleInspection {
   status           VehicleInspectionStatus @default(NOT_STARTED)
   startedAt        DateTime?
   completedAt      DateTime?
+  // Set together, only on a real skip — inspectedById is who made
+  // that real decision in this case, the same real person a skip
+  // audit trail needs regardless of whether they ever inspected
+  // anything themselves.
+  skippedAt        DateTime?
+  skipReason       String?
   notes            String?
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
