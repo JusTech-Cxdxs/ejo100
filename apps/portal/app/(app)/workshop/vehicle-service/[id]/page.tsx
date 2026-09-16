@@ -467,11 +467,23 @@ export default async function VehicleServiceDetailPage({
 
           {canEscalate ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
-              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Found a Repair Job?</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Create Estimate — Send to Job Card</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                If the vehicle needs more than routine maintenance, send it to Job Card so the repair gets
-                handled properly.
+                Routine maintenance doesn&apos;t need a priced estimate, but real repair work does. This
+                opens a real Job Card for this vehicle — that&apos;s where the estimate is actually built,
+                approved, and worked from.
               </p>
+              {(() => {
+                const findings = (inspection?.items ?? []).filter(
+                  (i: { severity: string | null }) => i.severity === 'ATTENTION' || i.severity === 'SERVICE_REQUIRED' || i.severity === 'CRITICAL',
+                );
+                return findings.length > 0 ? (
+                  <p className="mt-2 text-xs text-[var(--ejo-text)]">
+                    <span className="font-medium">{findings.length}</span> inspection finding{findings.length === 1 ? '' : 's'} will carry
+                    straight into the new Job Card as real complaint lines — nothing needs retyping.
+                  </p>
+                ) : null;
+              })()}
               <form action={escalateVehicleServiceFormAction} className="mt-3 space-y-3">
                 <FormPendingOverlay />
                 <input type="hidden" name="serviceId" value={service.id} />
@@ -479,12 +491,12 @@ export default async function VehicleServiceDetailPage({
                 <textarea
                   name="additionalComplaint"
                   rows={2}
-                  placeholder="What did the technician actually find…"
+                  placeholder="Anything else worth adding…"
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                 />
                 <SubmitButton
-                  label="Escalate to Job Card"
-                  pendingLabel="Escalating…"
+                  label="Create Job Card & Estimate"
+                  pendingLabel="Creating…"
                   className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 />
               </form>
