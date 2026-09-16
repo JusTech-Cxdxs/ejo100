@@ -354,6 +354,7 @@ model User {
   vehicleServicesAssigned VehicleService[] @relation("VehicleServiceTechnician")
   vehicleServicesSupervised VehicleService[] @relation("VehicleServiceSupervisor")
   vehicleServicesApproved VehicleService[] @relation("VehicleServiceApprovedBy")
+  vehicleInspections VehicleInspection[] @relation("VehicleInspectionInspector")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -592,6 +593,23 @@ model CustomerVehicle {
 enum VehicleCategory {
   PASSENGER
   COMMERCIAL
+}
+
+enum VehicleInspectionStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+// Deliberately just 4 levels, matching the same real visual language
+// Service Health already uses (Good/Attention/Overdue-style) — one
+// consistent vocabulary across the whole Vehicle Service module,
+// not a second competing scale for inspection items specifically.
+enum InspectionSeverity {
+  GOOD
+  ATTENTION
+  SERVICE_REQUIRED
+  CRITICAL
 }
 
 // ----------------------------------------------------------------------------
@@ -1211,6 +1229,7 @@ model VehicleService {
 
   items VehicleServiceItem[]
   complaints VehicleServiceComplaint[]
+  inspection VehicleInspection?
 
   @@map("vehicle_services")
 }
@@ -1247,6 +1266,56 @@ model VehicleServiceComplaint {
   createdAt        DateTime @default(now())
 
   @@map("vehicle_service_complaints")
+}
+
+// One real inspection per Vehicle Service — the technical truth
+// between the visit being opened and any work being decided.
+// Deliberately separate from VehicleServiceItem (the actual/
+// recommended work lines): this is what was found, not yet what was
+// decided to do about it.
+model VehicleInspection {
+  id               String                  @id @default(cuid())
+  vehicleServiceId String                  @unique
+  inspectedById    String
+  status           VehicleInspectionStatus @default(NOT_STARTED)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  notes            String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  vehicleService VehicleService @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
+  inspectedBy    User           @relation("VehicleInspectionInspector", fields: [inspectedById], references: [id])
+  items          VehicleInspectionItem[]
+
+  @@map("vehicle_inspections")
+}
+
+// One real row per checklist item on a real inspection — generated
+// from the vehicle-type-aware template at the moment the inspection
+// starts (code-defined, not a database catalogue — the template
+// itself changes rarely enough that a full admin CRUD system for it
+// would be premature; see lib/vehicle-inspection-template.ts).
+// condition/action stay free text on purpose (the real vocabulary
+// genuinely differs per item — "Dirty" for a filter, "Low" for oil
+// level, "Worn" for a brake pad — a fixed enum here would either be
+// too narrow or too generic to be useful); severity is the one real
+// controlled value, since that's what a summary rollup needs.
+model VehicleInspectionItem {
+  id           String              @id @default(cuid())
+  inspectionId String
+  section      String              // e.g. "Engine & Lubrication"
+  name         String              // e.g. "Engine Oil"
+  condition    String?
+  severity     InspectionSeverity?
+  action       String?
+  notes        String?
+  updatedAt    DateTime            @updatedAt
+
+  inspection VehicleInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@unique([inspectionId, section, name])
+  @@map("vehicle_inspection_items")
 }
 
 model CustomerAddress {
