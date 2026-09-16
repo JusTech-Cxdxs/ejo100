@@ -7,6 +7,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SubmitButton } from '@/components/SubmitButton';
+import { ServiceCategoryInput } from '@/components/ServiceCategoryInput';
 
 const FOLDER_ICON = (
   <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-primary)]">
@@ -135,7 +136,7 @@ export default async function ServiceTypesPage({
             </div>
             <div>
               <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Category</label>
-              <input name="category" required placeholder="e.g. Filters, Brakes, AC, Fluids" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+              <ServiceCategoryInput name="category" categories={categories} required />
               <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">Groups this Service Type on the list, the same way it&apos;s grouped here.</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
