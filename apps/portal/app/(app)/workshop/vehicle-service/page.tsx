@@ -88,7 +88,7 @@ export default async function VehicleServicePage({
           type="search"
           name="q"
           defaultValue={q ?? ''}
-          placeholder="Search by service number, customer, vehicle/VIN, or technician…"
+          placeholder="Search by service number, customer, or vehicle/VIN…"
           className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
         />
         <button
