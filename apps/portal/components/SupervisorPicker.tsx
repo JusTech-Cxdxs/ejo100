@@ -16,7 +16,7 @@ type AsyncState = 'idle' | 'loading' | 'success' | 'error';
  * somewhere else entirely), not something cascading from a Customer
  * selection the way CustomerVehiclePicker's own version is.
  */
-export function SupervisorPicker({ vehicleType }: { vehicleType: 'PASSENGER' | 'COMMERCIAL' | null }) {
+export function SupervisorPicker({ vehicleType, defaultSupervisorId }: { vehicleType: 'PASSENGER' | 'COMMERCIAL' | null; defaultSupervisorId?: string }) {
   const [supervisors, setSupervisors] = useState<EligibleSupervisor[]>([]);
   const [usingFallback, setUsingFallback] = useState(false);
   const [state, setState] = useState<AsyncState>('idle');
@@ -71,7 +71,7 @@ export function SupervisorPicker({ vehicleType }: { vehicleType: 'PASSENGER' | '
         <select
           name="supervisorId"
           required
-          defaultValue=""
+          defaultValue={defaultSupervisorId && supervisors.some((s) => s.id === defaultSupervisorId) ? defaultSupervisorId : ''}
           className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
         >
           <option value="" disabled>Select a supervisor…</option>
