@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation';
-import { getVehicleService } from '@/lib/actions/vehicle-service';
+import { getVehicleService, listServiceTypes } from '@/lib/actions/vehicle-service';
 import {
   updateVehicleServiceStatusFormAction,
   escalateVehicleServiceFormAction,
+  addServiceItemsFormAction,
 } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
@@ -36,6 +37,10 @@ export default async function VehicleServiceDetailPage({ params }: { params: Pro
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
   const canEscalate = !service.escalatedToJobCard && service.status !== 'COLLECTED' && service.status !== 'CANCELLED';
+  const canAddItems = service.status !== 'COLLECTED' && service.status !== 'CANCELLED';
+  const serviceTypes = canAddItems ? await listServiceTypes(service.branch.businessUnit.organisationId) : [];
+  const existingItemIds = new Set(service.items.map((item: (typeof service.items)[number]) => item.serviceTypeId));
+  const availableServiceTypes = serviceTypes.filter((t: (typeof serviceTypes)[number]) => !existingItemIds.has(t.id));
 
   return (
     <div className="p-8">
@@ -108,6 +113,42 @@ export default async function VehicleServiceDetailPage({ params }: { params: Pro
                 ))}
               </ul>
             )}
+            {canAddItems && availableServiceTypes.length > 0 ? (
+              <form action={addServiceItemsFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                <FormPendingOverlay />
+                <input type="hidden" name="serviceId" value={service.id} />
+                <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">
+                  Add work found after inspecting the vehicle
+                </p>
+                <div className="max-h-40 space-y-1 overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-2">
+                  {availableServiceTypes.map((t: (typeof availableServiceTypes)[number]) => (
+                    <label key={t.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
+                      <input type="checkbox" name="serviceTypeIds" value={t.id} className="rounded border-[var(--ejo-border)]" />
+                      {t.name} <span className="text-[var(--ejo-text-muted)]">— {t.category}</span>
+                      {t.isPrimary ? (
+                        <span className="rounded-full bg-[var(--ejo-primary)]/15 px-1.5 py-0.5 text-[10px] font-medium text-[var(--ejo-primary)]">
+                          Primary anchor
+                        </span>
+                      ) : null}
+                    </label>
+                  ))}
+                </div>
+                <SubmitButton
+                  label="Add to this Service"
+                  pendingLabel="Adding…"
+                  className="mt-2 w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                />
+              </form>
+            ) : null}
+            {canAddItems && availableServiceTypes.length === 0 && serviceTypes.length === 0 ? (
+              <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
+                No Service Types set up yet —{' '}
+                <LoadingLink href="/workshop/vehicle-service/service-types" className="text-[var(--ejo-primary)] underline">
+                  add some first
+                </LoadingLink>
+                .
+              </p>
+            ) : null}
           </div>
 
           {(service.nextServiceDueOdometer || service.nextServiceDueDate) ? (
