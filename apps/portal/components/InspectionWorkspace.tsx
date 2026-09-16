@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { saveInspectionSectionFormAction, startVehicleInspectionFormAction, skipVehicleInspectionFormAction, cancelVehicleInspectionFormAction, completeVehicleInspectionFormAction } from '@/lib/actions/vehicle-inspection-form-handlers';
+import { saveInspectionFormAction, startVehicleInspectionFormAction, skipVehicleInspectionFormAction, cancelVehicleInspectionFormAction, completeVehicleInspectionFormAction } from '@/lib/actions/vehicle-inspection-form-handlers';
 import type { InspectionTemplateSection } from '@/lib/vehicle-inspection-template';
 import { LoadingLink } from './LoadingLink';
 import { FormPendingOverlay } from './FormPendingOverlay';
@@ -71,12 +71,11 @@ export function InspectionWorkspace({
     return map;
   }, [inspection]);
 
-  // Live, cross-section state — every select on the whole page writes
-  // here on change, so the summary bar updates immediately regardless
-  // of which section it's in or whether anything's been saved yet.
-  // This does NOT decide which group (Reviewed/Not Reviewed) an item
-  // displays in — that stays tied to the real, last-saved severity,
-  // so an item never jumps groups mid-edit before it's actually saved.
+  // Live, cross-page state — every select anywhere writes here on
+  // change, so the summary bar updates immediately. Does NOT decide
+  // which zone (Reviewed/Not Reviewed) an item displays in — that
+  // stays tied to the real, last-saved severity, so an item never
+  // jumps zones mid-edit before it's actually saved.
   const [liveSeverities, setLiveSeverities] = useState<Record<string, Severity | ''>>(() => {
     const initial: Record<string, Severity | ''> = {};
     inspection?.items.forEach((i) => {
@@ -97,6 +96,31 @@ export function InspectionWorkspace({
   const isCompleted = inspection?.status === 'COMPLETED';
   const isSkipped = inspection?.status === 'SKIPPED';
   const searchLower = search.trim().toLowerCase();
+
+  // Every section's rows, real-filtered by search, split into its own
+  // reviewed/not-reviewed rows. Built once here so both zones below
+  // read from the exact same real per-section breakdown — never two
+  // slightly different derivations that could quietly disagree.
+  const sectionsWithRows = useMemo(() => {
+    return template
+      .map((section) => {
+        const sectionMatches = Boolean(searchLower) && section.section.toLowerCase().includes(searchLower);
+        const rows = section.items
+          .map((templateItem) => ({ templateItem, record: itemById.get(`${section.section}::${templateItem.name}`) }))
+          .filter(({ templateItem }) => !searchLower || sectionMatches || templateItem.name.toLowerCase().includes(searchLower));
+        return {
+          section: section.section,
+          reviewed: rows.filter(({ record }) => record?.severity),
+          notReviewed: rows.filter(({ record }) => !record?.severity),
+        };
+      })
+      .filter((s) => s.reviewed.length > 0 || s.notReviewed.length > 0);
+  }, [template, itemById, searchLower]);
+
+  const allItemIds = useMemo(
+    () => sectionsWithRows.flatMap((s) => [...s.reviewed, ...s.notReviewed].map(({ record }) => record?.id).filter((id): id is string => Boolean(id))),
+    [sectionsWithRows],
+  );
 
   return (
     <div>
@@ -172,49 +196,23 @@ export function InspectionWorkspace({
             className="mb-6 w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
           />
 
-          <div className="space-y-4">
-            {template.map((section) => {
-              const sectionMatches = searchLower && section.section.toLowerCase().includes(searchLower);
-              const rows = section.items
-                .map((templateItem) => ({ templateItem, record: itemById.get(`${section.section}::${templateItem.name}`) }))
-                .filter(({ templateItem }) => !searchLower || sectionMatches || templateItem.name.toLowerCase().includes(searchLower));
-              if (searchLower && rows.length === 0) return null;
+          <form action={saveInspectionFormAction}>
+            <FormPendingOverlay />
+            <input type="hidden" name="inspectionId" value={inspection.id} />
+            <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
+            <input type="hidden" name="itemIds" value={allItemIds.join(',')} />
 
-              const reviewed = rows.filter(({ record }) => record?.severity);
-              const notReviewed = rows.filter(({ record }) => !record?.severity);
-
-              return (
-                <div key={section.section} className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-5">
-                  <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{section.section}</h2>
-                  <form action={saveInspectionSectionFormAction} className="mt-3 space-y-4">
-                    <FormPendingOverlay />
-                    <input type="hidden" name="inspectionId" value={inspection.id} />
-                    <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
-                    <input type="hidden" name="itemIds" value={rows.map(({ record }) => record?.id).filter(Boolean).join(',')} />
-
-                    {notReviewed.length > 0 ? (
-                      <div>
-                        <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Not Reviewed</p>
-                        <div className="space-y-2">
-                          {notReviewed.map(({ templateItem, record }) =>
-                            record ? (
-                              <FieldSet
-                                key={record.id}
-                                itemId={record.id}
-                                templateItem={templateItem}
-                                record={record}
-                                currentSeverity={liveSeverities[record.id] ?? ''}
-                                onSeverityChange={(sev) => setLiveSeverities((prev) => ({ ...prev, [record.id]: sev }))}
-                              />
-                            ) : null,
-                          )}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {reviewed.length > 0 ? (
-                      <div>
-                        <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Reviewed</p>
+            {/* REVIEWED ZONE — every category that has at least one
+                reviewed item, all together, never mixed with anything
+                not yet reviewed. Its own distinct background. */}
+            {sectionsWithRows.some((s) => s.reviewed.length > 0) ? (
+              <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 p-4 sm:p-5">
+                <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">✅ Reviewed</h2>
+                <div className="space-y-4">
+                  {sectionsWithRows.map(({ section, reviewed }) =>
+                    reviewed.length === 0 ? null : (
+                      <div key={`${section}-reviewed`}>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">{section}</p>
                         <div className="space-y-2">
                           {reviewed.map(({ templateItem, record }) => {
                             if (!record) return null;
@@ -237,7 +235,7 @@ export function InspectionWorkspace({
                                 </button>
                               </div>
                             ) : (
-                              <div key={record.id} className="flex items-start justify-between gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-bg)] px-3 py-2.5">
+                              <div key={record.id} className="flex items-start justify-between gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-surface)] px-3 py-2.5">
                                 <div>
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-sm font-medium text-[var(--ejo-text)]">{record.name}</span>
@@ -250,9 +248,10 @@ export function InspectionWorkspace({
                                       {[record.condition, record.action, record.notes].filter(Boolean).join(' — ')}
                                     </p>
                                   ) : null}
-                                  {/* Preserves this item's real saved values in the section's submit even
-                                      while it's collapsed to a summary row — never left out of the form
-                                      just because it isn't visually being edited right now. */}
+                                  {/* Preserves this item's real saved values in the whole
+                                      inspection's submit even while it's collapsed to a summary
+                                      row — never left out of the form just because it isn't
+                                      visually being edited right now. */}
                                   <input type="hidden" name={`condition-${record.id}`} value={record.condition ?? ''} />
                                   <input type="hidden" name={`severity-${record.id}`} value={record.severity ?? ''} />
                                   <input type="hidden" name={`action-${record.id}`} value={record.action ?? ''} />
@@ -261,7 +260,7 @@ export function InspectionWorkspace({
                                 <button
                                   type="button"
                                   onClick={() => setEditingIds((prev) => new Set(prev).add(record.id))}
-                                  className="shrink-0 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-2.5 py-1 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+                                  className="shrink-0 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-2.5 py-1 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
                                 >
                                   Edit
                                 </button>
@@ -270,18 +269,52 @@ export function InspectionWorkspace({
                           })}
                         </div>
                       </div>
-                    ) : null}
-
-                    <SubmitButton
-                      label={`Save ${section.section}`}
-                      pendingLabel="Saving…"
-                      className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                    />
-                  </form>
+                    ),
+                  )}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            ) : null}
+
+            {/* NOT REVIEWED ZONE — every category that still has at
+                least one unreviewed item, all together, kept fully
+                apart from the Reviewed zone above. Its own distinct
+                background so the two are never mistaken for one
+                continuous list. */}
+            {sectionsWithRows.some((s) => s.notReviewed.length > 0) ? (
+              <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-4 sm:p-5">
+                <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">⚪ Not Reviewed</h2>
+                <div className="space-y-4">
+                  {sectionsWithRows.map(({ section, notReviewed }) =>
+                    notReviewed.length === 0 ? null : (
+                      <div key={`${section}-notreviewed`}>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">{section}</p>
+                        <div className="space-y-2">
+                          {notReviewed.map(({ templateItem, record }) =>
+                            record ? (
+                              <FieldSet
+                                key={record.id}
+                                itemId={record.id}
+                                templateItem={templateItem}
+                                record={record}
+                                currentSeverity={liveSeverities[record.id] ?? ''}
+                                onSeverityChange={(sev) => setLiveSeverities((prev) => ({ ...prev, [record.id]: sev }))}
+                              />
+                            ) : null,
+                          )}
+                        </div>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            <SubmitButton
+              label="Save Changes"
+              pendingLabel="Saving…"
+              className="mt-6 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-5 py-2.5 text-sm font-medium text-white hover:opacity-90"
+            />
+          </form>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <form action={completeVehicleInspectionFormAction} className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
@@ -348,7 +381,7 @@ function FieldSet({
   const conditionListId = useId();
   const actionListId = useId();
   return (
-    <div className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3">
+    <div className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-3">
       <p className="mb-2 text-sm font-medium text-[var(--ejo-text)]">{templateItem.name}</p>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <div>
@@ -357,7 +390,7 @@ function FieldSet({
             list={conditionListId}
             defaultValue={record.condition ?? ''}
             placeholder="Condition"
-            className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
+            className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
           />
           <datalist id={conditionListId}>
             {templateItem.conditionOptions.map((o) => (
@@ -369,7 +402,7 @@ function FieldSet({
           name={`severity-${itemId}`}
           value={currentSeverity}
           onChange={(e) => onSeverityChange(e.target.value as Severity | '')}
-          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
+          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
         >
           <option value="">Not reviewed</option>
           <option value="GOOD">🟢 Good</option>
@@ -383,7 +416,7 @@ function FieldSet({
             list={actionListId}
             defaultValue={record.action ?? ''}
             placeholder="Action"
-            className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
+            className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
           />
           <datalist id={actionListId}>
             {templateItem.actionOptions.map((o) => (
@@ -395,7 +428,7 @@ function FieldSet({
           name={`notes-${itemId}`}
           defaultValue={record.notes ?? ''}
           placeholder="Notes"
-          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
+          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
         />
       </div>
     </div>
