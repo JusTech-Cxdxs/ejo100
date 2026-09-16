@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getVehicleService, getVehicleServiceAuditTrail } from '@/lib/actions/vehicle-service';
+import { getVehicleInspection } from '@/lib/actions/vehicle-inspection';
+import { cancelVehicleInspectionFormAction } from '@/lib/actions/vehicle-inspection-form-handlers';
 import { listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import {
   updateVehicleServiceStatusFormAction,
@@ -10,6 +12,7 @@ import {
   deleteVehicleServiceFormAction,
 } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
+import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { SupervisorPicker } from '@/components/SupervisorPicker';
@@ -50,6 +53,11 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle_service.status_updated': 'Status updated',
   'vehicle_service.technician_assigned': 'Technician assigned',
   'vehicle_service.escalated_to_job_card': 'Escalated to Job Card',
+  'vehicle_inspection.started': 'Inspection started',
+  'vehicle_inspection.skipped': 'Inspection skipped',
+  'vehicle_inspection.cancelled': 'Inspection cancelled',
+  'vehicle_inspection.items_updated': 'Inspection items updated',
+  'vehicle_inspection.completed': 'Inspection completed',
 };
 
 function formatAuditDetail(entry: { action: string; metadata: unknown }): string | null {
@@ -59,9 +67,14 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
     case 'vehicle_service.rejected':
       return typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : null;
     case 'vehicle_service.status_updated':
-      return typeof meta.from === 'string' && typeof meta.to === 'string' ? `${meta.from} → ${meta.to}` : null;
+      return typeof meta.from === 'string' && typeof meta.to === 'string'
+        ? `${STATUS_LABEL[meta.from] ?? meta.from} → ${STATUS_LABEL[meta.to] ?? meta.to}`
+        : null;
     case 'vehicle_service.technician_assigned':
       return typeof meta.technicianName === 'string' ? meta.technicianName : null;
+    case 'vehicle_inspection.skipped':
+    case 'vehicle_inspection.cancelled':
+      return typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : null;
     default:
       return null;
   }
@@ -72,9 +85,9 @@ export default async function VehicleServiceDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ editMileage?: string }>;
+  searchParams: Promise<{ editMileage?: string; error?: string; status?: string }>;
 }) {
-  const { editMileage } = await searchParams;
+  const { editMileage, error, status } = await searchParams;
   const { id } = await params;
   const [service, isMasterAdmin, viewerId] = await Promise.all([
     getVehicleService(id),
@@ -87,7 +100,7 @@ export default async function VehicleServiceDetailPage({
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
   const canEscalate = !service.escalatedToJobCard && service.status !== 'COLLECTED' && service.status !== 'CANCELLED';
-  const [technicians, auditTrail] = await Promise.all([listTechnicianCandidates(), getVehicleServiceAuditTrail(id)]);
+  const [technicians, auditTrail, inspection] = await Promise.all([listTechnicianCandidates(), getVehicleServiceAuditTrail(id), getVehicleInspection(id)]);
 
   return (
     <div className="p-8">
@@ -97,6 +110,17 @@ export default async function VehicleServiceDetailPage({
       >
         ← Back to Vehicle Service
       </LoadingLink>
+
+      {error ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="error" message={error} />
+        </div>
+      ) : null}
+      {status === 'inspection_cancelled' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Inspection cancelled." />
+        </div>
+      ) : null}
 
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -214,16 +238,58 @@ export default async function VehicleServiceDetailPage({
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Inspection</h2>
-              <LoadingLink
-                href={`/workshop/vehicle-service/${service.id}/inspection`}
-                className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-              >
-                Open Inspection
-              </LoadingLink>
+              {inspection?.status === 'IN_PROGRESS' || inspection?.status === 'COMPLETED' ? (
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${inspection.status === 'COMPLETED' ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]' : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'}`}>
+                  {inspection.status === 'COMPLETED' ? 'Completed' : 'In Progress'}
+                </span>
+              ) : inspection?.status === 'SKIPPED' ? (
+                <span className="rounded-full bg-[var(--ejo-text-muted)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-text-muted)]">Skipped</span>
+              ) : null}
             </div>
             <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
               The real technical record of what the supervisor/technician actually found on this vehicle.
             </p>
+            {!inspection ? (
+              <LoadingLink
+                href={`/workshop/vehicle-service/${service.id}/inspection`}
+                className="mt-3 inline-block rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+              >
+                Open Inspection
+              </LoadingLink>
+            ) : inspection.status === 'SKIPPED' ? (
+              <>
+                {inspection.skipReason ? <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Reason: {inspection.skipReason}</p> : null}
+                <form action={cancelVehicleInspectionFormAction} className="mt-3">
+                  <FormPendingOverlay />
+                  <input type="hidden" name="vehicleServiceId" value={service.id} />
+                  <input type="hidden" name="redirectTo" value={`/workshop/vehicle-service/${service.id}/inspection`} />
+                  <SubmitButton
+                    label="Reopen — Inspect or Skip Again"
+                    pendingLabel="Reopening…"
+                    className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                  />
+                </form>
+              </>
+            ) : (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <LoadingLink
+                  href={`/workshop/vehicle-service/${service.id}/inspection`}
+                  className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                >
+                  View Inspection
+                </LoadingLink>
+                <form action={cancelVehicleInspectionFormAction}>
+                  <FormPendingOverlay />
+                  <input type="hidden" name="vehicleServiceId" value={service.id} />
+                  <input type="hidden" name="redirectTo" value={`/workshop/vehicle-service/${service.id}`} />
+                  <SubmitButton
+                    label="Cancel Inspection"
+                    pendingLabel="Cancelling…"
+                    className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
+                  />
+                </form>
+              </div>
+            )}
           </div>
 
           {(service.nextServiceDueOdometer || service.nextServiceDueDate) ? (
