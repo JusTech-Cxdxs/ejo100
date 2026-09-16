@@ -75,7 +75,14 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
   }
 }
 
-export default async function VehicleServiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function VehicleServiceDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ editMileage?: string }>;
+}) {
+  const { editMileage } = await searchParams;
   const { id } = await params;
   const [service, isMasterAdmin, viewerId] = await Promise.all([
     getVehicleService(id),
@@ -347,17 +354,33 @@ export default async function VehicleServiceDetailPage({ params }: { params: Pro
                 <input type="hidden" name="serviceId" value={service.id} />
                 <input type="hidden" name="newStatus" value={nextAction.status} />
                 {nextAction.status === 'CHECKED_IN' ? (
-                  <div>
-                    <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Odometer (km)</label>
-                    <input
-                      name="odometerAtService"
-                      type="number"
-                      min="0"
-                      defaultValue={service.odometerAtService ?? undefined}
-                      placeholder={service.vehicle.mileage ? String(service.vehicle.mileage) : 'e.g. 52430'}
-                      className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                    />
-                  </div>
+                  service.odometerAtService != null && editMileage !== 'true' ? (
+                    <div className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2">
+                      <p className="text-xs text-[var(--ejo-text-muted)]">Odometer (from check-in)</p>
+                      <p className="mt-0.5 text-sm font-medium text-[var(--ejo-text)]">
+                        {service.odometerAtService.toLocaleString('en-NG')} km
+                      </p>
+                      <input type="hidden" name="odometerAtService" value={service.odometerAtService} />
+                      <LoadingLink
+                        href={`/workshop/vehicle-service/${service.id}?editMileage=true`}
+                        className="mt-1 inline-block text-xs text-[var(--ejo-primary)] hover:underline"
+                      >
+                        Edit mileage
+                      </LoadingLink>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Odometer (km)</label>
+                      <input
+                        name="odometerAtService"
+                        type="number"
+                        min="0"
+                        defaultValue={service.odometerAtService ?? undefined}
+                        placeholder={service.vehicle.mileage ? String(service.vehicle.mileage) : 'e.g. 52430'}
+                        className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                      />
+                    </div>
+                  )
                 ) : null}
                 {nextAction.status === 'COMPLETED' ? (
                   <div>
@@ -420,7 +443,7 @@ export default async function VehicleServiceDetailPage({ params }: { params: Pro
               <form action={escalateVehicleServiceFormAction} className="mt-3 space-y-3">
                 <FormPendingOverlay />
                 <input type="hidden" name="serviceId" value={service.id} />
-                <SupervisorPicker vehicleType={service.vehicle.vehicleType} />
+                <SupervisorPicker vehicleType={service.vehicle.vehicleType} defaultSupervisorId={service.supervisor?.id} />
                 <textarea
                   name="additionalComplaint"
                   rows={2}
