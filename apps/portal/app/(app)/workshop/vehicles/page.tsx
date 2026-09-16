@@ -99,7 +99,9 @@ export default async function WorkshopVehiclesPage({
                       {v.chassisNumber || '—'}
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
-                      {[v.year, v.make, v.model].filter(Boolean).join(' ') || '—'}
+                      <LoadingLink href={`/workshop/vehicles/${v.id}/edit`} className="hover:underline hover:text-[var(--ejo-text)]">
+                        {[v.year, v.make, v.model].filter(Boolean).join(' ') || '—'}
+                      </LoadingLink>
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       {v.vehicleType === 'PASSENGER' ? 'Passenger' : v.vehicleType === 'COMMERCIAL' ? 'Commercial' : '—'}
@@ -114,7 +116,7 @@ export default async function WorkshopVehiclesPage({
                     </td>
                     <td className="px-4 py-3">
                       <LoadingLink href={`/workshop/vehicles/${v.id}/edit`} className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">
-                        Edit
+                        View
                       </LoadingLink>
                     </td>
                   </tr>
