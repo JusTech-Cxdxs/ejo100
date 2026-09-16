@@ -668,7 +668,7 @@ export async function escalateVehicleServiceToJobCard(
   // estimate there sees exactly what was actually found, in the
   // inspection's own words, rather than having to reopen the
   // inspection separately or have it retyped from memory.
-  const findingLines = (service.inspection?.items ?? []).map((item: { section: string; name: string; condition: string | null; severity: string; action: string | null }) => {
+  const findingLines = (service.inspection?.items ?? []).map((item: { section: string; name: string; condition: string | null; severity: string | null; action: string | null }) => {
     const severityLabel = item.severity === 'CRITICAL' ? 'Critical' : item.severity === 'SERVICE_REQUIRED' ? 'Service Required' : 'Attention';
     const detail = [item.condition, item.action].filter(Boolean).join(' — ');
     return `[Inspection: ${severityLabel}] ${item.section} — ${item.name}${detail ? `: ${detail}` : ''}`;
