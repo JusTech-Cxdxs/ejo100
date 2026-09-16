@@ -1,132 +1,194 @@
-export type InspectionTemplateItem = { name: string; appliesTo: 'BOTH' | 'PASSENGER' | 'COMMERCIAL' };
+export type InspectionTemplateItem = {
+  name: string;
+  appliesTo: 'BOTH' | 'PASSENGER' | 'COMMERCIAL';
+  conditionOptions: string[];
+  actionOptions: string[];
+};
 export type InspectionTemplateSection = { section: string; items: InspectionTemplateItem[] };
+
+/**
+ * Real, tailored suggestion sets — researched per item type, not one
+ * generic list stretched across everything. Each item below picks
+ * whichever set genuinely fits it; several items share a set only
+ * when the real vocabulary is genuinely the same (e.g. every fluid
+ * level check uses the same real language: Normal/Low/Overfilled...).
+ * These feed a <datalist> — the technician can still type anything,
+ * but almost never needs to.
+ */
+const FLUID_CONDITION = ['Normal', 'Low', 'Overfilled', 'Dirty', 'Contaminated', 'Due for Replacement', 'Leak Suspected'];
+const FLUID_ACTION = ['No Action', 'Top Up', 'Replace', 'Flush & Replace', 'Inspect Leak', 'Further Diagnosis'];
+
+const FILTER_CONDITION = ['Clean', 'Dusty', 'Dirty', 'Damaged', 'Restricted', 'Contaminated', 'Due'];
+const FILTER_ACTION = ['No Action', 'Clean/Blow and Reinstall', 'Replace'];
+
+const LEAK_CONDITION = ['None Detected', 'Minor Seepage', 'Active Leak', 'Severe Leak'];
+const LEAK_ACTION = ['No Action', 'Monitor', 'Inspect Further', 'Repair', 'Replace Seal/Gasket'];
+
+const WEAR_CONDITION = ['Good', 'Worn', 'Nearing Limit', 'Damaged', 'Seized', 'Noisy'];
+const WEAR_ACTION = ['No Action', 'Adjust', 'Lubricate', 'Repair', 'Replace', 'Further Diagnosis'];
+
+const ELECTRICAL_CONDITION = ['Good', 'Weak', 'Corroded Terminals', 'Not Working', 'Intermittent'];
+const ELECTRICAL_ACTION = ['No Action', 'Clean Terminals', 'Tighten Connection', 'Repair', 'Replace', 'Further Diagnosis'];
+
+const TYRE_CONDITION = ['Good Tread', 'Worn Tread', 'Uneven Wear', 'Damaged Sidewall', 'Puncture', 'Below Legal Limit'];
+const TYRE_ACTION = ['No Action', 'Rotate', 'Balance', 'Align', 'Repair Puncture', 'Replace'];
+
+const PRESSURE_CONDITION = ['Correct', 'Low', 'High'];
+const PRESSURE_ACTION = ['No Action', 'Adjust to Spec', 'Further Diagnosis'];
+
+const LUBRICATION_CONDITION = ['Well Lubricated', 'Dry', 'Seized'];
+const LUBRICATION_ACTION = ['No Action', 'Lubricate'];
+
+const DIAGNOSTIC_CONDITION = ['No Fault Found', 'Fault Code Present', 'Warning Light On', 'Intermittent Fault'];
+const DIAGNOSTIC_ACTION = ['No Action', 'Clear Code & Monitor', 'Further Diagnosis Required', 'Recommend Repair'];
+
+const AC_CONDITION = ['Cooling Well', 'Weak Cooling', 'Not Cooling', 'Refrigerant Low', 'Unusual Noise'];
+const AC_ACTION = ['No Action', 'Recharge Refrigerant', 'Leak Test', 'Repair', 'Further Diagnosis'];
+
+const GENERAL_CONDITION = ['Good', 'Loose', 'Noisy', 'Damaged', 'Not Functioning'];
+const GENERAL_ACTION = ['No Action', 'Tighten/Adjust', 'Repair', 'Replace', 'Further Diagnosis'];
+
+const SAFETY_ACTION = ['No Action', 'Adjust', 'Repair', 'Replace', 'Recommend Further Diagnosis', 'Escalate to Job Card'];
+
+function item(
+  name: string,
+  conditionOptions: string[],
+  actionOptions: string[],
+  appliesTo: InspectionTemplateItem['appliesTo'] = 'BOTH',
+): InspectionTemplateItem {
+  return { name, appliesTo, conditionOptions, actionOptions };
+}
 
 /**
  * The one real, shared checklist structure — filtered per vehicle by
  * getApplicableTemplate() below, never asked of the front desk.
  * Deliberately code-defined rather than a database catalogue: this
  * changes rarely, needs careful curation when it does, and a full
- * admin UI for it now would be premature — the same reasoning that
- * kept ServiceType itself from being expanded further this round.
- * Comprehensive on purpose, but grouped into real sections so no
- * screen ever shows more than one section's items at once.
+ * admin UI for it now would be premature scope for this phase.
+ *
+ * Ordered by real workshop priority, not alphabetically — Engine &
+ * Lubrication first (Engine Oil first within it), matching what a
+ * technician actually reaches for first on almost every visit.
+ * Section order and item order within each section both reflect
+ * this — the most commonly-changed, most safety-critical items sit
+ * at the top of their section.
  */
 export const VEHICLE_INSPECTION_TEMPLATE: InspectionTemplateSection[] = [
   {
     section: 'Engine & Lubrication',
     items: [
-      { name: 'Engine Oil', appliesTo: 'BOTH' },
-      { name: 'Oil Filter', appliesTo: 'BOTH' },
-      { name: 'Oil Leaks', appliesTo: 'BOTH' },
-      { name: 'Drive Belt', appliesTo: 'BOTH' },
-      { name: 'Engine Mounts', appliesTo: 'BOTH' },
-      { name: 'Lubrication / Grease Points', appliesTo: 'BOTH' },
-    ],
-  },
-  {
-    section: 'Cooling System',
-    items: [
-      { name: 'Coolant Level', appliesTo: 'BOTH' },
-      { name: 'Coolant Condition', appliesTo: 'BOTH' },
-      { name: 'Radiator', appliesTo: 'BOTH' },
-      { name: 'Cooling Hoses', appliesTo: 'BOTH' },
-      { name: 'Cooling Fan', appliesTo: 'BOTH' },
-    ],
-  },
-  {
-    section: 'Fuel System',
-    items: [
-      { name: 'Fuel Filter', appliesTo: 'BOTH' },
-      { name: 'Fuel Lines', appliesTo: 'BOTH' },
-      { name: 'Fuel Leaks', appliesTo: 'BOTH' },
-      { name: 'Water Separator', appliesTo: 'COMMERCIAL' },
-    ],
-  },
-  {
-    section: 'Air Intake',
-    items: [
-      { name: 'Air Filter', appliesTo: 'BOTH' },
-      { name: 'Intake Hoses', appliesTo: 'BOTH' },
-      { name: 'Turbocharger', appliesTo: 'COMMERCIAL' },
+      item('Engine Oil', FLUID_CONDITION, FLUID_ACTION),
+      item('Oil Filter', FILTER_CONDITION, FILTER_ACTION),
+      item('Oil Leaks', LEAK_CONDITION, LEAK_ACTION),
+      item('Drive Belt', WEAR_CONDITION, WEAR_ACTION),
+      item('Engine Mounts', WEAR_CONDITION, WEAR_ACTION),
+      item('Lubrication / Grease Points', LUBRICATION_CONDITION, LUBRICATION_ACTION),
     ],
   },
   {
     section: 'Brakes',
     items: [
-      { name: 'Brake Pedal', appliesTo: 'BOTH' },
-      { name: 'Brake Fluid', appliesTo: 'BOTH' },
-      { name: 'Brake Pads / Shoes', appliesTo: 'BOTH' },
-      { name: 'Brake Discs / Drums', appliesTo: 'BOTH' },
-      { name: 'Brake Lines', appliesTo: 'BOTH' },
-      { name: 'Parking Brake', appliesTo: 'BOTH' },
-      { name: 'Air Brake System', appliesTo: 'COMMERCIAL' },
-      { name: 'Air Compressor / Air Dryer', appliesTo: 'COMMERCIAL' },
+      item('Brake Pads / Shoes', WEAR_CONDITION, SAFETY_ACTION),
+      item('Brake Fluid', FLUID_CONDITION, FLUID_ACTION),
+      item('Brake Pedal', GENERAL_CONDITION, SAFETY_ACTION),
+      item('Brake Discs / Drums', WEAR_CONDITION, SAFETY_ACTION),
+      item('Brake Lines', LEAK_CONDITION, SAFETY_ACTION),
+      item('Parking Brake', GENERAL_CONDITION, SAFETY_ACTION),
+      item('Air Brake System', GENERAL_CONDITION, SAFETY_ACTION, 'COMMERCIAL'),
+      item('Air Compressor / Air Dryer', GENERAL_CONDITION, GENERAL_ACTION, 'COMMERCIAL'),
     ],
   },
   {
-    section: 'Steering & Suspension',
+    section: 'Cooling System',
     items: [
-      { name: 'Steering System', appliesTo: 'BOTH' },
-      { name: 'Tie Rods / Ball Joints', appliesTo: 'BOTH' },
-      { name: 'Shocks / Struts', appliesTo: 'BOTH' },
-      { name: 'Leaf Springs', appliesTo: 'COMMERCIAL' },
-      { name: 'Kingpins', appliesTo: 'COMMERCIAL' },
+      item('Coolant Level', FLUID_CONDITION, FLUID_ACTION),
+      item('Coolant Condition', FLUID_CONDITION, FLUID_ACTION),
+      item('Radiator', LEAK_CONDITION, GENERAL_ACTION),
+      item('Cooling Hoses', WEAR_CONDITION, GENERAL_ACTION),
+      item('Cooling Fan', GENERAL_CONDITION, GENERAL_ACTION),
+    ],
+  },
+  {
+    section: 'Fuel System',
+    items: [
+      item('Fuel Filter', FILTER_CONDITION, FILTER_ACTION),
+      item('Fuel Lines', LEAK_CONDITION, GENERAL_ACTION),
+      item('Fuel Leaks', LEAK_CONDITION, LEAK_ACTION),
+      item('Water Separator', GENERAL_CONDITION, GENERAL_ACTION, 'COMMERCIAL'),
+    ],
+  },
+  {
+    section: 'Air Intake',
+    items: [
+      item('Air Filter', FILTER_CONDITION, FILTER_ACTION),
+      item('Intake Hoses', WEAR_CONDITION, GENERAL_ACTION),
+      item('Turbocharger', GENERAL_CONDITION, GENERAL_ACTION, 'COMMERCIAL'),
     ],
   },
   {
     section: 'Tyres & Wheels',
     items: [
-      { name: 'Tyre Condition', appliesTo: 'BOTH' },
-      { name: 'Tyre Pressure', appliesTo: 'BOTH' },
-      { name: 'Wheel Nuts', appliesTo: 'BOTH' },
-      { name: 'Wheel Alignment', appliesTo: 'BOTH' },
-      { name: 'Spare Tyre', appliesTo: 'BOTH' },
+      item('Tyre Condition', TYRE_CONDITION, TYRE_ACTION),
+      item('Tyre Pressure', PRESSURE_CONDITION, PRESSURE_ACTION),
+      item('Wheel Nuts', GENERAL_CONDITION, GENERAL_ACTION),
+      item('Wheel Alignment', GENERAL_CONDITION, TYRE_ACTION),
+      item('Spare Tyre', TYRE_CONDITION, TYRE_ACTION),
+    ],
+  },
+  {
+    section: 'Steering & Suspension',
+    items: [
+      item('Steering System', GENERAL_CONDITION, SAFETY_ACTION),
+      item('Tie Rods / Ball Joints', WEAR_CONDITION, SAFETY_ACTION),
+      item('Shocks / Struts', WEAR_CONDITION, GENERAL_ACTION),
+      item('Leaf Springs', WEAR_CONDITION, GENERAL_ACTION, 'COMMERCIAL'),
+      item('Kingpins', WEAR_CONDITION, LUBRICATION_ACTION, 'COMMERCIAL'),
     ],
   },
   {
     section: 'Electrical',
     items: [
-      { name: 'Battery', appliesTo: 'BOTH' },
-      { name: 'Charging System', appliesTo: 'BOTH' },
-      { name: 'Lights', appliesTo: 'BOTH' },
-      { name: 'Trafficators / Indicators', appliesTo: 'BOTH' },
-      { name: 'Horn', appliesTo: 'BOTH' },
-      { name: 'Wiring', appliesTo: 'BOTH' },
+      item('Battery', ELECTRICAL_CONDITION, ELECTRICAL_ACTION),
+      item('Charging System', ELECTRICAL_CONDITION, ELECTRICAL_ACTION),
+      item('Lights', ELECTRICAL_CONDITION, ELECTRICAL_ACTION),
+      item('Trafficators / Indicators', ELECTRICAL_CONDITION, ELECTRICAL_ACTION),
+      item('Horn', ELECTRICAL_CONDITION, ELECTRICAL_ACTION),
+      item('Wiring', ELECTRICAL_CONDITION, ELECTRICAL_ACTION),
     ],
   },
   {
     section: 'AC / HVAC',
     items: [
-      { name: 'Cooling Performance', appliesTo: 'BOTH' },
-      { name: 'AC Filter', appliesTo: 'BOTH' },
-      { name: 'Refrigerant / Leak Check', appliesTo: 'BOTH' },
+      item('Cooling Performance', AC_CONDITION, AC_ACTION),
+      item('AC Filter', FILTER_CONDITION, FILTER_ACTION),
+      item('Refrigerant / Leak Check', AC_CONDITION, AC_ACTION),
     ],
   },
   {
     section: 'Transmission & Drivetrain',
     items: [
-      { name: 'Transmission Fluid', appliesTo: 'BOTH' },
-      { name: 'Clutch', appliesTo: 'BOTH' },
-      { name: 'Propeller Shaft', appliesTo: 'COMMERCIAL' },
-      { name: 'Universal Joints', appliesTo: 'COMMERCIAL' },
-      { name: 'Differential / Axles', appliesTo: 'COMMERCIAL' },
+      item('Transmission Fluid', FLUID_CONDITION, FLUID_ACTION),
+      item('Clutch', WEAR_CONDITION, SAFETY_ACTION),
+      item('Propeller Shaft', WEAR_CONDITION, LUBRICATION_ACTION, 'COMMERCIAL'),
+      item('Universal Joints', WEAR_CONDITION, LUBRICATION_ACTION, 'COMMERCIAL'),
+      item('Differential / Axles', FLUID_CONDITION, FLUID_ACTION, 'COMMERCIAL'),
     ],
   },
   {
     section: 'Commercial / Heavy Duty',
     items: [
-      { name: 'Chassis', appliesTo: 'COMMERCIAL' },
-      { name: 'Fifth Wheel', appliesTo: 'COMMERCIAL' },
-      { name: 'Air Tanks / Air Lines', appliesTo: 'COMMERCIAL' },
-      { name: 'Hydraulic System', appliesTo: 'COMMERCIAL' },
+      item('Chassis', GENERAL_CONDITION, GENERAL_ACTION, 'COMMERCIAL'),
+      item('Fifth Wheel', WEAR_CONDITION, LUBRICATION_ACTION, 'COMMERCIAL'),
+      item('Air Tanks / Air Lines', GENERAL_CONDITION, GENERAL_ACTION, 'COMMERCIAL'),
+      item('Hydraulic System', LEAK_CONDITION, GENERAL_ACTION, 'COMMERCIAL'),
     ],
   },
   {
     section: 'Diagnostics',
     items: [
-      { name: 'Diagnostic Scan / DTCs', appliesTo: 'BOTH' },
-      { name: 'Warning Lights', appliesTo: 'BOTH' },
-      { name: 'Road Test', appliesTo: 'BOTH' },
+      item('Diagnostic Scan / DTCs', DIAGNOSTIC_CONDITION, DIAGNOSTIC_ACTION),
+      item('Warning Lights', DIAGNOSTIC_CONDITION, DIAGNOSTIC_ACTION),
+      item('Road Test', GENERAL_CONDITION, DIAGNOSTIC_ACTION),
     ],
   },
 ];
@@ -140,3 +202,10 @@ export function getApplicableTemplate(vehicleType: 'PASSENGER' | 'COMMERCIAL'): 
     items: s.items.filter((i) => i.appliesTo === 'BOTH' || i.appliesTo === vehicleType),
   })).filter((s) => s.items.length > 0);
 }
+
+/** A flat name -> {conditionOptions, actionOptions} lookup, built
+ * once, so the inspection page can pull one item's own real
+ * suggestions without re-scanning the whole template every render. */
+export const INSPECTION_ITEM_OPTIONS: Record<string, { conditionOptions: string[]; actionOptions: string[] }> = Object.fromEntries(
+  VEHICLE_INSPECTION_TEMPLATE.flatMap((s) => s.items.map((i) => [i.name, { conditionOptions: i.conditionOptions, actionOptions: i.actionOptions }])),
+);
