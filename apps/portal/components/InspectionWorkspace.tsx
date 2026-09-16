@@ -1,8 +1,9 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { saveInspectionSectionFormAction, startVehicleInspectionFormAction, skipVehicleInspectionFormAction, completeVehicleInspectionFormAction } from '@/lib/actions/vehicle-inspection-form-handlers';
+import { saveInspectionSectionFormAction, startVehicleInspectionFormAction, skipVehicleInspectionFormAction, cancelVehicleInspectionFormAction, completeVehicleInspectionFormAction } from '@/lib/actions/vehicle-inspection-form-handlers';
 import type { InspectionTemplateSection } from '@/lib/vehicle-inspection-template';
+import { LoadingLink } from './LoadingLink';
 import { FormPendingOverlay } from './FormPendingOverlay';
 import { SubmitButton } from './SubmitButton';
 
@@ -57,6 +58,13 @@ export function InspectionWorkspace({
   template: InspectionTemplateSection[];
   inspection: InspectionRecord;
 }) {
+  const [search, setSearch] = useState('');
+  // Which reviewed items are currently expanded back into edit mode —
+  // a reviewed item stays a compact summary row by default; clicking
+  // Edit reveals its real fields again. Not-reviewed items are always
+  // shown open, since they need to be filled in the first place.
+  const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
+
   const itemById = useMemo(() => {
     const map = new Map<string, InspectionItemRecord>();
     inspection?.items.forEach((i) => map.set(`${i.section}::${i.name}`, i));
@@ -66,6 +74,9 @@ export function InspectionWorkspace({
   // Live, cross-section state — every select on the whole page writes
   // here on change, so the summary bar updates immediately regardless
   // of which section it's in or whether anything's been saved yet.
+  // This does NOT decide which group (Reviewed/Not Reviewed) an item
+  // displays in — that stays tied to the real, last-saved severity,
+  // so an item never jumps groups mid-edit before it's actually saved.
   const [liveSeverities, setLiveSeverities] = useState<Record<string, Severity | ''>>(() => {
     const initial: Record<string, Severity | ''> = {};
     inspection?.items.forEach((i) => {
@@ -85,15 +96,15 @@ export function InspectionWorkspace({
 
   const isCompleted = inspection?.status === 'COMPLETED';
   const isSkipped = inspection?.status === 'SKIPPED';
-  const readOnly = isCompleted;
+  const searchLower = search.trim().toLowerCase();
 
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-xl font-bold text-[var(--ejo-text)] sm:text-2xl">Vehicle Inspection</h1>
-        <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
+        <LoadingLink href={`/workshop/vehicle-service/${vehicleServiceId}`} className="mt-1 block text-sm text-[var(--ejo-primary)] hover:underline">
           {serviceNumber} — {vehicleDescription}
-        </p>
+        </LoadingLink>
         <div className="mt-3 inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-info)]/10 px-3 py-2 text-sm text-[var(--ejo-text)]">
           <span className="font-medium">{vehicleType === 'COMMERCIAL' ? 'Commercial Vehicle' : 'Passenger Vehicle'}</span>
           <span className="text-[var(--ejo-text-muted)]">
@@ -103,10 +114,18 @@ export function InspectionWorkspace({
       </div>
 
       {isSkipped ? (
-        <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 text-sm text-[var(--ejo-text)]">
-          Inspection skipped by {inspection.inspectedBy.fullName}
-          {inspection.skippedAt ? ` on ${new Date(inspection.skippedAt).toLocaleString('en-NG')}` : ''}.
+        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 text-sm text-[var(--ejo-text)]">
+          <p>
+            Inspection skipped by {inspection.inspectedBy.fullName}
+            {inspection.skippedAt ? ` on ${new Date(inspection.skippedAt).toLocaleString('en-NG')}` : ''}.
+          </p>
           {inspection.skipReason ? <p className="mt-2 text-[var(--ejo-text-muted)]">Reason: {inspection.skipReason}</p> : null}
+          <form action={cancelVehicleInspectionFormAction} className="mt-4">
+            <FormPendingOverlay />
+            <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
+            <input type="hidden" name="redirectTo" value={`/workshop/vehicle-service/${vehicleServiceId}/inspection`} />
+            <SubmitButton label="Reopen — Inspect or Skip Again" pendingLabel="Reopening…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2.5 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]" />
+          </form>
         </div>
       ) : !inspection ? (
         <div className="grid max-w-lg gap-3 sm:grid-cols-2">
@@ -132,7 +151,7 @@ export function InspectionWorkspace({
         </div>
       ) : (
         <>
-          <div className="mb-6 flex flex-wrap gap-2">
+          <div className="mb-4 flex flex-wrap gap-2">
             {(['GOOD', 'ATTENTION', 'SERVICE_REQUIRED', 'CRITICAL'] as const).map((s) => (
               <span key={s} className="rounded-full border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-1.5 text-sm text-[var(--ejo-text)]">
                 {SEVERITY_ICON[s]} {SEVERITY_LABEL[s]} — {summary[s]}
@@ -145,94 +164,166 @@ export function InspectionWorkspace({
             ) : null}
           </div>
 
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search a category or an item — e.g. Brakes, Engine Oil, Battery…"
+            className="mb-6 w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
+          />
+
           <div className="space-y-4">
             {template.map((section) => {
-              const rows = section.items.map((templateItem) => {
-                const record = itemById.get(`${section.section}::${templateItem.name}`);
-                return { templateItem, record };
-              });
+              const sectionMatches = searchLower && section.section.toLowerCase().includes(searchLower);
+              const rows = section.items
+                .map((templateItem) => ({ templateItem, record: itemById.get(`${section.section}::${templateItem.name}`) }))
+                .filter(({ templateItem }) => !searchLower || sectionMatches || templateItem.name.toLowerCase().includes(searchLower));
+              if (searchLower && rows.length === 0) return null;
+
+              const reviewed = rows.filter(({ record }) => record?.severity);
+              const notReviewed = rows.filter(({ record }) => !record?.severity);
+
               return (
                 <div key={section.section} className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-5">
                   <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{section.section}</h2>
-                  {readOnly ? (
-                    <ul className="mt-3 space-y-2">
-                      {rows.map(({ templateItem, record }) => (
-                        <li key={templateItem.name} className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-bg)] px-3 py-2 text-sm">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-medium text-[var(--ejo-text)]">{templateItem.name}</span>
-                            {record?.severity ? (
-                              <span className="text-xs">
-                                {SEVERITY_ICON[record.severity]} {SEVERITY_LABEL[record.severity]}
-                              </span>
+                  <form action={saveInspectionSectionFormAction} className="mt-3 space-y-4">
+                    <FormPendingOverlay />
+                    <input type="hidden" name="inspectionId" value={inspection.id} />
+                    <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
+                    <input type="hidden" name="itemIds" value={rows.map(({ record }) => record?.id).filter(Boolean).join(',')} />
+
+                    {notReviewed.length > 0 ? (
+                      <div>
+                        <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Not Reviewed</p>
+                        <div className="space-y-2">
+                          {notReviewed.map(({ templateItem, record }) =>
+                            record ? (
+                              <FieldSet
+                                key={record.id}
+                                itemId={record.id}
+                                templateItem={templateItem}
+                                record={record}
+                                currentSeverity={liveSeverities[record.id] ?? ''}
+                                onSeverityChange={(sev) => setLiveSeverities((prev) => ({ ...prev, [record.id]: sev }))}
+                              />
+                            ) : null,
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {reviewed.length > 0 ? (
+                      <div>
+                        <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Reviewed</p>
+                        <div className="space-y-2">
+                          {reviewed.map(({ templateItem, record }) => {
+                            if (!record) return null;
+                            const isEditing = editingIds.has(record.id);
+                            return isEditing ? (
+                              <div key={record.id}>
+                                <FieldSet
+                                  itemId={record.id}
+                                  templateItem={templateItem}
+                                  record={record}
+                                  currentSeverity={liveSeverities[record.id] ?? ''}
+                                  onSeverityChange={(sev) => setLiveSeverities((prev) => ({ ...prev, [record.id]: sev }))}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingIds((prev) => { const next = new Set(prev); next.delete(record.id); return next; })}
+                                  className="mt-1 text-xs text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
+                                >
+                                  Done editing
+                                </button>
+                              </div>
                             ) : (
-                              <span className="text-xs text-[var(--ejo-text-muted)]">Not reviewed</span>
-                            )}
-                          </div>
-                          {record?.condition || record?.action || record?.notes ? (
-                            <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                              {[record?.condition, record?.action, record?.notes].filter(Boolean).join(' — ')}
-                            </p>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <form action={saveInspectionSectionFormAction} className="mt-3 space-y-3">
-                      <FormPendingOverlay />
-                      <input type="hidden" name="inspectionId" value={inspection.id} />
-                      <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
-                      <input type="hidden" name="itemIds" value={rows.map(({ record }) => record?.id).filter(Boolean).join(',')} />
-                      {rows.map(({ templateItem, record }) =>
-                        record ? (
-                          <FieldSet
-                            key={record.id}
-                            itemId={record.id}
-                            templateItem={templateItem}
-                            record={record}
-                            currentSeverity={liveSeverities[record.id] ?? ''}
-                            onSeverityChange={(sev) => setLiveSeverities((prev) => ({ ...prev, [record.id]: sev }))}
-                          />
-                        ) : null,
-                      )}
-                      <SubmitButton
-                        label={`Save ${section.section}`}
-                        pendingLabel="Saving…"
-                        className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                      />
-                    </form>
-                  )}
+                              <div key={record.id} className="flex items-start justify-between gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-bg)] px-3 py-2.5">
+                                <div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-medium text-[var(--ejo-text)]">{record.name}</span>
+                                    <span className="text-xs">
+                                      {SEVERITY_ICON[record.severity as Severity]} {SEVERITY_LABEL[record.severity as Severity]}
+                                    </span>
+                                  </div>
+                                  {record.condition || record.action || record.notes ? (
+                                    <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">
+                                      {[record.condition, record.action, record.notes].filter(Boolean).join(' — ')}
+                                    </p>
+                                  ) : null}
+                                  {/* Preserves this item's real saved values in the section's submit even
+                                      while it's collapsed to a summary row — never left out of the form
+                                      just because it isn't visually being edited right now. */}
+                                  <input type="hidden" name={`condition-${record.id}`} value={record.condition ?? ''} />
+                                  <input type="hidden" name={`severity-${record.id}`} value={record.severity ?? ''} />
+                                  <input type="hidden" name={`action-${record.id}`} value={record.action ?? ''} />
+                                  <input type="hidden" name={`notes-${record.id}`} value={record.notes ?? ''} />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingIds((prev) => new Set(prev).add(record.id))}
+                                  className="shrink-0 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-2.5 py-1 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <SubmitButton
+                      label={`Save ${section.section}`}
+                      pendingLabel="Saving…"
+                      className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                    />
+                  </form>
                 </div>
               );
             })}
           </div>
 
-          {isCompleted ? (
-            <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 p-5 text-sm text-[var(--ejo-text)]">
-              Completed by {inspection.inspectedBy.fullName}
-              {inspection.completedAt ? ` on ${new Date(inspection.completedAt).toLocaleString('en-NG')}` : ''}.
-              {inspection.notes ? <p className="mt-2 text-[var(--ejo-text-muted)]">{inspection.notes}</p> : null}
-            </div>
-          ) : (
-            <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Complete this inspection</h2>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <form action={completeVehicleInspectionFormAction} className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+              <FormPendingOverlay />
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{isCompleted ? 'Update completion' : 'Complete this inspection'}</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Locks the checklist. Save every section that matters to this visit first — items left
-                unreviewed just stay unreviewed, they don&apos;t block completion.
+                {isCompleted
+                  ? 'Already marked complete — items above stay fully editable, and saving here just updates the notes below.'
+                  : "Marks this inspection done for now. Items you haven't reviewed just stay Not Reviewed — that's fine, this doesn't lock anything."}
               </p>
-              <form action={completeVehicleInspectionFormAction} className="mt-3 space-y-2">
-                <FormPendingOverlay />
-                <input type="hidden" name="inspectionId" value={inspection.id} />
-                <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
-                <textarea
-                  name="notes"
-                  rows={2}
-                  placeholder="Optional overall notes"
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
-                />
-                <SubmitButton label="Complete Inspection" pendingLabel="Completing…" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2.5 text-sm font-medium text-white hover:opacity-90" />
-              </form>
-            </div>
-          )}
+              <input type="hidden" name="inspectionId" value={inspection.id} />
+              <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
+              <textarea
+                name="notes"
+                rows={2}
+                defaultValue={inspection.notes ?? ''}
+                placeholder="Optional overall notes"
+                className="mt-3 w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
+              />
+              <SubmitButton
+                label={isCompleted ? 'Update Completion' : 'Complete Inspection'}
+                pendingLabel="Saving…"
+                className="mt-3 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2.5 text-sm font-medium text-white hover:opacity-90"
+              />
+              {isCompleted && inspection.completedAt ? (
+                <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+                  Completed by {inspection.inspectedBy.fullName} on {new Date(inspection.completedAt).toLocaleString('en-NG')}.
+                </p>
+              ) : null}
+            </form>
+
+            <form action={cancelVehicleInspectionFormAction}>
+              <FormPendingOverlay />
+              <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
+              <input type="hidden" name="redirectTo" value={`/workshop/vehicle-service/${vehicleServiceId}/inspection`} />
+              <SubmitButton
+                label="Cancel This Inspection"
+                pendingLabel="Cancelling…"
+                className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2.5 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
+              />
+            </form>
+          </div>
         </>
       )}
     </div>
@@ -240,9 +331,7 @@ export function InspectionWorkspace({
 }
 
 /** One item's real inputs, condition/action datalist-driven, severity
- * select feeding the live summary via onSeverityChange — separated
- * from ItemRow above since this variant needs the real saved record
- * for defaultValue, which the plain template preview never has. */
+ * select feeding the live summary via onSeverityChange. */
 function FieldSet({
   itemId,
   templateItem,
