@@ -110,14 +110,16 @@ export default async function WorkshopJobCardsPage({
               <tbody>
                 {jobCards.map((jc: (typeof jobCards)[number]) => (
                   <tr key={jc.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                    <td className="px-4 py-3 font-medium text-[var(--ejo-text)]">
-                      <LoadingLink href={`/workshop/job-cards/${jc.id}`} className="hover:underline">
+                    <td className="px-4 py-3 font-medium">
+                      <LoadingLink href={`/workshop/job-cards/${jc.id}`} className="text-[var(--ejo-primary)] hover:underline">
                         {jc.jobNumber}
                       </LoadingLink>
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{jc.customer.fullName}</td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
-                      {jc.vehicle.plateNumber || [jc.vehicle.make, jc.vehicle.model].filter(Boolean).join(' ') || '—'}
+                      <LoadingLink href={`/workshop/vehicles/${jc.vehicle.id}/edit`} className="hover:underline hover:text-[var(--ejo-text)]">
+                        {jc.vehicle.plateNumber || [jc.vehicle.make, jc.vehicle.model].filter(Boolean).join(' ') || '—'}
+                      </LoadingLink>
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       {jc.assignedTechnician?.fullName ?? 'Unassigned'}
