@@ -170,7 +170,7 @@ export async function writeAuditLog(params: {
  * Administrator, may approve or reject it — matching "approval must be
  * explicit" and giving a real, checkable answer to "who is allowed to
  * sign off on this," not just whoever happens to open the page. */
-async function requireJobCardApprover(jobCard: { supervisorId: string | null }): Promise<{ id: string }> {
+export async function requireJobCardApprover(jobCard: { supervisorId: string | null }): Promise<{ id: string }> {
   const user = await requireUser();
   if (jobCard.supervisorId === user.id) {
     return user;
@@ -262,7 +262,7 @@ export async function getWorkshopBranchId(): Promise<string> {
  * separate from getWorkshopBranchId() above (which still resolves the
  * original single "workshop" department, unchanged) so nothing that
  * already depends on that function's exact behavior is affected. */
-async function getWorkshopDepartmentForVehicleType(
+export async function getWorkshopDepartmentForVehicleType(
   vehicleType: 'PASSENGER' | 'COMMERCIAL',
 ): Promise<{ id: string; name: string }> {
   const branchId = await getWorkshopBranchId();
@@ -1023,7 +1023,7 @@ export type CreateJobCardInput = {
  * exactly the two cases listEligibleSupervisorsForVehicleType() can
  * return: a real department supervisor, or (while no one has been
  * placed into the department yet) a Master Administrator standing in. */
-async function isEligibleSupervisor(userId: string, departmentId: string): Promise<boolean> {
+export async function isEligibleSupervisor(userId: string, departmentId: string): Promise<boolean> {
   const match = await prisma.user.findFirst({
     where: {
       id: userId,

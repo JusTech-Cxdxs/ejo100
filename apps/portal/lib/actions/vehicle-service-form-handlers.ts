@@ -8,6 +8,10 @@ import {
   escalateVehicleServiceToJobCard,
   createServiceType,
   addServiceItemsToVehicleService,
+  approveVehicleService,
+  rejectVehicleService,
+  assignTechnicianToVehicleService,
+  deleteVehicleService,
 } from './vehicle-service';
 
 function str(formData: FormData, key: string): string {
@@ -24,12 +28,14 @@ function num(formData: FormData, key: string): number | undefined {
 export async function createVehicleServiceFormAction(formData: FormData) {
   const customerId = str(formData, 'customerId');
   const vehicleId = str(formData, 'vehicleId');
+  const supervisorId = str(formData, 'supervisorId');
   let serviceId = '';
   try {
     const customerComplaints = formData.getAll('customerComplaints').filter((v): v is string => typeof v === 'string');
     const result = await createVehicleService({
       customerId,
       vehicleId,
+      supervisorId,
       customerComplaints,
       mileageAtCheckIn: num(formData, 'mileageAtCheckIn'),
     });
@@ -40,6 +46,49 @@ export async function createVehicleServiceFormAction(formData: FormData) {
   }
   revalidatePath('/workshop/vehicle-service');
   redirect(`/workshop/vehicle-service/${serviceId}`);
+}
+
+export async function approveVehicleServiceFormAction(formData: FormData) {
+  const id = str(formData, 'serviceId');
+  try {
+    await approveVehicleService(id, str(formData, 'notes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not approve this Vehicle Service.';
+    redirect(`/workshop/vehicle-service/${id}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${id}`);
+}
+
+export async function rejectVehicleServiceFormAction(formData: FormData) {
+  const id = str(formData, 'serviceId');
+  try {
+    await rejectVehicleService(id, str(formData, 'reason'), str(formData, 'notes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not reject this Vehicle Service.';
+    redirect(`/workshop/vehicle-service/${id}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${id}`);
+}
+
+export async function assignTechnicianToVehicleServiceFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  const technicianId = str(formData, 'technicianId');
+  if (!technicianId) return; // "Unassigned" placeholder selected — nothing to do
+  await assignTechnicianToVehicleService(serviceId, technicianId);
+  revalidatePath(`/workshop/vehicle-service/${serviceId}`);
+  revalidatePath('/workshop/vehicle-service');
+}
+
+export async function deleteVehicleServiceFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  try {
+    await deleteVehicleService(serviceId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not delete this Vehicle Service.';
+    redirect(`/workshop/vehicle-service?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/vehicle-service');
+  redirect('/workshop/vehicle-service?status=vehicle_service_deleted');
 }
 
 export async function updateVehicleServiceStatusFormAction(formData: FormData) {

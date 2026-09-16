@@ -1,7 +1,16 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog, createJobCard, getWorkshopBranchId } from './workshop';
+import {
+  requireUser,
+  writeAuditLog,
+  createJobCard,
+  getWorkshopBranchId,
+  getWorkshopDepartmentForVehicleType,
+  isEligibleSupervisor,
+  currentUserIsMasterAdmin,
+  requireJobCardApprover,
+} from './workshop';
 import { calculateNextServiceDue } from '@/lib/vehicle-service-due';
 
 class VehicleServiceActionError extends Error {}
@@ -23,19 +32,35 @@ export type CreateVehicleServiceInput = {
   vehicleId: string;
   customerComplaints: string[];
   mileageAtCheckIn?: number;
+  supervisorId: string;
 };
 
 export async function createVehicleService(input: CreateVehicleServiceInput): Promise<{ id: string; serviceNumber: string }> {
   const user = await requireUser();
-  // The same real branch lookup createJobCard already uses — the
-  // Workshop department's own branch, never the creating person's
-  // own account field, which may legitimately be unset for many
-  // accounts that can still open real work here.
-  const branchId = await getWorkshopBranchId();
-  const vehicle = await prisma.customerVehicle.findUnique({ where: { id: input.vehicleId }, select: { customerId: true } });
+  if (!input.supervisorId) {
+    throw new VehicleServiceActionError('A supervisor must be assigned to open a Vehicle Service.');
+  }
+  const vehicle = await prisma.customerVehicle.findUnique({
+    where: { id: input.vehicleId },
+    select: { customerId: true, vehicleType: true },
+  });
   if (!vehicle || vehicle.customerId !== input.customerId) {
     throw new VehicleServiceActionError('This vehicle does not genuinely belong to the selected customer.');
   }
+  if (!vehicle.vehicleType) {
+    throw new VehicleServiceActionError(
+      'This vehicle has no Passenger/Commercial type on file yet — set it on the Vehicles page before opening a Vehicle Service for it.',
+    );
+  }
+  // The same real, department-derived routing Job Card already uses —
+  // never taken from client input, so it's structurally impossible
+  // for a Vehicle Service to be routed to the wrong Workshop
+  // department by a client-side mistake.
+  const department = await getWorkshopDepartmentForVehicleType(vehicle.vehicleType);
+  if (!(await isEligibleSupervisor(input.supervisorId, department.id))) {
+    throw new VehicleServiceActionError("The selected supervisor is not eligible for this vehicle's Workshop department.");
+  }
+  const branchId = await getWorkshopBranchId();
   const serviceNumber = await generateServiceNumber();
   const realComplaints = input.customerComplaints.map((c) => c.trim()).filter((c) => c.length > 0);
   const service = await prisma.$transaction(async (tx) => {
@@ -43,8 +68,10 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
       data: {
         serviceNumber,
         branchId,
+        departmentId: department.id,
         customerId: input.customerId,
         vehicleId: input.vehicleId,
+        supervisorId: input.supervisorId,
         createdById: user.id,
         odometerAtService: input.mileageAtCheckIn ?? null,
       },
@@ -60,18 +87,154 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
   return { id: service.id, serviceNumber };
 }
 
-export async function listVehicleServices(branchId: string, status?: string) {
+export type VehicleServiceAuditEntry = {
+  id: string;
+  action: string;
+  createdAt: Date;
+  metadata: unknown;
+  user: { fullName: string } | null;
+};
+
+/** No take limit here, deliberately — same real reasoning as Job
+ * Card's own audit trail: a Vehicle Service's real history is never
+ * something that quietly gets cut off once it accumulates enough
+ * entries. */
+export async function getVehicleServiceAuditTrail(serviceId: string): Promise<VehicleServiceAuditEntry[]> {
   await requireUser();
-  return prisma.vehicleService.findMany({
-    where: { branchId, ...(status ? { status: status as never } : {}) },
+  const entries = await prisma.auditLog.findMany({
+    where: { entityType: 'VehicleService', entityId: serviceId },
     orderBy: { createdAt: 'desc' },
+  });
+  const userIds = [
+    ...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id))),
+  ];
+  const users = userIds.length
+    ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } })
+    : [];
+  const userById = new Map(users.map((u: (typeof users)[number]) => [u.id, u]));
+  return entries.map((e: (typeof entries)[number]) => ({
+    id: e.id,
+    action: e.action,
+    createdAt: e.createdAt,
+    metadata: e.metadata,
+    user: e.userId ? (userById.get(e.userId) ?? null) : null,
+  }));
+}
+
+export async function approveVehicleService(serviceId: string, notes?: string): Promise<void> {
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: serviceId },
+    select: { supervisorId: true, serviceNumber: true },
+  });
+  if (!service) {
+    throw new VehicleServiceActionError('Vehicle Service record not found.');
+  }
+  const approver = await requireJobCardApprover(service);
+  await prisma.vehicleService.update({
+    where: { id: serviceId },
+    data: { approvalStatus: 'APPROVED', approvedById: approver.id, approvedAt: new Date(), rejectionReason: null, approvalNotes: notes?.trim() || null },
+  });
+  await writeAuditLog({
+    userId: approver.id,
+    action: 'vehicle_service.approved',
+    entityType: 'VehicleService',
+    entityId: serviceId,
+    metadata: { serviceNumber: service.serviceNumber, notes: notes?.trim() || undefined },
+  });
+}
+
+/** The required `reason` is what would show in a real status badge —
+ * a rejection doesn't have to mean something was wrong with the
+ * vehicle itself; availability or workload are valid real reasons
+ * too, same as Job Card. */
+export async function rejectVehicleService(serviceId: string, reason: string, notes?: string): Promise<void> {
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) {
+    throw new VehicleServiceActionError('A reason is required to reject a Vehicle Service.');
+  }
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: serviceId },
+    select: { supervisorId: true, serviceNumber: true },
+  });
+  if (!service) {
+    throw new VehicleServiceActionError('Vehicle Service record not found.');
+  }
+  const approver = await requireJobCardApprover(service);
+  await prisma.vehicleService.update({
+    where: { id: serviceId },
+    data: { approvalStatus: 'REJECTED', approvedById: approver.id, approvedAt: new Date(), rejectionReason: trimmedReason, approvalNotes: notes?.trim() || null },
+  });
+  await writeAuditLog({
+    userId: approver.id,
+    action: 'vehicle_service.rejected',
+    entityType: 'VehicleService',
+    entityId: serviceId,
+    metadata: { serviceNumber: service.serviceNumber, reason: trimmedReason },
+  });
+}
+
+/** Never enforced server-side that approval must happen first — same
+ * real design as Job Card's own assignTechnician — but the UI only
+ * ever shows this action once a supervisor has actually approved the
+ * visit, so a technician is never pulled onto an unreviewed job in
+ * real practice. */
+export async function assignTechnicianToVehicleService(serviceId: string, technicianId: string): Promise<void> {
+  const user = await requireUser();
+  const service = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { serviceNumber: true } });
+  if (!service) {
+    throw new VehicleServiceActionError('Vehicle Service record not found.');
+  }
+  const technician = await prisma.user.findUnique({ where: { id: technicianId }, select: { fullName: true } });
+  if (!technician) {
+    throw new VehicleServiceActionError('That technician could not be found.');
+  }
+  await prisma.vehicleService.update({ where: { id: serviceId }, data: { assignedTechnicianId: technicianId } });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'vehicle_service.technician_assigned',
+    entityType: 'VehicleService',
+    entityId: serviceId,
+    metadata: { serviceNumber: service.serviceNumber, technicianName: technician.fullName },
+  });
+}
+
+export async function deleteVehicleService(serviceId: string): Promise<void> {
+  const isMasterAdmin = await currentUserIsMasterAdmin();
+  if (!isMasterAdmin) {
+    throw new VehicleServiceActionError('Only a Master Administrator can delete a Vehicle Service.');
+  }
+  await prisma.vehicleService.delete({ where: { id: serviceId } });
+}
+
+export async function listVehicleServices(branchId: string, search?: string, vehicleType?: 'PASSENGER' | 'COMMERCIAL', status?: string) {
+  await requireUser();
+  const q = search?.trim();
+  return prisma.vehicleService.findMany({
+    where: {
+      branchId,
+      ...(status ? { status: status as never } : {}),
+      ...(vehicleType ? { vehicle: { vehicleType } } : {}),
+      ...(q
+        ? {
+            OR: [
+              { serviceNumber: { contains: q, mode: 'insensitive' } },
+              { customer: { fullName: { contains: q, mode: 'insensitive' } } },
+              { vehicle: { plateNumber: { contains: q, mode: 'insensitive' } } },
+              { vehicle: { chassisNumber: { contains: q, mode: 'insensitive' } } },
+              { assignedTechnician: { fullName: { contains: q, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
     select: {
       id: true,
       serviceNumber: true,
       status: true,
       createdAt: true,
       customer: { select: { fullName: true } },
-      vehicle: { select: { make: true, model: true, plateNumber: true } },
+      vehicle: { select: { make: true, model: true, plateNumber: true, vehicleType: true } },
       items: { select: { serviceType: { select: { name: true } } } },
     },
   });
@@ -82,10 +245,13 @@ export async function getVehicleService(serviceId: string) {
   return prisma.vehicleService.findUnique({
     where: { id: serviceId },
     include: {
-      customer: { select: { id: true, fullName: true, phone: true, email: true } },
-      vehicle: { select: { id: true, make: true, model: true, year: true, plateNumber: true, chassisNumber: true, mileage: true, vehicleType: true } },
-      createdBy: { select: { fullName: true } },
+      customer: true,
+      vehicle: true,
+      createdBy: { select: { id: true, fullName: true } },
       assignedTechnician: { select: { id: true, fullName: true } },
+      supervisor: { select: { id: true, fullName: true } },
+      approvedBy: { select: { id: true, fullName: true } },
+      department: { select: { id: true, name: true } },
       escalatedToJobCard: { select: { id: true, jobNumber: true } },
       items: { include: { serviceType: true } },
       complaints: { orderBy: { sequenceNumber: 'asc' } },
