@@ -7,6 +7,7 @@ import {
   updateVehicleServiceStatus,
   escalateVehicleServiceToJobCard,
   createServiceType,
+  addServiceItemsToVehicleService,
 } from './vehicle-service';
 
 function str(formData: FormData, key: string): string {
@@ -25,13 +26,12 @@ export async function createVehicleServiceFormAction(formData: FormData) {
   const vehicleId = str(formData, 'vehicleId');
   let serviceId = '';
   try {
-    const serviceTypeIds = formData.getAll('serviceTypeIds').filter((v): v is string => typeof v === 'string');
     const customerComplaints = formData.getAll('customerComplaints').filter((v): v is string => typeof v === 'string');
     const result = await createVehicleService({
       customerId,
       vehicleId,
       customerComplaints,
-      serviceTypeIds,
+      mileageAtCheckIn: num(formData, 'mileageAtCheckIn'),
     });
     serviceId = result.id;
   } catch (err) {
@@ -89,4 +89,20 @@ export async function createServiceTypeFormAction(formData: FormData) {
   }
   revalidatePath('/workshop/vehicle-service/service-types');
   redirect('/workshop/vehicle-service/service-types?status=created');
+}
+
+export async function addServiceItemsFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  const serviceTypeIds = formData.getAll('serviceTypeIds').filter((v): v is string => typeof v === 'string');
+  if (serviceTypeIds.length === 0) {
+    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent('Select at least one item to add.')}`);
+  }
+  try {
+    await addServiceItemsToVehicleService(serviceId, serviceTypeIds);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not add these items.';
+    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${serviceId}`);
+  redirect(`/workshop/vehicle-service/${serviceId}?status=items_added`);
 }

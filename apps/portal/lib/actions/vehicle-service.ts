@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog, createJobCard } from './workshop';
+import { requireUser, writeAuditLog, createJobCard, getWorkshopBranchId } from './workshop';
 import { calculateNextServiceDue } from '@/lib/vehicle-service-due';
 
 class VehicleServiceActionError extends Error {}
@@ -22,15 +22,16 @@ export type CreateVehicleServiceInput = {
   customerId: string;
   vehicleId: string;
   customerComplaints: string[];
-  serviceTypeIds: string[];
+  mileageAtCheckIn?: number;
 };
 
 export async function createVehicleService(input: CreateVehicleServiceInput): Promise<{ id: string; serviceNumber: string }> {
   const user = await requireUser();
-  const fullUser = await prisma.user.findUnique({ where: { id: user.id }, select: { branchId: true } });
-  if (!fullUser?.branchId) {
-    throw new VehicleServiceActionError('Your account has no branch assigned yet — this is required to open a real Vehicle Service.');
-  }
+  // The same real branch lookup createJobCard already uses — the
+  // Workshop department's own branch, never the creating person's
+  // own account field, which may legitimately be unset for many
+  // accounts that can still open real work here.
+  const branchId = await getWorkshopBranchId();
   const vehicle = await prisma.customerVehicle.findUnique({ where: { id: input.vehicleId }, select: { customerId: true } });
   if (!vehicle || vehicle.customerId !== input.customerId) {
     throw new VehicleServiceActionError('This vehicle does not genuinely belong to the selected customer.');
@@ -41,17 +42,13 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
     const created = await tx.vehicleService.create({
       data: {
         serviceNumber,
-        branchId: fullUser.branchId!,
+        branchId,
         customerId: input.customerId,
         vehicleId: input.vehicleId,
         createdById: user.id,
+        odometerAtService: input.mileageAtCheckIn ?? null,
       },
     });
-    if (input.serviceTypeIds.length > 0) {
-      await tx.vehicleServiceItem.createMany({
-        data: input.serviceTypeIds.map((serviceTypeId) => ({ vehicleServiceId: created.id, serviceTypeId })),
-      });
-    }
     if (realComplaints.length > 0) {
       await tx.vehicleServiceComplaint.createMany({
         data: realComplaints.map((description, i) => ({ vehicleServiceId: created.id, sequenceNumber: i + 1, description })),
@@ -92,7 +89,46 @@ export async function getVehicleService(serviceId: string) {
       escalatedToJobCard: { select: { id: true, jobNumber: true } },
       items: { include: { serviceType: true } },
       complaints: { orderBy: { sequenceNumber: 'asc' } },
+      branch: { select: { businessUnit: { select: { organisationId: true } } } },
     },
+  });
+}
+
+/**
+ * Adds Service Types to an already-open Vehicle Service — the
+ * supervisor's own real job after actually inspecting the vehicle,
+ * never something the front desk decides when the customer first
+ * walks in. Adding an item already on the visit is a harmless
+ * no-op, same real reasoning as assignRole elsewhere in this app.
+ */
+export async function addServiceItemsToVehicleService(serviceId: string, serviceTypeIds: string[]): Promise<void> {
+  const user = await requireUser();
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: serviceId },
+    select: { status: true, serviceNumber: true },
+  });
+  if (!service) {
+    throw new VehicleServiceActionError('Vehicle Service record not found.');
+  }
+  if (service.status === 'COLLECTED' || service.status === 'CANCELLED') {
+    throw new VehicleServiceActionError(`Cannot add work to a Vehicle Service that's already ${service.status.toLowerCase()}.`);
+  }
+  const existing = await prisma.vehicleServiceItem.findMany({
+    where: { vehicleServiceId: serviceId },
+    select: { serviceTypeId: true },
+  });
+  const existingIds = new Set(existing.map((e: { serviceTypeId: string }) => e.serviceTypeId));
+  const toAdd = serviceTypeIds.filter((id) => !existingIds.has(id));
+  if (toAdd.length === 0) return;
+  await prisma.vehicleServiceItem.createMany({
+    data: toAdd.map((serviceTypeId) => ({ vehicleServiceId: serviceId, serviceTypeId })),
+  });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'vehicle_service.items_added',
+    entityType: 'VehicleService',
+    entityId: serviceId,
+    metadata: { serviceNumber: service.serviceNumber, count: toAdd.length },
   });
 }
 
