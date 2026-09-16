@@ -1,7 +1,5 @@
-import { headers } from 'next/headers';
-import { auth } from '@/lib/auth';
-import { prisma } from '@ejo/database';
-import { listVehicleServices, listServiceTypes } from '@/lib/actions/vehicle-service';
+import { listVehicleServices } from '@/lib/actions/vehicle-service';
+import { getWorkshopBranchId } from '@/lib/actions/workshop';
 import { createVehicleServiceFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { CustomerVehiclePicker } from '@/components/CustomerVehiclePicker';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -28,12 +26,11 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 /**
- * Phase 1 of Vehicle Service — a real, genuinely lighter workflow for
- * routine maintenance, deliberately separate from Job Card. Reuses
- * CustomerVehiclePicker directly (the same real component Job Card
- * creation already uses) rather than a second, competing
- * customer/vehicle selector — no duplicated identity data, matching
- * this module's own founding principle.
+ * Reception opens the visit; a supervisor decides what work it
+ * actually needs after inspecting the vehicle, from the service's own
+ * detail page. This screen only ever records who came in, which
+ * vehicle, the mileage, and why — the same real shape as Open Job
+ * Card, on purpose.
  */
 export default async function VehicleServicePage({
   searchParams,
@@ -41,15 +38,8 @@ export default async function VehicleServicePage({
   searchParams: Promise<{ error?: string; status?: string }>;
 }) {
   const { error } = await searchParams;
-  const session = await auth.api.getSession({ headers: await headers() });
-  const user = session?.user?.id
-    ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { branchId: true, organisationId: true } })
-    : null;
-  const branchId = user?.branchId ?? null;
-  const [services, serviceTypes] = await Promise.all([
-    branchId ? listVehicleServices(branchId) : Promise.resolve([]),
-    user?.organisationId ? listServiceTypes(user.organisationId) : Promise.resolve([]),
-  ]);
+  const branchId = await getWorkshopBranchId().catch(() => null);
+  const services = branchId ? await listVehicleServices(branchId) : [];
 
   return (
     <div className="p-8">
@@ -124,32 +114,12 @@ export default async function VehicleServicePage({
           <form action={createVehicleServiceFormAction} className="mt-4 space-y-3">
             <FormPendingOverlay />
             <CustomerVehiclePicker />
-            {serviceTypes.length > 0 ? (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Service Items</label>
-                <div className="max-h-40 space-y-1 overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-2">
-                  {serviceTypes.map((t: (typeof serviceTypes)[number]) => (
-                    <label key={t.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
-                      <input type="checkbox" name="serviceTypeIds" value={t.id} className="rounded border-[var(--ejo-border)]" />
-                      {t.name} <span className="text-[var(--ejo-text-muted)]">— {t.category}</span>
-                      {t.isPrimary ? (
-                        <span className="rounded-full bg-[var(--ejo-primary)]/15 px-1.5 py-0.5 text-[10px] font-medium text-[var(--ejo-primary)]">Primary</span>
-                      ) : null}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <p className="rounded-[var(--ejo-radius-md)] border border-dashed border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
-                No Service Types set up yet —{' '}
-                <LoadingLink href="/workshop/vehicle-service/service-types" className="text-[var(--ejo-primary)] underline">
-                  add some first
-                </LoadingLink>
-                .
-              </p>
-            )}
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Customer&apos;s Requests</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Mileage at check-in (km)</label>
+              <input name="mileageAtCheckIn" type="number" min="0" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Reason for visit</label>
               <ServiceComplaintListInput />
             </div>
             <SubmitButton
