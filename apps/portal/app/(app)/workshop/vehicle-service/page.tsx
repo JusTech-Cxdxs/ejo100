@@ -1,6 +1,9 @@
+import { headers } from 'next/headers';
+import { auth } from '@/lib/auth';
+import { prisma } from '@ejo/database';
 import { listVehicleServices, listVehiclesDueForService } from '@/lib/actions/vehicle-service';
-import { getWorkshopBranchId } from '@/lib/actions/workshop';
-import { createVehicleServiceFormAction } from '@/lib/actions/vehicle-service-form-handlers';
+import { getWorkshopBranchId, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
+import { createVehicleServiceFormAction, updatePrimaryServiceIntervalFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { CustomerVehiclePicker } from '@/components/CustomerVehiclePicker';
 import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -39,11 +42,22 @@ const STATUS_CLASS: Record<string, string> = {
 export default async function VehicleServicePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; error?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; error?: string; status?: string; editInterval?: string }>;
 }) {
-  const { q, type, error, status } = await searchParams;
+  const { q, type, error, status, editInterval } = await searchParams;
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   const branchId = await getWorkshopBranchId().catch(() => null);
+  const session = await auth.api.getSession({ headers: await headers() });
+  const [isMasterAdmin, organisation] = await Promise.all([
+    currentUserIsMasterAdmin(),
+    session?.user?.id
+      ? prisma.user.findUnique({ where: { id: session.user.id }, select: { organisationId: true } }).then((u: { organisationId: string | null } | null) =>
+          u?.organisationId
+            ? prisma.organisation.findUnique({ where: { id: u.organisationId }, select: { id: true, primaryServiceIntervalKm: true, primaryServiceIntervalDays: true } })
+            : null,
+        )
+      : Promise.resolve(null),
+  ]);
   const [services, dueVehicles] = await Promise.all([
     branchId ? listVehicleServices(branchId, q, vehicleType) : Promise.resolve([]),
     branchId ? listVehiclesDueForService(branchId) : Promise.resolve([]),
@@ -59,12 +73,52 @@ export default async function VehicleServicePage({
       </LoadingLink>
       <div className="mb-2 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Vehicle Service</h1>
-        <LoadingLink
-          href="/workshop/vehicle-service/service-types"
-          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
-        >
-          Manage Service Types
-        </LoadingLink>
+        {isMasterAdmin && organisation ? (
+          editInterval === 'true' ? (
+            <form action={updatePrimaryServiceIntervalFormAction} className="flex flex-wrap items-end gap-2">
+              <FormPendingOverlay />
+              <input type="hidden" name="organisationId" value={organisation.id} />
+              <div>
+                <label className="mb-1 block text-[10px] text-[var(--ejo-text-muted)]">Every (km)</label>
+                <input
+                  name="primaryServiceIntervalKm"
+                  type="number"
+                  min="0"
+                  defaultValue={organisation.primaryServiceIntervalKm ?? undefined}
+                  placeholder="e.g. 10000"
+                  className="w-28 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] text-[var(--ejo-text-muted)]">Every (days)</label>
+                <input
+                  name="primaryServiceIntervalDays"
+                  type="number"
+                  min="0"
+                  defaultValue={organisation.primaryServiceIntervalDays ?? undefined}
+                  placeholder="e.g. 180"
+                  className="w-28 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                />
+              </div>
+              <SubmitButton
+                label="Save"
+                pendingLabel="Saving…"
+                className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+              />
+            </form>
+          ) : (
+            <LoadingLink
+              href="/workshop/vehicle-service?editInterval=true"
+              className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+            >
+              Primary Service every{' '}
+              {organisation.primaryServiceIntervalKm ? `${organisation.primaryServiceIntervalKm.toLocaleString('en-NG')} km` : null}
+              {organisation.primaryServiceIntervalKm && organisation.primaryServiceIntervalDays ? ' or ' : null}
+              {organisation.primaryServiceIntervalDays ? `${organisation.primaryServiceIntervalDays} days` : null}
+              {!organisation.primaryServiceIntervalKm && !organisation.primaryServiceIntervalDays ? 'Not set — click to set' : ''}
+            </LoadingLink>
+          )
+        ) : null}
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         Routine maintenance and minor customer requests — oil, filters, brake adjustment, AC top-up. If a
@@ -75,6 +129,11 @@ export default async function VehicleServicePage({
       {status === 'vehicle_service_deleted' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Vehicle Service deleted." />
+        </div>
+      ) : null}
+      {status === 'interval_updated' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Primary Service interval updated." />
         </div>
       ) : null}
       {error ? (
