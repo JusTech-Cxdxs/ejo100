@@ -144,6 +144,12 @@ export function InspectionWorkspace({
             {inspection.skippedAt ? ` on ${new Date(inspection.skippedAt).toLocaleString('en-NG')}` : ''}.
           </p>
           {inspection.skipReason ? <p className="mt-2 text-[var(--ejo-text-muted)]">Reason: {inspection.skipReason}</p> : null}
+          <LoadingLink
+            href={`/workshop/vehicle-service/${vehicleServiceId}`}
+            className="mt-3 inline-block text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+          >
+            Need to raise an estimate anyway? Go to {serviceNumber} →
+          </LoadingLink>
           <form action={cancelVehicleInspectionFormAction} className="mt-4">
             <FormPendingOverlay />
             <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
@@ -340,9 +346,17 @@ export function InspectionWorkspace({
                 className="mt-3 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2.5 text-sm font-medium text-white hover:opacity-90"
               />
               {isCompleted && inspection.completedAt ? (
-                <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
-                  Completed by {inspection.inspectedBy.fullName} on {new Date(inspection.completedAt).toLocaleString('en-NG')}.
-                </p>
+                <>
+                  <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+                    Completed by {inspection.inspectedBy.fullName} on {new Date(inspection.completedAt).toLocaleString('en-NG')}.
+                  </p>
+                  <LoadingLink
+                    href={`/workshop/vehicle-service/${vehicleServiceId}`}
+                    className="mt-2 inline-block text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+                  >
+                    Found something that needs an estimate? Go create it →
+                  </LoadingLink>
+                </>
               ) : null}
             </form>
 
