@@ -43,9 +43,9 @@ export default async function VehicleInspectionPage({
           <FormFeedbackBanner kind="error" message={error} />
         </div>
       ) : null}
-      {status === 'section_saved' ? (
+      {status === 'saved' ? (
         <div className="mb-6 max-w-xl">
-          <FormFeedbackBanner kind="success" message="Section saved." />
+          <FormFeedbackBanner kind="success" message="Changes saved." />
         </div>
       ) : null}
       {status === 'completed' ? (
