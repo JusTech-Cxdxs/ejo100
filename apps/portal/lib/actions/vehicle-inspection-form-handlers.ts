@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { startVehicleInspection, updateInspectionItems, completeVehicleInspection } from './vehicle-inspection';
+import { startVehicleInspection, skipVehicleInspection, updateInspectionItems, completeVehicleInspection } from './vehicle-inspection';
 import type { InspectionItemInput } from './vehicle-inspection';
 
 function str(formData: FormData, key: string): string {
@@ -20,6 +20,19 @@ export async function startVehicleInspectionFormAction(formData: FormData) {
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}/inspection`);
   redirect(`/workshop/vehicle-service/${vehicleServiceId}/inspection`);
+}
+
+export async function skipVehicleInspectionFormAction(formData: FormData) {
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
+  try {
+    await skipVehicleInspection(vehicleServiceId, str(formData, 'reason') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not skip this inspection.';
+    redirect(`/workshop/vehicle-service/${vehicleServiceId}/inspection?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}/inspection`);
+  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
+  redirect(`/workshop/vehicle-service/${vehicleServiceId}/inspection?status=skipped`);
 }
 
 /** One form per section on the inspection page — item IDs travel as

@@ -6,8 +6,6 @@ import {
   createVehicleService,
   updateVehicleServiceStatus,
   escalateVehicleServiceToJobCard,
-  createServiceType,
-  addServiceItemsToVehicleService,
   approveVehicleService,
   rejectVehicleService,
   assignTechnicianToVehicleService,
@@ -124,47 +122,14 @@ export async function escalateVehicleServiceFormAction(formData: FormData) {
   redirect(`/workshop/job-cards/${jobCardId}`);
 }
 
-export async function createServiceTypeFormAction(formData: FormData) {
-  const organisationId = str(formData, 'organisationId');
-  try {
-    await createServiceType(organisationId, {
-      name: str(formData, 'name'),
-      category: str(formData, 'category'),
-      intervalKm: num(formData, 'intervalKm'),
-      intervalDays: num(formData, 'intervalDays'),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not create this Service Type.';
-    redirect(`/workshop/vehicle-service/service-types?error=${encodeURIComponent(message)}`);
-  }
-  revalidatePath('/workshop/vehicle-service/service-types');
-  redirect('/workshop/vehicle-service/service-types?status=created');
-}
-
 export async function updatePrimaryServiceIntervalFormAction(formData: FormData) {
   const organisationId = str(formData, 'organisationId');
   try {
     await updatePrimaryServiceInterval(organisationId, num(formData, 'primaryServiceIntervalKm'), num(formData, 'primaryServiceIntervalDays'));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not update the Primary Service interval.';
-    redirect(`/workshop/vehicle-service/service-types?error=${encodeURIComponent(message)}`);
+    redirect(`/workshop/vehicle-service?error=${encodeURIComponent(message)}`);
   }
-  revalidatePath('/workshop/vehicle-service/service-types');
-  redirect('/workshop/vehicle-service/service-types?status=interval_updated');
-}
-
-export async function addServiceItemsFormAction(formData: FormData) {
-  const serviceId = str(formData, 'serviceId');
-  const serviceTypeIds = formData.getAll('serviceTypeIds').filter((v): v is string => typeof v === 'string');
-  if (serviceTypeIds.length === 0) {
-    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent('Select at least one item to add.')}`);
-  }
-  try {
-    await addServiceItemsToVehicleService(serviceId, serviceTypeIds);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not add these items.';
-    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
-  }
-  revalidatePath(`/workshop/vehicle-service/${serviceId}`);
-  redirect(`/workshop/vehicle-service/${serviceId}?status=items_added`);
+  revalidatePath('/workshop/vehicle-service');
+  redirect('/workshop/vehicle-service?status=interval_updated');
 }

@@ -518,7 +518,6 @@ export async function listVehicleServices(branchId: string, search?: string, veh
       createdAt: true,
       customer: { select: { fullName: true } },
       vehicle: { select: { make: true, model: true, plateNumber: true, vehicleType: true } },
-      items: { select: { serviceType: { select: { name: true } } } },
     },
   });
 }
@@ -536,48 +535,9 @@ export async function getVehicleService(serviceId: string) {
       approvedBy: { select: { id: true, fullName: true } },
       department: { select: { id: true, name: true } },
       escalatedToJobCard: { select: { id: true, jobNumber: true } },
-      items: { include: { serviceType: true } },
       complaints: { orderBy: { sequenceNumber: 'asc' } },
       branch: { select: { businessUnit: { select: { organisationId: true } } } },
     },
-  });
-}
-
-/**
- * Adds Service Types to an already-open Vehicle Service — the
- * supervisor's own real job after actually inspecting the vehicle,
- * never something the front desk decides when the customer first
- * walks in. Adding an item already on the visit is a harmless
- * no-op, same real reasoning as assignRole elsewhere in this app.
- */
-export async function addServiceItemsToVehicleService(serviceId: string, serviceTypeIds: string[]): Promise<void> {
-  const user = await requireUser();
-  const service = await prisma.vehicleService.findUnique({
-    where: { id: serviceId },
-    select: { status: true, serviceNumber: true },
-  });
-  if (!service) {
-    throw new VehicleServiceActionError('Vehicle Service record not found.');
-  }
-  if (service.status === 'COLLECTED' || service.status === 'CANCELLED') {
-    throw new VehicleServiceActionError(`Cannot add work to a Vehicle Service that's already ${service.status.toLowerCase()}.`);
-  }
-  const existing = await prisma.vehicleServiceItem.findMany({
-    where: { vehicleServiceId: serviceId },
-    select: { serviceTypeId: true },
-  });
-  const existingIds = new Set(existing.map((e: { serviceTypeId: string }) => e.serviceTypeId));
-  const toAdd = serviceTypeIds.filter((id) => !existingIds.has(id));
-  if (toAdd.length === 0) return;
-  await prisma.vehicleServiceItem.createMany({
-    data: toAdd.map((serviceTypeId) => ({ vehicleServiceId: serviceId, serviceTypeId })),
-  });
-  await writeAuditLog({
-    userId: user.id,
-    action: 'vehicle_service.items_added',
-    entityType: 'VehicleService',
-    entityId: serviceId,
-    metadata: { serviceNumber: service.serviceNumber, count: toAdd.length },
   });
 }
 
@@ -713,31 +673,6 @@ export async function escalateVehicleServiceToJobCard(
     metadata: { serviceNumber: service.serviceNumber, jobCardId: jobCard.id },
   });
   return { jobCardId: jobCard.id };
-}
-
-export async function listServiceTypes(organisationId: string) {
-  await requireUser();
-  return prisma.serviceType.findMany({
-    where: { organisationId, isActive: true },
-    orderBy: [{ category: 'asc' }, { name: 'asc' }],
-  });
-}
-
-export async function createServiceType(
-  organisationId: string,
-  input: { name: string; category: string; intervalKm?: number; intervalDays?: number },
-): Promise<{ id: string }> {
-  const user = await requireUser();
-  const name = input.name.trim();
-  const category = input.category.trim();
-  if (!name || !category) {
-    throw new VehicleServiceActionError('Enter a name and a category before saving.');
-  }
-  const serviceType = await prisma.serviceType.create({
-    data: { organisationId, name, category, intervalKm: input.intervalKm ?? null, intervalDays: input.intervalDays ?? null },
-  });
-  await writeAuditLog({ userId: user.id, action: 'service_type.created', entityType: 'ServiceType', entityId: serviceType.id, metadata: { name, category } });
-  return { id: serviceType.id };
 }
 
 /** The organisation's own configured Primary Service policy — the
