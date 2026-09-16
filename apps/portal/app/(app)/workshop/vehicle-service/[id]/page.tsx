@@ -227,6 +227,22 @@ export default async function VehicleServiceDetailPage({
           </div>
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Inspection</h2>
+              <LoadingLink
+                href={`/workshop/vehicle-service/${service.id}/inspection`}
+                className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+              >
+                Open Inspection
+              </LoadingLink>
+            </div>
+            <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+              The real technical record of what the supervisor/technician actually found on this vehicle —
+              separate from the work items below, which are what was decided to do about it.
+            </p>
+          </div>
+
+          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Service Items</h2>
             {service.items.length === 0 ? (
               <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No service items recorded yet.</p>
