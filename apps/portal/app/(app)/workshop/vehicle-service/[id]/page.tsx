@@ -252,11 +252,6 @@ export default async function VehicleServiceDetailPage({
                     <label key={t.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
                       <input type="checkbox" name="serviceTypeIds" value={t.id} className="rounded border-[var(--ejo-border)]" />
                       {t.name} <span className="text-[var(--ejo-text-muted)]">— {t.category}</span>
-                      {t.isPrimary ? (
-                        <span className="rounded-full bg-[var(--ejo-primary)]/15 px-1.5 py-0.5 text-[10px] font-medium text-[var(--ejo-primary)]">
-                          Primary anchor
-                        </span>
-                      ) : null}
                     </label>
                   ))}
                 </div>
@@ -287,6 +282,12 @@ export default async function VehicleServiceDetailPage({
                 {service.nextServiceDueDate ? formatDateOnly(service.nextServiceDueDate) : null}
                 {' — whichever comes first.'}
               </p>
+              {service.primaryServiceMileage != null ? (
+                <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+                  Based on Primary Service done at {service.primaryServiceMileage.toLocaleString('en-NG')} km
+                  {service.primaryServiceDate ? ` on ${formatDateOnly(service.primaryServiceDate)}` : ''}.
+                </p>
+              ) : null}
             </div>
           ) : null}
 
@@ -383,15 +384,28 @@ export default async function VehicleServiceDetailPage({
                   )
                 ) : null}
                 {nextAction.status === 'COMPLETED' ? (
-                  <div>
-                    <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Technician Notes</label>
-                    <textarea
-                      name="technicianNotes"
-                      rows={3}
-                      placeholder="What was actually done…"
-                      className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Technician Notes</label>
+                      <textarea
+                        name="technicianNotes"
+                        rows={3}
+                        placeholder="What was actually done…"
+                        className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                      />
+                    </div>
+                    <label className="flex items-start gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-xs text-[var(--ejo-text)]">
+                      <input type="checkbox" name="primaryServiceCompleted" className="mt-0.5 rounded border-[var(--ejo-border)]" />
+                      <span>
+                        <span className="font-medium">Primary Service (Engine Oil) done on this visit</span>
+                        <span className="block text-[var(--ejo-text-muted)]">
+                          Check this only if the vehicle&apos;s real periodic service was actually done today —
+                          this is what sets the vehicle&apos;s next-due mileage and date. Other work performed
+                          this visit doesn&apos;t affect it.
+                        </span>
+                      </span>
+                    </label>
+                  </>
                 ) : null}
                 <SubmitButton
                   label={nextAction.label}
