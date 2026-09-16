@@ -643,6 +643,14 @@ export async function escalateVehicleServiceToJobCard(
       escalatedToJobCardId: true,
       odometerAtService: true,
       complaints: { orderBy: { sequenceNumber: 'asc' }, select: { description: true } },
+      inspection: {
+        select: {
+          items: {
+            where: { severity: { in: ['ATTENTION', 'SERVICE_REQUIRED', 'CRITICAL'] } },
+            select: { section: true, name: true, condition: true, severity: true, action: true },
+          },
+        },
+      },
     },
   });
   if (!service) {
@@ -655,7 +663,22 @@ export async function escalateVehicleServiceToJobCard(
     throw new VehicleServiceActionError(`A Vehicle Service that's already ${service.status.toLowerCase()} cannot be escalated.`);
   }
 
-  const complaints = [...service.complaints.map((c: { description: string }) => c.description), additionalComplaint?.trim()].filter((c): c is string => Boolean(c));
+  // Real inspection findings carry straight into the new Job Card as
+  // their own real complaint lines — the supervisor building the
+  // estimate there sees exactly what was actually found, in the
+  // inspection's own words, rather than having to reopen the
+  // inspection separately or have it retyped from memory.
+  const findingLines = (service.inspection?.items ?? []).map((item: { section: string; name: string; condition: string | null; severity: string; action: string | null }) => {
+    const severityLabel = item.severity === 'CRITICAL' ? 'Critical' : item.severity === 'SERVICE_REQUIRED' ? 'Service Required' : 'Attention';
+    const detail = [item.condition, item.action].filter(Boolean).join(' — ');
+    return `[Inspection: ${severityLabel}] ${item.section} — ${item.name}${detail ? `: ${detail}` : ''}`;
+  });
+
+  const complaints = [
+    ...service.complaints.map((c: { description: string }) => c.description),
+    ...findingLines,
+    additionalComplaint?.trim(),
+  ].filter((c): c is string => Boolean(c));
   const jobCard = await createJobCard({
     customerId: service.customerId,
     vehicleId: service.vehicleId,
@@ -670,7 +693,7 @@ export async function escalateVehicleServiceToJobCard(
     action: 'vehicle_service.escalated_to_job_card',
     entityType: 'VehicleService',
     entityId: serviceId,
-    metadata: { serviceNumber: service.serviceNumber, jobCardId: jobCard.id },
+    metadata: { serviceNumber: service.serviceNumber, jobCardId: jobCard.id, findingsIncluded: findingLines.length },
   });
   return { jobCardId: jobCard.id };
 }
