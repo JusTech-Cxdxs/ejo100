@@ -749,6 +749,8 @@ export type UpdateVehicleInput = {
   engineNumber?: string;
   engineType?: string;
   mileage?: number;
+  serviceIntervalKm?: number;
+  serviceIntervalDays?: number;
 };
 
 /** Mirrors createVehicle()'s own validation exactly — same required
@@ -800,6 +802,8 @@ export async function updateVehicle(input: UpdateVehicleInput): Promise<void> {
       engineNumber: input.engineNumber?.trim() || null,
       engineType: input.engineType?.trim() || null,
       mileage: input.mileage ?? null,
+      serviceIntervalKm: input.serviceIntervalKm ?? null,
+      serviceIntervalDays: input.serviceIntervalDays ?? null,
     },
   });
 
@@ -830,6 +834,42 @@ export async function getLastEditInfo(entityType: string, entityId: string, acti
   if (!entry.userId) return { userName: 'Unknown', at: entry.createdAt };
   const user = await prisma.user.findUnique({ where: { id: entry.userId }, select: { fullName: true } });
   return { userName: user?.fullName ?? 'Unknown', at: entry.createdAt };
+}
+
+export type VehicleAuditEntry = {
+  id: string;
+  action: string;
+  createdAt: Date;
+  metadata: unknown;
+  user: { fullName: string } | null;
+};
+
+/** The vehicle's own full real history — every registration, edit,
+ * and deletion attempt ever logged against it, not just the single
+ * most recent edit getLastEditInfo above shows. No take limit,
+ * deliberately, matching every other real audit trail in this
+ * project — a vehicle's own history is never quietly cut off once it
+ * accumulates enough entries. */
+export async function getVehicleAuditTrail(vehicleId: string): Promise<VehicleAuditEntry[]> {
+  await requireUser();
+  const entries = await prisma.auditLog.findMany({
+    where: { entityType: 'CustomerVehicle', entityId: vehicleId },
+    orderBy: { createdAt: 'desc' },
+  });
+  const userIds = [
+    ...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id))),
+  ];
+  const users = userIds.length
+    ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } })
+    : [];
+  const userById = new Map(users.map((u: (typeof users)[number]) => [u.id, u]));
+  return entries.map((e: (typeof entries)[number]) => ({
+    id: e.id,
+    action: e.action,
+    createdAt: e.createdAt,
+    metadata: e.metadata,
+    user: e.userId ? (userById.get(e.userId) ?? null) : null,
+  }));
 }
 
 /** Permanently removes a vehicle and, via schema-level cascades, every
@@ -910,7 +950,7 @@ export async function listJobCards(status?: JobCardStatus, search?: string, vehi
     take: 100,
     include: {
       customer: { select: { fullName: true, phone: true } },
-      vehicle: { select: { make: true, model: true, plateNumber: true, vehicleType: true } },
+      vehicle: { select: { id: true, make: true, model: true, plateNumber: true, vehicleType: true } },
       assignedTechnician: { select: { fullName: true } },
     },
   });

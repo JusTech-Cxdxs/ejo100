@@ -133,13 +133,16 @@ export async function updateVehicleFormAction(formData: FormData) {
       engineNumber: str(formData, 'engineNumber') || undefined,
       engineType: str(formData, 'engineType') || undefined,
       mileage: num(formData, 'mileage'),
+      serviceIntervalKm: num(formData, 'serviceIntervalKm'),
+      serviceIntervalDays: num(formData, 'serviceIntervalDays'),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not update this vehicle.';
-    redirect(`/workshop/vehicles/${id}/edit?error=${encodeURIComponent(message)}`);
+    redirect(`/workshop/vehicles/${id}/edit?edit=true&error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/vehicles');
-  redirect('/workshop/vehicles?status=vehicle_updated');
+  revalidatePath(`/workshop/vehicles/${id}/edit`);
+  redirect(`/workshop/vehicles/${id}/edit?status=vehicle_updated`);
 }
 
 export async function createJobCardFormAction(formData: FormData) {

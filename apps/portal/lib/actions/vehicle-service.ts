@@ -517,7 +517,7 @@ export async function listVehicleServices(branchId: string, search?: string, veh
       status: true,
       createdAt: true,
       customer: { select: { fullName: true } },
-      vehicle: { select: { make: true, model: true, plateNumber: true, vehicleType: true } },
+      vehicle: { select: { id: true, make: true, model: true, plateNumber: true, vehicleType: true } },
     },
   });
 }
@@ -562,6 +562,7 @@ export async function updateVehicleServiceStatus(
       serviceNumber: true,
       vehicleId: true,
       odometerAtService: true,
+      vehicle: { select: { serviceIntervalKm: true, serviceIntervalDays: true } },
       branch: { select: { businessUnit: { select: { organisation: { select: { id: true, primaryServiceIntervalKm: true, primaryServiceIntervalDays: true } } } } } },
     },
   });
@@ -593,7 +594,14 @@ export async function updateVehicleServiceStatus(
     if (input?.primaryServiceCompleted) {
       const now = new Date();
       const org = service.branch.businessUnit.organisation;
-      const nextDue = calculateNextServiceDue(odometerAtService, now, org.primaryServiceIntervalKm, org.primaryServiceIntervalDays);
+      // This vehicle's own real interval takes priority over the
+      // organisation's default the moment either one is actually
+      // set — a manufacturer's genuine recommended interval for one
+      // specific vehicle should never be silently overridden by a
+      // generic organisation-wide number.
+      const intervalKm = service.vehicle.serviceIntervalKm ?? org.primaryServiceIntervalKm;
+      const intervalDays = service.vehicle.serviceIntervalDays ?? org.primaryServiceIntervalDays;
+      const nextDue = calculateNextServiceDue(odometerAtService, now, intervalKm, intervalDays);
       data.primaryServiceMileage = odometerAtService;
       data.primaryServiceDate = now;
       data.nextServiceDueOdometer = nextDue.dueOdometer;
