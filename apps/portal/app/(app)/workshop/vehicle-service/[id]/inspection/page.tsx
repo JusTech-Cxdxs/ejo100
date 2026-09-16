@@ -58,6 +58,11 @@ export default async function VehicleInspectionPage({
           <FormFeedbackBanner kind="success" message="Inspection skipped and recorded." />
         </div>
       ) : null}
+      {status === 'inspection_cancelled' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Inspection cancelled — choose to start or skip again below." />
+        </div>
+      ) : null}
 
       {!vehicleType ? (
         <div className="max-w-md rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-6 text-sm text-[var(--ejo-text)]">
