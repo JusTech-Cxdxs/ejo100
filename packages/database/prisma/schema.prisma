@@ -578,6 +578,14 @@ model CustomerVehicle {
   // determines whether a part fits.
   engineType   String?
   mileage       Int?     // last known odometer reading, updated at each Job Card check-in
+  // This specific vehicle's own real service interval — overrides the
+  // organisation's own default (Organisation.primaryServiceIntervalKm/
+  // Days) only when actually set, since different real vehicles
+  // genuinely have different manufacturer-recommended intervals. Both
+  // null means "use the organisation's own default", never a
+  // fabricated per-vehicle number nobody actually provided.
+  serviceIntervalKm   Int?
+  serviceIntervalDays Int?
 
   createdById String? // staff member who registered this vehicle
   createdBy   User?   @relation("VehicleCreatedBy", fields: [createdById], references: [id])
