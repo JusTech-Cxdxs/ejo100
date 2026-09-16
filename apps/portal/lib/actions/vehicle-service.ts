@@ -363,6 +363,132 @@ export async function deleteVehicleService(serviceId: string): Promise<void> {
   await prisma.vehicleService.delete({ where: { id: serviceId } });
 }
 
+export type VehicleServiceHealth = {
+  status: 'UP_TO_DATE' | 'DUE_SOON' | 'OVERDUE' | 'NO_DATA';
+  nextServiceDueOdometer: number | null;
+  nextServiceDueDate: Date | null;
+  primaryServiceMileage: number | null;
+  primaryServiceDate: Date | null;
+  serviceId: string;
+  serviceNumber: string;
+};
+
+/**
+ * The vehicle's own real service status, right now — up to date, due
+ * soon, or overdue — based on the most recent completed Vehicle
+ * Service that actually has a real next-due prediction. Genuinely
+ * different from that Vehicle Service's own real status; this
+ * answers "is this vehicle due", not "is this visit finished".
+ * DUE_SOON is a deliberately generous real window (1,000km or 30
+ * days) — a workshop wants advance notice, not a surprise on the due
+ * date itself. NO_DATA means honestly what it says: no completed
+ * Primary Service exists yet to calculate from, never treated as
+ * OVERDUE by default.
+ */
+export async function getVehicleServiceHealth(vehicleId: string): Promise<VehicleServiceHealth | null> {
+  await requireUser();
+  const vehicle = await prisma.customerVehicle.findUnique({ where: { id: vehicleId }, select: { mileage: true } });
+  if (!vehicle) return null;
+
+  const latest = await prisma.vehicleService.findFirst({
+    where: { vehicleId, OR: [{ nextServiceDueOdometer: { not: null } }, { nextServiceDueDate: { not: null } }] },
+    orderBy: { primaryServiceDate: 'desc' },
+    select: { id: true, serviceNumber: true, nextServiceDueOdometer: true, nextServiceDueDate: true, primaryServiceMileage: true, primaryServiceDate: true },
+  });
+  if (!latest) return null;
+
+  const DUE_SOON_KM = 1000;
+  const DUE_SOON_DAYS = 30;
+  const now = new Date();
+  let status: VehicleServiceHealth['status'] = 'UP_TO_DATE';
+
+  const kmRemaining = latest.nextServiceDueOdometer !== null && vehicle.mileage !== null ? latest.nextServiceDueOdometer - vehicle.mileage : null;
+  const daysRemaining = latest.nextServiceDueDate !== null ? Math.ceil((latest.nextServiceDueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+  const overdueByKm = kmRemaining !== null && kmRemaining <= 0;
+  const overdueByDate = daysRemaining !== null && daysRemaining <= 0;
+  const dueSoonByKm = kmRemaining !== null && kmRemaining <= DUE_SOON_KM;
+  const dueSoonByDate = daysRemaining !== null && daysRemaining <= DUE_SOON_DAYS;
+
+  if (overdueByKm || overdueByDate) {
+    status = 'OVERDUE';
+  } else if (dueSoonByKm || dueSoonByDate) {
+    status = 'DUE_SOON';
+  }
+
+  return {
+    status,
+    nextServiceDueOdometer: latest.nextServiceDueOdometer,
+    nextServiceDueDate: latest.nextServiceDueDate,
+    primaryServiceMileage: latest.primaryServiceMileage,
+    primaryServiceDate: latest.primaryServiceDate,
+    serviceId: latest.id,
+    serviceNumber: latest.serviceNumber,
+  };
+}
+
+export type VehicleDueForService = {
+  vehicleId: string;
+  status: 'DUE_SOON' | 'OVERDUE';
+  vehicleDescription: string;
+  plateNumber: string | null;
+  customerName: string;
+  nextServiceDueOdometer: number | null;
+  nextServiceDueDate: Date | null;
+};
+
+/**
+ * Every real vehicle at this branch genuinely due soon or overdue —
+ * the workshop's own real "who needs a reminder" list. Only ever the
+ * latest Primary Service completion per vehicle counts; an older,
+ * superseded prediction from a previous visit never lingers here
+ * once a newer one exists.
+ */
+export async function listVehiclesDueForService(branchId: string): Promise<VehicleDueForService[]> {
+  await requireUser();
+  const services = await prisma.vehicleService.findMany({
+    where: { branchId, OR: [{ nextServiceDueOdometer: { not: null } }, { nextServiceDueDate: { not: null } }] },
+    orderBy: { primaryServiceDate: 'desc' },
+    select: {
+      vehicleId: true,
+      nextServiceDueOdometer: true,
+      nextServiceDueDate: true,
+      vehicle: { select: { make: true, model: true, plateNumber: true, mileage: true } },
+      customer: { select: { fullName: true } },
+    },
+  });
+
+  const DUE_SOON_KM = 1000;
+  const DUE_SOON_DAYS = 30;
+  const now = new Date();
+  const seenVehicles = new Set<string>();
+  const due: VehicleDueForService[] = [];
+
+  for (const s of services) {
+    if (seenVehicles.has(s.vehicleId)) continue; // only the latest real prediction per vehicle counts
+    seenVehicles.add(s.vehicleId);
+
+    const kmRemaining = s.nextServiceDueOdometer !== null && s.vehicle.mileage !== null ? s.nextServiceDueOdometer - s.vehicle.mileage : null;
+    const daysRemaining = s.nextServiceDueDate !== null ? Math.ceil((s.nextServiceDueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+    const overdue = (kmRemaining !== null && kmRemaining <= 0) || (daysRemaining !== null && daysRemaining <= 0);
+    const dueSoon = (kmRemaining !== null && kmRemaining <= DUE_SOON_KM) || (daysRemaining !== null && daysRemaining <= DUE_SOON_DAYS);
+
+    if (overdue || dueSoon) {
+      due.push({
+        vehicleId: s.vehicleId,
+        status: overdue ? 'OVERDUE' : 'DUE_SOON',
+        vehicleDescription: [s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+        plateNumber: s.vehicle.plateNumber,
+        customerName: s.customer.fullName,
+        nextServiceDueOdometer: s.nextServiceDueOdometer,
+        nextServiceDueDate: s.nextServiceDueDate,
+      });
+    }
+  }
+
+  return due.sort((a, b) => (a.status === b.status ? 0 : a.status === 'OVERDUE' ? -1 : 1));
+}
+
 export async function listVehicleServices(branchId: string, search?: string, vehicleType?: 'PASSENGER' | 'COMMERCIAL', status?: string) {
   await requireUser();
   const q = search?.trim();
