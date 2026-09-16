@@ -210,8 +210,10 @@ export default async function VehicleServicePage({
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text)]">{s.customer.fullName}</td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
-                      {[s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || '—'}
-                      {s.vehicle.plateNumber ? ` — ${s.vehicle.plateNumber}` : ''}
+                      <LoadingLink href={`/workshop/vehicles/${s.vehicle.id}/edit`} className="hover:underline hover:text-[var(--ejo-text)]">
+                        {[s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || '—'}
+                        {s.vehicle.plateNumber ? ` — ${s.vehicle.plateNumber}` : ''}
+                      </LoadingLink>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_CLASS[s.status]}`}>{STATUS_LABEL[s.status]}</span>
