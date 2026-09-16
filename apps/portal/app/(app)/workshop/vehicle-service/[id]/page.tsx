@@ -1,14 +1,9 @@
 import { notFound } from 'next/navigation';
-import {
-  getVehicleService,
-  listServiceTypes,
-  getVehicleServiceAuditTrail,
-} from '@/lib/actions/vehicle-service';
+import { getVehicleService, getVehicleServiceAuditTrail } from '@/lib/actions/vehicle-service';
 import { listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import {
   updateVehicleServiceStatusFormAction,
   escalateVehicleServiceFormAction,
-  addServiceItemsFormAction,
   approveVehicleServiceFormAction,
   rejectVehicleServiceFormAction,
   assignTechnicianToVehicleServiceFormAction,
@@ -54,7 +49,6 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle_service.rejected': 'Vehicle Service rejected',
   'vehicle_service.status_updated': 'Status updated',
   'vehicle_service.technician_assigned': 'Technician assigned',
-  'vehicle_service.items_added': 'Service items added',
   'vehicle_service.escalated_to_job_card': 'Escalated to Job Card',
 };
 
@@ -68,8 +62,6 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
       return typeof meta.from === 'string' && typeof meta.to === 'string' ? `${meta.from} → ${meta.to}` : null;
     case 'vehicle_service.technician_assigned':
       return typeof meta.technicianName === 'string' ? meta.technicianName : null;
-    case 'vehicle_service.items_added':
-      return typeof meta.count === 'number' ? `${meta.count} item${meta.count === 1 ? '' : 's'}` : null;
     default:
       return null;
   }
@@ -95,14 +87,7 @@ export default async function VehicleServiceDetailPage({
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
   const canEscalate = !service.escalatedToJobCard && service.status !== 'COLLECTED' && service.status !== 'CANCELLED';
-  const canAddItems = service.status !== 'COLLECTED' && service.status !== 'CANCELLED';
-  const [serviceTypes, technicians, auditTrail] = await Promise.all([
-    canAddItems ? listServiceTypes(service.branch.businessUnit.organisationId) : Promise.resolve([]),
-    listTechnicianCandidates(),
-    getVehicleServiceAuditTrail(id),
-  ]);
-  const existingItemIds = new Set(service.items.map((item: (typeof service.items)[number]) => item.serviceTypeId));
-  const availableServiceTypes = serviceTypes.filter((t: (typeof serviceTypes)[number]) => !existingItemIds.has(t.id));
+  const [technicians, auditTrail] = await Promise.all([listTechnicianCandidates(), getVehicleServiceAuditTrail(id)]);
 
   return (
     <div className="p-8">
@@ -237,56 +222,8 @@ export default async function VehicleServiceDetailPage({
               </LoadingLink>
             </div>
             <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-              The real technical record of what the supervisor/technician actually found on this vehicle —
-              separate from the work items below, which are what was decided to do about it.
+              The real technical record of what the supervisor/technician actually found on this vehicle.
             </p>
-          </div>
-
-          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Service Items</h2>
-            {service.items.length === 0 ? (
-              <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No service items recorded yet.</p>
-            ) : (
-              <ul className="mt-3 space-y-1.5 text-sm">
-                {service.items.map((item: (typeof service.items)[number]) => (
-                  <li key={item.id} className="flex items-center justify-between rounded-[var(--ejo-radius-md)] bg-[var(--ejo-bg)] px-3 py-2">
-                    <span className="text-[var(--ejo-text)]">{item.serviceType.name}</span>
-                    <span className="text-xs text-[var(--ejo-text-muted)]">{item.serviceType.category}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {canAddItems && availableServiceTypes.length > 0 ? (
-              <form action={addServiceItemsFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
-                <FormPendingOverlay />
-                <input type="hidden" name="serviceId" value={service.id} />
-                <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">
-                  Add work found after inspecting the vehicle
-                </p>
-                <div className="max-h-40 space-y-1 overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-2">
-                  {availableServiceTypes.map((t: (typeof availableServiceTypes)[number]) => (
-                    <label key={t.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
-                      <input type="checkbox" name="serviceTypeIds" value={t.id} className="rounded border-[var(--ejo-border)]" />
-                      {t.name} <span className="text-[var(--ejo-text-muted)]">— {t.category}</span>
-                    </label>
-                  ))}
-                </div>
-                <SubmitButton
-                  label="Add to this Service"
-                  pendingLabel="Adding…"
-                  className="mt-2 w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-                />
-              </form>
-            ) : null}
-            {canAddItems && availableServiceTypes.length === 0 && serviceTypes.length === 0 ? (
-              <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
-                No Service Types set up yet —{' '}
-                <LoadingLink href="/workshop/vehicle-service/service-types" className="text-[var(--ejo-primary)] underline">
-                  add some first
-                </LoadingLink>
-                .
-              </p>
-            ) : null}
           </div>
 
           {(service.nextServiceDueOdometer || service.nextServiceDueDate) ? (
@@ -411,13 +348,12 @@ export default async function VehicleServiceDetailPage({
                       />
                     </div>
                     <label className="flex items-start gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-xs text-[var(--ejo-text)]">
-                      <input type="checkbox" name="primaryServiceCompleted" className="mt-0.5 rounded border-[var(--ejo-border)]" />
+                      <input type="checkbox" name="primaryServiceCompleted" className="mt-0.5 h-4 w-4 rounded border-[var(--ejo-border)]" />
                       <span>
-                        <span className="font-medium">Primary Service (Engine Oil) done on this visit</span>
+                        <span className="font-medium">Engine oil was changed on this visit</span>
                         <span className="block text-[var(--ejo-text-muted)]">
-                          Check this only if the vehicle&apos;s real periodic service was actually done today —
-                          this is what sets the vehicle&apos;s next-due mileage and date. Other work performed
-                          this visit doesn&apos;t affect it.
+                          This is what tells the system when the vehicle is next due — based on this
+                          odometer reading. Leave unchecked if oil wasn&apos;t changed today.
                         </span>
                       </span>
                     </label>
