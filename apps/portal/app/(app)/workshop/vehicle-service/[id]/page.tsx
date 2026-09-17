@@ -1,8 +1,18 @@
 import { notFound } from 'next/navigation';
 import { getVehicleService, getVehicleServiceAuditTrail } from '@/lib/actions/vehicle-service';
 import { getVehicleInspection } from '@/lib/actions/vehicle-inspection';
+import { getServiceEstimate } from '@/lib/actions/vehicle-service-estimate';
 import { cancelVehicleInspectionFormAction } from '@/lib/actions/vehicle-inspection-form-handlers';
+import {
+  createServiceEstimateFormAction,
+  addServiceEstimateLineItemFormAction,
+  removeServiceEstimateLineItemFormAction,
+  matchServiceEstimateStorePartLineFormAction,
+  submitServiceEstimateFormAction,
+  approveServiceEstimateFormAction,
+} from '@/lib/actions/vehicle-service-estimate-form-handlers';
 import { listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
+import { listPartTypes, listParts } from '@/lib/actions/store';
 import {
   updateVehicleServiceStatusFormAction,
   escalateVehicleServiceFormAction,
@@ -76,6 +86,8 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
     case 'vehicle_inspection.skipped':
     case 'vehicle_inspection.cancelled':
       return typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : null;
+    case 'vehicle_service.escalated_to_job_card':
+      return typeof meta.jobNumber === 'string' ? `New Job Card: ${meta.jobNumber}` : null;
     default:
       return null;
   }
@@ -101,7 +113,14 @@ export default async function VehicleServiceDetailPage({
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
   const canEscalate = !service.escalatedToJobCard && service.status !== 'COLLECTED' && service.status !== 'CANCELLED';
-  const [technicians, auditTrail, inspection] = await Promise.all([listTechnicianCandidates(), getVehicleServiceAuditTrail(id), getVehicleInspection(id)]);
+  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, parts] = await Promise.all([
+    listTechnicianCandidates(),
+    getVehicleServiceAuditTrail(id),
+    getVehicleInspection(id),
+    getServiceEstimate(id),
+    listPartTypes(service.branchId),
+    listParts(service.branchId),
+  ]);
 
   return (
     <div className="p-8">
@@ -120,6 +139,36 @@ export default async function VehicleServiceDetailPage({
       {status === 'inspection_cancelled' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Inspection cancelled." />
+        </div>
+      ) : null}
+      {status === 'estimate_started' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Service Estimate started." />
+        </div>
+      ) : null}
+      {status === 'line_added' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Line item added." />
+        </div>
+      ) : null}
+      {status === 'line_removed' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Line item removed." />
+        </div>
+      ) : null}
+      {status === 'line_matched' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Matched to a real Part." />
+        </div>
+      ) : null}
+      {status === 'estimate_submitted' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Estimate submitted." />
+        </div>
+      ) : null}
+      {status === 'estimate_approved' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Estimate approved." />
         </div>
       ) : null}
 
@@ -300,6 +349,188 @@ export default async function VehicleServiceDetailPage({
               </div>
             )}
           </div>
+
+          {!service.escalatedToJobCard && inspection && inspection.status !== 'IN_PROGRESS' ? (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Service Estimate</h2>
+                {serviceEstimate ? (
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      serviceEstimate.status === 'APPROVED'
+                        ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
+                        : serviceEstimate.status === 'SUBMITTED'
+                          ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
+                          : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
+                    }`}
+                  >
+                    {serviceEstimate.status === 'APPROVED' ? 'Approved' : serviceEstimate.status === 'SUBMITTED' ? 'Submitted' : 'Draft'}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                For routine work that doesn&apos;t need a Job Card — engine oil, filters, and other items the
+                customer still needs priced and approved.
+              </p>
+
+              {!serviceEstimate ? (
+                <form action={createServiceEstimateFormAction} className="mt-3">
+                  <FormPendingOverlay />
+                  <input type="hidden" name="vehicleServiceId" value={service.id} />
+                  <SubmitButton
+                    label="Start Service Estimate"
+                    pendingLabel="Starting…"
+                    className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                  />
+                </form>
+              ) : (
+                <>
+                  {serviceEstimate.lineItems.length > 0 ? (
+                    <table className="mt-4 w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
+                          <th className="py-1.5 pr-2 font-medium">Description</th>
+                          <th className="py-1.5 pr-2 font-medium">Type</th>
+                          <th className="py-1.5 pr-2 font-medium">Qty</th>
+                          <th className="py-1.5 pr-2 font-medium">Unit</th>
+                          <th className="py-1.5 pr-2 font-medium">Unit Price</th>
+                          <th className="py-1.5 pr-2 font-medium">Amount</th>
+                          {serviceEstimate.status !== 'APPROVED' ? <th className="py-1.5" /> : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {serviceEstimate.lineItems.map((line: (typeof serviceEstimate.lineItems)[number]) => {
+                          const quantity = Number(line.quantity);
+                          const unitPrice = line.unitPrice != null ? Number(line.unitPrice) : null;
+                          const amount = line.amount != null ? Number(line.amount) : unitPrice != null ? quantity * unitPrice : null;
+                          const needsMatch = line.type === 'STORE_PART' && !line.matchedPartId;
+                          return (
+                            <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                              <td className="py-1.5 pr-2 text-[var(--ejo-text)]">{line.description}</td>
+                              <td className="py-1.5 pr-2 text-[var(--ejo-text-muted)]">{line.type === 'STORE_PART' ? 'Store Part' : 'Other'}</td>
+                              <td className="py-1.5 pr-2 text-[var(--ejo-text-muted)]">{quantity}</td>
+                              <td className="py-1.5 pr-2 text-[var(--ejo-text-muted)]">{line.unitOfMeasure ?? '—'}</td>
+                              <td className="py-1.5 pr-2 text-[var(--ejo-text-muted)]">{unitPrice != null ? `₦${unitPrice.toLocaleString('en-NG')}` : needsMatch ? 'Awaiting match' : '—'}</td>
+                              <td className="py-1.5 pr-2 text-[var(--ejo-text)]">{amount != null ? `₦${amount.toLocaleString('en-NG')}` : '—'}</td>
+                              {serviceEstimate.status !== 'APPROVED' ? (
+                                <td className="py-1.5">
+                                  {needsMatch ? (
+                                    <form action={matchServiceEstimateStorePartLineFormAction} className="flex items-center gap-1">
+                                      <FormPendingOverlay />
+                                      <input type="hidden" name="lineItemId" value={line.id} />
+                                      <input type="hidden" name="vehicleServiceId" value={service.id} />
+                                      <select name="partId" required className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-1.5 py-1 text-[10px] text-[var(--ejo-text)]">
+                                        <option value="">Match to Part…</option>
+                                        {parts.map((p: (typeof parts)[number]) => (
+                                          <option key={p.id} value={p.id}>
+                                            {p.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <button type="submit" className="text-xs text-[var(--ejo-primary)] hover:underline">
+                                        Match
+                                      </button>
+                                    </form>
+                                  ) : (
+                                    <form action={removeServiceEstimateLineItemFormAction}>
+                                      <FormPendingOverlay />
+                                      <input type="hidden" name="lineItemId" value={line.id} />
+                                      <input type="hidden" name="vehicleServiceId" value={service.id} />
+                                      <button type="submit" className="text-xs text-[var(--ejo-error)] hover:underline">
+                                        Remove
+                                      </button>
+                                    </form>
+                                  )}
+                                </td>
+                              ) : null}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">No line items yet.</p>
+                  )}
+
+                  {serviceEstimate.status === 'DRAFT' ? (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <form action={addServiceEstimateLineItemFormAction} className="space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3">
+                        <FormPendingOverlay />
+                        <input type="hidden" name="estimateId" value={serviceEstimate.id} />
+                        <input type="hidden" name="vehicleServiceId" value={service.id} />
+                        <input type="hidden" name="type" value="STORE_PART" />
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Add Store Part</p>
+                        <select name="partTypeId" required className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 py-1.5 text-xs text-[var(--ejo-text)]">
+                          <option value="">Select part type…</option>
+                          {partTypes.map((pt: (typeof partTypes)[number]) => (
+                            <option key={pt.id} value={pt.id}>
+                              {pt.name}
+                            </option>
+                          ))}
+                        </select>
+                        <input name="quantity" type="number" min="0.01" step="0.01" required defaultValue="1" placeholder="Qty" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 py-1.5 text-xs text-[var(--ejo-text)]" />
+                        <SubmitButton
+                          label="Add Store Part"
+                          pendingLabel="Adding…"
+                          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+                        />
+                        <p className="text-[10px] text-[var(--ejo-text-muted)]">
+                          Store matches this to a real Part and its price — same as Job Card&apos;s own estimate.
+                        </p>
+                      </form>
+
+                      <form action={addServiceEstimateLineItemFormAction} className="space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3">
+                        <FormPendingOverlay />
+                        <input type="hidden" name="estimateId" value={serviceEstimate.id} />
+                        <input type="hidden" name="vehicleServiceId" value={service.id} />
+                        <input type="hidden" name="type" value="OTHER" />
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Add Other Line</p>
+                        <input name="description" required placeholder="e.g. Labour" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 py-1.5 text-xs text-[var(--ejo-text)]" />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input name="quantity" type="number" min="0.01" step="0.01" required defaultValue="1" placeholder="Qty" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 py-1.5 text-xs text-[var(--ejo-text)]" />
+                          <input name="unitPrice" type="number" min="0" step="0.01" placeholder="₦ Unit Price" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 py-1.5 text-xs text-[var(--ejo-text)]" />
+                        </div>
+                        <SubmitButton
+                          label="Add Other Line"
+                          pendingLabel="Adding…"
+                          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+                        />
+                      </form>
+                    </div>
+                  ) : null}
+
+                  {serviceEstimate.status === 'DRAFT' ? (
+                    <form action={submitServiceEstimateFormAction} className="mt-4">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="estimateId" value={serviceEstimate.id} />
+                      <input type="hidden" name="vehicleServiceId" value={service.id} />
+                      <SubmitButton
+                        label="Submit Estimate"
+                        pendingLabel="Submitting…"
+                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                      />
+                    </form>
+                  ) : serviceEstimate.status === 'SUBMITTED' ? (
+                    <form action={approveServiceEstimateFormAction} className="mt-4">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="estimateId" value={serviceEstimate.id} />
+                      <input type="hidden" name="vehicleServiceId" value={service.id} />
+                      <SubmitButton
+                        label="Approve Estimate"
+                        pendingLabel="Approving…"
+                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                      />
+                    </form>
+                  ) : (
+                    <p className="mt-4 text-xs text-[var(--ejo-text-muted)]">
+                      Approved by {serviceEstimate.approvedBy?.fullName ?? '—'}
+                      {serviceEstimate.approvedAt ? ` on ${formatDateOnly(serviceEstimate.approvedAt)}` : ''}.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          ) : null}
 
           {(service.nextServiceDueOdometer || service.nextServiceDueDate) ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/30 bg-[var(--ejo-info)]/5 p-6">
