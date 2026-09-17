@@ -13,6 +13,7 @@ import {
   approvePartRequestSlipByStore,
   releasePartRequestSlip,
   rejectPartRequestSlip,
+  requestServiceEstimatePartRequestSlip,
   requestExternalProcurementBatch,
   addExternalProcurementSupplementaryLine,
   removeExternalProcurementSupplementaryLine,
@@ -48,9 +49,27 @@ export async function requestPartRequestSlipFormAction(formData: FormData) {
   redirect(`/workshop/job-cards/${jobCardId}?status=parts_requested`);
 }
 
+/** The Vehicle Service equivalent of requestPartRequestSlipFormAction —
+ * entirely separate function, since it redirects back to the Service
+ * Estimate's own real page, never the Job Card one. */
+export async function requestServiceEstimatePartRequestSlipFormAction(formData: FormData) {
+  const serviceEstimateId = str(formData, 'serviceEstimateId');
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
+  try {
+    await requestServiceEstimatePartRequestSlip(serviceEstimateId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not raise the parts request.';
+    redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
+  revalidatePath('/workshop/parts-requests');
+  redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=parts_requested`);
+}
+
 export async function approvePartRequestSlipByHodFormAction(formData: FormData) {
   const slipId = str(formData, 'slipId');
   const jobCardId = str(formData, 'jobCardId');
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
   try {
     await approvePartRequestSlipByHod(slipId, str(formData, 'notes') || undefined);
   } catch (err) {
@@ -60,12 +79,14 @@ export async function approvePartRequestSlipByHodFormAction(formData: FormData) 
   revalidatePath(`/workshop/parts-requests/${slipId}`);
   revalidatePath('/workshop/parts-requests');
   if (jobCardId) revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  if (vehicleServiceId) revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
   redirect(`/workshop/parts-requests/${slipId}?status=hod_approved`);
 }
 
 export async function approvePartRequestSlipByStoreFormAction(formData: FormData) {
   const slipId = str(formData, 'slipId');
   const jobCardId = str(formData, 'jobCardId');
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
   try {
     await approvePartRequestSlipByStore(slipId, str(formData, 'notes') || undefined);
   } catch (err) {
@@ -75,12 +96,14 @@ export async function approvePartRequestSlipByStoreFormAction(formData: FormData
   revalidatePath(`/workshop/parts-requests/${slipId}`);
   revalidatePath('/workshop/parts-requests');
   if (jobCardId) revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  if (vehicleServiceId) revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
   redirect(`/workshop/parts-requests/${slipId}?status=store_approved`);
 }
 
 export async function releasePartRequestSlipFormAction(formData: FormData) {
   const slipId = str(formData, 'slipId');
   const jobCardId = str(formData, 'jobCardId');
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
   try {
     const serializedLineIds = formData.getAll('serializedLineId').map((v) => (typeof v === 'string' ? v : ''));
     const lineSerials: Record<string, string[]> = {};
@@ -100,12 +123,14 @@ export async function releasePartRequestSlipFormAction(formData: FormData) {
   revalidatePath('/workshop/parts-requests');
   revalidatePath('/inventory/parts');
   if (jobCardId) revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  if (vehicleServiceId) revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
   redirect(`/workshop/parts-requests/${slipId}?status=released`);
 }
 
 export async function rejectPartRequestSlipFormAction(formData: FormData) {
   const slipId = str(formData, 'slipId');
   const jobCardId = str(formData, 'jobCardId');
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
   try {
     await rejectPartRequestSlip(slipId, str(formData, 'reason'));
   } catch (err) {
@@ -115,6 +140,7 @@ export async function rejectPartRequestSlipFormAction(formData: FormData) {
   revalidatePath(`/workshop/parts-requests/${slipId}`);
   revalidatePath('/workshop/parts-requests');
   if (jobCardId) revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  if (vehicleServiceId) revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
   redirect(`/workshop/parts-requests/${slipId}?status=rejected`);
 }
 
