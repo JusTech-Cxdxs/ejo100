@@ -626,6 +626,77 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
   return due.sort((a, b) => (a.status === b.status ? 0 : a.status === 'OVERDUE' ? -1 : 1));
 }
 
+export type VehicleServiceCustodyEntry = {
+  id: string;
+  serviceNumber: string;
+  customerName: string;
+  vehicleDescription: string;
+  status: string;
+  createdAt: Date;
+};
+
+/**
+ * The Vehicle Service equivalent of getWorkshopCustodySummary — real
+ * categories that match what staff actually need to act on here,
+ * genuinely different from Job Card's own physical-custody/collection-
+ * deadline categories: what's currently in service, what's done but
+ * not yet collected, and — reusing listVehiclesDueForService directly
+ * rather than duplicating its logic — which real vehicles are coming
+ * due or already overdue for their next service. This is also the
+ * one real place a future reminder job would read from.
+ */
+export async function getVehicleServiceCustodySummary(branchId: string, search?: string) {
+  const [inService, completed, dueForService] = await Promise.all([
+    listVehicleServicesByStatuses(branchId, ['SCHEDULED', 'CHECKED_IN', 'IN_SERVICE'], search),
+    listVehicleServicesByStatuses(branchId, ['COMPLETED'], search),
+    listVehiclesDueForService(branchId),
+  ]);
+  return {
+    inService,
+    completed,
+    dueSoon: dueForService.filter((v) => v.status === 'DUE_SOON'),
+    overdue: dueForService.filter((v) => v.status === 'OVERDUE'),
+    total: inService.length + completed.length,
+  };
+}
+
+async function listVehicleServicesByStatuses(branchId: string, statuses: string[], search?: string): Promise<VehicleServiceCustodyEntry[]> {
+  await requireUser();
+  const q = search?.trim();
+  const services = await prisma.vehicleService.findMany({
+    where: {
+      branchId,
+      status: { in: statuses as never[] },
+      ...(q
+        ? {
+            OR: [
+              { serviceNumber: { contains: q, mode: 'insensitive' } },
+              { customer: { fullName: { contains: q, mode: 'insensitive' } } },
+              { vehicle: { plateNumber: { contains: q, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      serviceNumber: true,
+      status: true,
+      createdAt: true,
+      customer: { select: { fullName: true } },
+      vehicle: { select: { make: true, model: true, plateNumber: true } },
+    },
+  });
+  return services.map((s: (typeof services)[number]) => ({
+    id: s.id,
+    serviceNumber: s.serviceNumber,
+    status: s.status,
+    createdAt: s.createdAt,
+    customerName: s.customer.fullName,
+    vehicleDescription: [s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || s.vehicle.plateNumber || 'Vehicle',
+  }));
+}
+
 export async function listVehicleServices(branchId: string, search?: string, vehicleType?: 'PASSENGER' | 'COMMERCIAL', status?: string) {
   await requireUser();
   const q = search?.trim();
