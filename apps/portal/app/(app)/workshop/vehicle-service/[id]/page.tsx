@@ -259,16 +259,26 @@ export default async function VehicleServiceDetailPage({
             ) : inspection.status === 'SKIPPED' ? (
               <>
                 {inspection.skipReason ? <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Reason: {inspection.skipReason}</p> : null}
-                <form action={cancelVehicleInspectionFormAction} className="mt-3">
-                  <FormPendingOverlay />
-                  <input type="hidden" name="vehicleServiceId" value={service.id} />
-                  <input type="hidden" name="redirectTo" value={`/workshop/vehicle-service/${service.id}/inspection`} />
-                  <SubmitButton
-                    label="Reopen — Inspect or Skip Again"
-                    pendingLabel="Reopening…"
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <a
+                    href={`/print/vehicle-inspections/${service.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                  />
-                </form>
+                  >
+                    Print
+                  </a>
+                  <form action={cancelVehicleInspectionFormAction}>
+                    <FormPendingOverlay />
+                    <input type="hidden" name="vehicleServiceId" value={service.id} />
+                    <input type="hidden" name="redirectTo" value={`/workshop/vehicle-service/${service.id}/inspection`} />
+                    <SubmitButton
+                      label="Reopen — Inspect or Skip Again"
+                      pendingLabel="Reopening…"
+                      className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                    />
+                  </form>
+                </div>
               </>
             ) : (
               <div className="mt-3 flex flex-wrap gap-2">
@@ -278,6 +288,14 @@ export default async function VehicleServiceDetailPage({
                 >
                   View Inspection
                 </LoadingLink>
+                <a
+                  href={`/print/vehicle-inspections/${service.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                >
+                  Print
+                </a>
                 <form action={cancelVehicleInspectionFormAction}>
                   <FormPendingOverlay />
                   <input type="hidden" name="vehicleServiceId" value={service.id} />
