@@ -63,9 +63,19 @@ export default async function PartRequestSlipDetailPage({
     eligibleStoreManagers.staff.some((s) => s.id === viewerId) ||
     eligibleStoreOfficers.staff.some((s) => s.id === viewerId);
   const serializedLines = slip.lines.filter((l: (typeof slip.lines)[number]) => l.part.trackingType === 'SERIALIZED');
-  const vehicle = slip.jobCard.vehicle;
+  // Resolves to whichever real record this slip was actually sourced
+  // from — a Job Card or a Vehicle Service's own Service Estimate.
+  // Exactly one of the two is ever set; this never guesses which.
+  const source = slip.jobCard ?? slip.vehicleService;
+  const sourceLabel = slip.jobCard ? 'Job Card' : 'Vehicle Service';
+  const sourceNumber = slip.jobCard ? slip.jobCard.jobNumber : slip.vehicleService?.serviceNumber;
+  const sourceUrl = slip.jobCard ? `/workshop/job-cards/${slip.jobCard.id}` : `/workshop/vehicle-service/${slip.vehicleService?.id}`;
+  const vehicle = source!.vehicle;
   const vehicleSummary = [vehicle.year, vehicle.make, vehicle.model, vehicle.engineType].filter(Boolean).join(' ') || 'No vehicle details on file';
-  const totalAmount = slip.lines.reduce((sum: number, l: (typeof slip.lines)[number]) => sum + (l.estimateLineItem?.amount !== null && l.estimateLineItem?.amount !== undefined ? Number(l.estimateLineItem.amount) : 0), 0);
+  const totalAmount = slip.lines.reduce((sum: number, l: (typeof slip.lines)[number]) => {
+    const amount = l.estimateLineItem?.amount ?? l.serviceEstimateLineItem?.amount;
+    return sum + (amount !== null && amount !== undefined ? Number(amount) : 0);
+  }, 0);
 
   return (
     <div className="p-8">
@@ -115,16 +125,16 @@ export default async function PartRequestSlipDetailPage({
 
         <div className="grid gap-4 border-b border-[var(--ejo-border)] py-4 sm:grid-cols-2">
           <div>
-            <dt className="text-xs text-[var(--ejo-text-muted)]">Job Card</dt>
+            <dt className="text-xs text-[var(--ejo-text-muted)]">{sourceLabel}</dt>
             <dd className="text-sm font-medium text-[var(--ejo-text)]">
-              <LoadingLink href={`/workshop/job-cards/${slip.jobCard.id}`} className="text-[var(--ejo-primary)] hover:underline print:text-[var(--ejo-text)] print:no-underline">
-                {slip.jobCard.jobNumber}
+              <LoadingLink href={sourceUrl} className="text-[var(--ejo-primary)] hover:underline print:text-[var(--ejo-text)] print:no-underline">
+                {sourceNumber}
               </LoadingLink>
             </dd>
           </div>
           <div>
             <dt className="text-xs text-[var(--ejo-text-muted)]">Customer</dt>
-            <dd className="text-sm font-medium text-[var(--ejo-text)]">{slip.jobCard.customer.fullName}</dd>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]">{source!.customer.fullName}</dd>
           </div>
           <div>
             <dt className="text-xs text-[var(--ejo-text-muted)]">Vehicle</dt>
@@ -250,14 +260,16 @@ export default async function PartRequestSlipDetailPage({
                 <form action={approvePartRequestSlipByHodFormAction} className="space-y-2">
                   <FormPendingOverlay />
                   <input type="hidden" name="slipId" value={slip.id} />
-                  <input type="hidden" name="jobCardId" value={slip.jobCard.id} />
+                  <input type="hidden" name="jobCardId" value={slip.jobCard?.id ?? ''} />
+                  <input type="hidden" name="vehicleServiceId" value={slip.vehicleService?.id ?? ''} />
                   <textarea name="notes" rows={2} placeholder="Notes (optional)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
                   <SubmitButton label="Approve" pendingLabel="Approving…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-2 text-xs font-medium text-white hover:opacity-90" />
                 </form>
                 <form action={rejectPartRequestSlipFormAction} className="space-y-2">
                   <FormPendingOverlay />
                   <input type="hidden" name="slipId" value={slip.id} />
-                  <input type="hidden" name="jobCardId" value={slip.jobCard.id} />
+                  <input type="hidden" name="jobCardId" value={slip.jobCard?.id ?? ''} />
+                  <input type="hidden" name="vehicleServiceId" value={slip.vehicleService?.id ?? ''} />
                   <textarea name="reason" required rows={2} placeholder="Reason for rejection" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
                   <SubmitButton label="Reject" pendingLabel="Rejecting…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-2 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/5" />
                 </form>
@@ -273,14 +285,16 @@ export default async function PartRequestSlipDetailPage({
                 <form action={approvePartRequestSlipByStoreFormAction} className="space-y-2">
                   <FormPendingOverlay />
                   <input type="hidden" name="slipId" value={slip.id} />
-                  <input type="hidden" name="jobCardId" value={slip.jobCard.id} />
+                  <input type="hidden" name="jobCardId" value={slip.jobCard?.id ?? ''} />
+                  <input type="hidden" name="vehicleServiceId" value={slip.vehicleService?.id ?? ''} />
                   <textarea name="notes" rows={2} placeholder="Notes (optional)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
                   <SubmitButton label="Approve & Reserve" pendingLabel="Approving…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-2 text-xs font-medium text-white hover:opacity-90" />
                 </form>
                 <form action={rejectPartRequestSlipFormAction} className="space-y-2">
                   <FormPendingOverlay />
                   <input type="hidden" name="slipId" value={slip.id} />
-                  <input type="hidden" name="jobCardId" value={slip.jobCard.id} />
+                  <input type="hidden" name="jobCardId" value={slip.jobCard?.id ?? ''} />
+                  <input type="hidden" name="vehicleServiceId" value={slip.vehicleService?.id ?? ''} />
                   <textarea name="reason" required rows={2} placeholder="Reason for rejection" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
                   <SubmitButton label="Reject" pendingLabel="Rejecting…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-2 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/5" />
                 </form>
@@ -294,7 +308,8 @@ export default async function PartRequestSlipDetailPage({
               <form action={releasePartRequestSlipFormAction} className="mt-3 space-y-3">
                 <FormPendingOverlay />
                 <input type="hidden" name="slipId" value={slip.id} />
-                <input type="hidden" name="jobCardId" value={slip.jobCard.id} />
+                <input type="hidden" name="jobCardId" value={slip.jobCard?.id ?? ''} />
+                <input type="hidden" name="vehicleServiceId" value={slip.vehicleService?.id ?? ''} />
                 {serializedLines.map((line: (typeof slip.lines)[number]) => (
                   <input key={line.id} type="hidden" name="serializedLineId" value={line.id} />
                 ))}
