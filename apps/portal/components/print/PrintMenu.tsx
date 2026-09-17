@@ -3,7 +3,31 @@
 import { useEffect, useRef, useState } from 'react';
 import { PrinterIcon, ChevronDownIcon, BuildingIcon, UserCheckIcon } from '@/components/icons';
 
-export function PrintMenu({ orgHref, clientHref, clientLabel = 'Collector Copy' }: { orgHref: string; clientHref: string; clientLabel?: string }) {
+export function PrintMenu({
+  orgHref,
+  clientHref,
+  clientLabel = 'Collector Copy',
+  align = 'left',
+  size = 'default',
+}: {
+  orgHref: string;
+  clientHref: string;
+  clientLabel?: string;
+  /** Which edge of the button the dropdown itself hangs from. Left
+   * (the default) extends the menu rightward from the button's own
+   * left edge — fine when the button sits away from the screen's
+   * right edge. A button placed at the far right of its own
+   * container needs 'right' instead, or the real menu width pushes
+   * part of it off-screen, exactly what was reported on the
+   * inspection page's own header. */
+  align?: 'left' | 'right';
+  /** 'compact' matches the small, plain-text action links this
+   * project already uses inline in cards and tables (text-xs,
+   * py-1.5, border instead of a solid fill) — for a spot that
+   * genuinely needs the print menu without pulling in the larger,
+   * bolder default button used on a document's own dedicated page. */
+  size?: 'default' | 'compact';
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -20,14 +44,18 @@ export function PrintMenu({ orgHref, clientHref, clientLabel = 'Collector Copy' 
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
+        className={
+          size === 'compact'
+            ? 'inline-flex items-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] transition hover:bg-[var(--ejo-bg)]'
+            : 'inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90'
+        }
       >
         <PrinterIcon className="h-4 w-4" />
         Print
         <ChevronDownIcon className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open ? (
-        <div className="absolute left-0 z-10 mt-2 w-56 overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-lg">
+        <div className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} z-10 mt-2 w-56 overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-lg`}>
           <a
             href={orgHref}
             target="_blank"
