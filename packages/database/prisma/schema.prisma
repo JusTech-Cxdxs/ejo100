@@ -1230,6 +1230,7 @@ model VehicleService {
   complaints VehicleServiceComplaint[]
   inspection VehicleInspection?
   serviceEstimate ServiceEstimate?
+  partRequestSlips PartRequestSlip[]
 
   @@map("vehicle_services")
 }
@@ -1384,6 +1385,7 @@ model ServiceEstimateLineItem {
   enteredBy User            @relation("ServiceEstimateLineEnteredBy", fields: [enteredById], references: [id])
   partType  PartType?       @relation(fields: [partTypeId], references: [id])
   matchedPart Part?         @relation(fields: [matchedPartId], references: [id])
+  partRequestSlipLines PartRequestSlipLine[]
 
   @@map("service_estimate_line_items")
 }
@@ -2035,7 +2037,15 @@ enum ExternalProcurementStatus {
 model PartRequestSlip {
   id              String                @id @default(cuid())
   referenceNumber String                @unique
-  jobCardId       String
+  // Exactly one of jobCardId/vehicleServiceId is ever set — enforced in
+  // application code at creation, not at the database level, since a
+  // real CHECK constraint isn't something Prisma's schema can express
+  // directly. A Job Card-sourced slip behaves in every way exactly as
+  // it always has; a Vehicle Service-sourced slip is the newer,
+  // deliberately parallel path added for the Service Estimate's own
+  // real Store Part lines.
+  jobCardId       String?
+  vehicleServiceId String?
   branchId        String
   requestedById   String
   status          PartRequestSlipStatus @default(PENDING_HOD_APPROVAL)
@@ -2070,7 +2080,8 @@ model PartRequestSlip {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  jobCard        JobCard  @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  jobCard        JobCard?  @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  vehicleService VehicleService? @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
   branch         Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
   requestedBy    User     @relation("PartRequestSlipRequestedBy", fields: [requestedById], references: [id])
   hodApprovedBy  User?    @relation("PartRequestSlipHodApprovedBy", fields: [hodApprovedById], references: [id])
@@ -2091,6 +2102,11 @@ model PartRequestSlipLine {
   // since a request could in principle be raised without a strict 1:1
   // match to an existing estimate line.
   estimateLineItemId String?
+  // The same real traceability link for a Service Estimate's own Store
+  // Part line — parallel to estimateLineItemId above, never both set on
+  // the same real line since a slip is sourced from exactly one estimate
+  // kind.
+  serviceEstimateLineItemId String?
   // In the part's own base unit, matching how Goods Receipt already
   // works — a request is entered in whatever unit makes sense, but
   // reservation and release always happen against the base unit.
@@ -2100,6 +2116,7 @@ model PartRequestSlipLine {
   slip             PartRequestSlip   @relation(fields: [slipId], references: [id], onDelete: Cascade)
   part             Part              @relation(fields: [partId], references: [id])
   estimateLineItem EstimateLineItem? @relation(fields: [estimateLineItemId], references: [id])
+  serviceEstimateLineItem ServiceEstimateLineItem? @relation(fields: [serviceEstimateLineItemId], references: [id])
   // Back-relations for the two new real traceability links above —
   // exactly which batch quantities and which individual serials this
   // one real release line actually fulfilled with.
