@@ -57,6 +57,7 @@ const STATUS_COLOR: Record<string, string> = {
 // map only needs updating for a nicer label, never to avoid breaking.
 const AUDIT_ACTION_LABEL: Record<string, string> = {
   'job_card.created': 'Job Card created',
+  'job_card.created_from_vehicle_service': 'Created from Vehicle Service',
   'job_card.approved': 'Job Card approved',
   'job_card.rejected': 'Job Card rejected',
   'job_card.supervisor_reassigned': 'Supervisor reassigned',
@@ -139,6 +140,8 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
   const meta = entry.metadata as Record<string, unknown> | null;
   if (!meta) return null;
   switch (entry.action) {
+    case 'job_card.created_from_vehicle_service':
+      return typeof meta.serviceNumber === 'string' ? `From Vehicle Service ${meta.serviceNumber}` : null;
     case 'estimate.line_item_added':
     case 'estimate.line_item_updated': {
       const parts: string[] = [];
