@@ -11,6 +11,7 @@ import {
   submitServiceEstimateFormAction,
   approveServiceEstimateFormAction,
 } from '@/lib/actions/vehicle-service-estimate-form-handlers';
+import { requestServiceEstimatePartRequestSlipFormAction } from '@/lib/actions/sourcing-form-handlers';
 import { listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { listPartTypes, listParts } from '@/lib/actions/store';
 import {
@@ -182,6 +183,11 @@ export default async function VehicleServiceDetailPage({
       {status === 'assignment_rejected' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Assignment rejected." />
+        </div>
+      ) : null}
+      {status === 'parts_requested' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Store Parts Request raised." />
         </div>
       ) : null}
 
@@ -554,10 +560,22 @@ export default async function VehicleServiceDetailPage({
                       />
                     </form>
                   ) : (
-                    <p className="mt-4 text-xs text-[var(--ejo-text-muted)]">
-                      Approved by {serviceEstimate.approvedBy?.fullName ?? '—'}
-                      {serviceEstimate.approvedAt ? ` on ${formatDateOnly(serviceEstimate.approvedAt)}` : ''}.
-                    </p>
+                    <div className="mt-4">
+                      <p className="text-xs text-[var(--ejo-text-muted)]">
+                        Approved by {serviceEstimate.approvedBy?.fullName ?? '—'}
+                        {serviceEstimate.approvedAt ? ` on ${formatDateOnly(serviceEstimate.approvedAt)}` : ''}.
+                      </p>
+                      <form action={requestServiceEstimatePartRequestSlipFormAction} className="mt-3">
+                        <FormPendingOverlay />
+                        <input type="hidden" name="serviceEstimateId" value={serviceEstimate.id} />
+                        <input type="hidden" name="vehicleServiceId" value={service.id} />
+                        <SubmitButton
+                          label="Request Store Parts"
+                          pendingLabel="Requesting…"
+                          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                        />
+                      </form>
+                    </div>
                   )}
                 </>
               )}
