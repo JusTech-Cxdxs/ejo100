@@ -6,6 +6,7 @@ import type { InspectionTemplateSection } from '@/lib/vehicle-inspection-templat
 import { LoadingLink } from './LoadingLink';
 import { FormPendingOverlay } from './FormPendingOverlay';
 import { SubmitButton } from './SubmitButton';
+import { PrintMenu } from './print/PrintMenu';
 
 type Severity = 'GOOD' | 'ATTENTION' | 'SERVICE_REQUIRED' | 'CRITICAL';
 
@@ -124,17 +125,26 @@ export function InspectionWorkspace({
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-[var(--ejo-text)] sm:text-2xl">Vehicle Inspection</h1>
-        <LoadingLink href={`/workshop/vehicle-service/${vehicleServiceId}`} className="mt-1 block text-sm text-[var(--ejo-primary)] hover:underline">
-          {serviceNumber} — {vehicleDescription}
-        </LoadingLink>
-        <div className="mt-3 inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-info)]/10 px-3 py-2 text-sm text-[var(--ejo-text)]">
-          <span className="font-medium">{vehicleType === 'COMMERCIAL' ? 'Commercial Vehicle' : 'Passenger Vehicle'}</span>
-          <span className="text-[var(--ejo-text-muted)]">
-            — {vehicleType === 'COMMERCIAL' ? 'commercial-specific items (air brakes, chassis, kingpins…) are included below.' : 'showing the standard passenger checklist.'}
-          </span>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-[var(--ejo-text)] sm:text-2xl">Vehicle Inspection</h1>
+          <LoadingLink href={`/workshop/vehicle-service/${vehicleServiceId}`} className="mt-1 block text-sm text-[var(--ejo-primary)] hover:underline">
+            {serviceNumber} — {vehicleDescription}
+          </LoadingLink>
+          <div className="mt-3 inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-info)]/10 px-3 py-2 text-sm text-[var(--ejo-text)]">
+            <span className="font-medium">{vehicleType === 'COMMERCIAL' ? 'Commercial Vehicle' : 'Passenger Vehicle'}</span>
+            <span className="text-[var(--ejo-text-muted)]">
+              — {vehicleType === 'COMMERCIAL' ? 'commercial-specific items (air brakes, chassis, kingpins…) are included below.' : 'showing the standard passenger checklist.'}
+            </span>
+          </div>
         </div>
+        {inspection ? (
+          <PrintMenu
+            orgHref={`/print/vehicle-inspections/${vehicleServiceId}`}
+            clientHref={`/print/vehicle-inspections/${vehicleServiceId}?variant=client`}
+            clientLabel="Customer Copy"
+          />
+        ) : null}
       </div>
 
       {isSkipped ? (
