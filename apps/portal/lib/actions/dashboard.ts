@@ -114,7 +114,7 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   // THIS viewer's own accept/reject as its assigned Technician. Shown
   // regardless of management status, since these are personal, not
   // management-level, responsibilities.
-  const [pendingReviews, pendingAssignments, pendingServiceReviews] = await Promise.all([
+  const [pendingReviews, pendingAssignments, pendingServiceReviews, pendingServiceAssignments] = await Promise.all([
     prisma.jobCard.findMany({
       where: { supervisorId: user.id, approvalStatus: 'PENDING' },
       orderBy: { createdAt: 'desc' },
@@ -129,6 +129,12 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
     }),
     prisma.vehicleService.findMany({
       where: { supervisorId: user.id, approvalStatus: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: { id: true, serviceNumber: true, createdAt: true },
+    }),
+    prisma.vehicleService.findMany({
+      where: { assignedTechnicianId: user.id, technicianAcceptanceStatus: 'PENDING' },
       orderBy: { createdAt: 'desc' },
       take: 10,
       select: { id: true, serviceNumber: true, createdAt: true },
@@ -161,6 +167,16 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
       title: `Review needed — ${sv.serviceNumber}`,
       detail: 'This Vehicle Service is waiting on your own review.',
       url: `/workshop/vehicle-service/${sv.id}#review-approval`,
+      createdAt: sv.createdAt,
+    });
+  }
+  for (const sv of pendingServiceAssignments) {
+    notifications.push({
+      id: `service-assign-${sv.id}`,
+      kind: 'TECHNICIAN_ASSIGNMENT',
+      title: `New assignment — ${sv.serviceNumber}`,
+      detail: 'Respond to accept or reject this Vehicle Service.',
+      url: `/workshop/vehicle-service/${sv.id}#technician-response`,
       createdAt: sv.createdAt,
     });
   }

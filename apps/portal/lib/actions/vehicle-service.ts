@@ -17,6 +17,7 @@ import { sendEmail } from '@/lib/email';
 import { renderSupervisorVehicleServiceAssignedEmail } from '@/lib/email-templates/supervisor-vehicle-service-assigned';
 import { renderVehicleServiceDecisionEmail } from '@/lib/email-templates/vehicle-service-decision';
 import { renderTechnicianVehicleServiceAssignedEmail } from '@/lib/email-templates/technician-vehicle-service-assigned';
+import { renderTechnicianVehicleServiceResponseEmail } from '@/lib/email-templates/technician-vehicle-service-response';
 
 class VehicleServiceActionError extends Error {}
 
@@ -321,7 +322,15 @@ export async function assignTechnicianToVehicleService(serviceId: string, techni
   if (!technician) {
     throw new VehicleServiceActionError('That technician could not be found.');
   }
-  await prisma.vehicleService.update({ where: { id: serviceId }, data: { assignedTechnicianId: technicianId } });
+  await prisma.vehicleService.update({
+    where: { id: serviceId },
+    data: {
+      assignedTechnicianId: technicianId,
+      technicianAcceptanceStatus: 'PENDING',
+      technicianRespondedAt: null,
+      technicianRejectionReason: null,
+    },
+  });
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.technician_assigned',
@@ -353,6 +362,134 @@ export async function assignTechnicianToVehicleService(serviceId: string, techni
     // eslint-disable-next-line no-console
     console.error('Failed to send technician notification email for Vehicle Service', service.serviceNumber, err);
   }
+}
+
+/** Only the assigned technician, or a Master Administrator, may respond
+ * to a Vehicle Service assignment — same reasoning and shape as Job
+ * Card's own requireAssignedTechnician, applied to this record type. */
+async function requireAssignedVehicleServiceTechnician(service: { assignedTechnicianId: string | null }): Promise<{ id: string }> {
+  const user = await requireUser();
+  if (service.assignedTechnicianId === user.id) {
+    return user;
+  }
+  if (await currentUserIsMasterAdmin()) {
+    return user;
+  }
+  throw new VehicleServiceActionError('Only the assigned technician or a Master Administrator can respond to this assignment.');
+}
+
+/** Notifies the supervisor of a technician's response — shared by
+ * acceptVehicleServiceTechnicianAssignment/rejectVehicleServiceTechnicianAssignment
+ * below, same real "one shared notify function" pattern as Job Card's own. */
+async function notifySupervisorOfVehicleServiceTechnicianResponse(params: {
+  serviceId: string;
+  serviceNumber: string;
+  response: 'ACCEPTED' | 'REJECTED';
+  technicianId: string;
+  rejectionReason?: string;
+}): Promise<void> {
+  try {
+    const service = await prisma.vehicleService.findUnique({
+      where: { id: params.serviceId },
+      select: {
+        customer: { select: { fullName: true } },
+        supervisor: { select: { fullName: true, email: true } },
+        department: { select: { name: true } },
+      },
+    });
+    if (!service?.supervisor) return;
+    const technician = await prisma.user.findUnique({ where: { id: params.technicianId }, select: { fullName: true } });
+    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+
+    await sendEmail(
+      service.supervisor.email,
+      params.response === 'ACCEPTED'
+        ? `Assignment accepted on Vehicle Service ${params.serviceNumber}`
+        : `Assignment rejected on Vehicle Service ${params.serviceNumber}`,
+      renderTechnicianVehicleServiceResponseEmail({
+        response: params.response,
+        supervisorName: service.supervisor.fullName,
+        serviceNumber: params.serviceNumber,
+        customerName: service.customer.fullName,
+        technicianName: technician?.fullName ?? 'Technician',
+        rejectionReason: params.rejectionReason,
+        serviceUrl: `${portalUrl}/workshop/vehicle-service/${params.serviceId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send technician response email to supervisor', params.serviceNumber, err);
+  }
+}
+
+export async function acceptVehicleServiceTechnicianAssignment(serviceId: string): Promise<void> {
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: serviceId },
+    select: { assignedTechnicianId: true, serviceNumber: true },
+  });
+  if (!service) {
+    throw new VehicleServiceActionError('Vehicle Service record not found.');
+  }
+  const technician = await requireAssignedVehicleServiceTechnician(service);
+
+  await prisma.vehicleService.update({
+    where: { id: serviceId },
+    data: { technicianAcceptanceStatus: 'ACCEPTED', technicianRespondedAt: new Date(), technicianRejectionReason: null },
+  });
+
+  await writeAuditLog({ userId: technician.id, action: 'assignment.accepted', entityType: 'VehicleService', entityId: serviceId });
+
+  await notifySupervisorOfVehicleServiceTechnicianResponse({
+    serviceId,
+    serviceNumber: service.serviceNumber,
+    response: 'ACCEPTED',
+    technicianId: technician.id,
+  });
+}
+
+export async function rejectVehicleServiceTechnicianAssignment(serviceId: string, reason: string): Promise<void> {
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) {
+    throw new VehicleServiceActionError('A reason is required to reject an assignment.');
+  }
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: serviceId },
+    select: { assignedTechnicianId: true, serviceNumber: true },
+  });
+  if (!service) {
+    throw new VehicleServiceActionError('Vehicle Service record not found.');
+  }
+  const technician = await requireAssignedVehicleServiceTechnician(service);
+
+  await prisma.vehicleService.update({
+    where: { id: serviceId },
+    // Fully reset back to "never assigned" — same reasoning as Job
+    // Card's own reject: the rejecting technician shouldn't still show
+    // as assigned while the supervisor picks someone else. The full
+    // record (who, when, why) lives in the audit log regardless.
+    data: { assignedTechnicianId: null, technicianAcceptanceStatus: null, technicianRespondedAt: null, technicianRejectionReason: null },
+  });
+
+  await writeAuditLog({
+    userId: technician.id,
+    action: 'assignment.rejected',
+    entityType: 'VehicleService',
+    entityId: serviceId,
+    metadata: { reason: trimmedReason },
+  });
+
+  await notifySupervisorOfVehicleServiceTechnicianResponse({
+    serviceId,
+    serviceNumber: service.serviceNumber,
+    response: 'REJECTED',
+    technicianId: technician.id,
+    rejectionReason: trimmedReason,
+  });
 }
 
 export async function deleteVehicleService(serviceId: string): Promise<void> {

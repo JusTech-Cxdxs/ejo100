@@ -9,6 +9,8 @@ import {
   approveVehicleService,
   rejectVehicleService,
   assignTechnicianToVehicleService,
+  acceptVehicleServiceTechnicianAssignment,
+  rejectVehicleServiceTechnicianAssignment,
   deleteVehicleService,
   updatePrimaryServiceInterval,
 } from './vehicle-service';
@@ -76,6 +78,30 @@ export async function assignTechnicianToVehicleServiceFormAction(formData: FormD
   await assignTechnicianToVehicleService(serviceId, technicianId);
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
   revalidatePath('/workshop/vehicle-service');
+}
+
+export async function acceptVehicleServiceTechnicianAssignmentFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  try {
+    await acceptVehicleServiceTechnicianAssignment(serviceId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not accept assignment.';
+    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${serviceId}`);
+  redirect(`/workshop/vehicle-service/${serviceId}?status=assignment_accepted`);
+}
+
+export async function rejectVehicleServiceTechnicianAssignmentFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  try {
+    await rejectVehicleServiceTechnicianAssignment(serviceId, str(formData, 'reason'));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not reject assignment.';
+    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${serviceId}`);
+  redirect(`/workshop/vehicle-service/${serviceId}?status=assignment_rejected`);
 }
 
 export async function deleteVehicleServiceFormAction(formData: FormData) {
