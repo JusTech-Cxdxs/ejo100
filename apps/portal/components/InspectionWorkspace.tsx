@@ -138,11 +138,12 @@ export function InspectionWorkspace({
             </span>
           </div>
         </div>
-        {inspection ? (
+        {inspection && inspection.status !== 'SKIPPED' ? (
           <PrintMenu
             orgHref={`/print/vehicle-inspections/${vehicleServiceId}`}
             clientHref={`/print/vehicle-inspections/${vehicleServiceId}?variant=client`}
             clientLabel="Customer Copy"
+            align="right"
           />
         ) : null}
       </div>
