@@ -1157,6 +1157,13 @@ model VehicleService {
   technicianNotes   String?
 
   assignedTechnicianId String?
+  // Same real dimension as Job Card's own technicianAcceptanceStatus —
+  // being assigned isn't the same as having agreed to do it. PENDING
+  // the moment a technician is assigned, cleared to null on reassignment
+  // or rejection, exactly mirroring Job Card's own fields and logic.
+  technicianAcceptanceStatus TechnicianAcceptanceStatus?
+  technicianRespondedAt      DateTime?
+  technicianRejectionReason  String?
 
   // The routed department, derived from the vehicle's own recorded
   // Passenger/Commercial type — same real pattern as Job Card,
