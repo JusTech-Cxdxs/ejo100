@@ -536,7 +536,7 @@ export async function getVehicleService(serviceId: string) {
       department: { select: { id: true, name: true } },
       escalatedToJobCard: { select: { id: true, jobNumber: true } },
       complaints: { orderBy: { sequenceNumber: 'asc' } },
-      branch: { select: { businessUnit: { select: { organisationId: true } } } },
+      branch: { select: { name: true, address: true, hotlines: true, email: true, businessUnit: { select: { organisationId: true } } } },
     },
   });
 }
