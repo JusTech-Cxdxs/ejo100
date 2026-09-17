@@ -17,6 +17,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { SupervisorPicker } from '@/components/SupervisorPicker';
 import { AuditTrail } from '@/components/AuditTrail';
+import { PrintMenu } from '@/components/print/PrintMenu';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
 
@@ -260,14 +261,6 @@ export default async function VehicleServiceDetailPage({
               <>
                 {inspection.skipReason ? <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Reason: {inspection.skipReason}</p> : null}
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <a
-                    href={`/print/vehicle-inspections/${service.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                  >
-                    Print
-                  </a>
                   <form action={cancelVehicleInspectionFormAction}>
                     <FormPendingOverlay />
                     <input type="hidden" name="vehicleServiceId" value={service.id} />
@@ -288,14 +281,12 @@ export default async function VehicleServiceDetailPage({
                 >
                   View Inspection
                 </LoadingLink>
-                <a
-                  href={`/print/vehicle-inspections/${service.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                >
-                  Print
-                </a>
+                <PrintMenu
+                  orgHref={`/print/vehicle-inspections/${service.id}`}
+                  clientHref={`/print/vehicle-inspections/${service.id}?variant=client`}
+                  clientLabel="Customer Copy"
+                  size="compact"
+                />
                 <form action={cancelVehicleInspectionFormAction}>
                   <FormPendingOverlay />
                   <input type="hidden" name="vehicleServiceId" value={service.id} />
