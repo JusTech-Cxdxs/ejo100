@@ -354,6 +354,9 @@ model User {
   vehicleServicesSupervised VehicleService[] @relation("VehicleServiceSupervisor")
   vehicleServicesApproved VehicleService[] @relation("VehicleServiceApprovedBy")
   vehicleInspections VehicleInspection[] @relation("VehicleInspectionInspector")
+  serviceEstimatesCreated ServiceEstimate[] @relation("ServiceEstimateCreatedBy")
+  serviceEstimatesApproved ServiceEstimate[] @relation("ServiceEstimateApprovedBy")
+  serviceEstimateLinesEntered ServiceEstimateLineItem[] @relation("ServiceEstimateLineEnteredBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
   vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
@@ -1219,6 +1222,7 @@ model VehicleService {
 
   complaints VehicleServiceComplaint[]
   inspection VehicleInspection?
+  serviceEstimate ServiceEstimate?
 
   @@map("vehicle_services")
 }
@@ -1292,6 +1296,89 @@ model VehicleInspectionItem {
 
   @@unique([inspectionId, section, name])
   @@map("vehicle_inspection_items")
+}
+
+enum ServiceEstimateStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
+// The real, deliberately lighter estimate for a Vehicle Service visit
+// that never needed a full Job Card — routine work like an oil
+// change or an air filter still needs a real, priced estimate for
+// Store to work from, but doesn't need Job Card's own multi-stage
+// pricing-authority/Manager-approval machinery (see Estimate/
+// EstimateLineItem above). One real DRAFT → SUBMITTED → APPROVED
+// ladder; a Vehicle Service that instead escalates to a real repair
+// uses Job Card's own Estimate entirely, never this one — the two
+// are mutually exclusive by design, matching the user's own explicit
+// "either escalate, or write a service estimate" branching.
+model ServiceEstimate {
+  id               String                @id @default(cuid())
+  vehicleServiceId String                @unique
+  status           ServiceEstimateStatus @default(DRAFT)
+  submittedAt      DateTime?
+  approvedAt       DateTime?
+  approvedById     String?
+  createdById      String
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  vehicleService VehicleService        @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
+  createdBy      User                  @relation("ServiceEstimateCreatedBy", fields: [createdById], references: [id])
+  approvedBy     User?                 @relation("ServiceEstimateApprovedBy", fields: [approvedById], references: [id])
+  lineItems      ServiceEstimateLineItem[]
+
+  @@map("service_estimates")
+}
+
+// One real line — free-text description on purpose (deliberately not
+// Job Card's own STORE_PART/EXTERNAL_PART/etc. type split, since a
+// routine Vehicle Service visit doesn't carry that same real
+// pricing-authority distinction between roles) — "Engine Oil 5W-30",
+// "Air Filter", quantity and unit price, the actual person who
+// entered it.
+// Deliberately just two values — STORE_PART needs the real Store-
+// matching flow below; everything else (external parts, labour,
+// sundry — a routine Vehicle Service visit rarely needs Job Card's
+// own full five-way split) is just OTHER, priced directly by whoever
+// enters it. This can grow later if a real need for more types shows
+// up, but starting narrow here matches how much lighter this whole
+// module is meant to be than Job Card's own Estimate.
+enum ServiceEstimateLineItemType {
+  STORE_PART
+  OTHER
+}
+
+model ServiceEstimateLineItem {
+  id           String                      @id @default(cuid())
+  estimateId   String
+  type         ServiceEstimateLineItemType @default(OTHER)
+  description  String
+  quantity     Decimal  @db.Decimal(10, 2)
+  unitPrice    Decimal? @db.Decimal(12, 2)
+  amount       Decimal? @db.Decimal(12, 2)
+  enteredById  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  // Same real two-moment flow as Job Card's own STORE_PART lines:
+  // whoever adds the line picks which generic PartType they need
+  // (e.g. "Engine Oil Filter"); Store later matches it to a real,
+  // specific, vehicle-fitting Part from the actual catalogue, which
+  // is what fills in the real price and unit — never typed by
+  // whoever adds the line. Both null for an OTHER line, and null on
+  // a STORE_PART line until each step actually happens.
+  partTypeId    String?
+  matchedPartId String?
+  unitOfMeasure String?
+
+  estimate  ServiceEstimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  enteredBy User            @relation("ServiceEstimateLineEnteredBy", fields: [enteredById], references: [id])
+  partType  PartType?       @relation(fields: [partTypeId], references: [id])
+  matchedPart Part?         @relation(fields: [matchedPartId], references: [id])
+
+  @@map("service_estimate_line_items")
 }
 
 model CustomerAddress {
@@ -1584,6 +1671,7 @@ model Part {
   quantityConsumptions PartQuantityConsumption[]
   fitments          PartFitment[]
   matchedOnEstimateLines EstimateLineItem[] @relation("EstimateLineItemMatchedPart")
+  matchedOnServiceEstimateLines ServiceEstimateLineItem[]
   pricingAlerts     PricingAlert[]
 
   @@unique([branchId, partNumber])
@@ -2283,6 +2371,7 @@ model PartType {
 
   parts             Part[]
   estimateLineItems EstimateLineItem[]
+  serviceEstimateLineItems ServiceEstimateLineItem[]
 
   @@unique([branchId, categoryId, name])
   @@map("part_types")
