@@ -701,7 +701,17 @@ export async function escalateVehicleServiceToJobCard(
     action: 'vehicle_service.escalated_to_job_card',
     entityType: 'VehicleService',
     entityId: serviceId,
-    metadata: { serviceNumber: service.serviceNumber, jobCardId: jobCard.id, findingsIncluded: findingLines.length },
+    metadata: { serviceNumber: service.serviceNumber, jobCardId: jobCard.id, jobNumber: jobCard.jobNumber, findingsIncluded: findingLines.length },
+  });
+  // The real cross-reference the other direction — the new Job Card's
+  // own audit trail should say plainly where it actually came from,
+  // not just the Vehicle Service's own trail saying where it went.
+  await writeAuditLog({
+    userId: user.id,
+    action: 'job_card.created_from_vehicle_service',
+    entityType: 'JobCard',
+    entityId: jobCard.id,
+    metadata: { serviceNumber: service.serviceNumber, vehicleServiceId: serviceId },
   });
   return { jobCardId: jobCard.id };
 }
