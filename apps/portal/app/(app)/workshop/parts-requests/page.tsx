@@ -50,7 +50,7 @@ export default async function PartsRequestsPage({
           type="search"
           name="q"
           defaultValue={q ?? ''}
-          placeholder="Search by reference or Job Card number…"
+          placeholder="Search by reference, Job Card, or Service number…"
           className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
         />
         <button
@@ -77,7 +77,7 @@ export default async function PartsRequestsPage({
             <thead>
               <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
                 <th className="px-4 py-2">Reference</th>
-                <th className="px-4 py-2">Job Card</th>
+                <th className="px-4 py-2">Job Card / Service</th>
                 <th className="px-4 py-2">Requested By</th>
                 <th className="px-4 py-2">Lines</th>
                 <th className="px-4 py-2">Status</th>
@@ -92,9 +92,17 @@ export default async function PartsRequestsPage({
                     </LoadingLink>
                   </td>
                   <td className="px-4 py-2">
-                    <LoadingLink href={`/workshop/job-cards/${slip.jobCard.id}`} className="text-[var(--ejo-primary)] hover:underline">
-                      {slip.jobCard.jobNumber}
-                    </LoadingLink>
+                    {slip.jobCard ? (
+                      <LoadingLink href={`/workshop/job-cards/${slip.jobCard.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                        {slip.jobCard.jobNumber}
+                      </LoadingLink>
+                    ) : slip.vehicleService ? (
+                      <LoadingLink href={`/workshop/vehicle-service/${slip.vehicleService.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                        {slip.vehicleService.serviceNumber}
+                      </LoadingLink>
+                    ) : (
+                      <span className="text-[var(--ejo-text-muted)]">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{slip.requestedBy.fullName}</td>
                   <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{pluralize(slip.lines.length, 'line')}</td>
