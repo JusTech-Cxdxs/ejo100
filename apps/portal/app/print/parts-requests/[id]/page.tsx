@@ -59,16 +59,25 @@ export default async function PrintPartRequestSlipPage({
 
   const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
   const logoUrl = `${portalUrl}/images/logo/logo.png`;
-  const totalAmount = slip.lines.reduce((sum: number, l: (typeof slip.lines)[number]) => sum + (l.estimateLineItem?.amount !== null && l.estimateLineItem?.amount !== undefined ? Number(l.estimateLineItem.amount) : 0), 0);
+  const totalAmount = slip.lines.reduce((sum: number, l: (typeof slip.lines)[number]) => {
+    const amount = l.estimateLineItem?.amount ?? l.serviceEstimateLineItem?.amount;
+    return sum + (amount !== null && amount !== undefined ? Number(amount) : 0);
+  }, 0);
   const collectorName = slip.receivedByUser?.fullName ?? slip.receivedByName ?? null;
-  const vehicleSummary = [slip.jobCard.vehicle.year, slip.jobCard.vehicle.make, slip.jobCard.vehicle.model].filter(Boolean).join(' ') || '—';
+  // Resolves to whichever real record this slip was actually sourced
+  // from — a Job Card or a Vehicle Service's own Service Estimate.
+  // Exactly one of the two is ever set; this never guesses which.
+  const source = slip.jobCard ?? slip.vehicleService;
+  const sourceLabel = slip.jobCard ? 'JOB CARD' : 'VEHICLE SERVICE';
+  const sourceNumber = slip.jobCard ? slip.jobCard.jobNumber : slip.vehicleService?.serviceNumber;
+  const vehicleSummary = [source!.vehicle.year, source!.vehicle.make, source!.vehicle.model].filter(Boolean).join(' ') || '—';
 
   return (
     <div style={{ maxWidth: '780px', margin: '0 auto', padding: '32px 24px', fontFamily: 'Arial, Helvetica, sans-serif', color: '#0F172A' }}>
       <PrintOnLoad />
       <DocumentHeader
         organisation={organisation}
-        branch={slip.jobCard.branch}
+        branch={source!.branch}
         logoUrl={logoUrl}
         documentTitle={isOrgCopy ? 'Store Parts Request' : 'Parts Collection Receipt'}
         referenceNumber={slip.referenceNumber}
@@ -77,13 +86,13 @@ export default async function PrintPartRequestSlipPage({
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginTop: '20px' }}>
-        <Field label="JOB CARD" value={slip.jobCard.jobNumber} />
-        <Field label="CUSTOMER" value={slip.jobCard.customer.fullName} />
+        <Field label={sourceLabel} value={sourceNumber ?? '—'} />
+        <Field label="CUSTOMER" value={source!.customer.fullName} />
         <Field label="VEHICLE" value={vehicleSummary} />
-        <Field label="PLATE NO." value={slip.jobCard.vehicle.plateNumber ?? '—'} />
-        <Field label="VIN / CHASSIS" value={slip.jobCard.vehicle.chassisNumber ?? '—'} />
+        <Field label="PLATE NO." value={source!.vehicle.plateNumber ?? '—'} />
+        <Field label="VIN / CHASSIS" value={source!.vehicle.chassisNumber ?? '—'} />
         <Field label="DATE OF REQUEST" value={formatDateTime(new Date(slip.createdAt))} />
-        {slip.jobCard.customer.address ? <Field label="CUSTOMER ADDRESS" value={slip.jobCard.customer.address} /> : null}
+        {source!.customer.address ? <Field label="CUSTOMER ADDRESS" value={source!.customer.address} /> : null}
         {isOrgCopy ? (
           <>
             <Field label="REQUESTED BY" value={slip.requestedBy.fullName} />
