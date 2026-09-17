@@ -19,6 +19,8 @@ import {
   approveVehicleServiceFormAction,
   rejectVehicleServiceFormAction,
   assignTechnicianToVehicleServiceFormAction,
+  acceptVehicleServiceTechnicianAssignmentFormAction,
+  rejectVehicleServiceTechnicianAssignmentFormAction,
   deleteVehicleServiceFormAction,
 } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -110,6 +112,7 @@ export default async function VehicleServiceDetailPage({
   if (!service) notFound();
 
   const isApprover = isMasterAdmin || service.supervisor?.id === viewerId;
+  const isAssignedTechnician = isMasterAdmin || service.assignedTechnician?.id === viewerId;
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
   const canEscalate = !service.escalatedToJobCard && service.status !== 'COLLECTED' && service.status !== 'CANCELLED';
@@ -169,6 +172,16 @@ export default async function VehicleServiceDetailPage({
       {status === 'estimate_approved' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Estimate approved." />
+        </div>
+      ) : null}
+      {status === 'assignment_accepted' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Assignment accepted." />
+        </div>
+      ) : null}
+      {status === 'assignment_rejected' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Assignment rejected." />
         </div>
       ) : null}
 
@@ -268,7 +281,26 @@ export default async function VehicleServiceDetailPage({
               </div>
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Assigned technician</dt>
-                <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">{service.assignedTechnician?.fullName ?? 'Unassigned'}</dd>
+                <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
+                  {service.assignedTechnician?.fullName ?? 'Unassigned'}
+                  {service.technicianAcceptanceStatus ? (
+                    <span
+                      className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        service.technicianAcceptanceStatus === 'ACCEPTED'
+                          ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
+                          : service.technicianAcceptanceStatus === 'REJECTED'
+                            ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]'
+                            : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
+                      }`}
+                    >
+                      {service.technicianAcceptanceStatus === 'ACCEPTED'
+                        ? 'Accepted'
+                        : service.technicianAcceptanceStatus === 'REJECTED'
+                          ? `Rejected — ${service.technicianRejectionReason}`
+                          : 'Awaiting response'}
+                    </span>
+                  ) : null}
+                </dd>
               </div>
             </dl>
             {service.complaints.length > 0 ? (
@@ -700,6 +732,40 @@ export default async function VehicleServiceDetailPage({
                   label="Assign"
                   pendingLabel="Assigning…"
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                />
+              </form>
+            </div>
+          ) : null}
+
+          {service.status !== 'COLLECTED' && service.status !== 'CANCELLED' && isAssignedTechnician && service.technicianAcceptanceStatus === 'PENDING' ? (
+            <div id="technician-response" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Respond to this assignment</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                {service.assignedTechnician?.fullName}, you&apos;ve been assigned to this Vehicle Service. Accept to
+                begin, or reject with a reason if you can&apos;t take it on.
+              </p>
+              <form action={acceptVehicleServiceTechnicianAssignmentFormAction} className="mt-4">
+                <FormPendingOverlay />
+                <input type="hidden" name="serviceId" value={service.id} />
+                <SubmitButton
+                  label="Accept"
+                  pendingLabel="Accepting…"
+                  className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                />
+              </form>
+              <form action={rejectVehicleServiceTechnicianAssignmentFormAction} className="mt-3 space-y-2">
+                <FormPendingOverlay />
+                <input type="hidden" name="serviceId" value={service.id} />
+                <input
+                  name="reason"
+                  required
+                  placeholder="Reason for rejecting (required)"
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                />
+                <SubmitButton
+                  label="Reject"
+                  pendingLabel="Rejecting…"
+                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
                 />
               </form>
             </div>
