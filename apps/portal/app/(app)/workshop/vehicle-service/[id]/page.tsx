@@ -5,6 +5,7 @@ import { getServiceEstimate } from '@/lib/actions/vehicle-service-estimate';
 import { cancelVehicleInspectionFormAction } from '@/lib/actions/vehicle-inspection-form-handlers';
 import {
   createServiceEstimateFormAction,
+  cancelServiceEstimateFormAction,
   addServiceEstimateLineItemFormAction,
   removeServiceEstimateLineItemFormAction,
   matchServiceEstimateStorePartLineFormAction,
@@ -120,7 +121,6 @@ export default async function VehicleServiceDetailPage({
   const isAssignedTechnician = isMasterAdmin || service.assignedTechnician?.id === viewerId;
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
-  const canEscalate = !service.escalatedToJobCard && service.status !== 'COLLECTED' && service.status !== 'CANCELLED';
   const [technicians, auditTrail, inspection, serviceEstimate, partTypes, parts, payments, eligibleFinance] = await Promise.all([
     listTechnicianCandidates(),
     getVehicleServiceAuditTrail(id),
@@ -131,6 +131,7 @@ export default async function VehicleServiceDetailPage({
     getVehicleServicePayments(id),
     listEligibleFinanceOfficersForBranch(service.branchId),
   ]);
+  const canEscalate = !service.escalatedToJobCard && !serviceEstimate && service.status !== 'COLLECTED' && service.status !== 'CANCELLED';
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
@@ -159,6 +160,11 @@ export default async function VehicleServiceDetailPage({
       {status === 'estimate_started' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Service Estimate started." />
+        </div>
+      ) : null}
+      {status === 'estimate_cancelled' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Estimate cancelled — you can now escalate to a Job Card instead." />
         </div>
       ) : null}
       {status === 'line_added' ? (
@@ -407,7 +413,9 @@ export default async function VehicleServiceDetailPage({
           {!service.escalatedToJobCard && inspection && inspection.status !== 'IN_PROGRESS' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Service Estimate</h2>
+                <h2 className="text-sm font-semibold text-[var(--ejo-text)]">
+                  {serviceEstimate ? 'Service Estimate' : 'What happens next?'}
+                </h2>
                 {serviceEstimate ? (
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -423,8 +431,9 @@ export default async function VehicleServiceDetailPage({
                 ) : null}
               </div>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                For routine work that doesn&apos;t need a Job Card — engine oil, filters, and other items the
-                customer still needs priced and approved.
+                {serviceEstimate
+                  ? "For routine work that doesn't need a Job Card — engine oil, filters, and other items the customer still needs priced and approved."
+                  : 'Choose one — a real repair beyond routine service should escalate to a Job Card; routine work continues here with its own estimate.'}
               </p>
 
               {!serviceEstimate ? (
@@ -432,12 +441,24 @@ export default async function VehicleServiceDetailPage({
                   <FormPendingOverlay />
                   <input type="hidden" name="vehicleServiceId" value={service.id} />
                   <SubmitButton
-                    label="Start Service Estimate"
+                    label="Continue with Normal Service"
                     pendingLabel="Starting…"
+                    className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+                  />
+                </form>
+              ) : serviceEstimate.status !== 'APPROVED' ? (
+                <form action={cancelServiceEstimateFormAction} className="mt-3">
+                  <FormPendingOverlay />
+                  <input type="hidden" name="vehicleServiceId" value={service.id} />
+                  <SubmitButton
+                    label="Cancel — Escalate to Job Card Instead"
+                    pendingLabel="Cancelling…"
                     className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
                   />
                 </form>
-              ) : (
+              ) : null}
+
+              {serviceEstimate ? (
                 <>
                   {serviceEstimate.lineItems.length > 0 ? (
                     <table className="mt-4 w-full text-sm">
@@ -594,7 +615,7 @@ export default async function VehicleServiceDetailPage({
                     </div>
                   )}
                 </>
-              )}
+              ) : null}
             </div>
           ) : null}
 
