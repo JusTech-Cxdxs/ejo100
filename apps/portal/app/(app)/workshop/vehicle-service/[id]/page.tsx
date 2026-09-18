@@ -12,7 +12,9 @@ import {
   approveServiceEstimateFormAction,
 } from '@/lib/actions/vehicle-service-estimate-form-handlers';
 import { requestServiceEstimatePartRequestSlipFormAction } from '@/lib/actions/sourcing-form-handlers';
-import { listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
+import { getVehicleServicePayments } from '@/lib/actions/vehicle-service-payment';
+import { recordServicePaymentFormAction } from '@/lib/actions/vehicle-service-payment-form-handlers';
+import { listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId, listEligibleFinanceOfficersForBranch } from '@/lib/actions/workshop';
 import { listPartTypes, listParts } from '@/lib/actions/store';
 import {
   updateVehicleServiceStatusFormAction,
@@ -25,6 +27,8 @@ import {
   deleteVehicleServiceFormAction,
 } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
+import { PaymentAmountField } from '@/components/PaymentAmountField';
+import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -117,14 +121,21 @@ export default async function VehicleServiceDetailPage({
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
   const canEscalate = !service.escalatedToJobCard && service.status !== 'COLLECTED' && service.status !== 'CANCELLED';
-  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, parts] = await Promise.all([
+  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, parts, payments, eligibleFinance] = await Promise.all([
     listTechnicianCandidates(),
     getVehicleServiceAuditTrail(id),
     getVehicleInspection(id),
     getServiceEstimate(id),
     listPartTypes(service.branchId),
     listParts(service.branchId),
+    getVehicleServicePayments(id),
+    listEligibleFinanceOfficersForBranch(service.branchId),
   ]);
+  const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
+  const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+  const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
+  const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+  const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <div className="p-8">
@@ -188,6 +199,11 @@ export default async function VehicleServiceDetailPage({
       {status === 'parts_requested' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Store Parts Request raised." />
+        </div>
+      ) : null}
+      {status === 'payment_recorded' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Payment recorded." />
         </div>
       ) : null}
 
@@ -579,6 +595,89 @@ export default async function VehicleServiceDetailPage({
                   )}
                 </>
               )}
+            </div>
+          ) : null}
+
+          {serviceEstimate?.status === 'APPROVED' ? (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Payments</h2>
+                <span className="text-xs text-[var(--ejo-text-muted)]">
+                  {formatNaira(paymentsTotal)} of {formatNaira(estimateTotal)}
+                </span>
+              </div>
+              {payments.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  {payments.map((p: (typeof payments)[number]) => (
+                    <div key={p.id} className="flex items-center justify-between text-sm">
+                      <div>
+                        <span className="text-[var(--ejo-text)]">{formatNaira(Number(p.amount))}</span>
+                        <span className="ml-2 text-xs text-[var(--ejo-text-muted)]">{p.method === 'CASH' ? 'Cash' : 'Bank Transfer'}</span>
+                        <p className="text-xs text-[var(--ejo-text-muted)]">
+                          {p.recordedBy.fullName} · {formatDateOnly(p.recordedAt)}
+                          {p.notes ? ` · ${p.notes}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between pt-1 text-sm font-semibold text-[var(--ejo-text)]">
+                    <span>Total Recorded</span>
+                    <span>{formatNaira(paymentsTotal)}</span>
+                  </div>
+                  {estimateTotal > 0 && paymentsTotal < estimateTotal ? (
+                    <div className="flex justify-between text-sm text-[var(--ejo-warning)]">
+                      <span>Balance Remaining</span>
+                      <span>{formatNaira(estimateTotal - paymentsTotal)}</span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {estimateTotal > 0 && paymentsTotal >= estimateTotal ? (
+                <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs font-medium text-[var(--ejo-success)]">
+                  Paid in full — nothing further to record.
+                </p>
+              ) : (service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE') && isEligibleFinance ? (
+                <>
+                  <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
+                    Recording is fully automatic — the move to In Service happens the moment the total recorded
+                    first reaches the 70% minimum deposit, with no separate approval step.
+                  </p>
+                  <form key={payments.length} action={recordServicePaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
+                    <input type="hidden" name="vehicleServiceId" value={service.id} />
+                    <FormPendingOverlay />
+                    <PaymentAmountField
+                      options={
+                        paymentsTotal > 0
+                          ? [{ key: 'REMAINING', label: `Remaining balance (${formatNaira(estimateTotal - paymentsTotal)})`, value: (Math.round((estimateTotal - paymentsTotal) * 100) / 100).toFixed(2) }]
+                          : [
+                              { key: 'SEVENTY_PERCENT', label: `70% deposit (${formatNaira(minimumDeposit)})`, value: minimumDeposit.toFixed(2) },
+                              { key: 'FULL', label: `Full payment (${formatNaira(estimateTotal)})`, value: estimateTotal.toFixed(2) },
+                            ]
+                      }
+                    />
+                    <select
+                      name="method"
+                      required
+                      defaultValue="BANK_TRANSFER"
+                      className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                    >
+                      <option value="BANK_TRANSFER">Bank Transfer</option>
+                      <option value="CASH">Cash</option>
+                    </select>
+                    <input
+                      name="notes"
+                      placeholder="Reference / notes (optional)"
+                      className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                    />
+                    <SubmitButton
+                      label="Record payment"
+                      pendingLabel="Recording…"
+                      className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                    />
+                  </form>
+                </>
+              ) : null}
             </div>
           ) : null}
 
