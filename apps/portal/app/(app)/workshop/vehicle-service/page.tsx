@@ -216,7 +216,13 @@ export default async function VehicleServicePage({
                       </LoadingLink>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_CLASS[s.status]}`}>{STATUS_LABEL[s.status]}</span>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          s.escalatedToJobCard ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]' : STATUS_CLASS[s.status]
+                        }`}
+                      >
+                        {s.escalatedToJobCard ? 'Escalated' : STATUS_LABEL[s.status]}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{formatDateOnly(s.createdAt)}</td>
                   </tr>
