@@ -1,7 +1,10 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog } from './workshop';
+import { requireUser, writeAuditLog, getWorkshopOrgContext } from './workshop';
+import { sendEmail } from '@/lib/email';
+import { renderServiceEstimateSubmittedEmail } from '@/lib/email-templates/service-estimate-submitted';
+import { renderCustomerServiceEstimateApprovedEmail } from '@/lib/email-templates/customer-service-estimate-approved';
 
 class ServiceEstimateActionError extends Error {}
 
@@ -195,7 +198,20 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
   const user = await requireUser();
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },
-    select: { status: true, vehicleService: { select: { serviceNumber: true } }, lineItems: { select: { id: true } } },
+    select: {
+      status: true,
+      lineItems: { select: { id: true, amount: true } },
+      vehicleService: {
+        select: {
+          id: true,
+          serviceNumber: true,
+          supervisorId: true,
+          department: { select: { name: true } },
+          customer: { select: { fullName: true } },
+          supervisor: { select: { fullName: true, email: true } },
+        },
+      },
+    },
   });
   if (!estimate) {
     throw new ServiceEstimateActionError('Estimate not found.');
@@ -211,13 +227,61 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
     entityId: estimateId,
     metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
   });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'service_estimate.submitted',
+    entityType: 'VehicleService',
+    entityId: estimate.vehicleService.id,
+    metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
+  });
+
+  // Notify whoever approves it — fail-soft, matching every other
+  // notification in this project.
+  try {
+    if (!estimate.vehicleService.supervisor) return;
+    const submitter = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const orgContext = await getWorkshopOrgContext(estimate.vehicleService.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+    await sendEmail(
+      estimate.vehicleService.supervisor.email,
+      `Estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} needs your approval`,
+      renderServiceEstimateSubmittedEmail({
+        recipientName: estimate.vehicleService.supervisor.fullName,
+        serviceNumber: estimate.vehicleService.serviceNumber,
+        customerName: estimate.vehicleService.customer.fullName,
+        submittedByName: submitter?.fullName ?? 'A team member',
+        totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        serviceUrl: `${portalUrl}/workshop/vehicle-service/${estimate.vehicleService.id}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+        departmentName: orgContext.departmentName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send estimate-submitted email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
+  }
 }
 
 export async function approveServiceEstimate(estimateId: string): Promise<void> {
   const user = await requireUser();
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },
-    select: { status: true, vehicleService: { select: { serviceNumber: true } } },
+    select: {
+      status: true,
+      lineItems: { orderBy: { createdAt: 'asc' }, select: { description: true, quantity: true, amount: true, unitOfMeasure: true } },
+      vehicleService: {
+        select: {
+          id: true,
+          serviceNumber: true,
+          customer: { select: { fullName: true, email: true } },
+          vehicle: { select: { make: true, model: true } },
+          branch: { select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } } },
+        },
+      },
+    },
   });
   if (!estimate) {
     throw new ServiceEstimateActionError('Estimate not found.');
@@ -236,6 +300,43 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
     entityId: estimateId,
     metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
   });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'service_estimate.approved',
+    entityType: 'VehicleService',
+    entityId: estimate.vehicleService.id,
+    metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
+  });
+
+  try {
+    const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const vehicleDescription = [estimate.vehicleService.vehicle.make, estimate.vehicleService.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
+    await sendEmail(
+      estimate.vehicleService.customer.email,
+      `Your estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} has been approved`,
+      renderCustomerServiceEstimateApprovedEmail({
+        customerName: estimate.vehicleService.customer.fullName,
+        serviceNumber: estimate.vehicleService.serviceNumber,
+        vehicleDescription,
+        lineItems: (estimate.lineItems as { description: string; quantity: unknown; amount: unknown; unitOfMeasure: string | null }[]).map((li) => ({
+          description: li.description,
+          quantity: Number(li.quantity),
+          unitOfMeasure: li.unitOfMeasure,
+          amount: formatNaira(Number(li.amount ?? 0)),
+        })),
+        totalAmount: formatNaira(total),
+        serviceUrl: `${portalUrl}/workshop/vehicle-service/${estimate.vehicleService.id}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: estimate.vehicleService.branch.businessUnit.organisation.name,
+        branchName: estimate.vehicleService.branch.name,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send customer estimate-approved email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
+  }
 }
 
 export async function getServiceEstimate(vehicleServiceId: string) {
