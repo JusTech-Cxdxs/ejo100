@@ -564,6 +564,131 @@ export async function getVehicleServiceHealth(vehicleId: string): Promise<Vehicl
   };
 }
 
+export type VehicleMileagePoint = { date: Date; mileage: number; label: string; source: 'VEHICLE_SERVICE' | 'JOB_CARD' };
+export type VehicleVisitMonth = { month: string; vehicleServiceCount: number; jobCardCount: number };
+export type VehicleFindingsBreakdown = { good: number; attention: number; serviceRequired: number; critical: number };
+export type VehicleSpendPoint = { date: Date; amount: number; label: string; source: 'VEHICLE_SERVICE' | 'JOB_CARD' };
+
+export type VehicleAnalytics = {
+  mileageTimeline: VehicleMileagePoint[];
+  visitHistory: VehicleVisitMonth[];
+  findingsBreakdown: VehicleFindingsBreakdown;
+  spendTimeline: VehicleSpendPoint[];
+  totalVisits: number;
+  totalSpend: number;
+};
+
+/**
+ * The real, full history behind this one vehicle — genuinely
+ * combining both real real-world paths it may have gone through
+ * (routine Vehicle Service visits and real repair Job Cards), never
+ * just one or the other, since a vehicle's actual health story spans
+ * both. Every point here is a real, recorded fact — an actual
+ * odometer reading, an actual approved amount, an actual inspection
+ * finding — never a smoothed or invented value. The one real
+ * prediction anywhere in this data (the next service due point)
+ * still comes from getVehicleServiceHealth, kept as its own,
+ * separate, clearly-labeled function rather than folded in here.
+ */
+export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAnalytics> {
+  await requireUser();
+
+  const [services, jobCards, inspectionItems] = await Promise.all([
+    prisma.vehicleService.findMany({
+      where: { vehicleId, odometerAtService: { not: null } },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        serviceNumber: true,
+        createdAt: true,
+        odometerAtService: true,
+        serviceEstimate: { select: { status: true, lineItems: { select: { amount: true } } } },
+      },
+    }),
+    prisma.jobCard.findMany({
+      where: { vehicleId, mileageAtCheckIn: { not: null } },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        jobNumber: true,
+        createdAt: true,
+        mileageAtCheckIn: true,
+        estimate: { select: { status: true, lineItems: { select: { amount: true } } } },
+      },
+    }),
+    prisma.vehicleInspectionItem.findMany({
+      where: { inspection: { vehicleService: { vehicleId } } },
+      select: { severity: true },
+    }),
+  ]);
+
+  const mileageTimeline: VehicleMileagePoint[] = [
+    ...services.map((s: (typeof services)[number]) => ({
+      date: s.createdAt,
+      mileage: s.odometerAtService as number,
+      label: s.serviceNumber,
+      source: 'VEHICLE_SERVICE' as const,
+    })),
+    ...jobCards.map((j: (typeof jobCards)[number]) => ({
+      date: j.createdAt,
+      mileage: j.mileageAtCheckIn as number,
+      label: j.jobNumber,
+      source: 'JOB_CARD' as const,
+    })),
+  ].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const monthLabel = (d: Date) => d.toLocaleDateString('en-NG', { month: 'short', year: '2-digit', timeZone: 'Africa/Lagos' });
+  const visitsByMonth = new Map<string, VehicleVisitMonth>();
+  for (const s of services) {
+    const key = monthKey(s.createdAt);
+    const existing = visitsByMonth.get(key) ?? { month: monthLabel(s.createdAt), vehicleServiceCount: 0, jobCardCount: 0 };
+    existing.vehicleServiceCount += 1;
+    visitsByMonth.set(key, existing);
+  }
+  for (const j of jobCards) {
+    const key = monthKey(j.createdAt);
+    const existing = visitsByMonth.get(key) ?? { month: monthLabel(j.createdAt), vehicleServiceCount: 0, jobCardCount: 0 };
+    existing.jobCardCount += 1;
+    visitsByMonth.set(key, existing);
+  }
+  const visitHistory = [...visitsByMonth.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([, v]) => v);
+
+  const findingsBreakdown: VehicleFindingsBreakdown = { good: 0, attention: 0, serviceRequired: 0, critical: 0 };
+  for (const item of inspectionItems) {
+    if (item.severity === 'GOOD') findingsBreakdown.good += 1;
+    else if (item.severity === 'ATTENTION') findingsBreakdown.attention += 1;
+    else if (item.severity === 'SERVICE_REQUIRED') findingsBreakdown.serviceRequired += 1;
+    else if (item.severity === 'CRITICAL') findingsBreakdown.critical += 1;
+  }
+
+  const spendTimeline: VehicleSpendPoint[] = [
+    ...services
+      .filter((s: (typeof services)[number]) => s.serviceEstimate?.status === 'APPROVED')
+      .map((s: (typeof services)[number]) => ({
+        date: s.createdAt,
+        amount: (s.serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0),
+        label: s.serviceNumber,
+        source: 'VEHICLE_SERVICE' as const,
+      })),
+    ...jobCards
+      .filter((j: (typeof jobCards)[number]) => j.estimate?.status === 'APPROVED' || j.estimate?.status === 'MANAGER_APPROVED')
+      .map((j: (typeof jobCards)[number]) => ({
+        date: j.createdAt,
+        amount: (j.estimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0),
+        label: j.jobNumber,
+        source: 'JOB_CARD' as const,
+      })),
+  ].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  return {
+    mileageTimeline,
+    visitHistory,
+    findingsBreakdown,
+    spendTimeline,
+    totalVisits: services.length + jobCards.length,
+    totalSpend: spendTimeline.reduce((sum, p) => sum + p.amount, 0),
+  };
+}
+
 export type VehicleDueForService = {
   vehicleId: string;
   status: 'DUE_SOON' | 'OVERDUE';
