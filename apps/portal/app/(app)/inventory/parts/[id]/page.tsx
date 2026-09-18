@@ -242,17 +242,21 @@ export default async function PartDetailPage({
                       <div className="space-y-1.5">
                         {part.batches
                           .flatMap((batch: (typeof part.batches)[number]) => batch.consumptions.map((c: (typeof batch.consumptions)[number]) => ({ batch, c })))
-                          .map(({ batch, c }: { batch: (typeof part.batches)[number]; c: (typeof part.batches)[number]['consumptions'][number] }) => (
-                            <div key={c.id} className="flex items-center justify-between text-xs">
-                              <span className="text-[var(--ejo-text)]">
-                                {formatQty(Number(c.quantityTaken))} {pluralizeWord(Number(c.quantityTaken), part.baseUnitOfMeasure)} from{' '}
-                                <span className="font-medium">{batch.batchNumber}</span> — {c.slipLine.slip.jobCard.customer.fullName}
-                              </span>
-                              <LoadingLink href={`/workshop/parts-requests/${c.slipLine.slip.id}`} className="text-[var(--ejo-primary)] hover:underline">
-                                {c.slipLine.slip.referenceNumber} · {c.slipLine.slip.jobCard.jobNumber}
-                              </LoadingLink>
-                            </div>
-                          ))}
+                          .map(({ batch, c }: { batch: (typeof part.batches)[number]; c: (typeof part.batches)[number]['consumptions'][number] }) => {
+                            const source = c.slipLine.slip.jobCard ?? c.slipLine.slip.vehicleService;
+                            const sourceNumber = c.slipLine.slip.jobCard ? c.slipLine.slip.jobCard.jobNumber : c.slipLine.slip.vehicleService?.serviceNumber;
+                            return (
+                              <div key={c.id} className="flex items-center justify-between text-xs">
+                                <span className="text-[var(--ejo-text)]">
+                                  {formatQty(Number(c.quantityTaken))} {pluralizeWord(Number(c.quantityTaken), part.baseUnitOfMeasure)} from{' '}
+                                  <span className="font-medium">{batch.batchNumber}</span> — {source?.customer.fullName ?? '—'}
+                                </span>
+                                <LoadingLink href={`/workshop/parts-requests/${c.slipLine.slip.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                                  {c.slipLine.slip.referenceNumber} · {sourceNumber ?? '—'}
+                                </LoadingLink>
+                              </div>
+                            );
+                          })}
                       </div>
                     </div>
                   ) : null}
@@ -486,16 +490,20 @@ export default async function PartDetailPage({
                     Sold To — real trace of every real draw against this Part, for warranty or quality-defect reference
                   </p>
                   <div className="space-y-1.5">
-                    {part.quantityConsumptions.map((c: (typeof part.quantityConsumptions)[number]) => (
-                      <div key={c.id} className="flex items-center justify-between text-xs">
-                        <span className="text-[var(--ejo-text)]">
-                          {formatQty(Number(c.quantityTaken))} {pluralizeWord(Number(c.quantityTaken), part.baseUnitOfMeasure)} — {c.slipLine.slip.jobCard.customer.fullName}
-                        </span>
-                        <LoadingLink href={`/workshop/parts-requests/${c.slipLine.slip.id}`} className="text-[var(--ejo-primary)] hover:underline">
-                          {c.slipLine.slip.referenceNumber} · {c.slipLine.slip.jobCard.jobNumber}
-                        </LoadingLink>
-                      </div>
-                    ))}
+                    {part.quantityConsumptions.map((c: (typeof part.quantityConsumptions)[number]) => {
+                      const source = c.slipLine.slip.jobCard ?? c.slipLine.slip.vehicleService;
+                      const sourceNumber = c.slipLine.slip.jobCard ? c.slipLine.slip.jobCard.jobNumber : c.slipLine.slip.vehicleService?.serviceNumber;
+                      return (
+                        <div key={c.id} className="flex items-center justify-between text-xs">
+                          <span className="text-[var(--ejo-text)]">
+                            {formatQty(Number(c.quantityTaken))} {pluralizeWord(Number(c.quantityTaken), part.baseUnitOfMeasure)} — {source?.customer.fullName ?? '—'}
+                          </span>
+                          <LoadingLink href={`/workshop/parts-requests/${c.slipLine.slip.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                            {c.slipLine.slip.referenceNumber} · {sourceNumber ?? '—'}
+                          </LoadingLink>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ) : null}
