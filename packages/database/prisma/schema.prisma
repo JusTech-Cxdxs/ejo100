@@ -1024,7 +1024,11 @@ enum PaymentMethod {
 
 model Payment {
   id            String        @id @default(cuid())
-  jobCardId     String
+  // Exactly one of jobCardId/vehicleServiceId is ever set — same real
+  // pattern as PartRequestSlip above, enforced in application code at
+  // creation, never at the database level.
+  jobCardId     String?
+  vehicleServiceId String?
   amount        Decimal       @db.Decimal(12, 2)
   method        PaymentMethod
   notes         String?       // e.g. a transfer reference or receipt number
@@ -1033,7 +1037,8 @@ model Payment {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @default(now()) @updatedAt
 
-  jobCard       JobCard @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  jobCard        JobCard?        @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  vehicleService VehicleService? @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
   recordedBy    User    @relation(fields: [recordedById], references: [id])
 
   @@map("payments")
@@ -1165,6 +1170,13 @@ model VehicleService {
   technicianRespondedAt      DateTime?
   technicianRejectionReason  String?
 
+  // Set once, the first real moment work genuinely starts — either
+  // the manual status transition to IN_SERVICE, or the moment a
+  // payment first crosses the 70% deposit threshold, whichever
+  // happens first. Same real "first time only" guard, same real bug
+  // class this closes, as Job Card's own identical field.
+  workStartedAt DateTime?
+
   // The routed department, derived from the vehicle's own recorded
   // Passenger/Commercial type — same real pattern as Job Card,
   // structurally impossible to route to the wrong department by a
@@ -1231,6 +1243,7 @@ model VehicleService {
   inspection VehicleInspection?
   serviceEstimate ServiceEstimate?
   partRequestSlips PartRequestSlip[]
+  payments Payment[]
 
   @@map("vehicle_services")
 }
