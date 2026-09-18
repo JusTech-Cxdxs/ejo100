@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getVehicle, getLastEditInfo, getVehicleAuditTrail, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
 import { getVehicleServiceHealth, getVehicleAnalytics } from '@/lib/actions/vehicle-service';
+import { getVehicleReminderHistory } from '@/lib/actions/vehicle-service-reminders';
 import { updateVehicleFormAction, deleteVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -46,12 +47,13 @@ export default async function VehiclePage({
   const { error, edit, status } = await searchParams;
   const vehicle = await getVehicle(id);
   if (!vehicle) notFound();
-  const [lastEdit, auditTrail, isMasterAdmin, serviceHealth, analytics] = await Promise.all([
+  const [lastEdit, auditTrail, isMasterAdmin, serviceHealth, analytics, reminderHistory] = await Promise.all([
     getLastEditInfo('CustomerVehicle', id, 'vehicle.updated'),
     getVehicleAuditTrail(id),
     currentUserIsMasterAdmin(),
     getVehicleServiceHealth(id),
     getVehicleAnalytics(id),
+    getVehicleReminderHistory(id),
   ]);
   const isEditing = edit === 'true';
 
@@ -418,6 +420,42 @@ export default async function VehiclePage({
             <p className="mt-4 text-xs text-[var(--ejo-text-muted)]">
               Based on approved estimates and recorded visits only — real figures, never a projection.
             </p>
+          </div>
+
+          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:col-span-2">
+            <h3 className="text-xs font-semibold text-[var(--ejo-text-muted)]">REMINDER HISTORY</h3>
+            {reminderHistory.length > 0 ? (
+              <table className="mt-4 w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
+                    <th className="pb-2">Sent</th>
+                    <th className="pb-2">Reminder</th>
+                    <th className="pb-2">Trigger</th>
+                    <th className="pb-2">Estimated Due</th>
+                    <th className="pb-2">Odometer at Send</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reminderHistory.map((r: (typeof reminderHistory)[number]) => (
+                    <tr key={r.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                      <td className="py-2 text-[var(--ejo-text)]">{formatDateTime(r.sentAt)}</td>
+                      <td className="py-2 text-[var(--ejo-text)]">
+                        {r.reminderNumber === 1 ? '1st — Friendly' : r.reminderNumber === 2 ? '2nd — Follow-up' : r.reminderNumber === 3 ? '3rd — Due' : `${r.reminderNumber}th — Overdue`}
+                      </td>
+                      <td className="py-2 text-[var(--ejo-text-muted)]">{r.trigger === 'OVERDUE' ? 'Overdue' : 'Due Soon'}</td>
+                      <td className="py-2 text-[var(--ejo-text-muted)]">
+                        {r.estimatedDueOdometer ? `${r.estimatedDueOdometer.toLocaleString('en-NG')} km` : null}
+                        {r.estimatedDueOdometer && r.estimatedDueDate ? ' / ' : null}
+                        {r.estimatedDueDate ? formatDateOnly(r.estimatedDueDate) : null}
+                      </td>
+                      <td className="py-2 text-[var(--ejo-text-muted)]">{r.recordedOdometerAtSend ? `${r.recordedOdometerAtSend.toLocaleString('en-NG')} km` : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">No reminders have been sent for this vehicle yet.</p>
+            )}
           </div>
         </div>
       </div>
