@@ -667,6 +667,13 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
     where: {
       branchId,
       status: { in: statuses as never[] },
+      // Once escalated, all real work moves to the Job Card — this
+      // record should never keep showing as "In Service" here
+      // forever just because its own status field was never touched
+      // at escalation time. escalatedToJobCardId is the one real,
+      // unambiguous signal that this record is done being tracked on
+      // its own.
+      escalatedToJobCardId: null,
       ...(q
         ? {
             OR: [
@@ -724,6 +731,7 @@ export async function listVehicleServices(branchId: string, search?: string, veh
       serviceNumber: true,
       status: true,
       createdAt: true,
+      escalatedToJobCard: { select: { id: true, jobNumber: true } },
       customer: { select: { fullName: true } },
       vehicle: { select: { id: true, make: true, model: true, plateNumber: true, vehicleType: true } },
     },

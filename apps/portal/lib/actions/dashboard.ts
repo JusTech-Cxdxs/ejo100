@@ -128,13 +128,13 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
       select: { id: true, jobNumber: true, createdAt: true },
     }),
     prisma.vehicleService.findMany({
-      where: { supervisorId: user.id, approvalStatus: 'PENDING' },
+      where: { supervisorId: user.id, approvalStatus: 'PENDING', escalatedToJobCardId: null },
       orderBy: { createdAt: 'desc' },
       take: 10,
       select: { id: true, serviceNumber: true, createdAt: true },
     }),
     prisma.vehicleService.findMany({
-      where: { assignedTechnicianId: user.id, technicianAcceptanceStatus: 'PENDING' },
+      where: { assignedTechnicianId: user.id, technicianAcceptanceStatus: 'PENDING', escalatedToJobCardId: null },
       orderBy: { createdAt: 'desc' },
       take: 10,
       select: { id: true, serviceNumber: true, createdAt: true },
