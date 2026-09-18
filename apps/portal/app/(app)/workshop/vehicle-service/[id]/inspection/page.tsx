@@ -72,6 +72,7 @@ export default async function VehicleInspectionPage({
       ) : (
         <InspectionWorkspace
           vehicleServiceId={vehicleServiceId}
+          vehicleId={service.vehicle.id}
           serviceNumber={service.serviceNumber}
           vehicleDescription={[service.vehicle.year, service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}
           vehicleType={vehicleType}
