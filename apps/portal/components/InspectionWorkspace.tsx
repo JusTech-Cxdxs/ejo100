@@ -46,6 +46,7 @@ const SEVERITY_ICON: Record<Severity, string> = {
 
 export function InspectionWorkspace({
   vehicleServiceId,
+  vehicleId,
   serviceNumber,
   vehicleDescription,
   vehicleType,
@@ -53,6 +54,7 @@ export function InspectionWorkspace({
   inspection,
 }: {
   vehicleServiceId: string;
+  vehicleId: string;
   serviceNumber: string;
   vehicleDescription: string;
   vehicleType: 'PASSENGER' | 'COMMERCIAL';
@@ -128,9 +130,15 @@ export function InspectionWorkspace({
       <div className="mb-6 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-[var(--ejo-text)] sm:text-2xl">Vehicle Inspection</h1>
-          <LoadingLink href={`/workshop/vehicle-service/${vehicleServiceId}`} className="mt-1 block text-sm text-[var(--ejo-primary)] hover:underline">
-            {serviceNumber} — {vehicleDescription}
-          </LoadingLink>
+          <p className="mt-1 text-sm">
+            <LoadingLink href={`/workshop/vehicle-service/${vehicleServiceId}`} className="text-[var(--ejo-primary)] hover:underline">
+              {serviceNumber}
+            </LoadingLink>
+            {' — '}
+            <LoadingLink href={`/workshop/vehicles/${vehicleId}/edit`} className="text-[var(--ejo-primary)] hover:underline">
+              {vehicleDescription}
+            </LoadingLink>
+          </p>
           <div className="mt-3 inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-info)]/10 px-3 py-2 text-sm text-[var(--ejo-text)]">
             <span className="font-medium">{vehicleType === 'COMMERCIAL' ? 'Commercial Vehicle' : 'Passenger Vehicle'}</span>
             <span className="text-[var(--ejo-text-muted)]">
