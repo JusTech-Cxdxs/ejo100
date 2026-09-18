@@ -216,8 +216,12 @@ export default async function VehicleServiceDetailPage({
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{service.serviceNumber}</h1>
-          <span className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_CLASS[service.status]}`}>
-            {STATUS_LABEL[service.status]}
+          <span
+            className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              service.escalatedToJobCard ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]' : STATUS_CLASS[service.status]
+            }`}
+          >
+            {service.escalatedToJobCard ? 'Escalated' : STATUS_LABEL[service.status]}
           </span>
         </div>
       </div>
