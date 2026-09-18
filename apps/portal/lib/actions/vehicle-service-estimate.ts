@@ -7,7 +7,9 @@ import { renderServiceEstimateSubmittedEmail } from '@/lib/email-templates/servi
 import { renderCustomerServiceEstimateApprovedEmail } from '@/lib/email-templates/customer-service-estimate-approved';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
+import { InspectionPdf } from '@/lib/pdf/inspection-pdf';
 import { pluralizeWord } from '@/lib/utils/pluralize';
+import { formatDateTime } from '@/lib/utils/format-date';
 import { MINIMUM_DEPOSIT_FRACTION, COMPANY_BANK_DETAILS } from '@/lib/workshop-constants';
 
 class ServiceEstimateActionError extends Error {}
@@ -331,6 +333,14 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
               businessUnit: { select: { organisation: { select: { name: true, legalName: true, hqAddress: true, poBox: true, rcNumber: true, hotlines: true, website: true, email: true } } } },
             },
           },
+          inspection: {
+            select: {
+              status: true,
+              completedAt: true,
+              inspectedBy: { select: { fullName: true } },
+              items: { select: { section: true, name: true, condition: true, severity: true, action: true } },
+            },
+          },
         },
       },
     },
@@ -440,7 +450,64 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
               paymentRemarkSuggestion,
             }),
           );
-          return [{ filename: `Estimate-${estimate.vehicleService.serviceNumber}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }];
+          const attachments: { filename: string; content: Buffer; contentType: string }[] = [
+            { filename: `Estimate-${estimate.vehicleService.serviceNumber}.pdf`, content: pdfBuffer, contentType: 'application/pdf' },
+          ];
+
+          // The inspection report rides along on the same email, same
+          // moment, only when there's a real completed inspection to
+          // show — a skipped inspection has no real findings to hand
+          // the customer at all, by the same honest design already
+          // used for the print route itself.
+          const inspection = estimate.vehicleService.inspection;
+          if (inspection && inspection.status === 'COMPLETED') {
+            try {
+              const reviewedItems = inspection.items.filter((i: { severity: string | null }) => i.severity);
+              const inspectionPdfBuffer = await renderToBuffer(
+                InspectionPdf({
+                  organisation: {
+                    name: org.name,
+                    legalName: org.legalName,
+                    hqAddress: org.hqAddress,
+                    poBox: org.poBox,
+                    rcNumber: org.rcNumber,
+                    hotlines: org.hotlines,
+                    website: org.website,
+                    email: org.email,
+                  },
+                  branch: {
+                    name: estimate.vehicleService.branch.name,
+                    address: estimate.vehicleService.branch.address,
+                    hotlines: estimate.vehicleService.branch.hotlines,
+                    email: estimate.vehicleService.branch.email,
+                  },
+                  logoUrl: `${portalUrl}/images/logo/logo.png`,
+                  serviceNumber: estimate.vehicleService.serviceNumber,
+                  customerName: estimate.vehicleService.customer.fullName,
+                  vehicleDescription: [estimate.vehicleService.vehicle.year, estimate.vehicleService.vehicle.make, estimate.vehicleService.vehicle.model].filter(Boolean).join(' ') || vehicleDescription,
+                  plateNumber: estimate.vehicleService.vehicle.plateNumber,
+                  chassisNumber: estimate.vehicleService.vehicle.chassisNumber,
+                  inspectedByName: inspection.inspectedBy.fullName,
+                  completedOnLabel: inspection.completedAt ? formatDateTime(inspection.completedAt) : formatDateTime(new Date()),
+                  reviewedItems: reviewedItems.map((i: { section: string; name: string; condition: string | null; severity: string | null; action: string | null }) => ({
+                    section: i.section,
+                    name: i.name,
+                    condition: i.condition,
+                    severity: i.severity,
+                    action: i.action,
+                  })),
+                }),
+              );
+              attachments.push({ filename: `Inspection-${estimate.vehicleService.serviceNumber}.pdf`, content: inspectionPdfBuffer, contentType: 'application/pdf' });
+            } catch (inspectionPdfErr) {
+              // Same real rule — never let the inspection PDF block
+              // either the estimate PDF or the email itself.
+              // eslint-disable-next-line no-console
+              console.error('Failed to generate Vehicle Service inspection PDF attachment', estimate.vehicleService.serviceNumber, inspectionPdfErr);
+            }
+          }
+
+          return attachments;
         } catch (pdfErr) {
           // A failed PDF must never block the email itself — the
           // customer still needs the approval notice either way.
