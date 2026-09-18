@@ -51,6 +51,46 @@ export async function createServiceEstimate(vehicleServiceId: string): Promise<{
   return { id: estimate.id };
 }
 
+/**
+ * The one real, deliberate way to undo choosing the "normal service"
+ * path — same flexibility as cancelVehicleInspection: genuinely
+ * deletes the record after logging what happened first, so choosing
+ * to escalate instead is never blocked by an abandoned draft. Only
+ * while still DRAFT or SUBMITTED — once APPROVED, real Store Part
+ * requests or real payments may already exist against this estimate,
+ * so cancelling it at that point would orphan real, live records
+ * rather than undo a choice that was never acted on yet.
+ */
+export async function cancelServiceEstimate(vehicleServiceId: string): Promise<void> {
+  const user = await requireUser();
+  const estimate = await prisma.serviceEstimate.findUnique({
+    where: { vehicleServiceId },
+    select: { id: true, status: true },
+  });
+  if (!estimate) {
+    throw new ServiceEstimateActionError('No estimate exists yet for this Vehicle Service.');
+  }
+  if (estimate.status === 'APPROVED') {
+    throw new ServiceEstimateActionError('This estimate is already approved — it can no longer be cancelled here.');
+  }
+  const service = await prisma.vehicleService.findUnique({ where: { id: vehicleServiceId }, select: { serviceNumber: true } });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'service_estimate.cancelled',
+    entityType: 'ServiceEstimate',
+    entityId: estimate.id,
+    metadata: { serviceNumber: service?.serviceNumber, previousStatus: estimate.status },
+  });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'service_estimate.cancelled',
+    entityType: 'VehicleService',
+    entityId: vehicleServiceId,
+    metadata: { serviceNumber: service?.serviceNumber, previousStatus: estimate.status },
+  });
+  await prisma.serviceEstimate.delete({ where: { id: estimate.id } });
+}
+
 export type ServiceEstimateLineItemInput = {
   type?: 'STORE_PART' | 'OTHER';
   description: string;

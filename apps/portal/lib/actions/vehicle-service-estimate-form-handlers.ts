@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   createServiceEstimate,
+  cancelServiceEstimate,
   addServiceEstimateLineItem,
   removeServiceEstimateLineItem,
   matchServiceEstimateStorePartLine,
@@ -33,6 +34,18 @@ export async function createServiceEstimateFormAction(formData: FormData) {
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
   redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=estimate_started`);
+}
+
+export async function cancelServiceEstimateFormAction(formData: FormData) {
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
+  try {
+    await cancelServiceEstimate(vehicleServiceId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not cancel this estimate.';
+    redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
+  redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=estimate_cancelled`);
 }
 
 export async function addServiceEstimateLineItemFormAction(formData: FormData) {
