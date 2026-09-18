@@ -5,6 +5,10 @@ import { requireUser, writeAuditLog, getWorkshopOrgContext } from './workshop';
 import { sendEmail } from '@/lib/email';
 import { renderServiceEstimateSubmittedEmail } from '@/lib/email-templates/service-estimate-submitted';
 import { renderCustomerServiceEstimateApprovedEmail } from '@/lib/email-templates/customer-service-estimate-approved';
+import { renderToBuffer } from '@react-pdf/renderer';
+import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
+import { pluralizeWord } from '@/lib/utils/pluralize';
+import { MINIMUM_DEPOSIT_FRACTION, COMPANY_BANK_DETAILS } from '@/lib/workshop-constants';
 
 class ServiceEstimateActionError extends Error {}
 
@@ -316,9 +320,17 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
         select: {
           id: true,
           serviceNumber: true,
-          customer: { select: { fullName: true, email: true } },
-          vehicle: { select: { make: true, model: true } },
-          branch: { select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } } },
+          customer: { select: { fullName: true, email: true, address: true } },
+          vehicle: { select: { make: true, model: true, year: true, plateNumber: true, chassisNumber: true } },
+          branch: {
+            select: {
+              name: true,
+              address: true,
+              hotlines: true,
+              email: true,
+              businessUnit: { select: { organisation: { select: { name: true, legalName: true, hqAddress: true, poBox: true, rcNumber: true, hotlines: true, website: true, email: true } } } },
+            },
+          },
         },
       },
     },
@@ -372,6 +384,71 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
         companyName: estimate.vehicleService.branch.businessUnit.organisation.name,
         branchName: estimate.vehicleService.branch.name,
       }),
+      await (async () => {
+        // The real, styled PDF attachment — reuses Job Card's own
+        // exact PDF layout component (EstimatePdf), just with its
+        // reference label parameterized to say "VEHICLE SERVICE"
+        // instead of the default "JOB CARD" — everything else about
+        // the document, including the real minimum-deposit section
+        // now that Vehicle Service has its own real payment system,
+        // is identical.
+        try {
+          const org = estimate.vehicleService.branch.businessUnit.organisation;
+          const formatNairaForPdf = (value: number) => `NGN ${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+          const paymentRemarkSuggestion = `${estimate.vehicleService.serviceNumber} Deposit`;
+          const pdfBuffer = await renderToBuffer(
+            EstimatePdf({
+              organisation: {
+                name: org.name,
+                legalName: org.legalName,
+                hqAddress: org.hqAddress,
+                poBox: org.poBox,
+                rcNumber: org.rcNumber,
+                hotlines: org.hotlines,
+                website: org.website,
+                email: org.email,
+              },
+              branch: {
+                name: estimate.vehicleService.branch.name,
+                address: estimate.vehicleService.branch.address,
+                hotlines: estimate.vehicleService.branch.hotlines,
+                email: estimate.vehicleService.branch.email,
+              },
+              logoUrl: `${portalUrl}/images/logo/logo.png`,
+              jobNumber: estimate.vehicleService.serviceNumber,
+              referenceLabel: 'VEHICLE SERVICE',
+              customerName: estimate.vehicleService.customer.fullName,
+              customerAddress: estimate.vehicleService.customer.address,
+              vehicleDescription: [estimate.vehicleService.vehicle.year, estimate.vehicleService.vehicle.make, estimate.vehicleService.vehicle.model].filter(Boolean).join(' ') || vehicleDescription,
+              plateNumber: estimate.vehicleService.vehicle.plateNumber,
+              chassisNumber: estimate.vehicleService.vehicle.chassisNumber,
+              lineItems: estimate.lineItems.map((li: { description: string; quantity: unknown; amount: unknown; unitOfMeasure: string | null }) => ({
+                description: li.description,
+                quantity: Number(li.quantity),
+                unitLabel: li.unitOfMeasure ? pluralizeWord(Number(li.quantity), li.unitOfMeasure) : null,
+                amount: formatNairaForPdf(Number(li.amount ?? 0)),
+              })),
+              servicesSubtotal: null,
+              labourSubtotal: null,
+              sundrySubtotal: null,
+              totalAmount: formatNairaForPdf(total),
+              minimumDepositAmount: formatNairaForPdf(minimumDeposit),
+              bankName: COMPANY_BANK_DETAILS.bankName,
+              accountName: COMPANY_BANK_DETAILS.accountName,
+              accountNumber: COMPANY_BANK_DETAILS.accountNumber,
+              paymentRemarkSuggestion,
+            }),
+          );
+          return [{ filename: `Estimate-${estimate.vehicleService.serviceNumber}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }];
+        } catch (pdfErr) {
+          // A failed PDF must never block the email itself — the
+          // customer still needs the approval notice either way.
+          // eslint-disable-next-line no-console
+          console.error('Failed to generate Vehicle Service estimate PDF attachment', estimate.vehicleService.serviceNumber, pdfErr);
+          return undefined;
+        }
+      })(),
     );
   } catch (err) {
     // eslint-disable-next-line no-console
