@@ -596,6 +596,7 @@ model CustomerVehicle {
 
   jobCards JobCard[]
   vehicleServices VehicleService[]
+  reminderLogs ServiceReminderLog[]
 
   @@map("customer_vehicles")
 }
@@ -1262,6 +1263,36 @@ model VehicleServiceComplaint {
   createdAt        DateTime @default(now())
 
   @@map("vehicle_service_complaints")
+}
+
+// The one real, permanent record of every service-due reminder ever
+// sent for a vehicle — never fire-and-forget. Kept per-vehicle, not
+// per-VehicleService, since a reminder is about the vehicle's own
+// next real due point regardless of which past visit that prediction
+// came from. Every real fact this reminder was actually based on is
+// captured at the moment it was sent — the estimate and the real
+// recorded odometer both drift after the fact as the vehicle keeps
+// being driven and serviced, so this is the one place that honestly
+// freezes what was actually true and shown to the customer at that
+// real moment, not what's true now.
+model ServiceReminderLog {
+  id                     String   @id @default(cuid())
+  vehicleId              String
+  vehicle                CustomerVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  // 1 = first, warm/preventive; 2 = attentive follow-up; 3 =
+  // actionable/due; 4+ = overdue, factual — the real real-world
+  // progression already agreed on, never re-derived from sentAt
+  // alone since a customer could be skipped forward or the interval
+  // could change between reminders.
+  reminderNumber         Int
+  sentAt                 DateTime @default(now())
+  estimatedDueOdometer   Int?
+  estimatedDueDate       DateTime?
+  recordedOdometerAtSend Int?
+  trigger                String
+  deliveryStatus         String   @default("SENT")
+
+  @@map("service_reminder_logs")
 }
 
 // One real inspection per Vehicle Service — the technical truth
