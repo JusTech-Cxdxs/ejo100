@@ -90,6 +90,14 @@ export type EstimatePdfProps = {
   accountName: string;
   accountNumber: string;
   paymentRemarkSuggestion: string;
+  /** The field label above the reference number itself — defaults to
+   * "JOB CARD", exactly Job Card's own existing real behavior,
+   * unchanged for every existing call site. Vehicle Service's own
+   * usage passes "VEHICLE SERVICE" instead — the one real, genuinely
+   * Job-Card-specific word anywhere in this whole document, now
+   * parameterized rather than duplicating the other 250+ lines of
+   * shared layout and styling just to change one label. */
+  referenceLabel?: string;
 };
 
 /**
@@ -108,6 +116,7 @@ export function EstimatePdf(props: EstimatePdfProps) {
     vehicleDescription, plateNumber, chassisNumber, lineItems,
     servicesSubtotal, labourSubtotal, sundrySubtotal, totalAmount,
     minimumDepositAmount, bankName, accountName, accountNumber, paymentRemarkSuggestion,
+    referenceLabel = 'JOB CARD',
   } = props;
 
   const nameWords = organisation.name.trim().split(/\s+/);
@@ -164,7 +173,7 @@ export function EstimatePdf(props: EstimatePdfProps) {
 
         <View style={styles.fieldGrid}>
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>JOB CARD</Text>
+            <Text style={styles.fieldLabel}>{referenceLabel}</Text>
             <Text style={styles.fieldValue}>{jobNumber}</Text>
           </View>
           <View style={styles.field}>
