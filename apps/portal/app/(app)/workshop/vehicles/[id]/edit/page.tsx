@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getVehicle, getLastEditInfo, getVehicleAuditTrail, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
-import { getVehicleServiceHealth } from '@/lib/actions/vehicle-service';
+import { getVehicleServiceHealth, getVehicleAnalytics } from '@/lib/actions/vehicle-service';
 import { updateVehicleFormAction, deleteVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -10,6 +10,9 @@ import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { AuditTrail } from '@/components/AuditTrail';
+import { VehicleMileageTrendChart } from '@/components/VehicleMileageTrendChart';
+import { VehicleVisitHistoryChart } from '@/components/VehicleVisitHistoryChart';
+import { VehicleFindingsBreakdownChart } from '@/components/VehicleFindingsBreakdownChart';
 import { formatDateTime, formatDateTimeCompact, formatDateOnly } from '@/lib/utils/format-date';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
@@ -43,11 +46,12 @@ export default async function VehiclePage({
   const { error, edit, status } = await searchParams;
   const vehicle = await getVehicle(id);
   if (!vehicle) notFound();
-  const [lastEdit, auditTrail, isMasterAdmin, serviceHealth] = await Promise.all([
+  const [lastEdit, auditTrail, isMasterAdmin, serviceHealth, analytics] = await Promise.all([
     getLastEditInfo('CustomerVehicle', id, 'vehicle.updated'),
     getVehicleAuditTrail(id),
     currentUserIsMasterAdmin(),
     getVehicleServiceHealth(id),
+    getVehicleAnalytics(id),
   ]);
   const isEditing = edit === 'true';
 
@@ -361,6 +365,60 @@ export default async function VehiclePage({
               </form>
             </div>
           ) : null}
+        </div>
+      </div>
+
+      <div className="mt-6 space-y-6">
+        <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Analytics</h2>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+            <h3 className="text-xs font-semibold text-[var(--ejo-text-muted)]">MILEAGE OVER TIME</h3>
+            {analytics.mileageTimeline.length > 0 ? (
+              <VehicleMileageTrendChart
+                data={analytics.mileageTimeline.map((p) => ({
+                  label: p.label,
+                  mileage: p.mileage,
+                  dateLabel: `${formatDateOnly(p.date)} — ${p.source === 'JOB_CARD' ? 'Job Card' : 'Vehicle Service'}`,
+                  source: p.source,
+                }))}
+                predictedMileage={serviceHealth?.nextServiceDueOdometer ?? undefined}
+                predictedLabel="Next Due"
+              />
+            ) : (
+              <p className="py-8 text-center text-xs text-[var(--ejo-text-muted)]">No recorded odometer readings yet.</p>
+            )}
+          </div>
+
+          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+            <h3 className="text-xs font-semibold text-[var(--ejo-text-muted)]">VISIT HISTORY</h3>
+            {analytics.visitHistory.length > 0 ? (
+              <VehicleVisitHistoryChart data={analytics.visitHistory} />
+            ) : (
+              <p className="py-8 text-center text-xs text-[var(--ejo-text-muted)]">No visits recorded yet.</p>
+            )}
+          </div>
+
+          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+            <h3 className="text-xs font-semibold text-[var(--ejo-text-muted)]">INSPECTION FINDINGS</h3>
+            <VehicleFindingsBreakdownChart data={analytics.findingsBreakdown} />
+          </div>
+
+          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+            <h3 className="text-xs font-semibold text-[var(--ejo-text-muted)]">SUMMARY</h3>
+            <dl className="mt-4 grid grid-cols-2 gap-4">
+              <div>
+                <dt className="text-xs text-[var(--ejo-text-muted)]">Total Visits</dt>
+                <dd className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">{analytics.totalVisits}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--ejo-text-muted)]">Total Spend</dt>
+                <dd className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">₦{analytics.totalSpend.toLocaleString('en-NG', { maximumFractionDigits: 0 })}</dd>
+              </div>
+            </dl>
+            <p className="mt-4 text-xs text-[var(--ejo-text-muted)]">
+              Based on approved estimates and recorded visits only — real figures, never a projection.
+            </p>
+          </div>
         </div>
       </div>
     </div>
