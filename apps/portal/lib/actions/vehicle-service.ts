@@ -924,6 +924,15 @@ export async function updateVehicleServiceStatus(
       throw new VehicleServiceActionError('Payment must be completed in full before this Vehicle Service can be marked Collected.');
     }
   }
+  // Same real rule as Job Card's own 70%-deposit gate — once a real,
+  // approved estimate exists, work starting is a real payment
+  // milestone (see recordServicePayment's own automatic transition),
+  // never a manual click that could bypass it. Only applies when a
+  // real charge is actually on the table — a routine visit with no
+  // estimate at all has nothing to gate and can still move manually.
+  if (newStatus === 'IN_SERVICE' && service.serviceEstimate?.status === 'APPROVED') {
+    throw new VehicleServiceActionError('This Vehicle Service moves to In Service automatically once the required deposit is paid.');
+  }
   const ladder: Record<string, string[]> = {
     SCHEDULED: ['CHECKED_IN', 'CANCELLED'],
     CHECKED_IN: ['IN_SERVICE', 'CANCELLED'],

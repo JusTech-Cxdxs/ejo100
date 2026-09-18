@@ -92,3 +92,24 @@ export async function completeVehicleInspectionFormAction(formData: FormData) {
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
   redirect(`/workshop/vehicle-service/${vehicleServiceId}/inspection?status=completed`);
 }
+
+/**
+ * The real Vehicle Service page's own "Complete" shortcut — same
+ * exact real action as the inspection workspace's own Complete
+ * button, just redirecting back to the main page instead of staying
+ * on the inspection page, so a technician who's already finished
+ * scrolling through never has to go back in just to click Complete.
+ */
+export async function completeVehicleInspectionFromServicePageFormAction(formData: FormData) {
+  const inspectionId = str(formData, 'inspectionId');
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
+  try {
+    await completeVehicleInspection(inspectionId, str(formData, 'notes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not complete this inspection.';
+    redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}/inspection`);
+  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
+  redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=inspection_completed`);
+}
