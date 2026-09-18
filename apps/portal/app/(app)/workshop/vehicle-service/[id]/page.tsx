@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getVehicleService, getVehicleServiceAuditTrail } from '@/lib/actions/vehicle-service';
 import { getVehicleInspection } from '@/lib/actions/vehicle-inspection';
 import { getServiceEstimate } from '@/lib/actions/vehicle-service-estimate';
-import { cancelVehicleInspectionFormAction } from '@/lib/actions/vehicle-inspection-form-handlers';
+import { cancelVehicleInspectionFormAction, completeVehicleInspectionFromServicePageFormAction } from '@/lib/actions/vehicle-inspection-form-handlers';
 import {
   createServiceEstimateFormAction,
   cancelServiceEstimateFormAction,
@@ -38,6 +38,7 @@ import { AuditTrail } from '@/components/AuditTrail';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
+import { pluralize } from '@/lib/utils/pluralize';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -72,11 +73,27 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle_service.status_updated': 'Status updated',
   'vehicle_service.technician_assigned': 'Technician assigned',
   'vehicle_service.escalated_to_job_card': 'Escalated to Job Card',
+  'assignment.accepted': 'Technician accepted assignment',
+  'assignment.rejected': 'Technician rejected assignment',
   'vehicle_inspection.started': 'Inspection started',
   'vehicle_inspection.skipped': 'Inspection skipped',
   'vehicle_inspection.cancelled': 'Inspection cancelled',
   'vehicle_inspection.items_updated': 'Inspection items updated',
   'vehicle_inspection.completed': 'Inspection completed',
+  'service_estimate.created': 'Estimate started',
+  'service_estimate.line_item_added': 'Estimate line added',
+  'service_estimate.line_item_removed': 'Estimate line removed',
+  'service_estimate.line_store_matched': 'Estimate line matched to Store Part',
+  'service_estimate.submitted': 'Estimate submitted for approval',
+  'service_estimate.approved': 'Estimate approved',
+  'service_estimate.cancelled': 'Estimate cancelled',
+  'part_request_slip.requested': 'Parts requested from Store',
+  'part_request_slip.hod_approved': 'Parts request approved by HOD',
+  'part_request_slip.store_approved': 'Parts request approved by Store',
+  'part_request_slip.released': 'Parts released',
+  'part_request_slip.rejected': 'Parts request rejected',
+  'payment.recorded': 'Payment recorded',
+  'payment.approved': 'Deposit requirement met — work started',
 };
 
 function formatAuditDetail(entry: { action: string; metadata: unknown }): string | null {
@@ -131,7 +148,6 @@ export default async function VehicleServiceDetailPage({
     getVehicleServicePayments(id),
     listEligibleFinanceOfficersForBranch(service.branchId),
   ]);
-  const canEscalate = !service.escalatedToJobCard && !serviceEstimate && service.status !== 'COLLECTED' && service.status !== 'CANCELLED';
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
@@ -210,6 +226,11 @@ export default async function VehicleServiceDetailPage({
       {status === 'payment_recorded' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Payment recorded." />
+        </div>
+      ) : null}
+      {status === 'inspection_completed' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Inspection completed." />
         </div>
       ) : null}
 
@@ -337,7 +358,7 @@ export default async function VehicleServiceDetailPage({
             </dl>
             {service.complaints.length > 0 ? (
               <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
-                <p className="text-xs text-[var(--ejo-text-muted)]">Customer&apos;s Requests</p>
+                <p className="text-xs text-[var(--ejo-text-muted)]">{pluralize(service.complaints.length, "Customer's Request")}</p>
                 <div className="mt-1 space-y-1">
                   {service.complaints.map((c: (typeof service.complaints)[number]) => (
                     <p key={c.id} className="flex gap-2 text-sm text-[var(--ejo-text)]">
@@ -347,6 +368,25 @@ export default async function VehicleServiceDetailPage({
                 </div>
               </div>
             ) : null}
+            {(() => {
+              const findings = (inspection?.items ?? []).filter((i: { severity: string | null }) => i.severity && i.severity !== 'GOOD');
+              return findings.length > 0 ? (
+                <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                  <p className="text-xs text-[var(--ejo-text-muted)]">{pluralize(findings.length, 'Inspection Finding')}</p>
+                  <div className="mt-1 space-y-1">
+                    {findings.map((i: { section: string; name: string; severity: string | null; action: string | null }, idx: number) => (
+                      <p key={idx} className="flex gap-2 text-sm text-[var(--ejo-text)]">
+                        <span className="text-[var(--ejo-text-muted)]">{idx + 1}.</span>
+                        <span>
+                          <span className="font-medium">{i.section} — {i.name}</span>
+                          {i.action ? `: ${i.action}` : ''}
+                        </span>
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null;
+            })()}
           </div>
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
@@ -394,6 +434,18 @@ export default async function VehicleServiceDetailPage({
                 >
                   View Inspection
                 </LoadingLink>
+                {inspection.status === 'IN_PROGRESS' ? (
+                  <form action={completeVehicleInspectionFromServicePageFormAction}>
+                    <FormPendingOverlay />
+                    <input type="hidden" name="inspectionId" value={inspection.id} />
+                    <input type="hidden" name="vehicleServiceId" value={service.id} />
+                    <SubmitButton
+                      label="Complete"
+                      pendingLabel="Completing…"
+                      className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-success)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-success)] hover:bg-[var(--ejo-success)]/10"
+                    />
+                  </form>
+                ) : null}
                 <PrintMenu
                   orgHref={`/print/vehicle-inspections/${service.id}`}
                   clientHref={`/print/vehicle-inspections/${service.id}?variant=client`}
@@ -441,15 +493,52 @@ export default async function VehicleServiceDetailPage({
               </p>
 
               {!serviceEstimate ? (
-                <form action={createServiceEstimateFormAction} className="mt-3">
-                  <FormPendingOverlay />
-                  <input type="hidden" name="vehicleServiceId" value={service.id} />
-                  <SubmitButton
-                    label="Continue with Normal Service"
-                    pendingLabel="Starting…"
-                    className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
-                  />
-                </form>
+                <>
+                  <form action={createServiceEstimateFormAction} className="mt-3">
+                    <FormPendingOverlay />
+                    <input type="hidden" name="vehicleServiceId" value={service.id} />
+                    <SubmitButton
+                      label="Continue with Normal Service"
+                      pendingLabel="Starting…"
+                      className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+                    />
+                  </form>
+
+                  <div className="mt-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-4">
+                    <h3 className="text-sm font-semibold text-[var(--ejo-error)]">Or escalate — real repair work</h3>
+                    <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                      Beyond routine maintenance? This opens a real Job Card for this vehicle — that&apos;s
+                      where the estimate is actually built, approved, and worked from.
+                    </p>
+                    {(() => {
+                      const findings = (inspection?.items ?? []).filter(
+                        (i: { severity: string | null }) => i.severity === 'ATTENTION' || i.severity === 'SERVICE_REQUIRED' || i.severity === 'CRITICAL',
+                      );
+                      return findings.length > 0 ? (
+                        <p className="mt-2 text-xs text-[var(--ejo-text)]">
+                          <span className="font-medium">{findings.length}</span> inspection finding{findings.length === 1 ? '' : 's'} will carry
+                          straight into the new Job Card as real complaint lines — nothing needs retyping.
+                        </p>
+                      ) : null;
+                    })()}
+                    <form action={escalateVehicleServiceFormAction} className="mt-3 space-y-3">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="serviceId" value={service.id} />
+                      <SupervisorPicker vehicleType={service.vehicle.vehicleType} defaultSupervisorId={service.supervisor?.id} />
+                      <textarea
+                        name="additionalComplaint"
+                        rows={2}
+                        placeholder="Anything else worth adding…"
+                        className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                      />
+                      <SubmitButton
+                        label="Create Job Card & Estimate"
+                        pendingLabel="Creating…"
+                        className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                      />
+                    </form>
+                  </div>
+                </>
               ) : serviceEstimate.status !== 'APPROVED' ? (
                 <form action={cancelServiceEstimateFormAction} className="mt-3">
                   <FormPendingOverlay />
@@ -780,7 +869,7 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {nextAction ? (
+          {nextAction && !(nextAction.status === 'IN_SERVICE' && serviceEstimate?.status === 'APPROVED') ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{nextAction.label}</h2>
               <form action={updateVehicleServiceStatusFormAction} className="mt-3 space-y-3">
@@ -913,44 +1002,6 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {canEscalate ? (
-            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
-              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Create Estimate — Send to Job Card</h2>
-              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Routine maintenance doesn&apos;t need a priced estimate, but real repair work does. This
-                opens a real Job Card for this vehicle — that&apos;s where the estimate is actually built,
-                approved, and worked from.
-              </p>
-              {(() => {
-                const findings = (inspection?.items ?? []).filter(
-                  (i: { severity: string | null }) => i.severity === 'ATTENTION' || i.severity === 'SERVICE_REQUIRED' || i.severity === 'CRITICAL',
-                );
-                return findings.length > 0 ? (
-                  <p className="mt-2 text-xs text-[var(--ejo-text)]">
-                    <span className="font-medium">{findings.length}</span> inspection finding{findings.length === 1 ? '' : 's'} will carry
-                    straight into the new Job Card as real complaint lines — nothing needs retyping.
-                  </p>
-                ) : null;
-              })()}
-              <form action={escalateVehicleServiceFormAction} className="mt-3 space-y-3">
-                <FormPendingOverlay />
-                <input type="hidden" name="serviceId" value={service.id} />
-                <SupervisorPicker vehicleType={service.vehicle.vehicleType} defaultSupervisorId={service.supervisor?.id} />
-                <textarea
-                  name="additionalComplaint"
-                  rows={2}
-                  placeholder="Anything else worth adding…"
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                />
-                <SubmitButton
-                  label="Create Job Card & Estimate"
-                  pendingLabel="Creating…"
-                  className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-                />
-              </form>
-            </div>
-          ) : null}
-
           {canCancel ? (
             <form action={updateVehicleServiceStatusFormAction}>
               <FormPendingOverlay />
@@ -961,20 +1012,6 @@ export default async function VehicleServiceDetailPage({
               </button>
             </form>
           ) : null}
-
-          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Details</h2>
-            <dl className="mt-3 space-y-2 text-sm">
-              <div>
-                <dt className="text-xs text-[var(--ejo-text-muted)]">Opened</dt>
-                <dd className="text-[var(--ejo-text)]">{formatDateTime(service.createdAt)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-[var(--ejo-text-muted)]">Opened By</dt>
-                <dd className="text-[var(--ejo-text)]">{service.createdBy.fullName}</dd>
-              </div>
-            </dl>
-          </div>
 
           {isMasterAdmin ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
@@ -993,6 +1030,20 @@ export default async function VehicleServiceDetailPage({
               </form>
             </div>
           ) : null}
+
+          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Details</h2>
+            <dl className="mt-3 space-y-2 text-sm">
+              <div>
+                <dt className="text-xs text-[var(--ejo-text-muted)]">Opened</dt>
+                <dd className="text-[var(--ejo-text)]">{formatDateTime(service.createdAt)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--ejo-text-muted)]">Opened By</dt>
+                <dd className="text-[var(--ejo-text)]">{service.createdBy.fullName}</dd>
+              </div>
+            </dl>
+          </div>
         </div>
       </div>
 
