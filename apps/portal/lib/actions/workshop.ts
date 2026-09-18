@@ -3031,7 +3031,7 @@ export async function listEligibleFinanceOfficersForBranch(branchId: string): Pr
   return { supervisors: masterAdmins, usingFallback: true };
 }
 
-async function requireEligibleFinanceOfficer(branchId: string): Promise<{ id: string }> {
+export async function requireEligibleFinanceOfficer(branchId: string): Promise<{ id: string }> {
   const user = await requireUser();
   if (await currentUserIsMasterAdmin()) return user;
   const match = await prisma.user.findFirst({

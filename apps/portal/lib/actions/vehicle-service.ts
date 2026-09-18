@@ -772,10 +772,24 @@ export async function updateVehicleServiceStatus(
       odometerAtService: true,
       vehicle: { select: { serviceIntervalKm: true, serviceIntervalDays: true } },
       branch: { select: { businessUnit: { select: { organisation: { select: { id: true, primaryServiceIntervalKm: true, primaryServiceIntervalDays: true } } } } } },
+      serviceEstimate: { select: { status: true, lineItems: { select: { amount: true } } } },
+      payments: { select: { amount: true } },
     },
   });
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
+  }
+  // Same real rule as Job Card's own close/checkout gate — this
+  // Vehicle Service can't genuinely be marked Collected while real
+  // money is still owed on it. Only applies once a real, approved
+  // estimate actually exists — a routine visit that never needed one
+  // at all was never charged anything, so there's nothing to gate.
+  if (newStatus === 'COLLECTED' && service.serviceEstimate?.status === 'APPROVED') {
+    const totalEstimate = service.serviceEstimate.lineItems.reduce((sum: number, l: { amount: unknown }) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
+    const totalPaid = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
+    if (totalPaid < totalEstimate) {
+      throw new VehicleServiceActionError('Payment must be completed in full before this Vehicle Service can be marked Collected.');
+    }
   }
   const ladder: Record<string, string[]> = {
     SCHEDULED: ['CHECKED_IN', 'CANCELLED'],
