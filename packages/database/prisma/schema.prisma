@@ -1178,6 +1178,14 @@ model VehicleService {
   // class this closes, as Job Card's own identical field.
   workStartedAt DateTime?
 
+  // Set only via attendToOverdueVehicle — marks this record's own
+  // real due-prediction as genuinely handled, so it stops showing on
+  // the Overdue list forever once a real new Vehicle Service has
+  // been opened for the same vehicle. Never touched by anything
+  // else; a vehicle that's simply serviced again normally already
+  // gets a fresh real prediction from that new visit on its own.
+  attendedAt DateTime?
+
   // The routed department, derived from the vehicle's own recorded
   // Passenger/Commercial type — same real pattern as Job Card,
   // structurally impossible to route to the wrong department by a
