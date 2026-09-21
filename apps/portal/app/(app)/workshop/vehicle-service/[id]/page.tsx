@@ -6,7 +6,6 @@ import { cancelVehicleInspectionFormAction, completeVehicleInspectionFromService
 import {
   createServiceEstimateFormAction,
   cancelServiceEstimateFormAction,
-  addServiceEstimateLineItemFormAction,
   removeServiceEstimateLineItemFormAction,
   matchServiceEstimateStorePartLineFormAction,
   submitServiceEstimateFormAction,
@@ -16,7 +15,7 @@ import { requestServiceEstimatePartRequestSlipFormAction } from '@/lib/actions/s
 import { getVehicleServicePayments } from '@/lib/actions/vehicle-service-payment';
 import { recordServicePaymentFormAction } from '@/lib/actions/vehicle-service-payment-form-handlers';
 import { listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId, listEligibleFinanceOfficersForBranch } from '@/lib/actions/workshop';
-import { listPartTypes, listParts } from '@/lib/actions/store';
+import { listPartTypes, listPartCategories, listParts } from '@/lib/actions/store';
 import {
   updateVehicleServiceStatusFormAction,
   escalateVehicleServiceFormAction,
@@ -29,7 +28,8 @@ import {
 } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
-import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
+import { MINIMUM_DEPOSIT_FRACTION, COMMON_ESTIMATE_LINE_DESCRIPTIONS } from '@/lib/workshop-constants';
+import { ServiceEstimateLineItemForm } from '@/components/ServiceEstimateLineItemForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -152,16 +152,22 @@ export default async function VehicleServiceDetailPage({
   const isAssignedTechnician = isMasterAdmin || service.assignedTechnician?.id === viewerId;
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
-  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, parts, payments, eligibleFinance] = await Promise.all([
+  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, partCategories, parts, payments, eligibleFinance] = await Promise.all([
     listTechnicianCandidates(),
     getVehicleServiceAuditTrail(id),
     getVehicleInspection(id),
     getServiceEstimate(id),
     listPartTypes(service.branchId),
+    listPartCategories(service.branchId),
     listParts(service.branchId),
     getVehicleServicePayments(id),
     listEligibleFinanceOfficersForBranch(service.branchId),
   ]);
+  const partCategoriesWithTypes = partCategories.map((category: (typeof partCategories)[number]) => ({
+    id: category.id,
+    name: category.name,
+    types: partTypes.filter((t: (typeof partTypes)[number]) => t.categoryId === category.id).map((t: (typeof partTypes)[number]) => ({ id: t.id, name: t.name, typicalUnit: t.typicalUnit })),
+  }));
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
@@ -637,50 +643,14 @@ export default async function VehicleServiceDetailPage({
                   )}
 
                   {serviceEstimate.status === 'DRAFT' ? (
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <form action={addServiceEstimateLineItemFormAction} className="space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3">
-                        <FormPendingOverlay />
-                        <input type="hidden" name="estimateId" value={serviceEstimate.id} />
-                        <input type="hidden" name="vehicleServiceId" value={service.id} />
-                        <input type="hidden" name="type" value="STORE_PART" />
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Add Store Part</p>
-                        <select name="partTypeId" required className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 py-1.5 text-xs text-[var(--ejo-text)]">
-                          <option value="">Select part type…</option>
-                          {partTypes.map((pt: (typeof partTypes)[number]) => (
-                            <option key={pt.id} value={pt.id}>
-                              {pt.name}
-                            </option>
-                          ))}
-                        </select>
-                        <input name="quantity" type="number" min="0.01" step="0.01" required defaultValue="1" placeholder="Qty" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 py-1.5 text-xs text-[var(--ejo-text)]" />
-                        <SubmitButton
-                          label="Add Store Part"
-                          pendingLabel="Adding…"
-                          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
-                        />
-                        <p className="text-[10px] text-[var(--ejo-text-muted)]">
-                          Store matches this to a real Part and its price — same as Job Card&apos;s own estimate.
-                        </p>
-                      </form>
-
-                      <form action={addServiceEstimateLineItemFormAction} className="space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3">
-                        <FormPendingOverlay />
-                        <input type="hidden" name="estimateId" value={serviceEstimate.id} />
-                        <input type="hidden" name="vehicleServiceId" value={service.id} />
-                        <input type="hidden" name="type" value="OTHER" />
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Add Other Line</p>
-                        <input name="description" required placeholder="e.g. Labour" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 py-1.5 text-xs text-[var(--ejo-text)]" />
-                        <div className="grid grid-cols-2 gap-2">
-                          <input name="quantity" type="number" min="0.01" step="0.01" required defaultValue="1" placeholder="Qty" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 py-1.5 text-xs text-[var(--ejo-text)]" />
-                          <input name="unitPrice" type="number" min="0" step="0.01" placeholder="₦ Unit Price" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 py-1.5 text-xs text-[var(--ejo-text)]" />
-                        </div>
-                        <SubmitButton
-                          label="Add Other Line"
-                          pendingLabel="Adding…"
-                          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
-                        />
-                      </form>
-                    </div>
+                    <ServiceEstimateLineItemForm
+                      vehicleServiceId={service.id}
+                      estimateId={serviceEstimate.id}
+                      categories={partCategoriesWithTypes}
+                      descriptionSuggestions={COMMON_ESTIMATE_LINE_DESCRIPTIONS}
+                      hasSundry={Boolean(serviceEstimate.lineItems.some((li: (typeof serviceEstimate.lineItems)[number]) => li.type === 'SUNDRY'))}
+                      isTechnicianOnly={isAssignedTechnician && !isApprover}
+                    />
                   ) : null}
 
                   {serviceEstimate.status === 'DRAFT' ? (
