@@ -148,7 +148,11 @@ export default async function VehicleServiceCustodyPage({
                         </LoadingLink>
                       </td>
                       <td className="px-4 py-2 text-[var(--ejo-text)]">{entry.customerName}</td>
-                      <td className="px-4 py-2 text-[var(--ejo-text)]">{entry.vehicleDescription}</td>
+                      <td className="px-4 py-2">
+                        <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-primary)] hover:underline">
+                          {entry.vehicleDescription}
+                        </LoadingLink>
+                      </td>
                       <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{STATUS_LABEL[entry.status] ?? entry.status}</td>
                     </tr>
                   ))}
@@ -184,7 +188,11 @@ export default async function VehicleServiceCustodyPage({
                         </LoadingLink>
                       </td>
                       <td className="px-4 py-2 text-[var(--ejo-text)]">{entry.customerName}</td>
-                      <td className="px-4 py-2 text-[var(--ejo-text)]">{entry.vehicleDescription}</td>
+                      <td className="px-4 py-2">
+                        <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-primary)] hover:underline">
+                          {entry.vehicleDescription}
+                        </LoadingLink>
+                      </td>
                       <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{STATUS_LABEL[entry.status] ?? entry.status}</td>
                     </tr>
                   ))}
@@ -209,7 +217,12 @@ export default async function VehicleServiceCustodyPage({
                       <LoadingLink href={`/workshop/vehicle-service/${entry.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">
                         {entry.serviceNumber}
                       </LoadingLink>
-                      <p className="text-sm text-[var(--ejo-text)]">{entry.customerName} — {entry.vehicleDescription}</p>
+                      <p className="text-sm text-[var(--ejo-text)]">
+                        {entry.customerName} —{' '}
+                        <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-primary)] hover:underline">
+                          {entry.vehicleDescription}
+                        </LoadingLink>
+                      </p>
                     </div>
                     <span className="rounded-full bg-[var(--ejo-success)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-success)]">
                       Completed {formatDateOnly(entry.createdAt)}
