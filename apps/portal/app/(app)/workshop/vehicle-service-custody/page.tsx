@@ -1,6 +1,10 @@
 import { getVehicleServiceCustodySummary } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/actions/workshop';
+import { attendToOverdueVehicleFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
+import { FormPendingOverlay } from '@/components/FormPendingOverlay';
+import { SubmitButton } from '@/components/SubmitButton';
+import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateOnly } from '@/lib/utils/format-date';
 
@@ -25,12 +29,13 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function VehicleServiceCustodyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; q?: string }>;
+  searchParams: Promise<{ filter?: string; q?: string; status?: string }>;
 }) {
-  const { filter, q } = await searchParams;
+  const { filter, q, status } = await searchParams;
   const branchId = await getWorkshopBranchId();
   const summary = await getVehicleServiceCustodySummary(branchId, q);
 
+  const showCheckedIn = !filter || filter === 'checked_in';
   const showInService = !filter || filter === 'in_service';
   const showCompleted = !filter || filter === 'completed';
   const showDueSoon = !filter || filter === 'due_soon';
@@ -45,6 +50,11 @@ export default async function VehicleServiceCustodyPage({
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Workshop
       </p>
+      {status === 'attended' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Marked attended to — this vehicle is ready for a new Vehicle Service." />
+        </div>
+      ) : null}
 
       <form className="mb-8 flex gap-2" action="/workshop/vehicle-service-custody">
         {filter ? <input type="hidden" name="filter" value={filter} /> : null}
@@ -68,7 +78,14 @@ export default async function VehicleServiceCustodyPage({
         ) : null}
       </form>
 
-      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-5">
+        <LoadingLink
+          href={`/workshop/vehicle-service-custody?filter=checked_in${q ? `&q=${encodeURIComponent(q)}` : ''}`}
+          className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${filter === 'checked_in' ? 'border-[var(--ejo-accent)]' : 'border-[var(--ejo-accent)]/30'} bg-[var(--ejo-accent)]/5`}
+        >
+          <p className="text-xs text-[var(--ejo-text-muted)]">Checked In</p>
+          <p className="mt-1 text-2xl font-bold text-[var(--ejo-accent)]">{summary.checkedIn.length}</p>
+        </LoadingLink>
         <LoadingLink
           href={`/workshop/vehicle-service-custody?filter=in_service${q ? `&q=${encodeURIComponent(q)}` : ''}`}
           className={`block rounded-[var(--ejo-radius-lg)] border p-5 transition hover:opacity-80 ${filter === 'in_service' ? 'border-[var(--ejo-info)]' : 'border-[var(--ejo-info)]/30'} bg-[var(--ejo-info)]/5`}
@@ -104,6 +121,42 @@ export default async function VehicleServiceCustodyPage({
             ← Clear category filter, show everything
           </LoadingLink>
         </div>
+      ) : null}
+
+      {showCheckedIn ? (
+        <section className="mb-10">
+          <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Checked In</h2>
+          {summary.checkedIn.length === 0 ? (
+            <p className="text-sm text-[var(--ejo-text-muted)]">No vehicles currently checked in.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
+                    <th className="px-4 py-2">Service</th>
+                    <th className="px-4 py-2">Customer</th>
+                    <th className="px-4 py-2">Vehicle</th>
+                    <th className="px-4 py-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.checkedIn.map((entry: (typeof summary.checkedIn)[number]) => (
+                    <tr key={entry.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                      <td className="px-4 py-2">
+                        <LoadingLink href={`/workshop/vehicle-service/${entry.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                          {entry.serviceNumber}
+                        </LoadingLink>
+                      </td>
+                      <td className="px-4 py-2 text-[var(--ejo-text)]">{entry.customerName}</td>
+                      <td className="px-4 py-2 text-[var(--ejo-text)]">{entry.vehicleDescription}</td>
+                      <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{STATUS_LABEL[entry.status] ?? entry.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       ) : null}
 
       {showInService ? (
@@ -213,9 +266,26 @@ export default async function VehicleServiceCustodyPage({
                       </LoadingLink>
                       <p className="text-sm text-[var(--ejo-text)]">{entry.customerName}</p>
                     </div>
-                    <span className="rounded-full bg-[var(--ejo-error)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-error)]">
-                      Overdue
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-[var(--ejo-error)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-error)]">
+                        Overdue
+                      </span>
+                      <form action={attendToOverdueVehicleFormAction}>
+                        <FormPendingOverlay />
+                        <input type="hidden" name="serviceId" value={entry.serviceId} />
+                        <SubmitButton
+                          label="Attend To"
+                          pendingLabel="…"
+                          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-1 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
+                        />
+                      </form>
+                      <LoadingLink
+                        href="/workshop/vehicle-service"
+                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+                      >
+                        New Service
+                      </LoadingLink>
+                    </div>
                   </div>
                 </div>
               ))}
