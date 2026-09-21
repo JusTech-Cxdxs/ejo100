@@ -59,7 +59,14 @@ const STATUS_CLASS: Record<string, string> = {
 
 const NEXT_ACTION: Record<string, { status: string; label: string } | null> = {
   SCHEDULED: { status: 'CHECKED_IN', label: 'Check In Vehicle' },
-  CHECKED_IN: { status: 'IN_SERVICE', label: 'Start Service' },
+  // No manual path to IN_SERVICE — every real Vehicle Service goes
+  // through the real choice (Continue with Normal Service or
+  // Escalate) after inspection. Choosing Continue means writing a
+  // real estimate; once that's approved, the 70% deposit is what
+  // actually moves this to In Service (see recordServicePayment),
+  // never a manual click. There's no such thing as a free visit with
+  // nothing to estimate and nothing to pay for.
+  CHECKED_IN: null,
   IN_SERVICE: { status: 'COMPLETED', label: 'Complete Service' },
   COMPLETED: { status: 'COLLECTED', label: 'Mark Collected' },
   COLLECTED: null,
@@ -869,7 +876,7 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {nextAction && !(nextAction.status === 'IN_SERVICE' && serviceEstimate?.status === 'APPROVED') ? (
+          {nextAction ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{nextAction.label}</h2>
               <form action={updateVehicleServiceStatusFormAction} className="mt-3 space-y-3">
