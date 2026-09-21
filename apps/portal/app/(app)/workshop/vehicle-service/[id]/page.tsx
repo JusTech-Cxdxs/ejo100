@@ -299,7 +299,9 @@ export default async function VehicleServiceDetailPage({
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Vehicle</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
-                  {[service.vehicle.year, service.vehicle.make, service.vehicle.model, service.vehicle.engineType].filter(Boolean).join(' ') || '—'}
+                  <LoadingLink href={`/workshop/vehicles/${service.vehicle.id}/edit`} className="hover:underline">
+                    {[service.vehicle.year, service.vehicle.make, service.vehicle.model, service.vehicle.engineType].filter(Boolean).join(' ') || '—'}
+                  </LoadingLink>
                 </dd>
               </div>
               <div>
