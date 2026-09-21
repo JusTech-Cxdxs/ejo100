@@ -1,7 +1,8 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog, getWorkshopOrgContext } from './workshop';
+import { requireUser, writeAuditLog, getWorkshopOrgContext, currentUserIsMasterAdmin } from './workshop';
+import { requireStoreStaff } from './store';
 import { sendEmail } from '@/lib/email';
 import { renderServiceEstimateSubmittedEmail } from '@/lib/email-templates/service-estimate-submitted';
 import { renderCustomerServiceEstimateApprovedEmail } from '@/lib/email-templates/customer-service-estimate-approved';
@@ -98,7 +99,7 @@ export async function cancelServiceEstimate(vehicleServiceId: string): Promise<v
 }
 
 export type ServiceEstimateLineItemInput = {
-  type?: 'STORE_PART' | 'OTHER';
+  type: 'STORE_PART' | 'INTERNAL_JOB' | 'LABOUR' | 'SUNDRY';
   description: string;
   quantity: number;
   unitPrice?: number;
@@ -107,16 +108,50 @@ export type ServiceEstimateLineItemInput = {
    * matches this to a real, specific, vehicle-fitting Part from the
    * actual catalogue via matchServiceEstimateStorePartLine below. */
   partTypeId?: string;
+  /** Only meaningful for a non-STORE_PART line — a STORE_PART line's
+   * unit is set automatically once Store matches it, never by
+   * whoever adds the line. Same real rule as Job Card's own estimate. */
+  unitOfMeasure?: string;
 };
 
-export async function addServiceEstimateLineItem(estimateId: string, input: ServiceEstimateLineItemInput): Promise<void> {
+/** Who can add to or edit a Vehicle Service's estimate — the assigned
+ * supervisor, the assigned technician, or a Master Administrator.
+ * Same real shape as Job Card's own requireEstimateContributor. */
+async function requireServiceEstimateContributor(service: {
+  supervisorId: string | null;
+  assignedTechnicianId: string | null;
+}): Promise<{ id: string }> {
   const user = await requireUser();
-  const type = input.type ?? 'OTHER';
-  const description = input.description.trim();
-  if (type !== 'STORE_PART' && !description) {
+  if (service.supervisorId === user.id || service.assignedTechnicianId === user.id) {
+    return user;
+  }
+  if (await currentUserIsMasterAdmin()) {
+    return user;
+  }
+  throw new ServiceEstimateActionError(
+    'Only the assigned supervisor, the assigned technician, or a Master Administrator can work on this estimate.',
+  );
+}
+
+/** Who's actually allowed to set the PRICE on a given line — same
+ * real reasoning as Job Card's own requirePricingAuthority, just
+ * simpler since Vehicle Service has no External Part/Job concept at
+ * all: every priceable type here (Internal Job, Labour, Sundry) is
+ * priced by the supervisor alone, never the technician. Store Part
+ * is never priced here regardless of who's asking — that price can
+ * only ever come from Store's own real match against the catalog. */
+async function requireServicePricingAuthority(service: { supervisorId: string | null }, userId: string): Promise<void> {
+  if (await currentUserIsMasterAdmin()) return;
+  if (userId === service.supervisorId) return;
+  throw new ServiceEstimateActionError('Only the assigned supervisor can set a price for this line — the technician can add the description and quantity, but not the price.');
+}
+
+export async function addServiceEstimateLineItem(estimateId: string, input: ServiceEstimateLineItemInput): Promise<void> {
+  let description = input.description.trim();
+  if (input.type !== 'STORE_PART' && !description) {
     throw new ServiceEstimateActionError('A description is required for this line item.');
   }
-  if (type === 'STORE_PART' && !input.partTypeId) {
+  if (input.type === 'STORE_PART' && !input.partTypeId) {
     throw new ServiceEstimateActionError('Choose which kind of part is needed before adding a Store Part line.');
   }
   if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
@@ -127,7 +162,12 @@ export async function addServiceEstimateLineItem(estimateId: string, input: Serv
   }
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },
-    select: { status: true, vehicleServiceId: true, vehicleService: { select: { serviceNumber: true } } },
+    select: {
+      status: true,
+      vehicleServiceId: true,
+      lineItems: { select: { type: true } },
+      vehicleService: { select: { serviceNumber: true, supervisorId: true, assignedTechnicianId: true } },
+    },
   });
   if (!estimate) {
     throw new ServiceEstimateActionError('Estimate not found.');
@@ -135,37 +175,57 @@ export async function addServiceEstimateLineItem(estimateId: string, input: Serv
   if (estimate.status === 'APPROVED') {
     throw new ServiceEstimateActionError('This estimate is already approved — it can no longer be changed here.');
   }
+  const contributor = await requireServiceEstimateContributor(estimate.vehicleService);
 
-  let realDescription = description;
-  if (type === 'STORE_PART' && input.partTypeId) {
+  // Same real evidence-based rule as Job Card's own estimate — only
+  // Sundry is capped at one line; Internal Job and Labour both need
+  // to support multiple real entries.
+  if (input.type === 'SUNDRY' && estimate.lineItems.some((li: { type: string }) => li.type === 'SUNDRY')) {
+    throw new ServiceEstimateActionError('A Sundry line already exists on this estimate — edit it instead of adding another.');
+  }
+
+  if (input.unitPrice !== undefined) {
+    if (input.type === 'STORE_PART') {
+      throw new ServiceEstimateActionError('A Store Part line is priced by Store matching it to a real catalog Part, not typed in directly.');
+    }
+    await requireServicePricingAuthority(estimate.vehicleService, contributor.id);
+  }
+
+  if (input.type === 'STORE_PART' && input.partTypeId) {
+    // A Store Part line's own description is never trusted from
+    // client input — always derived server-side from the real
+    // PartType's own name, same principle as Job Card's own estimate.
     const partType = await prisma.partType.findUnique({ where: { id: input.partTypeId }, select: { name: true } });
     if (!partType) {
       throw new ServiceEstimateActionError('That part type could not be found.');
     }
-    // A Store Part line's own description is never trusted from
-    // client input — always derived server-side from the real
-    // PartType's own name, same principle as Job Card's own estimate.
-    realDescription = partType.name;
+    description = partType.name;
   }
+  if (input.type === 'STORE_PART' && input.unitOfMeasure) {
+    throw new ServiceEstimateActionError('A Store Part line\'s unit is set automatically once Store matches it, not entered directly.');
+  }
+
+  const amount = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
 
   await prisma.serviceEstimateLineItem.create({
     data: {
       estimateId,
-      type,
-      description: realDescription,
+      type: input.type,
+      description,
       quantity: input.quantity,
-      unitPrice: type === 'STORE_PART' ? null : (input.unitPrice ?? null),
-      amount: type !== 'STORE_PART' && input.unitPrice !== undefined ? Math.round(input.unitPrice * input.quantity * 100) / 100 : null,
-      partTypeId: type === 'STORE_PART' ? input.partTypeId : null,
-      enteredById: user.id,
+      unitPrice: input.unitPrice ?? null,
+      amount,
+      partTypeId: input.type === 'STORE_PART' ? input.partTypeId : null,
+      unitOfMeasure: input.type === 'STORE_PART' ? null : input.unitOfMeasure?.trim() || null,
+      enteredById: contributor.id,
     },
   });
   await writeAuditLog({
-    userId: user.id,
+    userId: contributor.id,
     action: 'service_estimate.line_item_added',
     entityType: 'ServiceEstimate',
     entityId: estimateId,
-    metadata: { serviceNumber: estimate.vehicleService.serviceNumber, type, description: realDescription, quantity: input.quantity, unitPrice: input.unitPrice },
+    metadata: { serviceNumber: estimate.vehicleService.serviceNumber, type: input.type, description, quantity: input.quantity, unitPrice: input.unitPrice, amount },
   });
 }
 
@@ -174,10 +234,28 @@ export async function addServiceEstimateLineItem(estimateId: string, input: Serv
  * Part currently priced below its own real cost can never be matched
  * onto a customer's estimate, here either. */
 export async function matchServiceEstimateStorePartLine(lineItemId: string, partId: string): Promise<void> {
-  const user = await requireUser();
   const lineItem = await prisma.serviceEstimateLineItem.findUnique({
     where: { id: lineItemId },
-    select: { type: true, quantity: true, estimate: { select: { id: true, status: true, vehicleService: { select: { serviceNumber: true } } } } },
+    select: {
+      type: true,
+      quantity: true,
+      partTypeId: true,
+      estimate: {
+        select: {
+          id: true,
+          status: true,
+          vehicleService: {
+            select: {
+              id: true,
+              serviceNumber: true,
+              branchId: true,
+              customer: { select: { fullName: true } },
+              vehicle: { select: { make: true, model: true, engineType: true, year: true } },
+            },
+          },
+        },
+      },
+    },
   });
   if (!lineItem) {
     throw new ServiceEstimateActionError('Line item not found.');
@@ -185,15 +263,62 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
   if (lineItem.type !== 'STORE_PART') {
     throw new ServiceEstimateActionError('Only a Store Part line can be matched to a real Part.');
   }
-  if (lineItem.estimate.status === 'APPROVED') {
-    throw new ServiceEstimateActionError('This estimate is already approved — it can no longer be changed here.');
+  // DRAFT included deliberately, not just SUBMITTED — same real
+  // reasoning as Job Card's own estimate: matching has to be
+  // possible before submission whenever a Store Part is involved, or
+  // submitting an estimate with one in it would be a genuine
+  // deadlock.
+  if (lineItem.estimate.status !== 'DRAFT' && lineItem.estimate.status !== 'SUBMITTED') {
+    throw new ServiceEstimateActionError('This estimate is not currently awaiting Store matching.');
   }
-  const part = await prisma.part.findUnique({ where: { id: partId }, select: { id: true, name: true, sellingPrice: true, baseUnitOfMeasure: true } });
+  const user = await requireStoreStaff(lineItem.estimate.vehicleService.branchId);
+
+  const part = await prisma.part.findUnique({
+    where: { id: partId },
+    select: {
+      branchId: true, partTypeId: true, name: true, baseUnitOfMeasure: true, sellingPrice: true,
+      fitments: { select: { make: true, model: true, engineType: true, yearFrom: true, yearTo: true } },
+    },
+  });
   if (!part) {
-    throw new ServiceEstimateActionError('That part could not be found.');
+    throw new ServiceEstimateActionError('Part not found.');
   }
-  if (part.sellingPrice === null || part.sellingPrice === undefined) {
-    throw new ServiceEstimateActionError(`${part.name} has no real selling price set yet — set one before matching it to an estimate.`);
+  if (part.branchId !== lineItem.estimate.vehicleService.branchId) {
+    throw new ServiceEstimateActionError('This Part does not belong to the same branch as this Vehicle Service.');
+  }
+  // Same real, deliberate safeguard as Job Card's own matching — a
+  // Part with no fitment rows at all is genuinely universal (fluids,
+  // cleaners, generic consumables) and always allowed through; a
+  // Part that DOES have real fitment rows on record is a discrete
+  // component this workshop has said only fits specific vehicles,
+  // and matching it onto the wrong one is the exact real mistake
+  // this exists to prevent.
+  if (part.fitments.length > 0) {
+    const vehicle = lineItem.estimate.vehicleService.vehicle;
+    const canCheck = vehicle?.make && vehicle?.model;
+    const fits = !canCheck || part.fitments.some((f: { make: string; model: string | null; engineType: string | null; yearFrom: number | null; yearTo: number | null }) => {
+      if (f.make.toLowerCase() !== vehicle!.make!.toLowerCase()) return false;
+      if (f.model && f.model.toLowerCase() !== vehicle!.model!.toLowerCase()) return false;
+      if (f.engineType && vehicle!.engineType && f.engineType.toLowerCase() !== vehicle!.engineType.toLowerCase()) return false;
+      if (f.engineType && !vehicle!.engineType) return false;
+      if (vehicle!.year !== null) {
+        if (f.yearFrom !== null && vehicle!.year < f.yearFrom) return false;
+        if (f.yearTo !== null && vehicle!.year > f.yearTo) return false;
+      }
+      return true;
+    });
+    if (!fits) {
+      const vehicleLabel = [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(' ') || 'this Vehicle Service\'s own vehicle';
+      throw new ServiceEstimateActionError(
+        `${part.name} is only recorded to fit specific vehicles, and ${vehicleLabel} isn't one of them — this would be the exact real mistake Vehicle Fitment exists to prevent. If this Part genuinely does fit, add ${vehicleLabel} to its Vehicle Fitment list first.`,
+      );
+    }
+  }
+  if (lineItem.partTypeId && part.partTypeId !== lineItem.partTypeId) {
+    throw new ServiceEstimateActionError(`${part.name} is not the requested Part Type for this line.`);
+  }
+  if (part.sellingPrice === null) {
+    throw new ServiceEstimateActionError(`${part.name} has no selling price set yet — set one on the Part's own page before matching.`);
   }
   const openCriticalLoss = await prisma.pricingAlert.findFirst({ where: { partId, severity: 'CRITICAL_LOSS', status: 'OPEN' }, select: { id: true } });
   if (openCriticalLoss) {
@@ -208,9 +333,20 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
   await writeAuditLog({
     userId: user.id,
     action: 'service_estimate.line_store_matched',
-    entityType: 'ServiceEstimate',
-    entityId: lineItem.estimate.id,
-    metadata: { serviceNumber: lineItem.estimate.vehicleService.serviceNumber, partName: part.name, unitPrice },
+    entityType: 'ServiceEstimateLineItem',
+    entityId: lineItemId,
+    metadata: { partId, partName: part.name, unitPrice, amount },
+  });
+  // Same real "one entry against the real entity, one against the
+  // parent record" pattern already used everywhere else — without
+  // this second entry, Store's own matching work never shows up on
+  // the Vehicle Service's own timeline at all.
+  await writeAuditLog({
+    userId: user.id,
+    action: 'service_estimate.line_store_matched',
+    entityType: 'VehicleService',
+    entityId: lineItem.estimate.vehicleService.id,
+    metadata: { serviceNumber: lineItem.estimate.vehicleService.serviceNumber, partName: part.name, unitPrice, amount },
   });
 }
 

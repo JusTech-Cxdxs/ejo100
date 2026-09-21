@@ -52,13 +52,16 @@ export async function addServiceEstimateLineItemFormAction(formData: FormData) {
   const estimateId = str(formData, 'estimateId');
   const vehicleServiceId = str(formData, 'vehicleServiceId');
   const typeRaw = str(formData, 'type');
+  const validTypes = ['STORE_PART', 'INTERNAL_JOB', 'LABOUR', 'SUNDRY'] as const;
+  const type = (validTypes as readonly string[]).includes(typeRaw) ? (typeRaw as (typeof validTypes)[number]) : 'INTERNAL_JOB';
   try {
     await addServiceEstimateLineItem(estimateId, {
-      type: typeRaw === 'STORE_PART' ? 'STORE_PART' : 'OTHER',
+      type,
       description: str(formData, 'description'),
       quantity: num(formData, 'quantity') ?? 0,
       unitPrice: num(formData, 'unitPrice'),
       partTypeId: str(formData, 'partTypeId') || undefined,
+      unitOfMeasure: str(formData, 'unitOfMeasure') || undefined,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not add this line item.';
