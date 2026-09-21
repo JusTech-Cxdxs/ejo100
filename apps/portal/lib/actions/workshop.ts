@@ -3934,6 +3934,7 @@ export async function declineCloseRequest(requestId: string, decisionNotes?: str
 
 export type WorkshopCustodyEntry = {
   id: string;
+  vehicleId: string;
   jobNumber: string;
   customerName: string;
   vehicleDescription: string;
@@ -4012,7 +4013,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       status: true,
       readyForCollectionAt: true,
       customer: { select: { fullName: true } },
-      vehicle: { select: { make: true, model: true } },
+      vehicle: { select: { id: true, make: true, model: true } },
       estimate: { select: { customerNotifiedAt: true } },
       // Every request, not just approved ones — the same array
       // yields both the "most recent approval" anchor for a cancelled
@@ -4044,13 +4045,14 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
     status: string;
     readyForCollectionAt: Date | null;
     customer: { fullName: string };
-    vehicle: { make: string | null; model: string | null };
+    vehicle: { id: string; make: string | null; model: string | null };
     estimate: { customerNotifiedAt: Date | null } | null;
     cancellationRequests: { id: string; status: string; reason: string; decidedAt: Date | null; requestedBy: { fullName: string } }[];
   }>) {
     const vehicleDescription = [jc.vehicle.make, jc.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     const base = {
       id: jc.id,
+      vehicleId: jc.vehicle.id,
       jobNumber: jc.jobNumber,
       customerName: jc.customer.fullName,
       vehicleDescription,

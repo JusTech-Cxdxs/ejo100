@@ -788,6 +788,7 @@ export async function attendToOverdueVehicle(serviceId: string): Promise<void> {
 
 export type VehicleServiceCustodyEntry = {
   id: string;
+  vehicleId: string;
   serviceNumber: string;
   customerName: string;
   vehicleDescription: string;
@@ -853,11 +854,12 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
       status: true,
       createdAt: true,
       customer: { select: { fullName: true } },
-      vehicle: { select: { make: true, model: true, plateNumber: true } },
+      vehicle: { select: { id: true, make: true, model: true, plateNumber: true } },
     },
   });
   return services.map((s: (typeof services)[number]) => ({
     id: s.id,
+    vehicleId: s.vehicle.id,
     serviceNumber: s.serviceNumber,
     status: s.status,
     createdAt: s.createdAt,
