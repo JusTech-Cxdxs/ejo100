@@ -13,6 +13,7 @@ import {
   rejectVehicleServiceTechnicianAssignment,
   deleteVehicleService,
   updatePrimaryServiceInterval,
+  attendToOverdueVehicle,
 } from './vehicle-service';
 
 function str(formData: FormData, key: string): string {
@@ -158,4 +159,16 @@ export async function updatePrimaryServiceIntervalFormAction(formData: FormData)
   }
   revalidatePath('/workshop/vehicle-service');
   redirect('/workshop/vehicle-service?status=interval_updated');
+}
+
+export async function attendToOverdueVehicleFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  try {
+    await attendToOverdueVehicle(serviceId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not attend to this vehicle.';
+    redirect(`/workshop/vehicle-service-custody?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/vehicle-service-custody');
+  redirect('/workshop/vehicle-service-custody?filter=overdue&status=attended');
 }

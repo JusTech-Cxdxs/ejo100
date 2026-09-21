@@ -690,6 +690,7 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
 }
 
 export type VehicleDueForService = {
+  serviceId: string;
   vehicleId: string;
   status: 'DUE_SOON' | 'OVERDUE';
   vehicleDescription: string;
@@ -709,9 +710,14 @@ export type VehicleDueForService = {
 export async function listVehiclesDueForService(branchId: string): Promise<VehicleDueForService[]> {
   await requireUser();
   const services = await prisma.vehicleService.findMany({
-    where: { branchId, OR: [{ nextServiceDueOdometer: { not: null } }, { nextServiceDueDate: { not: null } }] },
+    where: {
+      branchId,
+      attendedAt: null,
+      OR: [{ nextServiceDueOdometer: { not: null } }, { nextServiceDueDate: { not: null } }],
+    },
     orderBy: { primaryServiceDate: 'desc' },
     select: {
+      id: true,
       vehicleId: true,
       nextServiceDueOdometer: true,
       nextServiceDueDate: true,
@@ -737,6 +743,7 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
 
     if (overdue || dueSoon) {
       due.push({
+        serviceId: s.id,
         vehicleId: s.vehicleId,
         status: overdue ? 'OVERDUE' : 'DUE_SOON',
         vehicleDescription: [s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
@@ -749,6 +756,34 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
   }
 
   return due.sort((a, b) => (a.status === b.status ? 0 : a.status === 'OVERDUE' ? -1 : 1));
+}
+
+/**
+ * The real "handled" action for an overdue prediction — a customer
+ * who's finally back in, or a vehicle staff now know is genuinely
+ * being looked after, without the old prediction hanging around
+ * forever demanding attention on something already moving. Marks the
+ * old record done, once, and never revisits it — the new Vehicle
+ * Service opened for the same vehicle carries its own real future
+ * prediction once it's actually serviced again.
+ */
+export async function attendToOverdueVehicle(serviceId: string): Promise<void> {
+  const user = await requireUser();
+  const service = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { attendedAt: true, serviceNumber: true, vehicleId: true } });
+  if (!service) {
+    throw new VehicleServiceActionError('Vehicle Service record not found.');
+  }
+  if (service.attendedAt) {
+    throw new VehicleServiceActionError('This overdue prediction has already been attended to.');
+  }
+  await prisma.vehicleService.update({ where: { id: serviceId }, data: { attendedAt: new Date() } });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'vehicle_service.attended_to',
+    entityType: 'VehicleService',
+    entityId: serviceId,
+    metadata: { serviceNumber: service.serviceNumber },
+  });
 }
 
 export type VehicleServiceCustodyEntry = {
@@ -771,17 +806,19 @@ export type VehicleServiceCustodyEntry = {
  * one real place a future reminder job would read from.
  */
 export async function getVehicleServiceCustodySummary(branchId: string, search?: string) {
-  const [inService, completed, dueForService] = await Promise.all([
-    listVehicleServicesByStatuses(branchId, ['SCHEDULED', 'CHECKED_IN', 'IN_SERVICE'], search),
+  const [checkedIn, inService, completed, dueForService] = await Promise.all([
+    listVehicleServicesByStatuses(branchId, ['CHECKED_IN'], search),
+    listVehicleServicesByStatuses(branchId, ['IN_SERVICE'], search),
     listVehicleServicesByStatuses(branchId, ['COMPLETED'], search),
     listVehiclesDueForService(branchId),
   ]);
   return {
+    checkedIn,
     inService,
     completed,
     dueSoon: dueForService.filter((v) => v.status === 'DUE_SOON'),
     overdue: dueForService.filter((v) => v.status === 'OVERDUE'),
-    total: inService.length + completed.length,
+    total: checkedIn.length + inService.length + completed.length,
   };
 }
 
@@ -926,12 +963,22 @@ export async function updateVehicleServiceStatus(
   }
   // Same real rule as Job Card's own 70%-deposit gate — once a real,
   // approved estimate exists, work starting is a real payment
-  // milestone (see recordServicePayment's own automatic transition),
-  // never a manual click that could bypass it. Only applies when a
-  // real charge is actually on the table — a routine visit with no
-  // estimate at all has nothing to gate and can still move manually.
-  if (newStatus === 'IN_SERVICE' && service.serviceEstimate?.status === 'APPROVED') {
+  // milestone (see recordServicePayment's own automatic transition).
+  // No such thing as a free visit — every real Vehicle Service either
+  // continues through a real, priced estimate (payment is what
+  // actually moves it to In Service — see recordServicePayment) or
+  // escalates to a Job Card. This function is never the real path to
+  // In Service, regardless of whether an estimate exists yet.
+  if (newStatus === 'IN_SERVICE') {
     throw new VehicleServiceActionError('This Vehicle Service moves to In Service automatically once the required deposit is paid.');
+  }
+  // Same real reasoning enforced as a real ladder, not just against
+  // the one button that used to skip it — Completed can only follow
+  // a real, genuine In Service, which itself can only be reached
+  // through the real payment flow above. A direct jump straight from
+  // Checked In to Completed, bypassing all of that, is never valid.
+  if (newStatus === 'COMPLETED' && service.status !== 'IN_SERVICE') {
+    throw new VehicleServiceActionError('This Vehicle Service must be In Service, with its deposit paid, before it can be marked Completed.');
   }
   const ladder: Record<string, string[]> = {
     SCHEDULED: ['CHECKED_IN', 'CANCELLED'],
