@@ -310,7 +310,12 @@ export default async function WorkshopCustodyPage({
                     <LoadingLink href={`/workshop/job-cards/${entry.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">
                       {entry.jobNumber}
                     </LoadingLink>
-                    <p className="text-sm text-[var(--ejo-text)]">{entry.customerName} — {entry.vehicleDescription}</p>
+                    <p className="text-sm text-[var(--ejo-text)]">
+                      {entry.customerName} —{' '}
+                      <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="hover:underline">
+                        {entry.vehicleDescription}
+                      </LoadingLink>
+                    </p>
                   </div>
                   <div className="text-right">
                     <span
@@ -396,7 +401,12 @@ export default async function WorkshopCustodyPage({
                     <LoadingLink href={`/workshop/job-cards/${entry.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">
                       {entry.jobNumber}
                     </LoadingLink>
-                    <p className="text-sm text-[var(--ejo-text)]">{entry.customerName} — {entry.vehicleDescription}</p>
+                    <p className="text-sm text-[var(--ejo-text)]">
+                      {entry.customerName} —{' '}
+                      <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="hover:underline">
+                        {entry.vehicleDescription}
+                      </LoadingLink>
+                    </p>
                   </div>
                   <div className="text-right">
                     <span
@@ -466,7 +476,12 @@ export default async function WorkshopCustodyPage({
                     <LoadingLink href={`/workshop/job-cards/${entry.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">
                       {entry.jobNumber}
                     </LoadingLink>
-                    <p className="text-sm text-[var(--ejo-text)]">{entry.customerName} — {entry.vehicleDescription}</p>
+                    <p className="text-sm text-[var(--ejo-text)]">
+                      {entry.customerName} —{' '}
+                      <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="hover:underline">
+                        {entry.vehicleDescription}
+                      </LoadingLink>
+                    </p>
                   </div>
                   <div className="text-right">
                     <span
@@ -527,7 +542,11 @@ export default async function WorkshopCustodyPage({
                       </LoadingLink>
                     </td>
                     <td className="px-4 py-2 text-[var(--ejo-text)]">{entry.customerName}</td>
-                    <td className="px-4 py-2 text-[var(--ejo-text)]">{entry.vehicleDescription}</td>
+                    <td className="px-4 py-2">
+                      <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-text)] hover:underline">
+                        {entry.vehicleDescription}
+                      </LoadingLink>
+                    </td>
                     <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{STATUS_LABEL[entry.status] ?? entry.status}</td>
                   </tr>
                 ))}
