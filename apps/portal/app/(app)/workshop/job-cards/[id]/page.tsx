@@ -506,7 +506,9 @@ export default async function JobCardDetailPage({
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Vehicle</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
-                  {[jobCard.vehicle.year, jobCard.vehicle.make, jobCard.vehicle.model, jobCard.vehicle.engineType].filter(Boolean).join(' ') || '—'}
+                  <LoadingLink href={`/workshop/vehicles/${jobCard.vehicle.id}/edit`} className="hover:underline">
+                    {[jobCard.vehicle.year, jobCard.vehicle.make, jobCard.vehicle.model, jobCard.vehicle.engineType].filter(Boolean).join(' ') || '—'}
+                  </LoadingLink>
                 </dd>
               </div>
               <div>
