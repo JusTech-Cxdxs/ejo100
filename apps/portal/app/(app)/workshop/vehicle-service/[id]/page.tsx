@@ -57,6 +57,13 @@ const STATUS_CLASS: Record<string, string> = {
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
+const SERVICE_ESTIMATE_LINE_TYPE_DISPLAY: Record<string, string> = {
+  STORE_PART: 'Store Part',
+  INTERNAL_JOB: 'Internal Job',
+  LABOUR: 'Labour',
+  SUNDRY: 'Sundry',
+};
+
 const NEXT_ACTION: Record<string, { status: string; label: string } | null> = {
   SCHEDULED: { status: 'CHECKED_IN', label: 'Check In Vehicle' },
   // No manual path to IN_SERVICE — every real Vehicle Service goes
@@ -584,7 +591,7 @@ export default async function VehicleServiceDetailPage({
                           return (
                             <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
                               <td className="py-1.5 pr-2 text-[var(--ejo-text)]">{line.description}</td>
-                              <td className="py-1.5 pr-2 text-[var(--ejo-text-muted)]">{line.type === 'STORE_PART' ? 'Store Part' : 'Other'}</td>
+                              <td className="py-1.5 pr-2 text-[var(--ejo-text-muted)]">{SERVICE_ESTIMATE_LINE_TYPE_DISPLAY[line.type] ?? line.type}</td>
                               <td className="py-1.5 pr-2 text-[var(--ejo-text-muted)]">{quantity}</td>
                               <td className="py-1.5 pr-2 text-[var(--ejo-text-muted)]">{line.unitOfMeasure ?? '—'}</td>
                               <td className="py-1.5 pr-2 text-[var(--ejo-text-muted)]">{unitPrice != null ? `₦${unitPrice.toLocaleString('en-NG')}` : needsMatch ? 'Awaiting match' : '—'}</td>
