@@ -356,6 +356,7 @@ model User {
   vehicleInspections VehicleInspection[] @relation("VehicleInspectionInspector")
   serviceEstimatesCreated ServiceEstimate[] @relation("ServiceEstimateCreatedBy")
   serviceEstimatesApproved ServiceEstimate[] @relation("ServiceEstimateApprovedBy")
+  serviceEstimatesMatchingRequested ServiceEstimate[] @relation("ServiceEstimateMatchingRequestedBy")
   serviceEstimateLinesEntered ServiceEstimateLineItem[] @relation("ServiceEstimateLineEnteredBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
   customersCreated Customer[] @relation("CustomerCreatedBy")
@@ -1381,6 +1382,12 @@ model ServiceEstimate {
   submittedAt      DateTime?
   approvedAt       DateTime?
   approvedById     String?
+  // Same real "Store, please come match this" request as Job Card's
+  // own estimate — set when the technician or supervisor explicitly
+  // asks Store to match the Store Part lines still waiting, not
+  // merely implied by their existing.
+  matchingRequestedAt   DateTime?
+  matchingRequestedById String?
   createdById      String
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
@@ -1388,6 +1395,7 @@ model ServiceEstimate {
   vehicleService VehicleService        @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
   createdBy      User                  @relation("ServiceEstimateCreatedBy", fields: [createdById], references: [id])
   approvedBy     User?                 @relation("ServiceEstimateApprovedBy", fields: [approvedById], references: [id])
+  matchingRequestedBy User?            @relation("ServiceEstimateMatchingRequestedBy", fields: [matchingRequestedById], references: [id])
   lineItems      ServiceEstimateLineItem[]
 
   @@map("service_estimates")
