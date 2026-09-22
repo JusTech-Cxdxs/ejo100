@@ -356,6 +356,8 @@ model User {
   vehicleInspections VehicleInspection[] @relation("VehicleInspectionInspector")
   serviceEstimatesCreated ServiceEstimate[] @relation("ServiceEstimateCreatedBy")
   serviceEstimatesApproved ServiceEstimate[] @relation("ServiceEstimateApprovedBy")
+  serviceEstimatesManagerApproved ServiceEstimate[] @relation("ServiceEstimateManagerApprovedBy")
+  serviceEstimatesCustomerNotified ServiceEstimate[] @relation("ServiceEstimateCustomerNotifiedBy")
   serviceEstimatesMatchingRequested ServiceEstimate[] @relation("ServiceEstimateMatchingRequestedBy")
   serviceEstimateLinesEntered ServiceEstimateLineItem[] @relation("ServiceEstimateLineEnteredBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
@@ -1363,18 +1365,21 @@ enum ServiceEstimateStatus {
   DRAFT
   SUBMITTED
   APPROVED
+  MANAGER_APPROVED
 }
 
-// The real, deliberately lighter estimate for a Vehicle Service visit
-// that never needed a full Job Card — routine work like an oil
-// change or an air filter still needs a real, priced estimate for
-// Store to work from, but doesn't need Job Card's own multi-stage
-// pricing-authority/Manager-approval machinery (see Estimate/
-// EstimateLineItem above). One real DRAFT → SUBMITTED → APPROVED
-// ladder; a Vehicle Service that instead escalates to a real repair
-// uses Job Card's own Estimate entirely, never this one — the two
-// are mutually exclusive by design, matching the user's own explicit
-// "either escalate, or write a service estimate" branching.
+// The real estimate for a Vehicle Service visit that never needed a
+// full Job Card — routine work like an oil change or an air filter
+// still needs a real, priced estimate for Store to work from. Now
+// genuinely the same real multi-stage chain as Job Card's own
+// Estimate — supervisor validates, Manager gives final sign-off,
+// then whoever created this explicitly hands off to the customer —
+// the user's own explicit instruction once the two modules'
+// workflows were compared directly, side by side. A Vehicle Service
+// that instead escalates to a real repair uses Job Card's own
+// Estimate entirely, never this one — the two are mutually exclusive
+// by design, matching the user's own explicit "either escalate, or
+// write a service estimate" branching.
 model ServiceEstimate {
   id               String                @id @default(cuid())
   vehicleServiceId String                @unique
@@ -1382,6 +1387,17 @@ model ServiceEstimate {
   submittedAt      DateTime?
   approvedAt       DateTime?
   approvedById     String?
+  // The Workshop Manager's own real sign-off, distinct from the
+  // supervisor's approvedAt/approvedById above — same real two-role
+  // shape as Job Card's own estimate.
+  managerApprovedAt   DateTime?
+  managerApprovedById String?
+  // The explicit, real hand-off to the customer — deliberately never
+  // automatic, same real reasoning as Job Card's own: the Manager
+  // approving means the numbers are right, not that anyone has
+  // decided the customer should be told yet.
+  customerNotifiedAt   DateTime?
+  customerNotifiedById String?
   // Same real "Store, please come match this" request as Job Card's
   // own estimate — set when the technician or supervisor explicitly
   // asks Store to match the Store Part lines still waiting, not
@@ -1395,6 +1411,8 @@ model ServiceEstimate {
   vehicleService VehicleService        @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
   createdBy      User                  @relation("ServiceEstimateCreatedBy", fields: [createdById], references: [id])
   approvedBy     User?                 @relation("ServiceEstimateApprovedBy", fields: [approvedById], references: [id])
+  managerApprovedBy User?              @relation("ServiceEstimateManagerApprovedBy", fields: [managerApprovedById], references: [id])
+  customerNotifiedBy User?             @relation("ServiceEstimateCustomerNotifiedBy", fields: [customerNotifiedById], references: [id])
   matchingRequestedBy User?            @relation("ServiceEstimateMatchingRequestedBy", fields: [matchingRequestedById], references: [id])
   lineItems      ServiceEstimateLineItem[]
 
