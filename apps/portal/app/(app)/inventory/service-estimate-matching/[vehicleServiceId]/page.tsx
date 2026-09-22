@@ -64,7 +64,10 @@ export default async function VehicleServiceMatchingPage({
         </LoadingLink>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        {service.customer.fullName} — {vehicleLine}
+        {service.customer.fullName} —{' '}
+        <LoadingLink href={`/workshop/vehicles/${service.vehicle.id}/edit`} className="hover:underline">
+          {vehicleLine}
+        </LoadingLink>
         {service.vehicle.plateNumber ? ` — ${service.vehicle.plateNumber}` : ''}
       </p>
 
