@@ -1,8 +1,10 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog, getWorkshopOrgContext, currentUserIsMasterAdmin } from './workshop';
-import { requireStoreStaff } from './store';
+import { requireUser, writeAuditLog, getWorkshopOrgContext, currentUserIsMasterAdmin, requireJobCardApprover } from './workshop';
+import { requireStoreStaff, listEligibleStoreOfficersForBranch, listEligibleStoreManagersForBranch } from './store';
+import { renderServiceEstimateNudgeEmail } from '@/lib/email-templates/service-estimate-nudge';
+import { renderServiceStoreMatchingRequestedEmail, renderServiceStoreMatchingStatusEmail } from '@/lib/email-templates/service-store-matching-status';
 import { sendEmail } from '@/lib/email';
 import { renderServiceEstimateSubmittedEmail } from '@/lib/email-templates/service-estimate-submitted';
 import { renderCustomerServiceEstimateApprovedEmail } from '@/lib/email-templates/customer-service-estimate-approved';
@@ -249,6 +251,8 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
               id: true,
               serviceNumber: true,
               branchId: true,
+              supervisorId: true,
+              assignedTechnicianId: true,
               customer: { select: { fullName: true } },
               vehicle: { select: { make: true, model: true, engineType: true, year: true } },
             },
@@ -348,6 +352,17 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
     entityId: lineItem.estimate.vehicleService.id,
     metadata: { serviceNumber: lineItem.estimate.vehicleService.serviceNumber, partName: part.name, unitPrice, amount },
   });
+
+  // Same real automatic replacement for a manual "Notify — Matching
+  // Complete" button as Job Card's own version — checked fresh here
+  // rather than trusted from before this match, since this match
+  // itself is what might have just made it true.
+  const remainingUnmatched = await prisma.serviceEstimateLineItem.count({
+    where: { estimateId: lineItem.estimate.id, type: 'STORE_PART', matchedPartId: null },
+  });
+  if (remainingUnmatched === 0) {
+    await sendServiceStoreMatchingCompleteNotification(lineItem.estimate.vehicleService, user.id);
+  }
 }
 
 export async function removeServiceEstimateLineItem(lineItemId: string): Promise<void> {
@@ -774,6 +789,296 @@ export async function getServiceEstimate(vehicleServiceId: string) {
         orderBy: { createdAt: 'asc' },
         include: { enteredBy: { select: { fullName: true } }, matchedPart: { select: { name: true, sellingPrice: true } } },
       },
+    },
+  });
+}
+
+async function sendServiceEstimateNudge(params: {
+  vehicleServiceId: string;
+  fromRole: 'supervisor' | 'technician';
+  fromUserId: string;
+  toUserId: string;
+  note?: string;
+}): Promise<void> {
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: params.vehicleServiceId },
+    select: { serviceNumber: true, customer: { select: { fullName: true } } },
+  });
+  if (!service) {
+    throw new ServiceEstimateActionError('Vehicle Service not found.');
+  }
+  await writeAuditLog({
+    userId: params.fromUserId,
+    action: params.fromRole === 'supervisor' ? 'service_estimate.nudge_to_technician' : 'service_estimate.nudge_to_supervisor',
+    entityType: 'VehicleService',
+    entityId: params.vehicleServiceId,
+    metadata: params.note?.trim() ? { notes: params.note.trim() } : undefined,
+  });
+  try {
+    const [fromUser, toUser] = await Promise.all([
+      prisma.user.findUnique({ where: { id: params.fromUserId }, select: { fullName: true } }),
+      prisma.user.findUnique({ where: { id: params.toUserId }, select: { fullName: true, email: true } }),
+    ]);
+    if (!toUser) return;
+    const orgContext = await getWorkshopOrgContext();
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      toUser.email,
+      `A note on the estimate for Vehicle Service ${service.serviceNumber}`,
+      renderServiceEstimateNudgeEmail({
+        recipientName: toUser.fullName,
+        fromName: fromUser?.fullName ?? 'A team member',
+        fromRole: params.fromRole,
+        serviceNumber: service.serviceNumber,
+        customerName: service.customer.fullName,
+        note: params.note,
+        vehicleServiceUrl: `${portalUrl}/workshop/vehicle-service/${params.vehicleServiceId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+      }),
+    );
+  } catch {
+    // Same real "the note is logged either way" reasoning as Job
+    // Card's own version — a failed email never blocks the real,
+    // permanent record of the nudge itself.
+  }
+}
+
+/** The technician nudges the assigned supervisor to review or price
+ * the estimate — same real informal back-and-forth as Job Card's own. */
+export async function notifySupervisorAboutServiceEstimate(vehicleServiceId: string, note?: string): Promise<void> {
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: vehicleServiceId },
+    select: { supervisorId: true, assignedTechnicianId: true },
+  });
+  if (!service) {
+    throw new ServiceEstimateActionError('Vehicle Service not found.');
+  }
+  const user = await requireUser();
+  const isMasterAdmin = await currentUserIsMasterAdmin();
+  if (user.id !== service.assignedTechnicianId && !isMasterAdmin) {
+    throw new ServiceEstimateActionError('Only the assigned technician can notify the supervisor about this estimate.');
+  }
+  if (!service.supervisorId) {
+    throw new ServiceEstimateActionError('This Vehicle Service has no supervisor assigned yet.');
+  }
+  await sendServiceEstimateNudge({ vehicleServiceId, fromRole: 'technician', fromUserId: user.id, toUserId: service.supervisorId, note });
+}
+
+/** The supervisor nudges the assigned technician to review or price
+ * the estimate — same real informal back-and-forth as Job Card's own. */
+export async function notifyTechnicianAboutServiceEstimate(vehicleServiceId: string, note?: string): Promise<void> {
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: vehicleServiceId },
+    select: { supervisorId: true, assignedTechnicianId: true },
+  });
+  if (!service) {
+    throw new ServiceEstimateActionError('Vehicle Service not found.');
+  }
+  const user = await requireJobCardApprover(service);
+  if (!service.assignedTechnicianId) {
+    throw new ServiceEstimateActionError('This Vehicle Service has no technician assigned yet.');
+  }
+  await sendServiceEstimateNudge({ vehicleServiceId, fromRole: 'supervisor', fromUserId: user.id, toUserId: service.assignedTechnicianId, note });
+}
+
+async function sendServiceStoreMatchingCompleteNotification(
+  service: { id: string; serviceNumber: string; supervisorId: string | null; assignedTechnicianId: string | null; customer: { fullName: string } },
+  userId: string,
+  note?: string,
+): Promise<void> {
+  await writeAuditLog({
+    userId,
+    action: 'service_estimate.store_matching_completed',
+    entityType: 'VehicleService',
+    entityId: service.id,
+    metadata: { note: note?.trim() || undefined },
+  });
+  try {
+    const orgContext = await getWorkshopOrgContext();
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const recipientIds = [service.supervisorId, service.assignedTechnicianId].filter((id): id is string => Boolean(id));
+    const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
+    for (const recipient of recipients) {
+      await sendEmail(
+        recipient.email,
+        `Store matching complete — Vehicle Service ${service.serviceNumber}`,
+        renderServiceStoreMatchingStatusEmail({
+          recipientName: recipient.fullName,
+          kind: 'complete',
+          serviceNumber: service.serviceNumber,
+          customerName: service.customer.fullName,
+          note,
+          vehicleServiceUrl: `${portalUrl}/workshop/vehicle-service/${service.id}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
+    }
+  } catch {
+    // Real, permanent audit entry above stands regardless of whether
+    // the email itself goes out.
+  }
+}
+
+/**
+ * The real "Store, please come match this" request — same real
+ * purpose as Job Card's own requestStoreMatching: explicit, not
+ * merely implied by unmatched lines existing, and it emails every
+ * real eligible Store Officer/Manager for the branch with exactly
+ * which lines are waiting.
+ */
+export async function requestServiceEstimateStoreMatching(vehicleServiceId: string, note?: string): Promise<void> {
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: vehicleServiceId },
+    select: {
+      branchId: true,
+      serviceNumber: true,
+      supervisorId: true,
+      assignedTechnicianId: true,
+      customer: { select: { fullName: true } },
+      serviceEstimate: {
+        select: {
+          id: true,
+          lineItems: { where: { type: 'STORE_PART', matchedPartId: null }, select: { description: true, quantity: true } },
+        },
+      },
+    },
+  });
+  if (!service) {
+    throw new ServiceEstimateActionError('Vehicle Service not found.');
+  }
+  if (!service.serviceEstimate) {
+    throw new ServiceEstimateActionError('This Vehicle Service has no estimate yet.');
+  }
+  if (service.serviceEstimate.lineItems.length === 0) {
+    throw new ServiceEstimateActionError('There are no Store Part lines currently awaiting a match.');
+  }
+  const user = await requireUser();
+  const isMasterAdmin = await currentUserIsMasterAdmin();
+  if (service.supervisorId !== user.id && service.assignedTechnicianId !== user.id && !isMasterAdmin) {
+    throw new ServiceEstimateActionError('Only the assigned supervisor, the assigned technician, or a Master Administrator can request Store matching.');
+  }
+
+  await prisma.serviceEstimate.update({
+    where: { id: service.serviceEstimate.id },
+    data: { matchingRequestedAt: new Date(), matchingRequestedById: user.id },
+  });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'service_estimate.store_matching_requested',
+    entityType: 'VehicleService',
+    entityId: vehicleServiceId,
+    metadata: { lineCount: service.serviceEstimate.lineItems.length, note: note?.trim() || undefined },
+  });
+
+  try {
+    const [storeOfficers, storeManagers, requestedByUser] = await Promise.all([
+      listEligibleStoreOfficersForBranch(service.branchId),
+      listEligibleStoreManagersForBranch(service.branchId),
+      prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
+    ]);
+    const storeRecipients = new Map<string, { fullName: string; email: string }>();
+    for (const staffMember of [...storeOfficers.staff, ...storeManagers.staff]) {
+      storeRecipients.set(staffMember.id, staffMember);
+    }
+    const orgContext = await getWorkshopOrgContext();
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    for (const recipient of storeRecipients.values()) {
+      await sendEmail(
+        recipient.email,
+        `Store matching requested — Vehicle Service ${service.serviceNumber}`,
+        renderServiceStoreMatchingRequestedEmail({
+          recipientName: recipient.fullName,
+          requestedByName: requestedByUser?.fullName ?? 'A team member',
+          serviceNumber: service.serviceNumber,
+          customerName: service.customer.fullName,
+          lines: service.serviceEstimate.lineItems,
+          note,
+          matchingUrl: `${portalUrl}/inventory/service-estimate-matching/${vehicleServiceId}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
+    }
+    // Same real status-only nudge back to supervisor/technician as
+    // Job Card's own version, distinct from the detailed request
+    // Store itself receives above.
+    const statusRecipientIds = [service.supervisorId, service.assignedTechnicianId].filter((id): id is string => Boolean(id));
+    const statusRecipients = await prisma.user.findMany({ where: { id: { in: statusRecipientIds } }, select: { fullName: true, email: true } });
+    for (const recipient of statusRecipients) {
+      await sendEmail(
+        recipient.email,
+        `Store matching requested — Vehicle Service ${service.serviceNumber}`,
+        renderServiceStoreMatchingStatusEmail({
+          recipientName: recipient.fullName,
+          kind: 'awaiting',
+          serviceNumber: service.serviceNumber,
+          customerName: service.customer.fullName,
+          note,
+          vehicleServiceUrl: `${portalUrl}/workshop/vehicle-service/${vehicleServiceId}`,
+          logoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
+    }
+  } catch {
+    // Real, permanent audit entry above stands regardless of whether
+    // any of these emails go out.
+  }
+}
+
+/**
+ * Store's own real starting queue for Vehicle Service — same real
+ * "only what's been deliberately requested" honesty as Job Card's
+ * own listUnmatchedStorePartLines: matchingRequestedAt not being null
+ * is what actually keeps this queue meaningful, not merely having an
+ * unmatched line, or every in-progress Draft someone's still
+ * mid-way through building would show up here too.
+ */
+export async function listUnmatchedServiceEstimateStorePartLines(branchId: string) {
+  await requireUser();
+  return prisma.serviceEstimateLineItem.findMany({
+    where: {
+      type: 'STORE_PART',
+      matchedPartId: null,
+      estimate: { status: { in: ['DRAFT', 'SUBMITTED'] }, matchingRequestedAt: { not: null }, vehicleService: { branchId } },
+    },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      partType: { select: { id: true, name: true, category: { select: { name: true } } } },
+      estimate: {
+        select: {
+          vehicleService: {
+            select: {
+              id: true,
+              serviceNumber: true,
+              vehicle: { select: { make: true, model: true, engineType: true, year: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function listUnmatchedServiceEstimateStorePartLinesForVehicleService(vehicleServiceId: string) {
+  await requireUser();
+  return prisma.serviceEstimateLineItem.findMany({
+    where: {
+      type: 'STORE_PART',
+      matchedPartId: null,
+      estimate: { status: { in: ['DRAFT', 'SUBMITTED'] }, matchingRequestedAt: { not: null }, vehicleServiceId },
+    },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      partType: { select: { id: true, name: true, category: { select: { name: true } } } },
     },
   });
 }

@@ -11,6 +11,9 @@ import {
   matchServiceEstimateStorePartLine,
   submitServiceEstimate,
   approveServiceEstimate,
+  notifySupervisorAboutServiceEstimate,
+  notifyTechnicianAboutServiceEstimate,
+  requestServiceEstimateStoreMatching,
 } from './vehicle-service-estimate';
 
 function str(formData: FormData, key: string): string {
@@ -75,18 +78,19 @@ export async function addServiceEstimateLineItemFormAction(formData: FormData) {
 export async function matchServiceEstimateStorePartLineFormAction(formData: FormData) {
   const lineItemId = str(formData, 'lineItemId');
   const vehicleServiceId = str(formData, 'vehicleServiceId');
-  const partId = str(formData, 'partId');
-  if (!partId) {
-    redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent('Select a real Part to match this line to.')}`);
-  }
   try {
+    const partId = str(formData, 'partId');
+    if (!partId) {
+      throw new Error('Pick a Part to match this line to.');
+    }
     await matchServiceEstimateStorePartLine(lineItemId, partId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not match this line to that Part.';
-    redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
+    const message = err instanceof Error ? err.message : 'Could not match this line.';
+    redirect(`/inventory/service-estimate-matching?error=${encodeURIComponent(message)}`);
   }
-  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
-  redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=line_matched`);
+  revalidatePath('/inventory/service-estimate-matching');
+  if (vehicleServiceId) revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
+  redirect('/inventory/service-estimate-matching?status=line_matched');
 }
 
 export async function removeServiceEstimateLineItemFormAction(formData: FormData) {
@@ -148,4 +152,40 @@ export async function approveServiceEstimateFormAction(formData: FormData) {
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
   redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=estimate_approved`);
+}
+
+export async function notifySupervisorAboutServiceEstimateFormAction(formData: FormData) {
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
+  try {
+    await notifySupervisorAboutServiceEstimate(vehicleServiceId, str(formData, 'note') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not notify supervisor.';
+    redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
+  redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=supervisor_notified`);
+}
+
+export async function notifyTechnicianAboutServiceEstimateFormAction(formData: FormData) {
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
+  try {
+    await notifyTechnicianAboutServiceEstimate(vehicleServiceId, str(formData, 'note') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not notify technician.';
+    redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
+  redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=technician_notified`);
+}
+
+export async function requestServiceEstimateStoreMatchingFormAction(formData: FormData) {
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
+  try {
+    await requestServiceEstimateStoreMatching(vehicleServiceId, str(formData, 'note') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not request Store matching.';
+    redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
+  redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=matching_requested`);
 }
