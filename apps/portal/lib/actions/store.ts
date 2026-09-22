@@ -870,7 +870,7 @@ export async function listUnmatchedStorePartLines(branchId: string) {
             select: {
               id: true,
               jobNumber: true,
-              vehicle: { select: { make: true, model: true, engineType: true, year: true } },
+              vehicle: { select: { id: true, make: true, model: true, engineType: true, year: true } },
             },
           },
         },

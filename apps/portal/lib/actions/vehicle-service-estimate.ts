@@ -1105,7 +1105,7 @@ export async function listUnmatchedServiceEstimateStorePartLines(branchId: strin
             select: {
               id: true,
               serviceNumber: true,
-              vehicle: { select: { make: true, model: true, engineType: true, year: true } },
+              vehicle: { select: { id: true, make: true, model: true, engineType: true, year: true } },
             },
           },
         },
