@@ -10,6 +10,8 @@ import {
   updateServiceEstimateLineItemFormAction,
   submitServiceEstimateFormAction,
   approveServiceEstimateFormAction,
+  approveServiceEstimateAsManagerFormAction,
+  notifyCustomerOfApprovedServiceEstimateFormAction,
   notifySupervisorAboutServiceEstimateFormAction,
   notifyTechnicianAboutServiceEstimateFormAction,
   requestServiceEstimateStoreMatchingFormAction,
@@ -17,7 +19,7 @@ import {
 import { requestServiceEstimatePartRequestSlipFormAction } from '@/lib/actions/sourcing-form-handlers';
 import { getVehicleServicePayments } from '@/lib/actions/vehicle-service-payment';
 import { recordServicePaymentFormAction } from '@/lib/actions/vehicle-service-payment-form-handlers';
-import { listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId, listEligibleFinanceOfficersForBranch } from '@/lib/actions/workshop';
+import { listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId, listEligibleFinanceOfficersForBranch, listEligibleManagersForBranch } from '@/lib/actions/workshop';
 import { listPartTypes, listPartCategories } from '@/lib/actions/store';
 import {
   updateVehicleServiceStatusFormAction,
@@ -59,6 +61,13 @@ const STATUS_CLASS: Record<string, string> = {
   COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   COLLECTED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
+};
+
+const SERVICE_ESTIMATE_STATUS_LABEL: Record<string, string> = {
+  DRAFT: 'Draft',
+  SUBMITTED: 'Awaiting supervisor validation',
+  APPROVED: 'Awaiting manager review',
+  MANAGER_APPROVED: 'Approved',
 };
 
 const SERVICE_ESTIMATE_LINE_TYPE_DISPLAY: Record<string, string> = {
@@ -230,7 +239,7 @@ export default async function VehicleServiceDetailPage({
   const isEstimateContributor = isMasterAdmin || service.supervisor?.id === viewerId || service.assignedTechnician?.id === viewerId;
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
-  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, partCategories, payments, eligibleFinance] = await Promise.all([
+  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, partCategories, payments, eligibleFinance, eligibleManagers] = await Promise.all([
     listTechnicianCandidates(),
     getVehicleServiceAuditTrail(id),
     getVehicleInspection(id),
@@ -239,6 +248,7 @@ export default async function VehicleServiceDetailPage({
     listPartCategories(service.branchId),
     getVehicleServicePayments(id),
     listEligibleFinanceOfficersForBranch(service.branchId),
+    listEligibleManagersForBranch(service.branchId),
   ]);
   const partCategoriesWithTypes = partCategories.map((category: (typeof partCategories)[number]) => ({
     id: category.id,
@@ -246,6 +256,8 @@ export default async function VehicleServiceDetailPage({
     types: partTypes.filter((t: (typeof partTypes)[number]) => t.categoryId === category.id).map((t: (typeof partTypes)[number]) => ({ id: t.id, name: t.name, typicalUnit: t.typicalUnit })),
   }));
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
+  const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
+  const isEstimateCreator = isMasterAdmin || serviceEstimate?.createdById === viewerId;
   const hasUnmatchedStoreParts = serviceEstimate?.lineItems.some((li: { type: string; matchedPartId: string | null }) => li.type === 'STORE_PART' && !li.matchedPartId) ?? false;
   // Same real "live while still Draft" price as Job Card's own
   // getLiveLineAmount — a matched Store Part line always reflects the
@@ -318,6 +330,16 @@ export default async function VehicleServiceDetailPage({
       {status === 'matching_requested' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Store matching requested." />
+        </div>
+      ) : null}
+      {status === 'estimate_manager_approved' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Estimate approved as manager." />
+        </div>
+      ) : null}
+      {status === 'customer_notified' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Customer notified." />
         </div>
       ) : null}
       {status === 'line_matched' ? (
@@ -604,14 +626,14 @@ export default async function VehicleServiceDetailPage({
                 {serviceEstimate ? (
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      serviceEstimate.status === 'APPROVED'
+                      serviceEstimate.status === 'MANAGER_APPROVED'
                         ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
-                        : serviceEstimate.status === 'SUBMITTED'
+                        : serviceEstimate.status === 'SUBMITTED' || serviceEstimate.status === 'APPROVED'
                           ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
                           : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
                     }`}
                   >
-                    {serviceEstimate.status === 'APPROVED' ? 'Approved' : serviceEstimate.status === 'SUBMITTED' ? 'Submitted' : 'Draft'}
+                    {SERVICE_ESTIMATE_STATUS_LABEL[serviceEstimate.status] ?? serviceEstimate.status}
                   </span>
                 ) : null}
               </div>
@@ -668,7 +690,7 @@ export default async function VehicleServiceDetailPage({
                     </form>
                   </div>
                 </>
-              ) : serviceEstimate.status !== 'APPROVED' ? (
+              ) : serviceEstimate.status !== 'MANAGER_APPROVED' ? (
                 <form action={cancelServiceEstimateFormAction} className="mt-3">
                   <FormPendingOverlay />
                   <input type="hidden" name="vehicleServiceId" value={service.id} />
@@ -698,7 +720,7 @@ export default async function VehicleServiceDetailPage({
                       </thead>
                       <tbody>
                         {serviceEstimate.lineItems.map((line: (typeof serviceEstimate.lineItems)[number]) => {
-                          const canModifyThis = serviceEstimate.status !== 'APPROVED' && isEstimateContributor && (viewerId === line.enteredById || isApprover);
+                          const canModifyThis = serviceEstimate.status !== 'MANAGER_APPROVED' && isEstimateContributor && (viewerId === line.enteredById || isApprover);
                           const isEditingThis = editLineId === line.id && canModifyThis;
                           const needsMatch = line.type === 'STORE_PART' && !line.matchedPartId;
                           // Same real preview purpose as Job Card's own
@@ -932,38 +954,83 @@ export default async function VehicleServiceDetailPage({
                     </form>
                   ) : null}
 
-                  {serviceEstimate.status === 'DRAFT' && serviceEstimate.lineItems.length > 0 && !hasUnmatchedStoreParts ? (
-                    <form action={submitServiceEstimateFormAction} className="mt-4">
+                  {serviceEstimate.status === 'DRAFT' && isEstimateContributor && serviceEstimate.lineItems.length > 0 && !hasUnmatchedStoreParts ? (
+                    <form action={submitServiceEstimateFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
                       <FormPendingOverlay />
                       <input type="hidden" name="estimateId" value={serviceEstimate.id} />
                       <input type="hidden" name="vehicleServiceId" value={service.id} />
+                      <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
+                        Every line needs a price before this can be submitted — a supervisor will validate it next.
+                      </p>
                       <SubmitButton
-                        label="Submit Estimate"
+                        label="Submit for validation"
                         pendingLabel="Submitting…"
-                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                       />
                     </form>
                   ) : null}
 
-                  {serviceEstimate.status === 'SUBMITTED' ? (
-                    <form action={approveServiceEstimateFormAction} className="mt-4">
+                  {serviceEstimate.status === 'SUBMITTED' && isApprover ? (
+                    <form action={approveServiceEstimateFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
                       <FormPendingOverlay />
                       <input type="hidden" name="estimateId" value={serviceEstimate.id} />
                       <input type="hidden" name="vehicleServiceId" value={service.id} />
                       <SubmitButton
-                        label="Approve Estimate"
+                        label="Approve estimate"
                         pendingLabel="Approving…"
-                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                      />
+                    </form>
+                  ) : null}
+
+                  {serviceEstimate.status === 'APPROVED' && isEligibleManager ? (
+                    <form action={approveServiceEstimateAsManagerFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="estimateId" value={serviceEstimate.id} />
+                      <input type="hidden" name="vehicleServiceId" value={service.id} />
+                      <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
+                        The supervisor has validated this estimate — it&apos;s ready for your own final sign-off.
+                      </p>
+                      <SubmitButton
+                        label="Approve as manager"
+                        pendingLabel="Approving…"
+                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                       />
                     </form>
                   ) : null}
 
                   {serviceEstimate.status === 'APPROVED' ? (
-                    <div className="mt-4">
+                    <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
+                      Approved by {serviceEstimate.approvedBy?.fullName ?? '—'}
+                      {serviceEstimate.approvedAt ? ` on ${formatDateOnly(serviceEstimate.approvedAt)}` : ''} — awaiting the Workshop Manager&apos;s own final sign-off.
+                    </p>
+                  ) : null}
+
+                  {serviceEstimate.status === 'MANAGER_APPROVED' ? (
+                    <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
                       <p className="text-xs text-[var(--ejo-text-muted)]">
                         Approved by {serviceEstimate.approvedBy?.fullName ?? '—'}
-                        {serviceEstimate.approvedAt ? ` on ${formatDateOnly(serviceEstimate.approvedAt)}` : ''}.
+                        {serviceEstimate.approvedAt ? ` on ${formatDateOnly(serviceEstimate.approvedAt)}` : ''}, and by manager{' '}
+                        {serviceEstimate.managerApprovedBy?.fullName ?? '—'}
+                        {serviceEstimate.managerApprovedAt ? ` on ${formatDateOnly(serviceEstimate.managerApprovedAt)}` : ''}.
                       </p>
+                      {!serviceEstimate.customerNotifiedAt && (isEstimateCreator || isMasterAdmin) ? (
+                        <form action={notifyCustomerOfApprovedServiceEstimateFormAction} className="mt-3">
+                          <FormPendingOverlay />
+                          <input type="hidden" name="estimateId" value={serviceEstimate.id} />
+                          <input type="hidden" name="vehicleServiceId" value={service.id} />
+                          <SubmitButton
+                            label="Notify customer"
+                            pendingLabel="Sending…"
+                            className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                          />
+                        </form>
+                      ) : serviceEstimate.customerNotifiedAt ? (
+                        <p className="mt-1 text-xs text-[var(--ejo-success)]">
+                          Customer notified{serviceEstimate.customerNotifiedBy ? ` by ${serviceEstimate.customerNotifiedBy.fullName}` : ''}
+                          {serviceEstimate.customerNotifiedAt ? ` on ${formatDateOnly(serviceEstimate.customerNotifiedAt)}` : ''}.
+                        </p>
+                      ) : null}
                       <form action={requestServiceEstimatePartRequestSlipFormAction} className="mt-3">
                         <FormPendingOverlay />
                         <input type="hidden" name="serviceEstimateId" value={serviceEstimate.id} />
@@ -981,7 +1048,7 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {serviceEstimate?.status === 'APPROVED' ? (
+          {serviceEstimate?.status === 'MANAGER_APPROVED' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Payments</h2>
