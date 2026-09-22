@@ -997,7 +997,7 @@ export async function requestServiceEstimateStoreMatching(vehicleServiceId: stri
           requestedByName: requestedByUser?.fullName ?? 'A team member',
           serviceNumber: service.serviceNumber,
           customerName: service.customer.fullName,
-          lines: service.serviceEstimate.lineItems,
+          lines: service.serviceEstimate.lineItems.map((l: { description: string; quantity: unknown }) => ({ description: l.description, quantity: Number(l.quantity) })),
           note,
           matchingUrl: `${portalUrl}/inventory/service-estimate-matching/${vehicleServiceId}`,
           logoUrl,
