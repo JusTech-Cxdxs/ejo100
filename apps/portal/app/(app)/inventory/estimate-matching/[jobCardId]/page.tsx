@@ -68,7 +68,10 @@ export default async function JobCardMatchingPage({
         </LoadingLink>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        {jobCard.customer.fullName} — {vehicleLine}
+        {jobCard.customer.fullName} —{' '}
+        <LoadingLink href={`/workshop/vehicles/${jobCard.vehicle.id}/edit`} className="hover:underline">
+          {vehicleLine}
+        </LoadingLink>
         {jobCard.vehicle.plateNumber ? ` — ${jobCard.vehicle.plateNumber}` : ''}
       </p>
 
