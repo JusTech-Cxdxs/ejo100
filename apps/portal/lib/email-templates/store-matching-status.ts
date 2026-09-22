@@ -1,11 +1,12 @@
 import { renderEmailLayout, escapeHtml } from './layout';
+import { pluralize } from '@/lib/utils/pluralize';
 
 export type StoreMatchingRequestedEmailOptions = {
   recipientName: string;
   requestedByName: string;
   jobNumber: string;
   customerName: string;
-  lines: { description: string; quantity: number }[];
+  lines: { description: string; quantity: number; unit: string | null }[];
   note?: string;
   matchingUrl: string;
   logoUrl: string;
@@ -24,7 +25,9 @@ export type StoreMatchingRequestedEmailOptions = {
 export function renderStoreMatchingRequestedEmail(opts: StoreMatchingRequestedEmailOptions): string {
   const { recipientName, requestedByName, jobNumber, customerName, lines, note, matchingUrl, logoUrl, companyName, branchName, departmentName } = opts;
 
-  const lineItems = lines.map((l) => `<li style="margin-bottom: 4px;">${escapeHtml(l.description)} (x${l.quantity})</li>`).join('');
+  const lineItems = lines
+    .map((l) => `<li style="margin-bottom: 4px;">${escapeHtml(l.description)} — ${l.unit ? escapeHtml(pluralize(l.quantity, l.unit)) : `x${l.quantity}`}</li>`)
+    .join('');
 
   const bodyHtml = `
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
