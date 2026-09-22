@@ -351,16 +351,30 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
 }
 
 export async function removeServiceEstimateLineItem(lineItemId: string): Promise<void> {
-  const user = await requireUser();
   const line = await prisma.serviceEstimateLineItem.findUnique({
     where: { id: lineItemId },
-    select: { description: true, estimate: { select: { id: true, status: true, vehicleService: { select: { serviceNumber: true } } } } },
+    select: {
+      enteredById: true,
+      description: true,
+      estimate: { select: { id: true, status: true, vehicleServiceId: true, vehicleService: { select: { serviceNumber: true, supervisorId: true } } } },
+    },
   });
   if (!line) {
     throw new ServiceEstimateActionError('Line item not found.');
   }
   if (line.estimate.status === 'APPROVED') {
     throw new ServiceEstimateActionError('This estimate is already approved — it can no longer be changed here.');
+  }
+  // Same real "whoever entered it, the supervisor, or a Master
+  // Administrator" rule as Job Card's own estimate — a technician can
+  // correct their own mistake, but can't erase someone else's entry
+  // without real oversight.
+  const user = await requireUser();
+  const isOwnEntry = line.enteredById === user.id;
+  const isSupervisor = line.estimate.vehicleService.supervisorId === user.id;
+  const isMasterAdmin = await currentUserIsMasterAdmin();
+  if (!isOwnEntry && !isSupervisor && !isMasterAdmin) {
+    throw new ServiceEstimateActionError('Only whoever entered this line, the assigned supervisor, or a Master Administrator can remove it.');
   }
   await prisma.serviceEstimateLineItem.delete({ where: { id: lineItemId } });
   await writeAuditLog({
@@ -369,6 +383,96 @@ export async function removeServiceEstimateLineItem(lineItemId: string): Promise
     entityType: 'ServiceEstimate',
     entityId: line.estimate.id,
     metadata: { serviceNumber: line.estimate.vehicleService.serviceNumber, description: line.description },
+  });
+}
+
+export type ServiceEstimateLineItemUpdateInput = {
+  description: string;
+  quantity: number;
+  unitPrice?: number;
+  unitOfMeasure?: string;
+};
+
+/**
+ * Real, after-the-fact correction of a line already on the estimate
+ * — same exact real reasoning as Job Card's own updateEstimateLineItem,
+ * including the one real detail that makes it trustworthy: a matched
+ * Store Part line's own price is never frozen the moment it was
+ * matched — while the estimate is still genuinely open for editing,
+ * changing the quantity here recomputes against the Part's own
+ * CURRENT real selling price, never a stale snapshot.
+ */
+export async function updateServiceEstimateLineItem(lineItemId: string, input: ServiceEstimateLineItemUpdateInput): Promise<void> {
+  const description = input.description.trim();
+  if (!description) {
+    throw new ServiceEstimateActionError('A description is required for this line item.');
+  }
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+    throw new ServiceEstimateActionError('Quantity must be a positive number.');
+  }
+  if (input.unitPrice !== undefined && (!Number.isFinite(input.unitPrice) || input.unitPrice < 0)) {
+    throw new ServiceEstimateActionError('Unit price must be zero or a positive number.');
+  }
+
+  const lineItem = await prisma.serviceEstimateLineItem.findUnique({
+    where: { id: lineItemId },
+    select: {
+      type: true,
+      matchedPartId: true,
+      matchedPart: { select: { sellingPrice: true, name: true } },
+      estimate: {
+        select: {
+          id: true,
+          status: true,
+          vehicleServiceId: true,
+          vehicleService: { select: { serviceNumber: true, supervisorId: true, assignedTechnicianId: true } },
+        },
+      },
+    },
+  });
+  if (!lineItem) {
+    throw new ServiceEstimateActionError('Line item not found.');
+  }
+  if (lineItem.estimate.status === 'APPROVED') {
+    throw new ServiceEstimateActionError('This estimate is already approved — it can no longer be changed here.');
+  }
+  const editor = await requireServiceEstimateContributor(lineItem.estimate.vehicleService);
+  if (input.unitPrice !== undefined) {
+    if (lineItem.type === 'STORE_PART') {
+      throw new ServiceEstimateActionError('A Store Part line is priced by Store matching it to a real catalog Part, not typed in directly.');
+    }
+    await requireServicePricingAuthority(lineItem.estimate.vehicleService, editor.id);
+  }
+  if (input.unitOfMeasure !== undefined && lineItem.type === 'STORE_PART') {
+    throw new ServiceEstimateActionError('A Store Part line\'s unit is set automatically once Store matches it, not entered directly.');
+  }
+
+  let unitPrice = input.unitPrice;
+  let amount: number | null = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
+  if (lineItem.type === 'STORE_PART' && lineItem.matchedPartId) {
+    if (lineItem.matchedPart?.sellingPrice === null || lineItem.matchedPart?.sellingPrice === undefined) {
+      throw new ServiceEstimateActionError(`${lineItem.matchedPart?.name ?? 'This Part'} no longer has a selling price set — set one before this line can be updated.`);
+    }
+    unitPrice = Number(lineItem.matchedPart.sellingPrice);
+    amount = Math.round(input.quantity * unitPrice * 100) / 100;
+  }
+
+  await prisma.serviceEstimateLineItem.update({
+    where: { id: lineItemId },
+    data: {
+      description,
+      quantity: input.quantity,
+      unitPrice: unitPrice ?? null,
+      amount,
+      ...(lineItem.type !== 'STORE_PART' ? { unitOfMeasure: input.unitOfMeasure?.trim() || null } : {}),
+    },
+  });
+  await writeAuditLog({
+    userId: editor.id,
+    action: 'service_estimate.line_item_updated',
+    entityType: 'ServiceEstimate',
+    entityId: lineItem.estimate.id,
+    metadata: { serviceNumber: lineItem.estimate.vehicleService.serviceNumber, type: lineItem.type, description, quantity: input.quantity, unitPrice, amount },
   });
 }
 
@@ -666,7 +770,10 @@ export async function getServiceEstimate(vehicleServiceId: string) {
     include: {
       createdBy: { select: { fullName: true } },
       approvedBy: { select: { fullName: true } },
-      lineItems: { orderBy: { createdAt: 'asc' }, include: { enteredBy: { select: { fullName: true } } } },
+      lineItems: {
+        orderBy: { createdAt: 'asc' },
+        include: { enteredBy: { select: { fullName: true } }, matchedPart: { select: { name: true, sellingPrice: true } } },
+      },
     },
   });
 }

@@ -7,6 +7,7 @@ import {
   cancelServiceEstimate,
   addServiceEstimateLineItem,
   removeServiceEstimateLineItem,
+  updateServiceEstimateLineItem,
   matchServiceEstimateStorePartLine,
   submitServiceEstimate,
   approveServiceEstimate,
@@ -99,6 +100,28 @@ export async function removeServiceEstimateLineItemFormAction(formData: FormData
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
   redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=line_removed`);
+}
+
+export async function updateServiceEstimateLineItemFormAction(formData: FormData) {
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
+  try {
+    await updateServiceEstimateLineItem(str(formData, 'lineItemId'), {
+      description: str(formData, 'description'),
+      quantity: num(formData, 'quantity') ?? NaN,
+      unitPrice: num(formData, 'unitPrice'),
+      unitOfMeasure: str(formData, 'unitOfMeasure') || undefined,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not update this line item.';
+    redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
+  // Explicit success redirect back to the plain URL, clearing
+  // ?editLineId= — same exact real reason as Job Card's own version:
+  // without this, revalidatePath() alone re-renders with the SAME
+  // url still present, so the row stays stuck in edit mode even
+  // though the save genuinely succeeded.
+  redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=line_updated`);
 }
 
 export async function submitServiceEstimateFormAction(formData: FormData) {
