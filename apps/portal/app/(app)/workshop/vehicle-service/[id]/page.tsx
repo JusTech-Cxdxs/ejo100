@@ -8,15 +8,17 @@ import {
   cancelServiceEstimateFormAction,
   removeServiceEstimateLineItemFormAction,
   updateServiceEstimateLineItemFormAction,
-  matchServiceEstimateStorePartLineFormAction,
   submitServiceEstimateFormAction,
   approveServiceEstimateFormAction,
+  notifySupervisorAboutServiceEstimateFormAction,
+  notifyTechnicianAboutServiceEstimateFormAction,
+  requestServiceEstimateStoreMatchingFormAction,
 } from '@/lib/actions/vehicle-service-estimate-form-handlers';
 import { requestServiceEstimatePartRequestSlipFormAction } from '@/lib/actions/sourcing-form-handlers';
 import { getVehicleServicePayments } from '@/lib/actions/vehicle-service-payment';
 import { recordServicePaymentFormAction } from '@/lib/actions/vehicle-service-payment-form-handlers';
 import { listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId, listEligibleFinanceOfficersForBranch } from '@/lib/actions/workshop';
-import { listPartTypes, listPartCategories, listParts } from '@/lib/actions/store';
+import { listPartTypes, listPartCategories } from '@/lib/actions/store';
 import {
   updateVehicleServiceStatusFormAction,
   escalateVehicleServiceFormAction,
@@ -155,14 +157,13 @@ export default async function VehicleServiceDetailPage({
   const isEstimateContributor = isMasterAdmin || service.supervisor?.id === viewerId || service.assignedTechnician?.id === viewerId;
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
-  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, partCategories, parts, payments, eligibleFinance] = await Promise.all([
+  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, partCategories, payments, eligibleFinance] = await Promise.all([
     listTechnicianCandidates(),
     getVehicleServiceAuditTrail(id),
     getVehicleInspection(id),
     getServiceEstimate(id),
     listPartTypes(service.branchId),
     listPartCategories(service.branchId),
-    listParts(service.branchId),
     getVehicleServicePayments(id),
     listEligibleFinanceOfficersForBranch(service.branchId),
   ]);
@@ -172,6 +173,7 @@ export default async function VehicleServiceDetailPage({
     types: partTypes.filter((t: (typeof partTypes)[number]) => t.categoryId === category.id).map((t: (typeof partTypes)[number]) => ({ id: t.id, name: t.name, typicalUnit: t.typicalUnit })),
   }));
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
+  const hasUnmatchedStoreParts = serviceEstimate?.lineItems.some((li: { type: string; matchedPartId: string | null }) => li.type === 'STORE_PART' && !li.matchedPartId) ?? false;
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
@@ -219,6 +221,21 @@ export default async function VehicleServiceDetailPage({
       {status === 'line_updated' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Line item updated." />
+        </div>
+      ) : null}
+      {status === 'supervisor_notified' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Supervisor notified." />
+        </div>
+      ) : null}
+      {status === 'technician_notified' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Technician notified." />
+        </div>
+      ) : null}
+      {status === 'matching_requested' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Store matching requested." />
         </div>
       ) : null}
       {status === 'line_matched' ? (
@@ -711,24 +728,7 @@ export default async function VehicleServiceDetailPage({
                               <td className="py-1.5 pr-2 truncate text-[11px] text-[var(--ejo-text-muted)]">{line.enteredBy.fullName}</td>
                               {isEstimateContributor ? (
                                 <td className="py-1.5">
-                                  {needsMatch ? (
-                                    <form action={matchServiceEstimateStorePartLineFormAction} className="flex items-center gap-1">
-                                      <FormPendingOverlay />
-                                      <input type="hidden" name="lineItemId" value={line.id} />
-                                      <input type="hidden" name="vehicleServiceId" value={service.id} />
-                                      <select name="partId" required className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-1.5 py-1 text-[10px] text-[var(--ejo-text)]">
-                                        <option value="">Match to Part…</option>
-                                        {parts.map((p: (typeof parts)[number]) => (
-                                          <option key={p.id} value={p.id}>
-                                            {p.name}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <button type="submit" className="text-xs text-[var(--ejo-primary)] hover:underline">
-                                        Match
-                                      </button>
-                                    </form>
-                                  ) : canModifyThis ? (
+                                  {canModifyThis ? (
                                     <div className="flex items-center gap-3">
                                       <LoadingLink href={`/workshop/vehicle-service/${service.id}?editLineId=${line.id}`} className="inline-flex items-center text-xs font-medium leading-none text-[var(--ejo-primary)] hover:underline">
                                         Edit
@@ -763,6 +763,63 @@ export default async function VehicleServiceDetailPage({
                       hasSundry={Boolean(serviceEstimate.lineItems.some((li: (typeof serviceEstimate.lineItems)[number]) => li.type === 'SUNDRY'))}
                       isTechnicianOnly={isAssignedTechnician && !isApprover}
                     />
+                  ) : null}
+
+                  {serviceEstimate.status === 'DRAFT' && isAssignedTechnician ? (
+                    <form action={notifySupervisorAboutServiceEstimateFormAction} className="mt-4 flex flex-wrap items-end gap-2 border-t border-[var(--ejo-border)] pt-4">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="vehicleServiceId" value={service.id} />
+                      <div className="min-w-[180px] flex-1">
+                        <label className="mb-1 block text-[11px] text-[var(--ejo-text-muted)]">Notify supervisor (optional note)</label>
+                        <input
+                          name="note"
+                          placeholder="e.g. Parts priced, ready to check"
+                          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                        />
+                      </div>
+                      <SubmitButton
+                        label="Notify supervisor"
+                        pendingLabel="Sending…"
+                        className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                      />
+                    </form>
+                  ) : null}
+
+                  {serviceEstimate.status === 'DRAFT' && isApprover ? (
+                    <form action={notifyTechnicianAboutServiceEstimateFormAction} className="mt-4 flex flex-wrap items-end gap-2 border-t border-[var(--ejo-border)] pt-4">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="vehicleServiceId" value={service.id} />
+                      <div className="min-w-[180px] flex-1">
+                        <label className="mb-1 block text-[11px] text-[var(--ejo-text-muted)]">Notify technician (optional note)</label>
+                        <input
+                          name="note"
+                          placeholder="e.g. Please add the pricing"
+                          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
+                        />
+                      </div>
+                      <SubmitButton
+                        label="Notify technician"
+                        pendingLabel="Sending…"
+                        className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                      />
+                    </form>
+                  ) : null}
+
+                  {serviceEstimate.status === 'DRAFT' && isEstimateContributor && serviceEstimate.lineItems.length > 0 && hasUnmatchedStoreParts ? (
+                    <form action={requestServiceEstimateStoreMatchingFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="vehicleServiceId" value={service.id} />
+                      <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
+                        {serviceEstimate.matchingRequestedAt
+                          ? 'Store matching already requested — awaiting Store. Submission stays on hold until every Store Part line is matched.'
+                          : 'This estimate has Store Part lines with no price yet — those only get priced once Store matches them. Request Store matching to move forward.'}
+                      </p>
+                      <SubmitButton
+                        label={serviceEstimate.matchingRequestedAt ? 'Request Store Matching Again' : 'Request Store Matching'}
+                        pendingLabel="Sending…"
+                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                      />
+                    </form>
                   ) : null}
 
                   {serviceEstimate.status === 'DRAFT' ? (
