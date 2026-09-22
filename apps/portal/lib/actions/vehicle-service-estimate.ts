@@ -978,7 +978,14 @@ export async function requestServiceEstimateStoreMatching(vehicleServiceId: stri
       serviceEstimate: {
         select: {
           id: true,
-          lineItems: { where: { type: 'STORE_PART', matchedPartId: null }, select: { description: true, quantity: true } },
+          lineItems: {
+            where: { type: 'STORE_PART', matchedPartId: null },
+            select: {
+              description: true,
+              quantity: true,
+              partType: { select: { parts: { where: { isActive: true }, take: 1, select: { baseUnitOfMeasure: true } } } },
+            },
+          },
         },
       },
     },
@@ -1032,7 +1039,11 @@ export async function requestServiceEstimateStoreMatching(vehicleServiceId: stri
           requestedByName: requestedByUser?.fullName ?? 'A team member',
           serviceNumber: service.serviceNumber,
           customerName: service.customer.fullName,
-          lines: service.serviceEstimate.lineItems.map((l: { description: string; quantity: unknown }) => ({ description: l.description, quantity: Number(l.quantity) })),
+          lines: service.serviceEstimate.lineItems.map((l: { description: string; quantity: unknown; partType: { parts: { baseUnitOfMeasure: string }[] } | null }) => ({
+            description: l.description,
+            quantity: Number(l.quantity),
+            unit: l.partType?.parts[0]?.baseUnitOfMeasure ?? null,
+          })),
           note,
           matchingUrl: `${portalUrl}/inventory/service-estimate-matching/${vehicleServiceId}`,
           logoUrl,

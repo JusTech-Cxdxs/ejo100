@@ -923,7 +923,16 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
           id: true,
           lineItems: {
             where: { type: 'STORE_PART', matchedPartId: null },
-            select: { description: true, quantity: true },
+            select: {
+              description: true,
+              quantity: true,
+              // Same real preview-only unit already used on the
+              // estimate table itself — the first real active Part
+              // under this Part Type, never a guess, and never
+              // trusted for anything beyond showing Store roughly
+              // what unit to expect before they've actually matched.
+              partType: { select: { parts: { where: { isActive: true }, take: 1, select: { baseUnitOfMeasure: true } } } },
+            },
           },
         },
       },
@@ -980,7 +989,11 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
           requestedByName: requestedByUser?.fullName ?? 'A team member',
           jobNumber: jobCard.jobNumber,
           customerName: jobCard.customer.fullName,
-          lines: jobCard.estimate.lineItems,
+          lines: jobCard.estimate.lineItems.map((l: { description: string; quantity: unknown; partType: { parts: { baseUnitOfMeasure: string }[] } | null }) => ({
+            description: l.description,
+            quantity: Number(l.quantity),
+            unit: l.partType?.parts[0]?.baseUnitOfMeasure ?? null,
+          })),
           note,
           matchingUrl: `${portalUrl}/inventory/estimate-matching`,
           logoUrl,
