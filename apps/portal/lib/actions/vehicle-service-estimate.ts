@@ -1,17 +1,19 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog, getWorkshopOrgContext, currentUserIsMasterAdmin, requireJobCardApprover } from './workshop';
+import { requireUser, writeAuditLog, getWorkshopOrgContext, currentUserIsMasterAdmin, requireJobCardApprover, listEligibleManagersForBranch, requireEligibleManager } from './workshop';
 import { requireStoreStaff, listEligibleStoreOfficersForBranch, listEligibleStoreManagersForBranch } from './store';
 import { renderServiceEstimateNudgeEmail } from '@/lib/email-templates/service-estimate-nudge';
 import { renderServiceStoreMatchingRequestedEmail, renderServiceStoreMatchingStatusEmail } from '@/lib/email-templates/service-store-matching-status';
+import { renderServiceEstimateReadyForManagerEmail } from '@/lib/email-templates/service-estimate-ready-for-manager';
+import { renderServiceEstimateReadyForCustomerNotificationEmail } from '@/lib/email-templates/service-estimate-ready-for-customer-notification';
 import { sendEmail } from '@/lib/email';
 import { renderServiceEstimateSubmittedEmail } from '@/lib/email-templates/service-estimate-submitted';
 import { renderCustomerServiceEstimateApprovedEmail } from '@/lib/email-templates/customer-service-estimate-approved';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
 import { InspectionPdf } from '@/lib/pdf/inspection-pdf';
-import { pluralizeWord } from '@/lib/utils/pluralize';
+import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { MINIMUM_DEPOSIT_FRACTION, COMPANY_BANK_DETAILS } from '@/lib/workshop-constants';
 
@@ -72,7 +74,7 @@ export async function cancelServiceEstimate(vehicleServiceId: string): Promise<v
   if (!estimate) {
     throw new ServiceEstimateActionError('No estimate exists yet for this Vehicle Service.');
   }
-  if (estimate.status === 'APPROVED') {
+  if (estimate.status === 'MANAGER_APPROVED') {
     throw new ServiceEstimateActionError('This estimate is already approved — it can no longer be cancelled here.');
   }
   const service = await prisma.vehicleService.findUnique({ where: { id: vehicleServiceId }, select: { serviceNumber: true } });
@@ -595,16 +597,183 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
 }
 
 export async function approveServiceEstimate(estimateId: string): Promise<void> {
-  const user = await requireUser();
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },
     select: {
       status: true,
+      lineItems: { select: { type: true, matchedPartId: true, amount: true } },
+      vehicleService: {
+        select: {
+          id: true,
+          serviceNumber: true,
+          supervisorId: true,
+          branchId: true,
+          customer: { select: { fullName: true } },
+          branch: { select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } } },
+        },
+      },
+    },
+  });
+  if (!estimate) {
+    throw new ServiceEstimateActionError('Estimate not found.');
+  }
+  if (estimate.status !== 'SUBMITTED') {
+    throw new ServiceEstimateActionError('Only a submitted estimate can be approved.');
+  }
+  // Same real re-check as Job Card's own approveEstimate — a new
+  // unmatched Store Part line could genuinely have been added since
+  // submission (editing stays open right up until real approval),
+  // so nothing should reach a Manager, let alone the customer, still
+  // priced on a technician's guess rather than Store's own real match.
+  const unmatchedStoreParts = estimate.lineItems.filter((li: { type: string; matchedPartId: string | null }) => li.type === 'STORE_PART' && !li.matchedPartId);
+  if (unmatchedStoreParts.length > 0) {
+    throw new ServiceEstimateActionError(
+      `${pluralize(unmatchedStoreParts.length, 'Store Part line')} still ${unmatchedStoreParts.length === 1 ? 'needs' : 'need'} to be matched by Store before this estimate can be approved.`,
+    );
+  }
+  const user = await requireJobCardApprover(estimate.vehicleService);
+  await prisma.serviceEstimate.update({
+    where: { id: estimateId },
+    data: { status: 'APPROVED', approvedAt: new Date(), approvedById: user.id },
+  });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'service_estimate.approved',
+    entityType: 'VehicleService',
+    entityId: estimate.vehicleService.id,
+    metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
+  });
+
+  // Same real hand-off as Job Card's own approveEstimate — the
+  // supervisor's own approval is not the final word; every eligible
+  // Workshop Manager for the branch is notified next, and whichever
+  // one acts first completes the review. Fail-soft, matching every
+  // other notification in this file.
+  try {
+    const managers = await listEligibleManagersForBranch(estimate.vehicleService.branchId);
+    if (managers.supervisors.length === 0) return;
+    const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const companyName = estimate.vehicleService.branch.businessUnit.organisation.name;
+    const branchName = estimate.vehicleService.branch.name;
+    for (const manager of managers.supervisors) {
+      await sendEmail(
+        manager.email,
+        `Estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} ready for your review`,
+        renderServiceEstimateReadyForManagerEmail({
+          managerName: manager.fullName,
+          serviceNumber: estimate.vehicleService.serviceNumber,
+          customerName: estimate.vehicleService.customer.fullName,
+          approvedByName: approver?.fullName ?? 'The supervisor',
+          totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          vehicleServiceUrl: `${portalUrl}/workshop/vehicle-service/${estimate.vehicleService.id}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName,
+          branchName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send estimate-ready-for-manager email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
+  }
+}
+
+/** The Workshop Manager's own real sign-off — same real two-role
+ * shape as Job Card's own approveEstimateAsManager. Notifies whoever
+ * created this Vehicle Service next, never the customer directly —
+ * that hand-off is a separate, explicit step (see
+ * notifyCustomerOfApprovedServiceEstimate below). */
+export async function approveServiceEstimateAsManager(estimateId: string): Promise<void> {
+  const estimate = await prisma.serviceEstimate.findUnique({
+    where: { id: estimateId },
+    select: {
+      status: true,
+      lineItems: { select: { amount: true } },
+      vehicleService: {
+        select: {
+          id: true,
+          serviceNumber: true,
+          branchId: true,
+          createdById: true,
+          createdBy: { select: { fullName: true, email: true } },
+          customer: { select: { fullName: true } },
+          branch: { select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } } },
+        },
+      },
+    },
+  });
+  if (!estimate) {
+    throw new ServiceEstimateActionError('Estimate not found.');
+  }
+  if (estimate.status !== 'APPROVED') {
+    throw new ServiceEstimateActionError('This estimate has not been approved by its supervisor yet.');
+  }
+  const user = await requireEligibleManager(estimate.vehicleService.branchId);
+
+  await prisma.serviceEstimate.update({
+    where: { id: estimateId },
+    data: { status: 'MANAGER_APPROVED', managerApprovedAt: new Date(), managerApprovedById: user.id },
+  });
+
+  await writeAuditLog({
+    userId: user.id,
+    action: 'service_estimate.manager_approved',
+    entityType: 'VehicleService',
+    entityId: estimate.vehicleService.id,
+    metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
+  });
+
+  // Notify whoever created this Vehicle Service — the Manager
+  // approving is not the same as anyone deciding the customer should
+  // be told. That decision belongs to this person specifically; see
+  // notifyCustomerOfApprovedServiceEstimate below for the actual
+  // customer hand-off, which this person triggers explicitly. Fail-
+  // soft, matching every other notification in this file.
+  try {
+    const manager = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      estimate.vehicleService.createdBy.email,
+      `Estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} approved by manager`,
+      renderServiceEstimateReadyForCustomerNotificationEmail({
+        recipientName: estimate.vehicleService.createdBy.fullName,
+        serviceNumber: estimate.vehicleService.serviceNumber,
+        customerName: estimate.vehicleService.customer.fullName,
+        approvedByManagerName: manager?.fullName ?? 'The manager',
+        totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        vehicleServiceUrl: `${portalUrl}/workshop/vehicle-service/${estimate.vehicleService.id}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: estimate.vehicleService.branch.businessUnit.organisation.name,
+        branchName: estimate.vehicleService.branch.name,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send estimate-ready-for-customer-notification email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
+  }
+}
+
+/** The explicit, real hand-off to the customer — only whoever created
+ * this Vehicle Service, or a Master Admin, may trigger this, and only
+ * once the Manager has approved. Deliberately never automatic — same
+ * real reasoning as Job Card's own notifyCustomerOfApprovedEstimate.
+ * Carries the same real estimate PDF (and inspection PDF, when one
+ * exists) the customer has always received at this point. */
+export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string): Promise<void> {
+  const estimate = await prisma.serviceEstimate.findUnique({
+    where: { id: estimateId },
+    select: {
+      status: true,
+      customerNotifiedAt: true,
       lineItems: { orderBy: { createdAt: 'asc' }, select: { description: true, quantity: true, amount: true, unitOfMeasure: true } },
       vehicleService: {
         select: {
           id: true,
           serviceNumber: true,
+          createdById: true,
           customer: { select: { fullName: true, email: true, address: true } },
           vehicle: { select: { make: true, model: true, year: true, plateNumber: true, chassisNumber: true } },
           branch: {
@@ -631,16 +800,25 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
   if (!estimate) {
     throw new ServiceEstimateActionError('Estimate not found.');
   }
-  if (estimate.status !== 'SUBMITTED') {
-    throw new ServiceEstimateActionError('Only a submitted estimate can be approved.');
+  if (estimate.status !== 'MANAGER_APPROVED') {
+    throw new ServiceEstimateActionError('This estimate has not been approved by the manager yet.');
   }
+  const user = await requireUser();
+  const isMasterAdmin = await currentUserIsMasterAdmin();
+  if (user.id !== estimate.vehicleService.createdById && !isMasterAdmin) {
+    throw new ServiceEstimateActionError('Only whoever created this Vehicle Service, or a Master Administrator, can notify the customer.');
+  }
+  if (estimate.customerNotifiedAt) {
+    throw new ServiceEstimateActionError('The customer has already been notified about this estimate.');
+  }
+
   await prisma.serviceEstimate.update({
     where: { id: estimateId },
-    data: { status: 'APPROVED', approvedAt: new Date(), approvedById: user.id },
+    data: { customerNotifiedAt: new Date(), customerNotifiedById: user.id },
   });
   await writeAuditLog({
     userId: user.id,
-    action: 'service_estimate.approved',
+    action: 'service_estimate.customer_notified',
     entityType: 'VehicleService',
     entityId: estimate.vehicleService.id,
     metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
@@ -806,6 +984,8 @@ export async function getServiceEstimate(vehicleServiceId: string) {
     include: {
       createdBy: { select: { fullName: true } },
       approvedBy: { select: { fullName: true } },
+      managerApprovedBy: { select: { fullName: true } },
+      customerNotifiedBy: { select: { fullName: true } },
       lineItems: {
         orderBy: { createdAt: 'asc' },
         include: { enteredBy: { select: { fullName: true } }, matchedPart: { select: { name: true, sellingPrice: true } } },

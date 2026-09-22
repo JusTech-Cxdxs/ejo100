@@ -12,6 +12,8 @@ import {
   serviceEstimateHasUnmatchedStoreParts,
   submitServiceEstimate,
   approveServiceEstimate,
+  approveServiceEstimateAsManager,
+  notifyCustomerOfApprovedServiceEstimate,
   notifySupervisorAboutServiceEstimate,
   notifyTechnicianAboutServiceEstimate,
   requestServiceEstimateStoreMatching,
@@ -159,6 +161,32 @@ export async function approveServiceEstimateFormAction(formData: FormData) {
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
   redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=estimate_approved`);
+}
+
+export async function approveServiceEstimateAsManagerFormAction(formData: FormData) {
+  const estimateId = str(formData, 'estimateId');
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
+  try {
+    await approveServiceEstimateAsManager(estimateId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not approve estimate as manager.';
+    redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
+  redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=estimate_manager_approved`);
+}
+
+export async function notifyCustomerOfApprovedServiceEstimateFormAction(formData: FormData) {
+  const estimateId = str(formData, 'estimateId');
+  const vehicleServiceId = str(formData, 'vehicleServiceId');
+  try {
+    await notifyCustomerOfApprovedServiceEstimate(estimateId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not notify the customer.';
+    redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
+  redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=customer_notified`);
 }
 
 export async function notifySupervisorAboutServiceEstimateFormAction(formData: FormData) {
