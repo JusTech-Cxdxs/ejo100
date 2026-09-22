@@ -86,11 +86,11 @@ export async function matchServiceEstimateStorePartLineFormAction(formData: Form
     await matchServiceEstimateStorePartLine(lineItemId, partId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not match this line.';
-    redirect(`/inventory/service-estimate-matching?error=${encodeURIComponent(message)}`);
+    redirect(`/inventory/estimate-matching?error=${encodeURIComponent(message)}`);
   }
-  revalidatePath('/inventory/service-estimate-matching');
+  revalidatePath('/inventory/estimate-matching');
   if (vehicleServiceId) revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
-  redirect('/inventory/service-estimate-matching?status=line_matched');
+  redirect('/inventory/estimate-matching?status=line_matched');
 }
 
 export async function removeServiceEstimateLineItemFormAction(formData: FormData) {
