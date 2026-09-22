@@ -91,6 +91,7 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle_service.status_updated': 'Status updated',
   'vehicle_service.technician_assigned': 'Technician assigned',
   'vehicle_service.escalated_to_job_card': 'Escalated to Job Card',
+  'vehicle_service.attended_to': 'Overdue prediction attended to',
   'assignment.accepted': 'Technician accepted assignment',
   'assignment.rejected': 'Technician rejected assignment',
   'vehicle_inspection.started': 'Inspection started',
@@ -101,7 +102,12 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'service_estimate.created': 'Estimate started',
   'service_estimate.line_item_added': 'Estimate line added',
   'service_estimate.line_item_removed': 'Estimate line removed',
+  'service_estimate.line_item_updated': 'Estimate line updated',
   'service_estimate.line_store_matched': 'Estimate line matched to Store Part',
+  'service_estimate.store_matching_requested': 'Store matching requested',
+  'service_estimate.store_matching_completed': 'Store matching completed',
+  'service_estimate.nudge_to_supervisor': 'Technician notified supervisor',
+  'service_estimate.nudge_to_technician': 'Supervisor notified technician',
   'service_estimate.submitted': 'Estimate submitted for approval',
   'service_estimate.approved': 'Estimate approved',
   'service_estimate.cancelled': 'Estimate cancelled',
@@ -174,6 +180,16 @@ export default async function VehicleServiceDetailPage({
   }));
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
   const hasUnmatchedStoreParts = serviceEstimate?.lineItems.some((li: { type: string; matchedPartId: string | null }) => li.type === 'STORE_PART' && !li.matchedPartId) ?? false;
+  // Same real "live while still Draft" price as Job Card's own
+  // getLiveLineAmount — a matched Store Part line always reflects the
+  // Part's own current real price for as long as the estimate can
+  // still be edited, never a stale snapshot.
+  function getLiveLineAmount(item: { type: string; quantity: unknown; amount: unknown; matchedPart: { sellingPrice: unknown } | null }): number {
+    if (item.type === 'STORE_PART' && item.matchedPart && serviceEstimate?.status === 'DRAFT' && item.matchedPart.sellingPrice !== null) {
+      return Math.round(Number(item.quantity) * Number(item.matchedPart.sellingPrice) * 100) / 100;
+    }
+    return item.amount !== null ? Number(item.amount) : 0;
+  }
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
@@ -754,6 +770,34 @@ export default async function VehicleServiceDetailPage({
                     <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">No line items yet.</p>
                   )}
 
+                  {serviceEstimate.lineItems.length > 0 ? (
+                    <div className="mt-3 space-y-1 border-t border-[var(--ejo-border)] pt-3 text-sm">
+                      {(['STORE_PART', 'INTERNAL_JOB', 'LABOUR', 'SUNDRY'] as const).map((type) => {
+                        const subtotal = serviceEstimate.lineItems
+                          .filter((item: (typeof serviceEstimate.lineItems)[number]) => item.type === type)
+                          .reduce((sum: number, item: (typeof serviceEstimate.lineItems)[number]) => sum + getLiveLineAmount(item), 0);
+                        if (subtotal === 0) return null;
+                        return (
+                          <div key={type} className="flex justify-between text-[var(--ejo-text-muted)]">
+                            <span>{SERVICE_ESTIMATE_LINE_TYPE_DISPLAY[type]} subtotal</span>
+                            <span>{formatNaira(subtotal)}</span>
+                          </div>
+                        );
+                      })}
+                      <div className="flex justify-between text-base font-semibold text-[var(--ejo-text)]">
+                        <span>Total Estimate</span>
+                        <span>
+                          {formatNaira(
+                            serviceEstimate.lineItems.reduce(
+                              (sum: number, item: (typeof serviceEstimate.lineItems)[number]) => sum + getLiveLineAmount(item),
+                              0,
+                            ),
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {serviceEstimate.status === 'DRAFT' ? (
                     <ServiceEstimateLineItemForm
                       vehicleServiceId={service.id}
@@ -822,7 +866,7 @@ export default async function VehicleServiceDetailPage({
                     </form>
                   ) : null}
 
-                  {serviceEstimate.status === 'DRAFT' ? (
+                  {serviceEstimate.status === 'DRAFT' && serviceEstimate.lineItems.length > 0 && !hasUnmatchedStoreParts ? (
                     <form action={submitServiceEstimateFormAction} className="mt-4">
                       <FormPendingOverlay />
                       <input type="hidden" name="estimateId" value={serviceEstimate.id} />
