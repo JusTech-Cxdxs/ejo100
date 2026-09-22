@@ -496,17 +496,17 @@ export async function updateServiceEstimateLineItem(lineItemId: string, input: S
  * Job Card's own estimate uses, just without the extra Manager stage
  * that a routine Vehicle Service visit doesn't need. */
 export async function submitServiceEstimate(estimateId: string): Promise<void> {
-  const user = await requireUser();
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },
     select: {
       status: true,
-      lineItems: { select: { id: true, amount: true } },
+      lineItems: { select: { id: true, type: true, matchedPartId: true, quantity: true, unitPrice: true, amount: true, description: true, matchedPart: { select: { sellingPrice: true } } } },
       vehicleService: {
         select: {
           id: true,
           serviceNumber: true,
           supervisorId: true,
+          assignedTechnicianId: true,
           department: { select: { name: true } },
           customer: { select: { fullName: true } },
           supervisor: { select: { fullName: true, email: true } },
@@ -517,9 +517,44 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
   if (!estimate) {
     throw new ServiceEstimateActionError('Estimate not found.');
   }
+  if (estimate.status !== 'DRAFT') {
+    throw new ServiceEstimateActionError('This estimate has already been submitted.');
+  }
   if (estimate.lineItems.length === 0) {
     throw new ServiceEstimateActionError('Add at least one line item before submitting this estimate.');
   }
+  // Same real "live" to "locked" transition as Job Card's own
+  // submitEstimateForValidation — a matched Store Part line's price
+  // has tracked Store's own current selling price the whole time
+  // it's been Draft; this is the one moment that number gets written
+  // down as the estimate's own permanent record, rather than the
+  // possibly-stale figure sitting in the database from whenever the
+  // line's quantity last happened to change.
+  for (const li of estimate.lineItems as (typeof estimate.lineItems)[number][]) {
+    if (li.type === 'STORE_PART' && li.matchedPartId && li.matchedPart?.sellingPrice !== null && li.matchedPart?.sellingPrice !== undefined) {
+      const liveUnitPrice = Number(li.matchedPart.sellingPrice);
+      const liveAmount = Math.round(Number(li.quantity) * liveUnitPrice * 100) / 100;
+      if (Number(li.unitPrice ?? -1) !== liveUnitPrice || Number(li.amount ?? -1) !== liveAmount) {
+        await prisma.serviceEstimateLineItem.update({ where: { id: li.id }, data: { unitPrice: liveUnitPrice, amount: liveAmount } });
+      }
+      // Also updated in memory, not just in the database — the
+      // "missing prices" check right below reads from this same
+      // in-memory array, and needs to see the just-corrected value.
+      (li as { unitPrice: unknown }).unitPrice = liveUnitPrice;
+    }
+  }
+  // Same real gate as Job Card's own — an unmatched Store Part line
+  // never has a real unitPrice at all, so this one check honestly
+  // catches both "forgot to price a line" and "Store hasn't matched
+  // this yet" without needing two separate checks.
+  const missingPricesOn = estimate.lineItems.filter((li: { unitPrice: unknown }) => li.unitPrice === null);
+  if (missingPricesOn.length > 0) {
+    throw new ServiceEstimateActionError(
+      `Every line needs a price before submitting — missing on: ${missingPricesOn.map((li: { description: string }) => li.description).join(', ')}.`,
+    );
+  }
+  const user = await requireServiceEstimateContributor(estimate.vehicleService);
+
   await prisma.serviceEstimate.update({ where: { id: estimateId }, data: { status: 'SUBMITTED', submittedAt: new Date() } });
   await writeAuditLog({
     userId: user.id,
