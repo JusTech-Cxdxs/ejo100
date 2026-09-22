@@ -46,13 +46,6 @@ export async function createServiceEstimate(vehicleServiceId: string): Promise<{
   await writeAuditLog({
     userId: user.id,
     action: 'service_estimate.created',
-    entityType: 'ServiceEstimate',
-    entityId: estimate.id,
-    metadata: { serviceNumber: service.serviceNumber },
-  });
-  await writeAuditLog({
-    userId: user.id,
-    action: 'service_estimate.created',
     entityType: 'VehicleService',
     entityId: vehicleServiceId,
     metadata: { serviceNumber: service.serviceNumber },
@@ -83,13 +76,6 @@ export async function cancelServiceEstimate(vehicleServiceId: string): Promise<v
     throw new ServiceEstimateActionError('This estimate is already approved — it can no longer be cancelled here.');
   }
   const service = await prisma.vehicleService.findUnique({ where: { id: vehicleServiceId }, select: { serviceNumber: true } });
-  await writeAuditLog({
-    userId: user.id,
-    action: 'service_estimate.cancelled',
-    entityType: 'ServiceEstimate',
-    entityId: estimate.id,
-    metadata: { serviceNumber: service?.serviceNumber, previousStatus: estimate.status },
-  });
   await writeAuditLog({
     userId: user.id,
     action: 'service_estimate.cancelled',
@@ -225,10 +211,24 @@ export async function addServiceEstimateLineItem(estimateId: string, input: Serv
   await writeAuditLog({
     userId: contributor.id,
     action: 'service_estimate.line_item_added',
-    entityType: 'ServiceEstimate',
-    entityId: estimateId,
+    entityType: 'VehicleService',
+    entityId: estimate.vehicleServiceId,
     metadata: { serviceNumber: estimate.vehicleService.serviceNumber, type: input.type, description, quantity: input.quantity, unitPrice: input.unitPrice, amount },
   });
+}
+
+/**
+ * The real Vehicle Service equivalent of Job Card's own
+ * jobCardHasUnmatchedStoreParts — the one honest check that decides
+ * whether Store should stay right here matching this Vehicle
+ * Service's next line, or genuinely be done and sent back to the
+ * general queue.
+ */
+export async function serviceEstimateHasUnmatchedStoreParts(vehicleServiceId: string): Promise<boolean> {
+  const remaining = await prisma.serviceEstimateLineItem.count({
+    where: { estimate: { vehicleServiceId }, type: 'STORE_PART', matchedPartId: null },
+  });
+  return remaining > 0;
 }
 
 /** The real Store-matching step — same two-moment flow, same
@@ -395,8 +395,8 @@ export async function removeServiceEstimateLineItem(lineItemId: string): Promise
   await writeAuditLog({
     userId: user.id,
     action: 'service_estimate.line_item_removed',
-    entityType: 'ServiceEstimate',
-    entityId: line.estimate.id,
+    entityType: 'VehicleService',
+    entityId: line.estimate.vehicleServiceId,
     metadata: { serviceNumber: line.estimate.vehicleService.serviceNumber, description: line.description },
   });
 }
@@ -485,8 +485,8 @@ export async function updateServiceEstimateLineItem(lineItemId: string, input: S
   await writeAuditLog({
     userId: editor.id,
     action: 'service_estimate.line_item_updated',
-    entityType: 'ServiceEstimate',
-    entityId: lineItem.estimate.id,
+    entityType: 'VehicleService',
+    entityId: lineItem.estimate.vehicleServiceId,
     metadata: { serviceNumber: lineItem.estimate.vehicleService.serviceNumber, type: lineItem.type, description, quantity: input.quantity, unitPrice, amount },
   });
 }
@@ -556,13 +556,6 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
   const user = await requireServiceEstimateContributor(estimate.vehicleService);
 
   await prisma.serviceEstimate.update({ where: { id: estimateId }, data: { status: 'SUBMITTED', submittedAt: new Date() } });
-  await writeAuditLog({
-    userId: user.id,
-    action: 'service_estimate.submitted',
-    entityType: 'ServiceEstimate',
-    entityId: estimateId,
-    metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
-  });
   await writeAuditLog({
     userId: user.id,
     action: 'service_estimate.submitted',
@@ -644,13 +637,6 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
   await prisma.serviceEstimate.update({
     where: { id: estimateId },
     data: { status: 'APPROVED', approvedAt: new Date(), approvedById: user.id },
-  });
-  await writeAuditLog({
-    userId: user.id,
-    action: 'service_estimate.approved',
-    entityType: 'ServiceEstimate',
-    entityId: estimateId,
-    metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
   });
   await writeAuditLog({
     userId: user.id,

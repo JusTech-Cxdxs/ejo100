@@ -8,7 +8,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { createPart, recordGoodsReceipt, updateGoodsReceipt, updateGoodsReceiptLineCost, updatePart, setPartAlternativeUnits, setPartSellingPrice, setPartTargetMargin, dismissPricingAlert, syncPartPriceToTargetMargin, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching } from './store';
+import { createPart, recordGoodsReceipt, updateGoodsReceipt, updateGoodsReceiptLineCost, updatePart, setPartAlternativeUnits, setPartSellingPrice, setPartTargetMargin, dismissPricingAlert, syncPartPriceToTargetMargin, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching, jobCardHasUnmatchedStoreParts } from './store';
 
 function str(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -252,11 +252,17 @@ export async function matchEstimateStorePartLineFormAction(formData: FormData) {
     await matchEstimateStorePartLine(lineItemId, partId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not match this line.';
-    redirect(`/inventory/estimate-matching?error=${encodeURIComponent(message)}`);
+    redirect(`/inventory/estimate-matching/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/inventory/estimate-matching');
   if (jobCardId) revalidatePath(`/workshop/job-cards/${jobCardId}`);
-  redirect('/inventory/estimate-matching?status=line_matched');
+  // Same real "stay here until this Job Card's own queue is
+  // genuinely empty" reasoning the user asked for directly — matching
+  // one of three lines shouldn't bounce Store back out to the general
+  // list; only the real last one should, right when the real
+  // "matching complete" email actually fires.
+  const stillHasUnmatched = jobCardId ? await jobCardHasUnmatchedStoreParts(jobCardId) : false;
+  redirect(stillHasUnmatched ? `/inventory/estimate-matching/${jobCardId}?status=line_matched` : '/inventory/estimate-matching?status=line_matched');
 }
 
 export async function requestStoreMatchingFormAction(formData: FormData) {

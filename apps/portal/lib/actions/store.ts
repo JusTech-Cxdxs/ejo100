@@ -1095,6 +1095,22 @@ async function sendStoreMatchingCompleteNotification(
   }
 }
 
+/**
+ * A real, honest check of whether this specific Job Card still has
+ * any real Store Part line waiting — the one thing that decides
+ * whether Store should stay right here matching the next line, or
+ * genuinely be done and sent back out to the general queue. Never
+ * trusted from before the match that was just made; always checked
+ * fresh, right after, since that match itself might be what just
+ * made it false.
+ */
+export async function jobCardHasUnmatchedStoreParts(jobCardId: string): Promise<boolean> {
+  const remaining = await prisma.estimateLineItem.count({
+    where: { estimate: { jobCardId }, type: 'STORE_PART', matchedPartId: null },
+  });
+  return remaining > 0;
+}
+
 export async function matchEstimateStorePartLine(lineItemId: string, partId: string): Promise<void> {
   const lineItem = await prisma.estimateLineItem.findUnique({
     where: { id: lineItemId },

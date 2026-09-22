@@ -9,6 +9,7 @@ import {
   removeServiceEstimateLineItem,
   updateServiceEstimateLineItem,
   matchServiceEstimateStorePartLine,
+  serviceEstimateHasUnmatchedStoreParts,
   submitServiceEstimate,
   approveServiceEstimate,
   notifySupervisorAboutServiceEstimate,
@@ -86,11 +87,17 @@ export async function matchServiceEstimateStorePartLineFormAction(formData: Form
     await matchServiceEstimateStorePartLine(lineItemId, partId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not match this line.';
-    redirect(`/inventory/estimate-matching?error=${encodeURIComponent(message)}`);
+    redirect(`/inventory/service-estimate-matching/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/inventory/estimate-matching');
   if (vehicleServiceId) revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
-  redirect('/inventory/estimate-matching?status=line_matched');
+  // Same real "stay here until this Vehicle Service's own queue is
+  // genuinely empty" reasoning the user asked for directly — matching
+  // one of several lines shouldn't bounce Store back out to the
+  // general list; only the real last one should, right when the real
+  // "matching complete" email actually fires.
+  const stillHasUnmatched = vehicleServiceId ? await serviceEstimateHasUnmatchedStoreParts(vehicleServiceId) : false;
+  redirect(stillHasUnmatched ? `/inventory/service-estimate-matching/${vehicleServiceId}?status=line_matched` : '/inventory/estimate-matching?status=line_matched');
 }
 
 export async function removeServiceEstimateLineItemFormAction(formData: FormData) {
