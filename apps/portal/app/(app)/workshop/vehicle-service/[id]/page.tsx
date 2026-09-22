@@ -120,6 +120,14 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'payment.approved': 'Deposit requirement met — work started',
 };
 
+// Prisma returns Decimal fields as Decimal objects (from decimal.js),
+// not plain numbers — Number(...) here is a deliberate, safe
+// conversion, matching Job Card's own module-level formatNaira exactly.
+function formatNaira(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  return `₦${Number(value).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function formatAuditDetail(entry: { action: string; metadata: unknown }): string | null {
   const meta = entry.metadata as Record<string, unknown> | null;
   if (!meta) return null;
@@ -137,8 +145,67 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
       return typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : null;
     case 'vehicle_service.escalated_to_job_card':
       return typeof meta.jobNumber === 'string' ? `New Job Card: ${meta.jobNumber}` : null;
+    // Same real detail-building logic as Job Card's own
+    // formatAuditDetail — one real place a technician, supervisor or
+    // Master Admin can see exactly what changed on this estimate and
+    // who did it, not just that "something" happened.
+    case 'service_estimate.line_item_added':
+    case 'service_estimate.line_item_updated': {
+      const parts: string[] = [];
+      if (typeof meta.type === 'string') parts.push(SERVICE_ESTIMATE_LINE_TYPE_DISPLAY[meta.type] ?? meta.type);
+      if (typeof meta.description === 'string') parts.push(`"${meta.description}"`);
+      if (typeof meta.quantity === 'number') parts.push(`qty ${meta.quantity}`);
+      if (typeof meta.unitPrice === 'number') parts.push(`priced at ${formatNaira(meta.unitPrice)}`);
+      else parts.push('no price set');
+      return parts.join(' — ');
+    }
+    case 'service_estimate.line_item_removed':
+      return typeof meta.description === 'string' ? `"${meta.description}"` : null;
+    case 'service_estimate.line_store_matched': {
+      const parts: string[] = [];
+      if (typeof meta.partName === 'string') parts.push(`matched to "${meta.partName}"`);
+      if (typeof meta.unitPrice === 'number') parts.push(`priced at ${formatNaira(meta.unitPrice)}`);
+      return parts.length > 0 ? parts.join(' — ') : null;
+    }
+    case 'service_estimate.store_matching_requested':
+    case 'service_estimate.store_matching_completed':
+    case 'service_estimate.nudge_to_supervisor':
+    case 'service_estimate.nudge_to_technician':
+      return typeof meta.note === 'string' && meta.note ? `Note: ${meta.note}` : typeof meta.notes === 'string' && meta.notes ? `Note: ${meta.notes}` : null;
+    case 'payment.recorded': {
+      const parts: string[] = [];
+      if (typeof meta.amount === 'number') parts.push(formatNaira(meta.amount));
+      if (typeof meta.method === 'string') parts.push(meta.method === 'CASH' ? 'Cash' : 'Bank Transfer');
+      if (typeof meta.notes === 'string' && meta.notes) parts.push(meta.notes);
+      return parts.join(' — ') || null;
+    }
+    case 'payment.approved':
+      return typeof meta.totalPaid === 'number' ? `Total confirmed: ${formatNaira(meta.totalPaid)}` : null;
+    case 'part_request_slip.requested': {
+      const parts: string[] = [];
+      if (typeof meta.referenceNumber === 'string') parts.push(meta.referenceNumber);
+      if (typeof meta.lineCount === 'number') parts.push(pluralize(meta.lineCount, 'line'));
+      return parts.join(' — ') || null;
+    }
+    case 'part_request_slip.hod_approved':
+    case 'part_request_slip.store_approved':
+      return typeof meta.referenceNumber === 'string' ? meta.referenceNumber : null;
+    case 'part_request_slip.released': {
+      const parts: string[] = [];
+      if (typeof meta.referenceNumber === 'string') parts.push(meta.referenceNumber);
+      const collectedByName = typeof meta.receivedByName === 'string' ? meta.receivedByName : null;
+      if (collectedByName) parts.push(`Collected by ${collectedByName}`);
+      return parts.join(' — ') || null;
+    }
+    case 'part_request_slip.rejected': {
+      const parts: string[] = [];
+      if (typeof meta.referenceNumber === 'string') parts.push(meta.referenceNumber);
+      if (typeof meta.stage === 'string') parts.push(`at ${meta.stage}`);
+      if (typeof meta.reason === 'string') parts.push(`Reason: ${meta.reason}`);
+      return parts.join(' — ') || null;
+    }
     default:
-      return null;
+      return typeof meta.notes === 'string' && meta.notes ? `Notes: ${meta.notes}` : null;
   }
 }
 
@@ -193,7 +260,6 @@ export default async function VehicleServiceDetailPage({
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
-  const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <div className="p-8">
@@ -877,7 +943,9 @@ export default async function VehicleServiceDetailPage({
                         className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
                       />
                     </form>
-                  ) : serviceEstimate.status === 'SUBMITTED' ? (
+                  ) : null}
+
+                  {serviceEstimate.status === 'SUBMITTED' ? (
                     <form action={approveServiceEstimateFormAction} className="mt-4">
                       <FormPendingOverlay />
                       <input type="hidden" name="estimateId" value={serviceEstimate.id} />
@@ -888,7 +956,9 @@ export default async function VehicleServiceDetailPage({
                         className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
                       />
                     </form>
-                  ) : (
+                  ) : null}
+
+                  {serviceEstimate.status === 'APPROVED' ? (
                     <div className="mt-4">
                       <p className="text-xs text-[var(--ejo-text-muted)]">
                         Approved by {serviceEstimate.approvedBy?.fullName ?? '—'}
@@ -905,7 +975,7 @@ export default async function VehicleServiceDetailPage({
                         />
                       </form>
                     </div>
-                  )}
+                  ) : null}
                 </>
               ) : null}
             </div>
