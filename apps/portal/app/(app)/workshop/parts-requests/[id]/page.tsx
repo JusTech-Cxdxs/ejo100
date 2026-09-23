@@ -232,6 +232,27 @@ export default async function PartRequestSlipDetailPage({
                             ))}
                           </div>
                         ) : null}
+                        {line.quantitySources.length > 0 ? (
+                          <div className="mt-1 space-y-0.5">
+                            {line.quantitySources.map((src: (typeof line.quantitySources)[number], i: number) => (
+                              <div key={i}>
+                                {src.goodsReceiptId ? (
+                                  <>
+                                    From{' '}
+                                    <LoadingLink href={`/inventory/goods-receipts/${src.goodsReceiptId}`} className="text-[var(--ejo-primary)] hover:underline">
+                                      {src.referenceNumber}
+                                    </LoadingLink>{' '}
+                                    — {src.quantity} {pluralizeWord(src.quantity, line.part.baseUnitOfMeasure)}
+                                  </>
+                                ) : (
+                                  <>
+                                    {src.quantity} {pluralizeWord(src.quantity, line.part.baseUnitOfMeasure)} — no Goods Receipt on record
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </>
                     ) : (
                       'Pending'
