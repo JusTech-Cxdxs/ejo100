@@ -17,6 +17,7 @@ import {
   requestServiceEstimateStoreMatchingFormAction,
 } from '@/lib/actions/vehicle-service-estimate-form-handlers';
 import { requestServiceEstimatePartRequestSlipFormAction } from '@/lib/actions/sourcing-form-handlers';
+import { getVehicleServiceSourcingNeeds } from '@/lib/actions/sourcing';
 import { getVehicleServicePayments } from '@/lib/actions/vehicle-service-payment';
 import { recordServicePaymentFormAction } from '@/lib/actions/vehicle-service-payment-form-handlers';
 import { listTechnicianCandidates, currentUserIsMasterAdmin, currentUserId, listEligibleFinanceOfficersForBranch, listEligibleManagersForBranch } from '@/lib/actions/workshop';
@@ -61,6 +62,22 @@ const STATUS_CLASS: Record<string, string> = {
   COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   COLLECTED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
+};
+
+const PART_REQUEST_STATUS_LABEL: Record<string, string> = {
+  PENDING_HOD_APPROVAL: 'Awaiting HOD approval',
+  PENDING_STORE_APPROVAL: 'Awaiting Store approval',
+  APPROVED: 'Approved — awaiting release',
+  RELEASED: 'Released',
+  REJECTED: 'Rejected',
+};
+
+const PART_REQUEST_STATUS_BADGE_CLASS: Record<string, string> = {
+  PENDING_HOD_APPROVAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  PENDING_STORE_APPROVAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  APPROVED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  RELEASED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  REJECTED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
 const SERVICE_ESTIMATE_STATUS_LABEL: Record<string, string> = {
@@ -241,7 +258,7 @@ export default async function VehicleServiceDetailPage({
   const isEstimateContributor = isMasterAdmin || service.supervisor?.id === viewerId || service.assignedTechnician?.id === viewerId;
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
-  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, partCategories, payments, eligibleFinance, eligibleManagers] = await Promise.all([
+  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, partCategories, payments, eligibleFinance, eligibleManagers, sourcingNeeds] = await Promise.all([
     listTechnicianCandidates(),
     getVehicleServiceAuditTrail(id),
     getVehicleInspection(id),
@@ -251,6 +268,7 @@ export default async function VehicleServiceDetailPage({
     getVehicleServicePayments(id),
     listEligibleFinanceOfficersForBranch(service.branchId),
     listEligibleManagersForBranch(service.branchId),
+    getVehicleServiceSourcingNeeds(id),
   ]);
   const partCategoriesWithTypes = partCategories.map((category: (typeof partCategories)[number]) => ({
     id: category.id,
@@ -259,7 +277,10 @@ export default async function VehicleServiceDetailPage({
   }));
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
-  const isEstimateCreator = isMasterAdmin || serviceEstimate?.createdById === viewerId;
+  // Same real rule as Job Card's own isCreator — whoever created this
+  // Vehicle Service itself (matching notifyCustomerOfApprovedServiceEstimate's
+  // own backend check), not whoever happened to start the estimate.
+  const isEstimateCreator = isMasterAdmin || service.createdBy.id === viewerId;
   const hasUnmatchedStoreParts = serviceEstimate?.lineItems.some((li: { type: string; matchedPartId: string | null }) => li.type === 'STORE_PART' && !li.matchedPartId) ?? false;
   // Same real "live while still Draft" price as Job Card's own
   // getLiveLineAmount — a matched Store Part line always reflects the
@@ -1008,44 +1029,26 @@ export default async function VehicleServiceDetailPage({
                     </p>
                   ) : null}
 
-                  {serviceEstimate.status === 'MANAGER_APPROVED' ? (
-                    <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
-                      <p className="text-xs text-[var(--ejo-text-muted)]">
-                        Approved by {serviceEstimate.approvedBy?.fullName ?? '—'}
-                        {serviceEstimate.approvedAt ? ` on ${formatDateOnly(serviceEstimate.approvedAt)}` : ''}, and by manager{' '}
-                        {serviceEstimate.managerApprovedBy?.fullName ?? '—'}
-                        {serviceEstimate.managerApprovedAt ? ` on ${formatDateOnly(serviceEstimate.managerApprovedAt)}` : ''}.
+                  {serviceEstimate.status === 'MANAGER_APPROVED' && !serviceEstimate.customerNotifiedAt && isEstimateCreator ? (
+                    <form action={notifyCustomerOfApprovedServiceEstimateFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="estimateId" value={serviceEstimate.id} />
+                      <input type="hidden" name="vehicleServiceId" value={service.id} />
+                      <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
+                        Approved by the manager. Once you&apos;re satisfied everything is in order, notify the customer
+                        so they can review the estimate and proceed.
                       </p>
-                      {!serviceEstimate.customerNotifiedAt && (isEstimateCreator || isMasterAdmin) ? (
-                        <form action={notifyCustomerOfApprovedServiceEstimateFormAction} className="mt-3">
-                          <FormPendingOverlay />
-                          <input type="hidden" name="estimateId" value={serviceEstimate.id} />
-                          <input type="hidden" name="vehicleServiceId" value={service.id} />
-                          <SubmitButton
-                            label="Notify customer"
-                            pendingLabel="Sending…"
-                            className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-                          />
-                        </form>
-                      ) : serviceEstimate.customerNotifiedAt ? (
-                        <p className="mt-1 text-xs text-[var(--ejo-success)]">
-                          Customer notified{serviceEstimate.customerNotifiedBy ? ` by ${serviceEstimate.customerNotifiedBy.fullName}` : ''}
-                          {serviceEstimate.customerNotifiedAt ? ` on ${formatDateOnly(serviceEstimate.customerNotifiedAt)}` : ''}.
-                        </p>
-                      ) : null}
-                      {service.status === 'IN_SERVICE' ? (
-                        <form action={requestServiceEstimatePartRequestSlipFormAction} className="mt-3">
-                          <FormPendingOverlay />
-                          <input type="hidden" name="serviceEstimateId" value={serviceEstimate.id} />
-                          <input type="hidden" name="vehicleServiceId" value={service.id} />
-                          <SubmitButton
-                            label="Request Store Parts"
-                            pendingLabel="Requesting…"
-                            className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                          />
-                        </form>
-                      ) : null}
-                    </div>
+                      <SubmitButton
+                        label="Notify customer"
+                        pendingLabel="Notifying…"
+                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                      />
+                    </form>
+                  ) : null}
+                  {serviceEstimate.status === 'MANAGER_APPROVED' && serviceEstimate.customerNotifiedAt ? (
+                    <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
+                      Customer notified on {formatDateTime(serviceEstimate.customerNotifiedAt)}.
+                    </p>
                   ) : null}
                 </>
               ) : null}
@@ -1132,6 +1135,60 @@ export default async function VehicleServiceDetailPage({
                   </form>
                 </>
               ) : null}
+            </div>
+          ) : null}
+          {sourcingNeeds.isEligibleToSource && sourcingNeeds.needsStoreParts ? (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Sourcing</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                Auto-detected from this Vehicle Service&apos;s own estimate — Store parts are requested and tracked here.
+              </p>
+              <div className="mt-4 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-info)]/5 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-info)]">
+                      <path d="M3 6.5L10 3l7 3.5-7 3.5-7-3.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                      <path d="M3 6.5V14l7 3.5 7-3.5V6.5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                      <path d="M10 10v7.5" stroke="currentColor" strokeWidth="1.5" />
+                    </svg>
+                    <h3 className="text-xs font-semibold text-[var(--ejo-text)]">Store Parts</h3>
+                  </div>
+                  {sourcingNeeds.hasRequestablePartLines && sourcingNeeds.serviceEstimateId ? (
+                    <form action={requestServiceEstimatePartRequestSlipFormAction}>
+                      <FormPendingOverlay />
+                      <input type="hidden" name="serviceEstimateId" value={sourcingNeeds.serviceEstimateId} />
+                      <input type="hidden" name="vehicleServiceId" value={service.id} />
+                      <SubmitButton
+                        label="+ Request Store Parts"
+                        pendingLabel="Requesting…"
+                        className="inline-flex items-center gap-1 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-2.5 py-1 text-xs font-medium text-white hover:opacity-90"
+                      />
+                    </form>
+                  ) : sourcingNeeds.existingPartRequestSlips.length > 0 ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--ejo-success)]/15 px-2.5 py-1 text-xs font-medium text-[var(--ejo-success)]">
+                      All requested
+                    </span>
+                  ) : null}
+                </div>
+                {sourcingNeeds.existingPartRequestSlips.length === 0 ? (
+                  <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No requests raised yet.</p>
+                ) : (
+                  <div className="mt-3 space-y-1.5">
+                    {sourcingNeeds.existingPartRequestSlips.map((slip: (typeof sourcingNeeds.existingPartRequestSlips)[number]) => (
+                      <LoadingLink
+                        key={slip.id}
+                        href={`/workshop/parts-requests/${slip.id}`}
+                        className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs hover:opacity-80"
+                      >
+                        <span className="font-medium text-[var(--ejo-text)]">{slip.referenceNumber}</span>
+                        <span className={`rounded-full px-2 py-0.5 font-medium ${PART_REQUEST_STATUS_BADGE_CLASS[slip.status] ?? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'}`}>
+                          {PART_REQUEST_STATUS_LABEL[slip.status] ?? slip.status}
+                        </span>
+                      </LoadingLink>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : null}
 
