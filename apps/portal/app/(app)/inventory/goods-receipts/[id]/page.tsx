@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getGoodsReceipt, getGoodsReceiptAuditTrail } from '@/lib/actions/store';
 import { updateGoodsReceiptFormAction } from '@/lib/actions/store-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
-import { GoodsReceiptLineCard } from '@/components/GoodsReceiptLineCard';
+import { GoodsReceiptLineCard, type GoodsReceiptLineStockTrace } from '@/components/GoodsReceiptLineCard';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
@@ -30,6 +30,82 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
  * financial record, and Store gets notified by email every time,
  * alongside the audit trail below.
  */
+type ReceiptWithTrace = NonNullable<Awaited<ReturnType<typeof getGoodsReceipt>>>;
+type ReceiptLine = ReceiptWithTrace['lines'][number];
+type SlipDestination = { id: string; referenceNumber: string; jobCard: { jobNumber: string; customer: { fullName: string } } | null; vehicleService: { serviceNumber: string; customer: { fullName: string } } | null };
+
+function destination(slip: SlipDestination, quantity: number, detail: string | null): GoodsReceiptLineStockTrace['issuedTo'][number] {
+  return {
+    slipId: slip.id,
+    referenceNumber: slip.referenceNumber,
+    sourceNumber: slip.jobCard?.jobNumber ?? slip.vehicleService?.serviceNumber ?? null,
+    customerName: slip.jobCard?.customer.fullName ?? slip.vehicleService?.customer.fullName ?? null,
+    quantity,
+    detail,
+  };
+}
+
+/**
+ * Where this one delivery's stock went — the forward trace (GRN → Part
+ * Requests → job → customer), built from the real records for each
+ * tracking type: the batch this line created, the serials it brought in,
+ * or — for a QUANTITY part — its FIFO layer from the shared engine.
+ */
+function buildStockTrace(line: ReceiptLine, quantityTraces: ReceiptWithTrace['quantityTraces']): GoodsReceiptLineStockTrace {
+  const received = Number(line.quantityInBaseUnit);
+  if (line.part.trackingType === 'BATCH') {
+    const remaining = line.batches.reduce((sum: number, b: (typeof line.batches)[number]) => sum + Number(b.remainingQuantity), 0);
+    const activeBatchId = line.part.batches[0]?.id ?? null;
+    return {
+      trackingType: 'BATCH',
+      received,
+      remaining,
+      issued: Math.max(0, Math.round((received - remaining) * 10000) / 10000),
+      isActive: line.batches.some((b: (typeof line.batches)[number]) => b.id === activeBatchId),
+      issuedTo: line.batches.flatMap((b: (typeof line.batches)[number]) =>
+        b.consumptions.map((c: (typeof b.consumptions)[number]) => destination(c.slipLine.slip, Number(c.quantityTaken), null)),
+      ),
+    };
+  }
+  if (line.part.trackingType === 'SERIALIZED') {
+    const issuedSerials = line.serials.filter((sr: (typeof line.serials)[number]) => sr.status !== 'IN_STOCK');
+    return {
+      trackingType: 'SERIALIZED',
+      received,
+      remaining: line.serials.length - issuedSerials.length,
+      issued: issuedSerials.length,
+      isActive: false,
+      issuedTo: issuedSerials
+        .filter((sr: (typeof issuedSerials)[number]) => sr.issuedToSlipLine)
+        .map((sr: (typeof issuedSerials)[number]) => destination(sr.issuedToSlipLine!.slip, 1, `Serial ${sr.serialNumber}`)),
+    };
+  }
+  const trace = quantityTraces.get(line.partId);
+  const layer = trace?.fifo.layers.get(line.id);
+  const issuedTo: GoodsReceiptLineStockTrace['issuedTo'] = [];
+  for (const release of trace?.releases ?? []) {
+    for (const a of trace?.fifo.allocations.get(release.id) ?? []) {
+      if (a.goodsReceiptLineId !== line.id) continue;
+      issuedTo.push({
+        slipId: release.slip.id,
+        referenceNumber: release.slip.referenceNumber,
+        sourceNumber: release.slip.sourceNumber,
+        customerName: release.slip.customerName,
+        quantity: a.quantity,
+        detail: null,
+      });
+    }
+  }
+  return {
+    trackingType: 'QUANTITY',
+    received,
+    remaining: layer?.remaining ?? received,
+    issued: layer?.taken ?? 0,
+    isActive: trace?.fifo.activeLayerId === line.id,
+    issuedTo,
+  };
+}
+
 export default async function GoodsReceiptDetailPage({
   params,
   searchParams,
@@ -109,6 +185,9 @@ export default async function GoodsReceiptDetailPage({
                   key={`${line.id}-${line.totalCost?.toString() ?? 'unset'}`}
                   goodsReceiptId={receipt.id}
                   lineId={line.id}
+                  partId={line.part.id}
+                  partNumber={line.part.partNumber}
+                  stockTrace={buildStockTrace(line, receipt.quantityTraces)}
                   partName={line.part.name}
                   baseUnitOfMeasure={line.part.baseUnitOfMeasure}
                   quantityReceivedInUnit={Number(line.quantityReceivedInUnit)}
