@@ -17,7 +17,9 @@ import {
   deleteVehicleService,
   updatePrimaryServiceInterval,
   attendToOverdueVehicle,
+  sendVehicleServiceCollectionReminder,
 } from './vehicle-service';
+import { sendManualServiceReminder, runServiceRemindersNow } from './vehicle-service-reminders';
 
 function str(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -209,8 +211,54 @@ export async function attendToOverdueVehicleFormAction(formData: FormData) {
     await attendToOverdueVehicle(serviceId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not attend to this vehicle.';
+    redirect(`${safeWorkshopPath(str(formData, 'returnTo'), '/workshop/vehicle-service-custody')}?error=${encodeURIComponent(message)}`);
+  }
+  const returnTo = safeWorkshopPath(str(formData, 'returnTo'), '/workshop/vehicle-service-custody');
+  revalidatePath('/workshop/vehicle-service-custody');
+  revalidatePath('/workshop/service-tracker');
+  redirect(returnTo === '/workshop/vehicle-service-custody' ? '/workshop/vehicle-service-custody?filter=overdue&status=attended' : `${returnTo}?status=attended`);
+}
+
+export async function sendVehicleServiceCollectionReminderFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  try {
+    await sendVehicleServiceCollectionReminder(serviceId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not send the collection reminder.';
     redirect(`/workshop/vehicle-service-custody?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/vehicle-service-custody');
-  redirect('/workshop/vehicle-service-custody?filter=overdue&status=attended');
+  redirect('/workshop/vehicle-service-custody?status=collection_reminder_sent');
+}
+
+/** Only ever returns somewhere inside the workshop — never an
+ * arbitrary URL taken from the form (no open redirect). */
+function safeWorkshopPath(raw: string, fallback: string): string {
+  return raw.startsWith('/workshop/') && !raw.startsWith('//') && !raw.includes('://') ? (raw.split('?')[0] ?? fallback) : fallback;
+}
+
+export async function sendManualServiceReminderFormAction(formData: FormData) {
+  const vehicleId = str(formData, 'vehicleId');
+  const returnTo = safeWorkshopPath(str(formData, 'returnTo'), '/workshop/service-tracker');
+  try {
+    await sendManualServiceReminder(vehicleId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not send the reminder.';
+    redirect(`${returnTo}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(returnTo);
+  revalidatePath('/workshop/service-tracker');
+  redirect(`${returnTo}?status=reminder_sent`);
+}
+
+export async function runServiceRemindersNowFormAction() {
+  let result = { evaluated: 0, sent: 0, failed: 0 };
+  try {
+    result = await runServiceRemindersNow();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not run reminders.';
+    redirect(`/workshop/service-tracker?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/service-tracker');
+  redirect(`/workshop/service-tracker?status=reminders_run&sent=${result.sent}&evaluated=${result.evaluated}&failed=${result.failed}`);
 }

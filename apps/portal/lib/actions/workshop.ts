@@ -3110,13 +3110,23 @@ export async function recordPayment(
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
   }
-  // Payments continue to accumulate even after the 70% deposit has
-  // already moved the Job Card to IN_PROGRESS — a customer paying in
-  // installments needs to keep recording right up until the full
-  // amount is reached, not just during the brief window before work
-  // starts.
-  if (jobCard.status !== JobCardStatus.AWAITING_CUSTOMER_APPROVAL && jobCard.status !== JobCardStatus.IN_PROGRESS) {
-    throw new WorkshopActionError('Payments can only be recorded once the customer has been notified and is awaiting approval, or while work is in progress.');
+  // Payments continue to accumulate right up to the full amount — well
+  // after the 70% deposit has moved the Job Card to IN_PROGRESS. The
+  // balance is commonly settled while parts are awaited, after quality
+  // check, or at collection; close and check-out both require full
+  // payment, so refusing it at those stages would deadlock the Job Card.
+  // Overpayment is still refused below, and the automatic move to
+  // IN_PROGRESS only ever fires from AWAITING_CUSTOMER_APPROVAL.
+  const PAYABLE_STATUSES: JobCardStatus[] = [
+    JobCardStatus.AWAITING_CUSTOMER_APPROVAL,
+    JobCardStatus.IN_PROGRESS,
+    JobCardStatus.AWAITING_PARTS,
+    JobCardStatus.QUALITY_CHECK,
+    JobCardStatus.COMPLETED,
+    JobCardStatus.READY_FOR_COLLECTION,
+  ];
+  if (!PAYABLE_STATUSES.includes(jobCard.status)) {
+    throw new WorkshopActionError('Payments can be recorded from the moment the customer is notified until the vehicle is ready for collection.');
   }
   const user = await requireEligibleFinanceOfficer(jobCard.branchId);
 

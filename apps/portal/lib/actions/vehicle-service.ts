@@ -14,9 +14,9 @@ import {
   listEligibleManagersForBranch,
   requireEligibleManager,
 } from './workshop';
-import { computeServiceCycle, backfillServiceCycleAnchors, vehiclesCurrentlyInWorkshop } from '@/lib/vehicle-service-cycle';
+import { computeServiceCycle, loadServiceTracking, type WorkshopVisit } from '@/lib/vehicle-service-cycle';
 import { READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
-import { addWorkingDays } from '@/lib/utils/working-days';
+import { addWorkingDays, workingDaysBetween } from '@/lib/utils/working-days';
 import { renderCustomerServiceCompletedEmail } from '@/lib/email-templates/customer-service-completed';
 import { renderCustomerServiceReadyForCollectionEmail } from '@/lib/email-templates/customer-service-ready-for-collection';
 import { renderCustomerServiceCheckedOutEmail } from '@/lib/email-templates/customer-service-checked-out';
@@ -520,6 +520,13 @@ export type VehicleServiceHealth = {
   primaryServiceDate: Date | null;
   serviceId: string;
   serviceNumber: string;
+  kmRemaining: number | null;
+  daysRemaining: number | null;
+  attendedAt: Date | null;
+  /** Back in the workshop right now — reminders are held while it is. */
+  inWorkshop: WorkshopVisit | null;
+  remindersSentThisCycle: number;
+  lastReminderAt: Date | null;
 };
 
 /**
@@ -536,44 +543,24 @@ export type VehicleServiceHealth = {
  */
 export async function getVehicleServiceHealth(vehicleId: string): Promise<VehicleServiceHealth | null> {
   await requireUser();
-  const vehicle = await prisma.customerVehicle.findUnique({ where: { id: vehicleId }, select: { mileage: true } });
-  if (!vehicle) return null;
-  await backfillServiceCycleAnchors();
-
-  const latest = await prisma.vehicleService.findFirst({
-    where: { vehicleId, OR: [{ nextServiceDueOdometer: { not: null } }, { nextServiceDueDate: { not: null } }] },
-    orderBy: { primaryServiceDate: 'desc' },
-    select: { id: true, serviceNumber: true, nextServiceDueOdometer: true, nextServiceDueDate: true, primaryServiceMileage: true, primaryServiceDate: true },
-  });
-  if (!latest) return null;
-
-  const DUE_SOON_KM = 1000;
-  const DUE_SOON_DAYS = 30;
-  const now = new Date();
-  let status: VehicleServiceHealth['status'] = 'UP_TO_DATE';
-
-  const kmRemaining = latest.nextServiceDueOdometer !== null && vehicle.mileage !== null ? latest.nextServiceDueOdometer - vehicle.mileage : null;
-  const daysRemaining = latest.nextServiceDueDate !== null ? Math.ceil((latest.nextServiceDueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
-
-  const overdueByKm = kmRemaining !== null && kmRemaining <= 0;
-  const overdueByDate = daysRemaining !== null && daysRemaining <= 0;
-  const dueSoonByKm = kmRemaining !== null && kmRemaining <= DUE_SOON_KM;
-  const dueSoonByDate = daysRemaining !== null && daysRemaining <= DUE_SOON_DAYS;
-
-  if (overdueByKm || overdueByDate) {
-    status = 'OVERDUE';
-  } else if (dueSoonByKm || dueSoonByDate) {
-    status = 'DUE_SOON';
-  }
-
+  // The one shared calculation — identical to custody, the Service
+  // Tracker and the reminder engine, so they can never disagree.
+  const [t] = await loadServiceTracking({ vehicleId });
+  if (!t) return null;
   return {
-    status,
-    nextServiceDueOdometer: latest.nextServiceDueOdometer,
-    nextServiceDueDate: latest.nextServiceDueDate,
-    primaryServiceMileage: latest.primaryServiceMileage,
-    primaryServiceDate: latest.primaryServiceDate,
-    serviceId: latest.id,
-    serviceNumber: latest.serviceNumber,
+    status: t.status === 'ON_TRACK' ? 'UP_TO_DATE' : t.status,
+    nextServiceDueOdometer: t.nextServiceDueOdometer,
+    nextServiceDueDate: t.nextServiceDueDate,
+    primaryServiceMileage: t.lastService.mileage,
+    primaryServiceDate: t.lastService.date,
+    serviceId: t.lastService.id,
+    serviceNumber: t.lastService.serviceNumber,
+    kmRemaining: t.kmRemaining,
+    daysRemaining: t.daysRemaining,
+    attendedAt: t.attendedAt,
+    inWorkshop: t.inWorkshop,
+    remindersSentThisCycle: t.reminders.sentThisCycle,
+    lastReminderAt: t.reminders.lastSentAt,
   };
 }
 
@@ -585,10 +572,22 @@ export type VehicleSpendPoint = { date: Date; amount: number; label: string; sou
 export type VehicleAnalytics = {
   mileageTimeline: VehicleMileagePoint[];
   visitHistory: VehicleVisitMonth[];
+  /** Every inspection finding ever recorded for this vehicle. */
   findingsBreakdown: VehicleFindingsBreakdown;
+  /** The most recent completed inspection — the vehicle's current condition. */
+  latestInspection: { serviceNumber: string; completedAt: Date | null; breakdown: VehicleFindingsBreakdown } | null;
   spendTimeline: VehicleSpendPoint[];
   totalVisits: number;
+  jobCardVisits: number;
+  serviceVisits: number;
+  /** Final (Manager-approved) estimate value — kept for compatibility. */
   totalSpend: number;
+  approvedJobCard: number;
+  approvedService: number;
+  paidJobCard: number;
+  paidService: number;
+  totalPaid: number;
+  outstanding: number;
 };
 
 /**
@@ -606,9 +605,11 @@ export type VehicleAnalytics = {
 export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAnalytics> {
   await requireUser();
 
-  const [services, jobCards, inspectionItems] = await Promise.all([
+  const [services, jobCards, inspections, payments] = await Promise.all([
+    // An escalated service became a Job Card — counting both would
+    // double-count one visit, so the Job Card side carries it.
     prisma.vehicleService.findMany({
-      where: { vehicleId, odometerAtService: { not: null } },
+      where: { vehicleId, escalatedToJobCardId: null, status: { not: 'CANCELLED' } },
       orderBy: { createdAt: 'asc' },
       select: {
         serviceNumber: true,
@@ -618,7 +619,7 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
       },
     }),
     prisma.jobCard.findMany({
-      where: { vehicleId, mileageAtCheckIn: { not: null } },
+      where: { vehicleId, status: { not: 'CANCELLED' } },
       orderBy: { createdAt: 'asc' },
       select: {
         jobNumber: true,
@@ -627,25 +628,24 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
         estimate: { select: { status: true, lineItems: { select: { amount: true } } } },
       },
     }),
-    prisma.vehicleInspectionItem.findMany({
-      where: { inspection: { vehicleService: { vehicleId } } },
-      select: { severity: true },
+    prisma.vehicleInspection.findMany({
+      where: { vehicleService: { vehicleId } },
+      orderBy: { completedAt: 'desc' },
+      select: { status: true, completedAt: true, vehicleService: { select: { serviceNumber: true } }, items: { select: { severity: true } } },
+    }),
+    prisma.payment.findMany({
+      where: { OR: [{ jobCard: { vehicleId } }, { vehicleService: { vehicleId } }] },
+      select: { amount: true, jobCardId: true, vehicleServiceId: true },
     }),
   ]);
 
   const mileageTimeline: VehicleMileagePoint[] = [
-    ...services.map((s: (typeof services)[number]) => ({
-      date: s.createdAt,
-      mileage: s.odometerAtService as number,
-      label: s.serviceNumber,
-      source: 'VEHICLE_SERVICE' as const,
-    })),
-    ...jobCards.map((j: (typeof jobCards)[number]) => ({
-      date: j.createdAt,
-      mileage: j.mileageAtCheckIn as number,
-      label: j.jobNumber,
-      source: 'JOB_CARD' as const,
-    })),
+    ...services
+      .filter((s: (typeof services)[number]) => s.odometerAtService !== null)
+      .map((s: (typeof services)[number]) => ({ date: s.createdAt, mileage: s.odometerAtService as number, label: s.serviceNumber, source: 'VEHICLE_SERVICE' as const })),
+    ...jobCards
+      .filter((j: (typeof jobCards)[number]) => j.mileageAtCheckIn !== null)
+      .map((j: (typeof jobCards)[number]) => ({ date: j.createdAt, mileage: j.mileageAtCheckIn as number, label: j.jobNumber, source: 'JOB_CARD' as const })),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
 
   const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -665,40 +665,56 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
   }
   const visitHistory = [...visitsByMonth.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([, v]) => v);
 
-  const findingsBreakdown: VehicleFindingsBreakdown = { good: 0, attention: 0, serviceRequired: 0, critical: 0 };
-  for (const item of inspectionItems) {
-    if (item.severity === 'GOOD') findingsBreakdown.good += 1;
-    else if (item.severity === 'ATTENTION') findingsBreakdown.attention += 1;
-    else if (item.severity === 'SERVICE_REQUIRED') findingsBreakdown.serviceRequired += 1;
-    else if (item.severity === 'CRITICAL') findingsBreakdown.critical += 1;
-  }
+  const tally = (items: { severity: string | null }[]): VehicleFindingsBreakdown => {
+    const b: VehicleFindingsBreakdown = { good: 0, attention: 0, serviceRequired: 0, critical: 0 };
+    for (const item of items) {
+      if (item.severity === 'GOOD') b.good += 1;
+      else if (item.severity === 'ATTENTION') b.attention += 1;
+      else if (item.severity === 'SERVICE_REQUIRED') b.serviceRequired += 1;
+      else if (item.severity === 'CRITICAL') b.critical += 1;
+    }
+    return b;
+  };
+  const findingsBreakdown = tally(inspections.flatMap((i: (typeof inspections)[number]) => i.items));
+  const latestDone = inspections.find((i: (typeof inspections)[number]) => i.status === 'COMPLETED') ?? null;
+  const latestInspection = latestDone
+    ? { serviceNumber: latestDone.vehicleService.serviceNumber, completedAt: latestDone.completedAt, breakdown: tally(latestDone.items) }
+    : null;
 
+  // Final value only: an estimate counts once the Manager has given the
+  // final approval — the same rule for Job Cards and Vehicle Services.
+  const sumLines = (lines: { amount: unknown }[]) => lines.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const spendTimeline: VehicleSpendPoint[] = [
     ...services
-      .filter((s: (typeof services)[number]) => s.serviceEstimate?.status === 'APPROVED')
-      .map((s: (typeof services)[number]) => ({
-        date: s.createdAt,
-        amount: (s.serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0),
-        label: s.serviceNumber,
-        source: 'VEHICLE_SERVICE' as const,
-      })),
+      .filter((s: (typeof services)[number]) => s.serviceEstimate?.status === 'MANAGER_APPROVED')
+      .map((s: (typeof services)[number]) => ({ date: s.createdAt, amount: sumLines(s.serviceEstimate?.lineItems ?? []), label: s.serviceNumber, source: 'VEHICLE_SERVICE' as const })),
     ...jobCards
-      .filter((j: (typeof jobCards)[number]) => j.estimate?.status === 'APPROVED' || j.estimate?.status === 'MANAGER_APPROVED')
-      .map((j: (typeof jobCards)[number]) => ({
-        date: j.createdAt,
-        amount: (j.estimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0),
-        label: j.jobNumber,
-        source: 'JOB_CARD' as const,
-      })),
+      .filter((j: (typeof jobCards)[number]) => j.estimate?.status === 'MANAGER_APPROVED')
+      .map((j: (typeof jobCards)[number]) => ({ date: j.createdAt, amount: sumLines(j.estimate?.lineItems ?? []), label: j.jobNumber, source: 'JOB_CARD' as const })),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const approvedJobCard = spendTimeline.filter((p) => p.source === 'JOB_CARD').reduce((sum, p) => sum + p.amount, 0);
+  const approvedService = spendTimeline.filter((p) => p.source === 'VEHICLE_SERVICE').reduce((sum, p) => sum + p.amount, 0);
+  const paidJobCard = payments.filter((p: (typeof payments)[number]) => p.jobCardId).reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount), 0);
+  const paidService = payments.filter((p: (typeof payments)[number]) => p.vehicleServiceId).reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount), 0);
+  const totalApproved = approvedJobCard + approvedService;
+  const totalPaid = paidJobCard + paidService;
 
   return {
     mileageTimeline,
     visitHistory,
     findingsBreakdown,
+    latestInspection,
     spendTimeline,
     totalVisits: services.length + jobCards.length,
-    totalSpend: spendTimeline.reduce((sum, p) => sum + p.amount, 0),
+    jobCardVisits: jobCards.length,
+    serviceVisits: services.length,
+    totalSpend: totalApproved,
+    approvedJobCard,
+    approvedService,
+    paidJobCard,
+    paidService,
+    totalPaid,
+    outstanding: Math.max(0, Math.round((totalApproved - totalPaid) * 100) / 100),
   };
 }
 
@@ -711,6 +727,11 @@ export type VehicleDueForService = {
   customerName: string;
   nextServiceDueOdometer: number | null;
   nextServiceDueDate: Date | null;
+  kmRemaining: number | null;
+  daysRemaining: number | null;
+  /** Back in the workshop right now — still listed, named, never reminded. */
+  inWorkshop: WorkshopVisit | null;
+  remindersSentThisCycle: number;
 };
 
 /**
@@ -722,65 +743,28 @@ export type VehicleDueForService = {
  */
 export async function listVehiclesDueForService(branchId: string): Promise<VehicleDueForService[]> {
   await requireUser();
-  // Start the count for any service completed before every completion
-  // anchored the clock — so no vehicle silently drops out of tracking.
-  await backfillServiceCycleAnchors();
-  // attendedAt is deliberately NOT filtered here: the latest prediction
-  // per vehicle must be chosen first, THEN skipped if attended —
-  // filtering first would let an older, superseded prediction resurface
-  // as "latest" and show the vehicle as overdue again.
-  const services = await prisma.vehicleService.findMany({
-    where: {
-      branchId,
-      OR: [{ nextServiceDueOdometer: { not: null } }, { nextServiceDueDate: { not: null } }],
-    },
-    orderBy: { primaryServiceDate: 'desc' },
-    select: {
-      id: true,
-      vehicleId: true,
-      attendedAt: true,
-      nextServiceDueOdometer: true,
-      nextServiceDueDate: true,
-      vehicle: { select: { make: true, model: true, plateNumber: true, mileage: true } },
-      customer: { select: { fullName: true } },
-    },
-  });
-
-  const DUE_SOON_KM = 1000;
-  const DUE_SOON_DAYS = 30;
-  const now = new Date();
-  const seenVehicles = new Set<string>();
-  const due: VehicleDueForService[] = [];
-
-  const inWorkshop = await vehiclesCurrentlyInWorkshop([...new Set(services.map((x: (typeof services)[number]) => x.vehicleId))]);
-
-  for (const s of services) {
-    if (seenVehicles.has(s.vehicleId)) continue; // only the latest real prediction per vehicle counts
-    seenVehicles.add(s.vehicleId);
-    // Handled already (Attend To), or the vehicle is booked back in
-    // right now — neither is genuinely "due" any more.
-    if (s.attendedAt || inWorkshop.has(s.vehicleId)) continue;
-
-    const kmRemaining = s.nextServiceDueOdometer !== null && s.vehicle.mileage !== null ? s.nextServiceDueOdometer - s.vehicle.mileage : null;
-    const daysRemaining = s.nextServiceDueDate !== null ? Math.ceil((s.nextServiceDueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
-    const overdue = (kmRemaining !== null && kmRemaining <= 0) || (daysRemaining !== null && daysRemaining <= 0);
-    const dueSoon = (kmRemaining !== null && kmRemaining <= DUE_SOON_KM) || (daysRemaining !== null && daysRemaining <= DUE_SOON_DAYS);
-
-    if (overdue || dueSoon) {
-      due.push({
-        serviceId: s.id,
-        vehicleId: s.vehicleId,
-        status: overdue ? 'OVERDUE' : 'DUE_SOON',
-        vehicleDescription: [s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
-        plateNumber: s.vehicle.plateNumber,
-        customerName: s.customer.fullName,
-        nextServiceDueOdometer: s.nextServiceDueOdometer,
-        nextServiceDueDate: s.nextServiceDueDate,
-      });
-    }
-  }
-
-  return due.sort((a, b) => (a.status === b.status ? 0 : a.status === 'OVERDUE' ? -1 : 1));
+  // Built on the one shared calculation (see lib/vehicle-service-cycle).
+  // A vehicle back in the workshop is still listed — tagged with the
+  // visit it's in on — rather than silently hidden; only a prediction
+  // staff have already handled (Attend To) is left out.
+  const tracked = await loadServiceTracking({ branchId });
+  return tracked
+    .filter((t) => (t.status === 'DUE_SOON' || t.status === 'OVERDUE') && !t.attendedAt)
+    .map((t) => ({
+      serviceId: t.lastService.id,
+      vehicleId: t.vehicleId,
+      status: t.status as 'DUE_SOON' | 'OVERDUE',
+      vehicleDescription: t.vehicleDescription,
+      plateNumber: t.plateNumber,
+      customerName: t.customerName,
+      nextServiceDueOdometer: t.nextServiceDueOdometer,
+      nextServiceDueDate: t.nextServiceDueDate,
+      kmRemaining: t.kmRemaining,
+      daysRemaining: t.daysRemaining,
+      inWorkshop: t.inWorkshop,
+      remindersSentThisCycle: t.reminders.sentThisCycle,
+    }))
+    .sort((a, b) => (a.status === b.status ? 0 : a.status === 'OVERDUE' ? -1 : 1));
 }
 
 /**
@@ -820,6 +804,15 @@ export type VehicleServiceCustodyEntry = {
   status: string;
   createdAt: Date;
   completedAt: Date | null;
+  /** Ready-for-Collection deadline tracking — same figures as Job Card's custody. */
+  collection?: {
+    graceWorkingDays: number;
+    daysElapsed: number;
+    daysRemaining: number;
+    dueDate: Date;
+    isOverdue: boolean;
+    remindersSent: number;
+  };
 };
 
 /**
@@ -881,10 +874,19 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
       status: true,
       createdAt: true,
       completedAt: true,
+      readyForCollectionAt: true,
       customer: { select: { fullName: true } },
       vehicle: { select: { id: true, make: true, model: true, plateNumber: true } },
     },
   });
+  // Ready-for-Collection deadline — working days only (the same rule
+  // as Job Card's custody) plus how many collection reminders went out.
+  const readyIds = services.filter((s: (typeof services)[number]) => s.status === 'READY_FOR_COLLECTION').map((s: (typeof services)[number]) => s.id);
+  const reminderCounts = readyIds.length
+    ? await prisma.auditLog.groupBy({ by: ['entityId'], where: { entityId: { in: readyIds }, action: 'vehicle_service.collection_reminder_sent' }, _count: { _all: true } })
+    : [];
+  const countFor = (id: string) => reminderCounts.find((r: { entityId: string | null }) => r.entityId === id)?._count._all ?? 0;
+  const now = new Date();
   return services.map((s: (typeof services)[number]) => ({
     id: s.id,
     vehicleId: s.vehicle.id,
@@ -892,6 +894,20 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
     status: s.status,
     createdAt: s.createdAt,
     completedAt: s.completedAt,
+    collection:
+      s.status === 'READY_FOR_COLLECTION' && s.readyForCollectionAt
+        ? (() => {
+            const daysElapsed = workingDaysBetween(s.readyForCollectionAt, now);
+            return {
+              graceWorkingDays: READY_FOR_COLLECTION_GRACE_WORKING_DAYS,
+              daysElapsed,
+              daysRemaining: Math.max(0, READY_FOR_COLLECTION_GRACE_WORKING_DAYS - daysElapsed),
+              dueDate: addWorkingDays(s.readyForCollectionAt, READY_FOR_COLLECTION_GRACE_WORKING_DAYS),
+              isOverdue: daysElapsed >= READY_FOR_COLLECTION_GRACE_WORKING_DAYS,
+              remindersSent: countFor(s.id),
+            };
+          })()
+        : undefined,
     customerName: s.customer.fullName,
     vehicleDescription: [s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || s.vehicle.plateNumber || 'Vehicle',
   }));
@@ -1211,6 +1227,89 @@ async function vehicleServiceStaffRecipients(service: { createdById: string; sup
   const managers = await listEligibleManagersForBranch(service.branchId);
   for (const m of managers.supervisors) ids.add(m.id);
   return prisma.user.findMany({ where: { id: { in: [...ids] } }, select: { id: true, fullName: true, email: true } });
+}
+
+/** A reminder to a customer whose vehicle is Ready for Collection —
+ * the Vehicle Service equivalent of Job Card's own
+ * sendReadyForCollectionReminder: repeatable, available to any
+ * workshop staff while the vehicle is Ready for Collection, every send
+ * audited (`vehicle_service.collection_reminder_sent`) and numbered, and
+ * reusing the same customer email as the original notice with the same
+ * expected-collection date. */
+export async function sendVehicleServiceCollectionReminder(serviceId: string): Promise<void> {
+  const user = await requireUser();
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: serviceId },
+    select: {
+      status: true,
+      serviceNumber: true,
+      readyForCollectionAt: true,
+      customer: { select: { fullName: true, email: true } },
+      vehicle: { select: { make: true, model: true } },
+      department: { select: { name: true } },
+    },
+  });
+  if (!service || service.status !== 'READY_FOR_COLLECTION' || !service.readyForCollectionAt) {
+    throw new VehicleServiceActionError('This Vehicle Service is not currently ready for collection.');
+  }
+  await writeAuditLog({
+    userId: user.id,
+    action: 'vehicle_service.collection_reminder_sent',
+    entityType: 'VehicleService',
+    entityId: serviceId,
+    metadata: { serviceNumber: service.serviceNumber },
+  });
+  // Counted after the audit entry above, so this send is included.
+  const reminderNumber = await prisma.auditLog.count({ where: { entityId: serviceId, action: 'vehicle_service.collection_reminder_sent' } });
+  const dueDate = addWorkingDays(service.readyForCollectionAt, READY_FOR_COLLECTION_GRACE_WORKING_DAYS);
+  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const orgContext = await getWorkshopOrgContext(service.department?.name);
+  await sendEmail(
+    service.customer.email,
+    `Reminder — ready for collection, Vehicle Service ${service.serviceNumber}`,
+    renderCustomerServiceReadyForCollectionEmail({
+      customerName: service.customer.fullName,
+      serviceNumber: service.serviceNumber,
+      vehicleDescription: [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+      dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
+      reminderNumber,
+      dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`,
+      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      companyName: orgContext.companyName,
+      branchName: orgContext.branchName,
+    }),
+  );
+}
+
+/**
+ * The Service Tracker — every vehicle's current next-service prediction
+ * at this branch, after it has left the workshop. Built on the one
+ * shared calculation (lib/vehicle-service-cycle), so it always agrees
+ * with the vehicle page, custody and the reminder engine.
+ */
+export async function getServiceTracker(branchId: string) {
+  await requireUser();
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const [vehicles, remindersLast30Days, isMasterAdmin, managers] = await Promise.all([
+    loadServiceTracking({ branchId }),
+    prisma.serviceReminderLog.count({ where: { sentAt: { gte: since }, vehicle: { vehicleServices: { some: { branchId } } } } }),
+    currentUserIsMasterAdmin(),
+    listEligibleManagersForBranch(branchId),
+  ]);
+  const user = await requireUser();
+  const order: Record<string, number> = { OVERDUE: 0, DUE_SOON: 1, ON_TRACK: 2 };
+  vehicles.sort((a, b) => {
+    const byStatus = (order[a.status] ?? 9) - (order[b.status] ?? 9);
+    if (byStatus !== 0) return byStatus;
+    const aDays = a.daysRemaining ?? Number.POSITIVE_INFINITY;
+    const bDays = b.daysRemaining ?? Number.POSITIVE_INFINITY;
+    return aDays - bDays;
+  });
+  return {
+    vehicles,
+    remindersLast30Days,
+    canRunReminders: isMasterAdmin || managers.supervisors.some((m: { id: string }) => m.id === user.id),
+  };
 }
 
 export async function getVehicleServiceCloseRequests(serviceId: string) {

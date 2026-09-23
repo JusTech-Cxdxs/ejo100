@@ -1,13 +1,11 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { requireUser } from './workshop';
-import { backfillServiceCycleAnchors, vehiclesCurrentlyInWorkshop } from '@/lib/vehicle-service-cycle';
+import { requireUser, writeAuditLog, currentUserIsMasterAdmin, getWorkshopBranchId, listEligibleManagersForBranch } from './workshop';
+import { backfillServiceCycleAnchors, vehiclesCurrentlyInWorkshop, serviceDueStatus, loadServiceTracking } from '@/lib/vehicle-service-cycle';
 import { sendEmail } from '@/lib/email';
 import { renderServiceReminderEmail, serviceReminderSubject, type ServiceReminderStage } from '@/lib/email-templates/service-reminder';
 
-const DUE_SOON_KM = 1000;
-const DUE_SOON_DAYS = 30;
 // The real gap kept between one reminder and the next of the same
 // general kind, so a vehicle sitting overdue for months doesn't get
 // emailed on every single run — a real, deliberate cadence, not a
@@ -66,10 +64,12 @@ export async function getVehiclesNeedingServiceReminder(): Promise<VehicleNeedin
     // already in our workshop.
     if (s.attendedAt || inWorkshop.has(s.vehicleId)) continue;
 
-    const kmRemaining = s.nextServiceDueOdometer !== null && s.vehicle.mileage !== null ? s.nextServiceDueOdometer - s.vehicle.mileage : null;
-    const daysRemaining = s.nextServiceDueDate !== null ? Math.ceil((s.nextServiceDueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
-    const isOverdue = (kmRemaining !== null && kmRemaining <= 0) || (daysRemaining !== null && daysRemaining <= 0);
-    const isDueSoon = (kmRemaining !== null && kmRemaining <= DUE_SOON_KM) || (daysRemaining !== null && daysRemaining <= DUE_SOON_DAYS);
+    // The one shared calculation — identical to the vehicle page,
+    // custody and the Service Tracker.
+    const due = serviceDueStatus(s.nextServiceDueOdometer, s.nextServiceDueDate, s.vehicle.mileage, now);
+    const { kmRemaining, daysRemaining } = due;
+    const isOverdue = due.status === 'OVERDUE';
+    const isDueSoon = due.status === 'DUE_SOON';
 
     if (!isOverdue && !isDueSoon) continue; // nothing to remind about yet
 
@@ -135,7 +135,7 @@ export async function getVehiclesNeedingServiceReminder(): Promise<VehicleNeedin
  * they stood at this exact moment (never re-derivable later once the
  * vehicle's own mileage and the org's own interval keep moving).
  */
-export async function sendServiceReminder(need: VehicleNeedingReminder): Promise<void> {
+export async function sendServiceReminder(need: VehicleNeedingReminder, trigger?: 'MANUAL'): Promise<void> {
   const vehicle = await prisma.customerVehicle.findUnique({
     where: { id: need.vehicleId },
     select: {
@@ -192,7 +192,7 @@ export async function sendServiceReminder(need: VehicleNeedingReminder): Promise
       estimatedDueOdometer: need.estimatedDueOdometer,
       estimatedDueDate: need.estimatedDueDate,
       recordedOdometerAtSend: vehicle.mileage,
-      trigger: need.isOverdue ? 'OVERDUE' : 'DUE_SOON',
+      trigger: trigger ?? (need.isOverdue ? 'OVERDUE' : 'DUE_SOON'),
       deliveryStatus: 'SENT',
     },
   });
@@ -207,4 +207,73 @@ export async function getVehicleReminderHistory(vehicleId: string) {
     where: { vehicleId },
     orderBy: { sentAt: 'desc' },
   });
+}
+
+/**
+ * A staff member sending a reminder right now, from the Service Tracker
+ * or the vehicle's page. Picks the honest stage for where the vehicle
+ * actually stands (overdue → the overdue reminder; due soon → the next
+ * stage in the sequence), bypassing only the automatic 14-day spacing,
+ * because a person deliberately chose to send it. Logged (trigger
+ * MANUAL) and audited like every other reminder. Never sent to a
+ * vehicle that's back in the workshop, or one not yet due.
+ */
+export async function sendManualServiceReminder(vehicleId: string): Promise<void> {
+  const user = await requireUser();
+  const [t] = await loadServiceTracking({ vehicleId });
+  if (!t) throw new Error('This vehicle has no completed service to remind about yet.');
+  if (t.inWorkshop) throw new Error(`This vehicle is in the workshop right now (${t.inWorkshop.number}) — no reminder is needed.`);
+  if (t.status === 'ON_TRACK') throw new Error('This vehicle is not due yet — reminders start once it is due soon.');
+  if (!t.customerEmail) throw new Error('The customer has no email address on file.');
+  const last = t.reminders.lastStage;
+  const nextStage = (t.status === 'OVERDUE' ? 4 : last === null ? 1 : last === 1 ? 2 : 3) as ServiceReminderStage;
+  await sendServiceReminder(
+    {
+      vehicleId,
+      nextStage,
+      estimatedDueOdometer: t.nextServiceDueOdometer,
+      estimatedDueDate: t.nextServiceDueDate,
+      kmRemaining: t.kmRemaining,
+      daysRemaining: t.daysRemaining,
+      isOverdue: t.status === 'OVERDUE',
+    },
+    'MANUAL',
+  );
+  await writeAuditLog({
+    userId: user.id,
+    action: 'vehicle.service_reminder_sent',
+    entityType: 'CustomerVehicle',
+    entityId: vehicleId,
+    metadata: { stage: nextStage, status: t.status, lastServiceNumber: t.lastService.serviceNumber },
+  });
+}
+
+/**
+ * Runs the automatic reminder pass on demand — exactly what the daily
+ * scheduled job does (same stages, same 14-day spacing, same skips) —
+ * for a Workshop Manager or Master Admin who doesn't want to wait.
+ */
+export async function runServiceRemindersNow(): Promise<{ evaluated: number; sent: number; failed: number }> {
+  const user = await requireUser();
+  if (!(await currentUserIsMasterAdmin())) {
+    const managers = await listEligibleManagersForBranch(await getWorkshopBranchId());
+    if (!managers.supervisors.some((m: { id: string }) => m.id === user.id)) {
+      throw new Error('Only a Workshop Manager or Master Administrator can run reminders on demand.');
+    }
+  }
+  const needing = await getVehiclesNeedingServiceReminder();
+  let sent = 0;
+  let failed = 0;
+  for (const need of needing) {
+    try {
+      await sendServiceReminder(need);
+      sent += 1;
+    } catch (err) {
+      failed += 1;
+      // eslint-disable-next-line no-console
+      console.error('Failed to send service reminder', need.vehicleId, err);
+    }
+  }
+  await writeAuditLog({ userId: user.id, action: 'service_reminders.run_manually', entityType: 'System', entityId: 'service-reminders', metadata: { evaluated: needing.length, sent, failed } });
+  return { evaluated: needing.length, sent, failed };
 }
