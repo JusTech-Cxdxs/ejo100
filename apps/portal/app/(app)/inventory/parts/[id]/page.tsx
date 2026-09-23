@@ -37,10 +37,10 @@ function formatNaira(value: number): string {
 }
 
 /**
- * A single part's detail — stock on hand, and whichever tracking-type
- * detail actually applies: batches still holding stock for a BATCH part,
- * or the individual in-stock serials for a SERIALIZED one. A QUANTITY
- * part has neither — its PartStock total already is the whole story.
+ * A single part's detail — stock on hand and full FIFO traceability for
+ * every tracking type: batches for a BATCH part, individual serials for a
+ * SERIALIZED one, and one FIFO layer per delivery (GRN) for a QUANTITY one
+ * (lib/inventory/quantity-fifo.ts).
  */
 export default async function PartDetailPage({
   params,
@@ -287,14 +287,26 @@ export default async function PartDetailPage({
                       </tr>
                     </thead>
                     <tbody>
-                      {part.serials.map((serial: (typeof part.serials)[number]) => {
+                      {(() => {
+                        // The oldest unit still on the shelf — the one FIFO
+                        // says should go out next, the serial equivalent of
+                        // a batch's "Active / Selling Now".
+                        const nextOutSerialId = part.serials.find((x: (typeof part.serials)[number]) => x.status === 'IN_STOCK')?.id ?? null;
+                        return part.serials.map((serial: (typeof part.serials)[number]) => {
                         const unitCostForSerial = serial.goodsReceiptLine?.unitCost !== null && serial.goodsReceiptLine?.unitCost !== undefined ? Number(serial.goodsReceiptLine.unitCost) : null;
                         const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
                         const isIssued = serial.status !== 'IN_STOCK';
                         const profit = isIssued && sellingPrice !== null && unitCostForSerial !== null ? sellingPrice - unitCostForSerial : null;
                         return (
                           <tr key={serial.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                            <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{serial.serialNumber}</td>
+                            <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">
+                              {serial.serialNumber}
+                              {serial.id === nextOutSerialId ? (
+                                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[var(--ejo-success)]/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--ejo-success)]">
+                                  ● Next Out (FIFO)
+                                </span>
+                              ) : null}
+                            </td>
                             <td className="px-3 py-2">
                               <span
                                 className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -306,9 +318,16 @@ export default async function PartDetailPage({
                             </td>
                             <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {serial.issuedToSlipLine ? (
-                                <LoadingLink href={`/workshop/parts-requests/${serial.issuedToSlipLine.slip.id}`} className="text-[var(--ejo-primary)] hover:underline">
-                                  {serial.issuedToSlipLine.slip.referenceNumber}
-                                </LoadingLink>
+                                <>
+                                  <LoadingLink href={`/workshop/parts-requests/${serial.issuedToSlipLine.slip.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                                    {serial.issuedToSlipLine.slip.referenceNumber}
+                                  </LoadingLink>
+                                  {' · '}
+                                  {serial.issuedToSlipLine.slip.jobCard?.jobNumber ?? serial.issuedToSlipLine.slip.vehicleService?.serviceNumber ?? '—'}
+                                  <div className="text-[11px]">
+                                    {serial.issuedToSlipLine.slip.jobCard?.customer.fullName ?? serial.issuedToSlipLine.slip.vehicleService?.customer.fullName ?? ''}
+                                  </div>
+                                </>
                               ) : (
                                 '—'
                               )}
@@ -328,7 +347,8 @@ export default async function PartDetailPage({
                             <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(serial.receivedAt))}</td>
                           </tr>
                         );
-                      })}
+                        });
+                      })()}
                     </tbody>
                     <tfoot>
                       {(() => {
@@ -364,9 +384,9 @@ export default async function PartDetailPage({
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Stock Summary</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                This Part is tracked as a running total, not by individual batch or serial — Revenue and Profit are
-                estimates using the Part&apos;s current Selling Price against the average real cost across every
-                delivery received so far.
+                Tracked by quantity, with every delivery (GRN) kept as its own FIFO layer — stock is always issued
+                from the oldest delivery first, and every release records which delivery it came from. Revenue and
+                Profit are estimates using the Part&apos;s current Selling Price against each delivery&apos;s real cost.
               </p>
 
               {part.goodsReceiptLines.length > 0 ? (
@@ -387,36 +407,22 @@ export default async function PartDetailPage({
                       </thead>
                       <tbody>
                         {(() => {
-                          // A quantity-tracked Part keeps no real
-                          // batch of its own to hold a genuine
-                          // remainingQuantity the way BATCH-tracked
-                          // Parts do — so this walks the exact same
-                          // real FIFO order (oldest delivery first)
-                          // against the real total ever consumed, to
-                          // compute an honest virtual "how much of
-                          // THIS delivery is sold vs left" — the same
-                          // real reasoning the Batches table already
-                          // uses, just derived here rather than
-                          // stored, since there's no batch row to
-                          // store it on.
+                          // Each delivery (Goods Receipt line) is a FIFO
+                          // layer, exactly like a batch — sold / remaining
+                          // come from the same engine the release itself
+                          // uses (lib/inventory/quantity-fifo.ts), so this
+                          // table and every Parts Request always agree.
+                          const trace = part.quantityTrace;
+                          const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
                           const fifoLines = [...part.goodsReceiptLines].sort(
                             (a: (typeof part.goodsReceiptLines)[number], b: (typeof part.goodsReceiptLines)[number]) =>
                               new Date(a.goodsReceipt.receivedAt).getTime() - new Date(b.goodsReceipt.receivedAt).getTime(),
                           );
-                          const totalConsumed = part.quantityConsumptions.reduce((sum: number, c: (typeof part.quantityConsumptions)[number]) => sum + Number(c.quantityTaken), 0);
-                          let remainingToAllocate = totalConsumed;
-                          const soldByLineId = new Map<string, number>();
-                          for (const line of fifoLines) {
-                            const receivedQty = Number(line.quantityInBaseUnit);
-                            const soldFromThisLine = Math.min(remainingToAllocate, receivedQty);
-                            soldByLineId.set(line.id, soldFromThisLine);
-                            remainingToAllocate -= soldFromThisLine;
-                          }
-                          const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
-                          return part.goodsReceiptLines.map((line: (typeof part.goodsReceiptLines)[number]) => {
+                          return fifoLines.map((line: (typeof part.goodsReceiptLines)[number]) => {
                             const received = Number(line.quantityInBaseUnit);
-                            const soldSoFar = soldByLineId.get(line.id) ?? 0;
-                            const remaining = received - soldSoFar;
+                            const layer = trace?.fifo.layers.get(line.id);
+                            const soldSoFar = layer?.taken ?? 0;
+                            const remaining = layer?.remaining ?? received;
                             const unitCostForLine = received > 0 && line.totalCost !== null ? Number(line.totalCost) / received : null;
                             const revenue = sellingPrice !== null ? soldSoFar * sellingPrice : null;
                             const cogs = unitCostForLine !== null ? soldSoFar * unitCostForLine : null;
@@ -427,6 +433,11 @@ export default async function PartDetailPage({
                                   <LoadingLink href={`/inventory/goods-receipts/${line.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
                                     {line.goodsReceipt.referenceNumber}
                                   </LoadingLink>
+                                  {trace?.fifo.activeLayerId === line.id ? (
+                                    <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[var(--ejo-success)]/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--ejo-success)]">
+                                      ● Active / Selling Now
+                                    </span>
+                                  ) : null}
                                 </td>
                                 <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
                                   {formatQty(received)} {pluralizeWord(received, part.baseUnitOfMeasure)}
@@ -449,15 +460,29 @@ export default async function PartDetailPage({
                       </tbody>
                       <tfoot>
                         {(() => {
-                          const totalReceived = part.goodsReceiptLines.reduce((sum: number, l: (typeof part.goodsReceiptLines)[number]) => sum + Number(l.quantityInBaseUnit), 0);
-                          const totalSold = part.quantityConsumptions.reduce((sum: number, c: (typeof part.quantityConsumptions)[number]) => sum + Number(c.quantityTaken), 0);
-                          const totalRemaining = Math.max(0, totalReceived - totalSold);
-                          const totalCostReceived = part.goodsReceiptLines.reduce((sum: number, l: (typeof part.goodsReceiptLines)[number]) => sum + (l.totalCost !== null ? Number(l.totalCost) : 0), 0);
-                          const averageUnitCost = totalReceived > 0 ? totalCostReceived / totalReceived : null;
+                          // Summed per delivery — each layer's own real cost,
+                          // exactly how the Batches totals are built.
+                          const trace = part.quantityTrace;
                           const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
+                          let totalReceived = 0;
+                          let totalSold = 0;
+                          let totalRemaining = 0;
+                          let totalCogs = 0;
+                          let cogsKnown = true;
+                          for (const l of part.goodsReceiptLines) {
+                            const received = Number(l.quantityInBaseUnit);
+                            const layer = trace?.fifo.layers.get(l.id);
+                            const sold = layer?.taken ?? 0;
+                            totalReceived += received;
+                            totalSold += sold;
+                            totalRemaining += layer?.remaining ?? received;
+                            if (sold > 0) {
+                              if (l.totalCost !== null && received > 0) totalCogs += sold * (Number(l.totalCost) / received);
+                              else cogsKnown = false;
+                            }
+                          }
                           const totalRevenue = sellingPrice !== null ? totalSold * sellingPrice : null;
-                          const totalCogs = averageUnitCost !== null ? totalSold * averageUnitCost : null;
-                          const totalProfit = totalRevenue !== null && totalCogs !== null ? totalRevenue - totalCogs : null;
+                          const totalProfit = totalRevenue !== null && cogsKnown ? totalRevenue - totalCogs : null;
                           return (
                             <tr className="border-t border-[var(--ejo-border)] font-medium text-[var(--ejo-text)]">
                               <td className="px-3 py-2">Total</td>
@@ -493,12 +518,31 @@ export default async function PartDetailPage({
                     {part.quantityConsumptions.map((c: (typeof part.quantityConsumptions)[number]) => {
                       const source = c.slipLine.slip.jobCard ?? c.slipLine.slip.vehicleService;
                       const sourceNumber = c.slipLine.slip.jobCard ? c.slipLine.slip.jobCard.jobNumber : c.slipLine.slip.vehicleService?.serviceNumber;
+                      const allocations = part.quantityTrace?.fifo.allocations.get(c.id) ?? [];
                       return (
-                        <div key={c.id} className="flex items-center justify-between text-xs">
+                        <div key={c.id} className="flex items-center justify-between gap-3 text-xs">
                           <span className="text-[var(--ejo-text)]">
-                            {formatQty(Number(c.quantityTaken))} {pluralizeWord(Number(c.quantityTaken), part.baseUnitOfMeasure)} — {source?.customer.fullName ?? '—'}
+                            {allocations.length > 0
+                              ? allocations.map((a: (typeof allocations)[number], i: number) => {
+                                  const delivery = a.goodsReceiptLineId ? part.quantityTrace?.deliveries.get(a.goodsReceiptLineId) : undefined;
+                                  return (
+                                    <span key={i}>
+                                      {i > 0 ? ' + ' : ''}
+                                      {formatQty(a.quantity)} {pluralizeWord(a.quantity, part.baseUnitOfMeasure)} from{' '}
+                                      {delivery ? (
+                                        <LoadingLink href={`/inventory/goods-receipts/${delivery.goodsReceiptId}`} className="font-medium text-[var(--ejo-primary)] hover:underline">
+                                          {delivery.referenceNumber}
+                                        </LoadingLink>
+                                      ) : (
+                                        <span className="font-medium">no Goods Receipt on record</span>
+                                      )}
+                                    </span>
+                                  );
+                                })
+                              : `${formatQty(Number(c.quantityTaken))} ${pluralizeWord(Number(c.quantityTaken), part.baseUnitOfMeasure)}`}{' '}
+                            — {source?.customer.fullName ?? '—'}
                           </span>
-                          <LoadingLink href={`/workshop/parts-requests/${c.slipLine.slip.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                          <LoadingLink href={`/workshop/parts-requests/${c.slipLine.slip.id}`} className="shrink-0 text-[var(--ejo-primary)] hover:underline">
                             {c.slipLine.slip.referenceNumber} · {sourceNumber ?? '—'}
                           </LoadingLink>
                         </div>
