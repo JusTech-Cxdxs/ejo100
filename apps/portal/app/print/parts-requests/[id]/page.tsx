@@ -118,12 +118,17 @@ export default async function PrintPartRequestSlipPage({
               <td style={{ padding: '6px 4px' }}>{i + 1}</td>
               <td style={{ padding: '6px 4px' }}>{line.part.partNumber ?? '—'}</td>
               <td style={{ padding: '6px 4px' }}>{line.part.name}</td>
-              <td style={{ padding: '6px 4px' }}>{line.estimateLineItem?.description ?? '—'}</td>
+              <td style={{ padding: '6px 4px' }}>{(line.estimateLineItem ?? line.serviceEstimateLineItem)?.description ?? '—'}</td>
               <td style={{ padding: '6px 4px', textAlign: 'right' }}>
                 {Number(line.quantityRequested)} {pluralizeWord(Number(line.quantityRequested), line.part.baseUnitOfMeasure)}
               </td>
               <td style={{ padding: '6px 4px', textAlign: 'right' }}>
-                {line.estimateLineItem?.amount !== null && line.estimateLineItem?.amount !== undefined ? formatNaira(Number(line.estimateLineItem.amount)) : '—'}
+                {(() => {
+                  // Exactly one of the two is ever set — read whichever this
+                  // slip actually has, the same way totalAmount above does.
+                  const amount = (line.estimateLineItem ?? line.serviceEstimateLineItem)?.amount;
+                  return amount !== null && amount !== undefined ? formatNaira(Number(amount)) : '—';
+                })()}
               </td>
             </tr>
           ))}
