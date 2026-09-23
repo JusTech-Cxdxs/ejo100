@@ -60,7 +60,7 @@ export default async function GoodsReceiptsPage({
               <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
                 <th className="px-4 py-2">Reference</th>
                 <th className="px-4 py-2">Supplier</th>
-                <th className="px-4 py-2">Lines</th>
+                <th className="px-4 py-2">Received Into</th>
                 <th className="px-4 py-2">Received By</th>
                 <th className="px-4 py-2">Received At</th>
               </tr>
@@ -74,7 +74,21 @@ export default async function GoodsReceiptsPage({
                     </LoadingLink>
                   </td>
                   <td className="px-4 py-2 text-[var(--ejo-text)]">{receipt.supplierName}</td>
-                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{pluralize(receipt.lines.length, 'line')}</td>
+                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">
+                    {/* Destination — each Part this delivery was received into,
+                        the reverse of each Part's own "Source GRN" link. */}
+                    <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                      {receipt.lines.map((l: (typeof receipt.lines)[number], i: number) => (
+                        <span key={l.id}>
+                          <LoadingLink href={`/inventory/parts/${l.part.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                            {l.part.name}
+                          </LoadingLink>
+                          {i < receipt.lines.length - 1 ? ',' : ''}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="text-[11px]">{pluralize(receipt.lines.length, 'line')}</div>
+                  </td>
                   <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{receipt.receivedBy.fullName}</td>
                   <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(receipt.receivedAt))}</td>
                 </tr>
