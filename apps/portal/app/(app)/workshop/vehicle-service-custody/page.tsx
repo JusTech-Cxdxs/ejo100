@@ -13,6 +13,8 @@ const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
   IN_SERVICE: 'In Service',
   COMPLETED: 'Completed',
+  READY_FOR_COLLECTION: 'Ready for Collection',
+  CLOSED: 'Closed — Awaiting Check Out',
 };
 
 /**
@@ -225,7 +227,8 @@ export default async function VehicleServiceCustodyPage({
                       </p>
                     </div>
                     <span className="rounded-full bg-[var(--ejo-success)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-success)]">
-                      Completed {formatDateOnly(entry.createdAt)}
+                      {STATUS_LABEL[entry.status] ?? entry.status}
+                      {entry.completedAt ? ` · completed ${formatDateOnly(entry.completedAt)}` : ''}
                     </span>
                   </div>
                 </div>
