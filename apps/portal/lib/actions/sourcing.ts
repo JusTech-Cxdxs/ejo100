@@ -705,13 +705,19 @@ export async function requestServiceEstimatePartRequestSlip(serviceEstimateId: s
   const user = await requireUser();
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: serviceEstimateId },
-    select: { status: true, vehicleServiceId: true, vehicleService: { select: { branchId: true } } },
+    select: { status: true, vehicleServiceId: true, vehicleService: { select: { status: true, branchId: true } } },
   });
   if (!estimate) {
     throw new SourcingActionError('Service Estimate not found.');
   }
-  if (estimate.status !== 'APPROVED') {
-    throw new SourcingActionError('This Service Estimate must be approved before parts can be requested against it.');
+  // Same real "actually sourceable" requirement as Job Card's own
+  // SOURCEABLE_STATUSES — supervisor and Manager approval, and even
+  // notifying the customer, only get the estimate ready; real work
+  // (and the 70% deposit that's the only real path into IN_SERVICE)
+  // still has to actually start before Store Parts can be requested
+  // against it.
+  if (estimate.vehicleService.status !== 'IN_SERVICE') {
+    throw new SourcingActionError('Parts can only be requested once this Vehicle Service is in service — after the customer has been notified and the deposit recorded.');
   }
   const requestableLines = await getRequestableServiceEstimatePartRequestLines(serviceEstimateId);
   if (requestableLines.length === 0) {

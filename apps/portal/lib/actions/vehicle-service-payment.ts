@@ -58,15 +58,15 @@ export async function recordServicePayment(
       workStartedAt: true,
       customer: { select: { fullName: true, email: true } },
       department: { select: { name: true } },
-      serviceEstimate: { select: { status: true, lineItems: { select: { amount: true } } } },
+      serviceEstimate: { select: { status: true, customerNotifiedAt: true, lineItems: { select: { amount: true } } } },
       payments: { select: { amount: true } },
     },
   });
   if (!service) {
     throw new ServicePaymentActionError('Vehicle Service record not found.');
   }
-  if (!service.serviceEstimate || service.serviceEstimate.status !== 'APPROVED') {
-    throw new ServicePaymentActionError('Payments can only be recorded once the estimate has been approved.');
+  if (!service.serviceEstimate || !service.serviceEstimate.customerNotifiedAt) {
+    throw new ServicePaymentActionError('Payments can only be recorded once the customer has been notified of the approved estimate.');
   }
   // Same real reasoning as Job Card's own gate — payments keep
   // accumulating right up to full payment, well after the 70%
