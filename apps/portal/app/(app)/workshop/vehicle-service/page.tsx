@@ -148,7 +148,12 @@ export default async function VehicleServicePage({
 
       {dueVehicles.length > 0 ? (
         <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
-          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicles Due for Service</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicles Due for Service</h2>
+            <LoadingLink href="/workshop/service-tracker" className="text-xs text-[var(--ejo-primary)] hover:underline">
+              Open Service Tracker
+            </LoadingLink>
+          </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {dueVehicles.map((v: (typeof dueVehicles)[number]) => (
               <LoadingLink
@@ -161,7 +166,10 @@ export default async function VehicleServicePage({
                   <span className="font-medium text-[var(--ejo-text)]">{v.vehicleDescription}</span>
                   {v.plateNumber ? <span className="text-xs text-[var(--ejo-text-muted)]">— {v.plateNumber}</span> : null}
                 </div>
-                <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">{v.customerName}</p>
+                <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">
+                  {v.customerName}
+                  {v.inWorkshop ? ` · In workshop — ${v.inWorkshop.number}` : ''}
+                </p>
               </LoadingLink>
             ))}
           </div>
