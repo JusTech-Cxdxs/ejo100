@@ -37,6 +37,7 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 9, color: '#475569' },
   footer: { marginTop: 28, paddingTop: 8, borderTopWidth: 0.5, borderTopColor: '#E2E8F0', textAlign: 'center' },
   footerText: { fontSize: 8, color: '#94A3B8' },
+  footerCredit: { fontSize: 7, color: '#CBD5E1', marginTop: 3 },
 });
 
 const SEVERITY_LABEL: Record<string, string> = {
@@ -220,7 +221,8 @@ export function InspectionPdf(props: InspectionPdfProps) {
         )}
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>This is a system-generated document from {organisation.name}.</Text>
+          <Text style={styles.footerText}>{organisation.legalName ?? organisation.name}{organisation.hqAddress ? ` · ${organisation.hqAddress}` : ''}</Text>
+          <Text style={styles.footerCredit}>Powered by EJO 100 Enterprise Platform</Text>
         </View>
       </Page>
     </Document>

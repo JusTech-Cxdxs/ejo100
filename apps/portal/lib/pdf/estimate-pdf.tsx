@@ -44,6 +44,9 @@ const styles = StyleSheet.create({
   paymentTitle: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginTop: 16, marginBottom: 6 },
   paymentBox: { backgroundColor: '#F8FAFC', borderWidth: 0.5, borderColor: '#E2E8F0', borderRadius: 6, padding: 12 },
   paymentLine: { fontSize: 9, marginBottom: 2 },
+  paymentOptionTitle: { fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 4 },
+  paymentNote: { fontSize: 8, color: '#64748B', marginTop: 2 },
+  paymentDivider: { borderTopWidth: 0.5, borderTopColor: '#E2E8F0', marginTop: 8, paddingTop: 8 },
   footer: { marginTop: 28, paddingTop: 8, borderTopWidth: 0.5, borderTopColor: '#E2E8F0', textAlign: 'center' },
   footerText: { fontSize: 8, color: '#94A3B8' },
   footerCredit: { fontSize: 7, color: '#CBD5E1', marginTop: 3 },
@@ -251,10 +254,16 @@ export function EstimatePdf(props: EstimatePdfProps) {
 
         <Text style={styles.paymentTitle}>How to pay</Text>
         <View style={styles.paymentBox}>
+          <Text style={styles.paymentOptionTitle}>Option 1 — Bank transfer</Text>
           <Text style={styles.paymentLine}>Bank: {bankName}</Text>
           <Text style={styles.paymentLine}>Account Name: {accountName}</Text>
           <Text style={styles.paymentLine}>Account Number: {accountNumber}</Text>
           <Text style={styles.paymentLine}>Payment Reference: {paymentRemarkSuggestion}</Text>
+          <Text style={styles.paymentNote}>Please use this reference so we can match your payment to this record.</Text>
+          <View style={styles.paymentDivider}>
+            <Text style={styles.paymentOptionTitle}>Option 2 — Pay in person</Text>
+            <Text style={styles.paymentLine}>Pay the cashier at our {branch.name} office; they&apos;ll confirm your payment on our system.</Text>
+          </View>
         </View>
 
         <View style={styles.footer}>
