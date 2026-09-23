@@ -34,6 +34,8 @@ const SERVICE_STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
   IN_SERVICE: 'In Service',
   COMPLETED: 'Completed',
+  READY_FOR_COLLECTION: 'Ready for Collection',
+  CLOSED: 'Closed',
   COLLECTED: 'Collected',
   CANCELLED: 'Cancelled',
 };
@@ -43,6 +45,8 @@ const SERVICE_STATUS_COLOR: Record<string, string> = {
   CHECKED_IN: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
   IN_SERVICE: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  READY_FOR_COLLECTION: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   COLLECTED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
