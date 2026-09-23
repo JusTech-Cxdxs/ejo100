@@ -768,7 +768,7 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
     select: {
       status: true,
       customerNotifiedAt: true,
-      lineItems: { orderBy: { createdAt: 'asc' }, select: { description: true, quantity: true, amount: true, unitOfMeasure: true } },
+      lineItems: { orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true, unitOfMeasure: true } },
       vehicleService: {
         select: {
           id: true,
@@ -829,6 +829,24 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
     const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const vehicleDescription = [estimate.vehicleService.vehicle.make, estimate.vehicleService.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
+    // Same real three-way customer-facing split as Job Card's own —
+    // Store Part + Internal Job merged into "Parts & Services", Labour
+    // and Sundry kept separate, never the internal type per line.
+    let servicesTotal = 0;
+    let labourTotal = 0;
+    let sundryTotal = 0;
+    for (const li of estimate.lineItems as { type: string; amount: unknown }[]) {
+      const amount = Number(li.amount ?? 0);
+      if (li.type === 'LABOUR') labourTotal += amount;
+      else if (li.type === 'SUNDRY') sundryTotal += amount;
+      else servicesTotal += amount;
+    }
+    const minimumDepositForEmail = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+    // Same real reference shape as Job Card's own: number — vehicle — plate.
+    const paymentRemarkSuggestion = [estimate.vehicleService.serviceNumber, vehicleDescription, estimate.vehicleService.vehicle.plateNumber]
+      .filter(Boolean)
+      .join(' — ');
+    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
     await sendEmail(
       estimate.vehicleService.customer.email,
       `Your estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} has been approved`,
@@ -842,8 +860,16 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
           unitOfMeasure: li.unitOfMeasure,
           amount: formatNaira(Number(li.amount ?? 0)),
         })),
+        servicesSubtotal: servicesTotal > 0 ? formatNaira(servicesTotal) : undefined,
+        labourSubtotal: labourTotal > 0 ? formatNaira(labourTotal) : undefined,
+        sundrySubtotal: sundryTotal > 0 ? formatNaira(sundryTotal) : undefined,
         totalAmount: formatNaira(total),
-        serviceUrl: `${portalUrl}/workshop/vehicle-service/${estimate.vehicleService.id}`,
+        minimumDepositAmount: formatNaira(minimumDepositForEmail),
+        bankName: COMPANY_BANK_DETAILS.bankName,
+        accountName: COMPANY_BANK_DETAILS.accountName,
+        accountNumber: COMPANY_BANK_DETAILS.accountNumber,
+        paymentRemarkSuggestion,
+        dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${estimate.vehicleService.id}`,
         logoUrl: `${portalUrl}/images/logo/logo.png`,
         companyName: estimate.vehicleService.branch.businessUnit.organisation.name,
         branchName: estimate.vehicleService.branch.name,
@@ -860,7 +886,6 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
           const org = estimate.vehicleService.branch.businessUnit.organisation;
           const formatNairaForPdf = (value: number) => `NGN ${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
           const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
-          const paymentRemarkSuggestion = `${estimate.vehicleService.serviceNumber} Deposit`;
           const pdfBuffer = await renderToBuffer(
             EstimatePdf({
               organisation: {
@@ -893,9 +918,9 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
                 unitLabel: li.unitOfMeasure ? pluralizeWord(Number(li.quantity), li.unitOfMeasure) : null,
                 amount: formatNairaForPdf(Number(li.amount ?? 0)),
               })),
-              servicesSubtotal: null,
-              labourSubtotal: null,
-              sundrySubtotal: null,
+              servicesSubtotal: servicesTotal > 0 ? formatNairaForPdf(servicesTotal) : null,
+              labourSubtotal: labourTotal > 0 ? formatNairaForPdf(labourTotal) : null,
+              sundrySubtotal: sundryTotal > 0 ? formatNairaForPdf(sundryTotal) : null,
               totalAmount: formatNairaForPdf(total),
               minimumDepositAmount: formatNairaForPdf(minimumDeposit),
               bankName: COMPANY_BANK_DETAILS.bankName,
