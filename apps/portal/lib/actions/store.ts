@@ -15,6 +15,7 @@
  */
 
 import { prisma, PartTrackingType } from '@ejo/database';
+import { loadQuantityTraces } from '@/lib/inventory/quantity-trace';
 import { pluralize } from '@/lib/utils/pluralize';
 import { markupToMargin, marginToMarkup, actualMargin, actualMarkup, priceForTargetMargin } from '@/lib/pricing-math';
 import { requireUser, writeAuditLog, currentUserIsMasterAdmin } from './workshop';
@@ -1307,7 +1308,7 @@ export async function listParts(branchId: string, search?: string) {
 
 export async function getPart(id: string) {
   await requireUser();
-  return prisma.part.findUnique({
+  const part = await prisma.part.findUnique({
     where: { id },
     include: {
       stock: true,
@@ -1362,6 +1363,7 @@ export async function getPart(id: string) {
                   id: true,
                   referenceNumber: true,
                   jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
+                  vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
                 },
               },
             },
@@ -1403,6 +1405,12 @@ export async function getPart(id: string) {
       },
     },
   });
+  if (!part) return null;
+  // QUANTITY parts: every delivery as a FIFO layer — what each still
+  // holds, which one is being sold from now, and which delivery every
+  // release drew from. The same engine the release itself uses.
+  const quantityTrace = part.trackingType === 'QUANTITY' ? ((await loadQuantityTraces([part.id])).get(part.id) ?? null) : null;
+  return { ...part, quantityTrace };
 }
 
 export type GoodsReceiptLineInput = {
@@ -2148,19 +2156,63 @@ export async function listGoodsReceipts(branchId: string) {
   return prisma.goodsReceipt.findMany({
     where: { branchId },
     orderBy: { receivedAt: 'desc' },
-    include: { receivedBy: { select: { fullName: true } }, lines: { select: { id: true } } },
+    include: { receivedBy: { select: { fullName: true } }, lines: { select: { id: true, part: { select: { id: true, name: true } } } } },
   });
 }
 
+const SLIP_DESTINATION_SELECT = {
+  id: true,
+  referenceNumber: true,
+  jobCard: { select: { jobNumber: true, customer: { select: { fullName: true } } } },
+  vehicleService: { select: { serviceNumber: true, customer: { select: { fullName: true } } } },
+} as const;
+
 export async function getGoodsReceipt(id: string) {
   await requireUser();
-  return prisma.goodsReceipt.findUnique({
+  const receipt = await prisma.goodsReceipt.findUnique({
     where: { id },
     include: {
       receivedBy: { select: { fullName: true } },
-      lines: { include: { part: { select: { name: true, baseUnitOfMeasure: true } } } },
+      lines: {
+        include: {
+          part: {
+            select: {
+              id: true,
+              name: true,
+              partNumber: true,
+              baseUnitOfMeasure: true,
+              trackingType: true,
+              // The Part's own FIFO "selling now" batch — the oldest one
+              // still holding stock — so a line can say whether it's the
+              // delivery currently being sold from.
+              batches: { where: { remainingQuantity: { gt: 0 } }, orderBy: { receivedAt: 'asc' }, take: 1, select: { id: true } },
+            },
+          },
+          // Forward trace (GRN → where it went), BATCH parts.
+          batches: {
+            select: {
+              id: true,
+              batchNumber: true,
+              receivedQuantity: true,
+              remainingQuantity: true,
+              consumptions: { orderBy: { consumedAt: 'asc' }, select: { quantityTaken: true, slipLine: { select: { slip: { select: SLIP_DESTINATION_SELECT } } } } },
+            },
+          },
+          // Forward trace, SERIALIZED parts — each unit and where it went.
+          serials: {
+            orderBy: { receivedAt: 'asc' },
+            select: { id: true, serialNumber: true, status: true, issuedToSlipLine: { select: { slip: { select: SLIP_DESTINATION_SELECT } } } },
+          },
+        },
+      },
     },
   });
+  if (!receipt) return null;
+  // Forward trace, QUANTITY parts — the same FIFO engine as releases.
+  const quantityTraces = await loadQuantityTraces(
+    receipt.lines.filter((l: (typeof receipt.lines)[number]) => l.part.trackingType === 'QUANTITY').map((l: (typeof receipt.lines)[number]) => l.partId),
+  );
+  return { ...receipt, quantityTraces };
 }
 
 export async function getGoodsReceiptAuditTrail(goodsReceiptId: string) {

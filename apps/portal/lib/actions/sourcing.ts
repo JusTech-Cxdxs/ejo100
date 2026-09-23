@@ -21,6 +21,8 @@
 import { prisma } from '@ejo/database';
 import { pluralize } from '@/lib/utils/pluralize';
 import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
+import { replayQuantityFifo, planQuantityRelease } from '@/lib/inventory/quantity-fifo';
+import { loadQuantityTraces, sourcesForReleases } from '@/lib/inventory/quantity-trace';
 import { requireUser, writeAuditLog, requireEligibleManager, listEligibleFinanceOfficersForBranch, listEligibleManagersForBranch } from './workshop';
 import { requireStoreStaff, listEligibleStoreOfficersForBranch, listEligibleStoreManagersForBranch } from './store';
 import { sendEmail } from '@/lib/email';
@@ -365,7 +367,7 @@ async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
 
 export async function getPartRequestSlip(id: string) {
   await requireUser();
-  return prisma.partRequestSlip.findUnique({
+  const slip = await prisma.partRequestSlip.findUnique({
     where: { id },
     include: {
       jobCard: {
@@ -438,10 +440,32 @@ export async function getPartRequestSlip(id: string) {
               },
             },
           },
+          // A QUANTITY line's own release rows — resolved below into the
+          // exact deliveries they drew from (quantitySources).
+          quantityConsumptions: { select: { id: true } },
         },
       },
     },
   });
+  if (!slip) return null;
+
+  // The same real trace a BATCH line gets from its batchConsumptions,
+  // for QUANTITY lines: which Goods Receipt(s) each release drew from,
+  // FIFO — including releases made before per-delivery tracking existed.
+  const quantityPartIds = slip.lines
+    .filter((l: (typeof slip.lines)[number]) => l.part.trackingType === 'QUANTITY' && l.quantityConsumptions.length > 0)
+    .map((l: (typeof slip.lines)[number]) => l.partId);
+  const traces = await loadQuantityTraces(quantityPartIds);
+  return {
+    ...slip,
+    lines: slip.lines.map((l: (typeof slip.lines)[number]) => ({
+      ...l,
+      quantitySources:
+        l.part.trackingType === 'QUANTITY'
+          ? sourcesForReleases(traces.get(l.partId), l.quantityConsumptions.map((c: (typeof l.quantityConsumptions)[number]) => c.id))
+          : [],
+    })),
+  };
 }
 
 export async function listPartRequestSlips(branchId: string, search?: string) {
@@ -1167,13 +1191,50 @@ export async function releasePartRequestSlip(
           });
         }
       } else {
-        // QUANTITY-tracked — no batch or serial records exist to draw
-        // from, only the aggregate already decremented above, but the
-        // same real traceability still matters here: a permanent
-        // record of exactly which request took how much, so a later
-        // trace isn't limited to just "some of this Part left the
-        // store at some point."
-        await tx.partQuantityConsumption.create({ data: { partId: line.partId, slipLineId: line.id, quantityTaken: qty } });
+        // QUANTITY-tracked — each Goods Receipt line for this Part is a
+        // FIFO layer, exactly like a batch. Replay every earlier receipt
+        // and release to know what each delivery still holds, then draw
+        // this release oldest-first, recording the exact delivery each
+        // portion came from — one row per delivery touched — so a
+        // quantity part is traceable to its GRN just like a batch or
+        // serial is. See lib/inventory/quantity-fifo.ts.
+        const [receiptLines, priorConsumptions] = await Promise.all([
+          tx.goodsReceiptLine.findMany({
+            where: { partId: line.partId },
+            select: { id: true, quantityInBaseUnit: true, goodsReceipt: { select: { receivedAt: true } } },
+          }),
+          tx.partQuantityConsumption.findMany({
+            where: { partId: line.partId },
+            select: { id: true, consumedAt: true, quantityTaken: true, goodsReceiptLineId: true },
+          }),
+        ]);
+        const layers = receiptLines.map((r: (typeof receiptLines)[number]) => ({
+          id: r.id,
+          receivedAt: r.goodsReceipt.receivedAt,
+          quantity: Number(r.quantityInBaseUnit),
+        }));
+        const current = replayQuantityFifo(
+          layers,
+          priorConsumptions.map((c: (typeof priorConsumptions)[number]) => ({
+            id: c.id,
+            consumedAt: c.consumedAt,
+            quantity: Number(c.quantityTaken),
+            goodsReceiptLineId: c.goodsReceiptLineId,
+          })),
+        );
+        const plan = planQuantityRelease(layers, current.layers, qty);
+        for (const portion of plan) {
+          await tx.partQuantityConsumption.create({
+            data: { partId: line.partId, slipLineId: line.id, quantityTaken: portion.quantity, goodsReceiptLineId: portion.goodsReceiptLineId },
+          });
+        }
+        if (plan.some((p: (typeof plan)[number]) => p.goodsReceiptLineId === null)) {
+          // Same integrity signal as the batch branch above — the
+          // aggregate is still correct, but received deliveries didn't
+          // fully account for this release.
+          // eslint-disable-next-line no-console
+          console.error('Goods Receipt layers did not cover the full released quantity', line.partId);
+        }
       }
 
       await tx.partRequestSlipLine.update({ where: { id: line.id }, data: { quantityReleased: qty } });
