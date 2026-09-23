@@ -3,6 +3,7 @@ import { getVehicle, getLastEditInfo, getVehicleAuditTrail, currentUserIsMasterA
 import { getVehicleServiceHealth, getVehicleAnalytics } from '@/lib/actions/vehicle-service';
 import { getVehicleReminderHistory } from '@/lib/actions/vehicle-service-reminders';
 import { updateVehicleFormAction, deleteVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
+import { sendManualServiceReminderFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
@@ -84,6 +85,11 @@ export default async function VehiclePage({
       {error ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="error" message={error} />
+        </div>
+      ) : null}
+      {status === 'reminder_sent' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Service reminder sent to the customer." />
         </div>
       ) : null}
       {status === 'vehicle_updated' ? (
@@ -317,12 +323,64 @@ export default async function VehiclePage({
                   </dd>
                 </div>
               </dl>
-              <LoadingLink
-                href={`/workshop/vehicle-service/${serviceHealth.serviceId}`}
-                className="mt-3 inline-block text-xs text-[var(--ejo-primary)] hover:underline"
-              >
-                View {serviceHealth.serviceNumber}
-              </LoadingLink>
+              {serviceHealth.kmRemaining !== null || serviceHealth.daysRemaining !== null ? (
+                <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+                  {[
+                    serviceHealth.kmRemaining !== null
+                      ? serviceHealth.kmRemaining <= 0
+                        ? `${Math.abs(serviceHealth.kmRemaining).toLocaleString('en-NG')} km over`
+                        : `${serviceHealth.kmRemaining.toLocaleString('en-NG')} km left`
+                      : null,
+                    serviceHealth.daysRemaining !== null
+                      ? serviceHealth.daysRemaining <= 0
+                        ? `${Math.abs(serviceHealth.daysRemaining)} day${Math.abs(serviceHealth.daysRemaining) === 1 ? '' : 's'} over`
+                        : `${serviceHealth.daysRemaining} day${serviceHealth.daysRemaining === 1 ? '' : 's'} left`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}{' '}
+                  — whichever comes first.
+                </p>
+              ) : null}
+              {serviceHealth.inWorkshop ? (
+                <p className="mt-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
+                  In the workshop now on{' '}
+                  <LoadingLink
+                    href={serviceHealth.inWorkshop.kind === 'JOB_CARD' ? `/workshop/job-cards/${serviceHealth.inWorkshop.id}` : `/workshop/vehicle-service/${serviceHealth.inWorkshop.id}`}
+                    className="font-medium text-[var(--ejo-primary)] hover:underline"
+                  >
+                    {serviceHealth.inWorkshop.number}
+                  </LoadingLink>{' '}
+                  — service reminders are held while it&apos;s here.
+                </p>
+              ) : null}
+              {serviceHealth.attendedAt ? (
+                <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Attended to on {formatDateOnly(serviceHealth.attendedAt)} — no further reminders for this prediction.</p>
+              ) : null}
+              <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+                Reminders this cycle: {serviceHealth.remindersSentThisCycle}
+                {serviceHealth.lastReminderAt ? ` — last ${formatDateTime(serviceHealth.lastReminderAt)}` : ''}
+              </p>
+              {serviceHealth.status !== 'UP_TO_DATE' && !serviceHealth.inWorkshop && !serviceHealth.attendedAt ? (
+                <form action={sendManualServiceReminderFormAction} className="mt-3">
+                  <FormPendingOverlay />
+                  <input type="hidden" name="vehicleId" value={vehicle.id} />
+                  <input type="hidden" name="returnTo" value={`/workshop/vehicles/${vehicle.id}/edit`} />
+                  <SubmitButton
+                    label="Send service reminder"
+                    pendingLabel="Sending…"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                  />
+                </form>
+              ) : null}
+              <div className="mt-3 flex flex-wrap gap-3 text-xs">
+                <LoadingLink href={`/workshop/vehicle-service/${serviceHealth.serviceId}`} className="text-[var(--ejo-primary)] hover:underline">
+                  View {serviceHealth.serviceNumber}
+                </LoadingLink>
+                <LoadingLink href="/workshop/service-tracker" className="text-[var(--ejo-primary)] hover:underline">
+                  Service Tracker
+                </LoadingLink>
+              </div>
             </div>
           ) : null}
 
@@ -402,24 +460,77 @@ export default async function VehiclePage({
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <h3 className="text-xs font-semibold text-[var(--ejo-text-muted)]">INSPECTION FINDINGS</h3>
-            <VehicleFindingsBreakdownChart data={analytics.findingsBreakdown} />
+            {analytics.latestInspection ? (
+              <>
+                <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                  Current condition — latest inspection ({analytics.latestInspection.serviceNumber}
+                  {analytics.latestInspection.completedAt ? `, ${formatDateOnly(analytics.latestInspection.completedAt)}` : ''}). It stays here as the vehicle&apos;s record after the service is completed.
+                </p>
+                <VehicleFindingsBreakdownChart data={analytics.latestInspection.breakdown} />
+                <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+                  All inspections to date: {analytics.findingsBreakdown.critical} critical · {analytics.findingsBreakdown.serviceRequired} service required ·{' '}
+                  {analytics.findingsBreakdown.attention} attention · {analytics.findingsBreakdown.good} good
+                </p>
+              </>
+            ) : (
+              <VehicleFindingsBreakdownChart data={analytics.findingsBreakdown} />
+            )}
           </div>
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <h3 className="text-xs font-semibold text-[var(--ejo-text-muted)]">SUMMARY</h3>
-            <dl className="mt-4 grid grid-cols-2 gap-4">
-              <div>
-                <dt className="text-xs text-[var(--ejo-text-muted)]">Total Visits</dt>
-                <dd className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">{analytics.totalVisits}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-[var(--ejo-text-muted)]">Total Spend</dt>
-                <dd className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">₦{analytics.totalSpend.toLocaleString('en-NG', { maximumFractionDigits: 0 })}</dd>
-              </div>
-            </dl>
-            <p className="mt-4 text-xs text-[var(--ejo-text-muted)]">
-              Based on approved estimates and recorded visits only — real figures, never a projection.
-            </p>
+            {(() => {
+              const naira = (n: number) => `₦${n.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
+              return (
+                <>
+                  <dl className="mt-4 grid grid-cols-2 gap-4">
+                    <div>
+                      <dt className="text-xs text-[var(--ejo-text-muted)]">Total Visits</dt>
+                      <dd className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">{analytics.totalVisits}</dd>
+                      <dd className="text-xs text-[var(--ejo-text-muted)]">
+                        {analytics.jobCardVisits} Job Card · {analytics.serviceVisits} Vehicle Service
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-[var(--ejo-text-muted)]">Total Approved Value</dt>
+                      <dd className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">{naira(analytics.totalSpend)}</dd>
+                    </div>
+                  </dl>
+                  <table className="mt-4 w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-[var(--ejo-border)] text-left text-[var(--ejo-text-muted)]">
+                        <th className="pb-1.5" />
+                        <th className="pb-1.5 text-right">Approved</th>
+                        <th className="pb-1.5 text-right">Paid</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b border-[var(--ejo-border)]">
+                        <td className="py-1.5 text-[var(--ejo-text)]">Job Cards (repairs)</td>
+                        <td className="py-1.5 text-right text-[var(--ejo-text)]">{naira(analytics.approvedJobCard)}</td>
+                        <td className="py-1.5 text-right text-[var(--ejo-text)]">{naira(analytics.paidJobCard)}</td>
+                      </tr>
+                      <tr className="border-b border-[var(--ejo-border)]">
+                        <td className="py-1.5 text-[var(--ejo-text)]">Vehicle Services (routine)</td>
+                        <td className="py-1.5 text-right text-[var(--ejo-text)]">{naira(analytics.approvedService)}</td>
+                        <td className="py-1.5 text-right text-[var(--ejo-text)]">{naira(analytics.paidService)}</td>
+                      </tr>
+                      <tr className="font-semibold">
+                        <td className="py-1.5 text-[var(--ejo-text)]">Total</td>
+                        <td className="py-1.5 text-right text-[var(--ejo-text)]">{naira(analytics.totalSpend)}</td>
+                        <td className="py-1.5 text-right text-[var(--ejo-text)]">{naira(analytics.totalPaid)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <p className={`mt-3 text-xs font-medium ${analytics.outstanding > 0 ? 'text-[var(--ejo-warning)]' : 'text-[var(--ejo-success)]'}`}>
+                    {analytics.outstanding > 0 ? `Outstanding: ${naira(analytics.outstanding)}` : 'Nothing outstanding.'}
+                  </p>
+                  <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+                    Approved = estimates with the Manager&apos;s final approval. Paid = payments actually recorded. Real figures, never a projection.
+                  </p>
+                </>
+              );
+            })()}
           </div>
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:col-span-2">
@@ -442,7 +553,7 @@ export default async function VehiclePage({
                       <td className="py-2 text-[var(--ejo-text)]">
                         {r.reminderNumber === 1 ? '1st — Friendly' : r.reminderNumber === 2 ? '2nd — Follow-up' : r.reminderNumber === 3 ? '3rd — Due' : `${r.reminderNumber}th — Overdue`}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">{r.trigger === 'OVERDUE' ? 'Overdue' : 'Due Soon'}</td>
+                      <td className="py-2 text-[var(--ejo-text-muted)]">{r.trigger === 'MANUAL' ? 'Sent by staff' : r.trigger === 'OVERDUE' ? 'Overdue (automatic)' : 'Due Soon (automatic)'}</td>
                       <td className="py-2 text-[var(--ejo-text-muted)]">
                         {r.estimatedDueOdometer ? `${r.estimatedDueOdometer.toLocaleString('en-NG')} km` : null}
                         {r.estimatedDueOdometer && r.estimatedDueDate ? ' / ' : null}
