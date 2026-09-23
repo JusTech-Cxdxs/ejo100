@@ -59,7 +59,7 @@ export async function requestServiceEstimatePartRequestSlipFormAction(formData: 
     await requestServiceEstimatePartRequestSlip(serviceEstimateId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not raise the parts request.';
-    redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
+    redirect(`/workshop/vehicle-service/${vehicleServiceId}/request-parts?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
   revalidatePath('/workshop/parts-requests');
