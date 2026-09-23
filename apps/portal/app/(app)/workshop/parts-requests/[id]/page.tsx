@@ -177,12 +177,18 @@ export default async function PartRequestSlipDetailPage({
                   <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{i + 1}</td>
                   <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{line.part.partNumber ?? '—'}</td>
                   <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{line.part.name}</td>
-                  <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{line.estimateLineItem?.description ?? '—'}</td>
+                  <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{(line.estimateLineItem ?? line.serviceEstimateLineItem)?.description ?? '—'}</td>
                   <td className="px-3 py-2 text-right text-[var(--ejo-text)]">
                     {Number(line.quantityRequested)} {pluralizeWord(Number(line.quantityRequested), line.part.baseUnitOfMeasure)}
                   </td>
                   <td className="px-3 py-2 text-right text-[var(--ejo-text)]">
-                    {line.estimateLineItem?.amount !== null && line.estimateLineItem?.amount !== undefined ? formatNaira(Number(line.estimateLineItem.amount)) : '—'}
+                    {(() => {
+                      // A slip is linked to exactly one kind of estimate line — Job
+                      // Card's own, or Vehicle Service's own — so read whichever one
+                      // it actually has, the same way totalAmount above already does.
+                      const amount = (line.estimateLineItem ?? line.serviceEstimateLineItem)?.amount;
+                      return amount !== null && amount !== undefined ? formatNaira(Number(amount)) : '—';
+                    })()}
                   </td>
                   <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)] print:hidden">
                     {line.quantityReleased !== null ? (
