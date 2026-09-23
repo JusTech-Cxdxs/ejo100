@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getVehicleService, getVehicleServiceAuditTrail } from '@/lib/actions/vehicle-service';
+import { getVehicleService, getVehicleServiceAuditTrail, getVehicleServiceCloseRequests } from '@/lib/actions/vehicle-service';
 import { getVehicleInspection } from '@/lib/actions/vehicle-inspection';
 import { getServiceEstimate } from '@/lib/actions/vehicle-service-estimate';
 import { cancelVehicleInspectionFormAction, completeVehicleInspectionFromServicePageFormAction } from '@/lib/actions/vehicle-inspection-form-handlers';
@@ -30,6 +30,9 @@ import {
   acceptVehicleServiceTechnicianAssignmentFormAction,
   rejectVehicleServiceTechnicianAssignmentFormAction,
   deleteVehicleServiceFormAction,
+  requestVehicleServiceCloseFormAction,
+  approveVehicleServiceCloseRequestFormAction,
+  declineVehicleServiceCloseRequestFormAction,
 } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
@@ -51,7 +54,9 @@ const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
   IN_SERVICE: 'In Service',
   COMPLETED: 'Completed',
-  COLLECTED: 'Collected',
+  READY_FOR_COLLECTION: 'Ready for Collection',
+  CLOSED: 'Closed',
+  COLLECTED: 'Checked Out',
   CANCELLED: 'Cancelled',
 };
 const STATUS_CLASS: Record<string, string> = {
@@ -59,6 +64,8 @@ const STATUS_CLASS: Record<string, string> = {
   CHECKED_IN: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   IN_SERVICE: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  READY_FOR_COLLECTION: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   COLLECTED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
@@ -118,7 +125,11 @@ const NEXT_ACTION: Record<string, { status: string; label: string } | null> = {
   // nothing to estimate and nothing to pay for.
   CHECKED_IN: null,
   IN_SERVICE: { status: 'COMPLETED', label: 'Complete Service' },
-  COMPLETED: { status: 'COLLECTED', label: 'Mark Collected' },
+  // Same end-of-life ladder as Job Card's own: Ready for Collection →
+  // a Manager-approved close (see the Close panel) → Check Out.
+  COMPLETED: { status: 'READY_FOR_COLLECTION', label: 'Mark Ready for Collection' },
+  READY_FOR_COLLECTION: null,
+  CLOSED: { status: 'COLLECTED', label: 'Check Out Vehicle' },
   COLLECTED: null,
   CANCELLED: null,
 };
@@ -131,6 +142,8 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle_service.technician_assigned': 'Technician assigned',
   'vehicle_service.escalated_to_job_card': 'Escalated to Job Card',
   'vehicle_service.attended_to': 'Overdue prediction attended to',
+  'vehicle_service.close_requested': 'Close requested',
+  'vehicle_service.close_declined': 'Close request declined',
   'assignment.accepted': 'Technician accepted assignment',
   'assignment.rejected': 'Technician rejected assignment',
   'vehicle_inspection.started': 'Inspection started',
@@ -271,7 +284,7 @@ export default async function VehicleServiceDetailPage({
   const isEstimateContributor = isMasterAdmin || service.supervisor?.id === viewerId || service.assignedTechnician?.id === viewerId;
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
-  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, partCategories, payments, eligibleFinance, eligibleManagers, sourcingNeeds] = await Promise.all([
+  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, partCategories, payments, eligibleFinance, eligibleManagers, sourcingNeeds, closeRequests] = await Promise.all([
     listTechnicianCandidates(),
     getVehicleServiceAuditTrail(id),
     getVehicleInspection(id),
@@ -282,6 +295,7 @@ export default async function VehicleServiceDetailPage({
     listEligibleFinanceOfficersForBranch(service.branchId),
     listEligibleManagersForBranch(service.branchId),
     getVehicleServiceSourcingNeeds(id),
+    getVehicleServiceCloseRequests(id),
   ]);
   const partCategoriesWithTypes = partCategories.map((category: (typeof partCategories)[number]) => ({
     id: category.id,
@@ -307,6 +321,17 @@ export default async function VehicleServiceDetailPage({
   }
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
+  // Same real rule the server enforces for close and check-out.
+  const isPaidInFull = paymentsTotal >= estimateTotal;
+  const pendingCloseRequest = closeRequests.find((r: (typeof closeRequests)[number]) => r.status === 'PENDING') ?? null;
+  // Who may take each step — mirrors requireVehicleServiceStepRole.
+  const canTakeNextAction =
+    nextAction?.status === 'COMPLETED' || nextAction?.status === 'COLLECTED'
+      ? isApprover || isAssignedTechnician || isEligibleManager
+      : nextAction?.status === 'READY_FOR_COLLECTION'
+        ? isApprover || isEligibleManager
+        : true;
+  const isActiveVisit = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
   const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
   const paymentStatus: 'AWAITING_PAYMENT' | 'PARTIAL' | 'DEPOSIT_MET' | 'PAID_IN_FULL' =
     paymentsTotal <= 0
@@ -413,6 +438,26 @@ export default async function VehicleServiceDetailPage({
       {status === 'assignment_rejected' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Assignment rejected." />
+        </div>
+      ) : null}
+      {status === 'close_requested' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Close requested — every Workshop Manager has been notified." />
+        </div>
+      ) : null}
+      {status === 'close_approved' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Close approved — this Vehicle Service is now closed." />
+        </div>
+      ) : null}
+      {status === 'close_declined' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Close request declined — the requester has been notified." />
+        </div>
+      ) : null}
+      {status === 'checked_out' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Vehicle checked out." />
         </div>
       ) : null}
       {status === 'parts_requested' ? (
@@ -1138,7 +1183,7 @@ export default async function VehicleServiceDetailPage({
                 <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs font-medium text-[var(--ejo-success)]">
                   Paid in full — nothing further to record.
                 </p>
-              ) : (service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE') && isEligibleFinance ? (
+              ) : ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'].includes(service.status) && isEligibleFinance ? (
                 <>
                   <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
                     Recording is fully automatic — the move to In Service happens the moment the total recorded
@@ -1308,9 +1353,14 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {nextAction ? (
+          {nextAction && canTakeNextAction ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{nextAction.label}</h2>
+              {nextAction.status === 'COLLECTED' && !isPaidInFull ? (
+                <p className="mt-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
+                  Payment must be completed in full before this vehicle can be checked out — {formatNaira(estimateTotal - paymentsTotal)} still outstanding.
+                </p>
+              ) : (
               <form action={updateVehicleServiceStatusFormAction} className="mt-3 space-y-3">
                 <FormPendingOverlay />
                 <input type="hidden" name="serviceId" value={service.id} />
@@ -1355,17 +1405,24 @@ export default async function VehicleServiceDetailPage({
                         className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                       />
                     </div>
-                    <label className="flex items-start gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-xs text-[var(--ejo-text)]">
-                      <input type="checkbox" name="primaryServiceCompleted" className="mt-0.5 h-4 w-4 rounded border-[var(--ejo-border)]" />
-                      <span>
-                        <span className="font-medium">Engine oil was changed on this visit</span>
-                        <span className="block text-[var(--ejo-text-muted)]">
-                          This is what tells the system when the vehicle is next due — based on this
-                          odometer reading. Leave unchecked if oil wasn&apos;t changed today.
-                        </span>
-                      </span>
-                    </label>
+                    <p className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-xs text-[var(--ejo-text-muted)]">
+                      Completing this service starts the vehicle&apos;s next-service count from this visit
+                      {service.odometerAtService != null ? ` (${service.odometerAtService.toLocaleString('en-NG')} km)` : ''} — the customer is
+                      told when it&apos;s next due, and reminders follow automatically.
+                    </p>
                   </>
+                ) : null}
+                {nextAction.status === 'COLLECTED' ? (
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Collected by (full name)</label>
+                    <input
+                      name="collectedByName"
+                      required
+                      defaultValue={service.customer.fullName}
+                      placeholder="Whoever is physically collecting the vehicle"
+                      className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                    />
+                  </div>
                 ) : null}
                 <SubmitButton
                   label={nextAction.label}
@@ -1373,10 +1430,98 @@ export default async function VehicleServiceDetailPage({
                   className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 />
               </form>
+              )}
             </div>
           ) : null}
 
-          {service.approvalStatus === 'APPROVED' && service.status !== 'COLLECTED' && service.status !== 'CANCELLED' ? (
+          {service.status === 'READY_FOR_COLLECTION' && !service.escalatedToJobCard ? (
+            <div id="close-request" className="scroll-mt-24 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Request close</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                Requires Manager approval before this Vehicle Service is actually closed — the same approval Job Card&apos;s own close needs.
+              </p>
+              {pendingCloseRequest ? (
+                <>
+                  <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
+                    Close requested by {pendingCloseRequest.requestedBy.fullName} on {formatDateTime(pendingCloseRequest.requestedAt)} — awaiting Manager approval.
+                  </p>
+                  {isEligibleManager ? (
+                    <div className="mt-3 space-y-2">
+                      <form action={approveVehicleServiceCloseRequestFormAction} className="space-y-2">
+                        <FormPendingOverlay />
+                        <input type="hidden" name="serviceId" value={service.id} />
+                        <input type="hidden" name="requestId" value={pendingCloseRequest.id} />
+                        <input
+                          name="decisionNotes"
+                          placeholder="Notes (optional)"
+                          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                        />
+                        <SubmitButton
+                          label="Approve close"
+                          pendingLabel="Approving…"
+                          className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                        />
+                      </form>
+                      <form action={declineVehicleServiceCloseRequestFormAction}>
+                        <FormPendingOverlay />
+                        <input type="hidden" name="serviceId" value={service.id} />
+                        <input type="hidden" name="requestId" value={pendingCloseRequest.id} />
+                        <SubmitButton
+                          label="Decline"
+                          pendingLabel="Declining…"
+                          className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
+                        />
+                      </form>
+                    </div>
+                  ) : null}
+                </>
+              ) : !isPaidInFull ? (
+                <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
+                  Payment must be completed in full before a close can be requested — {formatNaira(estimateTotal - paymentsTotal)} still outstanding.
+                </p>
+              ) : isEstimateCreator || isApprover ? (
+                <form action={requestVehicleServiceCloseFormAction} className="mt-3">
+                  <FormPendingOverlay />
+                  <input type="hidden" name="serviceId" value={service.id} />
+                  <SubmitButton
+                    label="Request close"
+                    pendingLabel="Requesting…"
+                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                  />
+                </form>
+              ) : (
+                <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">Only this Vehicle Service&apos;s creator or supervisor can request the close.</p>
+              )}
+              {closeRequests.filter((r: (typeof closeRequests)[number]) => r.status === 'DECLINED').map((r: (typeof closeRequests)[number]) => (
+                <p key={r.id} className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">
+                  Earlier request declined by {r.decidedBy?.fullName ?? 'a Manager'}
+                  {r.decidedAt ? ` on ${formatDateTime(r.decidedAt)}` : ''}
+                  {r.decisionNotes ? ` — ${r.decisionNotes}` : ''}
+                </p>
+              ))}
+            </div>
+          ) : null}
+
+          {service.status === 'COLLECTED' ? (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 p-5">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Checked out</h2>
+                <PrintMenu
+                  orgHref={`/print/vehicle-service/${service.id}`}
+                  clientHref={`/print/vehicle-service/${service.id}?variant=client`}
+                  clientLabel="Customer Copy"
+                  size="compact"
+                  align="right"
+                />
+              </div>
+              <p className="mt-2 text-xs text-[var(--ejo-text)]">
+                Collected by <span className="font-medium">{service.collectedByName ?? '—'}</span>
+                {service.collectedAt ? ` on ${formatDateTime(service.collectedAt)}` : ''}.
+              </p>
+            </div>
+          ) : null}
+
+          {service.approvalStatus === 'APPROVED' && isActiveVisit ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Assign technician</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -1407,7 +1552,7 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {service.status !== 'COLLECTED' && service.status !== 'CANCELLED' && isAssignedTechnician && service.technicianAcceptanceStatus === 'PENDING' ? (
+          {isActiveVisit && isAssignedTechnician && service.technicianAcceptanceStatus === 'PENDING' ? (
             <div id="technician-response" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Respond to this assignment</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -1481,6 +1626,33 @@ export default async function VehicleServiceDetailPage({
                 <dt className="text-xs text-[var(--ejo-text-muted)]">Opened By</dt>
                 <dd className="text-[var(--ejo-text)]">{service.createdBy.fullName}</dd>
               </div>
+              {service.completedAt ? (
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Completed</dt>
+                  <dd className="text-[var(--ejo-text)]">{formatDateTime(service.completedAt)}</dd>
+                </div>
+              ) : null}
+              {service.readyForCollectionAt ? (
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Ready for Collection</dt>
+                  <dd className="text-[var(--ejo-text)]">{formatDateTime(service.readyForCollectionAt)}</dd>
+                </div>
+              ) : null}
+              {service.closedAt ? (
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Closed</dt>
+                  <dd className="text-[var(--ejo-text)]">{formatDateTime(service.closedAt)}</dd>
+                </div>
+              ) : null}
+              {service.collectedAt ? (
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Checked Out</dt>
+                  <dd className="text-[var(--ejo-text)]">
+                    {formatDateTime(service.collectedAt)}
+                    {service.collectedByName ? ` — collected by ${service.collectedByName}` : ''}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           </div>
         </div>
