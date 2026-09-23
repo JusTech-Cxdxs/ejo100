@@ -377,6 +377,44 @@ export default async function PartDetailPage({
                       })()}
                     </tfoot>
                   </table>
+                  {part.serials.some((x: (typeof part.serials)[number]) => x.issuedToSlipLine) ? (
+                    <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
+                      <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">
+                        Sold To — real trace of every real draw against this Part, for warranty or quality-defect reference
+                      </p>
+                      <div className="space-y-1.5">
+                        {part.serials
+                          .filter((x: (typeof part.serials)[number]) => x.issuedToSlipLine)
+                          .map((x: (typeof part.serials)[number]) => {
+                            // Same format as Batch and Quantity "Sold To":
+                            // what went out, from which delivery, to which
+                            // customer — plus the one thing only a serial
+                            // has: the exact physical unit.
+                            const slip = x.issuedToSlipLine!.slip;
+                            const customerName = slip.jobCard?.customer.fullName ?? slip.vehicleService?.customer.fullName ?? '—';
+                            const sourceNumber = slip.jobCard?.jobNumber ?? slip.vehicleService?.serviceNumber ?? '—';
+                            return (
+                              <div key={x.id} className="flex items-center justify-between gap-3 text-xs">
+                                <span className="text-[var(--ejo-text)]">
+                                  1 {pluralizeWord(1, part.baseUnitOfMeasure)} (Serial <span className="font-medium">{x.serialNumber}</span>) from{' '}
+                                  {x.goodsReceiptLine?.goodsReceipt ? (
+                                    <LoadingLink href={`/inventory/goods-receipts/${x.goodsReceiptLine.goodsReceipt.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">
+                                      {x.goodsReceiptLine.goodsReceipt.referenceNumber}
+                                    </LoadingLink>
+                                  ) : (
+                                    <span className="font-medium">no Goods Receipt on record</span>
+                                  )}{' '}
+                                  — {customerName}
+                                </span>
+                                <LoadingLink href={`/workshop/parts-requests/${slip.id}`} className="shrink-0 text-[var(--ejo-primary)] hover:underline">
+                                  {slip.referenceNumber} · {sourceNumber}
+                                </LoadingLink>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
