@@ -1050,7 +1050,7 @@ export default async function JobCardDetailPage({
                 <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs font-medium text-[var(--ejo-success)]">
                   Paid in full — nothing further to record.
                 </p>
-              ) : (jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' || jobCard.status === 'IN_PROGRESS') && isEligibleFinance ? (
+              ) : ['AWAITING_CUSTOMER_APPROVAL', 'IN_PROGRESS', 'AWAITING_PARTS', 'QUALITY_CHECK', 'COMPLETED', 'READY_FOR_COLLECTION'].includes(jobCard.status) && isEligibleFinance ? (
                 <>
                   <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
                     Recording is fully automatic — approval and the move to In Progress happen the moment the total
