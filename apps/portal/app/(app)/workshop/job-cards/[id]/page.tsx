@@ -634,17 +634,28 @@ export default async function JobCardDetailPage({
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Estimate</h2>
               {estimate ? (
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                    estimate.status === 'MANAGER_APPROVED'
-                      ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
-                      : estimate.status === 'SUBMITTED' || estimate.status === 'APPROVED'
-                        ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
-                        : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
-                  }`}
-                >
-                  {ESTIMATE_STATUS_LABEL[estimate.status]}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      estimate.status === 'MANAGER_APPROVED'
+                        ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
+                        : estimate.status === 'SUBMITTED' || estimate.status === 'APPROVED'
+                          ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
+                          : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
+                    }`}
+                  >
+                    {ESTIMATE_STATUS_LABEL[estimate.status]}
+                  </span>
+                  {estimate.status === 'MANAGER_APPROVED' ? (
+                    <PrintMenu
+                      orgHref={`/print/job-cards/${jobCard.id}/estimate`}
+                      clientHref={`/print/job-cards/${jobCard.id}/estimate?variant=client`}
+                      clientLabel="Customer Copy"
+                      size="compact"
+                      align="right"
+                    />
+                  ) : null}
+                </div>
               ) : null}
             </div>
 
