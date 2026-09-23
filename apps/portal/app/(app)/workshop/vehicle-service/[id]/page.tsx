@@ -677,17 +677,28 @@ export default async function VehicleServiceDetailPage({
                   {serviceEstimate ? 'Service Estimate' : 'What happens next?'}
                 </h2>
                 {serviceEstimate ? (
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      serviceEstimate.status === 'MANAGER_APPROVED'
-                        ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
-                        : serviceEstimate.status === 'SUBMITTED' || serviceEstimate.status === 'APPROVED'
-                          ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
-                          : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
-                    }`}
-                  >
-                    {SERVICE_ESTIMATE_STATUS_LABEL[serviceEstimate.status] ?? serviceEstimate.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        serviceEstimate.status === 'MANAGER_APPROVED'
+                          ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
+                          : serviceEstimate.status === 'SUBMITTED' || serviceEstimate.status === 'APPROVED'
+                            ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
+                            : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
+                      }`}
+                    >
+                      {SERVICE_ESTIMATE_STATUS_LABEL[serviceEstimate.status] ?? serviceEstimate.status}
+                    </span>
+                    {serviceEstimate.status === 'MANAGER_APPROVED' ? (
+                      <PrintMenu
+                        orgHref={`/print/vehicle-service/${service.id}/estimate`}
+                        clientHref={`/print/vehicle-service/${service.id}/estimate?variant=client`}
+                        clientLabel="Customer Copy"
+                        size="compact"
+                        align="right"
+                      />
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
