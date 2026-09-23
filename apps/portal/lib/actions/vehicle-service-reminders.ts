@@ -2,6 +2,7 @@
 
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
+import { backfillServiceCycleAnchors, vehiclesCurrentlyInWorkshop } from '@/lib/vehicle-service-cycle';
 import { sendEmail } from '@/lib/email';
 import { renderServiceReminderEmail, serviceReminderSubject, type ServiceReminderStage } from '@/lib/email-templates/service-reminder';
 
@@ -35,11 +36,15 @@ export type VehicleNeedingReminder = {
  * next.
  */
 export async function getVehiclesNeedingServiceReminder(): Promise<VehicleNeedingReminder[]> {
+  // Every completed service now starts the count — catch up any
+  // completed before that, so no vehicle silently misses reminders.
+  await backfillServiceCycleAnchors();
   const services = await prisma.vehicleService.findMany({
     where: { OR: [{ nextServiceDueOdometer: { not: null } }, { nextServiceDueDate: { not: null } }] },
     orderBy: { primaryServiceDate: 'desc' },
     select: {
       vehicleId: true,
+      attendedAt: true,
       nextServiceDueOdometer: true,
       nextServiceDueDate: true,
       primaryServiceDate: true,
@@ -51,9 +56,15 @@ export async function getVehiclesNeedingServiceReminder(): Promise<VehicleNeedin
   const seenVehicles = new Set<string>();
   const results: VehicleNeedingReminder[] = [];
 
+  const inWorkshop = await vehiclesCurrentlyInWorkshop([...new Set(services.map((x: (typeof services)[number]) => x.vehicleId))]);
+
   for (const s of services) {
     if (seenVehicles.has(s.vehicleId)) continue; // only the latest real prediction per vehicle counts
     seenVehicles.add(s.vehicleId);
+    // Already handled by staff (Attend To), or booked back in right now
+    // — never email "your service is due" to a customer whose vehicle is
+    // already in our workshop.
+    if (s.attendedAt || inWorkshop.has(s.vehicleId)) continue;
 
     const kmRemaining = s.nextServiceDueOdometer !== null && s.vehicle.mileage !== null ? s.nextServiceDueOdometer - s.vehicle.mileage : null;
     const daysRemaining = s.nextServiceDueDate !== null ? Math.ceil((s.nextServiceDueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
@@ -134,7 +145,9 @@ export async function sendServiceReminder(need: VehicleNeedingReminder): Promise
       mileage: true,
       customer: { select: { id: true, fullName: true, email: true } },
       vehicleServices: {
-        where: { primaryServiceMileage: { not: null } },
+        // Every completed service has an anchor date; the odometer can be
+        // missing (date-only anchor), so the date is the reliable key.
+        where: { primaryServiceDate: { not: null } },
         orderBy: { primaryServiceDate: 'desc' },
         take: 1,
         select: { primaryServiceMileage: true, primaryServiceDate: true, branch: { select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } } } },
@@ -145,7 +158,7 @@ export async function sendServiceReminder(need: VehicleNeedingReminder): Promise
 
   const lastService = vehicle.vehicleServices[0];
   const branchContext = lastService?.branch;
-  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
   const vehicleDescription = [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'your vehicle';
 
   await sendEmail(
@@ -164,8 +177,9 @@ export async function sendServiceReminder(need: VehicleNeedingReminder): Promise
       kmRemaining: need.kmRemaining,
       daysRemaining: need.daysRemaining,
       isOverdue: need.isOverdue,
-      vehicleUrl: `${portalUrl}/workshop/vehicles/${need.vehicleId}/edit`,
-      logoUrl: `${portalUrl}/images/logo/logo.png`,
+      // The customer's own account — never a staff-portal page they can't open.
+      vehicleUrl: `${websiteUrl}/customer-portal/dashboard`,
+      logoUrl: `${websiteUrl}/images/logo/logo.png`,
       companyName: branchContext?.businessUnit.organisation.name ?? 'EJO 100',
       branchName: branchContext?.name ?? '',
     }),

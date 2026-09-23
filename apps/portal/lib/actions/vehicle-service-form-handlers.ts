@@ -5,6 +5,9 @@ import { redirect } from 'next/navigation';
 import {
   createVehicleService,
   updateVehicleServiceStatus,
+  requestVehicleServiceClose,
+  approveVehicleServiceCloseRequest,
+  declineVehicleServiceCloseRequest,
   escalateVehicleServiceToJobCard,
   approveVehicleService,
   rejectVehicleService,
@@ -119,19 +122,58 @@ export async function deleteVehicleServiceFormAction(formData: FormData) {
 
 export async function updateVehicleServiceStatusFormAction(formData: FormData) {
   const serviceId = str(formData, 'serviceId');
-  const newStatus = str(formData, 'newStatus') as 'CHECKED_IN' | 'IN_SERVICE' | 'COMPLETED' | 'COLLECTED' | 'CANCELLED';
+  const newStatus = str(formData, 'newStatus') as 'CHECKED_IN' | 'IN_SERVICE' | 'COMPLETED' | 'READY_FOR_COLLECTION' | 'CLOSED' | 'COLLECTED' | 'CANCELLED';
   try {
     await updateVehicleServiceStatus(serviceId, newStatus, {
       odometerAtService: num(formData, 'odometerAtService'),
       technicianNotes: str(formData, 'technicianNotes') || undefined,
-      primaryServiceCompleted: formData.get('primaryServiceCompleted') === 'on',
+      collectedByName: str(formData, 'collectedByName') || undefined,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not update this Vehicle Service.';
     redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
-  redirect(`/workshop/vehicle-service/${serviceId}?status=updated`);
+  revalidatePath('/workshop/vehicle-service-custody');
+  redirect(`/workshop/vehicle-service/${serviceId}?status=${newStatus === 'COLLECTED' ? 'checked_out' : 'updated'}`);
+}
+
+export async function requestVehicleServiceCloseFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  try {
+    await requestVehicleServiceClose(serviceId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not request a close for this Vehicle Service.';
+    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${serviceId}`);
+  redirect(`/workshop/vehicle-service/${serviceId}?status=close_requested`);
+}
+
+export async function approveVehicleServiceCloseRequestFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  const requestId = str(formData, 'requestId');
+  try {
+    await approveVehicleServiceCloseRequest(requestId, str(formData, 'decisionNotes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not approve this close request.';
+    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${serviceId}`);
+  redirect(`/workshop/vehicle-service/${serviceId}?status=close_approved`);
+}
+
+export async function declineVehicleServiceCloseRequestFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  const requestId = str(formData, 'requestId');
+  try {
+    await declineVehicleServiceCloseRequest(requestId, str(formData, 'decisionNotes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not decline this close request.';
+    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${serviceId}`);
+  redirect(`/workshop/vehicle-service/${serviceId}?status=close_declined`);
 }
 
 export async function escalateVehicleServiceFormAction(formData: FormData) {

@@ -72,8 +72,13 @@ export async function recordServicePayment(
   // accumulating right up to full payment, well after the 70%
   // deposit has already moved this Vehicle Service to IN_SERVICE, not
   // just during the brief window before work starts.
-  if (service.status !== 'CHECKED_IN' && service.status !== 'IN_SERVICE') {
-    throw new ServicePaymentActionError('Payments can only be recorded while this Vehicle Service is checked in or in service.');
+  // The balance is commonly settled at collection time — so payments
+  // stay open through Completed and Ready for Collection too. Without
+  // this, a customer who paid the 70% deposit could never clear the
+  // balance, and close/check-out (which require full payment) would be
+  // permanently blocked. Overpayment is still refused below.
+  if (!['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'].includes(service.status)) {
+    throw new ServicePaymentActionError('Payments can only be recorded while this Vehicle Service is checked in, in service, completed or ready for collection.');
   }
   const user = await requireEligibleFinanceOfficer(service.branchId);
 

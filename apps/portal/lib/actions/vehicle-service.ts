@@ -11,8 +11,20 @@ import {
   currentUserIsMasterAdmin,
   requireJobCardApprover,
   getWorkshopOrgContext,
+  listEligibleManagersForBranch,
+  requireEligibleManager,
 } from './workshop';
-import { calculateNextServiceDue } from '@/lib/vehicle-service-due';
+import { computeServiceCycle, backfillServiceCycleAnchors, vehiclesCurrentlyInWorkshop } from '@/lib/vehicle-service-cycle';
+import { READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
+import { addWorkingDays } from '@/lib/utils/working-days';
+import { renderCustomerServiceCompletedEmail } from '@/lib/email-templates/customer-service-completed';
+import { renderCustomerServiceReadyForCollectionEmail } from '@/lib/email-templates/customer-service-ready-for-collection';
+import { renderCustomerServiceCheckedOutEmail } from '@/lib/email-templates/customer-service-checked-out';
+import { renderVehicleServiceCheckedOutStaffEmail } from '@/lib/email-templates/vehicle-service-checked-out-staff';
+import { renderServiceCloseRequestedEmail } from '@/lib/email-templates/service-close-requested';
+import { renderServiceCloseRequestDeclinedEmail } from '@/lib/email-templates/service-close-request-declined';
+import { renderCustomerServiceClosedEmail } from '@/lib/email-templates/customer-service-closed';
+import { renderVehicleServiceClosedStaffEmail } from '@/lib/email-templates/vehicle-service-closed-staff';
 import { sendEmail } from '@/lib/email';
 import { renderSupervisorVehicleServiceAssignedEmail } from '@/lib/email-templates/supervisor-vehicle-service-assigned';
 import { renderVehicleServiceDecisionEmail } from '@/lib/email-templates/vehicle-service-decision';
@@ -526,6 +538,7 @@ export async function getVehicleServiceHealth(vehicleId: string): Promise<Vehicl
   await requireUser();
   const vehicle = await prisma.customerVehicle.findUnique({ where: { id: vehicleId }, select: { mileage: true } });
   if (!vehicle) return null;
+  await backfillServiceCycleAnchors();
 
   const latest = await prisma.vehicleService.findFirst({
     where: { vehicleId, OR: [{ nextServiceDueOdometer: { not: null } }, { nextServiceDueDate: { not: null } }] },
@@ -709,16 +722,23 @@ export type VehicleDueForService = {
  */
 export async function listVehiclesDueForService(branchId: string): Promise<VehicleDueForService[]> {
   await requireUser();
+  // Start the count for any service completed before every completion
+  // anchored the clock — so no vehicle silently drops out of tracking.
+  await backfillServiceCycleAnchors();
+  // attendedAt is deliberately NOT filtered here: the latest prediction
+  // per vehicle must be chosen first, THEN skipped if attended —
+  // filtering first would let an older, superseded prediction resurface
+  // as "latest" and show the vehicle as overdue again.
   const services = await prisma.vehicleService.findMany({
     where: {
       branchId,
-      attendedAt: null,
       OR: [{ nextServiceDueOdometer: { not: null } }, { nextServiceDueDate: { not: null } }],
     },
     orderBy: { primaryServiceDate: 'desc' },
     select: {
       id: true,
       vehicleId: true,
+      attendedAt: true,
       nextServiceDueOdometer: true,
       nextServiceDueDate: true,
       vehicle: { select: { make: true, model: true, plateNumber: true, mileage: true } },
@@ -732,9 +752,14 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
   const seenVehicles = new Set<string>();
   const due: VehicleDueForService[] = [];
 
+  const inWorkshop = await vehiclesCurrentlyInWorkshop([...new Set(services.map((x: (typeof services)[number]) => x.vehicleId))]);
+
   for (const s of services) {
     if (seenVehicles.has(s.vehicleId)) continue; // only the latest real prediction per vehicle counts
     seenVehicles.add(s.vehicleId);
+    // Handled already (Attend To), or the vehicle is booked back in
+    // right now — neither is genuinely "due" any more.
+    if (s.attendedAt || inWorkshop.has(s.vehicleId)) continue;
 
     const kmRemaining = s.nextServiceDueOdometer !== null && s.vehicle.mileage !== null ? s.nextServiceDueOdometer - s.vehicle.mileage : null;
     const daysRemaining = s.nextServiceDueDate !== null ? Math.ceil((s.nextServiceDueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
@@ -794,6 +819,7 @@ export type VehicleServiceCustodyEntry = {
   vehicleDescription: string;
   status: string;
   createdAt: Date;
+  completedAt: Date | null;
 };
 
 /**
@@ -810,7 +836,8 @@ export async function getVehicleServiceCustodySummary(branchId: string, search?:
   const [checkedIn, inService, completed, dueForService] = await Promise.all([
     listVehicleServicesByStatuses(branchId, ['CHECKED_IN'], search),
     listVehicleServicesByStatuses(branchId, ['IN_SERVICE'], search),
-    listVehicleServicesByStatuses(branchId, ['COMPLETED'], search),
+    // Still physically with us: work done, but not yet checked out.
+    listVehicleServicesByStatuses(branchId, ['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'], search),
     listVehiclesDueForService(branchId),
   ]);
   return {
@@ -853,6 +880,7 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
       serviceNumber: true,
       status: true,
       createdAt: true,
+      completedAt: true,
       customer: { select: { fullName: true } },
       vehicle: { select: { id: true, make: true, model: true, plateNumber: true } },
     },
@@ -863,6 +891,7 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
     serviceNumber: s.serviceNumber,
     status: s.status,
     createdAt: s.createdAt,
+    completedAt: s.completedAt,
     customerName: s.customer.fullName,
     vehicleDescription: [s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || s.vehicle.plateNumber || 'Vehicle',
   }));
@@ -929,10 +958,48 @@ export async function getVehicleService(serviceId: string) {
  * onto CustomerVehicle.mileage all happen exactly once, at the real
  * moment of completion — never recomputed or re-triggered by any
  * later status change. */
+/** Real payment position of one Vehicle Service — the same rule Job
+ * Card's own close/checkout gates use: fully paid means total recorded
+ * payments cover the estimate's full total. A service with no priced
+ * estimate at all owes nothing. Read from the real figures, never from
+ * an estimate status value (a stale status check here once let a
+ * vehicle be collected unpaid). */
+function servicePaymentPosition(service: { serviceEstimate: { lineItems: { amount: unknown }[] } | null; payments: { amount: unknown }[] }) {
+  const total = (service.serviceEstimate?.lineItems ?? []).reduce((sum: number, l: { amount: unknown }) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
+  const paid = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
+  return { total, paid, isPaidInFull: paid >= total };
+}
+
+/** Who may take each step — the Vehicle Service equivalent of Job
+ * Card's own getSelectableJobCardStatuses role rules. Master Admin
+ * bypasses, exactly as everywhere else. */
+async function requireVehicleServiceStepRole(
+  service: { supervisorId: string | null; assignedTechnicianId: string | null; branchId: string },
+  step: 'COMPLETE' | 'SIGN_OFF' | 'CHECK_OUT',
+  userId: string,
+): Promise<void> {
+  if (await currentUserIsMasterAdmin()) return;
+  const isSupervisor = service.supervisorId === userId;
+  const isTechnician = service.assignedTechnicianId === userId;
+  const managers = await listEligibleManagersForBranch(service.branchId);
+  const isManager = managers.supervisors.some((m: { id: string }) => m.id === userId);
+  const allowed =
+    step === 'COMPLETE' ? isSupervisor || isTechnician || isManager
+      : step === 'SIGN_OFF' ? isSupervisor || isManager
+        : isSupervisor || isTechnician || isManager;
+  if (!allowed) {
+    const who =
+      step === 'SIGN_OFF'
+        ? "this Vehicle Service's supervisor or a Workshop Manager"
+        : "this Vehicle Service's supervisor, its assigned technician, or a Workshop Manager";
+    throw new VehicleServiceActionError(`Only ${who} can take this step.`);
+  }
+}
+
 export async function updateVehicleServiceStatus(
   serviceId: string,
-  newStatus: 'CHECKED_IN' | 'IN_SERVICE' | 'COMPLETED' | 'COLLECTED' | 'CANCELLED',
-  input?: { odometerAtService?: number; technicianNotes?: string; primaryServiceCompleted?: boolean },
+  newStatus: 'CHECKED_IN' | 'IN_SERVICE' | 'COMPLETED' | 'READY_FOR_COLLECTION' | 'CLOSED' | 'COLLECTED' | 'CANCELLED',
+  input?: { odometerAtService?: number; technicianNotes?: string; collectedByName?: string },
 ): Promise<void> {
   const user = await requireUser();
   const service = await prisma.vehicleService.findUnique({
@@ -941,44 +1008,35 @@ export async function updateVehicleServiceStatus(
       status: true,
       serviceNumber: true,
       vehicleId: true,
+      branchId: true,
+      createdById: true,
+      supervisorId: true,
+      assignedTechnicianId: true,
       odometerAtService: true,
-      vehicle: { select: { serviceIntervalKm: true, serviceIntervalDays: true } },
+      customer: { select: { fullName: true, email: true } },
+      department: { select: { name: true } },
+      vehicle: { select: { make: true, model: true, serviceIntervalKm: true, serviceIntervalDays: true } },
       branch: { select: { businessUnit: { select: { organisation: { select: { id: true, primaryServiceIntervalKm: true, primaryServiceIntervalDays: true } } } } } },
-      serviceEstimate: { select: { status: true, lineItems: { select: { amount: true } } } },
+      serviceEstimate: { select: { lineItems: { select: { amount: true } } } },
       payments: { select: { amount: true } },
     },
   });
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
   }
-  // Same real rule as Job Card's own close/checkout gate — this
-  // Vehicle Service can't genuinely be marked Collected while real
-  // money is still owed on it. Only applies once a real, approved
-  // estimate actually exists — a routine visit that never needed one
-  // at all was never charged anything, so there's nothing to gate.
-  if (newStatus === 'COLLECTED' && service.serviceEstimate?.status === 'APPROVED') {
-    const totalEstimate = service.serviceEstimate.lineItems.reduce((sum: number, l: { amount: unknown }) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
-    const totalPaid = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
-    if (totalPaid < totalEstimate) {
-      throw new VehicleServiceActionError('Payment must be completed in full before this Vehicle Service can be marked Collected.');
-    }
+  // Closed is reached only by a Manager approving a close request —
+  // never set directly, the same rule Job Card's own updateJobCardStatus
+  // enforces server-side (not just hidden from the page).
+  if (newStatus === 'CLOSED') {
+    throw new VehicleServiceActionError('A Vehicle Service is closed by a Manager approving a close request, not directly — see Request Close.');
   }
-  // Same real rule as Job Card's own 70%-deposit gate — once a real,
-  // approved estimate exists, work starting is a real payment
-  // milestone (see recordServicePayment's own automatic transition).
-  // No such thing as a free visit — every real Vehicle Service either
-  // continues through a real, priced estimate (payment is what
-  // actually moves it to In Service — see recordServicePayment) or
-  // escalates to a Job Card. This function is never the real path to
-  // In Service, regardless of whether an estimate exists yet.
+  // Same real rule as Job Card's own 70%-deposit gate — no free visit:
+  // payment is what moves a Vehicle Service into service.
   if (newStatus === 'IN_SERVICE') {
     throw new VehicleServiceActionError('This Vehicle Service moves to In Service automatically once the required deposit is paid.');
   }
-  // Same real reasoning enforced as a real ladder, not just against
-  // the one button that used to skip it — Completed can only follow
-  // a real, genuine In Service, which itself can only be reached
-  // through the real payment flow above. A direct jump straight from
-  // Checked In to Completed, bypassing all of that, is never valid.
+  // Completed can only follow a genuine In Service, itself reachable
+  // only through the real payment flow.
   if (newStatus === 'COMPLETED' && service.status !== 'IN_SERVICE') {
     throw new VehicleServiceActionError('This Vehicle Service must be In Service, with its deposit paid, before it can be marked Completed.');
   }
@@ -986,49 +1044,57 @@ export async function updateVehicleServiceStatus(
     SCHEDULED: ['CHECKED_IN', 'CANCELLED'],
     CHECKED_IN: ['IN_SERVICE', 'CANCELLED'],
     IN_SERVICE: ['COMPLETED', 'CANCELLED'],
-    COMPLETED: ['COLLECTED'],
+    COMPLETED: ['READY_FOR_COLLECTION'],
+    // Ready for Collection → Closed only via an approved close request.
+    READY_FOR_COLLECTION: [],
+    CLOSED: ['COLLECTED'],
     COLLECTED: [],
     CANCELLED: [],
   };
   if (!ladder[service.status]?.includes(newStatus)) {
     throw new VehicleServiceActionError(`A Vehicle Service currently ${service.status} cannot move directly to ${newStatus}.`);
   }
+  if (newStatus === 'COMPLETED') await requireVehicleServiceStepRole(service, 'COMPLETE', user.id);
+  if (newStatus === 'READY_FOR_COLLECTION') await requireVehicleServiceStepRole(service, 'SIGN_OFF', user.id);
+  if (newStatus === 'COLLECTED') {
+    await requireVehicleServiceStepRole(service, 'CHECK_OUT', user.id);
+    // Same real rule as Job Card's own checkout — the vehicle can't
+    // physically leave while money is still owed on it.
+    if (!servicePaymentPosition(service).isPaidInFull) {
+      throw new VehicleServiceActionError('Payment must be completed in full before this vehicle can be checked out.');
+    }
+    // A real name for whoever is physically driving away with it.
+    if (!input?.collectedByName?.trim()) {
+      throw new VehicleServiceActionError('The name of whoever is collecting the vehicle is required to check it out.');
+    }
+  }
 
+  const now = new Date();
   const data: Record<string, unknown> = { status: newStatus };
+  let cycle: ReturnType<typeof computeServiceCycle> | null = null;
   if (newStatus === 'CHECKED_IN') {
-    data.checkedInAt = new Date();
+    data.checkedInAt = now;
     if (input?.odometerAtService !== undefined) data.odometerAtService = input.odometerAtService;
   }
   if (newStatus === 'COMPLETED') {
-    data.completedAt = new Date();
+    data.completedAt = now;
     if (input?.technicianNotes !== undefined) data.technicianNotes = input.technicianNotes.trim() || null;
-
-    const odometerAtService = input?.odometerAtService ?? service.odometerAtService;
-    if (input?.primaryServiceCompleted) {
-      const now = new Date();
-      const org = service.branch.businessUnit.organisation;
-      // This vehicle's own real interval takes priority over the
-      // organisation's default the moment either one is actually
-      // set — a manufacturer's genuine recommended interval for one
-      // specific vehicle should never be silently overridden by a
-      // generic organisation-wide number.
-      const intervalKm = service.vehicle.serviceIntervalKm ?? org.primaryServiceIntervalKm;
-      const intervalDays = service.vehicle.serviceIntervalDays ?? org.primaryServiceIntervalDays;
-      const nextDue = calculateNextServiceDue(odometerAtService, now, intervalKm, intervalDays);
-      data.primaryServiceMileage = odometerAtService;
-      data.primaryServiceDate = now;
-      data.nextServiceDueOdometer = nextDue.dueOdometer;
-      data.nextServiceDueDate = nextDue.dueDate;
-    }
+    // Every completed service starts the next-service count — anchored
+    // on this visit's own odometer reading and completion date.
+    cycle = computeServiceCycle(input?.odometerAtService ?? service.odometerAtService, now, service);
+    Object.assign(data, cycle);
   }
-  if (newStatus === 'COLLECTED') data.collectedAt = new Date();
-  if (newStatus === 'CANCELLED') data.cancelledAt = new Date();
+  if (newStatus === 'READY_FOR_COLLECTION') data.readyForCollectionAt = now;
+  if (newStatus === 'COLLECTED') {
+    data.collectedAt = now;
+    data.collectedByName = input?.collectedByName?.trim();
+  }
+  if (newStatus === 'CANCELLED') data.cancelledAt = now;
 
   await prisma.$transaction(async (tx) => {
     await tx.vehicleService.update({ where: { id: serviceId }, data });
-    // The one real, shared "last known odometer" — the exact same
-    // field Job Card check-in already writes to, never a second,
-    // competing value for the same real vehicle.
+    // The one real, shared "last known odometer" — the same field Job
+    // Card check-in writes to, never a second competing value.
     if (newStatus === 'CHECKED_IN' && input?.odometerAtService !== undefined) {
       await tx.customerVehicle.update({ where: { id: service.vehicleId }, data: { mileage: input.odometerAtService } });
     }
@@ -1039,8 +1105,353 @@ export async function updateVehicleServiceStatus(
     action: 'vehicle_service.status_updated',
     entityType: 'VehicleService',
     entityId: serviceId,
-    metadata: { serviceNumber: service.serviceNumber, from: service.status, to: newStatus },
+    metadata: {
+      serviceNumber: service.serviceNumber,
+      from: service.status,
+      to: newStatus,
+      ...(newStatus === 'COLLECTED' ? { collectedByName: input?.collectedByName?.trim() } : {}),
+      ...(cycle ? { nextServiceDueOdometer: cycle.nextServiceDueOdometer, nextServiceDueDate: cycle.nextServiceDueDate?.toISOString() ?? null } : {}),
+    },
   });
+
+  // Lifecycle emails — each fires exactly once, on a real transition,
+  // the same pattern as Job Card's own updateJobCardStatus.
+  if (newStatus !== 'COMPLETED' && newStatus !== 'READY_FOR_COLLECTION' && newStatus !== 'COLLECTED') return;
+  try {
+    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const vehicleDescription = [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
+    const dashboardUrl = `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`;
+    const websiteLogoUrl = `${websiteUrl}/images/logo/logo.png`;
+    const longDate = (d: Date) => d.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' });
+
+    if (newStatus === 'COMPLETED') {
+      await sendEmail(
+        service.customer.email,
+        `Your service is complete — Vehicle Service ${service.serviceNumber}`,
+        renderCustomerServiceCompletedEmail({
+          customerName: service.customer.fullName,
+          serviceNumber: service.serviceNumber,
+          vehicleDescription,
+          nextServiceDueMileage: cycle?.nextServiceDueOdometer != null ? `${cycle.nextServiceDueOdometer.toLocaleString('en-NG')} km` : null,
+          nextServiceDueDate: cycle?.nextServiceDueDate ? longDate(cycle.nextServiceDueDate) : null,
+          dashboardUrl,
+          logoUrl: websiteLogoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
+    } else if (newStatus === 'READY_FOR_COLLECTION') {
+      await sendEmail(
+        service.customer.email,
+        `Ready for collection — Vehicle Service ${service.serviceNumber}`,
+        renderCustomerServiceReadyForCollectionEmail({
+          customerName: service.customer.fullName,
+          serviceNumber: service.serviceNumber,
+          vehicleDescription,
+          dueDate: longDate(addWorkingDays(now, READY_FOR_COLLECTION_GRACE_WORKING_DAYS)),
+          dashboardUrl,
+          logoUrl: websiteLogoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
+    } else {
+      const collectedByName = input?.collectedByName?.trim() ?? 'the customer';
+      await sendEmail(
+        service.customer.email,
+        `Your vehicle has been collected — Vehicle Service ${service.serviceNumber}`,
+        renderCustomerServiceCheckedOutEmail({
+          customerName: service.customer.fullName,
+          serviceNumber: service.serviceNumber,
+          vehicleDescription,
+          collectedByName,
+          dashboardUrl,
+          logoUrl: websiteLogoUrl,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
+      // Every real staff party — creator, supervisor, technician and
+      // every branch Manager — same broadcast as Job Card's checkout.
+      const staff = await vehicleServiceStaffRecipients(service);
+      for (const recipient of staff) {
+        await sendEmail(
+          recipient.email,
+          `Vehicle Service ${service.serviceNumber} — vehicle checked out`,
+          renderVehicleServiceCheckedOutStaffEmail({
+            recipientName: recipient.fullName,
+            serviceNumber: service.serviceNumber,
+            customerName: service.customer.fullName,
+            collectedByName,
+            serviceUrl: `${portalUrl}/workshop/vehicle-service/${serviceId}`,
+            logoUrl: `${portalUrl}/images/logo/logo.png`,
+            companyName: orgContext.companyName,
+            branchName: orgContext.branchName,
+            departmentName: orgContext.departmentName,
+          }),
+        );
+      }
+    }
+  } catch (err) {
+    // Fail-soft, like every other notification in this project — the
+    // status change itself has already been saved.
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Vehicle Service lifecycle email', serviceId, newStatus, err);
+  }
+}
+
+/** Creator, supervisor, assigned technician and every branch Manager
+ * — de-duplicated — the same staff broadcast list Job Card uses. */
+async function vehicleServiceStaffRecipients(service: { createdById: string; supervisorId: string | null; assignedTechnicianId: string | null; branchId: string }) {
+  const ids = new Set<string>([service.createdById]);
+  if (service.supervisorId) ids.add(service.supervisorId);
+  if (service.assignedTechnicianId) ids.add(service.assignedTechnicianId);
+  const managers = await listEligibleManagersForBranch(service.branchId);
+  for (const m of managers.supervisors) ids.add(m.id);
+  return prisma.user.findMany({ where: { id: { in: [...ids] } }, select: { id: true, fullName: true, email: true } });
+}
+
+export async function getVehicleServiceCloseRequests(serviceId: string) {
+  await requireUser();
+  return prisma.vehicleServiceCloseRequest.findMany({
+    where: { vehicleServiceId: serviceId },
+    orderBy: { requestedAt: 'desc' },
+    include: { requestedBy: { select: { fullName: true } }, decidedBy: { select: { fullName: true } } },
+  });
+}
+
+/** The Vehicle Service equivalent of Job Card's requestJobCardClose —
+ * only once the vehicle is Ready for Collection and fully paid, only
+ * by the creator, the supervisor or a Master Admin, and never twice at
+ * once. Every branch Manager is emailed to review it. */
+export async function requestVehicleServiceClose(serviceId: string): Promise<void> {
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: serviceId },
+    select: {
+      status: true,
+      branchId: true,
+      serviceNumber: true,
+      createdById: true,
+      supervisorId: true,
+      customer: { select: { fullName: true } },
+      department: { select: { name: true } },
+      serviceEstimate: { select: { lineItems: { select: { amount: true } } } },
+      payments: { select: { amount: true } },
+    },
+  });
+  if (!service) {
+    throw new VehicleServiceActionError('Vehicle Service record not found.');
+  }
+  if (service.status !== 'READY_FOR_COLLECTION') {
+    throw new VehicleServiceActionError('A close can only be requested once this Vehicle Service is Ready for Collection.');
+  }
+  // Checked at the earliest point, like Job Card's own — no point
+  // routing a request to a Manager that could never be approved.
+  if (!servicePaymentPosition(service).isPaidInFull) {
+    throw new VehicleServiceActionError('Payment must be completed in full before a close can be requested.');
+  }
+  const user = await requireUser();
+  if (user.id !== service.createdById && user.id !== service.supervisorId && !(await currentUserIsMasterAdmin())) {
+    throw new VehicleServiceActionError("Only this Vehicle Service's creator, its assigned supervisor, or a Master Administrator can request a close.");
+  }
+  const existingPending = await prisma.vehicleServiceCloseRequest.findFirst({ where: { vehicleServiceId: serviceId, status: 'PENDING' }, select: { id: true } });
+  if (existingPending) {
+    throw new VehicleServiceActionError('A close request is already pending for this Vehicle Service.');
+  }
+  await prisma.vehicleServiceCloseRequest.create({ data: { vehicleServiceId: serviceId, requestedById: user.id } });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'vehicle_service.close_requested',
+    entityType: 'VehicleService',
+    entityId: serviceId,
+    metadata: { serviceNumber: service.serviceNumber },
+  });
+
+  try {
+    const requester = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const managers = await listEligibleManagersForBranch(service.branchId);
+    for (const manager of managers.supervisors) {
+      await sendEmail(
+        manager.email,
+        `Close requested — Vehicle Service ${service.serviceNumber}`,
+        renderServiceCloseRequestedEmail({
+          managerName: manager.fullName,
+          serviceNumber: service.serviceNumber,
+          customerName: service.customer.fullName,
+          requestedByName: requester?.fullName ?? 'A team member',
+          serviceUrl: `${portalUrl}/workshop/vehicle-service/${serviceId}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Vehicle Service close-requested emails', serviceId, err);
+  }
+}
+
+/** A Manager's approval — the one moment a Vehicle Service becomes
+ * CLOSED. Re-checks status and payment at decision time (things can
+ * change after the request was raised). Customer and every staff party
+ * are emailed, same as Job Card's own approveCloseRequest. */
+export async function approveVehicleServiceCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  const request = await prisma.vehicleServiceCloseRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      status: true,
+      vehicleServiceId: true,
+      vehicleService: {
+        select: {
+          status: true,
+          branchId: true,
+          serviceNumber: true,
+          createdById: true,
+          supervisorId: true,
+          assignedTechnicianId: true,
+          customer: { select: { fullName: true, email: true } },
+          vehicle: { select: { make: true, model: true } },
+          department: { select: { name: true } },
+          serviceEstimate: { select: { lineItems: { select: { amount: true } } } },
+          payments: { select: { amount: true } },
+        },
+      },
+    },
+  });
+  if (!request) {
+    throw new VehicleServiceActionError('Close request not found.');
+  }
+  if (request.status !== 'PENDING') {
+    throw new VehicleServiceActionError('This close request has already been decided.');
+  }
+  const service = request.vehicleService;
+  if (service.status !== 'READY_FOR_COLLECTION') {
+    throw new VehicleServiceActionError('This Vehicle Service is no longer Ready for Collection, so it cannot be closed.');
+  }
+  if (!servicePaymentPosition(service).isPaidInFull) {
+    throw new VehicleServiceActionError('Payment is no longer complete in full, so this close cannot be approved.');
+  }
+  const user = await requireEligibleManager(service.branchId);
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.vehicleServiceCloseRequest.update({
+      where: { id: requestId },
+      data: { status: 'APPROVED', decidedById: user.id, decidedAt: now, decisionNotes: decisionNotes?.trim() || null },
+    }),
+    prisma.vehicleService.update({ where: { id: request.vehicleServiceId }, data: { status: 'CLOSED', closedAt: now } }),
+  ]);
+  await writeAuditLog({
+    userId: user.id,
+    action: 'vehicle_service.status_updated',
+    entityType: 'VehicleService',
+    entityId: request.vehicleServiceId,
+    metadata: { serviceNumber: service.serviceNumber, from: 'READY_FOR_COLLECTION', to: 'CLOSED', notes: decisionNotes?.trim() || undefined },
+  });
+
+  try {
+    const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const vehicleDescription = [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
+    await sendEmail(
+      service.customer.email,
+      `Vehicle Service ${service.serviceNumber} has been closed`,
+      renderCustomerServiceClosedEmail({
+        customerName: service.customer.fullName,
+        serviceNumber: service.serviceNumber,
+        vehicleDescription,
+        dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${request.vehicleServiceId}`,
+        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+      }),
+    );
+    const staff = await vehicleServiceStaffRecipients(service);
+    for (const recipient of staff) {
+      await sendEmail(
+        recipient.email,
+        `Vehicle Service ${service.serviceNumber} closed`,
+        renderVehicleServiceClosedStaffEmail({
+          recipientName: recipient.fullName,
+          serviceNumber: service.serviceNumber,
+          customerName: service.customer.fullName,
+          closedByName: approver?.fullName ?? 'The manager',
+          serviceUrl: `${portalUrl}/workshop/vehicle-service/${request.vehicleServiceId}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Vehicle Service close-approval emails', request.vehicleServiceId, err);
+  }
+}
+
+/** A Manager's decline — status is never touched; only the requester
+ * is told, same as Job Card's own declineCloseRequest. */
+export async function declineVehicleServiceCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  const request = await prisma.vehicleServiceCloseRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      status: true,
+      requestedById: true,
+      vehicleServiceId: true,
+      vehicleService: { select: { branchId: true, serviceNumber: true, customer: { select: { fullName: true } }, department: { select: { name: true } } } },
+    },
+  });
+  if (!request) {
+    throw new VehicleServiceActionError('Close request not found.');
+  }
+  if (request.status !== 'PENDING') {
+    throw new VehicleServiceActionError('This close request has already been decided.');
+  }
+  const user = await requireEligibleManager(request.vehicleService.branchId);
+  await prisma.vehicleServiceCloseRequest.update({
+    where: { id: requestId },
+    data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: decisionNotes?.trim() || null },
+  });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'vehicle_service.close_declined',
+    entityType: 'VehicleService',
+    entityId: request.vehicleServiceId,
+    metadata: { serviceNumber: request.vehicleService.serviceNumber, notes: decisionNotes?.trim() || undefined },
+  });
+  try {
+    const [decliner, requester] = await Promise.all([
+      prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
+      prisma.user.findUnique({ where: { id: request.requestedById }, select: { fullName: true, email: true } }),
+    ]);
+    if (!requester) return;
+    const orgContext = await getWorkshopOrgContext(request.vehicleService.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      requester.email,
+      `Close request declined — Vehicle Service ${request.vehicleService.serviceNumber}`,
+      renderServiceCloseRequestDeclinedEmail({
+        recipientName: requester.fullName,
+        serviceNumber: request.vehicleService.serviceNumber,
+        customerName: request.vehicleService.customer.fullName,
+        declinedByName: decliner?.fullName ?? 'The manager',
+        serviceUrl: `${portalUrl}/workshop/vehicle-service/${request.vehicleServiceId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Vehicle Service close-declined email', request.vehicleServiceId, err);
+  }
 }
 
 /** The one real, deliberate door out of this lighter workflow — a
@@ -1080,8 +1491,10 @@ export async function escalateVehicleServiceToJobCard(
   if (service.escalatedToJobCardId) {
     throw new VehicleServiceActionError('This Vehicle Service has already been escalated to a real Job Card.');
   }
-  if (service.status === 'COLLECTED' || service.status === 'CANCELLED') {
-    throw new VehicleServiceActionError(`A Vehicle Service that's already ${service.status.toLowerCase()} cannot be escalated.`);
+  // Once the work is done (completed, ready, closed, collected) or the
+  // service is cancelled, there is nothing left to escalate.
+  if (['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED', 'COLLECTED', 'CANCELLED'].includes(service.status)) {
+    throw new VehicleServiceActionError(`A Vehicle Service that's already ${service.status.toLowerCase().replace(/_/g, ' ')} cannot be escalated.`);
   }
 
   // Real inspection findings carry straight into the new Job Card as
