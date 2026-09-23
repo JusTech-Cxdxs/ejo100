@@ -20,6 +20,7 @@
 
 import { prisma } from '@ejo/database';
 import { pluralize } from '@/lib/utils/pluralize';
+import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { requireUser, writeAuditLog, requireEligibleManager, listEligibleFinanceOfficersForBranch, listEligibleManagersForBranch } from './workshop';
 import { requireStoreStaff, listEligibleStoreOfficersForBranch, listEligibleStoreManagersForBranch } from './store';
 import { sendEmail } from '@/lib/email';
@@ -662,6 +663,62 @@ export async function requestPartRequestSlip(jobCardId: string): Promise<{ id: s
 /** The real Vehicle Service equivalent of getRequestablePartRequestLines —
  * same exact reasoning, reading from ServiceEstimateLineItem instead of
  * EstimateLineItem. */
+/**
+ * The one honest answer to "has this Vehicle Service genuinely reached
+ * real work yet?" — the Vehicle Service equivalent of Job Card's own
+ * SOURCEABLE_STATUSES check. Deliberately checks the real chain itself
+ * rather than status alone: the estimate must be fully approved and the
+ * customer actually notified, AND the real 70% deposit must actually be
+ * recorded. Status alone isn't enough, because a Vehicle Service moved
+ * to IN_SERVICE manually before the "no free visit" rule existed would
+ * otherwise qualify without ever having gone through the real process.
+ */
+async function isVehicleServiceEligibleToSource(vehicleServiceId: string): Promise<boolean> {
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: vehicleServiceId },
+    select: {
+      status: true,
+      serviceEstimate: { select: { status: true, customerNotifiedAt: true, lineItems: { select: { amount: true } } } },
+      payments: { select: { amount: true } },
+    },
+  });
+  if (!service || service.status !== 'IN_SERVICE') return false;
+  const estimate = service.serviceEstimate;
+  if (!estimate || estimate.status !== 'MANAGER_APPROVED' || !estimate.customerNotifiedAt) return false;
+  const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+  const paid = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount ?? 0), 0);
+  const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+  return total > 0 && paid >= minimumDeposit;
+}
+
+/** The real Vehicle Service equivalent of getJobCardSourcingNeeds —
+ * same shape, so the Vehicle Service page's own Sourcing card can mirror
+ * Job Card's exactly. */
+export async function getVehicleServiceSourcingNeeds(vehicleServiceId: string) {
+  await requireUser();
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: vehicleServiceId },
+    select: { serviceEstimate: { select: { id: true, lineItems: { where: { type: 'STORE_PART' }, select: { id: true } } } } },
+  });
+  const estimate = service?.serviceEstimate ?? null;
+  const [isEligibleToSource, existingPartRequestSlips, requestableLines] = await Promise.all([
+    isVehicleServiceEligibleToSource(vehicleServiceId),
+    prisma.partRequestSlip.findMany({
+      where: { vehicleServiceId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, status: true, referenceNumber: true },
+    }),
+    estimate ? getRequestableServiceEstimatePartRequestLines(estimate.id) : Promise.resolve([]),
+  ]);
+  return {
+    isEligibleToSource,
+    serviceEstimateId: estimate?.id ?? null,
+    needsStoreParts: (estimate?.lineItems.length ?? 0) > 0,
+    hasRequestablePartLines: requestableLines.length > 0,
+    existingPartRequestSlips,
+  };
+}
+
 export async function getRequestableServiceEstimatePartRequestLines(serviceEstimateId: string) {
   await requireUser();
   const estimate = await prisma.serviceEstimate.findUnique({
@@ -711,13 +768,11 @@ export async function requestServiceEstimatePartRequestSlip(serviceEstimateId: s
     throw new SourcingActionError('Service Estimate not found.');
   }
   // Same real "actually sourceable" requirement as Job Card's own
-  // SOURCEABLE_STATUSES — supervisor and Manager approval, and even
-  // notifying the customer, only get the estimate ready; real work
-  // (and the 70% deposit that's the only real path into IN_SERVICE)
-  // still has to actually start before Store Parts can be requested
-  // against it.
-  if (estimate.vehicleService.status !== 'IN_SERVICE') {
-    throw new SourcingActionError('Parts can only be requested once this Vehicle Service is in service — after the customer has been notified and the deposit recorded.');
+  // SOURCEABLE_STATUSES — checked against the real chain itself
+  // (customer notified, 70% deposit actually recorded, in service),
+  // never status alone. See isVehicleServiceEligibleToSource.
+  if (!(await isVehicleServiceEligibleToSource(estimate.vehicleServiceId))) {
+    throw new SourcingActionError('Parts can only be requested once the customer has been notified and the 70% deposit recorded — the moment real work begins.');
   }
   const requestableLines = await getRequestableServiceEstimatePartRequestLines(serviceEstimateId);
   if (requestableLines.length === 0) {
