@@ -64,6 +64,20 @@ const STATUS_CLASS: Record<string, string> = {
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
+const PAYMENT_STATUS_LABEL: Record<string, string> = {
+  AWAITING_PAYMENT: 'Awaiting Payment',
+  PARTIAL: 'Partial Payment',
+  DEPOSIT_MET: 'Minimum Met — Balance Pending',
+  PAID_IN_FULL: 'Payment Completed',
+};
+
+const PAYMENT_STATUS_COLOR: Record<string, string> = {
+  AWAITING_PAYMENT: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+  PARTIAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  DEPOSIT_MET: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  PAID_IN_FULL: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+};
+
 const PART_REQUEST_STATUS_LABEL: Record<string, string> = {
   PENDING_HOD_APPROVAL: 'Awaiting HOD approval',
   PENDING_STORE_APPROVAL: 'Awaiting Store approval',
@@ -295,6 +309,18 @@ export default async function VehicleServiceDetailPage({
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+  const paymentStatus: 'AWAITING_PAYMENT' | 'PARTIAL' | 'DEPOSIT_MET' | 'PAID_IN_FULL' =
+    paymentsTotal <= 0
+      ? 'AWAITING_PAYMENT'
+      : estimateTotal > 0 && paymentsTotal >= estimateTotal
+        ? 'PAID_IN_FULL'
+        : estimateTotal > 0 && paymentsTotal >= minimumDeposit
+          ? 'DEPOSIT_MET'
+          : 'PARTIAL';
+  // Same real rule as Job Card's own — the payment badge appears the
+  // moment payment is genuinely expected (customer notified), or once
+  // any payment at all has been recorded.
+  const showPayments = payments.length > 0 || Boolean(serviceEstimate?.customerNotifiedAt);
 
   return (
     <div className="p-8">
@@ -416,6 +442,11 @@ export default async function VehicleServiceDetailPage({
           >
             {service.escalatedToJobCard ? 'Escalated' : STATUS_LABEL[service.status]}
           </span>
+          {showPayments ? (
+            <span className={`ml-2 mt-1 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYMENT_STATUS_COLOR[paymentStatus]}`}>
+              {PAYMENT_STATUS_LABEL[paymentStatus]}
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -1055,23 +1086,26 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {serviceEstimate?.customerNotifiedAt ? (
+          {showPayments ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Payments</h2>
-                <span className="text-xs text-[var(--ejo-text-muted)]">
-                  {formatNaira(paymentsTotal)} of {formatNaira(estimateTotal)}
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYMENT_STATUS_COLOR[paymentStatus]}`}>
+                  {PAYMENT_STATUS_LABEL[paymentStatus]}
                 </span>
               </div>
-              {payments.length > 0 ? (
-                <div className="mt-4 space-y-2">
+              {payments.length === 0 ? (
+                <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No payments recorded yet.</p>
+              ) : (
+                <div className="mt-3 space-y-2 text-sm">
                   {payments.map((p: (typeof payments)[number]) => (
-                    <div key={p.id} className="flex items-center justify-between text-sm">
+                    <div key={p.id} className="flex items-center justify-between border-b border-[var(--ejo-border)] pb-2 last:border-0">
                       <div>
-                        <span className="text-[var(--ejo-text)]">{formatNaira(Number(p.amount))}</span>
-                        <span className="ml-2 text-xs text-[var(--ejo-text-muted)]">{p.method === 'CASH' ? 'Cash' : 'Bank Transfer'}</span>
+                        <p className="text-[var(--ejo-text)]">
+                          {formatNaira(Number(p.amount))} — {p.method === 'CASH' ? 'Cash' : 'Bank Transfer'}
+                        </p>
                         <p className="text-xs text-[var(--ejo-text-muted)]">
-                          {p.recordedBy.fullName} · {formatDateOnly(p.recordedAt)}
+                          {p.recordedBy.fullName} · {formatDateTime(p.recordedAt)}
                           {p.notes ? ` · ${p.notes}` : ''}
                         </p>
                       </div>
@@ -1088,7 +1122,7 @@ export default async function VehicleServiceDetailPage({
                     </div>
                   ) : null}
                 </div>
-              ) : null}
+              )}
 
               {estimateTotal > 0 && paymentsTotal >= estimateTotal ? (
                 <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs font-medium text-[var(--ejo-success)]">
@@ -1098,7 +1132,9 @@ export default async function VehicleServiceDetailPage({
                 <>
                   <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
                     Recording is fully automatic — the move to In Service happens the moment the total recorded
-                    first reaches the 70% minimum deposit, with no separate approval step.
+                    first reaches the 70% minimum deposit, with no separate approval step. Pick a suggested amount
+                    below, or choose &quot;Other&quot; to enter one manually — either way, whatever the field shows is
+                    exactly what gets recorded.
                   </p>
                   <form key={payments.length} action={recordServicePaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
                     <input type="hidden" name="vehicleServiceId" value={service.id} />
