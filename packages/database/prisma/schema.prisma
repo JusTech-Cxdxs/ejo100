@@ -1868,10 +1868,21 @@ model PartQuantityConsumption {
   slipLineId    String
   quantityTaken Decimal  @db.Decimal(14, 4)
   consumedAt    DateTime @default(now())
+  // The exact Goods Receipt line (delivery) this release drew from —
+  // the QUANTITY-tracked equivalent of PartBatchConsumption.batchId, so
+  // a release of a quantity part is traceable back to its GRN just like
+  // a batch or serial is. One release that spans two deliveries is
+  // stored as two rows, FIFO (see lib/inventory/quantity-fifo.ts).
+  // Nullable: releases made before this existed have none, and are
+  // attributed oldest-first at display time by the same FIFO replay.
+  goodsReceiptLineId String?
 
-  part     Part                @relation(fields: [partId], references: [id], onDelete: Cascade)
-  slipLine PartRequestSlipLine @relation(fields: [slipLineId], references: [id], onDelete: Cascade)
+  part             Part                @relation(fields: [partId], references: [id], onDelete: Cascade)
+  slipLine         PartRequestSlipLine @relation(fields: [slipLineId], references: [id], onDelete: Cascade)
+  goodsReceiptLine GoodsReceiptLine?   @relation(fields: [goodsReceiptLineId], references: [id])
 
+  @@index([partId])
+  @@index([goodsReceiptLineId])
   @@map("part_quantity_consumptions")
 }
 
@@ -1981,6 +1992,7 @@ model GoodsReceiptLine {
   part         Part         @relation(fields: [partId], references: [id])
   batches      PartBatch[]
   serials      PartSerial[]
+  quantityConsumptions PartQuantityConsumption[]
   pricingAlert PricingAlert?
 
   @@map("goods_receipt_lines")
