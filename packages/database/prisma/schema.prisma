@@ -358,6 +358,8 @@ model User {
   serviceEstimatesApproved ServiceEstimate[] @relation("ServiceEstimateApprovedBy")
   serviceEstimatesManagerApproved ServiceEstimate[] @relation("ServiceEstimateManagerApprovedBy")
   serviceEstimatesCustomerNotified ServiceEstimate[] @relation("ServiceEstimateCustomerNotifiedBy")
+  vehicleServiceCloseRequestsMade VehicleServiceCloseRequest[] @relation("VehicleServiceCloseRequestedBy")
+  vehicleServiceCloseRequestsDecided VehicleServiceCloseRequest[] @relation("VehicleServiceCloseDecidedBy")
   serviceEstimatesMatchingRequested ServiceEstimate[] @relation("ServiceEstimateMatchingRequestedBy")
   serviceEstimateLinesEntered ServiceEstimateLineItem[] @relation("ServiceEstimateLineEnteredBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
@@ -1128,6 +1130,12 @@ enum VehicleServiceStatus {
   CHECKED_IN
   IN_SERVICE
   COMPLETED
+  // Same real end-of-life ladder as Job Card's own: work done →
+  // customer told it's ready (with a collection-by date) → a Manager
+  // approves the close once payment is settled → the vehicle is
+  // checked out to a named collector (COLLECTED).
+  READY_FOR_COLLECTION
+  CLOSED
   COLLECTED
   CANCELLED
 }
@@ -1238,7 +1246,15 @@ model VehicleService {
   createdAt   DateTime  @default(now())
   checkedInAt DateTime?
   completedAt DateTime?
+  // When the customer was told the vehicle is ready for collection.
+  readyForCollectionAt DateTime?
+  // When a Manager approved the close (see VehicleServiceCloseRequest).
+  closedAt DateTime?
+  // collectedAt is the real physical-exit moment (checked out);
+  // collectedByName is who actually drove it away — required at
+  // checkout, same as Job Card's own collectedByName.
   collectedAt DateTime?
+  collectedByName String?
   cancelledAt DateTime?
 
   branch      Branch          @relation(fields: [branchId], references: [id])
@@ -1256,8 +1272,33 @@ model VehicleService {
   serviceEstimate ServiceEstimate?
   partRequestSlips PartRequestSlip[]
   payments Payment[]
+  closeRequests VehicleServiceCloseRequest[]
 
   @@map("vehicle_services")
+}
+
+// The Vehicle Service equivalent of Job Card's own CloseRequest — kept
+// as its own parallel model so Job Card's close flow is never touched.
+// A creator or supervisor requests the close (only once payment is
+// complete); a branch Manager approves (status → CLOSED) or declines.
+model VehicleServiceCloseRequest {
+  id               String                    @id @default(cuid())
+  vehicleServiceId String
+  requestedById    String
+  requestedAt      DateTime                  @default(now())
+  status           CancellationRequestStatus @default(PENDING)
+  decidedById      String?
+  decidedAt        DateTime?
+  decisionNotes    String?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @default(now()) @updatedAt
+
+  vehicleService VehicleService @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
+  requestedBy    User           @relation("VehicleServiceCloseRequestedBy", fields: [requestedById], references: [id])
+  decidedBy      User?          @relation("VehicleServiceCloseDecidedBy", fields: [decidedById], references: [id])
+
+  @@index([vehicleServiceId])
+  @@map("vehicle_service_close_requests")
 }
 
 // Each real, distinct thing the customer actually asked for this
