@@ -18,7 +18,9 @@ const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
   IN_SERVICE: 'In Service',
   COMPLETED: 'Completed',
-  COLLECTED: 'Collected',
+  READY_FOR_COLLECTION: 'Ready for Collection',
+  CLOSED: 'Closed',
+  COLLECTED: 'Checked Out',
   CANCELLED: 'Cancelled',
 };
 const STATUS_CLASS: Record<string, string> = {
@@ -26,6 +28,8 @@ const STATUS_CLASS: Record<string, string> = {
   CHECKED_IN: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   IN_SERVICE: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  READY_FOR_COLLECTION: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   COLLECTED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
