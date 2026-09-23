@@ -117,7 +117,31 @@ export default async function PrintPartRequestSlipPage({
             <tr key={line.id} style={{ borderBottom: '1px solid #E2E8F0' }}>
               <td style={{ padding: '6px 4px' }}>{i + 1}</td>
               <td style={{ padding: '6px 4px' }}>{line.part.partNumber ?? '—'}</td>
-              <td style={{ padding: '6px 4px' }}>{line.part.name}</td>
+              <td style={{ padding: '6px 4px' }}>
+                {line.part.name}
+                {/* Traceability — exactly what this line was fulfilled with,
+                    so the paper copy is a complete warranty/recall record:
+                    the batch, the individual serial, or the delivery (GRN)
+                    each unit came from. */}
+                {line.batchConsumptions.map((c: (typeof line.batchConsumptions)[number], j: number) => (
+                  <div key={`b${j}`} style={{ fontSize: '10px', color: '#64748B', marginTop: '2px' }}>
+                    Batch {c.batch.batchNumber} — {Number(c.quantityTaken)} {pluralizeWord(Number(c.quantityTaken), line.part.baseUnitOfMeasure)}
+                    {c.batch.goodsReceiptLine?.goodsReceipt ? ` (${c.batch.goodsReceiptLine.goodsReceipt.referenceNumber})` : ''}
+                  </div>
+                ))}
+                {line.issuedSerials.map((sr: (typeof line.issuedSerials)[number]) => (
+                  <div key={`s${sr.serialNumber}`} style={{ fontSize: '10px', color: '#64748B', marginTop: '2px' }}>
+                    Serial {sr.serialNumber}
+                    {sr.goodsReceiptLine?.goodsReceipt ? ` (${sr.goodsReceiptLine.goodsReceipt.referenceNumber})` : ''}
+                  </div>
+                ))}
+                {line.quantitySources.map((src: (typeof line.quantitySources)[number], j: number) => (
+                  <div key={`q${j}`} style={{ fontSize: '10px', color: '#64748B', marginTop: '2px' }}>
+                    {src.referenceNumber ? `From ${src.referenceNumber}` : 'No Goods Receipt on record'} — {src.quantity}{' '}
+                    {pluralizeWord(src.quantity, line.part.baseUnitOfMeasure)}
+                  </div>
+                ))}
+              </td>
               <td style={{ padding: '6px 4px' }}>{(line.estimateLineItem ?? line.serviceEstimateLineItem)?.description ?? '—'}</td>
               <td style={{ padding: '6px 4px', textAlign: 'right' }}>
                 {Number(line.quantityRequested)} {pluralizeWord(Number(line.quantityRequested), line.part.baseUnitOfMeasure)}
