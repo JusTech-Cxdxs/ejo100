@@ -1,6 +1,6 @@
-import { getVehicleServiceCustodySummary } from '@/lib/actions/vehicle-service';
+import { getVehicleServiceCustodySummary, type VehicleDueForService } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/actions/workshop';
-import { attendToOverdueVehicleFormAction } from '@/lib/actions/vehicle-service-form-handlers';
+import { attendToOverdueVehicleFormAction, sendVehicleServiceCollectionReminderFormAction, sendManualServiceReminderFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -28,12 +28,84 @@ const STATUS_LABEL: Record<string, string> = {
  * service, reusing listVehiclesDueForService directly rather than a
  * second, separately-maintained calculation.
  */
+/** One Due Soon / Overdue vehicle — shared by both sections. A vehicle
+ * back in the workshop is still shown, named with the visit it's in on,
+ * and is never offered a reminder (the customer is already here). */
+function DueEntryCard({ entry }: { entry: VehicleDueForService }) {
+  const overdue = entry.status === 'OVERDUE';
+  const remaining = [
+    entry.kmRemaining !== null ? (entry.kmRemaining <= 0 ? `${Math.abs(entry.kmRemaining).toLocaleString('en-NG')} km over` : `${entry.kmRemaining.toLocaleString('en-NG')} km left`) : null,
+    entry.daysRemaining !== null ? (entry.daysRemaining <= 0 ? `${pluralize(Math.abs(entry.daysRemaining), 'day')} over` : `${pluralize(entry.daysRemaining, 'day')} left`) : null,
+  ].filter(Boolean).join(' · ');
+  return (
+    <div className={`rounded-[var(--ejo-radius-lg)] border p-4 ${overdue ? 'border-[var(--ejo-error)]/40 bg-[var(--ejo-error)]/5' : 'border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/5'}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="font-medium text-[var(--ejo-primary)] hover:underline">
+            {entry.vehicleDescription}{entry.plateNumber ? ` — ${entry.plateNumber}` : ''}
+          </LoadingLink>
+          <p className="text-sm text-[var(--ejo-text)]">{entry.customerName}</p>
+          <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+            Due {entry.nextServiceDueOdometer ? `${entry.nextServiceDueOdometer.toLocaleString('en-NG')} km` : ''}
+            {entry.nextServiceDueOdometer && entry.nextServiceDueDate ? ' or ' : ''}
+            {entry.nextServiceDueDate ? formatDateOnly(entry.nextServiceDueDate) : ''}
+            {remaining ? ` — ${remaining}` : ''} · Reminders this cycle: {entry.remindersSentThisCycle}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {entry.inWorkshop ? (
+            <LoadingLink
+              href={entry.inWorkshop.kind === 'JOB_CARD' ? `/workshop/job-cards/${entry.inWorkshop.id}` : `/workshop/vehicle-service/${entry.inWorkshop.id}`}
+              className="rounded-full bg-[var(--ejo-info)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-info)] hover:underline"
+            >
+              In workshop — {entry.inWorkshop.number}
+            </LoadingLink>
+          ) : (
+            <>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${overdue ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'}`}>
+                {overdue ? 'Overdue' : 'Due Soon'}
+              </span>
+              <form action={sendManualServiceReminderFormAction}>
+                <FormPendingOverlay />
+                <input type="hidden" name="vehicleId" value={entry.vehicleId} />
+                <input type="hidden" name="returnTo" value="/workshop/vehicle-service-custody" />
+                <SubmitButton
+                  label="Send reminder"
+                  pendingLabel="Sending…"
+                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                />
+              </form>
+              {overdue ? (
+                <form action={attendToOverdueVehicleFormAction}>
+                  <FormPendingOverlay />
+                  <input type="hidden" name="serviceId" value={entry.serviceId} />
+                  <SubmitButton
+                    label="Attend To"
+                    pendingLabel="…"
+                    className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-1 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
+                  />
+                </form>
+              ) : null}
+              <LoadingLink
+                href="/workshop/vehicle-service"
+                className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+              >
+                New Service
+              </LoadingLink>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default async function VehicleServiceCustodyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; q?: string; status?: string }>;
+  searchParams: Promise<{ filter?: string; q?: string; status?: string; error?: string }>;
 }) {
-  const { filter, q, status } = await searchParams;
+  const { filter, q, status, error } = await searchParams;
   const branchId = await getWorkshopBranchId();
   const summary = await getVehicleServiceCustodySummary(branchId, q);
 
@@ -52,6 +124,28 @@ export default async function VehicleServiceCustodyPage({
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Workshop
       </p>
+      <p className="-mt-3 mb-6 text-xs text-[var(--ejo-text-muted)]">
+        Vehicles already collected are tracked for their next service in the{' '}
+        <LoadingLink href="/workshop/service-tracker" className="font-medium text-[var(--ejo-primary)] hover:underline">
+          Service Tracker
+        </LoadingLink>
+        .
+      </p>
+      {error ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="error" message={error} />
+        </div>
+      ) : null}
+      {status === 'collection_reminder_sent' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Collection reminder sent to the customer." />
+        </div>
+      ) : null}
+      {status === 'reminder_sent' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Service reminder sent to the customer." />
+        </div>
+      ) : null}
       {status === 'attended' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Marked attended to — this vehicle is ready for a new Vehicle Service." />
@@ -226,11 +320,38 @@ export default async function VehicleServiceCustodyPage({
                         </LoadingLink>
                       </p>
                     </div>
-                    <span className="rounded-full bg-[var(--ejo-success)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-success)]">
-                      {STATUS_LABEL[entry.status] ?? entry.status}
-                      {entry.completedAt ? ` · completed ${formatDateOnly(entry.completedAt)}` : ''}
-                    </span>
+                    <div className="text-right">
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          entry.collection?.isOverdue ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' : 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
+                        }`}
+                      >
+                        {entry.collection?.isOverdue ? 'Collection overdue' : STATUS_LABEL[entry.status] ?? entry.status}
+                        {entry.completedAt ? ` · completed ${formatDateOnly(entry.completedAt)}` : ''}
+                      </span>
+                      {entry.collection ? (
+                        <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Expected collection by {formatDateOnly(entry.collection.dueDate)}</p>
+                      ) : null}
+                    </div>
                   </div>
+                  {entry.collection ? (
+                    <>
+                      <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+                        Grace: {pluralize(entry.collection.graceWorkingDays, 'working day')} · Used: {pluralize(entry.collection.daysElapsed, 'working day')} ·{' '}
+                        {entry.collection.isOverdue ? 'Remaining: none — overdue' : `Remaining: ${pluralize(entry.collection.daysRemaining, 'working day')}`} ·
+                        Reminders sent: {entry.collection.remindersSent}
+                      </p>
+                      <form action={sendVehicleServiceCollectionReminderFormAction} className="mt-3">
+                        <FormPendingOverlay />
+                        <input type="hidden" name="serviceId" value={entry.id} />
+                        <SubmitButton
+                          label={entry.collection.remindersSent > 0 ? 'Send another collection reminder' : 'Send collection reminder'}
+                          pendingLabel="Sending…"
+                          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                        />
+                      </form>
+                    </>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -246,20 +367,7 @@ export default async function VehicleServiceCustodyPage({
           ) : (
             <div className="space-y-3">
               {summary.dueSoon.map((entry: (typeof summary.dueSoon)[number]) => (
-                <div key={entry.vehicleId} className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/5 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="font-medium text-[var(--ejo-primary)] hover:underline">
-                        {entry.vehicleDescription}{entry.plateNumber ? ` — ${entry.plateNumber}` : ''}
-                      </LoadingLink>
-                      <p className="text-sm text-[var(--ejo-text)]">{entry.customerName}</p>
-                    </div>
-                    <div className="text-right text-xs text-[var(--ejo-text-muted)]">
-                      {entry.nextServiceDueOdometer ? <p>{entry.nextServiceDueOdometer.toLocaleString('en-NG')} km</p> : null}
-                      {entry.nextServiceDueDate ? <p>{formatDateOnly(entry.nextServiceDueDate)}</p> : null}
-                    </div>
-                  </div>
-                </div>
+                <DueEntryCard key={entry.vehicleId} entry={entry} />
               ))}
             </div>
           )}
@@ -274,36 +382,7 @@ export default async function VehicleServiceCustodyPage({
           ) : (
             <div className="space-y-3">
               {summary.overdue.map((entry: (typeof summary.overdue)[number]) => (
-                <div key={entry.vehicleId} className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/40 bg-[var(--ejo-error)]/5 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="font-medium text-[var(--ejo-primary)] hover:underline">
-                        {entry.vehicleDescription}{entry.plateNumber ? ` — ${entry.plateNumber}` : ''}
-                      </LoadingLink>
-                      <p className="text-sm text-[var(--ejo-text)]">{entry.customerName}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-[var(--ejo-error)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-error)]">
-                        Overdue
-                      </span>
-                      <form action={attendToOverdueVehicleFormAction}>
-                        <FormPendingOverlay />
-                        <input type="hidden" name="serviceId" value={entry.serviceId} />
-                        <SubmitButton
-                          label="Attend To"
-                          pendingLabel="…"
-                          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-1 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
-                        />
-                      </form>
-                      <LoadingLink
-                        href="/workshop/vehicle-service"
-                        className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
-                      >
-                        New Service
-                      </LoadingLink>
-                    </div>
-                  </div>
-                </div>
+                <DueEntryCard key={entry.vehicleId} entry={entry} />
               ))}
             </div>
           )}
