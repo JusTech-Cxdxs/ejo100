@@ -16,7 +16,6 @@ import {
   notifyTechnicianAboutServiceEstimateFormAction,
   requestServiceEstimateStoreMatchingFormAction,
 } from '@/lib/actions/vehicle-service-estimate-form-handlers';
-import { requestServiceEstimatePartRequestSlipFormAction } from '@/lib/actions/sourcing-form-handlers';
 import { getVehicleServiceSourcingNeeds } from '@/lib/actions/sourcing';
 import { getVehicleServicePayments } from '@/lib/actions/vehicle-service-payment';
 import { recordServicePaymentFormAction } from '@/lib/actions/vehicle-service-payment-form-handlers';
@@ -1189,17 +1188,13 @@ export default async function VehicleServiceDetailPage({
                     </svg>
                     <h3 className="text-xs font-semibold text-[var(--ejo-text)]">Store Parts</h3>
                   </div>
-                  {sourcingNeeds.hasRequestablePartLines && sourcingNeeds.serviceEstimateId ? (
-                    <form action={requestServiceEstimatePartRequestSlipFormAction}>
-                      <FormPendingOverlay />
-                      <input type="hidden" name="serviceEstimateId" value={sourcingNeeds.serviceEstimateId} />
-                      <input type="hidden" name="vehicleServiceId" value={service.id} />
-                      <SubmitButton
-                        label="+ Request Store Parts"
-                        pendingLabel="Requesting…"
-                        className="inline-flex items-center gap-1 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-2.5 py-1 text-xs font-medium text-white hover:opacity-90"
-                      />
-                    </form>
+                  {sourcingNeeds.hasRequestablePartLines ? (
+                    <LoadingLink
+                      href={`/workshop/vehicle-service/${service.id}/request-parts`}
+                      className="inline-flex items-center gap-1 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-2.5 py-1 text-xs font-medium text-white hover:opacity-90"
+                    >
+                      + Request Store Parts
+                    </LoadingLink>
                   ) : sourcingNeeds.existingPartRequestSlips.length > 0 ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-[var(--ejo-success)]/15 px-2.5 py-1 text-xs font-medium text-[var(--ejo-success)]">
                       All requested
