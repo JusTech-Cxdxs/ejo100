@@ -29,6 +29,24 @@ const STATUS_COLOR: Record<string, string> = {
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
+const SERVICE_STATUS_LABEL: Record<string, string> = {
+  SCHEDULED: 'Scheduled',
+  CHECKED_IN: 'Checked In',
+  IN_SERVICE: 'In Service',
+  COMPLETED: 'Completed',
+  COLLECTED: 'Collected',
+  CANCELLED: 'Cancelled',
+};
+
+const SERVICE_STATUS_COLOR: Record<string, string> = {
+  SCHEDULED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  CHECKED_IN: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  IN_SERVICE: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  COLLECTED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+  CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
+};
+
 function formatNaira(value: number): string {
   return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -75,6 +93,22 @@ export default async function CustomerDashboardPage() {
           },
         },
       },
+      vehicleServices: {
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: {
+          vehicle: { select: { make: true, model: true, plateNumber: true } },
+          complaints: { orderBy: { sequenceNumber: 'asc' } },
+          // Same real rule as Job Card above — only ever shown once the
+          // customer has actually been notified.
+          serviceEstimate: {
+            select: {
+              customerNotifiedAt: true,
+              lineItems: { orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true } },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -87,6 +121,10 @@ export default async function CustomerDashboardPage() {
   const activeJobCards = customer.jobCards.filter(
     (jc: (typeof customer.jobCards)[number]) => jc.status !== 'CLOSED' && jc.status !== 'CANCELLED',
   );
+  const activeVehicleServices = customer.vehicleServices.filter(
+    (vs: (typeof customer.vehicleServices)[number]) => vs.status !== 'COLLECTED' && vs.status !== 'CANCELLED',
+  );
+  const activeCount = activeJobCards.length + activeVehicleServices.length;
 
   return (
     <main className="mx-auto max-w-5xl px-6 pt-32 pb-24">
@@ -97,8 +135,8 @@ export default async function CustomerDashboardPage() {
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-          <p className="text-3xl font-bold text-[var(--ejo-text)]">{activeJobCards.length}</p>
-          <p className="text-sm text-[var(--ejo-text-muted)]">Active service{activeJobCards.length === 1 ? '' : 's'}</p>
+          <p className="text-3xl font-bold text-[var(--ejo-text)]">{activeCount}</p>
+          <p className="text-sm text-[var(--ejo-text-muted)]">Active service{activeCount === 1 ? '' : 's'}</p>
         </div>
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
           <p className="text-3xl font-bold text-[var(--ejo-text)]">{customer.vehicles.length}</p>
@@ -226,6 +264,118 @@ export default async function CustomerDashboardPage() {
                             <p className="mt-1 text-xs text-amber-800">
                               Reference: {jc.jobNumber} — {[jc.vehicle.make, jc.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}
                               {jc.vehicle.plateNumber ? ` — ${jc.vehicle.plateNumber}` : ''}
+                            </p>
+                            <p className="mt-1 text-xs text-amber-800">
+                              Or pay in person at our office — the cashier will confirm your payment. After
+                              transferring, you can send your payment proof by replying to our email.
+                            </p>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })()
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-lg font-semibold text-[var(--ejo-text)]">Vehicle services</h2>
+        {customer.vehicleServices.length === 0 ? (
+          <p className="mt-3 text-sm text-[var(--ejo-text-muted)]">
+            No routine services yet — this will show your oil changes, filter replacements and other routine
+            servicing once your vehicle has been booked in.
+          </p>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {customer.vehicleServices.map((vs: (typeof customer.vehicleServices)[number]) => (
+              <div
+                key={vs.id}
+                id={`service-${vs.id}`}
+                className="scroll-mt-24 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 target:border-[var(--ejo-primary)] target:bg-[var(--ejo-primary)]/5 target:ring-2 target:ring-[var(--ejo-primary)]"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium text-[var(--ejo-text)]">{vs.serviceNumber}</p>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${SERVICE_STATUS_COLOR[vs.status] ?? ''}`}>
+                    {SERVICE_STATUS_LABEL[vs.status] ?? vs.status}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
+                  {[vs.vehicle.make, vs.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}
+                  {vs.vehicle.plateNumber ? ` — ${vs.vehicle.plateNumber}` : ''}
+                </p>
+                {vs.complaints.length > 0 ? (
+                  <ul className="mt-2 space-y-0.5 text-sm text-[var(--ejo-text)]">
+                    {vs.complaints.map((c: (typeof vs.complaints)[number]) => (
+                      <li key={c.id}>
+                        {c.sequenceNumber}. {c.description}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                {vs.serviceEstimate && vs.serviceEstimate.customerNotifiedAt ? (
+                  (() => {
+                    let servicesTotal = 0;
+                    let labourTotal = 0;
+                    let sundryTotal = 0;
+                    for (const li of vs.serviceEstimate.lineItems as { type: string; amount: unknown }[]) {
+                      const amount = Number(li.amount ?? 0);
+                      if (li.type === 'LABOUR') labourTotal += amount;
+                      else if (li.type === 'SUNDRY') sundryTotal += amount;
+                      else servicesTotal += amount;
+                    }
+                    const total = servicesTotal + labourTotal + sundryTotal;
+                    const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+                    return (
+                      <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Estimate</p>
+                        <ol className="mt-2 space-y-0.5 text-sm text-[var(--ejo-text)]">
+                          {(vs.serviceEstimate.lineItems as { description: string; quantity: unknown; amount: unknown }[]).map((li, i) => (
+                            <li key={i}>
+                              {li.description} (x{Number(li.quantity)}) — {formatNaira(Number(li.amount ?? 0))}
+                            </li>
+                          ))}
+                        </ol>
+                        <div className="mt-2 space-y-0.5 border-t border-[var(--ejo-border)] pt-2 text-sm">
+                          {servicesTotal > 0 ? (
+                            <div className="flex justify-between text-[var(--ejo-text-muted)]">
+                              <span>Parts &amp; Services</span>
+                              <span>{formatNaira(servicesTotal)}</span>
+                            </div>
+                          ) : null}
+                          {labourTotal > 0 ? (
+                            <div className="flex justify-between text-[var(--ejo-text-muted)]">
+                              <span>Labour</span>
+                              <span>{formatNaira(labourTotal)}</span>
+                            </div>
+                          ) : null}
+                          {sundryTotal > 0 ? (
+                            <div className="flex justify-between text-[var(--ejo-text-muted)]">
+                              <span>Sundry</span>
+                              <span>{formatNaira(sundryTotal)}</span>
+                            </div>
+                          ) : null}
+                          <div className="flex justify-between font-semibold text-[var(--ejo-text)]">
+                            <span>Total Estimate</span>
+                            <span>{formatNaira(total)}</span>
+                          </div>
+                        </div>
+                        {vs.status === 'CHECKED_IN' ? (
+                          <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-amber-200 bg-amber-50 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                              Minimum deposit required (70%)
+                            </p>
+                            <p className="text-lg font-bold text-[var(--ejo-text)]">{formatNaira(minimumDeposit)}</p>
+                            <p className="mt-1 text-xs text-amber-800">
+                              Bank: {COMPANY_BANK_DETAILS.bankName} · Account Name: {COMPANY_BANK_DETAILS.accountName} ·
+                              Account Number: {COMPANY_BANK_DETAILS.accountNumber}
+                            </p>
+                            <p className="mt-1 text-xs text-amber-800">
+                              Reference: {vs.serviceNumber} — {[vs.vehicle.make, vs.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}
+                              {vs.vehicle.plateNumber ? ` — ${vs.vehicle.plateNumber}` : ''}
                             </p>
                             <p className="mt-1 text-xs text-amber-800">
                               Or pay in person at our office — the cashier will confirm your payment. After
