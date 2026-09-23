@@ -119,6 +119,8 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'service_estimate.nudge_to_technician': 'Supervisor notified technician',
   'service_estimate.submitted': 'Estimate submitted for approval',
   'service_estimate.approved': 'Estimate approved',
+  'service_estimate.manager_approved': 'Estimate approved by manager',
+  'service_estimate.customer_notified': 'Customer notified of approved estimate',
   'service_estimate.cancelled': 'Estimate cancelled',
   'part_request_slip.requested': 'Parts requested from Store',
   'part_request_slip.hod_approved': 'Parts request approved by HOD',
@@ -1031,16 +1033,18 @@ export default async function VehicleServiceDetailPage({
                           {serviceEstimate.customerNotifiedAt ? ` on ${formatDateOnly(serviceEstimate.customerNotifiedAt)}` : ''}.
                         </p>
                       ) : null}
-                      <form action={requestServiceEstimatePartRequestSlipFormAction} className="mt-3">
-                        <FormPendingOverlay />
-                        <input type="hidden" name="serviceEstimateId" value={serviceEstimate.id} />
-                        <input type="hidden" name="vehicleServiceId" value={service.id} />
-                        <SubmitButton
-                          label="Request Store Parts"
-                          pendingLabel="Requesting…"
-                          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                        />
-                      </form>
+                      {service.status === 'IN_SERVICE' ? (
+                        <form action={requestServiceEstimatePartRequestSlipFormAction} className="mt-3">
+                          <FormPendingOverlay />
+                          <input type="hidden" name="serviceEstimateId" value={serviceEstimate.id} />
+                          <input type="hidden" name="vehicleServiceId" value={service.id} />
+                          <SubmitButton
+                            label="Request Store Parts"
+                            pendingLabel="Requesting…"
+                            className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                          />
+                        </form>
+                      ) : null}
                     </div>
                   ) : null}
                 </>
@@ -1048,7 +1052,7 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {serviceEstimate?.status === 'MANAGER_APPROVED' ? (
+          {serviceEstimate?.customerNotifiedAt ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Payments</h2>
