@@ -31,11 +31,23 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
 export default async function PartsRequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; type?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, type } = await searchParams;
   const branchId = await getStoreBranchId();
-  const slips = await listPartRequestSlips(branchId, q);
+  const allSlips = await listPartRequestSlips(branchId, q);
+  // Same real type filter as the Estimate Matching page — counts always
+  // reflect the current search, across both kinds, so switching tabs
+  // never hides how many are waiting on the other side.
+  const jcCount = allSlips.filter((sl: (typeof allSlips)[number]) => Boolean(sl.jobCard)).length;
+  const svCount = allSlips.filter((sl: (typeof allSlips)[number]) => Boolean(sl.vehicleService)).length;
+  const slips =
+    type === 'JOB_CARD'
+      ? allSlips.filter((sl: (typeof allSlips)[number]) => Boolean(sl.jobCard))
+      : type === 'VEHICLE_SERVICE'
+        ? allSlips.filter((sl: (typeof allSlips)[number]) => Boolean(sl.vehicleService))
+        : allSlips;
+  const qParam = q ? `&q=${encodeURIComponent(q)}` : '';
 
   return (
     <div className="p-8">
@@ -43,9 +55,31 @@ export default async function PartsRequestsPage({
         ← Back to Workshop
       </LoadingLink>
       <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Parts Requests</h1>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">Every Store Parts request raised across active Job Cards.</p>
+      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">Every Store Parts request raised across active Job Cards and Vehicle Services.</p>
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <LoadingLink
+          href={`/workshop/parts-requests${q ? `?q=${encodeURIComponent(q)}` : ''}`}
+          className={`rounded-full px-3 py-1 text-xs font-medium ${!type ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text-muted)]'}`}
+        >
+          All ({jcCount + svCount})
+        </LoadingLink>
+        <LoadingLink
+          href={`/workshop/parts-requests?type=JOB_CARD${qParam}`}
+          className={`rounded-full px-3 py-1 text-xs font-medium ${type === 'JOB_CARD' ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text-muted)]'}`}
+        >
+          Job Cards ({jcCount})
+        </LoadingLink>
+        <LoadingLink
+          href={`/workshop/parts-requests?type=VEHICLE_SERVICE${qParam}`}
+          className={`rounded-full px-3 py-1 text-xs font-medium ${type === 'VEHICLE_SERVICE' ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text-muted)]'}`}
+        >
+          Vehicle Services ({svCount})
+        </LoadingLink>
+      </div>
 
       <form className="mb-6 flex gap-2" action="/workshop/parts-requests">
+        {type ? <input type="hidden" name="type" value={type} /> : null}
         <input
           type="search"
           name="q"
@@ -61,7 +95,7 @@ export default async function PartsRequestsPage({
         </button>
         {q ? (
           <LoadingLink
-            href="/workshop/parts-requests"
+            href={`/workshop/parts-requests${type ? `?type=${type}` : ''}`}
             className="inline-flex items-center rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
           >
             Clear
@@ -70,7 +104,7 @@ export default async function PartsRequestsPage({
       </form>
 
       {slips.length === 0 ? (
-        <p className="text-sm text-[var(--ejo-text-muted)]">{q ? 'No parts requests match your search.' : 'No parts requests raised yet.'}</p>
+        <p className="text-sm text-[var(--ejo-text-muted)]">{q || type ? 'No parts requests match your search.' : 'No parts requests raised yet.'}</p>
       ) : (
         <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
