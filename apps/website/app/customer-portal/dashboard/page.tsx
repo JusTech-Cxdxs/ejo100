@@ -38,6 +38,7 @@ const SERVICE_STATUS_LABEL: Record<string, string> = {
   CLOSED: 'Closed',
   COLLECTED: 'Collected',
   CANCELLED: 'Cancelled',
+  ESCALATED: 'Moved to a Job Card',
 };
 
 const SERVICE_STATUS_COLOR: Record<string, string> = {
@@ -48,6 +49,7 @@ const SERVICE_STATUS_COLOR: Record<string, string> = {
   READY_FOR_COLLECTION: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   COLLECTED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+  ESCALATED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
@@ -126,7 +128,8 @@ export default async function CustomerDashboardPage() {
     (jc: (typeof customer.jobCards)[number]) => jc.status !== 'CLOSED' && jc.status !== 'CANCELLED',
   );
   const activeVehicleServices = customer.vehicleServices.filter(
-    (vs: (typeof customer.vehicleServices)[number]) => vs.status !== 'COLLECTED' && vs.status !== 'CANCELLED',
+    // An escalated service continues as a Job Card (counted there) — not twice.
+    (vs: (typeof customer.vehicleServices)[number]) => vs.status !== 'COLLECTED' && vs.status !== 'CANCELLED' && vs.status !== 'ESCALATED',
   );
   const activeCount = activeJobCards.length + activeVehicleServices.length;
 
