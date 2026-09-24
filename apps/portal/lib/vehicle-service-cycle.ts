@@ -1,5 +1,6 @@
 import { prisma } from '@ejo/database';
 import { calculateNextServiceDue } from '@/lib/vehicle-service-due';
+import { onOrAfterWorkingDay } from '@/lib/utils/working-days';
 
 /**
  * The next-service clock for Vehicle Services.
@@ -39,7 +40,9 @@ export function computeServiceCycle(odometer: number | null, completedAt: Date, 
     primaryServiceMileage: odometer,
     primaryServiceDate: completedAt,
     nextServiceDueOdometer: next.dueOdometer,
-    nextServiceDueDate: next.dueDate,
+    // A date the customer can actually bring the vehicle in: a weekend
+    // due date rolls to the Monday.
+    nextServiceDueDate: next.dueDate ? onOrAfterWorkingDay(next.dueDate) : null,
   };
 }
 
@@ -222,7 +225,9 @@ export function nextReminderStage(
   now: Date = new Date(),
 ): { stage: 1 | 2 | 3 | 4 | null; dueFrom: Date | null } {
   if (status === 'ON_TRACK') return { stage: null, dueFrom: null };
-  const gapPassedAt = lastSentAt ? new Date(new Date(lastSentAt).getTime() + MIN_DAYS_BETWEEN_REMINDERS * 86400000) : null;
+  // The team works Monday–Friday: a follow-up that would fall due on a
+  // weekend becomes due on the Monday, so it's waiting when they're in.
+  const gapPassedAt = lastSentAt ? onOrAfterWorkingDay(new Date(new Date(lastSentAt).getTime() + MIN_DAYS_BETWEEN_REMINDERS * 86400000)) : null;
   const gapPassed = !gapPassedAt || gapPassedAt <= now;
   if (status === 'OVERDUE') {
     if (lastStage === null || lastStage < 4) return { stage: 4, dueFrom: null };
