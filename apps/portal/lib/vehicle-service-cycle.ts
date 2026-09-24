@@ -1,6 +1,6 @@
 import { prisma } from '@ejo/database';
 import { calculateNextServiceDue } from '@/lib/vehicle-service-due';
-import { onOrAfterWorkingDay } from '@/lib/utils/working-days';
+import { onOrAfterWorkingDay, addWorkingDays } from '@/lib/utils/working-days';
 
 /**
  * The next-service clock for Vehicle Services.
@@ -206,17 +206,21 @@ export function serviceDueStatus(nextServiceDueOdometer: number | null, nextServ
   return { kmRemaining, daysRemaining, status };
 }
 
-/** Spacing kept between one reminder and the next for the same prediction. */
-export const MIN_DAYS_BETWEEN_REMINDERS = 14;
+/** Working days (Mon–Fri) between one service reminder and the next for
+ * the same prediction. The "due soon" window opens 30 days (about 22
+ * working days) before the due date, so with this spacing the 1st, 2nd
+ * and 3rd reminders all land before the vehicle is actually due. */
+export const REMINDER_SPACING_WORKING_DAYS = 7;
 
 /**
  * Which reminder is due now for one prediction — the single rule the
  * whole system uses. Reminders are SEMI-AUTOMATIC: this only decides
  * WHEN a reminder is due and which stage; a person always clicks Send.
- *   Due soon: 1st (friendly) → 2nd (follow-up) → 3rd (due), each at
- *   least 14 days after the last. Overdue: the overdue reminder (4),
- *   repeatable every 14 days. Returns when the next one becomes due if
- *   it isn't due yet.
+ *   Due soon: 1st (friendly) as soon as the vehicle is due soon, then
+ *   2nd (follow-up) and 3rd (due), each 7 working days after the last.
+ *   Overdue: the overdue reminder (4) straight away, repeatable every 7
+ *   working days. Returns when the next one becomes due if it isn't yet
+ *   (always a working day).
  */
 export function nextReminderStage(
   status: ServiceDueStatus,
@@ -225,9 +229,8 @@ export function nextReminderStage(
   now: Date = new Date(),
 ): { stage: 1 | 2 | 3 | 4 | null; dueFrom: Date | null } {
   if (status === 'ON_TRACK') return { stage: null, dueFrom: null };
-  // The team works Monday–Friday: a follow-up that would fall due on a
-  // weekend becomes due on the Monday, so it's waiting when they're in.
-  const gapPassedAt = lastSentAt ? onOrAfterWorkingDay(new Date(new Date(lastSentAt).getTime() + MIN_DAYS_BETWEEN_REMINDERS * 86400000)) : null;
+  // Counted in working days (Mon–Fri) — the team's own calendar.
+  const gapPassedAt = lastSentAt ? addWorkingDays(new Date(lastSentAt), REMINDER_SPACING_WORKING_DAYS) : null;
   const gapPassed = !gapPassedAt || gapPassedAt <= now;
   if (status === 'OVERDUE') {
     if (lastStage === null || lastStage < 4) return { stage: 4, dueFrom: null };
@@ -256,7 +259,7 @@ export type TrackedVehicle = {
   attendedAt: Date | null;
   /** Currently back in the workshop — tracked, but never reminded. */
   inWorkshop: WorkshopVisit | null;
-  reminders: { sentThisCycle: number; lastSentAt: Date | null; lastStage: number | null };
+  reminders: { sentThisCycle: number; lastSentAt: Date | null; lastStage: number | null; lastSentByName: string | null };
   /** The reminder a person can send right now (null = none due), or when
    * the next one becomes due. Never set while in the workshop or once
    * attended to. */
@@ -299,7 +302,7 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
   const latest = new Map<string, (typeof services)[number]>();
   for (const s of services) if (!latest.has(s.vehicleId)) latest.set(s.vehicleId, s);
   const vehicleIds = [...latest.keys()];
-  const [visits, logs] = await Promise.all([
+  const [visits, logs, reminderAudits] = await Promise.all([
     workshopVisitsForVehicles(vehicleIds),
     vehicleIds.length
       ? prisma.serviceReminderLog.findMany({
@@ -308,7 +311,18 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
           select: { vehicleId: true, sentAt: true, reminderNumber: true },
         })
       : Promise.resolve([] as { vehicleId: string; sentAt: Date; reminderNumber: number }[]),
+    // Who sent each reminder — by name, from the audit trail.
+    vehicleIds.length
+      ? prisma.auditLog.findMany({
+          where: { action: 'vehicle.service_reminder_sent', entityType: 'CustomerVehicle', entityId: { in: vehicleIds } },
+          orderBy: { createdAt: 'desc' },
+          select: { entityId: true, userId: true, createdAt: true },
+        })
+      : Promise.resolve([] as { entityId: string | null; userId: string | null; createdAt: Date }[]),
   ]);
+  const senderIds = [...new Set(reminderAudits.map((a: { userId: string | null }) => a.userId).filter((id: string | null): id is string => Boolean(id)))];
+  const senders = senderIds.length ? await prisma.user.findMany({ where: { id: { in: senderIds } }, select: { id: true, fullName: true } }) : [];
+  const senderName = new Map(senders.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
   const now = new Date();
   return [...latest.values()].map((s) => {
     const due = serviceDueStatus(s.nextServiceDueOdometer, s.nextServiceDueDate, s.vehicle.mileage, now);
@@ -333,6 +347,14 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
         sentThisCycle: cycleLogs.length,
         lastSentAt: cycleLogs[0]?.sentAt ?? null,
         lastStage: cycleLogs[0]?.reminderNumber ?? null,
+        lastSentByName: (() => {
+          const last = cycleLogs[0];
+          if (!last) return null;
+          const audit = reminderAudits.find(
+            (a: { entityId: string | null; createdAt: Date }) => a.entityId === s.vehicleId && Math.abs(new Date(a.createdAt).getTime() - new Date(last.sentAt).getTime()) < 2 * 60 * 1000,
+          );
+          return audit?.userId ? senderName.get(audit.userId) ?? null : null;
+        })(),
       },
       ...(() => {
         const inWorkshop = visits.get(s.vehicleId) ?? null;
