@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getVehicleService, getVehicleServiceAuditTrail, getVehicleServiceCloseRequests } from '@/lib/actions/vehicle-service';
+import { listRefunds } from '@/lib/actions/refunds';
+import { RefundsPanel } from '@/components/RefundsPanel';
 import { getVehicleInspection } from '@/lib/actions/vehicle-inspection';
 import { getServiceEstimate } from '@/lib/actions/vehicle-service-estimate';
 import { cancelVehicleInspectionFormAction, completeVehicleInspectionFromServicePageFormAction } from '@/lib/actions/vehicle-inspection-form-handlers';
@@ -147,6 +149,9 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle_service.attended_to': 'Overdue prediction attended to',
   'vehicle_service.close_requested': 'Close requested',
   'vehicle_service.close_declined': 'Close request declined',
+  'refund.recorded': 'Refund recorded',
+  'refund.completed': 'Refund completed — all money returned',
+  'vehicle_service.deleted': 'Vehicle Service deleted',
   'assignment.accepted': 'Technician accepted assignment',
   'assignment.rejected': 'Technician rejected assignment',
   'vehicle_inspection.started': 'Inspection started',
@@ -327,6 +332,7 @@ export default async function VehicleServiceDetailPage({
   }
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
+  const refunds = await listRefunds({ vehicleServiceId: id });
   // Same real rule the server enforces for close and check-out.
   const isPaidInFull = paymentsTotal >= estimateTotal;
   const pendingCloseRequest = closeRequests.find((r: (typeof closeRequests)[number]) => r.status === 'PENDING') ?? null;
@@ -444,6 +450,11 @@ export default async function VehicleServiceDetailPage({
       {status === 'assignment_rejected' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Assignment rejected." />
+        </div>
+      ) : null}
+      {status === 'refund_recorded' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Refund recorded — the customer has been emailed their receipt." />
         </div>
       ) : null}
       {status === 'close_requested' ? (
@@ -1161,6 +1172,18 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
+          {service.status === 'CANCELLED' && (paymentsTotal > 0 || refunds.length > 0) ? (
+            <RefundsPanel
+              target={{ vehicleServiceId: service.id }}
+              paid={paymentsTotal}
+              refunds={refunds}
+              isCancelled
+              canRecord={isEligibleFinance}
+              defaultPaidTo={service.customer.fullName}
+              defaultReason="Vehicle Service cancelled"
+            />
+          ) : null}
+
           {showPayments ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <div className="flex items-center justify-between">
@@ -1606,15 +1629,22 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {canCancel ? (
+          {canCancel && (paymentsTotal <= 0 || isEligibleManager) ? (
             <form action={updateVehicleServiceStatusFormAction}>
               <FormPendingOverlay />
               <input type="hidden" name="serviceId" value={service.id} />
               <input type="hidden" name="newStatus" value="CANCELLED" />
+              {paymentsTotal > 0 ? (
+                <p className="mb-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
+                  The customer has paid {formatNaira(paymentsTotal)}. Cancelling also authorises a full refund — Finance then pays it and records it under Refunds.
+                </p>
+              ) : null}
               <button type="submit" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)]">
                 Cancel this Vehicle Service
               </button>
             </form>
+          ) : canCancel ? (
+            <p className="text-xs text-[var(--ejo-text-muted)]">Money has been paid on this service — only a Workshop Manager can cancel it (which authorises a refund).</p>
           ) : null}
 
           {isMasterAdmin ? (
