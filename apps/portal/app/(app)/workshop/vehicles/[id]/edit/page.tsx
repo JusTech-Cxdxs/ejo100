@@ -15,18 +15,42 @@ import { AuditTrail } from '@/components/AuditTrail';
 import { VehicleMileageTrendChart } from '@/components/VehicleMileageTrendChart';
 import { VehicleVisitHistoryChart } from '@/components/VehicleVisitHistoryChart';
 import { VehicleFindingsBreakdownChart } from '@/components/VehicleFindingsBreakdownChart';
+import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateTime, formatDateTimeCompact, formatDateOnly } from '@/lib/utils/format-date';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle.created': 'Vehicle registered',
   'vehicle.updated': 'Vehicle details updated',
+  'vehicle.deleted': 'Vehicle deleted',
+  'vehicle.service_reminder_sent': 'Service reminder emailed to the customer',
 };
+
+const REMINDER_STAGE_LABEL: Record<number, string> = { 1: '1st — Friendly', 2: '2nd — Follow-up', 3: '3rd — Due', 4: 'Overdue' };
 
 function formatAuditDetail(entry: { action: string; metadata: unknown }): string | null {
   const meta = entry.metadata as Record<string, unknown> | null;
   if (!meta) return null;
+  if (entry.action === 'vehicle.service_reminder_sent' && typeof meta.stage === 'number') {
+    return `${REMINDER_STAGE_LABEL[meta.stage] ?? `Stage ${meta.stage}`} reminder`;
+  }
   if (typeof meta.plateNumber === 'string') return meta.plateNumber;
   return null;
+}
+
+/** Who sent a reminder, by name — matched to the audit entry written in
+ * the same moment for the same vehicle and stage (never just "staff"). */
+function reminderSender(
+  sentAt: Date,
+  stage: number,
+  trail: { action: string; createdAt: Date; metadata: unknown; user: { fullName: string } | null }[],
+): string | null {
+  const match = trail.find(
+    (e) =>
+      e.action === 'vehicle.service_reminder_sent' &&
+      (e.metadata as { stage?: number } | null)?.stage === stage &&
+      Math.abs(new Date(e.createdAt).getTime() - new Date(sentAt).getTime()) < 2 * 60 * 1000,
+  );
+  return match?.user?.fullName ?? null;
 }
 
 /**
@@ -259,7 +283,7 @@ export default async function VehiclePage({
                     <>
                       {vehicle.serviceIntervalKm ? `${vehicle.serviceIntervalKm.toLocaleString('en-NG')} km` : null}
                       {vehicle.serviceIntervalKm && vehicle.serviceIntervalDays ? ' or ' : null}
-                      {vehicle.serviceIntervalDays ? `${vehicle.serviceIntervalDays} days` : null}
+                      {vehicle.serviceIntervalDays ? pluralize(vehicle.serviceIntervalDays, 'day') : null}
                       <span className="ml-1 text-xs text-[var(--ejo-text-muted)]">(this vehicle&apos;s own)</span>
                     </>
                   ) : (
@@ -556,7 +580,7 @@ export default async function VehiclePage({
                   <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
                     <th className="pb-2">Sent</th>
                     <th className="pb-2">Reminder</th>
-                    <th className="pb-2">Trigger</th>
+                    <th className="pb-2">Sent by</th>
                     <th className="pb-2">Estimated Due</th>
                     <th className="pb-2">Odometer at Send</th>
                   </tr>
@@ -566,9 +590,11 @@ export default async function VehiclePage({
                     <tr key={r.id} className="border-b border-[var(--ejo-border)] last:border-0">
                       <td className="py-2 text-[var(--ejo-text)]">{formatDateTime(r.sentAt)}</td>
                       <td className="py-2 text-[var(--ejo-text)]">
-                        {r.reminderNumber === 1 ? '1st — Friendly' : r.reminderNumber === 2 ? '2nd — Follow-up' : r.reminderNumber === 3 ? '3rd — Due' : `${r.reminderNumber}th — Overdue`}
+                        {REMINDER_STAGE_LABEL[r.reminderNumber] ?? `Stage ${r.reminderNumber}`}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">{r.trigger === 'MANUAL' ? 'Sent by staff' : r.trigger === 'OVERDUE' ? 'Overdue (automatic)' : 'Due Soon (automatic)'}</td>
+                      <td className="py-2 text-[var(--ejo-text-muted)]">
+                        {reminderSender(r.sentAt, r.reminderNumber, auditTrail) ?? (r.trigger === 'MANUAL' ? 'Unknown user' : 'System (automatic, before reminders became manual)')}
+                      </td>
                       <td className="py-2 text-[var(--ejo-text-muted)]">
                         {r.estimatedDueOdometer ? `${r.estimatedDueOdometer.toLocaleString('en-NG')} km` : null}
                         {r.estimatedDueOdometer && r.estimatedDueDate ? ' / ' : null}
