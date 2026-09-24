@@ -37,3 +37,25 @@ export function addWorkingDays(from: Date, n: number): Date {
   }
   return cursor;
 }
+
+/** Lagos is UTC+1 all year (no daylight saving). */
+const LAGOS_OFFSET_MS = 60 * 60 * 1000;
+
+/** Saturday or Sunday by the calendar in Lagos — not UTC, so a late
+ * Friday night in UTC is never mistaken for Saturday. */
+export function isLagosWeekend(date: Date): boolean {
+  const day = new Date(date.getTime() + LAGOS_OFFSET_MS).getUTCDay();
+  return day === 0 || day === 6;
+}
+
+/**
+ * The same moment if it falls on a working day (Mon–Fri, Lagos),
+ * otherwise the following Monday at the same time of day. Used so
+ * every date the workshop acts on — when a reminder becomes due, when
+ * a vehicle's next service is due — is a day the team is actually in.
+ */
+export function onOrAfterWorkingDay(date: Date): Date {
+  const d = new Date(date.getTime());
+  while (isLagosWeekend(d)) d.setTime(d.getTime() + 24 * 60 * 60 * 1000);
+  return d;
+}
