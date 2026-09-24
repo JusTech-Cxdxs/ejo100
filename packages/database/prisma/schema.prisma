@@ -1138,6 +1138,10 @@ enum VehicleServiceStatus {
   CLOSED
   COLLECTED
   CANCELLED
+  // Handed over to a Job Card — terminal and read-only here; all work,
+  // payment and checkout continue on the Job Card. The next-service
+  // count starts when that Job Card is checked out.
+  ESCALATED
 }
 
 // Real, configurable master data — never hardcoded service names, so the
@@ -1256,6 +1260,8 @@ model VehicleService {
   collectedAt DateTime?
   collectedByName String?
   cancelledAt DateTime?
+  // When this service was handed over to a Job Card (status ESCALATED).
+  escalatedAt DateTime?
 
   branch      Branch          @relation(fields: [branchId], references: [id])
   customer    Customer        @relation(fields: [customerId], references: [id])
