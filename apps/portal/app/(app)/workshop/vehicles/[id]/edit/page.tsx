@@ -360,8 +360,13 @@ export default async function VehiclePage({
               <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
                 Reminders this cycle: {serviceHealth.remindersSentThisCycle}
                 {serviceHealth.lastReminderAt ? ` — last ${formatDateTime(serviceHealth.lastReminderAt)}` : ''}
+                {serviceHealth.reminderDue
+                  ? ` · Due now: ${serviceHealth.reminderDue.stage === 4 ? 'Overdue reminder' : `reminder ${serviceHealth.reminderDue.stage}`}`
+                  : serviceHealth.nextReminderFrom
+                    ? ` · Next from ${formatDateOnly(serviceHealth.nextReminderFrom)}`
+                    : ''}
               </p>
-              {serviceHealth.status !== 'UP_TO_DATE' && !serviceHealth.inWorkshop && !serviceHealth.attendedAt ? (
+              {serviceHealth.reminderDue ? (
                 <form action={sendManualServiceReminderFormAction} className="mt-3">
                   <FormPendingOverlay />
                   <input type="hidden" name="vehicleId" value={vehicle.id} />
@@ -377,6 +382,16 @@ export default async function VehiclePage({
                 <LoadingLink href={`/workshop/vehicle-service/${serviceHealth.serviceId}`} className="text-[var(--ejo-primary)] hover:underline">
                   View {serviceHealth.serviceNumber}
                 </LoadingLink>
+                {serviceHealth.viaJobCard ? (
+                  <LoadingLink href={`/workshop/job-cards/${serviceHealth.viaJobCard.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                    Serviced on {serviceHealth.viaJobCard.jobNumber}
+                  </LoadingLink>
+                ) : null}
+                {!serviceHealth.inWorkshop ? (
+                  <LoadingLink href={`/workshop/vehicle-service/book?vehicleId=${vehicle.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                    Book in for service
+                  </LoadingLink>
+                ) : null}
                 <LoadingLink href="/workshop/service-tracker" className="text-[var(--ejo-primary)] hover:underline">
                   Service Tracker
                 </LoadingLink>
