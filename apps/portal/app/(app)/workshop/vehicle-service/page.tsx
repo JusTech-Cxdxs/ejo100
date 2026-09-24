@@ -1,4 +1,5 @@
 import { headers } from 'next/headers';
+import { pluralize } from '@/lib/utils/pluralize';
 import { auth } from '@/lib/auth';
 import { prisma } from '@ejo/database';
 import { listVehicleServices, listVehiclesDueForService } from '@/lib/actions/vehicle-service';
@@ -120,7 +121,7 @@ export default async function VehicleServicePage({
               Primary Service every{' '}
               {organisation.primaryServiceIntervalKm ? `${organisation.primaryServiceIntervalKm.toLocaleString('en-NG')} km` : null}
               {organisation.primaryServiceIntervalKm && organisation.primaryServiceIntervalDays ? ' or ' : null}
-              {organisation.primaryServiceIntervalDays ? `${organisation.primaryServiceIntervalDays} days` : null}
+              {organisation.primaryServiceIntervalDays ? pluralize(organisation.primaryServiceIntervalDays, 'day') : null}
               {!organisation.primaryServiceIntervalKm && !organisation.primaryServiceIntervalDays ? 'Not set — click to set' : ''}
             </LoadingLink>
           )
