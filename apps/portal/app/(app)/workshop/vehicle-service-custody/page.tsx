@@ -28,6 +28,8 @@ const STATUS_LABEL: Record<string, string> = {
  * service, reusing listVehiclesDueForService directly rather than a
  * second, separately-maintained calculation.
  */
+const REMINDER_STAGE_LABEL: Record<number, string> = { 1: '1st — Friendly', 2: '2nd — Follow-up', 3: '3rd — Due', 4: 'Overdue' };
+
 /** One Due Soon / Overdue vehicle — shared by both sections. A vehicle
  * back in the workshop is still shown, named with the visit it's in on,
  * and is never offered a reminder (the customer is already here). */
@@ -50,6 +52,7 @@ function DueEntryCard({ entry }: { entry: VehicleDueForService }) {
             {entry.nextServiceDueOdometer && entry.nextServiceDueDate ? ' or ' : ''}
             {entry.nextServiceDueDate ? formatDateOnly(entry.nextServiceDueDate) : ''}
             {remaining ? ` — ${remaining}` : ''} · Reminders this cycle: {entry.remindersSentThisCycle}
+            {entry.reminderDue ? ` · Reminder due now: ${REMINDER_STAGE_LABEL[entry.reminderDue.stage]}` : entry.nextReminderFrom ? ` · Next reminder from ${formatDateOnly(entry.nextReminderFrom)}` : ''}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -65,16 +68,18 @@ function DueEntryCard({ entry }: { entry: VehicleDueForService }) {
               <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${overdue ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'}`}>
                 {overdue ? 'Overdue' : 'Due Soon'}
               </span>
-              <form action={sendManualServiceReminderFormAction}>
-                <FormPendingOverlay />
-                <input type="hidden" name="vehicleId" value={entry.vehicleId} />
-                <input type="hidden" name="returnTo" value="/workshop/vehicle-service-custody" />
-                <SubmitButton
-                  label="Send reminder"
-                  pendingLabel="Sending…"
-                  className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                />
-              </form>
+              {entry.reminderDue ? (
+                <form action={sendManualServiceReminderFormAction}>
+                  <FormPendingOverlay />
+                  <input type="hidden" name="vehicleId" value={entry.vehicleId} />
+                  <input type="hidden" name="returnTo" value="/workshop/vehicle-service-custody" />
+                  <SubmitButton
+                    label="Send reminder"
+                    pendingLabel="Sending…"
+                    className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+                  />
+                </form>
+              ) : null}
               {overdue ? (
                 <form action={attendToOverdueVehicleFormAction}>
                   <FormPendingOverlay />
@@ -87,10 +92,10 @@ function DueEntryCard({ entry }: { entry: VehicleDueForService }) {
                 </form>
               ) : null}
               <LoadingLink
-                href="/workshop/vehicle-service"
+                href={`/workshop/vehicle-service/book?vehicleId=${entry.vehicleId}`}
                 className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
               >
-                New Service
+                Book in
               </LoadingLink>
             </>
           )}
