@@ -108,7 +108,7 @@ export default async function ServiceTrackerPage({
       </div>
       <p className="mb-6 text-xs text-[var(--ejo-text-muted)]">
         Reminders are sent by you, never automatically. The system works out when each one is due — a friendly note once a
-        vehicle is due soon (within 1,000 km or 30 days), follow-ups at least 14 days apart, then an overdue reminder — and
+        vehicle is due soon (within 1,000 km or 30 days), follow-ups 7 working days apart, then an overdue reminder — and
         shows a Send button only then. Nothing is due while a vehicle is back in the workshop or once it&apos;s attended to.
       </p>
 
@@ -246,7 +246,10 @@ export default async function ServiceTrackerPage({
                       {v.reminderDue ? (
                         <div className="mb-1 font-medium text-[var(--ejo-warning)]">Due now: {STAGE_LABEL[v.reminderDue.stage]}</div>
                       ) : v.nextReminderFrom ? (
-                        <div className="mb-1">Next from {formatDateOnly(v.nextReminderFrom)}</div>
+                        <div className="mb-1">
+                          {STAGE_LABEL[v.status === 'OVERDUE' ? 4 : v.reminders.lastStage === 1 ? 2 : 3]} available from {formatDateOnly(v.nextReminderFrom)}
+                          <div className="text-[10px]">Reminders are spaced 7 working days apart.</div>
+                        </div>
                       ) : v.inWorkshop ? (
                         <div className="mb-1">Held — in the workshop</div>
                       ) : null}
@@ -258,6 +261,7 @@ export default async function ServiceTrackerPage({
                           {v.reminders.lastSentAt ? (
                             <div>
                               Last: {v.reminders.lastStage ? STAGE_LABEL[v.reminders.lastStage] ?? `Stage ${v.reminders.lastStage}` : ''} — {formatDateTime(v.reminders.lastSentAt)}
+                              {v.reminders.lastSentByName ? ` by ${v.reminders.lastSentByName}` : ''}
                             </div>
                           ) : null}
                         </>
