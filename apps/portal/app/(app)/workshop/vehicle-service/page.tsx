@@ -22,6 +22,7 @@ const STATUS_LABEL: Record<string, string> = {
   CLOSED: 'Closed',
   COLLECTED: 'Checked Out',
   CANCELLED: 'Cancelled',
+  ESCALATED: 'Escalated to Job Card',
 };
 const STATUS_CLASS: Record<string, string> = {
   SCHEDULED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
@@ -31,6 +32,7 @@ const STATUS_CLASS: Record<string, string> = {
   READY_FOR_COLLECTION: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
   CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   COLLECTED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  ESCALATED: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
