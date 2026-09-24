@@ -6,6 +6,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
+import { ordinal } from '@/lib/custody-reminders';
 import { formatDateOnly } from '@/lib/utils/format-date';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -346,15 +347,26 @@ export default async function VehicleServiceCustodyPage({
                         {entry.collection.isOverdue ? 'Remaining: none — overdue' : `Remaining: ${pluralize(entry.collection.daysRemaining, 'working day')}`} ·
                         Reminders sent: {entry.collection.remindersSent}
                       </p>
-                      <form action={sendVehicleServiceCollectionReminderFormAction} className="mt-3">
-                        <FormPendingOverlay />
-                        <input type="hidden" name="serviceId" value={entry.id} />
-                        <SubmitButton
-                          label={entry.collection.remindersSent > 0 ? 'Send another collection reminder' : 'Send collection reminder'}
-                          pendingLabel="Sending…"
-                          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                        />
-                      </form>
+                      {entry.collection.lastSentAt ? (
+                        <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                          Last reminder sent by {entry.collection.lastSentByName ?? 'an unknown user'} on {formatDateOnly(entry.collection.lastSentAt)}.
+                        </p>
+                      ) : null}
+                      {entry.collection.dueNow ? (
+                        <form action={sendVehicleServiceCollectionReminderFormAction} className="mt-3">
+                          <FormPendingOverlay />
+                          <input type="hidden" name="serviceId" value={entry.id} />
+                          <SubmitButton
+                            label={`Send ${ordinal(entry.collection.nextNumber)} collection reminder`}
+                            pendingLabel="Sending…"
+                            className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                          />
+                        </form>
+                      ) : (
+                        <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+                          {ordinal(entry.collection.nextNumber)} collection reminder available from {formatDateOnly(entry.collection.dueFrom)} — reminders are spaced 2 working days apart.
+                        </p>
+                      )}
                     </>
                   ) : null}
                 </div>
