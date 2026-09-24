@@ -5,7 +5,7 @@ import { updateJobCardStatusFormAction } from '@/lib/actions/workshop-form-handl
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { LoadingLink } from '@/components/LoadingLink';
-import { REWORK_TRANSITION } from '@/lib/job-card-status-rules';
+import { isReworkTransition as isReworkMove } from '@/lib/job-card-status-rules';
 
 export function JobCardStatusForm({
   jobCardId,
@@ -31,7 +31,7 @@ export function JobCardStatusForm({
   // backward" in this system's own real status rules. Requires a real
   // reason, same as requesting a cancellation already does, so it's
   // always genuinely auditable rather than a silent loophole.
-  const isReworkTransition = currentStatus === REWORK_TRANSITION.from && selected === REWORK_TRANSITION.to;
+  const isReworkTransition = isReworkMove(currentStatus, selected ?? '');
 
   return (
     <form action={updateJobCardStatusFormAction} className="mt-4 space-y-3">
