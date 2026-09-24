@@ -2,15 +2,10 @@
 
 import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog, currentUserIsMasterAdmin, getWorkshopBranchId, listEligibleManagersForBranch } from './workshop';
-import { backfillServiceCycleAnchors, vehiclesCurrentlyInWorkshop, serviceDueStatus, loadServiceTracking } from '@/lib/vehicle-service-cycle';
+import { loadServiceTracking } from '@/lib/vehicle-service-cycle';
 import { sendEmail } from '@/lib/email';
 import { renderServiceReminderEmail, serviceReminderSubject, type ServiceReminderStage } from '@/lib/email-templates/service-reminder';
 
-// The real gap kept between one reminder and the next of the same
-// general kind, so a vehicle sitting overdue for months doesn't get
-// emailed on every single run — a real, deliberate cadence, not a
-// flood.
-const MIN_DAYS_BETWEEN_REMINDERS = 14;
 
 export type VehicleNeedingReminder = {
   vehicleId: string;
@@ -34,99 +29,22 @@ export type VehicleNeedingReminder = {
  * next.
  */
 export async function getVehiclesNeedingServiceReminder(): Promise<VehicleNeedingReminder[]> {
-  // Every completed service now starts the count — catch up any
-  // completed before that, so no vehicle silently misses reminders.
-  await backfillServiceCycleAnchors();
-  const services = await prisma.vehicleService.findMany({
-    where: { OR: [{ nextServiceDueOdometer: { not: null } }, { nextServiceDueDate: { not: null } }] },
-    orderBy: { primaryServiceDate: 'desc' },
-    select: {
-      vehicleId: true,
-      attendedAt: true,
-      nextServiceDueOdometer: true,
-      nextServiceDueDate: true,
-      primaryServiceDate: true,
-      vehicle: { select: { mileage: true } },
-    },
-  });
-
-  const now = new Date();
-  const seenVehicles = new Set<string>();
-  const results: VehicleNeedingReminder[] = [];
-
-  const inWorkshop = await vehiclesCurrentlyInWorkshop([...new Set(services.map((x: (typeof services)[number]) => x.vehicleId))]);
-
-  for (const s of services) {
-    if (seenVehicles.has(s.vehicleId)) continue; // only the latest real prediction per vehicle counts
-    seenVehicles.add(s.vehicleId);
-    // Already handled by staff (Attend To), or booked back in right now
-    // — never email "your service is due" to a customer whose vehicle is
-    // already in our workshop.
-    if (s.attendedAt || inWorkshop.has(s.vehicleId)) continue;
-
-    // The one shared calculation — identical to the vehicle page,
-    // custody and the Service Tracker.
-    const due = serviceDueStatus(s.nextServiceDueOdometer, s.nextServiceDueDate, s.vehicle.mileage, now);
-    const { kmRemaining, daysRemaining } = due;
-    const isOverdue = due.status === 'OVERDUE';
-    const isDueSoon = due.status === 'DUE_SOON';
-
-    if (!isOverdue && !isDueSoon) continue; // nothing to remind about yet
-
-    // Only reminders sent for this same real prediction cycle count
-    // — a reminder sent before this vehicle's current, real
-    // primaryServiceDate belonged to a previous, already-resolved
-    // cycle and shouldn't influence what stage comes next now.
-    const priorReminders = await prisma.serviceReminderLog.findMany({
-      where: { vehicleId: s.vehicleId, ...(s.primaryServiceDate ? { sentAt: { gte: s.primaryServiceDate } } : {}) },
-      orderBy: { sentAt: 'desc' },
-      select: { reminderNumber: true, sentAt: true },
-    });
-    const lastReminder = priorReminders[0];
-    const daysSinceLastReminder = lastReminder ? Math.floor((now.getTime() - lastReminder.sentAt.getTime()) / (1000 * 60 * 60 * 24)) : null;
-
-    let nextStage: ServiceReminderStage | null = null;
-
-    if (isOverdue) {
-      if (!lastReminder) {
-        // Genuinely never reminded at all and already overdue — the
-        // real overdue reminder is still the honest first one to
-        // send, not a fabricated earlier stage that never actually
-        // happened.
-        nextStage = 4;
-      } else if (lastReminder.reminderNumber < 4) {
-        nextStage = 4;
-      } else if (daysSinceLastReminder !== null && daysSinceLastReminder >= MIN_DAYS_BETWEEN_REMINDERS) {
-        nextStage = 4;
-      }
-    } else {
-      // Due soon, not yet overdue.
-      if (!lastReminder) {
-        nextStage = 1;
-      } else if (lastReminder.reminderNumber === 1 && daysSinceLastReminder !== null && daysSinceLastReminder >= MIN_DAYS_BETWEEN_REMINDERS) {
-        nextStage = 2;
-      } else if (lastReminder.reminderNumber >= 2 && daysSinceLastReminder !== null && daysSinceLastReminder >= MIN_DAYS_BETWEEN_REMINDERS) {
-        // Getting closer still and the gap has passed again — the
-        // real "actionable, very close" stage, never repeating stage
-        // 2's own wording forever.
-        nextStage = 3;
-      }
-    }
-
-    if (nextStage === null) continue;
-
-    results.push({
-      vehicleId: s.vehicleId,
-      nextStage,
-      estimatedDueOdometer: s.nextServiceDueOdometer,
-      estimatedDueDate: s.nextServiceDueDate,
-      kmRemaining,
-      daysRemaining,
-      isOverdue,
-    });
-  }
-
-  return results;
+  // Every vehicle whose reminder is due right now — straight from the
+  // one shared tracking calculation and staging rule (nextReminderStage),
+  // so this list, the Service Tracker, custody and the vehicle page can
+  // never disagree. Semi-automatic: nothing here sends anything.
+  const tracked = await loadServiceTracking();
+  return tracked
+    .filter((t) => t.reminderDue !== null)
+    .map((t) => ({
+      vehicleId: t.vehicleId,
+      nextStage: t.reminderDue!.stage as ServiceReminderStage,
+      estimatedDueOdometer: t.nextServiceDueOdometer,
+      estimatedDueDate: t.nextServiceDueDate,
+      kmRemaining: t.kmRemaining,
+      daysRemaining: t.daysRemaining,
+      isOverdue: t.status === 'OVERDUE',
+    }));
 }
 
 /**
@@ -223,10 +141,16 @@ export async function sendManualServiceReminder(vehicleId: string): Promise<void
   const [t] = await loadServiceTracking({ vehicleId });
   if (!t) throw new Error('This vehicle has no completed service to remind about yet.');
   if (t.inWorkshop) throw new Error(`This vehicle is in the workshop right now (${t.inWorkshop.number}) — no reminder is needed.`);
-  if (t.status === 'ON_TRACK') throw new Error('This vehicle is not due yet — reminders start once it is due soon.');
+  if (t.attendedAt) throw new Error('This prediction has already been attended to — no further reminders.');
+  if (!t.reminderDue) {
+    throw new Error(
+      t.nextReminderFrom
+        ? `The next reminder isn't due yet — it can be sent from ${t.nextReminderFrom.toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Lagos' })}.`
+        : 'This vehicle is not due yet — reminders start once it is due soon.',
+    );
+  }
   if (!t.customerEmail) throw new Error('The customer has no email address on file.');
-  const last = t.reminders.lastStage;
-  const nextStage = (t.status === 'OVERDUE' ? 4 : last === null ? 1 : last === 1 ? 2 : 3) as ServiceReminderStage;
+  const nextStage = t.reminderDue.stage as ServiceReminderStage;
   await sendServiceReminder(
     {
       vehicleId,
@@ -249,9 +173,10 @@ export async function sendManualServiceReminder(vehicleId: string): Promise<void
 }
 
 /**
- * Runs the automatic reminder pass on demand — exactly what the daily
- * scheduled job does (same stages, same 14-day spacing, same skips) —
- * for a Workshop Manager or Master Admin who doesn't want to wait.
+ * "Send all due reminders" — one click by a Workshop Manager or Master
+ * Admin sends exactly the reminders the system says are due right now
+ * (same stages, 14-day spacing and skips). Staff-triggered, never
+ * scheduled: nothing is ever emailed without a person choosing to.
  */
 export async function runServiceRemindersNow(): Promise<{ evaluated: number; sent: number; failed: number }> {
   const user = await requireUser();
@@ -266,7 +191,7 @@ export async function runServiceRemindersNow(): Promise<{ evaluated: number; sen
   let failed = 0;
   for (const need of needing) {
     try {
-      await sendServiceReminder(need);
+      await sendServiceReminder(need, 'MANUAL');
       sent += 1;
     } catch (err) {
       failed += 1;

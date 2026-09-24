@@ -14,7 +14,7 @@ import {
   listEligibleManagersForBranch,
   requireEligibleManager,
 } from './workshop';
-import { computeServiceCycle, loadServiceTracking, type WorkshopVisit } from '@/lib/vehicle-service-cycle';
+import { computeServiceCycle, loadServiceTracking, assertServiceNotEscalated, type WorkshopVisit } from '@/lib/vehicle-service-cycle';
 import { READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
 import { addWorkingDays, workingDaysBetween } from '@/lib/utils/working-days';
 import { renderCustomerServiceCompletedEmail } from '@/lib/email-templates/customer-service-completed';
@@ -177,6 +177,7 @@ export async function getVehicleServiceAuditTrail(serviceId: string): Promise<Ve
 }
 
 export async function approveVehicleService(serviceId: string, notes?: string): Promise<void> {
+  await assertServiceNotEscalated({ vehicleServiceId: serviceId });
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
     select: {
@@ -219,6 +220,7 @@ export async function approveVehicleService(serviceId: string, notes?: string): 
  * vehicle itself; availability or workload are valid real reasons
  * too, same as Job Card. */
 export async function rejectVehicleService(serviceId: string, reason: string, notes?: string): Promise<void> {
+  await assertServiceNotEscalated({ vehicleServiceId: serviceId });
   const trimmedReason = reason.trim();
   if (!trimmedReason) {
     throw new VehicleServiceActionError('A reason is required to reject a Vehicle Service.');
@@ -316,6 +318,7 @@ async function notifyVehicleServiceCreatorOfDecision(params: {
  * visit, so a technician is never pulled onto an unreviewed job in
  * real practice. */
 export async function assignTechnicianToVehicleService(serviceId: string, technicianId: string): Promise<void> {
+  await assertServiceNotEscalated({ vehicleServiceId: serviceId });
   const user = await requireUser();
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
@@ -440,6 +443,7 @@ async function notifySupervisorOfVehicleServiceTechnicianResponse(params: {
 }
 
 export async function acceptVehicleServiceTechnicianAssignment(serviceId: string): Promise<void> {
+  await assertServiceNotEscalated({ vehicleServiceId: serviceId });
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
     select: { assignedTechnicianId: true, serviceNumber: true },
@@ -465,6 +469,7 @@ export async function acceptVehicleServiceTechnicianAssignment(serviceId: string
 }
 
 export async function rejectVehicleServiceTechnicianAssignment(serviceId: string, reason: string): Promise<void> {
+  await assertServiceNotEscalated({ vehicleServiceId: serviceId });
   const trimmedReason = reason.trim();
   if (!trimmedReason) {
     throw new VehicleServiceActionError('A reason is required to reject an assignment.');
@@ -527,6 +532,10 @@ export type VehicleServiceHealth = {
   inWorkshop: WorkshopVisit | null;
   remindersSentThisCycle: number;
   lastReminderAt: Date | null;
+  /** Semi-automatic: the reminder a person can send now, if any. */
+  reminderDue: { stage: 1 | 2 | 3 | 4 } | null;
+  nextReminderFrom: Date | null;
+  viaJobCard: { id: string; jobNumber: string } | null;
 };
 
 /**
@@ -561,6 +570,9 @@ export async function getVehicleServiceHealth(vehicleId: string): Promise<Vehicl
     inWorkshop: t.inWorkshop,
     remindersSentThisCycle: t.reminders.sentThisCycle,
     lastReminderAt: t.reminders.lastSentAt,
+    reminderDue: t.reminderDue,
+    nextReminderFrom: t.nextReminderFrom,
+    viaJobCard: t.viaJobCard,
   };
 }
 
@@ -732,6 +744,8 @@ export type VehicleDueForService = {
   /** Back in the workshop right now — still listed, named, never reminded. */
   inWorkshop: WorkshopVisit | null;
   remindersSentThisCycle: number;
+  reminderDue: { stage: 1 | 2 | 3 | 4 } | null;
+  nextReminderFrom: Date | null;
 };
 
 /**
@@ -763,6 +777,8 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
       daysRemaining: t.daysRemaining,
       inWorkshop: t.inWorkshop,
       remindersSentThisCycle: t.reminders.sentThisCycle,
+      reminderDue: t.reminderDue,
+      nextReminderFrom: t.nextReminderFrom,
     }))
     .sort((a, b) => (a.status === b.status ? 0 : a.status === 'OVERDUE' ? -1 : 1));
 }
@@ -1595,6 +1611,22 @@ export async function escalateVehicleServiceToJobCard(
   if (['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED', 'COLLECTED', 'CANCELLED'].includes(service.status)) {
     throw new VehicleServiceActionError(`A Vehicle Service that's already ${service.status.toLowerCase().replace(/_/g, ' ')} cannot be escalated.`);
   }
+  // Escalation hands the visit over before any money or pricing is
+  // committed. Once an estimate exists (the customer may have been
+  // quoted) or money has been taken, escalating would orphan them —
+  // cancel the estimate first (only possible before Manager approval,
+  // i.e. before any payment), or finish this service and open a
+  // separate Job Card for the repair.
+  const [estimateExists, paymentCount] = await Promise.all([
+    prisma.serviceEstimate.findUnique({ where: { vehicleServiceId: serviceId }, select: { id: true } }),
+    prisma.payment.count({ where: { vehicleServiceId: serviceId } }),
+  ]);
+  if (paymentCount > 0) {
+    throw new VehicleServiceActionError('Payments have already been recorded on this Vehicle Service, so it cannot be escalated — complete it here, then open a separate Job Card for the repair.');
+  }
+  if (estimateExists) {
+    throw new VehicleServiceActionError('This Vehicle Service already has an estimate — cancel the estimate first, then escalate.');
+  }
 
   // Real inspection findings carry straight into the new Job Card as
   // their own real complaint lines — the supervisor building the
@@ -1620,7 +1652,9 @@ export async function escalateVehicleServiceToJobCard(
     mileageAtCheckIn: service.odometerAtService ?? undefined,
   });
 
-  await prisma.vehicleService.update({ where: { id: serviceId }, data: { escalatedToJobCardId: jobCard.id } });
+  // Handed over: the Vehicle Service becomes ESCALATED — terminal and
+  // read-only; everything continues on the Job Card.
+  await prisma.vehicleService.update({ where: { id: serviceId }, data: { escalatedToJobCardId: jobCard.id, status: 'ESCALATED', escalatedAt: new Date() } });
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.escalated_to_job_card',

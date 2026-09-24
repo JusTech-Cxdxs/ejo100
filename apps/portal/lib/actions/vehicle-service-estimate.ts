@@ -1,5 +1,6 @@
 'use server';
 
+import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
 import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog, getWorkshopOrgContext, currentUserIsMasterAdmin, requireJobCardApprover, listEligibleManagersForBranch, requireEligibleManager } from './workshop';
 import { requireStoreStaff, listEligibleStoreOfficersForBranch, listEligibleStoreManagersForBranch } from './store';
@@ -27,6 +28,7 @@ class ServiceEstimateActionError extends Error {}
  * harmless no-op if a draft already exists.
  */
 export async function createServiceEstimate(vehicleServiceId: string): Promise<{ id: string }> {
+  await assertServiceNotEscalated({ vehicleServiceId });
   const user = await requireUser();
   const existing = await prisma.serviceEstimate.findUnique({ where: { vehicleServiceId }, select: { id: true } });
   if (existing) return existing;
@@ -66,6 +68,7 @@ export async function createServiceEstimate(vehicleServiceId: string): Promise<{
  * rather than undo a choice that was never acted on yet.
  */
 export async function cancelServiceEstimate(vehicleServiceId: string): Promise<void> {
+  await assertServiceNotEscalated({ vehicleServiceId });
   const user = await requireUser();
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { vehicleServiceId },
@@ -137,6 +140,7 @@ async function requireServicePricingAuthority(service: { supervisorId: string | 
 }
 
 export async function addServiceEstimateLineItem(estimateId: string, input: ServiceEstimateLineItemInput): Promise<void> {
+  await assertServiceNotEscalated({ estimateId });
   let description = input.description.trim();
   if (input.type !== 'STORE_PART' && !description) {
     throw new ServiceEstimateActionError('A description is required for this line item.');
@@ -238,6 +242,7 @@ export async function serviceEstimateHasUnmatchedStoreParts(vehicleServiceId: st
  * Part currently priced below its own real cost can never be matched
  * onto a customer's estimate, here either. */
 export async function matchServiceEstimateStorePartLine(lineItemId: string, partId: string): Promise<void> {
+  await assertServiceNotEscalated({ lineItemId });
   const lineItem = await prisma.serviceEstimateLineItem.findUnique({
     where: { id: lineItemId },
     select: {
@@ -368,6 +373,7 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
 }
 
 export async function removeServiceEstimateLineItem(lineItemId: string): Promise<void> {
+  await assertServiceNotEscalated({ lineItemId });
   const line = await prisma.serviceEstimateLineItem.findUnique({
     where: { id: lineItemId },
     select: {
@@ -420,6 +426,7 @@ export type ServiceEstimateLineItemUpdateInput = {
  * CURRENT real selling price, never a stale snapshot.
  */
 export async function updateServiceEstimateLineItem(lineItemId: string, input: ServiceEstimateLineItemUpdateInput): Promise<void> {
+  await assertServiceNotEscalated({ lineItemId });
   const description = input.description.trim();
   if (!description) {
     throw new ServiceEstimateActionError('A description is required for this line item.');
@@ -498,6 +505,7 @@ export async function updateServiceEstimateLineItem(lineItemId: string, input: S
  * Job Card's own estimate uses, just without the extra Manager stage
  * that a routine Vehicle Service visit doesn't need. */
 export async function submitServiceEstimate(estimateId: string): Promise<void> {
+  await assertServiceNotEscalated({ estimateId });
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },
     select: {
@@ -597,6 +605,7 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
 }
 
 export async function approveServiceEstimate(estimateId: string): Promise<void> {
+  await assertServiceNotEscalated({ estimateId });
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },
     select: {
@@ -686,6 +695,7 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
  * that hand-off is a separate, explicit step (see
  * notifyCustomerOfApprovedServiceEstimate below). */
 export async function approveServiceEstimateAsManager(estimateId: string): Promise<void> {
+  await assertServiceNotEscalated({ estimateId });
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },
     select: {
@@ -763,6 +773,7 @@ export async function approveServiceEstimateAsManager(estimateId: string): Promi
  * Carries the same real estimate PDF (and inspection PDF, when one
  * exists) the customer has always received at this point. */
 export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string): Promise<void> {
+  await assertServiceNotEscalated({ estimateId });
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },
     select: {
@@ -1074,6 +1085,7 @@ async function sendServiceEstimateNudge(params: {
 /** The technician nudges the assigned supervisor to review or price
  * the estimate — same real informal back-and-forth as Job Card's own. */
 export async function notifySupervisorAboutServiceEstimate(vehicleServiceId: string, note?: string): Promise<void> {
+  await assertServiceNotEscalated({ vehicleServiceId });
   const service = await prisma.vehicleService.findUnique({
     where: { id: vehicleServiceId },
     select: { supervisorId: true, assignedTechnicianId: true },
@@ -1095,6 +1107,7 @@ export async function notifySupervisorAboutServiceEstimate(vehicleServiceId: str
 /** The supervisor nudges the assigned technician to review or price
  * the estimate — same real informal back-and-forth as Job Card's own. */
 export async function notifyTechnicianAboutServiceEstimate(vehicleServiceId: string, note?: string): Promise<void> {
+  await assertServiceNotEscalated({ vehicleServiceId });
   const service = await prisma.vehicleService.findUnique({
     where: { id: vehicleServiceId },
     select: { supervisorId: true, assignedTechnicianId: true },
@@ -1158,6 +1171,7 @@ async function sendServiceStoreMatchingCompleteNotification(
  * which lines are waiting.
  */
 export async function requestServiceEstimateStoreMatching(vehicleServiceId: string, note?: string): Promise<void> {
+  await assertServiceNotEscalated({ vehicleServiceId });
   const service = await prisma.vehicleService.findUnique({
     where: { id: vehicleServiceId },
     select: {

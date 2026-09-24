@@ -27,7 +27,8 @@ import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKI
 import { workingDaysBetween, addWorkingDays } from '@/lib/utils/working-days';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { getOrganisation } from '@/lib/actions/organisation';
-import { getSelectableJobCardStatuses, REWORK_TRANSITION } from '@/lib/job-card-status-rules';
+import { getSelectableJobCardStatuses, isReworkTransition as isReworkMove } from '@/lib/job-card-status-rules';
+import { anchorEscalatedServiceFromJobCard } from '@/lib/vehicle-service-cycle';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
 import { hashPassword } from 'better-auth/crypto';
@@ -1351,25 +1352,48 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   // Requires a real reason and is logged as its own distinct action,
   // not folded into a generic status-updated entry, so it's always
   // genuinely auditable rather than a quiet loophole.
-  const isReworkTransition = priorStatus === REWORK_TRANSITION.from && status === REWORK_TRANSITION.to;
+  const isReworkTransition = isReworkMove(priorStatus, status);
   if (isReworkTransition && !reworkReason?.trim()) {
     throw new WorkshopActionError('A reason is required to send this Job Card back for rework.');
+  }
+  // Reworking a vehicle whose close is already being decided would leave
+  // a Manager approving a close for work that's no longer finished.
+  if (isReworkTransition) {
+    const pendingClose = await prisma.closeRequest.findFirst({ where: { jobCardId: id, status: 'PENDING' }, select: { id: true } });
+    if (pendingClose) {
+      throw new WorkshopActionError('A close request is pending for this Job Card — decline it first, then send the vehicle back for rework.');
+    }
   }
   const result = await prisma.jobCard.update({
     where: { id },
     data: {
       status,
-      readyForCollectionAt: status === JobCardStatus.READY_FOR_COLLECTION ? new Date() : undefined,
+      readyForCollectionAt: isReworkTransition && priorStatus === JobCardStatus.READY_FOR_COLLECTION ? null : status === JobCardStatus.READY_FOR_COLLECTION ? new Date() : undefined,
       // Only ever set once — the first genuine arrival at each status
       // — never overwritten by a later return to the same status
       // (e.g. IN_PROGRESS after AWAITING_PARTS resolves), so these
       // stay a true "when did this actually start/finish" record.
       workStartedAt: status === JobCardStatus.IN_PROGRESS && !jobCard.workStartedAt ? new Date() : undefined,
-      completedAt: status === JobCardStatus.COMPLETED && !jobCard.completedAt ? new Date() : undefined,
+      // Rework after sign-off reopens the work: completion and
+      // ready-for-collection are cleared so they record the FINAL
+      // finish (the audit trail keeps the history of each pass).
+      completedAt: isReworkTransition && priorStatus !== JobCardStatus.QUALITY_CHECK ? null : status === JobCardStatus.COMPLETED && !jobCard.completedAt ? new Date() : undefined,
       checkedOutAt: status === JobCardStatus.CHECKED_OUT && !jobCard.checkedOutAt ? new Date() : undefined,
       collectedByName: status === JobCardStatus.CHECKED_OUT ? collectedByName?.trim() : undefined,
     },
   });
+
+  // A Job Card that came from a Vehicle Service: its genuine checkout
+  // (never a cancelled hand-back) is when that vehicle's service was
+  // actually finished — the next-service count starts from here.
+  if (status === JobCardStatus.CHECKED_OUT && priorStatus !== JobCardStatus.CANCELLED && priorStatus !== JobCardStatus.CHECKED_OUT) {
+    try {
+      await anchorEscalatedServiceFromJobCard(id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to start the next-service count from this Job Card checkout', id, err);
+    }
+  }
 
   // Fires exactly once, on a real transition into one of these four
   // statuses — never on a no-op re-save of the same status. AWAITING_
@@ -1719,6 +1743,13 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
  * Irreversible; the UI must confirm before calling this. */
 export async function deleteJobCard(jobCardId: string): Promise<void> {
   await requireMasterAdmin();
+  // A Vehicle Service escalated into this Job Card would otherwise be
+  // left "Escalated" to nothing — read-only forever. Its hand-over no
+  // longer exists, so it is cancelled, honestly and on the record.
+  await prisma.vehicleService.updateMany({
+    where: { escalatedToJobCardId: jobCardId },
+    data: { status: 'CANCELLED', cancelledAt: new Date(), escalatedToJobCardId: null },
+  });
   await prisma.jobCard.delete({ where: { id: jobCardId } });
 }
 
@@ -3400,8 +3431,8 @@ export async function requestJobCardCancellation(jobCardId: string, reason: stri
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
   }
-  if (jobCard.status === JobCardStatus.CANCELLED || jobCard.status === JobCardStatus.CLOSED) {
-    throw new WorkshopActionError('This Job Card is already cancelled or closed.');
+  if (jobCard.status === JobCardStatus.CANCELLED || jobCard.status === JobCardStatus.CLOSED || jobCard.status === JobCardStatus.CHECKED_OUT) {
+    throw new WorkshopActionError('This Job Card is already cancelled, closed or checked out.');
   }
   const user = await requireJobCardCreatorOrSupervisor(jobCard);
 
@@ -3485,9 +3516,21 @@ export async function approveCancellationRequest(requestId: string, decisionNote
   if (request.status !== 'PENDING') {
     throw new WorkshopActionError('This cancellation request has already been decided.');
   }
+  // Re-checked at decision time: a Job Card closed or checked out since
+  // the request was raised is finished — it can't be cancelled after.
+  const current = await prisma.jobCard.findUnique({ where: { id: request.jobCardId }, select: { status: true } });
+  if (current?.status === JobCardStatus.CLOSED || current?.status === JobCardStatus.CHECKED_OUT) {
+    throw new WorkshopActionError('This Job Card has since been closed or checked out, so it can no longer be cancelled — decline this request.');
+  }
   const user = await requireEligibleManager(request.jobCard.branchId);
 
   await prisma.$transaction([
+    // A close requested earlier can never happen now — resolve it here
+    // so it doesn't sit pending (and in Managers' notifications) forever.
+    prisma.closeRequest.updateMany({
+      where: { jobCardId: request.jobCardId, status: 'PENDING' },
+      data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: 'Superseded — the Job Card was cancelled.' },
+    }),
     prisma.cancellationRequest.update({
       where: { id: requestId },
       data: {
@@ -3686,6 +3729,12 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
   if (jobCard.status === JobCardStatus.CANCELLED || jobCard.status === JobCardStatus.CLOSED || jobCard.status === JobCardStatus.CHECKED_OUT) {
     throw new WorkshopActionError('This Job Card is already cancelled, closed, or checked out.');
   }
+  // Close means the work is genuinely finished and handed over — so
+  // only from Ready for Collection. A Job Card abandoned before that
+  // (no work done, customer declined) is cancelled, not closed.
+  if (jobCard.status !== JobCardStatus.READY_FOR_COLLECTION) {
+    throw new WorkshopActionError('A close can only be requested once this Job Card is Ready for Collection. To stop a Job Card before then, request a cancellation instead.');
+  }
   // The same real payment-completion rule that already gates
   // CHECKED_OUT — a Job Card can't genuinely be closed while real
   // money is still owed on it. Checked here, at the earliest possible
@@ -3759,6 +3808,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
       jobCardId: true,
       jobCard: {
         select: {
+          status: true,
           branchId: true,
           jobNumber: true,
           createdById: true,
@@ -3777,9 +3827,20 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
   if (request.status !== 'PENDING') {
     throw new WorkshopActionError('This close request has already been decided.');
   }
+  // Re-checked at decision time — the Job Card may have been sent back
+  // for rework since the request was raised.
+  if (request.jobCard.status !== JobCardStatus.READY_FOR_COLLECTION) {
+    throw new WorkshopActionError('This Job Card is no longer Ready for Collection, so it cannot be closed — decline this request.');
+  }
   const user = await requireEligibleManager(request.jobCard.branchId);
 
   await prisma.$transaction([
+    // A cancellation requested earlier can never happen now — the work
+    // is finished and closed; resolve it so nothing is left pending.
+    prisma.cancellationRequest.updateMany({
+      where: { jobCardId: request.jobCardId, status: 'PENDING' },
+      data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: 'Superseded — the Job Card was closed.' },
+    }),
     prisma.closeRequest.update({
       where: { id: requestId },
       data: {

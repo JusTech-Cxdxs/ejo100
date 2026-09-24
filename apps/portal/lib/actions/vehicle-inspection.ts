@@ -1,5 +1,6 @@
 'use server';
 
+import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
 import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog } from './workshop';
 import { getApplicableTemplate, VEHICLE_INSPECTION_TEMPLATE } from '@/lib/vehicle-inspection-template';
@@ -33,6 +34,7 @@ async function logInspectionEvent(params: {
  * or duplicating items.
  */
 export async function startVehicleInspection(vehicleServiceId: string): Promise<{ id: string }> {
+  await assertServiceNotEscalated({ vehicleServiceId });
   const user = await requireUser();
   const existing = await prisma.vehicleInspection.findUnique({ where: { vehicleServiceId }, select: { id: true } });
   if (existing) return existing;
@@ -87,6 +89,7 @@ export type InspectionItemInput = {
  * cancelVehicleInspection is the real way to undo a prior choice
  * first. */
 export async function skipVehicleInspection(vehicleServiceId: string, reason?: string): Promise<{ id: string }> {
+  await assertServiceNotEscalated({ vehicleServiceId });
   const user = await requireUser();
   const existing = await prisma.vehicleInspection.findUnique({ where: { vehicleServiceId }, select: { id: true, status: true } });
   if (existing) {
@@ -120,6 +123,7 @@ export async function skipVehicleInspection(vehicleServiceId: string, reason?: s
  * itself is deleted.
  */
 export async function cancelVehicleInspection(vehicleServiceId: string, reason?: string): Promise<void> {
+  await assertServiceNotEscalated({ vehicleServiceId });
   const user = await requireUser();
   const inspection = await prisma.vehicleInspection.findUnique({ where: { vehicleServiceId }, select: { id: true, status: true } });
   if (!inspection) {
@@ -145,6 +149,7 @@ export async function cancelVehicleInspection(vehicleServiceId: string, reason?:
  * "done for now," it doesn't lock the record; clearing an item's
  * severity here genuinely moves it back to Not Reviewed. */
 export async function updateInspectionItems(inspectionId: string, items: InspectionItemInput[]): Promise<void> {
+  await assertServiceNotEscalated({ inspectionId });
   const user = await requireUser();
   const inspection = await prisma.vehicleInspection.findUnique({ where: { id: inspectionId }, select: { vehicleServiceId: true, status: true } });
   if (!inspection) {
@@ -179,6 +184,7 @@ export async function updateInspectionItems(inspectionId: string, items: Inspect
  * time (after editing an already-completed inspection further) just
  * updates the real completedAt/notes rather than refusing. */
 export async function completeVehicleInspection(inspectionId: string, notes?: string): Promise<void> {
+  await assertServiceNotEscalated({ inspectionId });
   const user = await requireUser();
   const inspection = await prisma.vehicleInspection.findUnique({ where: { id: inspectionId }, select: { vehicleServiceId: true, status: true } });
   if (!inspection) {
