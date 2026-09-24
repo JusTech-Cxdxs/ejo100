@@ -15,6 +15,7 @@ import {
   requireEligibleManager,
 } from './workshop';
 import { computeServiceCycle, loadServiceTracking, assertServiceNotEscalated, type WorkshopVisit } from '@/lib/vehicle-service-cycle';
+import { custodyReminderState, notDueYetMessage } from '@/lib/custody-reminders';
 import { READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
 import { addWorkingDays, workingDaysBetween } from '@/lib/utils/working-days';
 import { renderCustomerServiceCompletedEmail } from '@/lib/email-templates/customer-service-completed';
@@ -839,6 +840,12 @@ export type VehicleServiceCustodyEntry = {
     dueDate: Date;
     isOverdue: boolean;
     remindersSent: number;
+    /** Staged, semi-automatic (lib/custody-reminders) — same as the Service Tracker. */
+    nextNumber: number;
+    dueNow: boolean;
+    dueFrom: Date;
+    lastSentByName: string | null;
+    lastSentAt: Date | null;
   };
 };
 
@@ -909,10 +916,17 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
   // Ready-for-Collection deadline — working days only (the same rule
   // as Job Card's custody) plus how many collection reminders went out.
   const readyIds = services.filter((s: (typeof services)[number]) => s.status === 'READY_FOR_COLLECTION').map((s: (typeof services)[number]) => s.id);
-  const reminderCounts = readyIds.length
-    ? await prisma.auditLog.groupBy({ by: ['entityId'], where: { entityId: { in: readyIds }, action: 'vehicle_service.collection_reminder_sent' }, _count: { _all: true } })
+  const sentLog = readyIds.length
+    ? await prisma.auditLog.findMany({
+        where: { entityId: { in: readyIds }, action: 'vehicle_service.collection_reminder_sent' },
+        orderBy: { createdAt: 'asc' },
+        select: { entityId: true, createdAt: true, userId: true },
+      })
     : [];
-  const countFor = (id: string) => reminderCounts.find((r: { entityId: string | null }) => r.entityId === id)?._count._all ?? 0;
+  const senderIds = [...new Set(sentLog.map((l: { userId: string | null }) => l.userId).filter((id: string | null): id is string => Boolean(id)))];
+  const senders = senderIds.length ? await prisma.user.findMany({ where: { id: { in: senderIds } }, select: { id: true, fullName: true } }) : [];
+  const senderName = new Map(senders.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
+  const sentFor = (id: string) => sentLog.filter((l: { entityId: string | null }) => l.entityId === id);
   const now = new Date();
   return services.map((s: (typeof services)[number]) => ({
     id: s.id,
@@ -925,13 +939,21 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
       s.status === 'READY_FOR_COLLECTION' && s.readyForCollectionAt
         ? (() => {
             const daysElapsed = workingDaysBetween(s.readyForCollectionAt, now);
+            const mine = sentFor(s.id);
+            const state = custodyReminderState('COLLECTION', s.readyForCollectionAt, mine.map((l: { createdAt: Date }) => l.createdAt), now);
+            const last = mine[mine.length - 1];
             return {
               graceWorkingDays: READY_FOR_COLLECTION_GRACE_WORKING_DAYS,
               daysElapsed,
               daysRemaining: Math.max(0, READY_FOR_COLLECTION_GRACE_WORKING_DAYS - daysElapsed),
               dueDate: addWorkingDays(s.readyForCollectionAt, READY_FOR_COLLECTION_GRACE_WORKING_DAYS),
               isOverdue: daysElapsed >= READY_FOR_COLLECTION_GRACE_WORKING_DAYS,
-              remindersSent: countFor(s.id),
+              remindersSent: state.sent,
+              nextNumber: state.nextNumber,
+              dueNow: state.dueNow,
+              dueFrom: state.dueFrom,
+              lastSentByName: last?.userId ? senderName.get(last.userId) ?? null : null,
+              lastSentAt: last ? last.createdAt : null,
             };
           })()
         : undefined,
@@ -1287,6 +1309,13 @@ export async function sendVehicleServiceCollectionReminder(serviceId: string): P
   if (!service || service.status !== 'READY_FOR_COLLECTION' || !service.readyForCollectionAt) {
     throw new VehicleServiceActionError('This Vehicle Service is not currently ready for collection.');
   }
+  // Staged, semi-automatic (lib/custody-reminders): refused until due.
+  const priorSends = await prisma.auditLog.findMany({ where: { entityId: serviceId, action: 'vehicle_service.collection_reminder_sent' }, select: { createdAt: true } });
+  const reminderState = custodyReminderState('COLLECTION', service.readyForCollectionAt, priorSends.map((r: { createdAt: Date }) => r.createdAt));
+  if (!reminderState.dueNow) {
+    throw new VehicleServiceActionError(notDueYetMessage('COLLECTION', reminderState));
+  }
+
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.collection_reminder_sent',

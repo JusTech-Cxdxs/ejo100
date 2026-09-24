@@ -29,6 +29,7 @@ import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { getOrganisation } from '@/lib/actions/organisation';
 import { getSelectableJobCardStatuses, isReworkTransition as isReworkMove } from '@/lib/job-card-status-rules';
 import { anchorEscalatedServiceFromJobCard } from '@/lib/vehicle-service-cycle';
+import { custodyReminderState, notDueYetMessage, type CustodyReminderKind } from '@/lib/custody-reminders';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
 import { hashPassword } from 'better-auth/crypto';
@@ -62,6 +63,7 @@ import { renderCustomerVehicleCheckedOutEmail } from '@/lib/email-templates/cust
 import { renderJobCardClosedStaffEmail } from '@/lib/email-templates/job-card-closed-staff';
 import { renderVehicleCheckedOutStaffEmail } from '@/lib/email-templates/vehicle-checked-out-staff';
 import { renderCustomerCollectionOverdueEmail } from '@/lib/email-templates/customer-collection-overdue';
+import { renderCustomerJobWorkUpdateEmail } from '@/lib/email-templates/customer-job-work-update';
 import { renderCustomerJobInProgressEmail } from '@/lib/email-templates/customer-job-in-progress';
 import { renderCustomerQualityCheckEmail } from '@/lib/email-templates/customer-quality-check';
 import { renderCustomerJobCompletedEmail } from '@/lib/email-templates/customer-job-completed';
@@ -1445,8 +1447,13 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
       const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
       const vehicleDescription = [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
-      const dashboardUrl = `${websiteUrl}/customer-portal/dashboard`;
+      const dashboardUrl = `${websiteUrl}/customer-portal/dashboard#jobcard-${id}`;
       const logoUrl = `${websiteUrl}/images/logo/logo.png`;
+      // Has this Job Card been sent back for rework before (this move not
+      // counted — its own audit entry is written after these emails)?
+      const reworkedBefore =
+        isReworkTransition ||
+        (await prisma.auditLog.count({ where: { entityType: 'JobCard', entityId: id, action: 'job_card.rework_requested' } })) > 0;
       const shared = {
         customerName: jobCard.customer.fullName,
         jobNumber: jobCard.jobNumber,
@@ -1457,23 +1464,41 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
         branchName: orgContext.branchName,
       };
 
-      if (status === JobCardStatus.IN_PROGRESS) {
+      // Each email tells the customer what genuinely happened — never the
+      // same "work has started" news twice as if it were new.
+      if (status === JobCardStatus.IN_PROGRESS && isReworkTransition) {
+        await sendEmail(
+          jobCard.customer.email,
+          `A quick update on your vehicle — Job Card ${jobCard.jobNumber}`,
+          renderCustomerJobWorkUpdateEmail({ ...shared, kind: 'REWORK' }),
+        );
+      } else if (status === JobCardStatus.IN_PROGRESS && priorStatus === JobCardStatus.AWAITING_PARTS) {
+        await sendEmail(
+          jobCard.customer.email,
+          `Work has resumed — Job Card ${jobCard.jobNumber}`,
+          renderCustomerJobWorkUpdateEmail({ ...shared, kind: 'RESUMED' }),
+        );
+      } else if (status === JobCardStatus.IN_PROGRESS) {
         await sendEmail(
           jobCard.customer.email,
           `Your vehicle is now in progress — Job Card ${jobCard.jobNumber}`,
           renderCustomerJobInProgressEmail(shared),
         );
       } else if (status === JobCardStatus.QUALITY_CHECK) {
-        await sendEmail(
-          jobCard.customer.email,
-          `Quality assurance in progress — Job Card ${jobCard.jobNumber}`,
-          renderCustomerQualityCheckEmail(shared),
-        );
+        // After a rework the customer already knows further checks are
+        // under way — no duplicate "quality assurance" email.
+        if (!reworkedBefore) {
+          await sendEmail(
+            jobCard.customer.email,
+            `Quality assurance in progress — Job Card ${jobCard.jobNumber}`,
+            renderCustomerQualityCheckEmail(shared),
+          );
+        }
       } else if (status === JobCardStatus.COMPLETED) {
         await sendEmail(
           jobCard.customer.email,
           `Quality inspection passed — Job Card ${jobCard.jobNumber}`,
-          renderCustomerJobCompletedEmail(shared),
+          renderCustomerJobCompletedEmail({ ...shared, afterRework: reworkedBefore }),
         );
       } else {
         const dueDate = addWorkingDays(new Date(), READY_FOR_COLLECTION_GRACE_WORKING_DAYS);
@@ -1482,7 +1507,8 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
           `Ready for collection — Job Card ${jobCard.jobNumber}`,
           renderCustomerReadyForCollectionEmail({
             ...shared,
-            dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+            dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
+            afterRework: reworkedBefore,
           }),
         );
       }
@@ -4072,6 +4098,12 @@ export type WorkshopCustodyEntry = {
    * entry, derived from the audit trail itself — never a separate
    * counter that could drift out of sync with what was really sent. */
   remindersSent?: number;
+  /** Staged, semi-automatic reminder state (lib/custody-reminders): the
+   * next number, whether it can be sent now or from when, and who sent
+   * the last one — by name. */
+  reminder?: { sent: number; nextNumber: number; dueNow: boolean; dueFrom: string; lastSentByName: string | null; lastSentAt: string | null };
+  /** ISO date the category's clock started (notified / cancelled / ready). */
+  anchorAt?: string;
   /** ISO date string — set for AWAITING_CUSTOMER_APPROVAL, CANCELLED,
    * and READY_FOR_COLLECTION alike, the real calendar date the
    * deadline falls on. */
@@ -4182,6 +4214,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       const dueDate = addWorkingDays(anchor, APPROVAL_DEADLINE_WORKING_DAYS);
       const pending = jc.cancellationRequests.find((r) => r.status === 'PENDING');
       awaitingApproval.push({
+        anchorAt: anchor ? new Date(anchor).toISOString() : undefined,
         ...base,
         daysElapsed,
         totalGraceWorkingDays: APPROVAL_DEADLINE_WORKING_DAYS,
@@ -4196,6 +4229,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       const daysElapsed = anchor ? workingDaysBetween(anchor, now) : 0;
       const dueDate = anchor ? addWorkingDays(anchor, CANCELLED_COLLECTION_GRACE_WORKING_DAYS) : undefined;
       cancelledPendingCollection.push({
+        anchorAt: anchor ? new Date(anchor).toISOString() : undefined,
         ...base,
         daysElapsed,
         totalGraceWorkingDays: CANCELLED_COLLECTION_GRACE_WORKING_DAYS,
@@ -4208,6 +4242,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       const daysElapsed = workingDaysBetween(anchor, now);
       const dueDate = addWorkingDays(anchor, READY_FOR_COLLECTION_GRACE_WORKING_DAYS);
       readyForCollection.push({
+        anchorAt: anchor ? new Date(anchor).toISOString() : undefined,
         ...base,
         daysElapsed,
         totalGraceWorkingDays: READY_FOR_COLLECTION_GRACE_WORKING_DAYS,
@@ -4227,6 +4262,35 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
   // actually sent.
   const actionRequiredIds = [...awaitingApproval, ...cancelledPendingCollection, ...readyForCollection].map((e) => e.id);
   if (actionRequiredIds.length > 0) {
+    // Every reminder actually sent (with who and when) — the audit trail
+    // is the single source of truth for the staged reminder state.
+    const sentLog = await prisma.auditLog.findMany({
+      where: { entityId: { in: actionRequiredIds }, action: { in: [...CUSTODY_REMINDER_ACTIONS] } },
+      orderBy: { createdAt: 'asc' },
+      select: { entityId: true, action: true, createdAt: true, userId: true },
+    });
+    const senderIds = [...new Set(sentLog.map((l: { userId: string | null }) => l.userId).filter((id: string | null): id is string => Boolean(id)))];
+    const senders = senderIds.length ? await prisma.user.findMany({ where: { id: { in: senderIds } }, select: { id: true, fullName: true } }) : [];
+    const senderName = new Map(senders.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
+    const stage = (entries: WorkshopCustodyEntry[], kind: CustodyReminderKind, action: string) => {
+      for (const entry of entries) {
+        if (!entry.anchorAt) continue;
+        const mine = sentLog.filter((l: { entityId: string | null; action: string }) => l.entityId === entry.id && l.action === action);
+        const state = custodyReminderState(kind, new Date(entry.anchorAt), mine.map((l: { createdAt: Date }) => l.createdAt), now);
+        const last = mine[mine.length - 1];
+        entry.reminder = {
+          sent: state.sent,
+          nextNumber: state.nextNumber,
+          dueNow: state.dueNow,
+          dueFrom: state.dueFrom.toISOString(),
+          lastSentByName: last?.userId ? senderName.get(last.userId) ?? null : null,
+          lastSentAt: last ? new Date(last.createdAt).toISOString() : null,
+        };
+      }
+    };
+    stage(awaitingApproval, 'APPROVAL', 'approval.reminder_sent');
+    stage(cancelledPendingCollection, 'CANCELLED_COLLECTION', 'collection.overdue_notice_sent');
+    stage(readyForCollection, 'COLLECTION', 'collection.ready_reminder_sent');
     const counts = await prisma.auditLog.groupBy({
       by: ['entityId'],
       where: { entityId: { in: actionRequiredIds }, action: { in: [...CUSTODY_REMINDER_ACTIONS] } },
@@ -4293,6 +4357,13 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
   const orgContext = await getWorkshopOrgContext();
 
   await prisma.estimate.update({ where: { id: jobCard.estimate.id }, data: { reminderSentAt: new Date() } });
+
+  // Staged, semi-automatic (lib/custody-reminders): refused until due.
+  const priorSends = await prisma.auditLog.findMany({ where: { entityId: jobCardId, action: 'approval.reminder_sent' }, select: { createdAt: true } });
+  const reminderState = custodyReminderState('APPROVAL', jobCard.estimate.customerNotifiedAt, priorSends.map((r: { createdAt: Date }) => r.createdAt));
+  if (!reminderState.dueNow) {
+    throw new WorkshopActionError(notDueYetMessage('APPROVAL', reminderState));
+  }
 
   await writeAuditLog({
     userId: user.id,
@@ -4413,6 +4484,12 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
     throw new WorkshopActionError('No cancellation record found for this Job Card.');
   }
   const user = await requireEligibleManager(jobCard.branchId);
+  // Staged, semi-automatic (lib/custody-reminders): refused until due.
+  const priorSends = await prisma.auditLog.findMany({ where: { entityId: jobCardId, action: 'collection.overdue_notice_sent' }, select: { createdAt: true } });
+  const reminderState = custodyReminderState('CANCELLED_COLLECTION', anchor, priorSends.map((r: { createdAt: Date }) => r.createdAt));
+  if (!reminderState.dueNow) {
+    throw new WorkshopActionError(notDueYetMessage('CANCELLED_COLLECTION', reminderState));
+  }
   const daysElapsed = workingDaysBetween(anchor, new Date());
 
   await writeAuditLog({
@@ -4476,6 +4553,13 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
   const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
   const orgContext = await getWorkshopOrgContext();
 
+  // Staged, semi-automatic (lib/custody-reminders): refused until due.
+  const priorSends = await prisma.auditLog.findMany({ where: { entityId: jobCardId, action: 'collection.ready_reminder_sent' }, select: { createdAt: true } });
+  const reminderState = custodyReminderState('COLLECTION', jobCard.readyForCollectionAt, priorSends.map((r: { createdAt: Date }) => r.createdAt));
+  if (!reminderState.dueNow) {
+    throw new WorkshopActionError(notDueYetMessage('COLLECTION', reminderState));
+  }
+
   await writeAuditLog({
     userId: user.id,
     action: 'collection.ready_reminder_sent',
@@ -4496,7 +4580,7 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
       customerName: jobCard.customer.fullName,
       jobNumber: jobCard.jobNumber,
       vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
-      dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+      dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
       reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
       logoUrl: `${websiteUrl}/images/logo/logo.png`,

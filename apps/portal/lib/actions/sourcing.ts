@@ -18,12 +18,13 @@
  * already-verified auth helpers from both rather than duplicating them.
  */
 
-import { prisma } from '@ejo/database';
+import { prisma, getAuditActor } from '@ejo/database';
 import { pluralize } from '@/lib/utils/pluralize';
 import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { replayQuantityFifo, planQuantityRelease } from '@/lib/inventory/quantity-fifo';
 import { loadQuantityTraces, sourcesForReleases } from '@/lib/inventory/quantity-trace';
-import { requireUser, writeAuditLog, requireEligibleManager, listEligibleFinanceOfficersForBranch, listEligibleManagersForBranch } from './workshop';
+import { requireUser, writeAuditLog, requireEligibleManager, listEligibleFinanceOfficersForBranch, listEligibleManagersForBranch, getWorkshopOrgContext } from './workshop';
+import { renderCustomerJobWorkUpdateEmail } from '@/lib/email-templates/customer-job-work-update';
 import { requireStoreStaff, listEligibleStoreOfficersForBranch, listEligibleStoreManagersForBranch } from './store';
 import { sendEmail } from '@/lib/email';
 import { renderPartRequestApprovalNeededEmail, renderPartRequestStatusEmail } from '@/lib/email-templates/part-request-status';
@@ -348,7 +349,16 @@ export async function getJobCardSourcingNeeds(jobCardId: string) {
  * this point (e.g. Quality Check), even if a request is somehow still
  * outstanding at that stage. */
 async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
-  const jobCard = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { status: true } });
+  const jobCard = await prisma.jobCard.findUnique({
+    where: { id: jobCardId },
+    select: {
+      status: true,
+      jobNumber: true,
+      customer: { select: { fullName: true, email: true } },
+      vehicle: { select: { make: true, model: true } },
+      department: { select: { name: true } },
+    },
+  });
   if (!jobCard) return;
   if (jobCard.status !== 'IN_PROGRESS' && jobCard.status !== 'AWAITING_PARTS') return;
 
@@ -358,10 +368,48 @@ async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
   ]);
   const hasOutstanding = outstandingSlips > 0 || outstandingRequests > 0;
 
-  if (hasOutstanding && jobCard.status !== 'AWAITING_PARTS') {
-    await prisma.jobCard.update({ where: { id: jobCardId }, data: { status: 'AWAITING_PARTS' } });
-  } else if (!hasOutstanding && jobCard.status === 'AWAITING_PARTS') {
-    await prisma.jobCard.update({ where: { id: jobCardId }, data: { status: 'IN_PROGRESS' } });
+  const to = hasOutstanding && jobCard.status !== 'AWAITING_PARTS' ? 'AWAITING_PARTS' : !hasOutstanding && jobCard.status === 'AWAITING_PARTS' ? 'IN_PROGRESS' : null;
+  if (!to) return;
+  await prisma.jobCard.update({ where: { id: jobCardId }, data: { status: to } });
+  // An automatic status change is still a status change — on the Job
+  // Card's own trail, attributed to whoever's action caused it.
+  await writeAuditLog({
+    userId: getAuditActor()?.userId ?? null,
+    action: 'job_card.status_updated',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: {
+      jobNumber: jobCard.jobNumber,
+      from: jobCard.status,
+      to,
+      automatic: true,
+      reason: to === 'AWAITING_PARTS' ? 'Parts requested and not yet received' : 'All requested parts received',
+    },
+  });
+  // Parts arrived: tell the customer work has resumed — the same email a
+  // manual resume sends, never the "work has started" one again.
+  if (to === 'IN_PROGRESS') {
+    try {
+      const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+      const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+      await sendEmail(
+        jobCard.customer.email,
+        `Work has resumed — Job Card ${jobCard.jobNumber}`,
+        renderCustomerJobWorkUpdateEmail({
+          kind: 'RESUMED',
+          customerName: jobCard.customer.fullName,
+          jobNumber: jobCard.jobNumber,
+          vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+          dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
+          logoUrl: `${websiteUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to send work-resumed email', jobCardId, err);
+    }
   }
 }
 

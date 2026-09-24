@@ -78,6 +78,12 @@ export async function sendServiceReminder(need: VehicleNeedingReminder, trigger?
   const branchContext = lastService?.branch;
   const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
   const vehicleDescription = [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'your vehicle';
+  // Which reminder this is in the current service cycle — shown to the
+  // customer. (Who sent it is recorded on the internal audit trail only;
+  // no employee's name ever appears in a customer email.)
+  const sentThisCycle = await prisma.serviceReminderLog.count({
+    where: { vehicleId: need.vehicleId, ...(lastService?.primaryServiceDate ? { sentAt: { gte: lastService.primaryServiceDate } } : {}) },
+  });
 
   await sendEmail(
     vehicle.customer.email,
@@ -95,6 +101,7 @@ export async function sendServiceReminder(need: VehicleNeedingReminder, trigger?
       kmRemaining: need.kmRemaining,
       daysRemaining: need.daysRemaining,
       isOverdue: need.isOverdue,
+      reminderCount: sentThisCycle + 1,
       // The customer's own account — never a staff-portal page they can't open.
       vehicleUrl: `${websiteUrl}/customer-portal/dashboard`,
       logoUrl: `${websiteUrl}/images/logo/logo.png`,
@@ -140,7 +147,7 @@ export async function getVehicleReminderHistory(vehicleId: string) {
  * A staff member sending a reminder right now, from the Service Tracker
  * or the vehicle's page. Picks the honest stage for where the vehicle
  * actually stands (overdue → the overdue reminder; due soon → the next
- * stage in the sequence), bypassing only the automatic 14-day spacing,
+ * stage in the sequence) — refused until it is actually due,
  * because a person deliberately chose to send it. Logged (trigger
  * MANUAL) and audited like every other reminder. Never sent to a
  * vehicle that's back in the workshop, or one not yet due.
@@ -178,7 +185,7 @@ export async function sendManualServiceReminder(vehicleId: string): Promise<void
 /**
  * "Send all due reminders" — one click by a Workshop Manager or Master
  * Admin sends exactly the reminders the system says are due right now
- * (same stages, 14-day spacing and skips). Staff-triggered, never
+ * (same stages, 7-working-day spacing and skips). Staff-triggered, never
  * scheduled: nothing is ever emailed without a person choosing to.
  */
 export async function runServiceRemindersNow(): Promise<{ evaluated: number; sent: number; failed: number }> {
