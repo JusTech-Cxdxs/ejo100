@@ -52,6 +52,7 @@ export function computeServiceCycle(odometer: number | null, completedAt: Date, 
  * anchor yet, so after the first run it finds nothing.
  */
 export async function backfillServiceCycleAnchors(): Promise<number> {
+  await normaliseEscalatedServices();
   const pending = await prisma.vehicleService.findMany({
     where: {
       status: { in: [...SERVICE_DONE_STATUSES] },
@@ -78,6 +79,81 @@ export async function backfillServiceCycleAnchors(): Promise<number> {
 
 /** The open visit a vehicle is currently in the workshop on. */
 export type WorkshopVisit = { kind: 'VEHICLE_SERVICE' | 'JOB_CARD'; id: string; number: string; status: string };
+
+const CYCLE_SOURCE_SELECT = {
+  vehicle: { select: { serviceIntervalKm: true, serviceIntervalDays: true } },
+  branch: { select: { businessUnit: { select: { organisation: { select: { primaryServiceIntervalKm: true, primaryServiceIntervalDays: true } } } } } },
+} as const;
+
+/**
+ * Escalated services, made consistent (idempotent):
+ * 1. Any escalated before the ESCALATED status existed gets it now.
+ * 2. Any whose Job Card has since been genuinely checked out (not a
+ *    cancelled hand-back) starts its next-service count from that
+ *    checkout — the moment the work actually finished and left.
+ */
+export async function normaliseEscalatedServices(): Promise<void> {
+  // An "Escalated" service whose Job Card no longer exists (deleted) has
+  // nothing to hand over to — it is cancelled rather than left stuck.
+  await prisma.vehicleService.updateMany({
+    where: { status: 'ESCALATED', escalatedToJobCardId: null },
+    data: { status: 'CANCELLED', cancelledAt: new Date() },
+  });
+  const legacy = await prisma.vehicleService.findMany({
+    where: { escalatedToJobCardId: { not: null }, status: { not: 'ESCALATED' } },
+    select: { id: true, escalatedToJobCard: { select: { createdAt: true } } },
+  });
+  for (const s of legacy) {
+    await prisma.vehicleService.update({ where: { id: s.id }, data: { status: 'ESCALATED', escalatedAt: s.escalatedToJobCard?.createdAt ?? new Date() } });
+  }
+  const unanchored = await prisma.vehicleService.findMany({
+    where: {
+      status: 'ESCALATED',
+      primaryServiceDate: null,
+      escalatedToJobCard: { status: 'CHECKED_OUT', checkedOutAt: { not: null }, cancellationRequests: { none: { status: 'APPROVED' } } },
+    },
+    select: { id: true, escalatedToJobCardId: true },
+  });
+  for (const s of unanchored) {
+    if (s.escalatedToJobCardId) await anchorEscalatedServiceFromJobCard(s.escalatedToJobCardId);
+  }
+}
+
+/**
+ * When a Job Card that came from a Vehicle Service is genuinely checked
+ * out, that is the moment the vehicle's service was actually finished —
+ * so the next-service count starts from that checkout (date) and the
+ * Job Card's own odometer reading. A cancelled Job Card never anchors:
+ * no service was done. No-op for a Job Card with no linked service, or
+ * one already anchored.
+ */
+export async function anchorEscalatedServiceFromJobCard(jobCardId: string): Promise<void> {
+  const svc = await prisma.vehicleService.findFirst({
+    where: { escalatedToJobCardId: jobCardId, primaryServiceDate: null },
+    select: {
+      id: true,
+      odometerAtService: true,
+      escalatedToJobCard: {
+        select: {
+          status: true,
+          checkedOutAt: true,
+          mileageAtCheckIn: true,
+          // An approved cancellation is the one real signal a Job Card was
+          // cancelled — its vehicle is also "checked out" (handed back),
+          // but no service was ever done, so it must never anchor.
+          cancellationRequests: { where: { status: 'APPROVED' }, select: { id: true }, take: 1 },
+        },
+      },
+      ...CYCLE_SOURCE_SELECT,
+    },
+  });
+  const jc = svc?.escalatedToJobCard;
+  if (!svc || !jc || jc.status !== 'CHECKED_OUT' || !jc.checkedOutAt || jc.cancellationRequests.length > 0) return;
+  await prisma.vehicleService.update({
+    where: { id: svc.id },
+    data: computeServiceCycle(jc.mileageAtCheckIn ?? svc.odometerAtService, jc.checkedOutAt, svc),
+  });
+}
 
 /**
  * Vehicles currently in the workshop for work — an open routine
@@ -127,6 +203,36 @@ export function serviceDueStatus(nextServiceDueOdometer: number | null, nextServ
   return { kmRemaining, daysRemaining, status };
 }
 
+/** Spacing kept between one reminder and the next for the same prediction. */
+export const MIN_DAYS_BETWEEN_REMINDERS = 14;
+
+/**
+ * Which reminder is due now for one prediction — the single rule the
+ * whole system uses. Reminders are SEMI-AUTOMATIC: this only decides
+ * WHEN a reminder is due and which stage; a person always clicks Send.
+ *   Due soon: 1st (friendly) → 2nd (follow-up) → 3rd (due), each at
+ *   least 14 days after the last. Overdue: the overdue reminder (4),
+ *   repeatable every 14 days. Returns when the next one becomes due if
+ *   it isn't due yet.
+ */
+export function nextReminderStage(
+  status: ServiceDueStatus,
+  lastStage: number | null,
+  lastSentAt: Date | null,
+  now: Date = new Date(),
+): { stage: 1 | 2 | 3 | 4 | null; dueFrom: Date | null } {
+  if (status === 'ON_TRACK') return { stage: null, dueFrom: null };
+  const gapPassedAt = lastSentAt ? new Date(new Date(lastSentAt).getTime() + MIN_DAYS_BETWEEN_REMINDERS * 86400000) : null;
+  const gapPassed = !gapPassedAt || gapPassedAt <= now;
+  if (status === 'OVERDUE') {
+    if (lastStage === null || lastStage < 4) return { stage: 4, dueFrom: null };
+    return gapPassed ? { stage: 4, dueFrom: null } : { stage: null, dueFrom: gapPassedAt };
+  }
+  if (lastStage === null) return { stage: 1, dueFrom: null };
+  if (!gapPassed) return { stage: null, dueFrom: gapPassedAt };
+  return { stage: lastStage === 1 ? 2 : 3, dueFrom: null };
+}
+
 export type TrackedVehicle = {
   vehicleId: string;
   vehicleDescription: string;
@@ -146,6 +252,13 @@ export type TrackedVehicle = {
   /** Currently back in the workshop — tracked, but never reminded. */
   inWorkshop: WorkshopVisit | null;
   reminders: { sentThisCycle: number; lastSentAt: Date | null; lastStage: number | null };
+  /** The reminder a person can send right now (null = none due), or when
+   * the next one becomes due. Never set while in the workshop or once
+   * attended to. */
+  reminderDue: { stage: 1 | 2 | 3 | 4 } | null;
+  nextReminderFrom: Date | null;
+  /** The last service was carried out on a Job Card (escalated). */
+  viaJobCard: { id: string; jobNumber: string } | null;
 };
 
 /**
@@ -174,6 +287,7 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
       nextServiceDueDate: true,
       customer: { select: { fullName: true, email: true } },
       vehicle: { select: { make: true, model: true, year: true, plateNumber: true, mileage: true } },
+      escalatedToJobCard: { select: { id: true, jobNumber: true } },
     },
   });
   // Only the latest real prediction per vehicle counts.
@@ -215,6 +329,41 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
         lastSentAt: cycleLogs[0]?.sentAt ?? null,
         lastStage: cycleLogs[0]?.reminderNumber ?? null,
       },
+      ...(() => {
+        const inWorkshop = visits.get(s.vehicleId) ?? null;
+        if (inWorkshop || s.attendedAt) return { reminderDue: null, nextReminderFrom: null };
+        const next = nextReminderStage(due.status, cycleLogs[0]?.reminderNumber ?? null, cycleLogs[0]?.sentAt ?? null, now);
+        return { reminderDue: next.stage ? { stage: next.stage } : null, nextReminderFrom: next.dueFrom };
+      })(),
+      viaJobCard: s.escalatedToJobCard ? { id: s.escalatedToJobCard.id, jobNumber: s.escalatedToJobCard.jobNumber } : null,
     };
   });
+}
+
+// ── Escalated = read-only ─────────────────────────────────────────────
+
+type EscalationRef = { vehicleServiceId?: string; estimateId?: string; lineItemId?: string; inspectionId?: string };
+
+/**
+ * Refuses any change to a Vehicle Service that has been handed over to
+ * a Job Card — all work, payment and checkout continue there. Called at
+ * the top of every mutation that isn't already refused by its own
+ * status rules, so "Escalated" is genuinely read-only on the server,
+ * not just hidden on the page.
+ */
+export async function assertServiceNotEscalated(ref: EscalationRef): Promise<void> {
+  const select = { status: true, escalatedToJobCardId: true, escalatedToJobCard: { select: { jobNumber: true } } } as const;
+  let svc: { status: string; escalatedToJobCardId: string | null; escalatedToJobCard: { jobNumber: string } | null } | null = null;
+  if (ref.vehicleServiceId) {
+    svc = await prisma.vehicleService.findUnique({ where: { id: ref.vehicleServiceId }, select });
+  } else if (ref.estimateId) {
+    svc = (await prisma.serviceEstimate.findUnique({ where: { id: ref.estimateId }, select: { vehicleService: { select } } }))?.vehicleService ?? null;
+  } else if (ref.lineItemId) {
+    svc = (await prisma.serviceEstimateLineItem.findUnique({ where: { id: ref.lineItemId }, select: { estimate: { select: { vehicleService: { select } } } } }))?.estimate.vehicleService ?? null;
+  } else if (ref.inspectionId) {
+    svc = (await prisma.vehicleInspection.findUnique({ where: { id: ref.inspectionId }, select: { vehicleService: { select } } }))?.vehicleService ?? null;
+  }
+  if (svc && (svc.status === 'ESCALATED' || svc.escalatedToJobCardId)) {
+    throw new Error(`This Vehicle Service was escalated to ${svc.escalatedToJobCard?.jobNumber ?? 'a Job Card'} and is now read-only — continue on the Job Card.`);
+  }
 }

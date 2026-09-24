@@ -72,6 +72,20 @@ export const REWORK_TRANSITION: { from: JobCardStatus; to: JobCardStatus } = {
 };
 
 /**
+ * Every status rework can start from. Beyond a failed quality check, a
+ * vehicle can fail its road test after sign-off — at COMPLETED, or even
+ * at READY_FOR_COLLECTION before the customer takes it. It goes back to
+ * IN_PROGRESS with a required reason, logged as "Sent back for rework".
+ * Never from CLOSED or later: once closed (settled) or checked out, a
+ * problem is a new visit (a comeback), not rework of this one.
+ */
+export const REWORK_FROM_STATUSES = ['QUALITY_CHECK', 'COMPLETED', 'READY_FOR_COLLECTION'] as const;
+
+export function isReworkTransition(from: string, to: string): boolean {
+  return to === 'IN_PROGRESS' && (REWORK_FROM_STATUSES as readonly string[]).includes(from);
+}
+
+/**
  * Every status a non-Master-Admin viewer could ever move a Job Card to
  * directly, from its current real status — the one canonical answer,
  * checked identically by the dropdown's own options AND by
@@ -111,15 +125,21 @@ export function getSelectableJobCardStatuses(
       return options;
     }
     case 'COMPLETED':
-      return canSignOff ? (['READY_FOR_COLLECTION'] as JobCardStatus[]) : [];
+      // Onward to collection, or back for rework (e.g. failed road test)
+      // — both by whoever holds sign-off authority, since rework here
+      // revokes a sign-off they gave.
+      return canSignOff ? (['READY_FOR_COLLECTION', 'IN_PROGRESS'] as JobCardStatus[]) : [];
+    case 'READY_FOR_COLLECTION':
+      // Onward only via the close request (Manager-approved); the one
+      // direct move is rework before the customer takes the vehicle.
+      return canSignOff ? (['IN_PROGRESS'] as JobCardStatus[]) : [];
     case 'CLOSED':
       // Broad on purpose — whoever's physically at the counter when a
       // customer arrives to collect their vehicle should be able to
       // check it out, matching how a real front desk actually works.
       return (canProgress || canSignOff) ? (['CHECKED_OUT'] as JobCardStatus[]) : [];
-    // CHECKED_IN, AWAITING_CUSTOMER_APPROVAL, READY_FOR_COLLECTION: no
-    // direct dropdown option for anyone but Master Admin — see design
-    // decisions 1 and 3 above. CANCELLED and CHECKED_OUT (as a current
+    // CHECKED_IN, AWAITING_CUSTOMER_APPROVAL: no direct option for
+    // anyone but Master Admin — see design decision 1 above. CANCELLED and CHECKED_OUT (as a current
     // status) are handled entirely outside this file already.
     default:
       return [];
