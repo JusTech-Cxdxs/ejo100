@@ -42,6 +42,7 @@ export default async function ServiceTrackerPage({
     in_workshop: vehicles.filter((v) => v.inWorkshop).length,
     attended: vehicles.filter((v) => v.attendedAt).length,
   };
+  const dueNow = vehicles.filter((v) => v.reminderDue).length;
   const query = q?.trim().toLowerCase();
   const shown = vehicles
     .filter((v) =>
@@ -94,21 +95,21 @@ export default async function ServiceTrackerPage({
             .
           </p>
         </div>
-        {canRunReminders ? (
+        {canRunReminders && dueNow > 0 ? (
           <form action={runServiceRemindersNowFormAction}>
             <FormPendingOverlay />
             <SubmitButton
-              label="Run automatic reminders now"
-              pendingLabel="Running…"
+              label={`Send all ${pluralize(dueNow, 'due reminder')}`}
+              pendingLabel="Sending…"
               className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
             />
           </form>
         ) : null}
       </div>
       <p className="mb-6 text-xs text-[var(--ejo-text-muted)]">
-        Automatic reminders run every day: a friendly note once a vehicle is due soon (within 1,000 km or 30 days), follow-ups
-        at least 14 days apart, then an overdue reminder. Nothing is ever sent while the vehicle is back in the workshop,
-        or once a prediction has been attended to.
+        Reminders are sent by you, never automatically. The system works out when each one is due — a friendly note once a
+        vehicle is due soon (within 1,000 km or 30 days), follow-ups at least 14 days apart, then an overdue reminder — and
+        shows a Send button only then. Nothing is due while a vehicle is back in the workshop or once it&apos;s attended to.
       </p>
 
       {error ? (
@@ -192,7 +193,7 @@ export default async function ServiceTrackerPage({
                       : v.status === 'DUE_SOON'
                         ? { text: 'Due Soon', cls: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]' }
                         : { text: 'On Track', cls: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]' };
-                const canRemind = !v.inWorkshop && !v.attendedAt && v.status !== 'ON_TRACK';
+              
                 return (
                   <tr key={v.vehicleId} className="border-b border-[var(--ejo-border)] align-top last:border-0">
                     <td className="px-3 py-2">
@@ -207,6 +208,14 @@ export default async function ServiceTrackerPage({
                       <LoadingLink href={`/workshop/vehicle-service/${v.lastService.id}`} className="text-[var(--ejo-primary)] hover:underline">
                         {v.lastService.serviceNumber}
                       </LoadingLink>
+                      {v.viaJobCard ? (
+                        <>
+                          {' '}via{' '}
+                          <LoadingLink href={`/workshop/job-cards/${v.viaJobCard.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                            {v.viaJobCard.jobNumber}
+                          </LoadingLink>
+                        </>
+                      ) : null}
                       <div className="text-[var(--ejo-text-muted)]">
                         {v.lastService.date ? formatDateOnly(v.lastService.date) : '—'}
                         {v.lastService.mileage != null ? ` · ${v.lastService.mileage.toLocaleString('en-NG')} km` : ''}
@@ -234,8 +243,15 @@ export default async function ServiceTrackerPage({
                       ) : null}
                     </td>
                     <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
+                      {v.reminderDue ? (
+                        <div className="mb-1 font-medium text-[var(--ejo-warning)]">Due now: {STAGE_LABEL[v.reminderDue.stage]}</div>
+                      ) : v.nextReminderFrom ? (
+                        <div className="mb-1">Next from {formatDateOnly(v.nextReminderFrom)}</div>
+                      ) : v.inWorkshop ? (
+                        <div className="mb-1">Held — in the workshop</div>
+                      ) : null}
                       {v.reminders.sentThisCycle === 0 ? (
-                        'None yet'
+                        'None sent yet'
                       ) : (
                         <>
                           {pluralize(v.reminders.sentThisCycle, 'reminder')}
@@ -249,7 +265,7 @@ export default async function ServiceTrackerPage({
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap justify-end gap-2">
-                        {canRemind ? (
+                        {v.reminderDue ? (
                           <form action={sendManualServiceReminderFormAction}>
                             <FormPendingOverlay />
                             <input type="hidden" name="vehicleId" value={v.vehicleId} />
@@ -257,7 +273,7 @@ export default async function ServiceTrackerPage({
                             <SubmitButton
                               label="Send reminder"
                               pendingLabel="Sending…"
-                              className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                              className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
                             />
                           </form>
                         ) : null}
@@ -275,10 +291,10 @@ export default async function ServiceTrackerPage({
                         ) : null}
                         {!v.inWorkshop ? (
                           <LoadingLink
-                            href="/workshop/vehicle-service"
+                            href={`/workshop/vehicle-service/book?vehicleId=${v.vehicleId}`}
                             className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
                           >
-                            New Service
+                            Book in
                           </LoadingLink>
                         ) : null}
                       </div>
