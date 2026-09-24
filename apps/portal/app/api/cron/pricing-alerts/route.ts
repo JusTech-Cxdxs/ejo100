@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { setAuditActor } from '@ejo/database';
 import { getOpenPricingAlertsForDigest } from '@/lib/actions/store';
 import { sendEmail } from '@/lib/email';
 import { renderPricingAlertsDigestEmail } from '@/lib/email-templates/pricing-alerts-digest';
@@ -23,6 +24,8 @@ import { renderPricingAlertsDigestEmail } from '@/lib/email-templates/pricing-al
  * that secret.
  */
 export async function GET(request: NextRequest) {
+  // Scheduled job: any write it makes is journaled as the system.
+  setAuditActor(null, 'cron:pricing-alerts');
   const authHeader = request.headers.get('authorization');
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
