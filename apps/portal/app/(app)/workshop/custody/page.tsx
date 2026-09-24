@@ -1,10 +1,12 @@
-import { getWorkshopCustodySummary, currentUserIsMasterAdmin, listEligibleManagersForBranch, getWorkshopBranchId, currentUserId } from '@/lib/actions/workshop';
-import { sendApprovalReminderFormAction, runApprovalDeadlineChecksFormAction, notifyOverdueCancelledVehicleFormAction, sendReadyForCollectionReminderFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
+import { getWorkshopCustodySummary, type WorkshopCustodyEntry, currentUserIsMasterAdmin, listEligibleManagersForBranch, getWorkshopBranchId, currentUserId } from '@/lib/actions/workshop';
+import { sendApprovalReminderFormAction, notifyOverdueCancelledVehicleFormAction, sendReadyForCollectionReminderFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
+import { ordinal } from '@/lib/custody-reminders';
+import { formatDateOnly } from '@/lib/utils/format-date';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -119,6 +121,27 @@ function PendingCancellationBlock({ entry, isEligibleManager }: { entry: Custody
  * In Service is the simpler catch-all for everything still moving
  * through the workshop's own process.
  */
+/** Staged reminder status for one custody entry — who sent the last one
+ * (by name) and, when the next isn't due yet, exactly when it will be. */
+function ReminderStatus({ entry, noun }: { entry: WorkshopCustodyEntry; noun: string }) {
+  const r = entry.reminder;
+  if (!r) return null;
+  return (
+    <div className="mt-2 space-y-0.5 text-xs text-[var(--ejo-text-muted)]">
+      {r.lastSentAt ? (
+        <p>
+          Last {noun} sent by {r.lastSentByName ?? 'an unknown user'} on {formatDateOnly(new Date(r.lastSentAt))}.
+        </p>
+      ) : null}
+      {!r.dueNow ? (
+        <p>
+          {ordinal(r.nextNumber)} {noun} available from {formatDateOnly(new Date(r.dueFrom))} — spaced 2 working days apart.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export default async function WorkshopCustodyPage({
   searchParams,
 }: {
@@ -268,28 +291,14 @@ export default async function WorkshopCustodyPage({
         </div>
       ) : null}
 
-      {isMasterAdmin ? (
-        <div className="mb-8 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Approval Deadline Checks</h2>
-          <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-            Stands in for a scheduled daily job until one is wired up — sends any due approval reminders and
-            flags any Job Card that has passed its approval deadline for manual review. Nothing is ever
-            cancelled automatically here — a deliberate business choice, so a genuine reason (a customer who
-            calls to ask for a day&apos;s grace) is never overridden by a script. Actually cancelling an overdue
-            Job Card still goes through the normal, Manager-approved cancellation request below, the same as
-            any other cancellation. Cancelled-collection and Ready-for-Collection reminders stay their own
-            deliberate, manual action too — sending those isn&apos;t automatic here either.
-          </p>
-          <form action={runApprovalDeadlineChecksFormAction} className="mt-3">
-            <FormPendingOverlay />
-            <SubmitButton
-              label="Run deadline checks now"
-              pendingLabel="Running…"
-              className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            />
-          </form>
-        </div>
-      ) : null}
+      <div className="mb-8 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 text-xs text-[var(--ejo-text-muted)]">
+        <span className="font-medium text-[var(--ejo-text)]">How reminders work here:</span> the system works out when each
+        reminder is due — approval reminders from 3 working days after the estimate is sent, collection reminders from 2 working
+        days after the vehicle is ready, cancelled-vehicle notices once the 7-working-day grace has passed, then every 2 working
+        days — and shows a Send button only then. Nothing is ever emailed automatically, and every email is numbered for the
+        customer and signed with the sender&apos;s name. Nothing is ever cancelled automatically either: an overdue approval still
+        goes through the normal, Manager-approved cancellation request.
+      </div>
 
       {showAwaiting ? (
       <section className="mb-10">
@@ -338,16 +347,20 @@ export default async function WorkshopCustodyPage({
                 {entry.pendingCancellationRequest ? (
                   <PendingCancellationBlock entry={entry} isEligibleManager={isEligibleManager} />
                 ) : (
+                  <>
+                  <ReminderStatus entry={entry} noun="approval reminder" />
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <form action={sendApprovalReminderFormAction}>
-                      <FormPendingOverlay />
-                      <input type="hidden" name="jobCardId" value={entry.id} />
-                      <SubmitButton
-                        label={entry.remindersSent && entry.remindersSent > 0 ? 'Send another reminder' : 'Send reminder'}
-                        pendingLabel="Sending…"
-                        className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                      />
-                    </form>
+                    {entry.reminder?.dueNow ? (
+                      <form action={sendApprovalReminderFormAction}>
+                        <FormPendingOverlay />
+                        <input type="hidden" name="jobCardId" value={entry.id} />
+                        <SubmitButton
+                          label={`Send ${ordinal(entry.reminder.nextNumber)} approval reminder`}
+                          pendingLabel="Sending…"
+                          className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                        />
+                      </form>
+                    ) : null}
                     <details className="group">
                       <summary className="cursor-pointer list-none rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10">
                         Request cancellation
@@ -370,6 +383,7 @@ export default async function WorkshopCustodyPage({
                       </form>
                     </details>
                   </div>
+                  </>
                 )}
               </div>
             ))}
@@ -426,7 +440,8 @@ export default async function WorkshopCustodyPage({
                   </div>
                 </div>
                 <AnalysisLine entry={entry} />
-                {isEligibleManager ? (
+                <ReminderStatus entry={entry} noun="collection notice" />
+                {isEligibleManager && entry.reminder?.dueNow ? (
                   <form action={notifyOverdueCancelledVehicleFormAction} className="mt-3 flex gap-2">
                     <FormPendingOverlay />
                     <input type="hidden" name="jobCardId" value={entry.id} />
@@ -436,7 +451,7 @@ export default async function WorkshopCustodyPage({
                       className="flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                     />
                     <SubmitButton
-                      label={entry.remindersSent && entry.remindersSent > 0 ? 'Send another notice' : 'Notify customer'}
+                      label={`Send ${ordinal(entry.reminder?.nextNumber ?? 1)} collection notice`}
                       pendingLabel="Sending…"
                       className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
                     />
@@ -501,15 +516,18 @@ export default async function WorkshopCustodyPage({
                   </div>
                 </div>
                 <AnalysisLine entry={entry} />
-                <form action={sendReadyForCollectionReminderFormAction} className="mt-3">
-                  <FormPendingOverlay />
-                  <input type="hidden" name="jobCardId" value={entry.id} />
-                  <SubmitButton
-                    label={entry.remindersSent && entry.remindersSent > 0 ? 'Send another reminder' : 'Send reminder'}
-                    pendingLabel="Sending…"
-                    className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
-                  />
-                </form>
+                <ReminderStatus entry={entry} noun="collection reminder" />
+                {entry.reminder?.dueNow ? (
+                  <form action={sendReadyForCollectionReminderFormAction} className="mt-3">
+                    <FormPendingOverlay />
+                    <input type="hidden" name="jobCardId" value={entry.id} />
+                    <SubmitButton
+                      label={`Send ${ordinal(entry.reminder.nextNumber)} collection reminder`}
+                      pendingLabel="Sending…"
+                      className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                    />
+                  </form>
+                ) : null}
               </div>
             ))}
           </div>
