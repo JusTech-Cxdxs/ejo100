@@ -58,6 +58,7 @@ const STATUS_LABEL: Record<string, string> = {
   CLOSED: 'Closed',
   COLLECTED: 'Checked Out',
   CANCELLED: 'Cancelled',
+  ESCALATED: 'Escalated to Job Card',
 };
 const STATUS_CLASS: Record<string, string> = {
   SCHEDULED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
@@ -67,6 +68,7 @@ const STATUS_CLASS: Record<string, string> = {
   READY_FOR_COLLECTION: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
   CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   COLLECTED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  ESCALATED: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
@@ -131,6 +133,7 @@ const NEXT_ACTION: Record<string, { status: string; label: string } | null> = {
   READY_FOR_COLLECTION: null,
   CLOSED: { status: 'COLLECTED', label: 'Check Out Vehicle' },
   COLLECTED: null,
+  ESCALATED: null,
   CANCELLED: null,
 };
 
@@ -281,7 +284,10 @@ export default async function VehicleServiceDetailPage({
 
   const isApprover = isMasterAdmin || service.supervisor?.id === viewerId;
   const isAssignedTechnician = isMasterAdmin || service.assignedTechnician?.id === viewerId;
-  const isEstimateContributor = isMasterAdmin || service.supervisor?.id === viewerId || service.assignedTechnician?.id === viewerId;
+  // Escalated = handed over to a Job Card: this record becomes read-only
+  // (every action is also refused on the server).
+  const isReadOnly = service.status === 'ESCALATED' || Boolean(service.escalatedToJobCard);
+  const isEstimateContributor = !isReadOnly && (isMasterAdmin || service.supervisor?.id === viewerId || service.assignedTechnician?.id === viewerId);
   const nextAction = NEXT_ACTION[service.status];
   const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
   const [technicians, auditTrail, inspection, serviceEstimate, partTypes, partCategories, payments, eligibleFinance, eligibleManagers, sourcingNeeds, closeRequests] = await Promise.all([
@@ -500,7 +506,10 @@ export default async function VehicleServiceDetailPage({
           <LoadingLink href={`/workshop/job-cards/${service.escalatedToJobCard.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">
             Job Card {service.escalatedToJobCard.jobNumber}
           </LoadingLink>
-          , which now handles the repair.
+          {service.escalatedAt ? ` on ${formatDateTime(service.escalatedAt)}` : ''}, which now handles the work, payment and check-out.
+          <span className="mt-1 block text-xs text-[var(--ejo-text-muted)]">
+            This service is closed and read-only. The vehicle&apos;s next-service count starts when that Job Card is checked out.
+          </span>
         </div>
       ) : null}
 
@@ -652,7 +661,18 @@ export default async function VehicleServiceDetailPage({
             <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
               The real technical record of what the supervisor/technician actually found on this vehicle.
             </p>
-            {!inspection ? (
+            {isReadOnly ? (
+              <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">
+                {inspection ? (
+                  <LoadingLink href={`/workshop/vehicle-service/${service.id}/inspection`} className="text-[var(--ejo-primary)] hover:underline">
+                    View inspection
+                  </LoadingLink>
+                ) : (
+                  'No inspection was recorded.'
+                )}{' '}
+                — read-only, this service was escalated.
+              </p>
+            ) : !inspection ? (
               <LoadingLink
                 href={`/workshop/vehicle-service/${service.id}/inspection`}
                 className="mt-3 inline-block rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
@@ -1079,7 +1099,7 @@ export default async function VehicleServiceDetailPage({
                     </form>
                   ) : null}
 
-                  {serviceEstimate.status === 'SUBMITTED' && isApprover ? (
+                  {serviceEstimate.status === 'SUBMITTED' && isApprover && !isReadOnly ? (
                     <form action={approveServiceEstimateFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
                       <FormPendingOverlay />
                       <input type="hidden" name="estimateId" value={serviceEstimate.id} />
@@ -1092,7 +1112,7 @@ export default async function VehicleServiceDetailPage({
                     </form>
                   ) : null}
 
-                  {serviceEstimate.status === 'APPROVED' && isEligibleManager ? (
+                  {serviceEstimate.status === 'APPROVED' && isEligibleManager && !isReadOnly ? (
                     <form action={approveServiceEstimateAsManagerFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
                       <FormPendingOverlay />
                       <input type="hidden" name="estimateId" value={serviceEstimate.id} />
@@ -1115,7 +1135,7 @@ export default async function VehicleServiceDetailPage({
                     </p>
                   ) : null}
 
-                  {serviceEstimate.status === 'MANAGER_APPROVED' && !serviceEstimate.customerNotifiedAt && isEstimateCreator ? (
+                  {serviceEstimate.status === 'MANAGER_APPROVED' && !serviceEstimate.customerNotifiedAt && isEstimateCreator && !isReadOnly ? (
                     <form action={notifyCustomerOfApprovedServiceEstimateFormAction} className="mt-4 border-t border-[var(--ejo-border)] pt-4">
                       <FormPendingOverlay />
                       <input type="hidden" name="estimateId" value={serviceEstimate.id} />
@@ -1306,7 +1326,7 @@ export default async function VehicleServiceDetailPage({
         </div>
 
         <div className="space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6">
-          {isApprover && service.approvalStatus === 'PENDING' ? (
+          {isApprover && service.approvalStatus === 'PENDING' && !isReadOnly ? (
             <div id="review-approval" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Review this Vehicle Service</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
