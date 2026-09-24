@@ -168,7 +168,9 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
     case 'job_card.status_updated': {
       const from = typeof meta.from === 'string' ? (STATUS_LABEL[meta.from] ?? meta.from) : null;
       const to = typeof meta.to === 'string' ? (STATUS_LABEL[meta.to] ?? meta.to) : null;
-      return from && to ? `${from} → ${to}` : null;
+      if (!from || !to) return null;
+      // Automatic moves (parts outstanding / all parts received) say so.
+      return meta.automatic ? `${from} → ${to} (automatic${typeof meta.reason === 'string' ? ` — ${meta.reason}` : ''})` : `${from} → ${to}`;
     }
     case 'job_card.rework_requested':
       return typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : null;
