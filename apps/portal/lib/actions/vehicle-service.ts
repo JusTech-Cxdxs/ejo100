@@ -514,7 +514,11 @@ export async function deleteVehicleService(serviceId: string): Promise<void> {
   if (!isMasterAdmin) {
     throw new VehicleServiceActionError('Only a Master Administrator can delete a Vehicle Service.');
   }
+  const user = await requireUser();
+  const snapshot = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { serviceNumber: true, status: true, customerId: true, vehicleId: true } });
   await prisma.vehicleService.delete({ where: { id: serviceId } });
+  // Kept after the record itself is gone.
+  await writeAuditLog({ userId: user.id, action: 'vehicle_service.deleted', entityType: 'VehicleService', entityId: serviceId, metadata: { ...snapshot } });
 }
 
 export type VehicleServiceHealth = {
@@ -650,6 +654,13 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
       select: { amount: true, jobCardId: true, vehicleServiceId: true },
     }),
   ]);
+  // Money returned (cancelled after a deposit) — "paid" means kept.
+  const refunds = await prisma.refund.findMany({
+    where: { OR: [{ jobCard: { vehicleId } }, { vehicleService: { vehicleId } }] },
+    select: { amount: true, jobCardId: true, vehicleServiceId: true },
+  });
+  const refundedJobCard = refunds.filter((r: (typeof refunds)[number]) => r.jobCardId).reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
+  const refundedService = refunds.filter((r: (typeof refunds)[number]) => r.vehicleServiceId).reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
 
   const mileageTimeline: VehicleMileagePoint[] = [
     ...services
@@ -706,8 +717,8 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
   const approvedJobCard = spendTimeline.filter((p) => p.source === 'JOB_CARD').reduce((sum, p) => sum + p.amount, 0);
   const approvedService = spendTimeline.filter((p) => p.source === 'VEHICLE_SERVICE').reduce((sum, p) => sum + p.amount, 0);
-  const paidJobCard = payments.filter((p: (typeof payments)[number]) => p.jobCardId).reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount), 0);
-  const paidService = payments.filter((p: (typeof payments)[number]) => p.vehicleServiceId).reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount), 0);
+  const paidJobCard = payments.filter((p: (typeof payments)[number]) => p.jobCardId).reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount), 0) - refundedJobCard;
+  const paidService = payments.filter((p: (typeof payments)[number]) => p.vehicleServiceId).reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount), 0) - refundedService;
   const totalApproved = approvedJobCard + approvedService;
   const totalPaid = paidJobCard + paidService;
 
@@ -1086,6 +1097,13 @@ export async function updateVehicleServiceStatus(
   if (!ladder[service.status]?.includes(newStatus)) {
     throw new VehicleServiceActionError(`A Vehicle Service currently ${service.status} cannot move directly to ${newStatus}.`);
   }
+  // Cancelling a service that has already taken money authorises a
+  // refund — a Manager's decision (Finance then pays and records it),
+  // the same principle as Job Card's Manager-approved cancellation.
+  const paidSoFar = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
+  if (newStatus === 'CANCELLED' && paidSoFar > 0) {
+    await requireEligibleManager(service.branchId);
+  }
   if (newStatus === 'COMPLETED') await requireVehicleServiceStepRole(service, 'COMPLETE', user.id);
   if (newStatus === 'READY_FOR_COLLECTION') await requireVehicleServiceStepRole(service, 'SIGN_OFF', user.id);
   if (newStatus === 'COLLECTED') {
@@ -1142,6 +1160,7 @@ export async function updateVehicleServiceStatus(
       from: service.status,
       to: newStatus,
       ...(newStatus === 'COLLECTED' ? { collectedByName: input?.collectedByName?.trim() } : {}),
+      ...(newStatus === 'CANCELLED' && paidSoFar > 0 ? { refundAuthorised: Math.round(paidSoFar * 100) / 100 } : {}),
       ...(cycle ? { nextServiceDueOdometer: cycle.nextServiceDueOdometer, nextServiceDueDate: cycle.nextServiceDueDate?.toISOString() ?? null } : {}),
     },
   });

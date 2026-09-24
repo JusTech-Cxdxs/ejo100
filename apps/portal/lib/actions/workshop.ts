@@ -22,7 +22,7 @@
  */
 
 import { headers } from 'next/headers';
-import { prisma, JobCardStatus, Prisma } from '@ejo/database';
+import { prisma, JobCardStatus, Prisma, setAuditActor } from '@ejo/database';
 import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
 import { workingDaysBetween, addWorkingDays } from '@/lib/utils/working-days';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
@@ -86,6 +86,9 @@ export async function requireUser(): Promise<{ id: string }> {
   if (!session?.user?.id) {
     throw new WorkshopActionError('Not authenticated.');
   }
+  // Every database write for the rest of this request is attributed to
+  // this user in the audit journal (see @ejo/database audit-journal).
+  setAuditActor(session.user.id, 'portal');
   return { id: session.user.id };
 }
 
@@ -135,7 +138,7 @@ async function requireMasterAdmin(): Promise<{ id: string }> {
  * "job_card.approved", "job_card.rejected") so a later reporting view
  * can group/filter by entity or by verb consistently. */
 export async function writeAuditLog(params: {
-  userId: string;
+  userId: string | null;
   action: string;
   entityType: string;
   entityId: string;
@@ -526,6 +529,14 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
     },
   });
 
+  await writeAuditLog({
+    userId: currentUser.id,
+    action: 'customer.created',
+    entityType: 'Customer',
+    entityId: customer.id,
+    metadata: { fullName: customer.fullName, email: customer.email, customerType: customer.customerType },
+  });
+
   const orgContext = await getWorkshopOrgContext();
   const welcomeEmailSent = await provisionCustomerAccountAndWelcomeEmail(customer, orgContext);
 
@@ -722,7 +733,7 @@ export async function createVehicle(input: CreateVehicleInput) {
     throw new WorkshopActionError(`A vehicle with chassis/VIN "${chassisNumber}" is already registered.`);
   }
 
-  return prisma.customerVehicle.create({
+  const vehicle = await prisma.customerVehicle.create({
     data: {
       customerId: input.customerId,
       make,
@@ -737,6 +748,15 @@ export async function createVehicle(input: CreateVehicleInput) {
       createdById: currentUser.id,
     },
   });
+  // "Vehicle registered" — the first entry on every vehicle's own trail.
+  await writeAuditLog({
+    userId: currentUser.id,
+    action: 'vehicle.created',
+    entityType: 'CustomerVehicle',
+    entityId: vehicle.id,
+    metadata: { plateNumber: vehicle.plateNumber, chassisNumber: vehicle.chassisNumber, make: vehicle.make, model: vehicle.model, year: vehicle.year, customerId: vehicle.customerId },
+  });
+  return vehicle;
 }
 
 export type UpdateVehicleInput = {
@@ -878,8 +898,11 @@ export async function getVehicleAuditTrail(vehicleId: string): Promise<VehicleAu
  * exactly "every of their job data... entirely from database" as asked
  * for. Irreversible; the UI must confirm before calling this. */
 export async function deleteVehicle(vehicleId: string): Promise<void> {
-  await requireMasterAdmin();
+  const user = await requireMasterAdmin();
+  const snapshot = await prisma.customerVehicle.findUnique({ where: { id: vehicleId }, select: { plateNumber: true, chassisNumber: true, make: true, model: true, year: true, customerId: true } });
   await prisma.customerVehicle.delete({ where: { id: vehicleId } });
+  // Kept on the record after the vehicle itself is gone.
+  await writeAuditLog({ userId: user.id, action: 'vehicle.deleted', entityType: 'CustomerVehicle', entityId: vehicleId, metadata: { ...snapshot } });
 }
 
 // ---------------------------------------------------------------------------
@@ -1271,6 +1294,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       vehicle: { select: { make: true, model: true } },
       estimate: { select: { lineItems: { select: { amount: true } } } },
       payments: { select: { amount: true } },
+      refunds: { select: { amount: true } },
     },
   });
   if (!jobCard) {
@@ -1297,6 +1321,17 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   // physical exit, once whoever finally collects it does.
   if (jobCard.status === JobCardStatus.CANCELLED && status !== JobCardStatus.CHECKED_OUT) {
     throw new WorkshopActionError('This Job Card is cancelled — the only status change available is checking the vehicle out.');
+  }
+  // A cancelled Job Card that took money can't hand the vehicle back
+  // until Finance has refunded all of it — so a refund can never be
+  // forgotten once the customer has driven away.
+  if (jobCard.status === JobCardStatus.CANCELLED && status === JobCardStatus.CHECKED_OUT) {
+    const paid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
+    const refunded = jobCard.refunds.reduce((sum: number, r: { amount: unknown }) => sum + Number(r.amount), 0);
+    const owed = Math.round((paid - refunded) * 100) / 100;
+    if (owed > 0) {
+      throw new WorkshopActionError(`₦${owed.toLocaleString('en-NG', { minimumFractionDigits: 2 })} paid on this Job Card must be refunded (recorded under Refunds) before the vehicle can be handed back.`);
+    }
   }
   // A non-cancelled Job Card can't genuinely be checked out — the
   // vehicle physically leaving — while real money is still owed on
@@ -1742,7 +1777,8 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
  * complaints. Does NOT touch the Customer or Vehicle it belonged to.
  * Irreversible; the UI must confirm before calling this. */
 export async function deleteJobCard(jobCardId: string): Promise<void> {
-  await requireMasterAdmin();
+  const user = await requireMasterAdmin();
+  const snapshot = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { jobNumber: true, status: true, customerId: true, vehicleId: true } });
   // A Vehicle Service escalated into this Job Card would otherwise be
   // left "Escalated" to nothing — read-only forever. Its hand-over no
   // longer exists, so it is cancelled, honestly and on the record.
@@ -1751,6 +1787,7 @@ export async function deleteJobCard(jobCardId: string): Promise<void> {
     data: { status: 'CANCELLED', cancelledAt: new Date(), escalatedToJobCardId: null },
   });
   await prisma.jobCard.delete({ where: { id: jobCardId } });
+  await writeAuditLog({ userId: user.id, action: 'job_card.deleted', entityType: 'JobCard', entityId: jobCardId, metadata: { ...snapshot } });
 }
 
 /** Assigns a technician and resets the acceptance workflow to PENDING —
@@ -1761,7 +1798,7 @@ export async function deleteJobCard(jobCardId: string): Promise<void> {
  * Notifies the technician — fail-soft, matching every other
  * notification in this file. */
 export async function assignTechnician(jobCardId: string, technicianId: string) {
-  await requireUser();
+  const actor = await requireUser();
   const jobCard = await prisma.jobCard.update({
     where: { id: jobCardId },
     data: {
@@ -1779,6 +1816,15 @@ export async function assignTechnician(jobCardId: string, technicianId: string) 
       vehicle: { select: { make: true, model: true } },
       complaints: { orderBy: { sequenceNumber: 'asc' } },
     },
+  });
+
+  const assignedTo = await prisma.user.findUnique({ where: { id: technicianId }, select: { fullName: true } });
+  await writeAuditLog({
+    userId: actor.id,
+    action: 'job_card.technician_assigned',
+    entityType: 'JobCard',
+    entityId: jobCardId,
+    metadata: { jobNumber: jobCard.jobNumber, technicianId, technicianName: assignedTo?.fullName ?? null },
   });
 
   try {

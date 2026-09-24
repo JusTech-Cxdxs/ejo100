@@ -1,6 +1,6 @@
 'use server';
 
-import { prisma } from '@ejo/database';
+import { prisma, getAuditActor } from '@ejo/database';
 import { requireUser, writeAuditLog, currentUserIsMasterAdmin, getWorkshopBranchId, listEligibleManagersForBranch } from './workshop';
 import { loadServiceTracking } from '@/lib/vehicle-service-cycle';
 import { sendEmail } from '@/lib/email';
@@ -114,6 +114,15 @@ export async function sendServiceReminder(need: VehicleNeedingReminder, trigger?
       deliveryStatus: 'SENT',
     },
   });
+  // Every reminder sent — single or bulk — is on the vehicle's audit
+  // trail, attributed to whoever clicked Send.
+  await writeAuditLog({
+    userId: getAuditActor()?.userId ?? null,
+    action: 'vehicle.service_reminder_sent',
+    entityType: 'CustomerVehicle',
+    entityId: need.vehicleId,
+    metadata: { stage: need.nextStage, overdue: need.isOverdue, trigger: trigger ?? 'AUTOMATIC', estimatedDueOdometer: need.estimatedDueOdometer, estimatedDueDate: need.estimatedDueDate?.toISOString() ?? null },
+  });
 }
 
 /** The real, permanent reminder history for one vehicle — shown on
@@ -137,7 +146,7 @@ export async function getVehicleReminderHistory(vehicleId: string) {
  * vehicle that's back in the workshop, or one not yet due.
  */
 export async function sendManualServiceReminder(vehicleId: string): Promise<void> {
-  const user = await requireUser();
+  await requireUser();
   const [t] = await loadServiceTracking({ vehicleId });
   if (!t) throw new Error('This vehicle has no completed service to remind about yet.');
   if (t.inWorkshop) throw new Error(`This vehicle is in the workshop right now (${t.inWorkshop.number}) — no reminder is needed.`);
@@ -163,13 +172,7 @@ export async function sendManualServiceReminder(vehicleId: string): Promise<void
     },
     'MANUAL',
   );
-  await writeAuditLog({
-    userId: user.id,
-    action: 'vehicle.service_reminder_sent',
-    entityType: 'CustomerVehicle',
-    entityId: vehicleId,
-    metadata: { stage: nextStage, status: t.status, lastServiceNumber: t.lastService.serviceNumber },
-  });
+  // Audited (attributed to this user) inside sendServiceReminder.
 }
 
 /**
