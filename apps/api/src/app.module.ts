@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { ConfigModule } from '@nestjs/config';
 
 import { PrismaModule } from './prisma/prisma.module';
@@ -64,6 +66,10 @@ import { SettingsModule } from './modules/settings/settings.module';
     EmailModule,
     StorageModule,
     SettingsModule,
+  ],
+  providers: [
+    // Every state-changing API request is written to audit_logs.
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
 })
 export class AppModule {}
