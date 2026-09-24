@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
+import { setAuditActor } from '@ejo/database';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
@@ -37,6 +38,8 @@ export class SessionAuthGuard implements CanActivate {
 
     // Attach the authenticated user to the request for downstream handlers.
     (request as Request & { user?: typeof session.user }).user = session.user;
+    // Attribute every database write in this request to this user.
+    setAuditActor(session.user.id, 'api');
     return true;
   }
 
