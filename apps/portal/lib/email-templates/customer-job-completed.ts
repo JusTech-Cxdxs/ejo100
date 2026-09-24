@@ -8,6 +8,9 @@ export type CustomerJobCompletedEmailOptions = {
   logoUrl: string;
   companyName: string;
   branchName: string;
+  /** This follows a rework — say so, so the customer isn't told the same
+   * news twice as if it were new. */
+  afterRework?: boolean;
 };
 
 /**
@@ -20,7 +23,7 @@ export type CustomerJobCompletedEmailOptions = {
  * something that isn't ready yet.
  */
 export function renderCustomerJobCompletedEmail(opts: CustomerJobCompletedEmailOptions): string {
-  const { customerName, jobNumber, vehicleDescription, dashboardUrl, logoUrl, companyName, branchName } = opts;
+  const { customerName, jobNumber, vehicleDescription, dashboardUrl, logoUrl, companyName, branchName, afterRework } = opts;
 
   const bodyHtml = `
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
@@ -29,6 +32,7 @@ export function renderCustomerJobCompletedEmail(opts: CustomerJobCompletedEmailO
       inspection. We're finalizing everything now to prepare it for collection, and you'll hear from us again
       shortly with the details.
     </p>
+    ${afterRework ? '<p style="margin: 16px 0 0 0; padding: 10px 14px; background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 10px; font-size: 13px; color: #166534;">This follows the additional work we let you know about — it is now complete.</p>' : ''}
   `;
 
   return renderEmailLayout({

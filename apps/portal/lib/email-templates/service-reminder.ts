@@ -1,4 +1,5 @@
 import { renderEmailLayout, escapeHtml } from './layout';
+import { pluralize } from '@/lib/utils/pluralize';
 
 export type ServiceReminderStage = 1 | 2 | 3 | 4;
 
@@ -15,11 +16,20 @@ export type ServiceReminderEmailOptions = {
   kmRemaining: number | null;
   daysRemaining: number | null;
   isOverdue: boolean;
+  /** Which reminder this is for the current service cycle (1st, 2nd, …) —
+   * shown to the customer so the count is transparent. */
+  reminderCount: number;
   vehicleUrl: string;
   logoUrl: string;
   companyName: string;
   branchName: string;
 };
+
+function ordinal(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return `${n}th`;
+  return `${n}${n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th'}`;
+}
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Lagos' });
@@ -30,10 +40,34 @@ function formatDate(d: Date): string {
 function vehicleInfoCard(opts: ServiceReminderEmailOptions): string {
   const { vehicleDescription, plateNumber, currentMileage, lastServiceMileage, lastServiceDate, estimatedDueOdometer, estimatedDueDate, kmRemaining, daysRemaining, isOverdue } = opts;
 
+  const remainingParts = [
+    kmRemaining !== null ? `about ${kmRemaining.toLocaleString('en-NG')} km` : null,
+    daysRemaining !== null ? pluralize(daysRemaining, 'day') : null,
+  ].filter(Boolean);
   const statusLine = isOverdue
     ? '<span style="color: #DC2626; font-weight: bold;">Estimated service point reached</span>'
-    : kmRemaining !== null || daysRemaining !== null
-      ? `<span style="color: #CA8A04; font-weight: bold;">${kmRemaining !== null ? `Approximately ${kmRemaining.toLocaleString('en-NG')} km` : ''}${kmRemaining !== null && daysRemaining !== null ? ' / ' : ''}${daysRemaining !== null ? `${daysRemaining} days` : ''} remaining</span>`
+    : remainingParts.length > 0
+      ? `<span style="color: #CA8A04; font-weight: bold;">${remainingParts.join(' or ')} to go — whichever comes first</span>`
+      : '';
+  const accent = isOverdue ? '#DC2626' : '#16A34A';
+  const accentBg = isOverdue ? '#FEF2F2' : '#F0FDF4';
+  const accentBorder = isOverdue ? '#FECACA' : '#BBF7D0';
+  const dueCell = (label: string, value: string) =>
+    `<td style="padding: 6px 12px 6px 0; vertical-align: top;"><p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #475569;">${label}</p><p style="margin: 2px 0 0 0; font-size: 26px; line-height: 1.15; font-weight: 800; color: ${accent};">${value}</p></td>`;
+  const nextServiceBlock =
+    estimatedDueOdometer !== null || estimatedDueDate
+      ? `
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 14px 0 4px 0; background-color: ${accentBg}; border: 2px solid ${accentBorder}; border-radius: 12px;">
+            <tr><td style="padding: 16px 18px;">
+              <p style="margin: 0 0 8px 0; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.06em; color: ${accent};">Next routine service</p>
+              <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                ${estimatedDueOdometer !== null ? dueCell('At odometer', `${estimatedDueOdometer.toLocaleString('en-NG')} km`) : ''}
+                ${estimatedDueOdometer !== null && estimatedDueDate ? '<td style="padding: 22px 12px 0 0; font-size: 14px; font-weight: bold; color: #475569;">or</td>' : ''}
+                ${estimatedDueDate ? dueCell('By date', formatDate(estimatedDueDate)) : ''}
+              </tr></table>
+              ${estimatedDueOdometer !== null && estimatedDueDate ? '<p style="margin: 6px 0 0 0; font-size: 12px; color: #475569;">Whichever comes first.</p>' : ''}
+            </td></tr>
+          </table>`
       : '';
 
   return `
@@ -44,10 +78,7 @@ function vehicleInfoCard(opts: ServiceReminderEmailOptions): string {
           <p style="margin: 0 0 10px 0; font-size: 15px; font-weight: bold; color: #0F172A;">${escapeHtml(vehicleDescription)}${plateNumber ? ` — ${escapeHtml(plateNumber)}` : ''}</p>
           ${currentMileage !== null ? `<p style="margin: 0 0 2px 0; font-size: 12px; color: #64748B;">Current recorded mileage</p><p style="margin: 0 0 10px 0; font-size: 13px; color: #0F172A;">${currentMileage.toLocaleString('en-NG')} km</p>` : ''}
           ${lastServiceMileage !== null || lastServiceDate ? `<p style="margin: 0 0 2px 0; font-size: 12px; color: #64748B;">Last recorded service</p><p style="margin: 0 0 10px 0; font-size: 13px; color: #0F172A;">${lastServiceMileage !== null ? `${lastServiceMileage.toLocaleString('en-NG')} km` : ''}${lastServiceMileage !== null && lastServiceDate ? ' — ' : ''}${lastServiceDate ? formatDate(lastServiceDate) : ''}</p>` : ''}
-          <p style="margin: 8px 0 2px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Next Routine Service (Estimate)</p>
-          <p style="margin: 0; font-size: 13px; color: #0F172A;">
-            ${estimatedDueOdometer !== null ? `${estimatedDueOdometer.toLocaleString('en-NG')} km` : ''}${estimatedDueOdometer !== null && estimatedDueDate ? ' or ' : ''}${estimatedDueDate ? formatDate(estimatedDueDate) : ''}
-          </p>
+          ${nextServiceBlock}
           ${statusLine ? `<p style="margin: 8px 0 0 0; font-size: 13px;">${statusLine}</p>` : ''}
           <p style="margin: 10px 0 0 0; font-size: 11px; color: #94A3B8; font-style: italic;">
             The date and mileage shown above are estimates based on the latest service information available to us. Actual timing depends on how the vehicle is used — please check your current odometer regularly.
@@ -131,7 +162,9 @@ export function renderServiceReminderEmail(opts: ServiceReminderEmailOptions): s
   const openingLine = stage.opening(opts.customerName, opts.vehicleDescription).replace('{{VEHICLE}}', escapeHtml(opts.vehicleDescription));
   const bodyLine = stage.body.replace('{{VEHICLE}}', escapeHtml(opts.vehicleDescription));
 
+  const counter = `<p style="margin: 0 0 14px 0; display: inline-block; padding: 4px 10px; border-radius: 999px; background-color: #EEF2FF; color: #3730A3; font-size: 12px; font-weight: bold;">This is our ${ordinal(Math.max(1, opts.reminderCount))} reminder about this service</p>`;
   const bodyHtml = `
+    ${counter}
     <p style="margin: 0 0 16px 0;">${openingLine}</p>
     <p style="margin: 0 0 8px 0;">${bodyLine}</p>
     ${vehicleInfoCard(opts)}
