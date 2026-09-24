@@ -1,7 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { JobCardStatusForm } from '@/components/JobCardStatusForm';
 import { AuditTrail } from '@/components/AuditTrail';
-import { getSelectableJobCardStatuses } from '@/lib/job-card-status-rules';
+import { getSelectableJobCardStatuses, isReworkTransition } from '@/lib/job-card-status-rules';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, getCloseRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
@@ -11,7 +11,7 @@ import { EstimateLineItemForm } from '@/components/EstimateLineItemForm';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { requestStoreMatchingFormAction } from '@/lib/actions/store-form-handlers';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
-import { assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction, requestJobCardCloseFormAction, approveCloseRequestFormAction, declineCloseRequestFormAction } from '@/lib/actions/workshop-form-handlers';
+import { assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction, requestJobCardCloseFormAction, approveCloseRequestFormAction, declineCloseRequestFormAction, updateJobCardStatusFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -279,6 +279,38 @@ function formatNaira(value: unknown): string {
   return `₦${Number(value).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** One plain line: what is happening at this stage. */
+const STAGE_HINT: Record<string, string> = {
+  CHECKED_IN: 'Vehicle received — the estimate is being prepared.',
+  AWAITING_CUSTOMER_APPROVAL: 'Estimate sent — waiting on the customer and their deposit.',
+  IN_PROGRESS: 'Work is under way.',
+  AWAITING_PARTS: 'Work paused — waiting on parts.',
+  QUALITY_CHECK: 'Work done — being checked (inspection and road test) before sign-off.',
+  COMPLETED: 'Signed off — preparing the vehicle for the customer.',
+  READY_FOR_COLLECTION: 'The customer has been told to collect.',
+  CLOSED: 'Closed by a Manager — waiting for the vehicle to be collected.',
+  CHECKED_OUT: 'Vehicle collected — this Job Card is complete.',
+  CANCELLED: 'Cancelled — the vehicle just needs handing back.',
+};
+
+/** The button wording for each real forward step. */
+const NEXT_STEP_LABEL: Record<string, string> = {
+  'IN_PROGRESS>AWAITING_PARTS': 'Pause — waiting on parts',
+  'IN_PROGRESS>QUALITY_CHECK': 'Work done — send to quality check',
+  'AWAITING_PARTS>IN_PROGRESS': 'Parts arrived — resume work',
+  'QUALITY_CHECK>COMPLETED': 'Passed quality check — mark Completed',
+  'COMPLETED>READY_FOR_COLLECTION': 'Mark Ready for Collection',
+};
+
+/** Who takes the next step, for viewers who can't. */
+const WAITING_ON: Record<string, string> = {
+  IN_PROGRESS: "this Job Card's supervisor or technician",
+  AWAITING_PARTS: "this Job Card's supervisor or technician",
+  QUALITY_CHECK: "this Job Card's supervisor or a Workshop Manager",
+  COMPLETED: "this Job Card's supervisor or a Workshop Manager",
+  CLOSED: "this Job Card's supervisor, technician or a Workshop Manager",
+};
+
 export default async function JobCardDetailPage({
   params,
   searchParams,
@@ -368,7 +400,22 @@ export default async function JobCardDetailPage({
   // and then rejected. CLOSED no longer appears here at all — it's
   // requested and approved through its own real flow now, never a
   // direct dropdown selection.
-  const isPaidInFull = paymentStatus === 'PAID_IN_FULL';
+  // Paid in full = recorded payments cover the estimate's total — the
+  // exact rule the server enforces. A Job Card with nothing owed (no
+  // priced estimate) is paid in full; reading the "Awaiting Payment"
+  // badge here instead once hid Check Out on such a card entirely.
+  const isPaidInFull = paymentsTotal >= estimateTotal;
+  const outstanding = Math.max(0, estimateTotal - paymentsTotal);
+  // The real next steps for THIS viewer's role (Master Admin sees the
+  // same normal steps; the raw override dropdown is separate).
+  const nextSteps = isCancelled
+    ? (['CHECKED_OUT'] as string[])
+    : (getSelectableJobCardStatuses(jobCard.status, {
+        isMasterAdmin: false,
+        isSupervisor: isApprover,
+        isAssignedTechnician,
+        isEligibleManager,
+      }) as string[]);
   const selectableStatuses = isCancelled
     ? (['CHECKED_OUT'] as const)
     : getSelectableJobCardStatuses(jobCard.status, {
@@ -1327,30 +1374,140 @@ export default async function JobCardDetailPage({
             </div>
           ) : null}
 
-          <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Status</h2>
-            {editStatus === 'true' && !isCheckedOut ? (
-              <JobCardStatusForm
-                jobCardId={jobCard.id}
-                currentStatus={jobCard.status}
-                selectableStatuses={selectableStatuses}
-                statusLabels={STATUS_LABEL}
-              />
-            ) : (
-              <div className="mt-3 flex items-center justify-between">
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[jobCard.status]}`}>
-                  {STATUS_LABEL[jobCard.status]}
-                </span>
-                {!isCheckedOut ? (
-                  <LoadingLink
-                    href={`/workshop/job-cards/${jobCard.id}?editStatus=true`}
-                    className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
-                  >
-                    Edit
-                  </LoadingLink>
+          <div id="status-panel" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Status</h2>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[jobCard.status]}`}>{STATUS_LABEL[jobCard.status]}</span>
+            </div>
+            <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">{STAGE_HINT[jobCard.status]}</p>
+
+            {/* Automatic stages — nothing to click; say what moves them on. */}
+            {jobCard.status === 'CHECKED_IN' ? (
+              <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]">
+                Next: write the estimate → supervisor validates → manager approves → notify the customer. The status then moves on by itself.
+              </p>
+            ) : null}
+            {jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
+              <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]">
+                Moves to In Progress by itself once the 70% deposit ({formatNaira(minimumDeposit)}) is recorded under Payments.
+              </p>
+            ) : null}
+            {jobCard.status === 'READY_FOR_COLLECTION' && !pendingCloseRequest ? (
+              <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]">
+                {isPaidInFull
+                  ? 'Next: request the close below — a Manager approves it, then the vehicle can be checked out.'
+                  : `Next: collect the balance (${formatNaira(outstanding)}), then request the close.`}
+              </p>
+            ) : null}
+            {jobCard.status === 'READY_FOR_COLLECTION' && pendingCloseRequest ? (
+              <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
+                Close requested — waiting on a Manager&apos;s approval.
+              </p>
+            ) : null}
+
+            {/* Forward steps for this viewer — one click each. */}
+            {!isCheckedOut ? (
+              <div className="mt-3 space-y-2">
+                {nextSteps
+                  .filter((to) => to !== 'CHECKED_OUT' && !isReworkTransition(jobCard.status, to))
+                  .map((to) => (
+                    <form key={to} action={updateJobCardStatusFormAction}>
+                      <FormPendingOverlay />
+                      <input type="hidden" name="jobCardId" value={jobCard.id} />
+                      <input type="hidden" name="status" value={to} />
+                      <SubmitButton
+                        label={NEXT_STEP_LABEL[`${jobCard.status}>${to}`] ?? `Move to ${STATUS_LABEL[to]}`}
+                        pendingLabel="Saving…"
+                        className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                      />
+                    </form>
+                  ))}
+
+                {nextSteps.includes('CHECKED_OUT') ? (
+                  !isCancelled && !isPaidInFull ? (
+                    <p className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
+                      Payment must be completed in full before check-out — {formatNaira(outstanding)} outstanding.
+                    </p>
+                  ) : (
+                    <form action={updateJobCardStatusFormAction} className="space-y-2">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="jobCardId" value={jobCard.id} />
+                      <input type="hidden" name="status" value="CHECKED_OUT" />
+                      <label className="block text-xs font-medium text-[var(--ejo-text-muted)]">
+                        {isCancelled ? 'Hand the vehicle back — collected by (full name)' : 'Collected by (full name)'}
+                      </label>
+                      <input
+                        name="collectedByName"
+                        required
+                        defaultValue={jobCard.customer.fullName}
+                        className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+                      />
+                      <SubmitButton
+                        label={isCancelled ? 'Hand vehicle back' : 'Check out vehicle'}
+                        pendingLabel="Checking out…"
+                        className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                      />
+                    </form>
+                  )
+                ) : null}
+
+                {nextSteps.some((to) => isReworkTransition(jobCard.status, to)) ? (
+                  <details className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2">
+                    <summary className="cursor-pointer text-xs font-medium text-[var(--ejo-text)]">
+                      {jobCard.status === 'QUALITY_CHECK' ? 'Failed quality check? Send back for rework' : 'Failed road test? Send back for rework'}
+                    </summary>
+                    <form action={updateJobCardStatusFormAction} className="mt-2 space-y-2">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="jobCardId" value={jobCard.id} />
+                      <input type="hidden" name="status" value="IN_PROGRESS" />
+                      <textarea
+                        name="reworkReason"
+                        required
+                        rows={2}
+                        placeholder="What still needs fixing?"
+                        className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+                      />
+                      <p className="text-[11px] text-[var(--ejo-text-muted)]">
+                        Back to In Progress, logged as &quot;Sent back for rework&quot; with this reason.
+                        {jobCard.status !== 'QUALITY_CHECK' ? ' The earlier completion is cleared so the final finish is what gets recorded.' : ''}
+                      </p>
+                      <SubmitButton
+                        label="Send back for rework"
+                        pendingLabel="Sending back…"
+                        className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-warning)]/10"
+                      />
+                    </form>
+                  </details>
+                ) : null}
+
+                {nextSteps.length === 0 && !['CHECKED_IN', 'AWAITING_CUSTOMER_APPROVAL', 'READY_FOR_COLLECTION'].includes(jobCard.status) ? (
+                  <p className="text-xs text-[var(--ejo-text-muted)]">
+                    The next step here is taken by {WAITING_ON[jobCard.status] ?? 'the assigned team'}.
+                  </p>
                 ) : null}
               </div>
+            ) : (
+              <p className="mt-3 text-xs text-[var(--ejo-text)]">
+                Checked out{jobCard.checkedOutAt ? ` on ${formatDateTime(jobCard.checkedOutAt)}` : ''}
+                {jobCard.collectedByName ? ` — collected by ${jobCard.collectedByName}` : ''}. This Job Card is complete.
+              </p>
             )}
+
+            {isMasterAdmin && !isCheckedOut ? (
+              editStatus === 'true' ? (
+                <div className="mt-4 border-t border-[var(--ejo-border)] pt-3">
+                  <p className="text-[11px] font-medium text-[var(--ejo-warning)]">Master Admin override — bypasses the normal rules; use only to correct mistakes.</p>
+                  <JobCardStatusForm jobCardId={jobCard.id} currentStatus={jobCard.status} selectableStatuses={selectableStatuses} statusLabels={STATUS_LABEL} />
+                </div>
+              ) : (
+                <LoadingLink
+                  href={`/workshop/job-cards/${jobCard.id}?editStatus=true#status-panel`}
+                  className="mt-4 inline-block text-[11px] text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)] hover:underline"
+                >
+                  Override status (Master Admin)
+                </LoadingLink>
+              )
+            ) : null}
           </div>
 
           {!isCancelled && !isCheckedOut ? (
@@ -1522,7 +1679,7 @@ export default async function JobCardDetailPage({
                 </form>
               </div>
             </div>
-          ) : !pendingCloseRequest && canRequestClose && jobCard.status !== 'CANCELLED' && jobCard.status !== 'CLOSED' && !isCheckedOut ? (
+          ) : !pendingCloseRequest && canRequestClose && jobCard.status === 'READY_FOR_COLLECTION' ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-primary)]">Request close</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
