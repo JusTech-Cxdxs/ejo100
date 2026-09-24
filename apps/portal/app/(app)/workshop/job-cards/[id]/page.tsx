@@ -2,6 +2,8 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { JobCardStatusForm } from '@/components/JobCardStatusForm';
 import { AuditTrail } from '@/components/AuditTrail';
 import { getSelectableJobCardStatuses, isReworkTransition } from '@/lib/job-card-status-rules';
+import { listRefunds } from '@/lib/actions/refunds';
+import { RefundsPanel } from '@/components/RefundsPanel';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { notFound } from 'next/navigation';
 import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayments, getCancellationRequests, getCloseRequests, listTechnicianCandidates, listEligibleSupervisorsForJobCard, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
@@ -81,6 +83,9 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'close.requested': 'Close requested',
   'close.declined': 'Close declined',
   'job_card.rework_requested': 'Sent back for rework',
+  'job_card.technician_assigned': 'Technician assigned',
+  'refund.recorded': 'Refund recorded',
+  'refund.completed': 'Refund completed — all money returned',
   'approval.reminder_sent': 'Approval reminder sent',
   'collection.overdue_notice_sent': 'Collection overdue notice sent',
   'collection.ready_reminder_sent': 'Ready-for-collection reminder sent',
@@ -354,6 +359,9 @@ export default async function JobCardDetailPage({
   const canRequestCancellation = isCreator || isApprover;
   const canRequestClose = isCreator || isApprover;
   const pendingCancellationRequest = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'PENDING');
+  const approvedCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'APPROVED') ?? null;
+  const refunds = await listRefunds({ jobCardId: id });
+  const refundedTotal = refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
   const pendingCloseRequest = closeRequests.find((r: (typeof closeRequests)[number]) => r.status === 'PENDING');
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const estimateLineItems = estimate?.lineItems ?? [];
@@ -437,6 +445,11 @@ export default async function JobCardDetailPage({
         </div>
       ) : null}
 
+      {status === 'refund_recorded' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Refund recorded — the customer has been emailed their receipt." />
+        </div>
+      ) : null}
       {status === 'job_card_created' ? (
         <div className="mt-4">
           <FormFeedbackBanner kind="success" message="Job Card successfully created." />
@@ -1055,6 +1068,18 @@ export default async function JobCardDetailPage({
             ) : null}
           </div>
 
+          {(jobCard.status === 'CANCELLED' || pendingCancellationRequest) && (paymentsTotal > 0 || refunds.length > 0) ? (
+            <RefundsPanel
+              target={{ jobCardId: jobCard.id }}
+              paid={paymentsTotal}
+              refunds={refunds}
+              isCancelled={jobCard.status === 'CANCELLED'}
+              canRecord={isEligibleFinance}
+              defaultPaidTo={jobCard.customer.fullName}
+              defaultReason={approvedCancellation?.reason ?? pendingCancellationRequest?.reason ?? null}
+            />
+          ) : null}
+
           {payments.length > 0 || jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <div className="flex items-center justify-between">
@@ -1424,7 +1449,11 @@ export default async function JobCardDetailPage({
                   ))}
 
                 {nextSteps.includes('CHECKED_OUT') ? (
-                  !isCancelled && !isPaidInFull ? (
+                  isCancelled && paymentsTotal - refundedTotal > 0.004 ? (
+                    <p className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
+                      {formatNaira(paymentsTotal - refundedTotal)} must be refunded (see Refunds) before the vehicle can be handed back.
+                    </p>
+                  ) : !isCancelled && !isPaidInFull ? (
                     <p className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
                       Payment must be completed in full before check-out — {formatNaira(outstanding)} outstanding.
                     </p>
@@ -1581,6 +1610,11 @@ export default async function JobCardDetailPage({
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
                 {pendingCancellationRequest.requestedBy.fullName}: {pendingCancellationRequest.reason}
               </p>
+              {paymentsTotal > 0 ? (
+                <p className="mt-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
+                  The customer has paid {formatNaira(paymentsTotal)}. Approving this cancellation also authorises a full refund of that amount — Finance then pays it and records it under Refunds.
+                </p>
+              ) : null}
               <div className="mt-3 space-y-2">
                 <form action={approveCancellationRequestFormAction} className="space-y-2">
                   <FormPendingOverlay />
