@@ -16,6 +16,7 @@ import {
 } from './workshop';
 import { computeServiceCycle, loadServiceTracking, assertServiceNotEscalated, type WorkshopVisit } from '@/lib/vehicle-service-cycle';
 import { custodyReminderState, notDueYetMessage } from '@/lib/custody-reminders';
+import { pluralize } from '@/lib/utils/pluralize';
 import { READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
 import { addWorkingDays, workingDaysBetween } from '@/lib/utils/working-days';
 import { renderCustomerServiceCompletedEmail } from '@/lib/email-templates/customer-service-completed';
@@ -30,6 +31,8 @@ import { renderServiceCancellationRequestedEmail } from '@/lib/email-templates/s
 import { renderServiceCancellationDeclinedEmail } from '@/lib/email-templates/service-cancellation-declined';
 import { renderVehicleServiceCancelledStaffEmail } from '@/lib/email-templates/vehicle-service-cancelled-staff';
 import { renderCustomerServiceCancelledEmail } from '@/lib/email-templates/customer-service-cancelled';
+import { renderVehicleServiceEscalatedStaffEmail } from '@/lib/email-templates/vehicle-service-escalated-staff';
+import { renderCustomerServiceCollectionOverdueEmail } from '@/lib/email-templates/customer-service-collection-overdue';
 import { sendEmail } from '@/lib/email';
 import { renderSupervisorVehicleServiceAssignedEmail } from '@/lib/email-templates/supervisor-vehicle-service-assigned';
 import { renderVehicleServiceDecisionEmail } from '@/lib/email-templates/vehicle-service-decision';
@@ -867,21 +870,119 @@ export type VehicleServiceCustodyEntry = {
  * one real place a future reminder job would read from.
  */
 export async function getVehicleServiceCustodySummary(branchId: string, search?: string) {
-  const [checkedIn, inService, completed, dueForService] = await Promise.all([
+  const [checkedIn, inService, completed, dueForService, cancelledAwaitingHandBack] = await Promise.all([
     listVehicleServicesByStatuses(branchId, ['CHECKED_IN'], search),
     listVehicleServicesByStatuses(branchId, ['IN_SERVICE'], search),
     // Still physically with us: work done, but not yet checked out.
     listVehicleServicesByStatuses(branchId, ['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'], search),
     listVehiclesDueForService(branchId),
+    listCancelledAwaitingHandBack(branchId, search),
   ]);
   return {
     checkedIn,
     inService,
     completed,
+    cancelledAwaitingHandBack,
     dueSoon: dueForService.filter((v) => v.status === 'DUE_SOON'),
     overdue: dueForService.filter((v) => v.status === 'OVERDUE'),
-    total: checkedIn.length + inService.length + completed.length,
+    total: checkedIn.length + inService.length + completed.length + cancelledAwaitingHandBack.length,
   };
+}
+
+/** A cancelled Vehicle Service whose vehicle is still with us — the
+ * mirror of Job Card custody's "Cancelled — pending collection". */
+export type VehicleServiceCancelledEntry = {
+  id: string;
+  vehicleId: string;
+  vehicleType: string | null;
+  serviceNumber: string;
+  customerName: string;
+  vehicleDescription: string;
+  plateNumber: string | null;
+  cancelledAt: Date;
+  daysElapsed: number;
+  graceWorkingDays: number;
+  isOverdue: boolean;
+  /** Paid and not yet refunded — hand-back is blocked until this is 0. */
+  refundOwed: number;
+  notice: { sent: number; nextNumber: number; dueNow: boolean; dueFrom: Date; lastSentByName: string | null; lastSentAt: Date | null };
+};
+
+const CANCELLED_HAND_BACK_GRACE_WORKING_DAYS = 7;
+
+async function listCancelledAwaitingHandBack(branchId: string, search?: string): Promise<VehicleServiceCancelledEntry[]> {
+  await requireUser();
+  const q = search?.trim();
+  const services = await prisma.vehicleService.findMany({
+    where: {
+      branchId,
+      status: 'CANCELLED',
+      collectedAt: null,
+      cancelledAt: { not: null },
+      escalatedToJobCardId: null,
+      ...(q
+        ? {
+            OR: [
+              { serviceNumber: { contains: q, mode: 'insensitive' } },
+              { customer: { fullName: { contains: q, mode: 'insensitive' } } },
+              { vehicle: { plateNumber: { contains: q, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { cancelledAt: 'asc' },
+    select: {
+      id: true,
+      serviceNumber: true,
+      cancelledAt: true,
+      customer: { select: { fullName: true } },
+      vehicle: { select: { id: true, make: true, model: true, plateNumber: true, vehicleType: true } },
+      payments: { select: { amount: true } },
+      refunds: { select: { amount: true } },
+    },
+  });
+  if (services.length === 0) return [];
+  const ids = services.map((x: (typeof services)[number]) => x.id);
+  const sentLog = await prisma.auditLog.findMany({
+    where: { entityId: { in: ids }, action: 'vehicle_service.cancelled_collection_notice_sent' },
+    orderBy: { createdAt: 'asc' },
+    select: { entityId: true, createdAt: true, userId: true },
+  });
+  const senderIds = [...new Set(sentLog.map((l: { userId: string | null }) => l.userId).filter((id: string | null): id is string => Boolean(id)))];
+  const senders = senderIds.length ? await prisma.user.findMany({ where: { id: { in: senderIds } }, select: { id: true, fullName: true } }) : [];
+  const senderName = new Map(senders.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
+  const now = new Date();
+  return services.map((x: (typeof services)[number]) => {
+    const cancelledAt = x.cancelledAt as Date;
+    const mine = sentLog.filter((l: { entityId: string | null }) => l.entityId === x.id);
+    const state = custodyReminderState('CANCELLED_COLLECTION', cancelledAt, mine.map((l: { createdAt: Date }) => l.createdAt), now);
+    const last = mine[mine.length - 1];
+    const daysElapsed = workingDaysBetween(cancelledAt, now);
+    const paid = x.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
+    const refunded = x.refunds.reduce((sum: number, r: { amount: unknown }) => sum + Number(r.amount), 0);
+    return {
+      id: x.id,
+      vehicleId: x.vehicle.id,
+      vehicleType: x.vehicle.vehicleType ?? null,
+      serviceNumber: x.serviceNumber,
+      customerName: x.customer.fullName,
+      vehicleDescription: [x.vehicle.make, x.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+      plateNumber: x.vehicle.plateNumber,
+      cancelledAt,
+      daysElapsed,
+      graceWorkingDays: CANCELLED_HAND_BACK_GRACE_WORKING_DAYS,
+      isOverdue: daysElapsed >= CANCELLED_HAND_BACK_GRACE_WORKING_DAYS,
+      refundOwed: Math.max(0, Math.round((paid - refunded) * 100) / 100),
+      notice: {
+        sent: state.sent,
+        nextNumber: state.nextNumber,
+        dueNow: state.dueNow,
+        dueFrom: state.dueFrom,
+        lastSentByName: last?.userId ? senderName.get(last.userId) ?? null : null,
+        lastSentAt: last ? last.createdAt : null,
+      },
+    };
+  });
 }
 
 async function listVehicleServicesByStatuses(branchId: string, statuses: string[], search?: string): Promise<VehicleServiceCustodyEntry[]> {
@@ -1659,6 +1760,53 @@ export async function handBackCancelledVehicleService(serviceId: string, collect
   await writeAuditLog({ userId: user.id, action: 'vehicle_service.handed_back', entityType: 'VehicleService', entityId: serviceId, metadata: { serviceNumber: service.serviceNumber, collectedByName: name } });
 }
 
+/** A notice to a customer whose CANCELLED Vehicle Service vehicle is still
+ * with us — the exact mirror of Job Card's notifyOverdueCancelledVehicle:
+ * a Workshop Manager's action, staged and numbered (lib/custody-reminders
+ * CANCELLED_COLLECTION: first once the 7-working-day grace has passed,
+ * then every 2 working days), refused until due, audited. */
+export async function sendVehicleServiceCancelledCollectionNotice(serviceId: string, notes?: string): Promise<void> {
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: serviceId },
+    select: { status: true, branchId: true, serviceNumber: true, cancelledAt: true, collectedAt: true, customer: { select: { fullName: true, email: true } }, vehicle: { select: { make: true, model: true } } },
+  });
+  if (!service || service.status !== 'CANCELLED' || !service.cancelledAt) {
+    throw new VehicleServiceActionError('This Vehicle Service is not currently cancelled.');
+  }
+  if (service.collectedAt) throw new VehicleServiceActionError('This vehicle has already been handed back.');
+  const user = await requireEligibleManager(service.branchId);
+  const priorSends = await prisma.auditLog.findMany({ where: { entityId: serviceId, action: 'vehicle_service.cancelled_collection_notice_sent' }, select: { createdAt: true } });
+  const reminderState = custodyReminderState('CANCELLED_COLLECTION', service.cancelledAt, priorSends.map((r: { createdAt: Date }) => r.createdAt));
+  if (!reminderState.dueNow) {
+    throw new VehicleServiceActionError(notDueYetMessage('CANCELLED_COLLECTION', reminderState));
+  }
+  const daysElapsed = workingDaysBetween(service.cancelledAt, new Date());
+  await writeAuditLog({
+    userId: user.id,
+    action: 'vehicle_service.cancelled_collection_notice_sent',
+    entityType: 'VehicleService',
+    entityId: serviceId,
+    metadata: { daysElapsed, notes: notes?.trim() || undefined },
+  });
+  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const orgContext = await getWorkshopOrgContext();
+  await sendEmail(
+    service.customer.email,
+    `Please arrange collection — Vehicle Service ${service.serviceNumber}`,
+    renderCustomerServiceCollectionOverdueEmail({
+      customerName: service.customer.fullName,
+      serviceNumber: service.serviceNumber,
+      vehicleDescription: [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+      daysSinceCancellationLabel: pluralize(daysElapsed, 'working day'),
+      reminderNumber: reminderState.nextNumber,
+      dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`,
+      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      companyName: orgContext.companyName,
+      branchName: orgContext.branchName,
+    }),
+  );
+}
+
 export async function getVehicleServiceCloseRequests(serviceId: string) {
   await requireUser();
   return prisma.vehicleServiceCloseRequest.findMany({
@@ -1986,6 +2134,7 @@ export async function escalateVehicleServiceToJobCard(
     complaints: complaints.length > 0 ? complaints : ['Escalated from Vehicle Service — see linked record for the original real request.'],
     supervisorId,
     mileageAtCheckIn: service.odometerAtService ?? undefined,
+    escalatedFromServiceNumber: service.serviceNumber,
   });
 
   // Handed over: the Vehicle Service becomes ESCALATED — terminal and
@@ -2008,6 +2157,46 @@ export async function escalateVehicleServiceToJobCard(
     entityId: jobCard.id,
     metadata: { serviceNumber: service.serviceNumber, vehicleServiceId: serviceId },
   });
+
+  // Everyone on the original service is told it moved, and where to.
+  // (The Job Card's own supervisor gets the normal "assigned" email, and
+  // the customer's acknowledgment explains the escalation.)
+  try {
+    const people = await prisma.vehicleService.findUnique({
+      where: { id: serviceId },
+      select: { createdById: true, supervisorId: true, assignedTechnicianId: true, customer: { select: { fullName: true } } },
+    });
+    const ids = new Set<string>([people?.createdById, people?.supervisorId, people?.assignedTechnicianId].filter((x): x is string => Boolean(x)));
+    ids.delete(supervisorId);
+    if (ids.size > 0) {
+      const [recipients, escalator, orgContext] = await Promise.all([
+        prisma.user.findMany({ where: { id: { in: [...ids] } }, select: { fullName: true, email: true } }),
+        prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
+        getWorkshopOrgContext(),
+      ]);
+      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      for (const r of recipients) {
+        await sendEmail(
+          r.email,
+          `Vehicle Service ${service.serviceNumber} escalated to Job Card ${jobCard.jobNumber}`,
+          renderVehicleServiceEscalatedStaffEmail({
+            recipientName: r.fullName,
+            serviceNumber: service.serviceNumber,
+            jobNumber: jobCard.jobNumber,
+            customerName: people?.customer.fullName ?? 'the customer',
+            escalatedByName: escalator?.fullName ?? 'A team member',
+            jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCard.id}`,
+            logoUrl: `${portalUrl}/images/logo/logo.png`,
+            companyName: orgContext.companyName,
+            branchName: orgContext.branchName,
+          }),
+        );
+      }
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send escalation emails', serviceId, err);
+  }
   return { jobCardId: jobCard.id };
 }
 

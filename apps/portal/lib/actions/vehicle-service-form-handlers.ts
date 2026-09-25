@@ -23,6 +23,7 @@ import {
   approveVehicleServiceCancellationRequest,
   declineVehicleServiceCancellationRequest,
   handBackCancelledVehicleService,
+  sendVehicleServiceCancelledCollectionNotice,
 } from './vehicle-service';
 import { sendManualServiceReminder, runServiceRemindersNow } from './vehicle-service-reminders';
 
@@ -332,4 +333,16 @@ export async function handBackCancelledVehicleServiceFormAction(formData: FormDa
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
   revalidatePath('/workshop/vehicle-service-custody');
   redirect(`/workshop/vehicle-service/${serviceId}?status=handed_back`);
+}
+
+export async function sendVehicleServiceCancelledCollectionNoticeFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  try {
+    await sendVehicleServiceCancelledCollectionNotice(serviceId, str(formData, 'notes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not send the collection notice.';
+    redirect(`/workshop/vehicle-service-custody?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/vehicle-service-custody');
+  redirect('/workshop/vehicle-service-custody?status=cancelled_notice_sent');
 }

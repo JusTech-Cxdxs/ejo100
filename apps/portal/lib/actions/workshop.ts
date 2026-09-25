@@ -1084,6 +1084,9 @@ export type CreateJobCardInput = {
   complaints: string[];
   supervisorId: string;
   mileageAtCheckIn?: number;
+  /** Set when this Job Card continues an escalated Vehicle Service — the
+   * customer's acknowledgment email then explains the escalation. */
+  escalatedFromServiceNumber?: string;
 };
 
 /** Re-validates a chosen supervisor server-side — never trusts that the
@@ -1249,7 +1252,9 @@ export async function createJobCard(input: CreateJobCardInput) {
     const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
     await sendEmail(
       created.customer.email,
-      `We've received your vehicle — Job Card ${created.jobNumber}`,
+      input.escalatedFromServiceNumber
+        ? `Your service continues as Job Card ${created.jobNumber}`
+        : `We've received your vehicle — Job Card ${created.jobNumber}`,
       renderCustomerJobCardAcknowledgmentEmail({
         customerName: created.customer.fullName,
         jobNumber: created.jobNumber,
@@ -1260,6 +1265,7 @@ export async function createJobCard(input: CreateJobCardInput) {
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
+        escalatedFromServiceNumber: input.escalatedFromServiceNumber,
       }),
     );
   } catch (err) {
