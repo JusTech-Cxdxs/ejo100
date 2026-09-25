@@ -1,6 +1,6 @@
 import { getVehicleServiceCustodySummary, type VehicleDueForService } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/actions/workshop';
-import { attendToOverdueVehicleFormAction, sendVehicleServiceCollectionReminderFormAction, sendManualServiceReminderFormAction } from '@/lib/actions/vehicle-service-form-handlers';
+import { attendToOverdueVehicleFormAction, sendVehicleServiceCollectionReminderFormAction, sendManualServiceReminderFormAction, sendVehicleServiceCancelledCollectionNoticeFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -127,6 +127,7 @@ export default async function VehicleServiceCustodyPage({
   const showCheckedIn = !filter || filter === 'checked_in';
   const showInService = !filter || filter === 'in_service';
   const showCompleted = !filter || filter === 'completed';
+  const showCancelled = !filter || filter === 'cancelled';
   const showDueSoon = !filter || filter === 'due_soon';
   const showOverdue = !filter || filter === 'overdue';
 
@@ -149,6 +150,11 @@ export default async function VehicleServiceCustodyPage({
       {error ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="error" message={error} />
+        </div>
+      ) : null}
+      {status === 'cancelled_notice_sent' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Collection notice sent to the customer." />
         </div>
       ) : null}
       {status === 'collection_reminder_sent' ? (
@@ -391,6 +397,67 @@ export default async function VehicleServiceCustodyPage({
               ))}
             </div>
           )}
+        </section>
+      ) : null}
+
+      {showCancelled && summary.cancelledAwaitingHandBack.length > 0 ? (
+        <section className="mb-10">
+          <h2 className="mb-1 text-sm font-semibold text-[var(--ejo-text)]">Cancelled — Awaiting Hand-back</h2>
+          <p className="mb-3 text-xs text-[var(--ejo-text-muted)]">
+            Cancelled services whose vehicle is still with us. Grace: 7 working days, then numbered collection notices every 2 working
+            days (Workshop Managers). Hand-back is done on the Vehicle Service page once any refund is complete.
+          </p>
+          <div className="space-y-3">
+            {summary.cancelledAwaitingHandBack.map((entry: (typeof summary.cancelledAwaitingHandBack)[number]) => (
+              <div
+                key={entry.id}
+                className={`rounded-[var(--ejo-radius-lg)] border p-4 ${entry.isOverdue ? 'border-[var(--ejo-error)]/40 bg-[var(--ejo-error)]/5' : 'border-[var(--ejo-border)] bg-[var(--ejo-surface)]'}`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <LoadingLink href={`/workshop/vehicle-service/${entry.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">
+                      {entry.serviceNumber}
+                    </LoadingLink>
+                    <p className="text-sm text-[var(--ejo-text)]">
+                      {entry.customerName} · {entry.vehicleDescription}
+                      {entry.plateNumber ? ` — ${entry.plateNumber}` : ''}
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${entry.isOverdue ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'}`}>
+                    {entry.isOverdue ? 'Collection overdue' : 'Cancelled'} · {formatDateOnly(entry.cancelledAt)}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+                  Grace: {pluralize(entry.graceWorkingDays, 'working day')} · Since cancellation: {pluralize(entry.daysElapsed, 'working day')} · Notices sent: {entry.notice.sent}
+                </p>
+                {entry.refundOwed > 0 ? (
+                  <p className="mt-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-1.5 text-xs text-[var(--ejo-text)]">
+                    ₦{entry.refundOwed.toLocaleString('en-NG', { minimumFractionDigits: 2 })} still to be refunded before hand-back.
+                  </p>
+                ) : null}
+                {entry.notice.lastSentAt ? (
+                  <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                    Last notice sent by {entry.notice.lastSentByName ?? 'an unknown user'} on {formatDateOnly(entry.notice.lastSentAt)}.
+                  </p>
+                ) : null}
+                {entry.notice.dueNow ? (
+                  <form action={sendVehicleServiceCancelledCollectionNoticeFormAction} className="mt-3">
+                    <FormPendingOverlay />
+                    <input type="hidden" name="serviceId" value={entry.id} />
+                    <SubmitButton
+                      label={`Send ${ordinal(entry.notice.nextNumber)} collection notice`}
+                      pendingLabel="Sending…"
+                      className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                    />
+                  </form>
+                ) : (
+                  <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+                    {ordinal(entry.notice.nextNumber)} collection notice available from {formatDateOnly(entry.notice.dueFrom)}.
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
 
