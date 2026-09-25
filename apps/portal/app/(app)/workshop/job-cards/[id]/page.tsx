@@ -1087,12 +1087,12 @@ export default async function JobCardDetailPage({
             ) : null}
           </div>
 
-          {(jobCard.status === 'CANCELLED' || pendingCancellationRequest) && (paymentsTotal > 0 || refunds.length > 0) ? (
+          {refunds.length > 0 || ((jobCard.status === 'CANCELLED' || pendingCancellationRequest) && paymentsTotal > 0) ? (
             <RefundsPanel
               target={{ jobCardId: jobCard.id }}
               paid={paymentsTotal}
               refunds={refunds}
-              isCancelled={jobCard.status === 'CANCELLED'}
+              isCancelled={jobCard.status === 'CANCELLED' || Boolean(approvedCancellation)}
               canRecord={isEligibleFinance}
               defaultPaidTo={jobCard.customer.fullName}
               defaultReason={approvedCancellation?.reason ?? pendingCancellationRequest?.reason ?? null}
