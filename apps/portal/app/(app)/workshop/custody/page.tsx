@@ -145,9 +145,10 @@ function ReminderStatus({ entry, noun }: { entry: WorkshopCustodyEntry; noun: st
 export default async function WorkshopCustodyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; status?: string; reminders?: string; overdue?: string; filter?: string; q?: string }>;
+  searchParams: Promise<{ error?: string; status?: string; reminders?: string; overdue?: string; filter?: string; q?: string; type?: string }>;
 }) {
-  const { error, status, reminders, overdue, filter, q } = await searchParams;
+  const { error, status, reminders, overdue, filter, q, type: rawType } = await searchParams;
+  const vehicleType = rawType === 'PASSENGER' || rawType === 'COMMERCIAL' ? rawType : null;
   const showAwaiting = !filter || filter === 'awaiting';
   const showCancelled = !filter || filter === 'cancelled' || filter === 'overdue';
   const showReadyForCollection = !filter || filter === 'ready_for_collection' || filter === 'overdue';
@@ -173,6 +174,14 @@ export default async function WorkshopCustodyPage({
   const overdueReadyForCollection = summary.readyForCollection.filter((e) => e.isOverdue);
   const totalOverdue = overdueCancelled.length + overdueReadyForCollection.length;
 
+  // Passenger / Commercial filter — narrows every list (and so every count).
+  if (vehicleType) {
+    const rec = summary as unknown as Record<string, unknown>;
+    for (const key of Object.keys(rec)) {
+      const list = rec[key];
+      if (Array.isArray(list)) rec[key] = list.filter((e: { vehicleType?: string | null }) => e.vehicleType === vehicleType);
+    }
+  }
   return (
     <div className="p-8">
       <LoadingLink
@@ -189,6 +198,15 @@ export default async function WorkshopCustodyPage({
       </p>
 
       <form className="mb-8 flex gap-2" action="/workshop/custody">
+        <select
+          name="type"
+          defaultValue={vehicleType ?? ''}
+          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+        >
+          <option value="">All vehicle types</option>
+          <option value="PASSENGER">Passenger</option>
+          <option value="COMMERCIAL">Commercial</option>
+        </select>
         {filter ? <input type="hidden" name="filter" value={filter} /> : null}
         <input
           type="search"
