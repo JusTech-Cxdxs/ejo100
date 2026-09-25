@@ -79,6 +79,8 @@ const PAYMENT_STATUS_LABEL: Record<string, string> = {
   PARTIAL: 'Partial Payment',
   DEPOSIT_MET: 'Minimum Met — Balance Pending',
   PAID_IN_FULL: 'Payment Completed',
+  REFUND_DUE: 'Cancelled — Refund Due',
+  REFUNDED: 'Cancelled — Refunded',
 };
 
 const PAYMENT_STATUS_COLOR: Record<string, string> = {
@@ -86,6 +88,8 @@ const PAYMENT_STATUS_COLOR: Record<string, string> = {
   PARTIAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   DEPOSIT_MET: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
   PAID_IN_FULL: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  REFUND_DUE: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  REFUNDED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
 };
 
 const PART_REQUEST_STATUS_LABEL: Record<string, string> = {
@@ -345,8 +349,14 @@ export default async function VehicleServiceDetailPage({
         : true;
   const isActiveVisit = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
   const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
-  const paymentStatus: 'AWAITING_PAYMENT' | 'PARTIAL' | 'DEPOSIT_MET' | 'PAID_IN_FULL' =
-    paymentsTotal <= 0
+  // A cancelled job that took money is about the refund, not payment
+  // progress — never "Payment Completed" on money being given back.
+  const paymentStatus: 'AWAITING_PAYMENT' | 'PARTIAL' | 'DEPOSIT_MET' | 'PAID_IN_FULL' | 'REFUND_DUE' | 'REFUNDED' =
+    service.status === 'CANCELLED' && paymentsTotal > 0
+      ? refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0) >= paymentsTotal - 0.004
+        ? 'REFUNDED'
+        : 'REFUND_DUE'
+      : paymentsTotal <= 0
       ? 'AWAITING_PAYMENT'
       : estimateTotal > 0 && paymentsTotal >= estimateTotal
         ? 'PAID_IN_FULL'
