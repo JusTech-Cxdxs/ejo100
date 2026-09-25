@@ -241,8 +241,16 @@ export function nextReminderStage(
   return { stage: lastStage === 1 ? 2 : 3, dueFrom: null };
 }
 
+/** Overdue by more than this many days = lapsed: the customer has clearly
+ * gone elsewhere, so no more reminders (tracking restarts automatically
+ * the day the vehicle comes back and a service is completed). */
+export const LAPSED_AFTER_DAYS_OVERDUE = 365;
+
 export type TrackedVehicle = {
   vehicleId: string;
+  vehicleType: 'PASSENGER' | 'COMMERCIAL' | null;
+  /** Overdue for more than a year — no reminders; listed as Lapsed. */
+  lapsed: boolean;
   vehicleDescription: string;
   plateNumber: string | null;
   currentMileage: number | null;
@@ -294,7 +302,7 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
       nextServiceDueOdometer: true,
       nextServiceDueDate: true,
       customer: { select: { fullName: true, email: true } },
-      vehicle: { select: { make: true, model: true, year: true, plateNumber: true, mileage: true } },
+      vehicle: { select: { make: true, model: true, year: true, plateNumber: true, mileage: true, vehicleType: true } },
       escalatedToJobCard: { select: { id: true, jobNumber: true } },
     },
   });
@@ -328,8 +336,11 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
     const due = serviceDueStatus(s.nextServiceDueOdometer, s.nextServiceDueDate, s.vehicle.mileage, now);
     // Only reminders for THIS prediction cycle count (same rule as the engine).
     const cycleLogs = logs.filter((l: { vehicleId: string; sentAt: Date }) => l.vehicleId === s.vehicleId && (!s.primaryServiceDate || l.sentAt >= s.primaryServiceDate));
+    const lapsed = due.status === 'OVERDUE' && due.daysRemaining !== null && due.daysRemaining <= -LAPSED_AFTER_DAYS_OVERDUE;
     return {
       vehicleId: s.vehicleId,
+      vehicleType: (s.vehicle.vehicleType as 'PASSENGER' | 'COMMERCIAL' | null) ?? null,
+      lapsed,
       vehicleDescription: [s.vehicle.year, s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
       plateNumber: s.vehicle.plateNumber,
       currentMileage: s.vehicle.mileage,
@@ -358,7 +369,7 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
       },
       ...(() => {
         const inWorkshop = visits.get(s.vehicleId) ?? null;
-        if (inWorkshop || s.attendedAt) return { reminderDue: null, nextReminderFrom: null };
+        if (inWorkshop || s.attendedAt || lapsed) return { reminderDue: null, nextReminderFrom: null };
         const next = nextReminderStage(due.status, cycleLogs[0]?.reminderNumber ?? null, cycleLogs[0]?.sentAt ?? null, now);
         return { reminderDue: next.stage ? { stage: next.stage } : null, nextReminderFrom: next.dueFrom };
       })(),
