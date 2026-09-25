@@ -2,6 +2,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { JobCardStatusForm } from '@/components/JobCardStatusForm';
 import { AuditTrail } from '@/components/AuditTrail';
 import { getSelectableJobCardStatuses, isReworkTransition } from '@/lib/job-card-status-rules';
+import { visitDurations } from '@/lib/visit-durations';
 import { listRefunds } from '@/lib/actions/refunds';
 import { RefundsPanel } from '@/components/RefundsPanel';
 import { PrintMenu } from '@/components/print/PrintMenu';
@@ -21,7 +22,6 @@ import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
-import { workingDaysBetween } from '@/lib/utils/working-days';
 
 
 const STATUS_LABEL: Record<string, string> = {
@@ -261,6 +261,8 @@ const PAYMENT_STATUS_LABEL: Record<string, string> = {
   PARTIAL: 'Partial Payment',
   DEPOSIT_MET: 'Minimum Met — Balance Pending',
   PAID_IN_FULL: 'Payment Completed',
+  REFUND_DUE: 'Cancelled — Refund Due',
+  REFUNDED: 'Cancelled — Refunded',
 };
 
 const PAYMENT_STATUS_COLOR: Record<string, string> = {
@@ -268,6 +270,8 @@ const PAYMENT_STATUS_COLOR: Record<string, string> = {
   PARTIAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   DEPOSIT_MET: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
   PAID_IN_FULL: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  REFUND_DUE: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  REFUNDED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
 };
 
 const ESTIMATE_STATUS_LABEL: Record<string, string> = {
@@ -383,8 +387,14 @@ export default async function JobCardDetailPage({
   const hasUnmatchedStoreParts = estimateLineItems.some((li: (typeof estimateLineItems)[number]) => li.type === 'STORE_PART' && !li.matchedPartId);
   const estimateTotal = estimateLineItems.reduce((sum: number, li: (typeof estimateLineItems)[number]) => sum + Number(li.amount ?? 0), 0);
   const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
-  const paymentStatus: 'AWAITING_PAYMENT' | 'PARTIAL' | 'DEPOSIT_MET' | 'PAID_IN_FULL' =
-    paymentsTotal <= 0
+  // A cancelled job that took money is about the refund, not payment
+  // progress — never "Payment Completed" on money being given back.
+  const paymentStatus: 'AWAITING_PAYMENT' | 'PARTIAL' | 'DEPOSIT_MET' | 'PAID_IN_FULL' | 'REFUND_DUE' | 'REFUNDED' =
+    jobCard.status === 'CANCELLED' && paymentsTotal > 0
+      ? refundedTotal >= paymentsTotal - 0.004
+        ? 'REFUNDED'
+        : 'REFUND_DUE'
+      : paymentsTotal <= 0
       ? 'AWAITING_PAYMENT'
       : estimateTotal > 0 && paymentsTotal >= estimateTotal
         ? 'PAID_IN_FULL'
@@ -496,9 +506,17 @@ export default async function JobCardDetailPage({
           // while before it's actually checked out. Once that's
           // happened, the badge switches to plain past tense — the
           // count is final, not still running.
-          const isCheckedOut = Boolean(jobCard.checkedOutAt);
-          const inWorkshopEnd = jobCard.checkedOutAt ?? new Date();
-          const daysInWorkshop = workingDaysBetween(jobCard.createdAt, inWorkshopEnd);
+          // One shared rule (lib/visit-durations) — identical to every
+          // print. In Service ends at whatever genuinely ended the work.
+          const durations = visitDurations({
+            checkedInAt: jobCard.createdAt,
+            workStartedAt: jobCard.workStartedAt,
+            completedAt: jobCard.completedAt,
+            cancelledAt: approvedCancellation?.decidedAt ?? null,
+            checkedOutAt: jobCard.checkedOutAt,
+          });
+          const isCheckedOut = durations.custody.final;
+          const daysInWorkshop = durations.custody.days;
           const badges = [
             <span key="in-workshop" className="rounded-full bg-[var(--ejo-info)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-info)]">
               {isCheckedOut
@@ -514,13 +532,12 @@ export default async function JobCardDetailPage({
           // and its own timing (which can depend on their
           // availability, not the technician's) shouldn't be folded
           // into a technician's own turnaround figure.
-          if (jobCard.workStartedAt) {
-            const inServiceEnd = jobCard.completedAt ?? new Date();
-            const inServiceDuration = workingDaysBetween(jobCard.workStartedAt, inServiceEnd);
+          if (durations.inService) {
+            const inServiceDuration = durations.inService.days;
             badges.push(
-              jobCard.completedAt ? (
+              durations.inService.final ? (
                 <span key="in-service-duration" className="rounded-full bg-[var(--ejo-text-muted)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-text-muted)]">
-                  In Service duration: {pluralize(inServiceDuration, 'working day')}
+                  {durations.inService.endedBy === 'CANCELLED' ? 'In Service before cancellation' : 'In Service duration'}: {pluralize(inServiceDuration, 'working day')}
                 </span>
               ) : (
                 <span key="in-service-ongoing" className="rounded-full bg-[var(--ejo-warning)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-warning)]">
