@@ -109,11 +109,20 @@ function DueEntryCard({ entry }: { entry: VehicleDueForService }) {
 export default async function VehicleServiceCustodyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; q?: string; status?: string; error?: string }>;
+  searchParams: Promise<{ filter?: string; q?: string; status?: string; error?: string; type?: string }>;
 }) {
-  const { filter, q, status, error } = await searchParams;
+  const { filter, q, status, error, type: rawType } = await searchParams;
+  const vehicleType = rawType === 'PASSENGER' || rawType === 'COMMERCIAL' ? rawType : null;
   const branchId = await getWorkshopBranchId();
   const summary = await getVehicleServiceCustodySummary(branchId, q);
+  // Passenger / Commercial filter — narrows every list (and so every count).
+  if (vehicleType) {
+    const rec = summary as unknown as Record<string, unknown>;
+    for (const key of Object.keys(rec)) {
+      const list = rec[key];
+      if (Array.isArray(list)) rec[key] = list.filter((e: { vehicleType?: string | null }) => e.vehicleType === vehicleType);
+    }
+  }
 
   const showCheckedIn = !filter || filter === 'checked_in';
   const showInService = !filter || filter === 'in_service';
@@ -159,6 +168,15 @@ export default async function VehicleServiceCustodyPage({
       ) : null}
 
       <form className="mb-8 flex gap-2" action="/workshop/vehicle-service-custody">
+        <select
+          name="type"
+          defaultValue={vehicleType ?? ''}
+          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+        >
+          <option value="">All vehicle types</option>
+          <option value="PASSENGER">Passenger</option>
+          <option value="COMMERCIAL">Commercial</option>
+        </select>
         {filter ? <input type="hidden" name="filter" value={filter} /> : null}
         <input
           type="search"
