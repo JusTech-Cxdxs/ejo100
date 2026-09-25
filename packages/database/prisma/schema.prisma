@@ -361,6 +361,8 @@ model User {
   vehicleServiceCloseRequestsMade VehicleServiceCloseRequest[] @relation("VehicleServiceCloseRequestedBy")
   vehicleServiceCloseRequestsDecided VehicleServiceCloseRequest[] @relation("VehicleServiceCloseDecidedBy")
   refundsRecorded Refund[] @relation("RefundRecordedBy")
+  vehicleServiceCancellationRequestsMade VehicleServiceCancellationRequest[] @relation("VehicleServiceCancellationRequestedBy")
+  vehicleServiceCancellationRequestsDecided VehicleServiceCancellationRequest[] @relation("VehicleServiceCancellationDecidedBy")
   serviceEstimatesMatchingRequested ServiceEstimate[] @relation("ServiceEstimateMatchingRequestedBy")
   serviceEstimateLinesEntered ServiceEstimateLineItem[] @relation("ServiceEstimateLineEnteredBy")
   jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
@@ -1314,6 +1316,7 @@ model VehicleService {
   payments Payment[]
   refunds Refund[]
   closeRequests VehicleServiceCloseRequest[]
+  cancellationRequests VehicleServiceCancellationRequest[]
 
   @@map("vehicle_services")
 }
@@ -1340,6 +1343,32 @@ model VehicleServiceCloseRequest {
 
   @@index([vehicleServiceId])
   @@map("vehicle_service_close_requests")
+}
+
+// The Vehicle Service equivalent of Job Card's own CancellationRequest —
+// the same flow exactly: the creator or supervisor requests it with a
+// reason (status untouched), a branch Manager approves (→ CANCELLED,
+// which also authorises a refund of anything paid) or declines. Kept as
+// its own parallel model so Job Card's cancellation is never touched.
+model VehicleServiceCancellationRequest {
+  id               String                    @id @default(cuid())
+  vehicleServiceId String
+  reason           String
+  requestedById    String
+  requestedAt      DateTime                  @default(now())
+  status           CancellationRequestStatus @default(PENDING)
+  decidedById      String?
+  decidedAt        DateTime?
+  decisionNotes    String?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @default(now()) @updatedAt
+
+  vehicleService VehicleService @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
+  requestedBy    User           @relation("VehicleServiceCancellationRequestedBy", fields: [requestedById], references: [id])
+  decidedBy      User?          @relation("VehicleServiceCancellationDecidedBy", fields: [decidedById], references: [id])
+
+  @@index([vehicleServiceId])
+  @@map("vehicle_service_cancellation_requests")
 }
 
 // Each real, distinct thing the customer actually asked for this
