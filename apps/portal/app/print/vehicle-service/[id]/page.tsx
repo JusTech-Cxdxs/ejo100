@@ -8,7 +8,7 @@ import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/pri
 import { PrintOnLoad } from '@/components/print/PrintOnLoad';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
-import { workingDaysBetween } from '@/lib/utils/working-days';
+import { visitDurations } from '@/lib/visit-durations';
 
 function formatNaira(amount: number): string {
   return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -76,10 +76,16 @@ export default async function PrintVehicleServicePage({
   const vehicleSummary = [service.vehicle.year, service.vehicle.make, service.vehicle.model, service.vehicle.engineType].filter(Boolean).join(' ') || 'No vehicle details on file';
   // Working days only, ending at the real physical-exit moment — a
   // final, frozen figure, since this document only exists once checked out.
-  const daysInCustody = workingDaysBetween(service.checkedInAt ?? service.createdAt, service.collectedAt ?? new Date());
-  const inServiceDuration = service.workStartedAt
-    ? workingDaysBetween(service.workStartedAt, service.completedAt ?? service.collectedAt ?? new Date())
-    : null;
+  // One shared rule (lib/visit-durations) — identical to Job Cards.
+  const durations = visitDurations({
+    checkedInAt: service.checkedInAt ?? service.createdAt,
+    workStartedAt: service.workStartedAt,
+    completedAt: service.completedAt,
+    cancelledAt: service.cancelledAt,
+    checkedOutAt: service.collectedAt,
+  });
+  const daysInCustody = durations.custody.days;
+  const inServiceDuration = durations.inService?.days ?? null;
   const nextDueParts = [
     service.nextServiceDueOdometer != null ? `${service.nextServiceDueOdometer.toLocaleString('en-NG')} km` : null,
     service.nextServiceDueDate ? formatDateOnly(service.nextServiceDueDate) : null,
