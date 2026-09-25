@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getVehicleService, getVehicleServiceAuditTrail, getVehicleServiceCloseRequests } from '@/lib/actions/vehicle-service';
+import { getVehicleService, getVehicleServiceAuditTrail, getVehicleServiceCloseRequests, getVehicleServiceCancellationRequests } from '@/lib/actions/vehicle-service';
 import { listRefunds } from '@/lib/actions/refunds';
 import { RefundsPanel } from '@/components/RefundsPanel';
 import { getVehicleInspection } from '@/lib/actions/vehicle-inspection';
@@ -35,6 +35,10 @@ import {
   requestVehicleServiceCloseFormAction,
   approveVehicleServiceCloseRequestFormAction,
   declineVehicleServiceCloseRequestFormAction,
+  requestVehicleServiceCancellationFormAction,
+  approveVehicleServiceCancellationFormAction,
+  declineVehicleServiceCancellationFormAction,
+  handBackCancelledVehicleServiceFormAction,
 } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
@@ -154,6 +158,10 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle_service.close_requested': 'Close requested',
   'vehicle_service.close_declined': 'Close request declined',
   'refund.recorded': 'Refund recorded',
+  'vehicle_service.cancellation_requested': 'Cancellation requested',
+  'vehicle_service.cancellation_approved': 'Cancellation approved',
+  'vehicle_service.cancellation_declined': 'Cancellation request declined',
+  'vehicle_service.handed_back': 'Vehicle handed back after cancellation',
   'refund.completed': 'Refund completed — all money returned',
   'vehicle_service.deleted': 'Vehicle Service deleted',
   'assignment.accepted': 'Technician accepted assignment',
@@ -298,7 +306,6 @@ export default async function VehicleServiceDetailPage({
   const isReadOnly = service.status === 'ESCALATED' || Boolean(service.escalatedToJobCard);
   const isEstimateContributor = !isReadOnly && (isMasterAdmin || service.supervisor?.id === viewerId || service.assignedTechnician?.id === viewerId);
   const nextAction = NEXT_ACTION[service.status];
-  const canCancel = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
   const [technicians, auditTrail, inspection, serviceEstimate, partTypes, partCategories, payments, eligibleFinance, eligibleManagers, sourcingNeeds, closeRequests] = await Promise.all([
     listTechnicianCandidates(),
     getVehicleServiceAuditTrail(id),
@@ -337,6 +344,16 @@ export default async function VehicleServiceDetailPage({
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const refunds = await listRefunds({ vehicleServiceId: id });
+  const refundedTotal = refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
+  const cancellationRequests = await getVehicleServiceCancellationRequests(id);
+  const pendingCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'PENDING') ?? null;
+  const approvedCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'APPROVED') ?? null;
+  // Same rule as the server: creator, supervisor or Master Admin, while
+  // the service can still be cancelled.
+  const canRequestCancellation =
+    ['SCHEDULED', 'CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'].includes(service.status) &&
+    !service.escalatedToJobCard &&
+    (isMasterAdmin || service.createdBy.id === viewerId || service.supervisor?.id === viewerId);
   // Same real rule the server enforces for close and check-out.
   const isPaidInFull = paymentsTotal >= estimateTotal;
   const pendingCloseRequest = closeRequests.find((r: (typeof closeRequests)[number]) => r.status === 'PENDING') ?? null;
@@ -461,6 +478,18 @@ export default async function VehicleServiceDetailPage({
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Assignment rejected." />
         </div>
+      ) : null}
+      {status === 'cancellation_requested' ? (
+        <div className="mb-6 max-w-xl"><FormFeedbackBanner kind="success" message="Cancellation requested — every Workshop Manager has been notified." /></div>
+      ) : null}
+      {status === 'cancellation_approved' ? (
+        <div className="mb-6 max-w-xl"><FormFeedbackBanner kind="success" message="Cancellation approved — the customer and team have been notified." /></div>
+      ) : null}
+      {status === 'cancellation_declined' ? (
+        <div className="mb-6 max-w-xl"><FormFeedbackBanner kind="success" message="Cancellation request declined — the requester has been notified." /></div>
+      ) : null}
+      {status === 'handed_back' ? (
+        <div className="mb-6 max-w-xl"><FormFeedbackBanner kind="success" message="Vehicle handed back." /></div>
       ) : null}
       {status === 'refund_recorded' ? (
         <div className="mb-6 max-w-xl">
@@ -1182,15 +1211,15 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {service.status === 'CANCELLED' && (paymentsTotal > 0 || refunds.length > 0) ? (
+          {refunds.length > 0 || ((service.status === 'CANCELLED' || pendingCancellation) && paymentsTotal > 0) ? (
             <RefundsPanel
               target={{ vehicleServiceId: service.id }}
               paid={paymentsTotal}
               refunds={refunds}
-              isCancelled
+              isCancelled={service.status === 'CANCELLED'}
               canRecord={isEligibleFinance}
               defaultPaidTo={service.customer.fullName}
-              defaultReason="Vehicle Service cancelled"
+              defaultReason={approvedCancellation?.reason ?? pendingCancellation?.reason ?? 'Vehicle Service cancelled'}
             />
           ) : null}
 
@@ -1639,22 +1668,79 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {canCancel && (paymentsTotal <= 0 || isEligibleManager) ? (
-            <form action={updateVehicleServiceStatusFormAction}>
-              <FormPendingOverlay />
-              <input type="hidden" name="serviceId" value={service.id} />
-              <input type="hidden" name="newStatus" value="CANCELLED" />
+          {pendingCancellation ? (
+            <div id="cancellation-request" className="scroll-mt-24 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Cancellation requested</h2>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                {pendingCancellation.requestedBy.fullName}: {pendingCancellation.reason}
+              </p>
               {paymentsTotal > 0 ? (
-                <p className="mb-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
-                  The customer has paid {formatNaira(paymentsTotal)}. Cancelling also authorises a full refund — Finance then pays it and records it under Refunds.
+                <p className="mt-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
+                  The customer has paid {formatNaira(paymentsTotal)}. Approving this cancellation also authorises a full refund of that amount — Finance then pays it and records it under Refunds.
                 </p>
               ) : null}
-              <button type="submit" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)]">
-                Cancel this Vehicle Service
-              </button>
-            </form>
-          ) : canCancel ? (
-            <p className="text-xs text-[var(--ejo-text-muted)]">Money has been paid on this service — only a Workshop Manager can cancel it (which authorises a refund).</p>
+              {isEligibleManager ? (
+                <div className="mt-3 space-y-2">
+                  <form action={approveVehicleServiceCancellationFormAction} className="space-y-2">
+                    <FormPendingOverlay />
+                    <input type="hidden" name="serviceId" value={service.id} />
+                    <input type="hidden" name="requestId" value={pendingCancellation.id} />
+                    <input name="decisionNotes" placeholder="Notes (optional)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                    <SubmitButton label="Approve cancellation" pendingLabel="Approving…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
+                  </form>
+                  <form action={declineVehicleServiceCancellationFormAction}>
+                    <FormPendingOverlay />
+                    <input type="hidden" name="serviceId" value={service.id} />
+                    <input type="hidden" name="requestId" value={pendingCancellation.id} />
+                    <SubmitButton label="Decline" pendingLabel="Declining…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]" />
+                  </form>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Waiting on a Workshop Manager to approve or decline.</p>
+              )}
+            </div>
+          ) : canRequestCancellation ? (
+            <details className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+              <summary className="cursor-pointer text-sm font-medium text-[var(--ejo-text-muted)]">Request cancellation</summary>
+              <form action={requestVehicleServiceCancellationFormAction} className="mt-3 space-y-2">
+                <FormPendingOverlay />
+                <input type="hidden" name="serviceId" value={service.id} />
+                <textarea name="reason" required rows={2} placeholder="Why should this Vehicle Service be cancelled?" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                <p className="text-[11px] text-[var(--ejo-text-muted)]">
+                  A Workshop Manager approves or declines it.{paymentsTotal > 0 ? ` ${formatNaira(paymentsTotal)} has been paid — approval authorises a full refund.` : ''} Cancelling also stops this vehicle&apos;s service reminders until a service is next completed.
+                </p>
+                <SubmitButton label="Request cancellation" pendingLabel="Requesting…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10" />
+              </form>
+            </details>
+          ) : null}
+
+          {service.status === 'CANCELLED' ? (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Cancelled</h2>
+              {approvedCancellation ? (
+                <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
+                  Approved by {approvedCancellation.decidedBy?.fullName ?? 'a Manager'}
+                  {approvedCancellation.decidedAt ? ` on ${formatDateTime(approvedCancellation.decidedAt)}` : ''} — {approvedCancellation.reason}
+                </p>
+              ) : null}
+              {service.collectedAt ? (
+                <p className="mt-2 text-xs text-[var(--ejo-text)]">
+                  Vehicle handed back to <span className="font-medium">{service.collectedByName ?? '—'}</span> on {formatDateTime(service.collectedAt)}.
+                </p>
+              ) : paymentsTotal - refundedTotal > 0.004 ? (
+                <p className="mt-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
+                  {formatNaira(paymentsTotal - refundedTotal)} must be refunded (see Refunds) before the vehicle can be handed back.
+                </p>
+              ) : (
+                <form action={handBackCancelledVehicleServiceFormAction} className="mt-3 space-y-2">
+                  <FormPendingOverlay />
+                  <input type="hidden" name="serviceId" value={service.id} />
+                  <label className="block text-xs font-medium text-[var(--ejo-text-muted)]">Hand the vehicle back — collected by (full name)</label>
+                  <input name="collectedByName" required defaultValue={service.customer.fullName} className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                  <SubmitButton label="Hand vehicle back" pendingLabel="Saving…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
+                </form>
+              )}
+            </div>
           ) : null}
 
           {isMasterAdmin ? (
