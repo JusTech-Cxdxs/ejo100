@@ -5,7 +5,7 @@ import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/pri
 import { PrintOnLoad } from '@/components/print/PrintOnLoad';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
-import { workingDaysBetween } from '@/lib/utils/working-days';
+import { visitDurations } from '@/lib/visit-durations';
 
 function formatNaira(amount: number): string {
   return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -84,10 +84,22 @@ export default async function PrintJobCardPage({
   // once a Job Card is genuinely CHECKED_OUT (see the notFound() gate
   // above), so both figures are always the real, final, frozen count
   // here — never the still-running version.
-  const daysInCustody = workingDaysBetween(jobCard.createdAt, jobCard.checkedOutAt ?? new Date());
-  const inServiceDuration = jobCard.workStartedAt
-    ? workingDaysBetween(jobCard.workStartedAt, jobCard.completedAt ?? jobCard.checkedOutAt ?? new Date())
-    : null;
+  // One shared rule (lib/visit-durations) — identical to the Job Card
+  // page. In Service ends at whatever genuinely ended the work:
+  // completion, an approved cancellation, or check-out.
+  const durations = visitDurations({
+    checkedInAt: jobCard.createdAt,
+    workStartedAt: jobCard.workStartedAt,
+    completedAt: jobCard.completedAt,
+    cancelledAt: cancellation?.decidedAt ?? null,
+    checkedOutAt: jobCard.checkedOutAt,
+  });
+  const daysInCustody = durations.custody.days;
+  const inServiceDuration = durations.inService?.days ?? null;
+  // Money in and money returned — the refund story, on both copies.
+  const totalRefunded = jobCard.refunds.reduce((sum: number, r: (typeof jobCard.refunds)[number]) => sum + Number(r.amount), 0);
+  const netPaid = Math.round((totalPaid - totalRefunded) * 100) / 100;
+  const paymentRefs = jobCard.payments.map((p: (typeof jobCard.payments)[number]) => p.notes?.trim()).filter((n: string | undefined): n is string => Boolean(n));
 
   return (
     <div style={{ maxWidth: '780px', margin: '0 auto', padding: '32px 24px', fontFamily: 'Arial, Helvetica, sans-serif', color: '#0F172A' }}>
@@ -113,13 +125,26 @@ export default async function PrintJobCardPage({
         <Field label="VIN / CHASSIS" value={jobCard.vehicle.chassisNumber ?? '—'} />
         <Field label="CHECKED IN" value={formatDateTime(new Date(jobCard.createdAt))} />
         <Field label="CHECKED OUT" value={jobCard.checkedOutAt ? formatDateTime(new Date(jobCard.checkedOutAt)) : '—'} />
+        {jobCard.escalatedFromVehicleService ? <Field label="ESCALATED FROM" value={`Vehicle Service ${jobCard.escalatedFromVehicleService.serviceNumber}`} /> : null}
+        {paymentRefs.length > 0 ? <Field label={pluralize(paymentRefs.length, 'PAYMENT REF', 'PAYMENT REFS')} value={paymentRefs.join(', ')} /> : null}
+        {jobCard.refunds.length > 0 ? (
+          <Field
+            label={pluralize(jobCard.refunds.length, 'REFUND RECEIPT', 'REFUND RECEIPTS')}
+            value={jobCard.refunds.map((r: (typeof jobCard.refunds)[number]) => r.referenceNumber).join(', ')}
+          />
+        ) : null}
         {jobCard.customer.address ? <Field label="CUSTOMER ADDRESS" value={jobCard.customer.address} /> : null}
         {isOrgCopy ? (
           <>
             <Field label="TECHNICIAN IN CHARGE" value={jobCard.assignedTechnician?.fullName ?? '—'} />
             <Field label="WORKSHOP SUPERVISOR" value={jobCard.supervisor?.fullName ?? '—'} />
             <Field label="TOTAL TIME IN CUSTODY" value={pluralize(daysInCustody, 'working day')} />
-            {inServiceDuration !== null ? <Field label="IN SERVICE DURATION" value={pluralize(inServiceDuration, 'working day')} /> : null}
+            {inServiceDuration !== null ? (
+              <Field
+                label={durations.inService?.endedBy === 'CANCELLED' ? 'IN SERVICE BEFORE CANCELLATION' : 'IN SERVICE DURATION'}
+                value={pluralize(inServiceDuration, 'working day')}
+              />
+            ) : null}
             {jobCard.partRequestSlips.length > 0 ? (
               <Field
                 label={pluralize(jobCard.partRequestSlips.length, 'STORE PARTS REQUEST REF', 'STORE PARTS REQUEST REFS')}
@@ -212,8 +237,52 @@ export default async function PrintJobCardPage({
             <td style={{ padding: '4px 0', color: '#475569' }}>Total Paid</td>
             <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>{formatNaira(totalPaid)}</td>
           </tr>
+          {jobCard.refunds.length > 0 || (wasCancelled && totalPaid > 0) ? (
+            <>
+              <tr>
+                <td style={{ padding: '4px 0', color: '#475569' }}>Total Refunded</td>
+                <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>{formatNaira(totalRefunded)}</td>
+              </tr>
+              <tr style={{ borderTop: '1.5px solid #0F172A' }}>
+                <td style={{ padding: '6px 0', fontWeight: 700 }}>Net Paid (kept)</td>
+                <td style={{ padding: '6px 0', textAlign: 'right', fontWeight: 700 }}>{formatNaira(netPaid)}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '2px 0', color: '#475569' }}>Refund status</td>
+                <td style={{ padding: '2px 0', textAlign: 'right', fontWeight: 700 }}>{netPaid <= 0 ? 'Fully refunded' : wasCancelled ? `${formatNaira(netPaid)} not yet refunded` : 'Partly refunded'}</td>
+              </tr>
+            </>
+          ) : null}
         </tbody>
       </table>
+
+      {/* Customer copy: a clean record of money in and out — no staff names. */}
+      {!isOrgCopy && (jobCard.payments.length > 0 || jobCard.refunds.length > 0) ? (
+        <div style={{ marginTop: '16px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>PAYMENTS &amp; REFUNDS</div>
+          <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+            <tbody>
+              {jobCard.payments.map((p: (typeof jobCard.payments)[number]) => (
+                <tr key={p.id}>
+                  <td style={{ padding: '2px 0', color: '#475569', width: '25%' }}>{formatDateTime(new Date(p.recordedAt))}</td>
+                  <td style={{ padding: '2px 0' }}>
+                    Payment — {PAYMENT_METHOD_LABEL[p.method] ?? p.method} — {formatNaira(Number(p.amount))}
+                    {p.notes ? ` — Ref: ${p.notes}` : ''}
+                  </td>
+                </tr>
+              ))}
+              {jobCard.refunds.map((r: (typeof jobCard.refunds)[number]) => (
+                <tr key={r.id}>
+                  <td style={{ padding: '2px 0', color: '#475569' }}>{formatDateTime(new Date(r.recordedAt))}</td>
+                  <td style={{ padding: '2px 0' }}>
+                    Refund {r.referenceNumber} — {r.method === 'CASH' ? 'Cash' : 'Bank Transfer'} — {formatNaira(Number(r.amount))} — received by {r.paidToName}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       {isOrgCopy && jobCard.payments.length > 0 ? (
         <div style={{ marginTop: '16px' }}>
@@ -223,7 +292,29 @@ export default async function PrintJobCardPage({
               {jobCard.payments.map((p: (typeof jobCard.payments)[number]) => (
                 <tr key={p.id}>
                   <td style={{ padding: '2px 0', color: '#475569', width: '25%' }}>{formatDateTime(new Date(p.recordedAt))}</td>
-                  <td style={{ padding: '2px 0' }}>{PAYMENT_METHOD_LABEL[p.method] ?? p.method} — {formatNaira(Number(p.amount))} — recorded by {p.recordedBy.fullName}</td>
+                  <td style={{ padding: '2px 0' }}>
+                    {PAYMENT_METHOD_LABEL[p.method] ?? p.method} — {formatNaira(Number(p.amount))} — recorded by {p.recordedBy.fullName}
+                    {p.notes ? ` — Ref: ${p.notes}` : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {isOrgCopy && jobCard.refunds.length > 0 ? (
+        <div style={{ marginTop: '12px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>REFUND RECORD</div>
+          <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+            <tbody>
+              {jobCard.refunds.map((r: (typeof jobCard.refunds)[number]) => (
+                <tr key={r.id}>
+                  <td style={{ padding: '2px 0', color: '#475569', width: '25%' }}>{formatDateTime(new Date(r.recordedAt))}</td>
+                  <td style={{ padding: '2px 0' }}>
+                    {r.referenceNumber} — {r.method === 'CASH' ? 'Cash' : 'Bank Transfer'} — {formatNaira(Number(r.amount))} to {r.paidToName} — recorded by {r.recordedBy.fullName}
+                    {r.notes ? ` — Ref: ${r.notes}` : ''} — Reason: {r.reason}
+                  </td>
                 </tr>
               ))}
             </tbody>
