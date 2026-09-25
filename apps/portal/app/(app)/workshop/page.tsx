@@ -7,6 +7,7 @@ const sections = [
   { name: 'Vehicle Service', href: '/workshop/vehicle-service', desc: 'Routine maintenance and minor requests — a genuinely lighter workflow than Job Card, with a real repair escalating into one.' },
   { name: 'Vehicles In Custody — Job Card', href: '/workshop/custody', desc: 'Every vehicle physically in the workshop under a Job Card, categorized by what needs attention.' },
   { name: 'Vehicles In Custody — Vehicle Service', href: '/workshop/vehicle-service-custody', desc: 'Checked In, In Service, awaiting collection (with collection deadlines and reminders), and vehicles coming due or overdue.' },
+  { name: 'Refunds', href: '/workshop/refunds', desc: 'Every refund paid back to a customer — RF receipt, Job Card or Service, amount, who received it, who refunded it, and printable receipts.' },
   { name: 'Service Tracker', href: '/workshop/service-tracker', desc: 'Aftercare for every vehicle after it leaves — next service due, on track / due soon / overdue, reminder history, and follow-up actions.' },
   { name: 'Parts Requests', href: '/workshop/parts-requests', desc: 'Store parts requested for Job Cards — Workshop HOD, Store, and release, in one place.' },
   { name: 'External Procurement', href: '/workshop/external-procurement', desc: 'Cash advance requests for externally-sourced parts and jobs.' },
