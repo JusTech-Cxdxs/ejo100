@@ -4,6 +4,7 @@ import {
   attendToOverdueVehicleFormAction,
   sendManualServiceReminderFormAction,
   runServiceRemindersNowFormAction,
+  stopTrackingVehicleFormAction,
 } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
@@ -14,7 +15,7 @@ import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 
 const STAGE_LABEL: Record<number, string> = { 1: '1st — Friendly', 2: '2nd — Follow-up', 3: '3rd — Due', 4: 'Overdue' };
 
-type Filter = 'all' | 'overdue' | 'due_soon' | 'on_track' | 'in_workshop' | 'attended';
+type Filter = 'all' | 'overdue' | 'due_soon' | 'on_track' | 'in_workshop' | 'attended' | 'lapsed';
 
 /**
  * Service Tracker — aftercare for every vehicle once it has left the
@@ -27,16 +28,21 @@ type Filter = 'all' | 'overdue' | 'due_soon' | 'on_track' | 'in_workshop' | 'att
 export default async function ServiceTrackerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; q?: string; status?: string; error?: string; sent?: string; evaluated?: string; failed?: string }>;
+  searchParams: Promise<{ filter?: string; q?: string; type?: string; status?: string; error?: string; sent?: string; evaluated?: string; failed?: string }>;
 }) {
-  const { filter: rawFilter, q, status, error, sent, evaluated, failed } = await searchParams;
-  const filter: Filter = (['overdue', 'due_soon', 'on_track', 'in_workshop', 'attended'] as const).includes(rawFilter as never) ? (rawFilter as Filter) : 'all';
+  const { filter: rawFilter, q, type: rawType, status, error, sent, evaluated, failed } = await searchParams;
+  const vehicleType = rawType === 'PASSENGER' || rawType === 'COMMERCIAL' ? rawType : null;
+  const filter: Filter = (['overdue', 'due_soon', 'on_track', 'in_workshop', 'attended', 'lapsed'] as const).includes(rawFilter as never) ? (rawFilter as Filter) : 'all';
   const branchId = await getWorkshopBranchId();
-  const { vehicles, remindersLast30Days, canRunReminders } = await getServiceTracker(branchId);
+  const tracker = await getServiceTracker(branchId);
+  const { remindersLast30Days, canRunReminders } = tracker;
+  // Passenger / Commercial filter narrows everything below, counts included.
+  const vehicles = vehicleType ? tracker.vehicles.filter((v) => v.vehicleType === vehicleType) : tracker.vehicles;
 
   const counts = {
     all: vehicles.length,
-    overdue: vehicles.filter((v) => v.status === 'OVERDUE' && !v.attendedAt).length,
+    overdue: vehicles.filter((v) => v.status === 'OVERDUE' && !v.attendedAt && !v.lapsed).length,
+    lapsed: vehicles.filter((v) => v.lapsed && !v.attendedAt).length,
     due_soon: vehicles.filter((v) => v.status === 'DUE_SOON' && !v.attendedAt).length,
     on_track: vehicles.filter((v) => v.status === 'ON_TRACK').length,
     in_workshop: vehicles.filter((v) => v.inWorkshop).length,
@@ -47,7 +53,8 @@ export default async function ServiceTrackerPage({
   const shown = vehicles
     .filter((v) =>
       filter === 'all' ? true
-        : filter === 'overdue' ? v.status === 'OVERDUE' && !v.attendedAt
+        : filter === 'lapsed' ? v.lapsed && !v.attendedAt
+        : filter === 'overdue' ? v.status === 'OVERDUE' && !v.attendedAt && !v.lapsed
           : filter === 'due_soon' ? v.status === 'DUE_SOON' && !v.attendedAt
             : filter === 'on_track' ? v.status === 'ON_TRACK'
               : filter === 'in_workshop' ? Boolean(v.inWorkshop)
@@ -69,7 +76,7 @@ export default async function ServiceTrackerPage({
     return (
       <LoadingLink
         key={key}
-        href={`/workshop/service-tracker${key === 'all' ? '' : `?filter=${key}`}${q ? `${key === 'all' ? '?' : '&'}q=${encodeURIComponent(q)}` : ''}`}
+        href={`/workshop/service-tracker?${[key === 'all' ? null : `filter=${key}`, q ? `q=${encodeURIComponent(q)}` : null, vehicleType ? `type=${vehicleType}` : null].filter(Boolean).join('&')}`}
         className={`block rounded-[var(--ejo-radius-lg)] border p-4 transition hover:opacity-80 ${t.bg} ${filter === key ? t.borderActive : t.border}`}
       >
         <p className="text-xs text-[var(--ejo-text-muted)]">{label}</p>
@@ -118,6 +125,9 @@ export default async function ServiceTrackerPage({
       {status === 'reminder_sent' ? (
         <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message="Reminder sent to the customer." /></div>
       ) : null}
+      {status === 'tracking_stopped' ? (
+        <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message="Tracking stopped for this vehicle — it restarts automatically after its next completed service." /></div>
+      ) : null}
       {status === 'attended' ? (
         <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message="Marked attended to — no further reminders for this prediction." /></div>
       ) : null}
@@ -136,6 +146,7 @@ export default async function ServiceTrackerPage({
         {card('due_soon', 'Due Soon', counts.due_soon, 'warning')}
         {card('overdue', 'Overdue', counts.overdue, 'error')}
         {card('in_workshop', 'In Workshop', counts.in_workshop, 'info')}
+        {counts.lapsed > 0 || filter === 'lapsed' ? card('lapsed', 'Lapsed (1 year+)', counts.lapsed, 'primary') : null}
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4">
           <p className="text-xs text-[var(--ejo-text-muted)]">Reminders sent (30 days)</p>
           <p className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">{remindersLast30Days}</p>
@@ -144,6 +155,15 @@ export default async function ServiceTrackerPage({
 
       <form className="mb-4 flex gap-2" action="/workshop/service-tracker">
         {filter !== 'all' ? <input type="hidden" name="filter" value={filter} /> : null}
+        <select
+          name="type"
+          defaultValue={vehicleType ?? ''}
+          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+        >
+          <option value="">All vehicle types</option>
+          <option value="PASSENGER">Passenger</option>
+          <option value="COMMERCIAL">Commercial</option>
+        </select>
         <input
           type="search"
           name="q"
@@ -156,7 +176,7 @@ export default async function ServiceTrackerPage({
         </button>
         {filter === 'attended' ? null : (
           <LoadingLink href="/workshop/service-tracker?filter=attended" className="inline-flex items-center px-2 text-xs text-[var(--ejo-text-muted)] hover:underline">
-            Attended to ({counts.attended})
+            Not being tracked ({counts.attended})
           </LoadingLink>
         )}
       </form>
@@ -188,6 +208,8 @@ export default async function ServiceTrackerPage({
                   ? { text: 'In Workshop', cls: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]' }
                   : v.attendedAt
                     ? { text: 'Attended To', cls: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]' }
+                    : v.lapsed
+                      ? { text: 'Lapsed', cls: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]' }
                     : v.status === 'OVERDUE'
                       ? { text: 'Overdue', cls: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' }
                       : v.status === 'DUE_SOON'
@@ -292,6 +314,25 @@ export default async function ServiceTrackerPage({
                               className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-1 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
                             />
                           </form>
+                        ) : null}
+                        {!v.inWorkshop && !v.attendedAt ? (
+                          <details className="text-left">
+                            <summary className="cursor-pointer rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1 text-xs font-medium text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)]">
+                              Stop tracking
+                            </summary>
+                            <form action={stopTrackingVehicleFormAction} className="mt-2 w-56 space-y-2">
+                              <FormPendingOverlay />
+                              <input type="hidden" name="vehicleId" value={v.vehicleId} />
+                              <input type="hidden" name="returnTo" value="/workshop/service-tracker" />
+                              <input
+                                name="reason"
+                                required
+                                placeholder="Reason (e.g. customer asked, sold the car)"
+                                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1 text-xs text-[var(--ejo-text)]"
+                              />
+                              <SubmitButton label="Stop tracking" pendingLabel="Stopping…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-text-muted)] px-2 py-1 text-xs font-medium text-white" />
+                            </form>
+                          </details>
                         ) : null}
                         {!v.inWorkshop ? (
                           <LoadingLink
