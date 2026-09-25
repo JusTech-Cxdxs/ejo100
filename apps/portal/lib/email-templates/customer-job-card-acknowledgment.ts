@@ -10,6 +10,10 @@ export type CustomerJobCardAcknowledgmentEmailOptions = {
   companyName: string;
   branchName: string;
   departmentName: string;
+  /** Set when this Job Card continues a Vehicle Service that was
+   * escalated — the customer is told why, in plain words, instead of
+   * getting an unexplained second "vehicle received" email. */
+  escalatedFromServiceNumber?: string;
 };
 
 /**
@@ -24,7 +28,7 @@ export type CustomerJobCardAcknowledgmentEmailOptions = {
 export function renderCustomerJobCardAcknowledgmentEmail(
   opts: CustomerJobCardAcknowledgmentEmailOptions,
 ): string {
-  const { customerName, jobNumber, vehicleDescription, complaints, dashboardUrl, logoUrl, companyName, branchName, departmentName } = opts;
+  const { customerName, jobNumber, vehicleDescription, complaints, dashboardUrl, logoUrl, companyName, branchName, departmentName, escalatedFromServiceNumber } = opts;
 
   const complaintsListHtml = complaints.length > 0
     ? `<ol style="margin: 0; padding-left: 20px;">${complaints.map((c) => `<li style="margin-bottom: 4px;">${escapeHtml(c)}</li>`).join('')}</ol>`
@@ -32,11 +36,20 @@ export function renderCustomerJobCardAcknowledgmentEmail(
 
   const bodyHtml = `
     <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
-    <p style="margin: 0 0 16px 0;">
+    ${
+      escalatedFromServiceNumber
+        ? `<p style="margin: 0 0 16px 0;">
+      A quick update on your vehicle's routine service (Vehicle Service ${escapeHtml(escalatedFromServiceNumber)}): our team found work
+      that goes beyond routine maintenance, so your visit now continues as a repair Job Card. Your vehicle stays with us —
+      there's nothing you need to do. Our ${escapeHtml(departmentName)} team will prepare an estimate for your approval
+      before any repair work goes ahead, and we'll keep you updated throughout.
+    </p>`
+        : `<p style="margin: 0 0 16px 0;">
       Thank you for bringing your vehicle to ${escapeHtml(companyName)}. We've received it and logged the
       details below — our ${escapeHtml(departmentName)} team will begin the inspection shortly, and we'll
       keep you updated as your service progresses.
-    </p>
+    </p>`
+    }
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
       <tr>
