@@ -267,3 +267,31 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
   }
   return { id: refund.id, referenceNumber };
 }
+
+/** Every refund in the workshop — the Refunds register. Newest first,
+ * searchable by RF-number, Job Card / Service number or customer. */
+export async function listAllRefunds(search?: string) {
+  await requireUser();
+  const q = search?.trim();
+  return prisma.refund.findMany({
+    where: q
+      ? {
+          OR: [
+            { referenceNumber: { contains: q, mode: 'insensitive' } },
+            { paidToName: { contains: q, mode: 'insensitive' } },
+            { jobCard: { jobNumber: { contains: q, mode: 'insensitive' } } },
+            { vehicleService: { serviceNumber: { contains: q, mode: 'insensitive' } } },
+            { jobCard: { customer: { fullName: { contains: q, mode: 'insensitive' } } } },
+            { vehicleService: { customer: { fullName: { contains: q, mode: 'insensitive' } } } },
+          ],
+        }
+      : undefined,
+    orderBy: { recordedAt: 'desc' },
+    take: 200,
+    include: {
+      recordedBy: { select: { fullName: true } },
+      jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
+      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
+    },
+  });
+}

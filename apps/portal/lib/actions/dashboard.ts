@@ -55,7 +55,7 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   }
 
   if (isEligibleManagerAnywhere) {
-    const [openAlerts, pendingCancellations, pendingCloses, pendingServiceCloses] = await Promise.all([
+    const [openAlerts, pendingCancellations, pendingCloses, pendingServiceCloses, pendingServiceCancellations] = await Promise.all([
       prisma.pricingAlert.findMany({
         where: { status: 'OPEN', part: isMasterAdmin ? undefined : { branchId: branchId ?? undefined } },
         orderBy: { createdAt: 'desc' },
@@ -80,6 +80,12 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
         orderBy: { requestedAt: 'desc' },
         take: 10,
         select: { id: true, requestedAt: true, vehicleService: { select: { id: true, serviceNumber: true } } },
+      }),
+      prisma.vehicleServiceCancellationRequest.findMany({
+        where: { status: 'PENDING', vehicleService: isMasterAdmin ? undefined : { branchId: branchId ?? undefined } },
+        orderBy: { requestedAt: 'desc' },
+        take: 10,
+        select: { id: true, requestedAt: true, reason: true, vehicleService: { select: { id: true, serviceNumber: true } } },
       }),
     ]);
 
@@ -111,6 +117,16 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
         title: `Close requested — ${req.jobCard.jobNumber}`,
         detail: 'Waiting on your approve or decline.',
         url: `/workshop/job-cards/${req.jobCard.id}#close-request`,
+        createdAt: req.requestedAt,
+      });
+    }
+    for (const req of pendingServiceCancellations) {
+      notifications.push({
+        id: `service-cancel-${req.id}`,
+        kind: 'CANCELLATION_REQUEST',
+        title: `Cancellation requested — ${req.vehicleService.serviceNumber}`,
+        detail: req.reason,
+        url: `/workshop/vehicle-service/${req.vehicleService.id}#cancellation-request`,
         createdAt: req.requestedAt,
       });
     }

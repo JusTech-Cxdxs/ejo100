@@ -26,6 +26,10 @@ import { renderServiceCloseRequestedEmail } from '@/lib/email-templates/service-
 import { renderServiceCloseRequestDeclinedEmail } from '@/lib/email-templates/service-close-request-declined';
 import { renderCustomerServiceClosedEmail } from '@/lib/email-templates/customer-service-closed';
 import { renderVehicleServiceClosedStaffEmail } from '@/lib/email-templates/vehicle-service-closed-staff';
+import { renderServiceCancellationRequestedEmail } from '@/lib/email-templates/service-cancellation-requested';
+import { renderServiceCancellationDeclinedEmail } from '@/lib/email-templates/service-cancellation-declined';
+import { renderVehicleServiceCancelledStaffEmail } from '@/lib/email-templates/vehicle-service-cancelled-staff';
+import { renderCustomerServiceCancelledEmail } from '@/lib/email-templates/customer-service-cancelled';
 import { sendEmail } from '@/lib/email';
 import { renderSupervisorVehicleServiceAssignedEmail } from '@/lib/email-templates/supervisor-vehicle-service-assigned';
 import { renderVehicleServiceDecisionEmail } from '@/lib/email-templates/vehicle-service-decision';
@@ -1093,6 +1097,11 @@ export async function updateVehicleServiceStatus(
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
   }
+  // Cancelled is reached only by a Manager approving a cancellation
+  // request — exactly like Job Card; never set directly.
+  if (newStatus === 'CANCELLED') {
+    throw new VehicleServiceActionError('A Vehicle Service is cancelled by a Manager approving a cancellation request, not directly — see Request cancellation.');
+  }
   // Closed is reached only by a Manager approving a close request —
   // never set directly, the same rule Job Card's own updateJobCardStatus
   // enforces server-side (not just hidden from the page).
@@ -1122,13 +1131,6 @@ export async function updateVehicleServiceStatus(
   };
   if (!ladder[service.status]?.includes(newStatus)) {
     throw new VehicleServiceActionError(`A Vehicle Service currently ${service.status} cannot move directly to ${newStatus}.`);
-  }
-  // Cancelling a service that has already taken money authorises a
-  // refund — a Manager's decision (Finance then pays and records it),
-  // the same principle as Job Card's Manager-approved cancellation.
-  const paidSoFar = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
-  if (newStatus === 'CANCELLED' && paidSoFar > 0) {
-    await requireEligibleManager(service.branchId);
   }
   if (newStatus === 'COMPLETED') await requireVehicleServiceStepRole(service, 'COMPLETE', user.id);
   if (newStatus === 'READY_FOR_COLLECTION') await requireVehicleServiceStepRole(service, 'SIGN_OFF', user.id);
@@ -1165,7 +1167,6 @@ export async function updateVehicleServiceStatus(
     data.collectedAt = now;
     data.collectedByName = input?.collectedByName?.trim();
   }
-  if (newStatus === 'CANCELLED') data.cancelledAt = now;
 
   await prisma.$transaction(async (tx) => {
     await tx.vehicleService.update({ where: { id: serviceId }, data });
@@ -1186,7 +1187,6 @@ export async function updateVehicleServiceStatus(
       from: service.status,
       to: newStatus,
       ...(newStatus === 'COLLECTED' ? { collectedByName: input?.collectedByName?.trim() } : {}),
-      ...(newStatus === 'CANCELLED' && paidSoFar > 0 ? { refundAuthorised: Math.round(paidSoFar * 100) / 100 } : {}),
       ...(cycle ? { nextServiceDueOdometer: cycle.nextServiceDueOdometer, nextServiceDueDate: cycle.nextServiceDueDate?.toISOString() ?? null } : {}),
     },
   });
@@ -1404,6 +1404,261 @@ export async function stopTrackingVehicle(vehicleId: string, reason: string): Pr
   });
 }
 
+export async function getVehicleServiceCancellationRequests(serviceId: string) {
+  await requireUser();
+  return prisma.vehicleServiceCancellationRequest.findMany({
+    where: { vehicleServiceId: serviceId },
+    orderBy: { requestedAt: 'desc' },
+    include: { requestedBy: { select: { fullName: true } }, decidedBy: { select: { fullName: true } } },
+  });
+}
+
+/** Statuses a Vehicle Service can still be cancelled from. */
+const CANCELLABLE_SERVICE_STATUSES = ['SCHEDULED', 'CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'];
+
+/** The Vehicle Service equivalent of Job Card's requestJobCardCancellation
+ * — a reason is required, the status is deliberately untouched, only the
+ * creator, the supervisor or a Master Admin may ask, never twice at once,
+ * and every branch Manager is emailed to review it. */
+export async function requestVehicleServiceCancellation(serviceId: string, reason: string): Promise<void> {
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) throw new VehicleServiceActionError('A reason is required to request cancellation.');
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: serviceId },
+    select: { status: true, branchId: true, serviceNumber: true, createdById: true, supervisorId: true, customer: { select: { fullName: true } }, department: { select: { name: true } } },
+  });
+  if (!service) throw new VehicleServiceActionError('Vehicle Service record not found.');
+  if (!CANCELLABLE_SERVICE_STATUSES.includes(service.status)) {
+    throw new VehicleServiceActionError('This Vehicle Service is already cancelled, closed, checked out or escalated.');
+  }
+  const user = await requireUser();
+  if (user.id !== service.createdById && user.id !== service.supervisorId && !(await currentUserIsMasterAdmin())) {
+    throw new VehicleServiceActionError("Only this Vehicle Service's creator, its assigned supervisor, or a Master Administrator can request a cancellation.");
+  }
+  const existingPending = await prisma.vehicleServiceCancellationRequest.findFirst({ where: { vehicleServiceId: serviceId, status: 'PENDING' }, select: { id: true } });
+  if (existingPending) throw new VehicleServiceActionError('A cancellation request is already pending for this Vehicle Service.');
+  await prisma.vehicleServiceCancellationRequest.create({ data: { vehicleServiceId: serviceId, reason: trimmedReason, requestedById: user.id } });
+  await writeAuditLog({ userId: user.id, action: 'vehicle_service.cancellation_requested', entityType: 'VehicleService', entityId: serviceId, metadata: { reason: trimmedReason } });
+  try {
+    const requester = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const managers = await listEligibleManagersForBranch(service.branchId);
+    for (const manager of managers.supervisors) {
+      await sendEmail(
+        manager.email,
+        `Cancellation requested — Vehicle Service ${service.serviceNumber}`,
+        renderServiceCancellationRequestedEmail({
+          managerName: manager.fullName,
+          serviceNumber: service.serviceNumber,
+          customerName: service.customer.fullName,
+          requestedByName: requester?.fullName ?? 'A team member',
+          reason: trimmedReason,
+          serviceUrl: `${portalUrl}/workshop/vehicle-service/${serviceId}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Vehicle Service cancellation-requested emails', serviceId, err);
+  }
+}
+
+/** A Manager's approval — the one moment a Vehicle Service becomes
+ * CANCELLED. Also: authorises a refund of anything paid (Finance then
+ * records it), resolves any pending close request, and stops the
+ * vehicle's service tracking (restarts after its next completed
+ * service). Customer and every staff party are emailed — the same
+ * broadcast as Job Card's approveCancellationRequest. */
+export async function approveVehicleServiceCancellationRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  const request = await prisma.vehicleServiceCancellationRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      status: true,
+      reason: true,
+      vehicleServiceId: true,
+      vehicleService: {
+        select: {
+          status: true,
+          branchId: true,
+          serviceNumber: true,
+          vehicleId: true,
+          createdById: true,
+          supervisorId: true,
+          assignedTechnicianId: true,
+          customer: { select: { fullName: true, email: true } },
+          vehicle: { select: { make: true, model: true } },
+          department: { select: { name: true } },
+          payments: { select: { amount: true } },
+        },
+      },
+    },
+  });
+  if (!request) throw new VehicleServiceActionError('Cancellation request not found.');
+  if (request.status !== 'PENDING') throw new VehicleServiceActionError('This cancellation request has already been decided.');
+  const service = request.vehicleService;
+  if (!CANCELLABLE_SERVICE_STATUSES.includes(service.status)) {
+    throw new VehicleServiceActionError('This Vehicle Service has since been closed, checked out or escalated, so it can no longer be cancelled — decline this request.');
+  }
+  const user = await requireEligibleManager(service.branchId);
+  const now = new Date();
+  const paid = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
+  await prisma.$transaction([
+    prisma.vehicleServiceCloseRequest.updateMany({
+      where: { vehicleServiceId: request.vehicleServiceId, status: 'PENDING' },
+      data: { status: 'DECLINED', decidedById: user.id, decidedAt: now, decisionNotes: 'Superseded — the Vehicle Service was cancelled.' },
+    }),
+    prisma.vehicleServiceCancellationRequest.update({
+      where: { id: requestId },
+      data: { status: 'APPROVED', decidedById: user.id, decidedAt: now, decisionNotes: decisionNotes?.trim() || null },
+    }),
+    prisma.vehicleService.update({ where: { id: request.vehicleServiceId }, data: { status: 'CANCELLED', cancelledAt: now } }),
+  ]);
+  await writeAuditLog({
+    userId: user.id,
+    action: 'vehicle_service.cancellation_approved',
+    entityType: 'VehicleService',
+    entityId: request.vehicleServiceId,
+    metadata: { reason: request.reason, notes: decisionNotes?.trim() || undefined, ...(paid > 0 ? { refundAuthorised: Math.round(paid * 100) / 100 } : {}) },
+  });
+  // Cancelling a service stops the vehicle's service tracking — the
+  // customer isn't reminded until a service is next completed.
+  const [tracked] = await loadServiceTracking({ vehicleId: service.vehicleId });
+  if (tracked && !tracked.attendedAt) {
+    await prisma.vehicleService.update({ where: { id: tracked.lastService.id }, data: { attendedAt: now } });
+    await writeAuditLog({
+      userId: user.id,
+      action: 'vehicle.tracking_stopped',
+      entityType: 'CustomerVehicle',
+      entityId: service.vehicleId,
+      metadata: { reason: `Vehicle Service ${service.serviceNumber} cancelled`, lastServiceNumber: tracked.lastService.serviceNumber },
+    });
+  }
+  try {
+    const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
+    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const staff = await vehicleServiceStaffRecipients(service);
+    for (const recipient of staff) {
+      await sendEmail(
+        recipient.email,
+        `Vehicle Service ${service.serviceNumber} cancelled`,
+        renderVehicleServiceCancelledStaffEmail({
+          recipientName: recipient.fullName,
+          serviceNumber: service.serviceNumber,
+          customerName: service.customer.fullName,
+          approvedByName: approver?.fullName ?? 'The manager',
+          reason: request.reason,
+          serviceUrl: `${portalUrl}/workshop/vehicle-service/${request.vehicleServiceId}`,
+          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          companyName: orgContext.companyName,
+          branchName: orgContext.branchName,
+          departmentName: orgContext.departmentName,
+        }),
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Vehicle Service staff cancellation emails', request.vehicleServiceId, err);
+  }
+  try {
+    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    await sendEmail(
+      service.customer.email,
+      `Vehicle Service ${service.serviceNumber} cancelled`,
+      renderCustomerServiceCancelledEmail({
+        customerName: service.customer.fullName,
+        serviceNumber: service.serviceNumber,
+        vehicleDescription: [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+        dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${request.vehicleServiceId}`,
+        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send customer Vehicle Service cancellation email', request.vehicleServiceId, err);
+  }
+}
+
+/** A Manager's decline — status never touched; only the requester is
+ * emailed, the same as Job Card's declineCancellationRequest. */
+export async function declineVehicleServiceCancellationRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  const request = await prisma.vehicleServiceCancellationRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      status: true,
+      requestedById: true,
+      vehicleServiceId: true,
+      vehicleService: { select: { branchId: true, serviceNumber: true, customer: { select: { fullName: true } }, department: { select: { name: true } } } },
+    },
+  });
+  if (!request) throw new VehicleServiceActionError('Cancellation request not found.');
+  if (request.status !== 'PENDING') throw new VehicleServiceActionError('This cancellation request has already been decided.');
+  const user = await requireEligibleManager(request.vehicleService.branchId);
+  await prisma.vehicleServiceCancellationRequest.update({
+    where: { id: requestId },
+    data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: decisionNotes?.trim() || null },
+  });
+  await writeAuditLog({ userId: user.id, action: 'vehicle_service.cancellation_declined', entityType: 'VehicleService', entityId: request.vehicleServiceId, metadata: { notes: decisionNotes?.trim() || undefined } });
+  try {
+    const [decliner, requester] = await Promise.all([
+      prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
+      prisma.user.findUnique({ where: { id: request.requestedById }, select: { fullName: true, email: true } }),
+    ]);
+    if (!requester) return;
+    const orgContext = await getWorkshopOrgContext(request.vehicleService.department?.name);
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    await sendEmail(
+      requester.email,
+      `Cancellation request declined — Vehicle Service ${request.vehicleService.serviceNumber}`,
+      renderServiceCancellationDeclinedEmail({
+        recipientName: requester.fullName,
+        serviceNumber: request.vehicleService.serviceNumber,
+        customerName: request.vehicleService.customer.fullName,
+        declinedByName: decliner?.fullName ?? 'The manager',
+        decisionNotes,
+        serviceUrl: `${portalUrl}/workshop/vehicle-service/${request.vehicleServiceId}`,
+        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        companyName: orgContext.companyName,
+        branchName: orgContext.branchName,
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send Vehicle Service cancellation-declined email', request.vehicleServiceId, err);
+  }
+}
+
+/** Handing the vehicle back after a cancellation — the Vehicle Service
+ * equivalent of Job Card's CANCELLED → CHECKED_OUT. Records who collected
+ * it and when; the status stays CANCELLED (no service was performed).
+ * Refused until anything paid has been fully refunded. */
+export async function handBackCancelledVehicleService(serviceId: string, collectedByName: string): Promise<void> {
+  const user = await requireUser();
+  const name = collectedByName.trim();
+  if (!name) throw new VehicleServiceActionError('The name of whoever is collecting the vehicle is required.');
+  const service = await prisma.vehicleService.findUnique({
+    where: { id: serviceId },
+    select: { status: true, serviceNumber: true, collectedAt: true, payments: { select: { amount: true } }, refunds: { select: { amount: true } } },
+  });
+  if (!service || service.status !== 'CANCELLED') throw new VehicleServiceActionError('Only a cancelled Vehicle Service can be handed back this way.');
+  if (service.collectedAt) throw new VehicleServiceActionError('This vehicle has already been handed back.');
+  const paid = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
+  const refunded = service.refunds.reduce((sum: number, r: { amount: unknown }) => sum + Number(r.amount), 0);
+  const owed = Math.round((paid - refunded) * 100) / 100;
+  if (owed > 0) {
+    throw new VehicleServiceActionError(`₦${owed.toLocaleString('en-NG', { minimumFractionDigits: 2 })} paid on this Vehicle Service must be refunded (recorded under Refunds) before the vehicle can be handed back.`);
+  }
+  await prisma.vehicleService.update({ where: { id: serviceId }, data: { collectedAt: new Date(), collectedByName: name } });
+  await writeAuditLog({ userId: user.id, action: 'vehicle_service.handed_back', entityType: 'VehicleService', entityId: serviceId, metadata: { serviceNumber: service.serviceNumber, collectedByName: name } });
+}
+
 export async function getVehicleServiceCloseRequests(serviceId: string) {
   await requireUser();
   return prisma.vehicleServiceCloseRequest.findMany({
@@ -1530,6 +1785,11 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
   const user = await requireEligibleManager(service.branchId);
   const now = new Date();
   await prisma.$transaction([
+    // A cancellation requested earlier can never happen now — resolve it.
+    prisma.vehicleServiceCancellationRequest.updateMany({
+      where: { vehicleServiceId: request.vehicleServiceId, status: 'PENDING' },
+      data: { status: 'DECLINED', decidedById: user.id, decidedAt: now, decisionNotes: 'Superseded — the Vehicle Service was closed.' },
+    }),
     prisma.vehicleServiceCloseRequest.update({
       where: { id: requestId },
       data: { status: 'APPROVED', decidedById: user.id, decidedAt: now, decisionNotes: decisionNotes?.trim() || null },

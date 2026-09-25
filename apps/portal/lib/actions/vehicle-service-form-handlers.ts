@@ -19,6 +19,10 @@ import {
   attendToOverdueVehicle,
   sendVehicleServiceCollectionReminder,
   stopTrackingVehicle,
+  requestVehicleServiceCancellation,
+  approveVehicleServiceCancellationRequest,
+  declineVehicleServiceCancellationRequest,
+  handBackCancelledVehicleService,
 } from './vehicle-service';
 import { sendManualServiceReminder, runServiceRemindersNow } from './vehicle-service-reminders';
 
@@ -276,4 +280,56 @@ export async function stopTrackingVehicleFormAction(formData: FormData) {
   revalidatePath('/workshop/service-tracker');
   revalidatePath(returnTo);
   redirect(`${returnTo}?status=tracking_stopped`);
+}
+
+export async function requestVehicleServiceCancellationFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  try {
+    await requestVehicleServiceCancellation(serviceId, str(formData, 'reason'));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not request a cancellation.';
+    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${serviceId}`);
+  revalidatePath('/workshop/vehicle-service-custody');
+  redirect(`/workshop/vehicle-service/${serviceId}?status=cancellation_requested`);
+}
+
+export async function approveVehicleServiceCancellationFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  try {
+    await approveVehicleServiceCancellationRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not approve this cancellation.';
+    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${serviceId}`);
+  revalidatePath('/workshop/vehicle-service-custody');
+  redirect(`/workshop/vehicle-service/${serviceId}?status=cancellation_approved`);
+}
+
+export async function declineVehicleServiceCancellationFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  try {
+    await declineVehicleServiceCancellationRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not decline this cancellation.';
+    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${serviceId}`);
+  revalidatePath('/workshop/vehicle-service-custody');
+  redirect(`/workshop/vehicle-service/${serviceId}?status=cancellation_declined`);
+}
+
+export async function handBackCancelledVehicleServiceFormAction(formData: FormData) {
+  const serviceId = str(formData, 'serviceId');
+  try {
+    await handBackCancelledVehicleService(serviceId, str(formData, 'collectedByName'));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not hand the vehicle back.';
+    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/vehicle-service/${serviceId}`);
+  revalidatePath('/workshop/vehicle-service-custody');
+  redirect(`/workshop/vehicle-service/${serviceId}?status=handed_back`);
 }
