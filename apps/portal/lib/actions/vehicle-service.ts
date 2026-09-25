@@ -758,6 +758,7 @@ export type VehicleDueForService = {
   remindersSentThisCycle: number;
   reminderDue: { stage: 1 | 2 | 3 | 4 } | null;
   nextReminderFrom: Date | null;
+  vehicleType: 'PASSENGER' | 'COMMERCIAL' | null;
 };
 
 /**
@@ -775,7 +776,7 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
   // staff have already handled (Attend To) is left out.
   const tracked = await loadServiceTracking({ branchId });
   return tracked
-    .filter((t) => (t.status === 'DUE_SOON' || t.status === 'OVERDUE') && !t.attendedAt)
+    .filter((t) => (t.status === 'DUE_SOON' || t.status === 'OVERDUE') && !t.attendedAt && !t.lapsed)
     .map((t) => ({
       serviceId: t.lastService.id,
       vehicleId: t.vehicleId,
@@ -791,6 +792,7 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
       remindersSentThisCycle: t.reminders.sentThisCycle,
       reminderDue: t.reminderDue,
       nextReminderFrom: t.nextReminderFrom,
+      vehicleType: t.vehicleType,
     }))
     .sort((a, b) => (a.status === b.status ? 0 : a.status === 'OVERDUE' ? -1 : 1));
 }
@@ -826,6 +828,7 @@ export async function attendToOverdueVehicle(serviceId: string): Promise<void> {
 export type VehicleServiceCustodyEntry = {
   id: string;
   vehicleId: string;
+  vehicleType: string | null;
   serviceNumber: string;
   customerName: string;
   vehicleDescription: string;
@@ -910,7 +913,7 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
       completedAt: true,
       readyForCollectionAt: true,
       customer: { select: { fullName: true } },
-      vehicle: { select: { id: true, make: true, model: true, plateNumber: true } },
+      vehicle: { select: { id: true, make: true, model: true, plateNumber: true, vehicleType: true } },
     },
   });
   // Ready-for-Collection deadline — working days only (the same rule
@@ -931,6 +934,7 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
   return services.map((s: (typeof services)[number]) => ({
     id: s.id,
     vehicleId: s.vehicle.id,
+    vehicleType: s.vehicle.vehicleType ?? null,
     serviceNumber: s.serviceNumber,
     status: s.status,
     createdAt: s.createdAt,
@@ -1374,6 +1378,30 @@ export async function getServiceTracker(branchId: string) {
     remindersLast30Days,
     canRunReminders: isMasterAdmin || managers.supervisors.some((m: { id: string }) => m.id === user.id),
   };
+}
+
+/**
+ * Stop tracking a vehicle's current service cycle — e.g. the customer has
+ * asked not to be reminded, sold the vehicle, or moved away. A reason is
+ * required and recorded on the vehicle's audit trail by name. The
+ * vehicle drops out of reminders and due lists; tracking restarts on its
+ * own, as a fresh cycle, the next time a service is completed for it.
+ */
+export async function stopTrackingVehicle(vehicleId: string, reason: string): Promise<void> {
+  const user = await requireUser();
+  const why = reason.trim();
+  if (!why) throw new VehicleServiceActionError('A reason is required to stop tracking this vehicle.');
+  const [current] = await loadServiceTracking({ vehicleId });
+  if (!current) throw new VehicleServiceActionError('This vehicle has no service cycle being tracked.');
+  if (current.attendedAt) throw new VehicleServiceActionError('This vehicle is already not being tracked for its current cycle.');
+  await prisma.vehicleService.update({ where: { id: current.lastService.id }, data: { attendedAt: new Date() } });
+  await writeAuditLog({
+    userId: user.id,
+    action: 'vehicle.tracking_stopped',
+    entityType: 'CustomerVehicle',
+    entityId: vehicleId,
+    metadata: { reason: why, lastServiceNumber: current.lastService.serviceNumber, status: current.status },
+  });
 }
 
 export async function getVehicleServiceCloseRequests(serviceId: string) {

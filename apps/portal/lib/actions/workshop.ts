@@ -1002,6 +1002,8 @@ export async function getJobCard(id: string) {
       // actually paid, not just the vehicle's own details.
       estimate: { include: { lineItems: { orderBy: { createdAt: 'asc' } } } },
       payments: { orderBy: { recordedAt: 'asc' }, include: { recordedBy: { select: { fullName: true } } } },
+      refunds: { orderBy: { recordedAt: 'asc' }, include: { recordedBy: { select: { fullName: true } } } },
+      escalatedFromVehicleService: { select: { id: true, serviceNumber: true, escalatedAt: true } },
       // Only ever needed for one real thing: detecting whether this
       // Job Card was ever cancelled at all, for the Vehicle Collection
       // Receipt's own cancelled-vehicle variant. Once a cancelled Job
@@ -4078,6 +4080,7 @@ export async function declineCloseRequest(requestId: string, decisionNotes?: str
 export type WorkshopCustodyEntry = {
   id: string;
   vehicleId: string;
+  vehicleType: string | null;
   jobNumber: string;
   customerName: string;
   vehicleDescription: string;
@@ -4162,7 +4165,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       status: true,
       readyForCollectionAt: true,
       customer: { select: { fullName: true } },
-      vehicle: { select: { id: true, make: true, model: true } },
+      vehicle: { select: { id: true, make: true, model: true, vehicleType: true } },
       estimate: { select: { customerNotifiedAt: true } },
       // Every request, not just approved ones — the same array
       // yields both the "most recent approval" anchor for a cancelled
@@ -4194,7 +4197,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
     status: string;
     readyForCollectionAt: Date | null;
     customer: { fullName: string };
-    vehicle: { id: string; make: string | null; model: string | null };
+    vehicle: { id: string; make: string | null; model: string | null; vehicleType: string | null };
     estimate: { customerNotifiedAt: Date | null } | null;
     cancellationRequests: { id: string; status: string; reason: string; decidedAt: Date | null; requestedBy: { fullName: string } }[];
   }>) {
@@ -4202,6 +4205,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
     const base = {
       id: jc.id,
       vehicleId: jc.vehicle.id,
+      vehicleType: jc.vehicle.vehicleType ?? null,
       jobNumber: jc.jobNumber,
       customerName: jc.customer.fullName,
       vehicleDescription,

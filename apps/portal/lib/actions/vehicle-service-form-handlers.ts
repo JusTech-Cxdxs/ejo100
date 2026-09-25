@@ -18,6 +18,7 @@ import {
   updatePrimaryServiceInterval,
   attendToOverdueVehicle,
   sendVehicleServiceCollectionReminder,
+  stopTrackingVehicle,
 } from './vehicle-service';
 import { sendManualServiceReminder, runServiceRemindersNow } from './vehicle-service-reminders';
 
@@ -261,4 +262,18 @@ export async function runServiceRemindersNowFormAction() {
   }
   revalidatePath('/workshop/service-tracker');
   redirect(`/workshop/service-tracker?status=reminders_run&sent=${result.sent}&evaluated=${result.evaluated}&failed=${result.failed}`);
+}
+
+export async function stopTrackingVehicleFormAction(formData: FormData) {
+  const vehicleId = str(formData, 'vehicleId');
+  const returnTo = safeWorkshopPath(str(formData, 'returnTo'), '/workshop/service-tracker');
+  try {
+    await stopTrackingVehicle(vehicleId, str(formData, 'reason'));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not stop tracking this vehicle.';
+    redirect(`${returnTo}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath('/workshop/service-tracker');
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?status=tracking_stopped`);
 }

@@ -325,9 +325,12 @@ export async function getDashboardTrend(): Promise<DashboardTrendPoint[]> {
   start.setDate(start.getDate() - 24);
   start.setHours(0, 0, 0, 0);
 
-  const [jobCards, payments]: [{ createdAt: Date }[], { recordedAt: Date; amount: unknown }[]] = await Promise.all([
+  const [jobCards, payments, refunds]: [{ createdAt: Date }[], { recordedAt: Date; amount: unknown }[], { recordedAt: Date; amount: unknown }[]] = await Promise.all([
     prisma.jobCard.findMany({ where: { createdAt: { gte: start } }, select: { createdAt: true } }),
     prisma.payment.findMany({ where: { recordedAt: { gte: start } }, select: { recordedAt: true, amount: true } }),
+    // Money paid back the same day reduces that day's revenue — the
+    // chart shows net cash actually kept, never overstated after refunds.
+    prisma.refund.findMany({ where: { recordedAt: { gte: start } }, select: { recordedAt: true, amount: true } }),
   ]);
 
   const points: DashboardTrendPoint[] = [];
@@ -339,9 +342,13 @@ export async function getDashboardTrend(): Promise<DashboardTrendPoint[]> {
       dayEnd.setDate(dayEnd.getDate() + 1);
       const label = day.toLocaleDateString('en-NG', { month: 'short', day: 'numeric', timeZone: 'Africa/Lagos' });
       const jobCardsOpened = jobCards.filter((jc) => jc.createdAt >= day && jc.createdAt < dayEnd).length;
-      const revenue = payments
+      const received = payments
         .filter((p) => p.recordedAt >= day && p.recordedAt < dayEnd)
         .reduce((sum, p) => sum + Number(p.amount), 0);
+      const refunded = refunds
+        .filter((r) => r.recordedAt >= day && r.recordedAt < dayEnd)
+        .reduce((sum, r) => sum + Number(r.amount), 0);
+      const revenue = received - refunded;
       points.push({ label, jobCardsOpened, revenue: Math.round(revenue * 100) / 100 });
     }
     cursor.setDate(cursor.getDate() + 1);

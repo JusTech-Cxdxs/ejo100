@@ -53,7 +53,7 @@ export async function getVehiclesNeedingServiceReminder(): Promise<VehicleNeedin
  * they stood at this exact moment (never re-derivable later once the
  * vehicle's own mileage and the org's own interval keep moving).
  */
-export async function sendServiceReminder(need: VehicleNeedingReminder, trigger?: 'MANUAL'): Promise<void> {
+export async function sendServiceReminder(need: VehicleNeedingReminder, trigger?: 'MANUAL', sentById?: string): Promise<void> {
   const vehicle = await prisma.customerVehicle.findUnique({
     where: { id: need.vehicleId },
     select: {
@@ -124,7 +124,9 @@ export async function sendServiceReminder(need: VehicleNeedingReminder, trigger?
   // Every reminder sent — single or bulk — is on the vehicle's audit
   // trail, attributed to whoever clicked Send.
   await writeAuditLog({
-    userId: getAuditActor()?.userId ?? null,
+    // Passed explicitly by the caller (never left to request context),
+    // so every reminder on the trail names who sent it.
+    userId: sentById ?? getAuditActor()?.userId ?? null,
     action: 'vehicle.service_reminder_sent',
     entityType: 'CustomerVehicle',
     entityId: need.vehicleId,
@@ -153,7 +155,7 @@ export async function getVehicleReminderHistory(vehicleId: string) {
  * vehicle that's back in the workshop, or one not yet due.
  */
 export async function sendManualServiceReminder(vehicleId: string): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
   const [t] = await loadServiceTracking({ vehicleId });
   if (!t) throw new Error('This vehicle has no completed service to remind about yet.');
   if (t.inWorkshop) throw new Error(`This vehicle is in the workshop right now (${t.inWorkshop.number}) — no reminder is needed.`);
@@ -178,6 +180,7 @@ export async function sendManualServiceReminder(vehicleId: string): Promise<void
       isOverdue: t.status === 'OVERDUE',
     },
     'MANUAL',
+    user.id,
   );
   // Audited (attributed to this user) inside sendServiceReminder.
 }
@@ -201,7 +204,7 @@ export async function runServiceRemindersNow(): Promise<{ evaluated: number; sen
   let failed = 0;
   for (const need of needing) {
     try {
-      await sendServiceReminder(need, 'MANUAL');
+      await sendServiceReminder(need, 'MANUAL', user.id);
       sent += 1;
     } catch (err) {
       failed += 1;
