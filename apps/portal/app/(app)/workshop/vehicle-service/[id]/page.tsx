@@ -162,6 +162,7 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle_service.cancellation_approved': 'Cancellation approved',
   'vehicle_service.cancellation_declined': 'Cancellation request declined',
   'vehicle_service.handed_back': 'Vehicle handed back after cancellation',
+  'vehicle_service.cancelled_collection_notice_sent': 'Collection notice sent to the customer (cancelled vehicle)',
   'refund.completed': 'Refund completed — all money returned',
   'vehicle_service.deleted': 'Vehicle Service deleted',
   'assignment.accepted': 'Technician accepted assignment',
