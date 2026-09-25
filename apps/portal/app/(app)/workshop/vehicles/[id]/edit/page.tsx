@@ -593,7 +593,7 @@ export default async function VehiclePage({
                         {REMINDER_STAGE_LABEL[r.reminderNumber] ?? `Stage ${r.reminderNumber}`}
                       </td>
                       <td className="py-2 text-[var(--ejo-text-muted)]">
-                        {reminderSender(r.sentAt, r.reminderNumber, auditTrail) ?? (r.trigger === 'MANUAL' ? 'Unknown user' : 'System (automatic, before reminders became manual)')}
+                        {reminderSender(r.sentAt, r.reminderNumber, auditTrail) ?? (r.trigger === 'MANUAL' ? 'Not recorded (sent before sender tracking)' : 'System (automatic, before reminders became manual)')}
                       </td>
                       <td className="py-2 text-[var(--ejo-text-muted)]">
                         {r.estimatedDueOdometer ? `${r.estimatedDueOdometer.toLocaleString('en-NG')} km` : null}
