@@ -53,6 +53,9 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
           <LoadingLink href="/warranty/register" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
             Register vehicle warranty
           </LoadingLink>
+          <LoadingLink href="/warranty/claims" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
+            Claims
+          </LoadingLink>
           <LoadingLink href="/warranty/policies" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
             Policies
           </LoadingLink>
