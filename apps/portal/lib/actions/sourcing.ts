@@ -19,6 +19,7 @@
  */
 
 import { prisma, getAuditActor } from '@ejo/database';
+import { issuePartWarrantiesForSlip } from './warranty';
 import { pluralize } from '@/lib/utils/pluralize';
 import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { replayQuantityFifo, planQuantityRelease } from '@/lib/inventory/quantity-fifo';
@@ -1302,6 +1303,15 @@ export async function releasePartRequestSlip(
 
   if (slip.jobCardId) {
     await syncJobCardSourcingStatus(slip.jobCardId);
+  }
+  // Every released part that carries a warranty gets its own warranty
+  // number now — tied to this customer, vehicle, Job Card / Vehicle
+  // Service, slip line and serial. Never blocks the release itself.
+  try {
+    await issuePartWarrantiesForSlip(slipId);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to issue part warranties for released slip', slipId, err);
   }
   await writeAuditLog({
     userId: user.id,
