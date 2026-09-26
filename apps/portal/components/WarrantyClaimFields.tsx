@@ -23,6 +23,8 @@ export function WarrantyClaimFields({
     otherAmount?: number;
     jobCardId?: string | null;
     vehicleServiceId?: string | null;
+    remedy?: string;
+    partReturnRequired?: boolean;
   };
   jobCards: Visit[];
   vehicleServices: Visit[];
@@ -61,6 +63,23 @@ export function WarrantyClaimFields({
         <div><label className={label}>Other (₦)</label><input type="number" name="otherAmount" min={0} step="0.01" defaultValue={defaults.otherAmount ?? 0} className={input} /></div>
       </div>
       <p className={hint}>The total claimed is labour + parts + other. Oil and fluids used in a warranty repair belong under Other.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className={label}>How the provider makes it right</label>
+          <select name="remedy" defaultValue={defaults.remedy ?? 'REIMBURSEMENT'} className={input}>
+            <option value="REIMBURSEMENT">Reimbursement — payment or credit</option>
+            <option value="REPLACEMENT">Replacement — they send a new part</option>
+            <option value="REPAIR">Repair — they repair and return the part</option>
+          </select>
+        </div>
+        <div className="flex items-end">
+          <input type="hidden" name="partReturnField" value="1" />
+          <label className="flex items-center gap-2 pb-2 text-sm text-[var(--ejo-text)]">
+            <input type="checkbox" name="partReturnRequired" value="true" defaultChecked={defaults.partReturnRequired ?? false} />
+            The provider needs the failed part back
+          </label>
+        </div>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className={label}>Repair record — Job Card</label>
