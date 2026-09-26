@@ -1,4 +1,6 @@
 import { listWarrantyPolicies, listWarrantyProviders, getWarrantyRoles, type PolicyStateFilter } from '@/lib/actions/warranty';
+import { PolicyCoverageFields } from '@/components/PolicyCoverageFields';
+import { coverageLabel, REMEDY_LABEL } from '@/lib/warranty-claim-status';
 import { createWarrantyPolicyFormAction, setWarrantyPolicyActiveFormAction, loadSampleWarrantyPoliciesFormAction } from '@/lib/actions/warranty-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -118,6 +120,7 @@ export default async function WarrantyPoliciesPage({
                 <p className="mt-2 text-sm text-[var(--ejo-text)]">
                   {pluralize(p.durationMonths, 'month')}{p.distanceLimit ? ` or ${p.distanceLimit.toLocaleString('en-NG')} km, whichever comes first` : ', no distance limit'}
                 </p>
+                <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">{coverageLabel(p)} · Remedy: {REMEDY_LABEL[p.defaultRemedy]}</p>
                 <Items label="Covered" text={p.coverageSummary} />
                 <Items label="Not covered" text={p.exclusions} />
                 <Items label="Conditions" text={p.conditions} />
@@ -172,6 +175,7 @@ export default async function WarrantyPoliciesPage({
               <div><label className={label}>Months</label><input name="durationMonths" type="number" min={1} max={240} required className={input} /></div>
               <div><label className={label}>Km limit (blank = none)</label><input name="distanceLimit" type="number" min={1} className={input} /></div>
             </div>
+            <PolicyCoverageFields />
             <div><label className={label}>What is covered</label><LineItemsInput name="coverageItem" required placeholder="e.g. Engine" addLabel="+ Add covered item" /></div>
             <div><label className={label}>Not covered</label><LineItemsInput name="exclusionItem" placeholder="e.g. Brake pads" addLabel="+ Add exclusion" /></div>
             <div><label className={label}>Conditions</label><LineItemsInput name="conditionItem" placeholder="e.g. Serviced on schedule at an authorised workshop" addLabel="+ Add condition" /></div>
