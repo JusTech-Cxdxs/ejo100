@@ -1,4 +1,6 @@
 import { LoadingLink } from '@/components/LoadingLink';
+import { listWarrantiesFor } from '@/lib/actions/warranty';
+import { WarrantyList } from '@/components/WarrantyList';
 import { JobCardStatusForm } from '@/components/JobCardStatusForm';
 import { AuditTrail } from '@/components/AuditTrail';
 import { getSelectableJobCardStatuses, isReworkTransition } from '@/lib/job-card-status-rules';
@@ -367,6 +369,7 @@ export default async function JobCardDetailPage({
   const pendingCancellationRequest = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'PENDING');
   const approvedCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'APPROVED') ?? null;
   const refunds = await listRefunds({ jobCardId: id });
+  const warranties = await listWarrantiesFor({ jobCardId: id });
   const refundedTotal = refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
   const pendingCloseRequest = closeRequests.find((r: (typeof closeRequests)[number]) => r.status === 'PENDING');
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
@@ -1086,6 +1089,8 @@ export default async function JobCardDetailPage({
               </p>
             ) : null}
           </div>
+
+          <WarrantyList warranties={warranties} title="Warranties issued" />
 
           {refunds.length > 0 || ((jobCard.status === 'CANCELLED' || pendingCancellationRequest) && paymentsTotal > 0) ? (
             <RefundsPanel
