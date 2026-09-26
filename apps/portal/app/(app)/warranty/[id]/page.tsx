@@ -8,7 +8,7 @@ import { AuditTrail } from '@/components/AuditTrail';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
-import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL } from '@/lib/warranty-state';
+import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL, splitLines } from '@/lib/warranty-state';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 
 const ACTION_LABEL: Record<string, string> = {
@@ -87,9 +87,16 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
               <Field label="Provider">{w.provider.name}</Field>
             </dl>
             <div className="mt-4 space-y-3 text-sm">
-              <div><p className="text-xs text-[var(--ejo-text-muted)]">What is covered</p><p className="text-[var(--ejo-text)]">{w.coverageSnapshot}</p></div>
-              {w.exclusionsSnapshot ? <div><p className="text-xs text-[var(--ejo-text-muted)]">Not covered</p><p className="text-[var(--ejo-text)]">{w.exclusionsSnapshot}</p></div> : null}
-              {w.conditionsSnapshot ? <div><p className="text-xs text-[var(--ejo-text-muted)]">Conditions</p><p className="text-[var(--ejo-text)]">{w.conditionsSnapshot}</p></div> : null}
+              {([['What is covered', w.coverageSnapshot], ['Not covered', w.exclusionsSnapshot], ['Conditions', w.conditionsSnapshot]] as const).map(([title, text]) =>
+                splitLines(text).length > 0 ? (
+                  <div key={title}>
+                    <p className="text-xs text-[var(--ejo-text-muted)]">{title}</p>
+                    <ol className="list-decimal pl-5 text-[var(--ejo-text)]">
+                      {splitLines(text).map((it, i) => <li key={i}>{it}</li>)}
+                    </ol>
+                  </div>
+                ) : null,
+              )}
               <p className="text-[11px] text-[var(--ejo-text-muted)]">Terms as they were when this warranty was issued — later changes to the policy never alter them.</p>
             </div>
           </div>
@@ -182,7 +189,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Verify this warranty</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                A Workshop Manager other than the person who registered it checks the evidence, then verifies it. Until then it covers nothing.
+                The Warranty HOD or Branch Manager — not the person who registered it — checks the evidence, then verifies it. Until then it covers nothing.
               </p>
               <form action={verifyWarrantyFormAction} className="mt-3">
                 <FormPendingOverlay />
@@ -193,7 +200,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
           ) : null}
           {canChange ? (
             <details className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-              <summary className="cursor-pointer text-sm font-medium text-[var(--ejo-text-muted)]">Change status (Manager)</summary>
+              <summary className="cursor-pointer text-sm font-medium text-[var(--ejo-text-muted)]">Change status (Warranty HOD / Manager)</summary>
               <form action={setWarrantyStatusFormAction} className="mt-3 space-y-2">
                 <FormPendingOverlay />
                 <input type="hidden" name="warrantyId" value={w.id} />
