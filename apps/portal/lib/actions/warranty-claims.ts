@@ -83,7 +83,11 @@ export type WarrantyClaimInput = {
   otherAmount: number;
   jobCardId?: string;
   vehicleServiceId?: string;
+  remedy?: 'REIMBURSEMENT' | 'REPLACEMENT' | 'REPAIR';
+  partReturnRequired?: boolean;
 };
+
+const REMEDIES = ['REIMBURSEMENT', 'REPLACEMENT', 'REPAIR'] as const;
 
 function cleanInput(input: WarrantyClaimInput) {
   const failure = new Date(input.failureDate);
@@ -109,6 +113,8 @@ function cleanInput(input: WarrantyClaimInput) {
     claimedAmount: round2(labourAmount + partsAmount + otherAmount),
     jobCardId: input.jobCardId || null,
     vehicleServiceId: input.vehicleServiceId || null,
+    ...(input.remedy ? { remedy: REMEDIES.includes(input.remedy) ? input.remedy : 'REIMBURSEMENT' } : {}),
+    ...(input.partReturnRequired !== undefined ? { partReturnRequired: input.partReturnRequired } : {}),
   };
 }
 
@@ -119,15 +125,19 @@ export async function createWarrantyClaim(warrantyId: string, input: WarrantyCla
   const user = await requireStaff();
   const warranty = await prisma.warranty.findUnique({
     where: { id: warrantyId },
-    select: { id: true, warrantyNumber: true, providerId: true, customerId: true, vehicleId: true, provider: { select: { claimSubmissionDays: true } } },
+    select: { id: true, warrantyNumber: true, providerId: true, customerId: true, vehicleId: true, provider: { select: { claimSubmissionDays: true, partRetentionDays: true } }, policy: { select: { defaultRemedy: true } } },
   });
   if (!warranty) throw new WarrantyClaimError('Warranty not found.');
   const data = cleanInput(input);
+  // Defaults: the policy's usual remedy; a failed-part return when the
+  // provider has a retention rule (they'll want to inspect it).
+  const remedy = data.remedy ?? warranty.policy.defaultRemedy;
+  const partReturnRequired = data.partReturnRequired ?? warranty.provider.partRetentionDays !== null;
   if (!data.complaint) throw new WarrantyClaimError('Describe the complaint to start a claim.');
   const deadlineAt = warranty.provider.claimSubmissionDays ? new Date(data.failureDate.getTime() + warranty.provider.claimSubmissionDays * 86400000) : null;
   const claimNumber = await nextClaimNumber();
   const claim = await prisma.warrantyClaim.create({
-    data: { ...data, claimNumber, warrantyId: warranty.id, providerId: warranty.providerId, customerId: warranty.customerId, vehicleId: warranty.vehicleId, deadlineAt, createdById: user.id },
+    data: { ...data, remedy, partReturnRequired, partReturnStatus: partReturnRequired ? 'AWAITING' : null, claimNumber, warrantyId: warranty.id, providerId: warranty.providerId, customerId: warranty.customerId, vehicleId: warranty.vehicleId, deadlineAt, createdById: user.id },
   });
   await audit(user.id, claim.id, 'created', { claimNumber, warrantyNumber: warranty.warrantyNumber, claimedAmount: data.claimedAmount });
   await writeAuditLog({ userId: user.id, action: 'warranty.claim_opened', entityType: 'Warranty', entityId: warranty.id, metadata: { claimNumber } });
@@ -136,24 +146,25 @@ export async function createWarrantyClaim(warrantyId: string, input: WarrantyCla
 
 export async function updateWarrantyClaim(claimId: string, input: WarrantyClaimInput): Promise<void> {
   const user = await requireStaff();
-  const claim = await prisma.warrantyClaim.findUnique({ where: { id: claimId }, select: { status: true, failureDate: true, provider: { select: { claimSubmissionDays: true } } } });
+  const claim = await prisma.warrantyClaim.findUnique({ where: { id: claimId }, select: { status: true, failureDate: true, partReturnStatus: true, provider: { select: { claimSubmissionDays: true } } } });
   if (!claim) throw new WarrantyClaimError('Claim not found.');
   if (claim.status !== 'DRAFT') throw new WarrantyClaimError('Only a draft claim can be edited — it is already in the approval chain or with the provider.');
   const data = cleanInput(input);
   const deadlineAt = claim.provider.claimSubmissionDays ? new Date(data.failureDate.getTime() + claim.provider.claimSubmissionDays * 86400000) : null;
-  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { ...data, deadlineAt } });
+  const returnStatus = data.partReturnRequired === undefined ? undefined : data.partReturnRequired ? claim.partReturnStatus ?? 'AWAITING' : null;
+  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { ...data, deadlineAt, ...(returnStatus !== undefined ? { partReturnStatus: returnStatus } : {}) } });
   await audit(user.id, claimId, 'updated', { claimedAmount: data.claimedAmount });
 }
 
 async function loadForReadiness(claimId: string) {
   const claim = await prisma.warrantyClaim.findUnique({
     where: { id: claimId },
-    include: { warranty: { select: { status: true, startsAt: true, endsAt: true, startReading: true, distanceLimit: true, policy: { select: { isSample: true } } } } },
+    include: { warranty: { select: { status: true, startsAt: true, endsAt: true, startReading: true, distanceLimit: true, policy: { select: { isSample: true, coversParts: true, coversLabour: true } } } } },
   });
   if (!claim) throw new WarrantyClaimError('Claim not found.');
   const readiness = claimReadiness(
     { ...claim, labourAmount: Number(claim.labourAmount), partsAmount: Number(claim.partsAmount), otherAmount: Number(claim.otherAmount) },
-    { ...claim.warranty, isSamplePolicy: claim.warranty.policy.isSample },
+    { ...claim.warranty, isSamplePolicy: claim.warranty.policy.isSample, coversParts: claim.warranty.policy.coversParts, coversLabour: claim.warranty.policy.coversLabour },
   );
   return { claim, readiness };
 }
@@ -288,15 +299,80 @@ export async function recordWarrantyClaimDecision(claimId: string, decision: 'AC
 /** Money received from the provider — never more than they approved. */
 export async function recordWarrantyClaimSettlement(claimId: string, amount: number, reference: string): Promise<void> {
   const user = await requireApprover();
-  const claim = await prisma.warrantyClaim.findUnique({ where: { id: claimId }, select: { status: true, claimNumber: true, approvedAmount: true } });
+  const claim = await prisma.warrantyClaim.findUnique({ where: { id: claimId }, select: { status: true, claimNumber: true, approvedAmount: true, remedy: true, partReturnRequired: true, partReturnStatus: true } });
   if (!claim) throw new WarrantyClaimError('Claim not found.');
   if (claim.status !== 'ACCEPTED' && claim.status !== 'PARTIALLY_ACCEPTED') throw new WarrantyClaimError('Only an accepted claim can be settled.');
+  if (claim.remedy !== 'REIMBURSEMENT') throw new WarrantyClaimError(claim.remedy === 'REPLACEMENT' ? 'This claim is settled by a replacement part — record it as received.' : 'This claim is settled by a repair — record the repaired part as returned.');
+  assertPartSent(claim);
   const approved = Number(claim.approvedAmount ?? 0);
   const received = round2(Number(amount));
   if (!Number.isFinite(received) || received <= 0) throw new WarrantyClaimError('Enter the amount received.');
   if (received > approved) throw new WarrantyClaimError(`That is more than the provider approved (${naira(approved)}).`);
   await prisma.warrantyClaim.update({ where: { id: claimId }, data: { status: 'SETTLED', settledAmount: received, settlementReference: reference.trim() || null, settledById: user.id, settledAt: new Date() } });
   await audit(user.id, claimId, 'settled', { claimNumber: claim.claimNumber, approvedAmount: approved, settledAmount: received, shortfall: round2(approved - received), reference: reference.trim() || undefined });
+}
+
+function assertPartSent(claim: { partReturnRequired: boolean; partReturnStatus: string | null }) {
+  if (claim.partReturnRequired && claim.partReturnStatus !== 'SENT' && claim.partReturnStatus !== 'RECEIVED_BY_PROVIDER') {
+    throw new WarrantyClaimError('The provider requires the failed part back — record it as sent first.');
+  }
+}
+
+// ── Failed-part return ────────────────────────────────────────────────
+
+/** The failed part has left for the provider (waybill / courier / hand-
+ * delivery reference required) — possible once the claim is approved. */
+export async function recordFailedPartSent(claimId: string, reference: string): Promise<void> {
+  const user = await requireStaff();
+  const ref = reference.trim();
+  if (!ref) throw new WarrantyClaimError('Enter the waybill, courier or delivery reference.');
+  const claim = await prisma.warrantyClaim.findUnique({ where: { id: claimId }, select: { status: true, claimNumber: true, partReturnRequired: true, partReturnStatus: true } });
+  if (!claim) throw new WarrantyClaimError('Claim not found.');
+  if (!claim.partReturnRequired) throw new WarrantyClaimError('This claim does not need the failed part returned.');
+  if (!['APPROVED_TO_SUBMIT', 'SUBMITTED', 'ACCEPTED', 'PARTIALLY_ACCEPTED'].includes(claim.status)) throw new WarrantyClaimError('Send the failed part once the claim has been approved.');
+  if (claim.partReturnStatus !== 'AWAITING') throw new WarrantyClaimError('The failed part has already been sent.');
+  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { partReturnStatus: 'SENT', partSentAt: new Date(), partSentReference: ref } });
+  await audit(user.id, claimId, 'part_sent', { claimNumber: claim.claimNumber, reference: ref });
+}
+
+export async function recordFailedPartReceived(claimId: string): Promise<void> {
+  const user = await requireStaff();
+  const claim = await prisma.warrantyClaim.findUnique({ where: { id: claimId }, select: { claimNumber: true, partReturnStatus: true } });
+  if (!claim) throw new WarrantyClaimError('Claim not found.');
+  if (claim.partReturnStatus !== 'SENT') throw new WarrantyClaimError('Record the failed part as sent first.');
+  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { partReturnStatus: 'RECEIVED_BY_PROVIDER', partReceivedAt: new Date() } });
+  await audit(user.id, claimId, 'part_received_by_provider', { claimNumber: claim.claimNumber });
+}
+
+// ── Non-money remedies ────────────────────────────────────────────────
+
+/** Replacement remedy: the provider's replacement part has arrived —
+ * closes the claim (its value = what the provider accepted). */
+export async function recordReplacementReceived(claimId: string, replacementSerial: string, notes: string): Promise<void> {
+  const user = await requireApprover();
+  const claim = await prisma.warrantyClaim.findUnique({ where: { id: claimId }, select: { status: true, claimNumber: true, remedy: true, approvedAmount: true, partReturnRequired: true, partReturnStatus: true } });
+  if (!claim) throw new WarrantyClaimError('Claim not found.');
+  if (claim.remedy !== 'REPLACEMENT') throw new WarrantyClaimError('This claim is not settled by a replacement part.');
+  if (claim.status !== 'ACCEPTED' && claim.status !== 'PARTIALLY_ACCEPTED') throw new WarrantyClaimError('Record the provider accepting the claim first.');
+  assertPartSent(claim);
+  await prisma.warrantyClaim.update({
+    where: { id: claimId },
+    data: { status: 'SETTLED', settledAmount: claim.approvedAmount, replacementSerial: replacementSerial.trim() || null, remedyNotes: notes.trim() || null, settledById: user.id, settledAt: new Date() },
+  });
+  await audit(user.id, claimId, 'replacement_received', { claimNumber: claim.claimNumber, replacementSerial: replacementSerial.trim() || undefined, notes: notes.trim() || undefined });
+}
+
+/** Repair remedy: the provider repaired the failed part and it is back —
+ * closes the claim. */
+export async function recordRepairedPartReturned(claimId: string, notes: string): Promise<void> {
+  const user = await requireApprover();
+  const claim = await prisma.warrantyClaim.findUnique({ where: { id: claimId }, select: { status: true, claimNumber: true, remedy: true, approvedAmount: true, partReturnRequired: true, partReturnStatus: true } });
+  if (!claim) throw new WarrantyClaimError('Claim not found.');
+  if (claim.remedy !== 'REPAIR') throw new WarrantyClaimError('This claim is not settled by a repair.');
+  if (claim.status !== 'ACCEPTED' && claim.status !== 'PARTIALLY_ACCEPTED') throw new WarrantyClaimError('Record the provider accepting the claim first.');
+  assertPartSent(claim);
+  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { status: 'SETTLED', settledAmount: claim.approvedAmount, remedyNotes: notes.trim() || null, settledById: user.id, settledAt: new Date() } });
+  await audit(user.id, claimId, 'repaired_part_returned', { claimNumber: claim.claimNumber, notes: notes.trim() || undefined });
 }
 
 /** A rejected claim can be corrected and sent again — counted. */
@@ -309,7 +385,7 @@ export async function reopenRejectedWarrantyClaim(claimId: string, reason: strin
   if (claim.status !== 'REJECTED') throw new WarrantyClaimError('Only a rejected claim can be reopened for resubmission.');
   await prisma.warrantyClaim.update({
     where: { id: claimId },
-    data: { status: 'DRAFT', resubmissionCount: claim.resubmissionCount + 1, returnReason: why, providerReference: null, submittedById: null, submittedAt: null, decidedById: null, decidedAt: null, approvedAmount: null, hodApprovedById: null, hodApprovedAt: null, managerApprovedById: null, managerApprovedAt: null },
+    data: { status: 'DRAFT', resubmissionCount: claim.resubmissionCount + 1, returnReason: why, providerReference: null, replacementSerial: null, remedyNotes: null, submittedById: null, submittedAt: null, decidedById: null, decidedAt: null, approvedAmount: null, hodApprovedById: null, hodApprovedAt: null, managerApprovedById: null, managerApprovedAt: null },
   });
   await audit(user.id, claimId, 'reopened', { claimNumber: claim.claimNumber, reason: why, resubmission: claim.resubmissionCount + 1 });
 }
@@ -374,7 +450,7 @@ export async function getWarrantyClaim(claimId: string) {
         select: {
           id: true, warrantyNumber: true, subjectDescription: true, kind: true, status: true, startsAt: true, endsAt: true, startReading: true, distanceLimit: true,
           coverageSnapshot: true, exclusionsSnapshot: true, conditionsSnapshot: true, partSerial: { select: { serialNumber: true } },
-          policy: { select: { id: true, code: true, name: true, isSample: true } },
+          policy: { select: { id: true, code: true, name: true, isSample: true, coversParts: true, coversLabour: true, defaultRemedy: true } },
         },
       },
       provider: { select: { id: true, name: true, type: true, contactName: true, email: true, phone: true, claimSubmissionDays: true, partRetentionDays: true } },
@@ -398,7 +474,7 @@ export async function getWarrantyClaim(claimId: string) {
     : [[], []];
   const readiness = claimReadiness(
     { ...claim, labourAmount: Number(claim.labourAmount), partsAmount: Number(claim.partsAmount), otherAmount: Number(claim.otherAmount) },
-    { status: claim.warranty.status, startsAt: claim.warranty.startsAt, endsAt: claim.warranty.endsAt, startReading: claim.warranty.startReading, distanceLimit: claim.warranty.distanceLimit, isSamplePolicy: claim.warranty.policy.isSample },
+    { status: claim.warranty.status, startsAt: claim.warranty.startsAt, endsAt: claim.warranty.endsAt, startReading: claim.warranty.startReading, distanceLimit: claim.warranty.distanceLimit, isSamplePolicy: claim.warranty.policy.isSample, coversParts: claim.warranty.policy.coversParts, coversLabour: claim.warranty.policy.coversLabour },
   );
   return { ...claim, serviceHistory: history[0], repairHistory: history[1], readiness };
 }

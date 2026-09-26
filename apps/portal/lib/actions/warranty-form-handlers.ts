@@ -15,6 +15,11 @@ import {
   requestWarrantyPolicyDeletion,
   approveWarrantyPolicyDeletion,
   declineWarrantyPolicyDeletion,
+  updateWarrantyProvider,
+  setWarrantyProviderActive,
+  requestWarrantyProviderDeletion,
+  approveWarrantyProviderDeletion,
+  declineWarrantyProviderDeletion,
   type WarrantyProviderInput,
 } from './warranty';
 
@@ -36,6 +41,27 @@ function lines(formData: FormData, key: string): string {
     .filter(Boolean)
     .join('\n');
 }
+/** Coverage + remedy fields shared by the policy create and edit forms. */
+function coverage(formData: FormData) {
+  const remedy = str(formData, 'defaultRemedy');
+  return {
+    coversParts: formData.get('coversParts') === 'true',
+    coversLabour: formData.get('coversLabour') === 'true',
+    defaultRemedy: (remedy === 'REPLACEMENT' || remedy === 'REPAIR' ? remedy : 'REIMBURSEMENT') as 'REIMBURSEMENT' | 'REPLACEMENT' | 'REPAIR',
+  };
+}
+function providerInput(formData: FormData): WarrantyProviderInput {
+  return {
+    name: str(formData, 'name'),
+    type: (str(formData, 'type') || 'MANUFACTURER') as WarrantyProviderInput['type'],
+    contactName: str(formData, 'contactName') || undefined,
+    email: str(formData, 'email') || undefined,
+    phone: str(formData, 'phone') || undefined,
+    claimSubmissionDays: optInt(formData, 'claimSubmissionDays'),
+    partRetentionDays: optInt(formData, 'partRetentionDays'),
+    notes: str(formData, 'notes') || undefined,
+  };
+}
 function fail(path: string, err: unknown, fallback: string): never {
   const message = err instanceof Error ? err.message : fallback;
   redirect(`${path}${path.includes('?') ? '&' : '?'}error=${encodeURIComponent(message)}`);
@@ -43,16 +69,7 @@ function fail(path: string, err: unknown, fallback: string): never {
 
 export async function createWarrantyProviderFormAction(formData: FormData) {
   try {
-    await createWarrantyProvider({
-      name: str(formData, 'name'),
-      type: (str(formData, 'type') || 'MANUFACTURER') as WarrantyProviderInput['type'],
-      contactName: str(formData, 'contactName') || undefined,
-      email: str(formData, 'email') || undefined,
-      phone: str(formData, 'phone') || undefined,
-      claimSubmissionDays: optInt(formData, 'claimSubmissionDays'),
-      partRetentionDays: optInt(formData, 'partRetentionDays'),
-      notes: str(formData, 'notes') || undefined,
-    });
+    await createWarrantyProvider(providerInput(formData));
   } catch (err) {
     fail('/warranty/providers', err, 'Could not add the provider.');
   }
@@ -74,6 +91,7 @@ export async function createWarrantyPolicyFormAction(formData: FormData) {
       coverageSummary: lines(formData, 'coverageItem'),
       exclusions: lines(formData, 'exclusionItem') || undefined,
       conditions: lines(formData, 'conditionItem') || undefined,
+      ...coverage(formData),
     });
   } catch (err) {
     fail('/warranty/policies', err, 'Could not add the policy.');
@@ -170,6 +188,7 @@ export async function updateWarrantyPolicyFormAction(formData: FormData) {
       coverageSummary: lines(formData, 'coverageItem'),
       exclusions: lines(formData, 'exclusionItem') || undefined,
       conditions: lines(formData, 'conditionItem') || undefined,
+      ...coverage(formData),
     });
   } catch (err) {
     fail(`/warranty/policies/${policyId}?edit=1`, err, 'Could not save the policy.');
@@ -211,4 +230,61 @@ export async function declineWarrantyPolicyDeletionFormAction(formData: FormData
   }
   revalidatePath(`/warranty/policies/${policyId}`);
   redirect(`/warranty/policies/${policyId}?status=deletion_declined#deletion`);
+}
+
+export async function updateWarrantyProviderFormAction(formData: FormData) {
+  const providerId = str(formData, 'providerId');
+  try {
+    await updateWarrantyProvider(providerId, providerInput(formData));
+  } catch (err) {
+    fail(`/warranty/providers/${providerId}?edit=1`, err, 'Could not save the provider.');
+  }
+  revalidatePath(`/warranty/providers/${providerId}`);
+  redirect(`/warranty/providers/${providerId}?status=provider_updated`);
+}
+
+export async function setWarrantyProviderActiveFormAction(formData: FormData) {
+  const providerId = str(formData, 'providerId');
+  const back = str(formData, 'returnTo') === 'list' ? '/warranty/providers' : `/warranty/providers/${providerId}`;
+  try {
+    await setWarrantyProviderActive(providerId, str(formData, 'isActive') === 'true');
+  } catch (err) {
+    fail(back, err, 'Could not update the provider.');
+  }
+  revalidatePath('/warranty/providers');
+  revalidatePath(`/warranty/providers/${providerId}`);
+  redirect(`${back}?status=provider_updated`);
+}
+
+export async function requestWarrantyProviderDeletionFormAction(formData: FormData) {
+  const providerId = str(formData, 'providerId');
+  try {
+    await requestWarrantyProviderDeletion(providerId, str(formData, 'reason'));
+  } catch (err) {
+    fail(`/warranty/providers/${providerId}`, err, 'Could not request the deletion.');
+  }
+  revalidatePath(`/warranty/providers/${providerId}`);
+  redirect(`/warranty/providers/${providerId}?status=deletion_requested#deletion`);
+}
+
+export async function approveWarrantyProviderDeletionFormAction(formData: FormData) {
+  const providerId = str(formData, 'providerId');
+  try {
+    await approveWarrantyProviderDeletion(str(formData, 'requestId'));
+  } catch (err) {
+    fail(`/warranty/providers/${providerId}`, err, 'Could not approve the deletion.');
+  }
+  revalidatePath('/warranty/providers');
+  redirect('/warranty/providers?status=deletion_approved');
+}
+
+export async function declineWarrantyProviderDeletionFormAction(formData: FormData) {
+  const providerId = str(formData, 'providerId');
+  try {
+    await declineWarrantyProviderDeletion(str(formData, 'requestId'), str(formData, 'reason'));
+  } catch (err) {
+    fail(`/warranty/providers/${providerId}`, err, 'Could not decline the deletion.');
+  }
+  revalidatePath(`/warranty/providers/${providerId}`);
+  redirect(`/warranty/providers/${providerId}?status=deletion_declined#deletion`);
 }

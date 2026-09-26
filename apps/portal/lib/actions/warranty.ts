@@ -94,11 +94,32 @@ async function nextWarrantyNumber(): Promise<string> {
 
 // ── Providers ─────────────────────────────────────────────────────────
 
-export async function listWarrantyProviders() {
+export type ProviderStateFilter = 'active' | 'inactive' | 'archived';
+
+/** Providers — archived ones hidden unless asked for; searchable by name,
+ * contact, email or phone. */
+export async function listWarrantyProviders(options?: { q?: string; state?: ProviderStateFilter; type?: string }) {
   await requireUser();
+  const q = options?.q?.trim();
+  const state = options?.state;
   return prisma.warrantyProvider.findMany({
-    orderBy: { name: 'asc' },
-    include: { _count: { select: { policies: true, warranties: true } } },
+    where: {
+      ...(state === 'archived' ? { archivedAt: { not: null } } : { archivedAt: null }),
+      ...(state === 'active' ? { isActive: true } : state === 'inactive' ? { isActive: false } : {}),
+      ...(options?.type ? { type: options.type as WarrantyProviderInput['type'] } : {}),
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { contactName: { contains: q, mode: 'insensitive' } },
+              { email: { contains: q, mode: 'insensitive' } },
+              { phone: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+    include: { _count: { select: { policies: true, warranties: true, claims: true } } },
   });
 }
 
@@ -181,6 +202,9 @@ export type WarrantyPolicyInput = {
   coverageSummary: string;
   exclusions?: string;
   conditions?: string;
+  coversParts?: boolean;
+  coversLabour?: boolean;
+  defaultRemedy?: 'REIMBURSEMENT' | 'REPLACEMENT' | 'REPAIR';
   isSample?: boolean;
 };
 
@@ -195,6 +219,7 @@ export async function createWarrantyPolicy(input: WarrantyPolicyInput): Promise<
     throw new WarrantyActionError('The distance limit must be a whole number above 0 (or left blank for unlimited).');
   }
   if (!input.coverageSummary.trim()) throw new WarrantyActionError('Describe what the policy covers.');
+  if (input.coversParts === false && input.coversLabour === false) throw new WarrantyActionError('A policy must cover parts, labour, or both.');
   if (await prisma.warrantyPolicy.findUnique({ where: { code }, select: { id: true } })) {
     throw new WarrantyActionError(`A policy with code ${code} already exists.`);
   }
@@ -213,6 +238,9 @@ export async function createWarrantyPolicy(input: WarrantyPolicyInput): Promise<
       coverageSummary: input.coverageSummary.trim(),
       exclusions: input.exclusions?.trim() || null,
       conditions: input.conditions?.trim() || null,
+      coversParts: input.coversParts ?? true,
+      coversLabour: input.coversLabour ?? true,
+      defaultRemedy: input.defaultRemedy ?? 'REIMBURSEMENT',
       isSample: Boolean(input.isSample),
       createdById: user.id,
     },
@@ -257,21 +285,21 @@ export async function loadSampleWarrantyPolicies(): Promise<{ created: number }>
   }
   const policies: (Omit<WarrantyPolicyInput, 'providerId'> & { provider: string })[] = [
     {
-      provider: 'Foton (Sample)', code: 'SAMPLE-FOTON-VEH-36', name: 'Foton new vehicle warranty (sample)', kind: 'ASSET', brand: 'Foton',
+      provider: 'Foton (Sample)', code: 'SAMPLE-FOTON-VEH-36', name: 'Foton new vehicle warranty (sample)', kind: 'ASSET', brand: 'Foton', coversParts: true, coversLabour: true, defaultRemedy: 'REIMBURSEMENT',
       durationMonths: 36, distanceLimit: 100000,
       coverageSummary: 'Engine\nTransmission\nDrive axle\nSteering system\nElectrical system\nEngine control unit (ECU)',
       exclusions: 'Brake pads and clutch disc\nFilters, belts, bulbs and wiper blades\nTyres\nFluids and consumables\nAccident or misuse damage\nUnauthorised modifications',
       conditions: 'Scheduled servicing at an authorised workshop at the recommended intervals\nFailure reported promptly\nFailed parts kept for inspection',
     },
     {
-      provider: 'Kewalram Workshop (Sample)', code: 'SAMPLE-PART-12', name: 'Replacement part warranty — 12 months (sample)', kind: 'PART',
+      provider: 'Kewalram Workshop (Sample)', code: 'SAMPLE-PART-12', name: 'Replacement part warranty — 12 months (sample)', kind: 'PART', coversParts: true, coversLabour: true, defaultRemedy: 'REPLACEMENT',
       durationMonths: 12, distanceLimit: 20000,
       coverageSummary: 'Manufacturing defects in the replacement part\nWorkmanship of fitting it',
       exclusions: 'Accident or misuse damage\nIncorrect fluids\nUnrelated failures\nNormal wear',
       conditions: 'Part fitted by the workshop\nFailure reported before the warranty ends',
     },
     {
-      provider: 'Kewalram Workshop (Sample)', code: 'SAMPLE-PART-6', name: 'Replacement part warranty — 6 months (sample)', kind: 'PART',
+      provider: 'Kewalram Workshop (Sample)', code: 'SAMPLE-PART-6', name: 'Replacement part warranty — 6 months (sample)', kind: 'PART', coversParts: true, coversLabour: false, defaultRemedy: 'REPLACEMENT',
       durationMonths: 6, distanceLimit: 10000,
       coverageSummary: 'Manufacturing defects in the replacement part (defect-only cover)',
       exclusions: 'Normal wear\nContamination\nIncorrect fitting by others',
@@ -551,8 +579,8 @@ export async function getWarranty(id: string) {
       ...LIST_INCLUDE,
       customer: { select: { id: true, fullName: true, email: true, phone: true, address: true } },
       vehicle: { select: { id: true, make: true, model: true, year: true, plateNumber: true, chassisNumber: true, engineNumber: true, mileage: true, vehicleType: true } },
-      policy: { select: { id: true, code: true, name: true, isSample: true, durationMonths: true, distanceLimit: true } },
-      provider: { select: { id: true, name: true, type: true, contactName: true, email: true, phone: true } },
+      policy: { select: { id: true, code: true, name: true, isSample: true, durationMonths: true, distanceLimit: true, coversParts: true, coversLabour: true, defaultRemedy: true } },
+      provider: { select: { id: true, name: true, type: true, contactName: true, email: true, phone: true, claimSubmissionDays: true, partRetentionDays: true } },
       jobCard: { select: { id: true, jobNumber: true, branch: true } },
       vehicleService: { select: { id: true, serviceNumber: true, branch: true } },
       part: { select: { id: true, name: true, partNumber: true } },
@@ -613,6 +641,7 @@ export type UpdateWarrantyPolicyInput = Omit<WarrantyPolicyInput, 'code' | 'isSa
 const POLICY_FIELD_LABEL: Record<string, string> = {
   name: 'Name', kind: 'Applies to', providerId: 'Provider', brand: 'Brand', model: 'Model', durationMonths: 'Months',
   distanceLimit: 'Km limit', coverageSummary: 'Covered', exclusions: 'Not covered', conditions: 'Conditions',
+  coversParts: 'Covers parts', coversLabour: 'Covers labour', defaultRemedy: 'Remedy',
 };
 
 /** Edit a policy. Its code is its fixed identity; its type can't change
@@ -652,7 +681,11 @@ export async function updateWarrantyPolicy(policyId: string, input: UpdateWarran
     coverageSummary: input.coverageSummary.trim(),
     exclusions: input.exclusions?.trim() || null,
     conditions: input.conditions?.trim() || null,
+    coversParts: input.coversParts ?? true,
+    coversLabour: input.coversLabour ?? true,
+    defaultRemedy: input.defaultRemedy ?? 'REIMBURSEMENT',
   };
+  if (!next.coversParts && !next.coversLabour) throw new WarrantyActionError('A policy must cover parts, labour, or both.');
   const changes: Record<string, { from: unknown; to: unknown }> = {};
   for (const [key, value] of Object.entries(next)) {
     const old = (before as unknown as Record<string, unknown>)[key] ?? null;
@@ -826,8 +859,230 @@ export async function getWarrantyDashboardItems(): Promise<{ id: string; title: 
       select: { id: true, policyId: true, policyCode: true, reason: true, requestedAt: true },
     }),
   ]);
+  const providerDeletions = await prisma.warrantyProviderDeletionRequest.findMany({
+    where: {
+      OR: [
+        ...(roles.isHod || roles.isMaster ? [{ status: 'PENDING_HOD' as const }] : []),
+        ...(roles.isManager || roles.isMaster ? [{ status: 'PENDING_MANAGER' as const }] : []),
+      ],
+      ...(roles.isMaster ? {} : { NOT: { requestedById: user.id } }),
+    },
+    orderBy: { requestedAt: 'desc' },
+    take: 10,
+    select: { id: true, providerId: true, providerName: true, reason: true, requestedAt: true },
+  });
   return [
+    ...providerDeletions.map((d: (typeof providerDeletions)[number]) => ({ id: `provider-delete-${d.id}`, title: `Approve deletion — provider ${d.providerName}`, detail: d.reason, url: `/warranty/providers/${d.providerId ?? ''}#deletion`, createdAt: d.requestedAt })),
     ...pending.map((w: (typeof pending)[number]) => ({ id: `warranty-verify-${w.id}`, title: `Verify warranty ${w.warrantyNumber}`, detail: w.subjectDescription, url: `/warranty/${w.id}`, createdAt: w.issuedAt })),
     ...deletions.map((d: (typeof deletions)[number]) => ({ id: `policy-delete-${d.id}`, title: `Approve deletion — policy ${d.policyCode}`, detail: d.reason, url: `/warranty/policies/${d.policyId ?? ''}#deletion`, createdAt: d.requestedAt })),
   ];
+}
+
+// ── Provider detail, edit, activation and the deletion approval chain ─
+
+export async function getWarrantyProvider(providerId: string) {
+  await requireUser();
+  return prisma.warrantyProvider.findUnique({
+    where: { id: providerId },
+    include: {
+      createdBy: { select: { fullName: true } },
+      _count: { select: { policies: true, warranties: true, claims: true } },
+      policies: { orderBy: [{ isActive: 'desc' }, { name: 'asc' }], select: { id: true, code: true, name: true, kind: true, isActive: true, archivedAt: true, isSample: true } },
+      deletionRequests: {
+        orderBy: { requestedAt: 'desc' },
+        include: { requestedBy: { select: { fullName: true } }, hodDecidedBy: { select: { fullName: true } }, managerDecidedBy: { select: { fullName: true } } },
+      },
+    },
+  });
+}
+
+export async function getWarrantyProviderAuditTrail(providerId: string) {
+  await requireUser();
+  const entries = await prisma.auditLog.findMany({ where: { entityType: 'WarrantyProvider', entityId: providerId }, orderBy: { createdAt: 'asc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } });
+  const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
+  const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
+  const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null }));
+}
+
+const PROVIDER_FIELD_LABEL: Record<string, string> = {
+  name: 'Name', type: 'Type', contactName: 'Contact', email: 'Email', phone: 'Phone',
+  claimSubmissionDays: 'Claim within (days)', partRetentionDays: 'Keep failed parts (days)', notes: 'Notes',
+};
+
+/** Edit a provider — every change audited before → after; approvers emailed. */
+export async function updateWarrantyProvider(providerId: string, input: WarrantyProviderInput): Promise<void> {
+  const user = await requireWarrantyApprover();
+  const before = await prisma.warrantyProvider.findUnique({ where: { id: providerId } });
+  if (!before) throw new WarrantyActionError('Provider not found.');
+  if (before.archivedAt) throw new WarrantyActionError('This provider is archived — it can no longer be edited.');
+  const name = input.name.trim();
+  if (!name) throw new WarrantyActionError('A provider name is required.');
+  if (name !== before.name && (await prisma.warrantyProvider.findUnique({ where: { name }, select: { id: true } }))) {
+    throw new WarrantyActionError(`A provider named "${name}" already exists.`);
+  }
+  for (const [label, v] of [['Claim within', input.claimSubmissionDays], ['Keep failed parts', input.partRetentionDays]] as const) {
+    if (v !== undefined && (!Number.isInteger(v) || v < 1 || v > 3650)) throw new WarrantyActionError(`${label} must be a whole number of days between 1 and 3650 (or blank).`);
+  }
+  const next = {
+    name,
+    type: input.type,
+    contactName: input.contactName?.trim() || null,
+    email: input.email?.trim() || null,
+    phone: input.phone?.trim() || null,
+    claimSubmissionDays: input.claimSubmissionDays ?? null,
+    partRetentionDays: input.partRetentionDays ?? null,
+    notes: input.notes?.trim() || null,
+  };
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  for (const [key, value] of Object.entries(next)) {
+    const old = (before as unknown as Record<string, unknown>)[key] ?? null;
+    if (old !== value) changes[key] = { from: old, to: value };
+  }
+  if (Object.keys(changes).length === 0) throw new WarrantyActionError('Nothing was changed.');
+  await prisma.warrantyProvider.update({ where: { id: providerId }, data: next });
+  await writeAuditLog({ userId: user.id, action: 'warranty_provider.updated', entityType: 'WarrantyProvider', entityId: providerId, metadata: { name, changes } });
+  await notifyStaff(
+    (await warrantyApproverRecipients()).filter((r) => r.id !== user.id),
+    `Warranty provider ${name} edited`,
+    'A warranty provider was edited',
+    [name, `Changed: ${Object.keys(changes).map((k) => PROVIDER_FIELD_LABEL[k] ?? k).join(', ')}`, 'Claim deadlines on claims opened from now on use the new rules.'],
+    `/warranty/providers/${providerId}`,
+  );
+}
+
+export async function setWarrantyProviderActive(providerId: string, isActive: boolean): Promise<void> {
+  const user = await requireWarrantyApprover();
+  const p = await prisma.warrantyProvider.findUnique({ where: { id: providerId }, select: { archivedAt: true, name: true } });
+  if (!p) throw new WarrantyActionError('Provider not found.');
+  if (p.archivedAt) throw new WarrantyActionError('This provider is archived — it can no longer be activated or changed.');
+  await prisma.warrantyProvider.update({ where: { id: providerId }, data: { isActive } });
+  await writeAuditLog({ userId: user.id, action: isActive ? 'warranty_provider.activated' : 'warranty_provider.deactivated', entityType: 'WarrantyProvider', entityId: providerId, metadata: { name: p.name } });
+}
+
+export async function requestWarrantyProviderDeletion(providerId: string, reason: string): Promise<void> {
+  const user = await requireWarrantyStaff();
+  const why = reason.trim();
+  if (!why) throw new WarrantyActionError('A reason is required to request deleting a provider.');
+  const provider = await prisma.warrantyProvider.findUnique({ where: { id: providerId }, select: { name: true, archivedAt: true } });
+  if (!provider) throw new WarrantyActionError('Provider not found.');
+  if (provider.archivedAt) throw new WarrantyActionError('This provider is already archived.');
+  const open = await prisma.warrantyProviderDeletionRequest.findFirst({ where: { providerId, status: { in: ['PENDING_HOD', 'PENDING_MANAGER'] } }, select: { id: true } });
+  if (open) throw new WarrantyActionError('A deletion request for this provider is already waiting for approval.');
+  const r = user.roles;
+  const now = new Date();
+  const hodDone = r.isHod && !r.isMaster;
+  const managerDone = r.isManager && !r.isMaster;
+  const request = await prisma.warrantyProviderDeletionRequest.create({
+    data: {
+      providerId,
+      reason: why,
+      status: hodDone ? 'PENDING_MANAGER' : 'PENDING_HOD',
+      requestedById: user.id,
+      providerName: provider.name,
+      ...(hodDone ? { hodDecidedById: user.id, hodDecidedAt: now } : {}),
+      ...(managerDone ? { managerDecidedById: user.id, managerDecidedAt: now } : {}),
+    },
+  });
+  await writeAuditLog({ userId: user.id, action: 'warranty_provider.deletion_requested', entityType: 'WarrantyProvider', entityId: providerId, metadata: { name: provider.name, reason: why } });
+  if (hodDone && managerDone) {
+    await completeProviderDeletion(request.id, user.id);
+    return;
+  }
+  await notifyStaff(
+    (await warrantyApproverRecipients()).filter((x) => x.id !== user.id),
+    `Deletion requested — warranty provider ${provider.name}`,
+    'A warranty provider deletion needs approval',
+    [provider.name, `Reason: ${why}`, hodDone ? 'Waiting on the Branch Manager.' : 'Waiting on the Warranty HOD, then the Branch Manager.'],
+    `/warranty/providers/${providerId}#deletion`,
+  );
+}
+
+export async function approveWarrantyProviderDeletion(requestId: string): Promise<void> {
+  const user = await requireWarrantyApprover();
+  const req = await prisma.warrantyProviderDeletionRequest.findUnique({ where: { id: requestId }, select: { status: true, requestedById: true, providerId: true, providerName: true, reason: true, managerDecidedAt: true } });
+  if (!req) throw new WarrantyActionError('Deletion request not found.');
+  if (req.requestedById === user.id && !user.roles.isMaster) throw new WarrantyActionError('You cannot approve your own deletion request.');
+  const now = new Date();
+  if (req.status === 'PENDING_HOD') {
+    if (!user.roles.isHod && !user.roles.isMaster) throw new WarrantyActionError('This request is waiting on the Warranty HOD.');
+    await prisma.warrantyProviderDeletionRequest.update({ where: { id: requestId }, data: { status: 'PENDING_MANAGER', hodDecidedById: user.id, hodDecidedAt: now } });
+    await writeAuditLog({ userId: user.id, action: 'warranty_provider.deletion_hod_approved', entityType: 'WarrantyProvider', entityId: req.providerId ?? requestId, metadata: { name: req.providerName } });
+    if (req.managerDecidedAt) {
+      await completeProviderDeletion(requestId, user.id);
+      return;
+    }
+    const managers = await listEligibleManagersForBranch(await getWorkshopBranchId());
+    await notifyStaff(
+      managers.supervisors.filter((m: { id: string }) => m.id !== user.id),
+      `Deletion awaiting Manager approval — warranty provider ${req.providerName}`,
+      'A warranty provider deletion needs your approval',
+      [req.providerName, `Reason: ${req.reason}`, 'Approved by the Warranty HOD; waiting on the Branch Manager.'],
+      `/warranty/providers/${req.providerId ?? ''}#deletion`,
+    );
+    return;
+  }
+  if (req.status === 'PENDING_MANAGER') {
+    if (!user.roles.isManager && !user.roles.isMaster) throw new WarrantyActionError('This request is waiting on the Branch Manager.');
+    await prisma.warrantyProviderDeletionRequest.update({ where: { id: requestId }, data: { managerDecidedById: user.id, managerDecidedAt: now } });
+    await completeProviderDeletion(requestId, user.id);
+    return;
+  }
+  throw new WarrantyActionError('This deletion request has already been decided.');
+}
+
+/** In use (any policy, warranty or claim) → ARCHIVED, and its active
+ * policies are deactivated so no new warranties are issued under a
+ * provider that's gone; never used → deleted. */
+async function completeProviderDeletion(requestId: string, actorId: string): Promise<void> {
+  const req = await prisma.warrantyProviderDeletionRequest.findUnique({ where: { id: requestId }, select: { providerId: true, providerName: true, reason: true, requestedById: true } });
+  if (!req?.providerId) throw new WarrantyActionError('The provider no longer exists.');
+  const [policies, warranties, claims] = await Promise.all([
+    prisma.warrantyPolicy.count({ where: { providerId: req.providerId } }),
+    prisma.warranty.count({ where: { providerId: req.providerId } }),
+    prisma.warrantyClaim.count({ where: { providerId: req.providerId } }),
+  ]);
+  const inUse = policies + warranties + claims > 0;
+  const outcome = inUse ? 'ARCHIVED' : 'DELETED';
+  await prisma.warrantyProviderDeletionRequest.update({ where: { id: requestId }, data: { status: 'APPROVED', outcome } });
+  await writeAuditLog({ userId: actorId, action: inUse ? 'warranty_provider.archived' : 'warranty_provider.deleted', entityType: 'WarrantyProvider', entityId: req.providerId, metadata: { name: req.providerName, reason: req.reason, policies, warranties, claims } });
+  let deactivated = 0;
+  if (inUse) {
+    await prisma.warrantyProvider.update({ where: { id: req.providerId }, data: { isActive: false, archivedAt: new Date(), archivedReason: req.reason } });
+    deactivated = (await prisma.warrantyPolicy.updateMany({ where: { providerId: req.providerId, isActive: true }, data: { isActive: false } })).count;
+  } else {
+    await prisma.warrantyProvider.delete({ where: { id: req.providerId } });
+  }
+  const requester = await prisma.user.findUnique({ where: { id: req.requestedById }, select: { fullName: true, email: true } });
+  await notifyStaff(
+    [...(await warrantyApproverRecipients()), ...(requester ? [{ id: req.requestedById, ...requester }] : [])].filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i),
+    `Warranty provider ${req.providerName} ${inUse ? 'archived' : 'deleted'}`,
+    `Warranty provider ${inUse ? 'archived' : 'deleted'}`,
+    [
+      req.providerName,
+      inUse
+        ? `It was in use (${policies} ${policies === 1 ? 'policy' : 'policies'}, ${warranties} ${warranties === 1 ? 'warranty' : 'warranties'}, ${claims} ${claims === 1 ? 'claim' : 'claims'}), so it was archived — history stays valid. ${deactivated} active ${deactivated === 1 ? 'policy was' : 'policies were'} deactivated.`
+        : 'It had never been used, so it was deleted.',
+    ],
+    '/warranty/providers',
+  );
+}
+
+export async function declineWarrantyProviderDeletion(requestId: string, reason: string): Promise<void> {
+  const user = await requireWarrantyApprover();
+  const why = reason.trim();
+  if (!why) throw new WarrantyActionError('A reason is required to decline.');
+  const req = await prisma.warrantyProviderDeletionRequest.findUnique({ where: { id: requestId }, select: { status: true, requestedById: true, providerId: true, providerName: true } });
+  if (!req) throw new WarrantyActionError('Deletion request not found.');
+  if (req.status === 'PENDING_HOD' && !user.roles.isHod && !user.roles.isMaster) throw new WarrantyActionError('This request is waiting on the Warranty HOD.');
+  if (req.status === 'PENDING_MANAGER' && !user.roles.isManager && !user.roles.isMaster) throw new WarrantyActionError('This request is waiting on the Branch Manager.');
+  if (req.status !== 'PENDING_HOD' && req.status !== 'PENDING_MANAGER') throw new WarrantyActionError('This deletion request has already been decided.');
+  const now = new Date();
+  await prisma.warrantyProviderDeletionRequest.update({
+    where: { id: requestId },
+    data: { status: 'DECLINED', declineReason: why, ...(req.status === 'PENDING_HOD' ? { hodDecidedById: user.id, hodDecidedAt: now } : { managerDecidedById: user.id, managerDecidedAt: now }) },
+  });
+  await writeAuditLog({ userId: user.id, action: 'warranty_provider.deletion_declined', entityType: 'WarrantyProvider', entityId: req.providerId ?? requestId, metadata: { name: req.providerName, reason: why } });
+  const requester = await prisma.user.findUnique({ where: { id: req.requestedById }, select: { fullName: true, email: true } });
+  if (requester) await notifyStaff([requester], `Deletion declined — warranty provider ${req.providerName}`, 'Your provider deletion request was declined', [req.providerName, `Reason: ${why}`], `/warranty/providers/${req.providerId ?? ''}`);
 }

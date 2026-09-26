@@ -13,6 +13,10 @@ import {
   recordWarrantyClaimSettlement,
   reopenRejectedWarrantyClaim,
   cancelWarrantyClaim,
+  recordFailedPartSent,
+  recordFailedPartReceived,
+  recordReplacementReceived,
+  recordRepairedPartReturned,
   type WarrantyClaimInput,
 } from './warranty-claims';
 
@@ -40,6 +44,9 @@ function readInput(formData: FormData): WarrantyClaimInput {
     otherAmount: num(formData, 'otherAmount'),
     jobCardId: str(formData, 'jobCardId') || undefined,
     vehicleServiceId: str(formData, 'vehicleServiceId') || undefined,
+    remedy: (['REIMBURSEMENT', 'REPLACEMENT', 'REPAIR'].includes(str(formData, 'remedy')) ? str(formData, 'remedy') : undefined) as WarrantyClaimInput['remedy'],
+    // Only when the form carried the checkbox (unticked sends nothing).
+    partReturnRequired: formData.get('partReturnField') === '1' ? formData.get('partReturnRequired') === 'true' : undefined,
   };
 }
 function fail(path: string, err: unknown, fallback: string): never {
@@ -152,4 +159,44 @@ export async function cancelWarrantyClaimFormAction(formData: FormData) {
     fail(`/warranty/claims/${claimId}`, err, 'Could not cancel the claim.');
   }
   done(claimId, 'cancelled');
+}
+
+export async function recordFailedPartSentFormAction(formData: FormData) {
+  const claimId = str(formData, 'claimId');
+  try {
+    await recordFailedPartSent(claimId, str(formData, 'reference'));
+  } catch (err) {
+    fail(`/warranty/claims/${claimId}`, err, 'Could not record the part as sent.');
+  }
+  done(claimId, 'part_sent');
+}
+
+export async function recordFailedPartReceivedFormAction(formData: FormData) {
+  const claimId = str(formData, 'claimId');
+  try {
+    await recordFailedPartReceived(claimId);
+  } catch (err) {
+    fail(`/warranty/claims/${claimId}`, err, 'Could not record the part as received.');
+  }
+  done(claimId, 'part_received');
+}
+
+export async function recordReplacementReceivedFormAction(formData: FormData) {
+  const claimId = str(formData, 'claimId');
+  try {
+    await recordReplacementReceived(claimId, str(formData, 'replacementSerial'), str(formData, 'notes'));
+  } catch (err) {
+    fail(`/warranty/claims/${claimId}`, err, 'Could not record the replacement.');
+  }
+  done(claimId, 'settled');
+}
+
+export async function recordRepairedPartReturnedFormAction(formData: FormData) {
+  const claimId = str(formData, 'claimId');
+  try {
+    await recordRepairedPartReturned(claimId, str(formData, 'notes'));
+  } catch (err) {
+    fail(`/warranty/claims/${claimId}`, err, 'Could not record the repaired part.');
+  }
+  done(claimId, 'settled');
 }
