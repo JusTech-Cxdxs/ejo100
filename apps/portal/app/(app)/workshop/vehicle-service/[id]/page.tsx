@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { listWarrantiesFor } from '@/lib/actions/warranty';
+import { WarrantyList } from '@/components/WarrantyList';
 import { getVehicleService, getVehicleServiceAuditTrail, getVehicleServiceCloseRequests, getVehicleServiceCancellationRequests } from '@/lib/actions/vehicle-service';
 import { listRefunds } from '@/lib/actions/refunds';
 import { RefundsPanel } from '@/components/RefundsPanel';
@@ -345,6 +347,7 @@ export default async function VehicleServiceDetailPage({
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const refunds = await listRefunds({ vehicleServiceId: id });
+  const warranties = await listWarrantiesFor({ vehicleServiceId: id });
   const refundedTotal = refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
   const cancellationRequests = await getVehicleServiceCancellationRequests(id);
   const pendingCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'PENDING') ?? null;
@@ -1211,6 +1214,8 @@ export default async function VehicleServiceDetailPage({
               ) : null}
             </div>
           ) : null}
+
+          <WarrantyList warranties={warranties} title="Warranties issued" />
 
           {refunds.length > 0 || ((service.status === 'CANCELLED' || pendingCancellation) && paymentsTotal > 0) ? (
             <RefundsPanel
