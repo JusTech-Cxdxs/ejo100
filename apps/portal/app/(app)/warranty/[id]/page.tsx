@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
+import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
+import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS } from '@/lib/warranty-claim-status';
 import { notFound } from 'next/navigation';
-import { getWarranty, getWarrantyAuditTrail } from '@/lib/actions/warranty';
+import { getWarranty, getWarrantyAuditTrail, getWarrantyRoles } from '@/lib/actions/warranty';
 import { verifyWarrantyFormAction, setWarrantyStatusFormAction } from '@/lib/actions/warranty-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
@@ -38,7 +40,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 export default async function WarrantyDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
   const { id } = await params;
   const { status, error } = await searchParams;
-  const [w, trail] = await Promise.all([getWarranty(id), getWarrantyAuditTrail(id)]);
+  const [w, trail, claims, roles] = await Promise.all([getWarranty(id), getWarrantyAuditTrail(id), listWarrantyClaims({ warrantyId: id }), getWarrantyRoles()]);
   if (!w) notFound();
   const cov = warrantyCoverage(w, w.vehicle?.mileage ?? null);
   const distanceEnd = w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null;
@@ -185,6 +187,26 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
         </div>
 
         <div className="space-y-4">
+          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Claims ({claims.length})</h2>
+            {claims.length === 0 ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">No claims against this warranty.</p> : (
+              <ul className="mt-2 space-y-1.5 text-xs">
+                {claims.map((cl: (typeof claims)[number]) => (
+                  <li key={cl.id} className="flex items-center justify-between gap-2">
+                    <LoadingLink href={`/warranty/claims/${cl.id}`} className="text-[var(--ejo-primary)] hover:underline">{cl.claimNumber} — {cl.causalPart}</LoadingLink>
+                    <span className={`rounded-full px-2 py-0.5 font-medium ${CLAIM_STATUS_CLASS[cl.status]}`}>{CLAIM_STATUS_LABEL[cl.status]}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {roles.isStaff && w.status === 'ACTIVE' ? (
+              <LoadingLink href={`/warranty/claims/new?warrantyId=${w.id}`} className="mt-3 block rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-center text-sm font-medium text-white hover:opacity-90">
+                Start a claim
+              </LoadingLink>
+            ) : w.status !== 'ACTIVE' ? (
+              <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">Claims can be started once the warranty is active.</p>
+            ) : null}
+          </div>
           {w.status === 'PENDING_VERIFICATION' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Verify this warranty</h2>
