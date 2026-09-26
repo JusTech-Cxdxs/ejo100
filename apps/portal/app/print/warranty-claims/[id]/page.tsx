@@ -5,7 +5,7 @@ import { getOrganisation } from '@/lib/actions/organisation';
 import { getWorkshopBranchId } from '@/lib/actions/workshop';
 import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/print/DocumentHeader';
 import { PrintOnLoad } from '@/components/print/PrintOnLoad';
-import { CLAIM_STATUS_LABEL } from '@/lib/warranty-claim-status';
+import { CLAIM_STATUS_LABEL, REMEDY_LABEL, PART_RETURN_LABEL } from '@/lib/warranty-claim-status';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 
 function naira(n: number): string {
@@ -74,6 +74,9 @@ export default async function PrintWarrantyClaimPage({ params, searchParams }: {
         <Field label="CAUSAL PART" value={`${c.causalPart}${c.causalPartNumber ? ` (${c.causalPartNumber})` : ''}`} />
         {w.partSerial ? <Field label="SERIAL (WARRANTED PART)" value={w.partSerial.serialNumber} /> : null}
         {c.resubmissionCount > 0 ? <Field label="RESUBMISSION" value={String(c.resubmissionCount)} /> : null}
+        <Field label="REMEDY REQUESTED" value={REMEDY_LABEL[c.remedy] ?? c.remedy} />
+        <Field label="FAILED PART" value={c.partReturnRequired ? `${PART_RETURN_LABEL[c.partReturnStatus ?? 'AWAITING']}${c.partSentReference ? ` (ref ${c.partSentReference})` : ''}` : 'Retained here'} />
+        {c.replacementSerial ? <Field label="REPLACEMENT SERIAL" value={c.replacementSerial} /> : null}
       </div>
 
       <Section title="COMPLAINT" text={c.complaint} />
