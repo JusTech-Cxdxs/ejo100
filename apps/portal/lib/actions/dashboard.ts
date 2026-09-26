@@ -2,6 +2,7 @@
 
 import { prisma } from '@ejo/database';
 import { getWarrantyDashboardItems } from './warranty';
+import { getWarrantyClaimDashboardItems } from './warranty-claims';
 import { requireUser, currentUserIsMasterAdmin, writeAuditLog, listEligibleManagersForBranch } from './workshop';
 import { isWeekend } from '@/lib/utils/working-days';
 
@@ -217,7 +218,10 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
 
   // Warranty work waiting on this viewer (verify registrations, approve
   // policy deletions at their level in the chain).
-  const warrantyItems = await getWarrantyDashboardItems().catch(() => []);
+  const warrantyItems = [
+    ...(await getWarrantyDashboardItems().catch(() => [])),
+    ...(await getWarrantyClaimDashboardItems().catch(() => [])),
+  ];
   for (const item of warrantyItems) {
     notifications.push({ id: item.id, kind: 'WARRANTY', title: item.title, detail: item.detail, url: item.url, createdAt: item.createdAt });
   }
