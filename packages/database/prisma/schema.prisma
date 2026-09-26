@@ -400,6 +400,9 @@ model User {
   warrantyClaimsSubmitted WarrantyClaim[] @relation("WarrantyClaimSubmittedBy")
   warrantyClaimsDecided WarrantyClaim[] @relation("WarrantyClaimDecidedBy")
   warrantyClaimsSettled WarrantyClaim[] @relation("WarrantyClaimSettledBy")
+  warrantyProviderDeletionsRequested WarrantyProviderDeletionRequest[] @relation("WarrantyProviderDeletionRequestedBy")
+  warrantyProviderDeletionsHodDecided WarrantyProviderDeletionRequest[] @relation("WarrantyProviderDeletionHodDecidedBy")
+  warrantyProviderDeletionsManagerDecided WarrantyProviderDeletionRequest[] @relation("WarrantyProviderDeletionManagerDecidedBy")
 }
 
 // One-to-one HR extension of User. Kept separate per the Phase 1 note so
@@ -2685,11 +2688,16 @@ model WarrantyProvider {
   partRetentionDays   Int?
   notes               String?
   isActive            Boolean              @default(true)
+  // Deletion approved while in use (policies, warranties or claims) →
+  // archived, never erased: history stays valid and traceable.
+  archivedAt          DateTime?
+  archivedReason      String?
   createdById         String
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @default(now()) @updatedAt
 
   createdBy  User             @relation("WarrantyProviderCreatedBy", fields: [createdById], references: [id])
+  deletionRequests WarrantyProviderDeletionRequest[]
   policies   WarrantyPolicy[]
   warranties Warranty[]
 
@@ -2715,6 +2723,10 @@ model WarrantyPolicy {
   coverageSummary  String
   exclusions       String?
   conditions       String?
+  // What the provider pays for, and how they normally make it right.
+  coversParts      Boolean        @default(true)
+  coversLabour     Boolean        @default(true)
+  defaultRemedy    WarrantyRemedy @default(REIMBURSEMENT)
   // Sample terms loaded for demonstration — clearly flagged everywhere
   // until real terms replace them.
   isSample         Boolean      @default(false)
@@ -2892,6 +2904,20 @@ model WarrantyClaim {
   returnReason      String?
   cancelReason      String?
   resubmissionCount Int                 @default(0)
+  // How the provider makes it right: pay/credit, send a replacement part,
+  // or repair the failed part and return it.
+  remedy            WarrantyRemedy      @default(REIMBURSEMENT)
+  // Failed-part return to the provider (many require it before accepting).
+  partReturnRequired Boolean            @default(false)
+  // AWAITING → SENT → RECEIVED_BY_PROVIDER (null when not required).
+  partReturnStatus  String?
+  partSentAt        DateTime?
+  partSentReference String?
+  partReceivedAt    DateTime?
+  // Replacement received / repaired part returned (closes the claim for
+  // those remedies).
+  replacementSerial String?
+  remedyNotes       String?
   createdById       String
   reviewRequestedAt DateTime?
   hodApprovedById   String?
@@ -2925,4 +2951,41 @@ model WarrantyClaim {
   @@index([jobCardId])
   @@index([vehicleServiceId])
   @@map("warranty_claims")
+}
+
+// How a provider makes a failed item right.
+enum WarrantyRemedy {
+  REIMBURSEMENT
+  REPLACEMENT
+  REPAIR
+}
+
+// Same approval chain as policy deletion: staff request → Warranty HOD →
+// Branch Manager. In use → archived; never used → deleted.
+model WarrantyProviderDeletionRequest {
+  id                 String                 @id @default(cuid())
+  // Null once the provider itself has been deleted (name is kept).
+  providerId         String?
+  reason             String
+  status             WarrantyApprovalStatus @default(PENDING_HOD)
+  requestedById      String
+  requestedAt        DateTime               @default(now())
+  hodDecidedById     String?
+  hodDecidedAt       DateTime?
+  managerDecidedById String?
+  managerDecidedAt   DateTime?
+  declineReason      String?
+  outcome            String?
+  providerName       String
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @default(now()) @updatedAt
+
+  provider         WarrantyProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  requestedBy      User              @relation("WarrantyProviderDeletionRequestedBy", fields: [requestedById], references: [id])
+  hodDecidedBy     User?             @relation("WarrantyProviderDeletionHodDecidedBy", fields: [hodDecidedById], references: [id])
+  managerDecidedBy User?             @relation("WarrantyProviderDeletionManagerDecidedBy", fields: [managerDecidedById], references: [id])
+
+  @@index([providerId])
+  @@index([status])
+  @@map("warranty_provider_deletion_requests")
 }
