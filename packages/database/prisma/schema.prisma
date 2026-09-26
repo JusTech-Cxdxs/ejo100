@@ -394,6 +394,12 @@ model User {
   warrantyPolicyDeletionsRequested WarrantyPolicyDeletionRequest[] @relation("WarrantyPolicyDeletionRequestedBy")
   warrantyPolicyDeletionsHodDecided WarrantyPolicyDeletionRequest[] @relation("WarrantyPolicyDeletionHodDecidedBy")
   warrantyPolicyDeletionsManagerDecided WarrantyPolicyDeletionRequest[] @relation("WarrantyPolicyDeletionManagerDecidedBy")
+  warrantyClaimsCreated WarrantyClaim[] @relation("WarrantyClaimCreatedBy")
+  warrantyClaimsHodApproved WarrantyClaim[] @relation("WarrantyClaimHodApprovedBy")
+  warrantyClaimsManagerApproved WarrantyClaim[] @relation("WarrantyClaimManagerApprovedBy")
+  warrantyClaimsSubmitted WarrantyClaim[] @relation("WarrantyClaimSubmittedBy")
+  warrantyClaimsDecided WarrantyClaim[] @relation("WarrantyClaimDecidedBy")
+  warrantyClaimsSettled WarrantyClaim[] @relation("WarrantyClaimSettledBy")
 }
 
 // One-to-one HR extension of User. Kept separate per the Phase 1 note so
@@ -558,6 +564,7 @@ model Customer {
 
   @@map("customers")
   warranties      Warranty[]
+  warrantyClaims WarrantyClaim[]
 }
 
 // Optional: when the customer is a business (fleet account) rather than
@@ -616,6 +623,7 @@ model CustomerVehicle {
 
   @@map("customer_vehicles")
   warranties Warranty[]
+  warrantyClaims WarrantyClaim[]
 }
 
 enum VehicleCategory {
@@ -812,6 +820,7 @@ model JobCard {
 
   @@map("job_cards")
   warranties Warranty[]
+  warrantyClaims WarrantyClaim[]
 }
 
 // One row per distinct reported issue on a Job Card — e.g. "Fan not
@@ -1330,6 +1339,7 @@ model VehicleService {
 
   @@map("vehicle_services")
   warranties Warranty[]
+  warrantyClaims WarrantyClaim[]
 }
 
 // The Vehicle Service equivalent of Job Card's own CloseRequest — kept
@@ -2684,6 +2694,7 @@ model WarrantyProvider {
   warranties Warranty[]
 
   @@map("warranty_providers")
+  claims WarrantyClaim[]
 }
 
 // What a provider promises: duration, distance ("whichever comes first"),
@@ -2784,6 +2795,7 @@ model Warranty {
   @@index([slipLineId])
   @@index([endsAt])
   @@map("warranties")
+  claims WarrantyClaim[]
 }
 
 // The branch chain for warranty decisions: Warranty staff request →
@@ -2827,4 +2839,90 @@ model WarrantyPolicyDeletionRequest {
   @@index([policyId])
   @@index([status])
   @@map("warranty_policy_deletion_requests")
+}
+
+// A warranty claim: the "3 C's" (complaint, cause, correction), the
+// causal part, the failure (date and reading), the money claimed, and a
+// lifecycle through the branch chain and the provider:
+// DRAFT → PENDING_HOD → PENDING_MANAGER → APPROVED_TO_SUBMIT → SUBMITTED
+//   → ACCEPTED / PARTIALLY_ACCEPTED / REJECTED → SETTLED.
+// Sent back (to DRAFT) with a reason at any approval step; a rejected
+// claim can be reopened for resubmission; CANCELLED before submission.
+enum WarrantyClaimStatus {
+  DRAFT
+  PENDING_HOD
+  PENDING_MANAGER
+  APPROVED_TO_SUBMIT
+  SUBMITTED
+  ACCEPTED
+  PARTIALLY_ACCEPTED
+  REJECTED
+  SETTLED
+  CANCELLED
+}
+
+model WarrantyClaim {
+  id                String              @id @default(cuid())
+  claimNumber       String              @unique
+  status            WarrantyClaimStatus @default(DRAFT)
+  warrantyId        String
+  providerId        String
+  customerId        String
+  vehicleId         String?
+  jobCardId         String?
+  vehicleServiceId  String?
+  complaint         String
+  cause             String
+  correction        String
+  causalPart        String
+  causalPartNumber  String?
+  failureDate       DateTime
+  failureReading    Int?
+  labourAmount      Decimal             @default(0) @db.Decimal(12, 2)
+  partsAmount       Decimal             @default(0) @db.Decimal(12, 2)
+  otherAmount       Decimal             @default(0) @db.Decimal(12, 2)
+  claimedAmount     Decimal             @default(0) @db.Decimal(12, 2)
+  approvedAmount    Decimal?            @db.Decimal(12, 2)
+  settledAmount     Decimal?            @db.Decimal(12, 2)
+  // From the provider's claim rules at the time the claim was opened.
+  deadlineAt        DateTime?
+  providerReference String?
+  settlementReference String?
+  decisionNotes     String?
+  returnReason      String?
+  cancelReason      String?
+  resubmissionCount Int                 @default(0)
+  createdById       String
+  reviewRequestedAt DateTime?
+  hodApprovedById   String?
+  hodApprovedAt     DateTime?
+  managerApprovedById String?
+  managerApprovedAt DateTime?
+  submittedById     String?
+  submittedAt       DateTime?
+  decidedById       String?
+  decidedAt         DateTime?
+  settledById       String?
+  settledAt         DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @default(now()) @updatedAt
+
+  warranty         Warranty         @relation(fields: [warrantyId], references: [id])
+  provider         WarrantyProvider @relation(fields: [providerId], references: [id])
+  customer         Customer         @relation(fields: [customerId], references: [id])
+  vehicle          CustomerVehicle? @relation(fields: [vehicleId], references: [id])
+  jobCard          JobCard?         @relation(fields: [jobCardId], references: [id])
+  vehicleService   VehicleService?  @relation(fields: [vehicleServiceId], references: [id])
+  createdBy        User             @relation("WarrantyClaimCreatedBy", fields: [createdById], references: [id])
+  hodApprovedBy    User?            @relation("WarrantyClaimHodApprovedBy", fields: [hodApprovedById], references: [id])
+  managerApprovedBy User?           @relation("WarrantyClaimManagerApprovedBy", fields: [managerApprovedById], references: [id])
+  submittedBy      User?            @relation("WarrantyClaimSubmittedBy", fields: [submittedById], references: [id])
+  decidedBy        User?            @relation("WarrantyClaimDecidedBy", fields: [decidedById], references: [id])
+  settledBy        User?            @relation("WarrantyClaimSettledBy", fields: [settledById], references: [id])
+
+  @@index([warrantyId])
+  @@index([status])
+  @@index([jobCardId])
+  @@index([vehicleServiceId])
+  @@map("warranty_claims")
 }
