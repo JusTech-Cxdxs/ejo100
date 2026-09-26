@@ -387,6 +387,10 @@ model User {
   externalProcurementSupplementaryLinesAdded ExternalProcurementSupplementaryLine[] @relation("ExternalProcurementSupplementaryLineAddedBy")
 
   @@map("users")
+  warrantyProvidersCreated WarrantyProvider[] @relation("WarrantyProviderCreatedBy")
+  warrantyPoliciesCreated WarrantyPolicy[] @relation("WarrantyPolicyCreatedBy")
+  warrantiesIssued Warranty[] @relation("WarrantyIssuedBy")
+  warrantiesVerified Warranty[] @relation("WarrantyVerifiedBy")
 }
 
 // One-to-one HR extension of User. Kept separate per the Phase 1 note so
@@ -550,6 +554,7 @@ model Customer {
   vehicleServices VehicleService[]
 
   @@map("customers")
+  warranties      Warranty[]
 }
 
 // Optional: when the customer is a business (fleet account) rather than
@@ -607,6 +612,7 @@ model CustomerVehicle {
   reminderLogs ServiceReminderLog[]
 
   @@map("customer_vehicles")
+  warranties Warranty[]
 }
 
 enum VehicleCategory {
@@ -802,6 +808,7 @@ model JobCard {
   escalatedFromVehicleService VehicleService? @relation("VehicleServiceEscalatedJobCard")
 
   @@map("job_cards")
+  warranties Warranty[]
 }
 
 // One row per distinct reported issue on a Job Card — e.g. "Fan not
@@ -1319,6 +1326,7 @@ model VehicleService {
   cancellationRequests VehicleServiceCancellationRequest[]
 
   @@map("vehicle_services")
+  warranties Warranty[]
 }
 
 // The Vehicle Service equivalent of Job Card's own CloseRequest — kept
@@ -1854,6 +1862,10 @@ model Part {
   // classification with its own parent PartCategory (see below) —
   // the two serve different purposes and neither replaces the other.
   partTypeId   String?
+  // Warranty given with this part when it's issued to a customer (null =
+  // no warranty). Set on the Part page; a warranty is issued automatically
+  // at every release.
+  warrantyPolicyId String?
   createdById  String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -1861,6 +1873,8 @@ model Part {
   branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
   createdBy User     @relation("PartCreatedBy", fields: [createdById], references: [id])
   partType  PartType? @relation(fields: [partTypeId], references: [id])
+  warrantyPolicy WarrantyPolicy? @relation(fields: [warrantyPolicyId], references: [id])
+  warranties Warranty[]
 
   alternativeUnits  PartUnitOfMeasure[]
   stock             PartStock?
@@ -2039,6 +2053,7 @@ model PartSerial {
   // whichever Part it happens to be filed under.
   @@unique([serialNumber])
   @@map("part_serials")
+  warranties Warranty[]
 }
 
 // The header for a delivery of stock arriving into the store — mirrors
@@ -2333,6 +2348,7 @@ model PartRequestSlipLine {
   quantityConsumptions PartQuantityConsumption[]
 
   @@map("part_request_slip_lines")
+  warranties Warranty[]
 }
 
 // The External side — a genuine cash advance (an imprest, in real
@@ -2607,4 +2623,156 @@ model PartType {
 
   @@unique([branchId, categoryId, name])
   @@map("part_types")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// WARRANTY — a generic, industry-neutral core. An ASSET warranty covers a
+// whole product a customer owns (in automotive: a vehicle); a PART
+// warranty covers one component issued to that customer's asset. Brands,
+// providers and terms are data (WarrantyProvider / WarrantyPolicy), never
+// code — so Foton, Isuzu or a different industry is configuration.
+// ─────────────────────────────────────────────────────────────────────────
+
+enum WarrantyKind {
+  ASSET
+  PART
+}
+
+// PENDING_VERIFICATION → ACTIVE (a second person verifies a manually
+// registered warranty); SUSPENDED / VOID / TRANSFERRED are deliberate
+// decisions with a reason. "Expired" is computed from dates and distance,
+// never stored — so it can never be wrong or stale.
+enum WarrantyStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  VOID
+  TRANSFERRED
+}
+
+enum WarrantyProviderType {
+  MANUFACTURER
+  DISTRIBUTOR
+  COMPONENT_MAKER
+  SUPPLIER
+  INTERNAL
+}
+
+// Who stands behind a warranty (and who a claim is recovered from).
+model WarrantyProvider {
+  id                  String               @id @default(cuid())
+  name                String               @unique
+  type                WarrantyProviderType
+  contactName         String?
+  email               String?
+  phone               String?
+  // Days allowed to submit a claim after the repair, and to retain a
+  // failed part after submission — used by claim deadlines later.
+  claimSubmissionDays Int?
+  partRetentionDays   Int?
+  notes               String?
+  isActive            Boolean              @default(true)
+  createdById         String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @default(now()) @updatedAt
+
+  createdBy  User             @relation("WarrantyProviderCreatedBy", fields: [createdById], references: [id])
+  policies   WarrantyPolicy[]
+  warranties Warranty[]
+
+  @@map("warranty_providers")
+}
+
+// What a provider promises: duration, distance ("whichever comes first"),
+// what's covered and excluded, and the conditions (e.g. keep scheduled
+// servicing). ASSET policies apply to a brand/model; PART policies are
+// attached to parts in Inventory.
+model WarrantyPolicy {
+  id               String       @id @default(cuid())
+  code             String       @unique
+  name             String
+  kind             WarrantyKind
+  providerId       String
+  brand            String?
+  model            String?
+  durationMonths   Int
+  // Distance limit from the start reading (km in automotive); null = unlimited.
+  distanceLimit    Int?
+  coverageSummary  String
+  exclusions       String?
+  conditions       String?
+  // Sample terms loaded for demonstration — clearly flagged everywhere
+  // until real terms replace them.
+  isSample         Boolean      @default(false)
+  isActive         Boolean      @default(true)
+  createdById      String
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @default(now()) @updatedAt
+
+  provider   WarrantyProvider @relation(fields: [providerId], references: [id])
+  createdBy  User             @relation("WarrantyPolicyCreatedBy", fields: [createdById], references: [id])
+  warranties Warranty[]
+  parts      Part[]
+
+  @@map("warranty_policies")
+}
+
+// One warranty = one number (WR-2026-000001), one certificate. Terms are
+// snapshotted at issue so a later policy edit never rewrites history.
+model Warranty {
+  id                  String         @id @default(cuid())
+  warrantyNumber      String         @unique
+  kind                WarrantyKind
+  status              WarrantyStatus @default(ACTIVE)
+  policyId            String
+  providerId          String
+  customerId          String
+  vehicleId           String?
+  partId              String?
+  partSerialId        String?
+  slipLineId          String?
+  jobCardId           String?
+  vehicleServiceId    String?
+  // What is covered, in words (snapshot): "Foton TM3 — VIN …" or
+  // "Alternator (ALT-001) — serial SN-123".
+  subjectDescription  String
+  quantity            Decimal?       @db.Decimal(14, 4)
+  startsAt            DateTime
+  endsAt              DateTime
+  startReading        Int?
+  distanceLimit       Int?
+  coverageSnapshot    String
+  exclusionsSnapshot  String?
+  conditionsSnapshot  String?
+  // How it came to exist: AUTO (issued with a real part release) or MANUAL
+  // (registered by staff, e.g. a vehicle sold before integration).
+  origin              String
+  evidenceNote        String?
+  issuedById          String?
+  issuedAt            DateTime       @default(now())
+  verifiedById        String?
+  verifiedAt          DateTime?
+  statusReason        String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @default(now()) @updatedAt
+
+  policy         WarrantyPolicy       @relation(fields: [policyId], references: [id])
+  provider       WarrantyProvider     @relation(fields: [providerId], references: [id])
+  customer       Customer             @relation(fields: [customerId], references: [id])
+  vehicle        CustomerVehicle?     @relation(fields: [vehicleId], references: [id])
+  part           Part?                @relation(fields: [partId], references: [id])
+  partSerial     PartSerial?          @relation(fields: [partSerialId], references: [id])
+  slipLine       PartRequestSlipLine? @relation(fields: [slipLineId], references: [id])
+  jobCard        JobCard?             @relation(fields: [jobCardId], references: [id])
+  vehicleService VehicleService?      @relation(fields: [vehicleServiceId], references: [id])
+  issuedBy       User?                @relation("WarrantyIssuedBy", fields: [issuedById], references: [id])
+  verifiedBy     User?                @relation("WarrantyVerifiedBy", fields: [verifiedById], references: [id])
+
+  @@index([customerId])
+  @@index([vehicleId])
+  @@index([jobCardId])
+  @@index([vehicleServiceId])
+  @@index([slipLineId])
+  @@index([endsAt])
+  @@map("warranties")
 }
