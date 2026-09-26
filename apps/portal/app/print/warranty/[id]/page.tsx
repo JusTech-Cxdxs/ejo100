@@ -5,7 +5,7 @@ import { getWarranty } from '@/lib/actions/warranty';
 import { getOrganisation } from '@/lib/actions/organisation';
 import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/print/DocumentHeader';
 import { PrintOnLoad } from '@/components/print/PrintOnLoad';
-import { warrantyCoverage, WARRANTY_STATE_LABEL } from '@/lib/warranty-state';
+import { warrantyCoverage, WARRANTY_STATE_LABEL, splitLines } from '@/lib/warranty-state';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -18,10 +18,13 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 function Block({ title, text }: { title: string; text: string }) {
+  const items = splitLines(text);
   return (
     <div style={{ marginTop: '12px' }}>
       <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '2px' }}>{title}</div>
-      <div style={{ fontSize: '12px', color: '#0F172A', lineHeight: 1.45 }}>{text}</div>
+      <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: '#0F172A', lineHeight: 1.45 }}>
+        {items.map((it, i) => <li key={i}>{it}</li>)}
+      </ol>
     </div>
   );
 }
