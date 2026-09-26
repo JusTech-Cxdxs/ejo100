@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { listWarrantiesFor } from '@/lib/actions/warranty';
+import { WarrantyList } from '@/components/WarrantyList';
 import { getVehicle, getLastEditInfo, getVehicleAuditTrail, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
 import { getVehicleServiceHealth, getVehicleAnalytics } from '@/lib/actions/vehicle-service';
 import { getVehicleReminderHistory } from '@/lib/actions/vehicle-service-reminders';
@@ -72,6 +74,7 @@ export default async function VehiclePage({
   const { error, edit, status } = await searchParams;
   const vehicle = await getVehicle(id);
   if (!vehicle) notFound();
+  const vehicleWarranties = await listWarrantiesFor({ vehicleId: id });
   const [lastEdit, auditTrail, isMasterAdmin, serviceHealth, analytics, reminderHistory] = await Promise.all([
     getLastEditInfo('CustomerVehicle', id, 'vehicle.updated'),
     getVehicleAuditTrail(id),
@@ -313,6 +316,12 @@ export default async function VehiclePage({
         )}
 
         <div className="h-fit space-y-4 lg:sticky lg:top-6">
+          <div className="space-y-2">
+            <WarrantyList warranties={vehicleWarranties} title="Warranties" emptyText="No warranties recorded for this vehicle." />
+            <LoadingLink href={`/warranty/register?vehicleId=${vehicle.id}`} className="inline-block text-xs text-[var(--ejo-primary)] hover:underline">
+              Register a vehicle warranty →
+            </LoadingLink>
+          </div>
           {serviceHealth ? (
             <div
               className={`rounded-[var(--ejo-radius-lg)] border p-5 ${
