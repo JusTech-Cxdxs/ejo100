@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { listWarrantiesFor } from '@/lib/actions/warranty';
+import { WarrantyList } from '@/components/WarrantyList';
 import { getPartRequestSlip } from '@/lib/actions/sourcing';
 import { listEligibleManagersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
 import { listEligibleStoreManagersForBranch, listEligibleStoreOfficersForBranch } from '@/lib/actions/store';
@@ -48,6 +50,7 @@ export default async function PartRequestSlipDetailPage({
   const { id } = await params;
   const { error, status } = await searchParams;
   const slip = await getPartRequestSlip(id);
+  const warranties = slip ? await listWarrantiesFor({ slipId: id }) : [];
   if (!slip) notFound();
 
   const [isMasterAdmin, viewerId, eligibleManagers, eligibleStoreManagers, eligibleStoreOfficers] = await Promise.all([
@@ -364,6 +367,7 @@ export default async function PartRequestSlipDetailPage({
               </form>
             </div>
           ) : null}
+          <WarrantyList warranties={warranties} title="Warranties issued with this release" />
         </div>
 
         <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
