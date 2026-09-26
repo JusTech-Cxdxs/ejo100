@@ -37,3 +37,28 @@ export const CLAIM_GROUPS: Record<string, string[]> = {
   settled: ['SETTLED'],
   cancelled: ['CANCELLED'],
 };
+
+export const REMEDY_LABEL: Record<string, string> = {
+  REIMBURSEMENT: 'Reimbursement (payment or credit)',
+  REPLACEMENT: 'Replacement part',
+  REPAIR: 'Repair by the provider',
+};
+
+export const PART_RETURN_LABEL: Record<string, string> = {
+  AWAITING: 'Failed part to be sent to the provider',
+  SENT: 'Failed part sent to the provider',
+  RECEIVED_BY_PROVIDER: 'Failed part received by the provider',
+};
+
+/** "Parts & labour", "Parts only", "Labour only". */
+export function coverageLabel(p: { coversParts: boolean; coversLabour: boolean }): string {
+  return p.coversParts && p.coversLabour ? 'Parts & labour' : p.coversParts ? 'Parts only' : 'Labour only';
+}
+
+export const PROVIDER_TYPE_LABEL: Record<string, string> = {
+  MANUFACTURER: 'Manufacturer (OEM)',
+  DISTRIBUTOR: 'Distributor',
+  COMPONENT_MAKER: 'Component maker',
+  SUPPLIER: 'Supplier',
+  INTERNAL: 'Our own (workshop / goodwill)',
+};

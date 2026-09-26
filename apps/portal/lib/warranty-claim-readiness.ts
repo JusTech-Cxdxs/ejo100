@@ -30,7 +30,7 @@ export function claimReadiness(
     jobCardId: string | null;
     vehicleServiceId: string | null;
   },
-  warranty: { status: string; startsAt: Date; endsAt: Date; startReading: number | null; distanceLimit: number | null; isSamplePolicy: boolean },
+  warranty: { status: string; startsAt: Date; endsAt: Date; startReading: number | null; distanceLimit: number | null; isSamplePolicy: boolean; coversParts?: boolean; coversLabour?: boolean },
   now: Date = new Date(),
 ): Readiness {
   const items: ReadinessItem[] = [];
@@ -62,6 +62,12 @@ export function claimReadiness(
   const amounts = [claim.labourAmount, claim.partsAmount, claim.otherAmount];
   add('amountsValid', 'Amounts are not negative', amounts.every((a) => Number.isFinite(a) && a >= 0), true);
   add('amountClaimed', 'An amount is being claimed', amounts.reduce((s, a) => s + (a > 0 ? a : 0), 0) > 0, true);
+  if (warranty.coversLabour === false && claim.labourAmount > 0) {
+    add('labourCovered', 'Policy does not cover labour — the labour amount will likely be rejected', false, false, 'Remove it, charge it to the customer, or treat it as goodwill.');
+  }
+  if (warranty.coversParts === false && claim.partsAmount > 0) {
+    add('partsCovered', 'Policy does not cover parts — the parts amount will likely be rejected', false, false, 'This policy covers labour only.');
+  }
   add('linked', 'Linked to the Job Card / Vehicle Service that did the repair', Boolean(claim.jobCardId || claim.vehicleServiceId), false, 'The repair record is the claim’s evidence.');
   if (claim.deadlineAt) {
     const deadline = new Date(claim.deadlineAt);
