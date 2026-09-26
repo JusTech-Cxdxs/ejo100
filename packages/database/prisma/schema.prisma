@@ -391,6 +391,9 @@ model User {
   warrantyPoliciesCreated WarrantyPolicy[] @relation("WarrantyPolicyCreatedBy")
   warrantiesIssued Warranty[] @relation("WarrantyIssuedBy")
   warrantiesVerified Warranty[] @relation("WarrantyVerifiedBy")
+  warrantyPolicyDeletionsRequested WarrantyPolicyDeletionRequest[] @relation("WarrantyPolicyDeletionRequestedBy")
+  warrantyPolicyDeletionsHodDecided WarrantyPolicyDeletionRequest[] @relation("WarrantyPolicyDeletionHodDecidedBy")
+  warrantyPolicyDeletionsManagerDecided WarrantyPolicyDeletionRequest[] @relation("WarrantyPolicyDeletionManagerDecidedBy")
 }
 
 // One-to-one HR extension of User. Kept separate per the Phase 1 note so
@@ -2705,6 +2708,11 @@ model WarrantyPolicy {
   // until real terms replace them.
   isSample         Boolean      @default(false)
   isActive         Boolean      @default(true)
+  // A policy whose deletion was approved but that already issued
+  // warranties is ARCHIVED, never erased — its certificates and history
+  // stay valid and traceable; it just can't be used again.
+  archivedAt       DateTime?
+  archivedReason   String?
   createdById      String
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @default(now()) @updatedAt
@@ -2713,6 +2721,7 @@ model WarrantyPolicy {
   createdBy  User             @relation("WarrantyPolicyCreatedBy", fields: [createdById], references: [id])
   warranties Warranty[]
   parts      Part[]
+  deletionRequests WarrantyPolicyDeletionRequest[]
 
   @@map("warranty_policies")
 }
@@ -2775,4 +2784,47 @@ model Warranty {
   @@index([slipLineId])
   @@index([endsAt])
   @@map("warranties")
+}
+
+// The branch chain for warranty decisions: Warranty staff request →
+// Warranty HOD approves → Branch Manager approves. Nobody approves their
+// own request.
+enum WarrantyApprovalStatus {
+  PENDING_HOD
+  PENDING_MANAGER
+  APPROVED
+  DECLINED
+}
+
+// Deleting a policy goes through the chain. On final approval a policy
+// that never issued a warranty is deleted; one that did is archived.
+model WarrantyPolicyDeletionRequest {
+  id              String                 @id @default(cuid())
+  // Null once the policy itself has been deleted (code/name are kept).
+  policyId        String?
+  reason          String
+  status          WarrantyApprovalStatus @default(PENDING_HOD)
+  requestedById   String
+  requestedAt     DateTime               @default(now())
+  hodDecidedById  String?
+  hodDecidedAt    DateTime?
+  managerDecidedById String?
+  managerDecidedAt   DateTime?
+  declineReason   String?
+  // What final approval did: DELETED or ARCHIVED.
+  outcome         String?
+  // Kept after the policy itself is deleted.
+  policyCode      String
+  policyName      String
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @default(now()) @updatedAt
+
+  policy         WarrantyPolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  requestedBy    User            @relation("WarrantyPolicyDeletionRequestedBy", fields: [requestedById], references: [id])
+  hodDecidedBy   User?           @relation("WarrantyPolicyDeletionHodDecidedBy", fields: [hodDecidedById], references: [id])
+  managerDecidedBy User?         @relation("WarrantyPolicyDeletionManagerDecidedBy", fields: [managerDecidedById], references: [id])
+
+  @@index([policyId])
+  @@index([status])
+  @@map("warranty_policy_deletion_requests")
 }
