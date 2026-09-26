@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { PolicyCoverageFields } from '@/components/PolicyCoverageFields';
+import { coverageLabel, REMEDY_LABEL } from '@/lib/warranty-claim-status';
 import { getWarrantyPolicy, getWarrantyPolicyAuditTrail, listWarrantyProviders, getWarrantyRoles } from '@/lib/actions/warranty';
 import {
   updateWarrantyPolicyFormAction,
@@ -32,6 +34,7 @@ const ACTION_LABEL: Record<string, string> = {
 const FIELD: Record<string, string> = {
   name: 'Name', kind: 'Applies to', providerId: 'Provider', brand: 'Brand', model: 'Model', durationMonths: 'Months',
   distanceLimit: 'Km limit', coverageSummary: 'Covered', exclusions: 'Not covered', conditions: 'Conditions',
+  coversParts: 'Covers parts', coversLabour: 'Covers labour', defaultRemedy: 'Remedy',
 };
 const BANNER: Record<string, string> = {
   policy_updated: 'Policy saved — every change is on the audit trail. Warranties already issued keep their original terms.',
@@ -144,6 +147,7 @@ export default async function WarrantyPolicyPage({ params, searchParams }: { par
                 <div><label className={label}>Months</label><input name="durationMonths" type="number" min={1} max={240} required defaultValue={policy.durationMonths} className={input} /></div>
                 <div><label className={label}>Km limit (blank = none)</label><input name="distanceLimit" type="number" min={1} defaultValue={policy.distanceLimit ?? ''} className={input} /></div>
               </div>
+              <PolicyCoverageFields coversParts={policy.coversParts} coversLabour={policy.coversLabour} defaultRemedy={policy.defaultRemedy} />
               <div><label className={label}>What is covered</label><LineItemsInput name="coverageItem" required initialItems={splitLines(policy.coverageSummary)} placeholder="e.g. Engine" addLabel="+ Add covered item" /></div>
               <div><label className={label}>Not covered</label><LineItemsInput name="exclusionItem" initialItems={splitLines(policy.exclusions)} placeholder="e.g. Brake pads" addLabel="+ Add exclusion" /></div>
               <div><label className={label}>Conditions</label><LineItemsInput name="conditionItem" initialItems={splitLines(policy.conditions)} placeholder="e.g. Serviced on schedule" addLabel="+ Add condition" /></div>
@@ -158,6 +162,7 @@ export default async function WarrantyPolicyPage({ params, searchParams }: { par
               <p className="text-sm text-[var(--ejo-text)]">
                 {pluralize(policy.durationMonths, 'month')}{policy.distanceLimit ? ` or ${policy.distanceLimit.toLocaleString('en-NG')} km, whichever comes first` : ', no distance limit'}
               </p>
+              <p className="text-sm text-[var(--ejo-text)]">{coverageLabel(policy)} · Remedy: {REMEDY_LABEL[policy.defaultRemedy]}</p>
               <Items label="What is covered" text={policy.coverageSummary} />
               <Items label="Not covered" text={policy.exclusions} />
               <Items label="Conditions" text={policy.conditions} />
