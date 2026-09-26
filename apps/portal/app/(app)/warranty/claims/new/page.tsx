@@ -8,6 +8,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { WarrantyClaimFields } from '@/components/WarrantyClaimFields';
 import { formatDateOnly } from '@/lib/utils/format-date';
+import { coverageLabel } from '@/lib/warranty-claim-status';
 
 /** Start a claim against one warranty. A draft can be incomplete — the
  * readiness check on the claim page says what's still needed. */
@@ -32,6 +33,8 @@ export default async function NewWarrantyClaimPage({ searchParams }: { searchPar
       <p className="mt-1 mb-6 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
         Against {w.warrantyNumber} — {w.subjectDescription} ({w.provider.name}). Covered {formatDateOnly(w.startsAt)} – {formatDateOnly(w.endsAt)}
         {w.startReading !== null && w.distanceLimit !== null ? ` or ${(w.startReading + w.distanceLimit).toLocaleString('en-NG')} km` : ''}.
+        {' '}Pays for: {coverageLabel(w.policy)}.
+        {w.provider.claimSubmissionDays ? ` Claims must reach ${w.provider.name} within ${w.provider.claimSubmissionDays} days of the failure.` : ''}
       </p>
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       <form action={createWarrantyClaimFormAction} className="max-w-3xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
@@ -44,6 +47,8 @@ export default async function NewWarrantyClaimPage({ searchParams }: { searchPar
             causalPart: w.kind === 'PART' ? w.part?.name ?? '' : '',
             causalPartNumber: w.kind === 'PART' ? w.part?.partNumber ?? null : null,
             jobCardId: preselectedJc?.id ?? null,
+            remedy: w.policy.defaultRemedy,
+            partReturnRequired: w.provider.partRetentionDays !== null,
           }}
           jobCards={jobCards.map((j: (typeof jobCards)[number]) => ({ id: j.id, label: `${j.jobNumber} — ${formatDateOnly(j.createdAt)}${j.mileageAtCheckIn !== null ? ` — ${j.mileageAtCheckIn.toLocaleString('en-NG')} km` : ''}` }))}
           vehicleServices={services.map((v: (typeof services)[number]) => ({ id: v.id, label: `${v.serviceNumber} — ${formatDateOnly(v.createdAt)}${v.odometerAtService !== null ? ` — ${v.odometerAtService.toLocaleString('en-NG')} km` : ''}` }))}
