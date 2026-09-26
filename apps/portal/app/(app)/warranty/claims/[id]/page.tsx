@@ -13,6 +13,10 @@ import {
   recordWarrantyClaimSettlementFormAction,
   reopenRejectedWarrantyClaimFormAction,
   cancelWarrantyClaimFormAction,
+  recordFailedPartSentFormAction,
+  recordFailedPartReceivedFormAction,
+  recordReplacementReceivedFormAction,
+  recordRepairedPartReturnedFormAction,
 } from '@/lib/actions/warranty-claims-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
@@ -21,7 +25,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { WarrantyClaimFields } from '@/components/WarrantyClaimFields';
-import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS } from '@/lib/warranty-claim-status';
+import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS, REMEDY_LABEL, PART_RETURN_LABEL, coverageLabel } from '@/lib/warranty-claim-status';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 
 function naira(n: number): string {
@@ -39,6 +43,8 @@ const BANNER: Record<string, string> = {
   settled: 'Settlement recorded — the claim is closed.',
   reopened: 'Reopened as a draft for resubmission.',
   cancelled: 'Claim cancelled.',
+  part_sent: 'Failed part recorded as sent to the provider.',
+  part_received: 'Failed part recorded as received by the provider.',
 };
 
 const ACTION_LABEL: Record<string, string> = {
@@ -53,6 +59,10 @@ const ACTION_LABEL: Record<string, string> = {
   'warranty_claim.settled': 'Settlement recorded',
   'warranty_claim.reopened': 'Reopened for resubmission',
   'warranty_claim.cancelled': 'Claim cancelled',
+  'warranty_claim.part_sent': 'Failed part sent to the provider',
+  'warranty_claim.part_received_by_provider': 'Failed part received by the provider',
+  'warranty_claim.replacement_received': 'Replacement part received — claim settled',
+  'warranty_claim.repaired_part_returned': 'Repaired part returned — claim settled',
 };
 
 export default async function WarrantyClaimPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string; edit?: string }> }) {
@@ -135,6 +145,7 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                   failureDate: new Date(c.failureDate).toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }), failureReading: c.failureReading,
                   labourAmount: Number(c.labourAmount), partsAmount: Number(c.partsAmount), otherAmount: Number(c.otherAmount),
                   jobCardId: c.jobCardId, vehicleServiceId: c.vehicleServiceId,
+                  remedy: c.remedy, partReturnRequired: c.partReturnRequired,
                 }}
                 jobCards={jobCards.map((j: (typeof jobCards)[number]) => ({ id: j.id, label: `${j.jobNumber} — ${formatDateOnly(j.createdAt)}` }))}
                 vehicleServices={services.map((v: (typeof services)[number]) => ({ id: v.id, label: `${v.serviceNumber} — ${formatDateOnly(v.createdAt)}` }))}
@@ -165,6 +176,21 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                   {approved !== null && settled !== null && settled < approved ? <tr><td className="py-1 text-[var(--ejo-warning)]">Shortfall</td><td className="py-1 text-right text-[var(--ejo-warning)]">{naira(approved - settled)}</td></tr> : null}
                 </tbody>
               </table>
+              <div className="grid gap-3 border-t border-[var(--ejo-border)] pt-3 sm:grid-cols-2">
+                <div><p className="text-xs text-[var(--ejo-text-muted)]">Remedy</p><p className="text-[var(--ejo-text)]">{REMEDY_LABEL[c.remedy]}</p></div>
+                <div><p className="text-xs text-[var(--ejo-text-muted)]">Policy pays for</p><p className="text-[var(--ejo-text)]">{coverageLabel(c.warranty.policy)}</p></div>
+                <div className="sm:col-span-2">
+                  <p className="text-xs text-[var(--ejo-text-muted)]">Failed part</p>
+                  <p className="text-[var(--ejo-text)]">
+                    {c.partReturnRequired ? PART_RETURN_LABEL[c.partReturnStatus ?? 'AWAITING'] : 'Not required by the provider'}
+                    {c.partSentReference ? ` — ref ${c.partSentReference}` : ''}
+                    {c.partSentAt ? ` · sent ${formatDateOnly(c.partSentAt)}` : ''}
+                    {c.partReceivedAt ? ` · received ${formatDateOnly(c.partReceivedAt)}` : ''}
+                  </p>
+                </div>
+                {c.replacementSerial ? <div><p className="text-xs text-[var(--ejo-text-muted)]">Replacement serial</p><p className="text-[var(--ejo-text)]">{c.replacementSerial}</p></div> : null}
+                {c.remedyNotes ? <div className="sm:col-span-2"><p className="text-xs text-[var(--ejo-text-muted)]">Remedy notes</p><p className="text-[var(--ejo-text)]">{c.remedyNotes}</p></div> : null}
+              </div>
               {c.providerReference ? <p className="text-xs text-[var(--ejo-text-muted)]">Provider reference: {c.providerReference}</p> : null}
               {c.decisionNotes ? <p className="text-xs text-[var(--ejo-text-muted)]">Provider notes: {c.decisionNotes}</p> : null}
               {c.cancelReason ? <p className="text-xs text-[var(--ejo-text-muted)]">Cancelled: {c.cancelReason}</p> : null}
@@ -213,6 +239,8 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                   typeof meta.decision === 'string' ? `${String(meta.decision).replace('_', ' ').toLowerCase()} — ${naira(Number(meta.approvedAmount ?? 0))}` : null,
                   typeof meta.settledAmount === 'number' ? `Received ${naira(meta.settledAmount)}` : null,
                   typeof meta.readinessScore === 'number' ? `Readiness ${meta.readinessScore}%` : null,
+                  typeof meta.reference === 'string' && e.action === 'warranty_claim.part_sent' ? `Ref: ${meta.reference}` : null,
+                  typeof meta.replacementSerial === 'string' ? `Serial: ${meta.replacementSerial}` : null,
                 ].filter(Boolean);
                 return { id: e.id, actionLabel: ACTION_LABEL[e.action] ?? e.action, userName: e.userName, detail: parts.join(' · ') || null, dateLabel: formatDateTime(e.createdAt) };
               })}
@@ -299,7 +327,43 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                 <p className="text-xs text-[var(--ejo-text-muted)]">With {c.provider.name} — the Warranty HOD or Branch Manager records their decision.</p>
               )
             ) : null}
-            {(c.status === 'ACCEPTED' || c.status === 'PARTIALLY_ACCEPTED') && roles.canApprove ? (
+            {c.partReturnRequired && ['APPROVED_TO_SUBMIT', 'SUBMITTED', 'ACCEPTED', 'PARTIALLY_ACCEPTED'].includes(c.status) && roles.isStaff ? (
+              c.partReturnStatus === 'AWAITING' ? (
+                <form action={recordFailedPartSentFormAction} className="space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/5 p-3">
+                  <FormPendingOverlay />
+                  <input type="hidden" name="claimId" value={c.id} />
+                  <p className="text-xs text-[var(--ejo-text)]">{c.provider.name} needs the failed part back{c.provider.partRetentionDays ? ` (keep it ${c.provider.partRetentionDays} days from submission until they collect or ask for it)` : ''}.</p>
+                  <input name="reference" required placeholder="Waybill / courier / delivery reference" className={input} />
+                  <SubmitButton label="Record failed part as sent" pendingLabel="Saving…" className={btnLine} />
+                </form>
+              ) : c.partReturnStatus === 'SENT' ? (
+                <form action={recordFailedPartReceivedFormAction}>
+                  <FormPendingOverlay />
+                  <input type="hidden" name="claimId" value={c.id} />
+                  <SubmitButton label="Provider confirmed they received the part" pendingLabel="Saving…" className={btnLine} />
+                </form>
+              ) : null
+            ) : null}
+            {(c.status === 'ACCEPTED' || c.status === 'PARTIALLY_ACCEPTED') && roles.canApprove && c.remedy === 'REPLACEMENT' ? (
+              <form action={recordReplacementReceivedFormAction} className="space-y-2">
+                <FormPendingOverlay />
+                <input type="hidden" name="claimId" value={c.id} />
+                <p className="text-xs text-[var(--ejo-text-muted)]">When the replacement part arrives from {c.provider.name}, record it to close the claim.</p>
+                <input name="replacementSerial" placeholder="Replacement part serial (if any)" className={input} />
+                <input name="notes" placeholder="Notes (delivery note, condition…)" className={input} />
+                <SubmitButton label="Replacement part received" pendingLabel="Saving…" className={btn} />
+              </form>
+            ) : null}
+            {(c.status === 'ACCEPTED' || c.status === 'PARTIALLY_ACCEPTED') && roles.canApprove && c.remedy === 'REPAIR' ? (
+              <form action={recordRepairedPartReturnedFormAction} className="space-y-2">
+                <FormPendingOverlay />
+                <input type="hidden" name="claimId" value={c.id} />
+                <p className="text-xs text-[var(--ejo-text-muted)]">When {c.provider.name} returns the repaired part, record it to close the claim.</p>
+                <input name="notes" placeholder="Notes (repair report, delivery note…)" className={input} />
+                <SubmitButton label="Repaired part returned" pendingLabel="Saving…" className={btn} />
+              </form>
+            ) : null}
+            {(c.status === 'ACCEPTED' || c.status === 'PARTIALLY_ACCEPTED') && roles.canApprove && c.remedy === 'REIMBURSEMENT' ? (
               <form action={recordWarrantyClaimSettlementFormAction} className="space-y-2">
                 <FormPendingOverlay />
                 <input type="hidden" name="claimId" value={c.id} />
