@@ -72,3 +72,9 @@ export const WARRANTY_STATE_CLASS: Record<WarrantyCoverageState, string> = {
   VOID: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
   TRANSFERRED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
 };
+
+/** Policy lists (covered / not covered / conditions) are stored one item
+ * per line; older free-text entries simply show as a single item. */
+export function splitLines(text: string | null | undefined): string[] {
+  return (text ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+}
