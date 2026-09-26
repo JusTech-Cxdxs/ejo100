@@ -11,6 +11,10 @@ import {
   registerAssetWarranty,
   verifyWarranty,
   setWarrantyStatus,
+  updateWarrantyPolicy,
+  requestWarrantyPolicyDeletion,
+  approveWarrantyPolicyDeletion,
+  declineWarrantyPolicyDeletion,
   type WarrantyProviderInput,
 } from './warranty';
 
@@ -23,6 +27,14 @@ function optInt(formData: FormData, key: string): number | undefined {
   if (!v) return undefined;
   const n = Number(v);
   return Number.isFinite(n) ? Math.round(n) : undefined;
+}
+/** A one-item-per-line list field (LineItemsInput) → stored text. */
+function lines(formData: FormData, key: string): string {
+  return formData
+    .getAll(key)
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .filter(Boolean)
+    .join('\n');
 }
 function fail(path: string, err: unknown, fallback: string): never {
   const message = err instanceof Error ? err.message : fallback;
@@ -59,9 +71,9 @@ export async function createWarrantyPolicyFormAction(formData: FormData) {
       model: str(formData, 'model') || undefined,
       durationMonths: optInt(formData, 'durationMonths') ?? 0,
       distanceLimit: optInt(formData, 'distanceLimit'),
-      coverageSummary: str(formData, 'coverageSummary'),
-      exclusions: str(formData, 'exclusions') || undefined,
-      conditions: str(formData, 'conditions') || undefined,
+      coverageSummary: lines(formData, 'coverageItem'),
+      exclusions: lines(formData, 'exclusionItem') || undefined,
+      conditions: lines(formData, 'conditionItem') || undefined,
     });
   } catch (err) {
     fail('/warranty/policies', err, 'Could not add the policy.');
@@ -142,4 +154,61 @@ export async function setWarrantyStatusFormAction(formData: FormData) {
   }
   revalidatePath(`/warranty/${id}`);
   redirect(`/warranty/${id}?status=status_changed`);
+}
+
+export async function updateWarrantyPolicyFormAction(formData: FormData) {
+  const policyId = str(formData, 'policyId');
+  try {
+    await updateWarrantyPolicy(policyId, {
+      name: str(formData, 'name'),
+      kind: str(formData, 'kind') === 'PART' ? 'PART' : 'ASSET',
+      providerId: str(formData, 'providerId'),
+      brand: str(formData, 'brand') || undefined,
+      model: str(formData, 'model') || undefined,
+      durationMonths: optInt(formData, 'durationMonths') ?? 0,
+      distanceLimit: optInt(formData, 'distanceLimit'),
+      coverageSummary: lines(formData, 'coverageItem'),
+      exclusions: lines(formData, 'exclusionItem') || undefined,
+      conditions: lines(formData, 'conditionItem') || undefined,
+    });
+  } catch (err) {
+    fail(`/warranty/policies/${policyId}?edit=1`, err, 'Could not save the policy.');
+  }
+  revalidatePath(`/warranty/policies/${policyId}`);
+  redirect(`/warranty/policies/${policyId}?status=policy_updated`);
+}
+
+export async function requestWarrantyPolicyDeletionFormAction(formData: FormData) {
+  const policyId = str(formData, 'policyId');
+  try {
+    await requestWarrantyPolicyDeletion(policyId, str(formData, 'reason'));
+  } catch (err) {
+    fail(`/warranty/policies/${policyId}`, err, 'Could not request the deletion.');
+  }
+  revalidatePath('/warranty/policies');
+  revalidatePath(`/warranty/policies/${policyId}`);
+  redirect(`/warranty/policies/${policyId}?status=deletion_requested#deletion`);
+}
+
+export async function approveWarrantyPolicyDeletionFormAction(formData: FormData) {
+  const policyId = str(formData, 'policyId');
+  try {
+    await approveWarrantyPolicyDeletion(str(formData, 'requestId'));
+  } catch (err) {
+    fail(`/warranty/policies/${policyId}`, err, 'Could not approve the deletion.');
+  }
+  revalidatePath('/warranty/policies');
+  // The policy may now be gone (deleted) — land on the list in that case.
+  redirect(`/warranty/policies?status=deletion_approved&policy=${encodeURIComponent(policyId)}`);
+}
+
+export async function declineWarrantyPolicyDeletionFormAction(formData: FormData) {
+  const policyId = str(formData, 'policyId');
+  try {
+    await declineWarrantyPolicyDeletion(str(formData, 'requestId'), str(formData, 'reason'));
+  } catch (err) {
+    fail(`/warranty/policies/${policyId}`, err, 'Could not decline the deletion.');
+  }
+  revalidatePath(`/warranty/policies/${policyId}`);
+  redirect(`/warranty/policies/${policyId}?status=deletion_declined#deletion`);
 }

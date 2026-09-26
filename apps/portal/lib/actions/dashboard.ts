@@ -1,12 +1,13 @@
 'use server';
 
 import { prisma } from '@ejo/database';
+import { getWarrantyDashboardItems } from './warranty';
 import { requireUser, currentUserIsMasterAdmin, writeAuditLog, listEligibleManagersForBranch } from './workshop';
 import { isWeekend } from '@/lib/utils/working-days';
 
 export type DashboardNotification = {
   id: string;
-  kind: 'PRICING_ALERT' | 'CANCELLATION_REQUEST' | 'CLOSE_REQUEST' | 'JOB_CARD_APPROVAL' | 'TECHNICIAN_ASSIGNMENT' | 'VEHICLE_SERVICE_APPROVAL';
+  kind: 'PRICING_ALERT' | 'CANCELLATION_REQUEST' | 'CLOSE_REQUEST' | 'JOB_CARD_APPROVAL' | 'TECHNICIAN_ASSIGNMENT' | 'VEHICLE_SERVICE_APPROVAL' | 'WARRANTY';
   title: string;
   detail: string;
   url: string;
@@ -212,6 +213,13 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
       url: `/workshop/vehicle-service/${sv.id}#technician-response`,
       createdAt: sv.createdAt,
     });
+  }
+
+  // Warranty work waiting on this viewer (verify registrations, approve
+  // policy deletions at their level in the chain).
+  const warrantyItems = await getWarrantyDashboardItems().catch(() => []);
+  for (const item of warrantyItems) {
+    notifications.push({ id: item.id, kind: 'WARRANTY', title: item.title, detail: item.detail, url: item.url, createdAt: item.createdAt });
   }
 
   return notifications.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
