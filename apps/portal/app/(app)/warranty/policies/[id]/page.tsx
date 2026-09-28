@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { humanizeAction } from '@/lib/humanize-action';
 import { PolicyCoverageFields } from '@/components/PolicyCoverageFields';
 import { coverageLabel, REMEDY_LABEL } from '@/lib/warranty-claim-status';
 import { getWarrantyPolicy, getWarrantyPolicyAuditTrail, listWarrantyProviders, getWarrantyRoles } from '@/lib/actions/warranty';
@@ -177,7 +178,7 @@ export default async function WarrantyPolicyPage({ params, searchParams }: { par
                 const changes = meta.changes as Record<string, { from: unknown; to: unknown }> | undefined;
                 return {
                   id: e.id,
-                  actionLabel: ACTION_LABEL[e.action] ?? e.action,
+                  actionLabel: ACTION_LABEL[e.action] ?? humanizeAction(e.action),
                   userName: e.userName,
                   detail: changes
                     ? Object.entries(changes).map(([k, c]) => `${FIELD[k] ?? k}: ${describeChange(c.from)} → ${describeChange(c.to)}`).join(' | ')
