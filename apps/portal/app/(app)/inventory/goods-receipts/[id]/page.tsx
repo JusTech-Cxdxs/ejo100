@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { listWarrantiesFor } from '@/lib/actions/warranty';
+import { WarrantyList } from '@/components/WarrantyList';
 import { getGoodsReceipt, getGoodsReceiptAuditTrail } from '@/lib/actions/store';
 import { updateGoodsReceiptFormAction } from '@/lib/actions/store-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
@@ -115,7 +117,7 @@ export default async function GoodsReceiptDetailPage({
 }) {
   const { id } = await params;
   const { error, status } = await searchParams;
-  const [receipt, auditTrail] = await Promise.all([getGoodsReceipt(id), getGoodsReceiptAuditTrail(id)]);
+  const [receipt, auditTrail, grnWarranties] = await Promise.all([getGoodsReceipt(id), getGoodsReceiptAuditTrail(id), listWarrantiesFor({ goodsReceiptId: id })]);
   if (!receipt) notFound();
 
   return (
@@ -200,6 +202,11 @@ export default async function GoodsReceiptDetailPage({
               ))}
             </div>
           </div>
+          <WarrantyList
+            warranties={grnWarranties}
+            title="Warranties issued from this receipt's stock"
+            emptyText="No warranty numbers have been issued from this receipt yet — they appear here when its parts are released to customers under a warranty."
+          />
         </div>
 
         <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
