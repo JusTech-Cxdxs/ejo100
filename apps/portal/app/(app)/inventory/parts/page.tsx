@@ -1,4 +1,5 @@
 import { listParts, getStoreBranchId, listAllPartTypesForSelect, searchPartTypesForSelect } from '@/lib/actions/store';
+import { durationLabel, durationShort } from '@/lib/warranty-state';
 import { StockLevelDot, stockLevel } from '@/components/StockLevelDot';
 import { PartWarrantyChoice } from '@/components/PartWarrantyChoice';
 import { listWarrantyPolicies, searchPartWarrantyPolicyOptions, loadPartWarrantyPolicyOptions } from '@/lib/actions/warranty';
@@ -123,7 +124,7 @@ export default async function InventoryPartsPage({
                           <LoadingLink href={`/warranty/policies/${part.warrantyPolicyId}`} className="rounded-full bg-[var(--ejo-success)]/15 px-2 py-0.5 font-medium text-[var(--ejo-success)] hover:underline">
                             {(() => {
                               const pol = partPolicies.find((x: (typeof partPolicies)[number]) => x.id === part.warrantyPolicyId);
-                              return pol ? `${pol.durationMonths} mo${pol.distanceLimit ? ` / ${pol.distanceLimit.toLocaleString('en-NG')} km` : ''}` : 'Warranty';
+                              return pol ? `${durationShort(pol)}${pol.distanceLimit ? ` / ${pol.distanceLimit.toLocaleString('en-NG')} km` : ''}` : 'Warranty';
                             })()}
                           </LoadingLink>
                         ) : (
@@ -203,7 +204,7 @@ export default async function InventoryPartsPage({
               search={searchPartWarrantyPolicyOptions}
               loadDefaultOptions={loadPartWarrantyPolicyOptions}
               policies={partPolicies.map((p: (typeof partPolicies)[number]) => ({
-                id: p.id, name: p.name, code: p.code, months: p.durationMonths, km: p.distanceLimit, covers: coverageLabel(p).toLowerCase(),
+                id: p.id, name: p.name, code: p.code, term: durationLabel(p), km: p.distanceLimit, covers: coverageLabel(p).toLowerCase(),
                 remedy: (REMEDY_LABEL[p.defaultRemedy] ?? p.defaultRemedy).toLowerCase(), provider: p.provider.name, isSample: p.isSample,
               }))}
             />
