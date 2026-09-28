@@ -12,9 +12,9 @@ export type FormattedAuditEntry = {
 
 const COLLAPSED_COUNT = 8;
 
-export function AuditTrail({ entries }: { entries: FormattedAuditEntry[] }) {
+export function AuditTrail({ entries, collapsedCount = COLLAPSED_COUNT }: { entries: FormattedAuditEntry[]; collapsedCount?: number }) {
   const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? entries : entries.slice(0, COLLAPSED_COUNT);
+  const visible = expanded ? entries : entries.slice(0, collapsedCount);
   const hiddenCount = entries.length - visible.length;
 
   return (

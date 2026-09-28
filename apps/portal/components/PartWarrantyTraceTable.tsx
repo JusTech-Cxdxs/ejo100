@@ -2,6 +2,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL } from '@/lib/warranty-state';
 import { formatDateOnly } from '@/lib/utils/format-date';
+import { pluralize } from '@/lib/utils/pluralize';
 
 type Row = {
   id: string;
@@ -61,7 +62,7 @@ export function PartWarrantyTraceTable({ rows }: { rows: Row[] }) {
                     <td className="px-3 py-2 text-xs text-[var(--ejo-text)]">
                       {w.partSerial ? <div>Serial {w.partSerial.serialNumber}</div> : null}
                       {w.batchNumbers.length ? <div>Batch {w.batchNumbers.join(', ')}</div> : null}
-                      {!w.partSerial && !w.batchNumbers.length && w.quantity !== null ? <div>{Number(w.quantity).toLocaleString('en-NG')} unit(s)</div> : null}
+                      {!w.partSerial && !w.batchNumbers.length && w.quantity !== null ? <div>{pluralize(Number(w.quantity), 'unit')}</div> : null}
                       {w.sourceReceipts.map((g) => (
                         <LoadingLink key={g.id} href={`/inventory/goods-receipts/${g.id}`} className={`block ${link}`}>{g.referenceNumber}</LoadingLink>
                       ))}
