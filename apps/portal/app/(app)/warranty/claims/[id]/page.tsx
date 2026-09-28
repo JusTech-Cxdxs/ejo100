@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { humanizeAction } from '@/lib/humanize-action';
 import { prisma } from '@ejo/database';
 import { getWarrantyClaim, getWarrantyClaimAuditTrail } from '@/lib/actions/warranty-claims';
 import { getWarrantyRoles } from '@/lib/actions/warranty';
@@ -243,7 +244,7 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                   typeof meta.reference === 'string' && e.action === 'warranty_claim.part_sent' ? `Ref: ${meta.reference}` : null,
                   typeof meta.replacementSerial === 'string' ? `Serial: ${meta.replacementSerial}` : null,
                 ].filter(Boolean);
-                return { id: e.id, actionLabel: ACTION_LABEL[e.action] ?? e.action, userName: e.userName, detail: parts.join(' · ') || null, dateLabel: formatDateTime(e.createdAt) };
+                return { id: e.id, actionLabel: ACTION_LABEL[e.action] ?? humanizeAction(e.action), userName: e.userName, detail: parts.join(' · ') || null, dateLabel: formatDateTime(e.createdAt) };
               })}
             />
           </div>
