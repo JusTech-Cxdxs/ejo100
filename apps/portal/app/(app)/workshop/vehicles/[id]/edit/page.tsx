@@ -129,9 +129,9 @@ export default async function VehiclePage({
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+      <div className="grid gap-6 lg:grid-cols-2">
         {isEditing ? (
-          <form action={updateVehicleFormAction} className="max-w-xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+          <form action={updateVehicleFormAction} className="space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <FormPendingOverlay />
             <input type="hidden" name="id" value={vehicle.id} />
 
@@ -238,7 +238,7 @@ export default async function VehiclePage({
             </div>
           </form>
         ) : (
-          <div className="max-w-xl space-y-6">
+          <div className="space-y-6">
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Details</h2>
               <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
@@ -313,20 +313,14 @@ export default async function VehiclePage({
                     detail: formatAuditDetail(entry),
                     dateLabel: formatDateTime(entry.createdAt),
                   }))}
+                  collapsedCount={5}
                 />
               )}
             </div>
           </div>
         )}
 
-        <div className="h-fit space-y-4 lg:sticky lg:top-6">
-          <div className="space-y-2">
-            <WarrantyList warranties={vehicleWarranties} title="Warranties" emptyText="No warranties recorded for this vehicle." />
-            <LoadingLink href={`/warranty/register?vehicleId=${vehicle.id}`} className="inline-block text-xs text-[var(--ejo-primary)] hover:underline">
-              Register a vehicle warranty →
-            </LoadingLink>
-          </div>
-          <VehiclePartsFitted rows={partsFitted} />
+        <div className="h-fit min-w-0 space-y-4">
           {serviceHealth ? (
             <div
               className={`rounded-[var(--ejo-radius-lg)] border p-5 ${
@@ -437,6 +431,12 @@ export default async function VehiclePage({
             </div>
           ) : null}
 
+          <div className="space-y-2">
+            <WarrantyList warranties={vehicleWarranties} title="Warranties" emptyText="No warranties recorded for this vehicle." />
+            <LoadingLink href={`/warranty/register?vehicleId=${vehicle.id}`} className="inline-block text-xs text-[var(--ejo-primary)] hover:underline">
+              Register a vehicle warranty →
+            </LoadingLink>
+          </div>
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">History</h2>
           <dl className="mt-3 space-y-3 text-sm">
@@ -479,6 +479,28 @@ export default async function VehiclePage({
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div className="mt-6">
+        <VehiclePartsFitted
+          rows={partsFitted.map((r: (typeof partsFitted)[number]) => ({
+            id: r.id,
+            date: r.slip.releasedAt ? r.slip.releasedAt.toISOString() : null,
+            dateLabel: r.slip.releasedAt ? formatDateOnly(r.slip.releasedAt) : '—',
+            partId: r.part.id,
+            partName: r.part.name,
+            partNumber: r.part.partNumber,
+            unit: r.part.baseUnitOfMeasure,
+            quantity: Number(r.quantityReleased ?? 0),
+            serials: r.issuedSerials.map((x: { serialNumber: string }) => x.serialNumber),
+            slipId: r.slip.id,
+            slipNumber: r.slip.referenceNumber,
+            jobCard: r.slip.jobCard ? { id: r.slip.jobCard.id, number: r.slip.jobCard.jobNumber } : null,
+            vehicleService: r.slip.vehicleService ? { id: r.slip.vehicleService.id, number: r.slip.vehicleService.serviceNumber } : null,
+            customer: r.slip.jobCard?.customer.fullName ?? r.slip.vehicleService?.customer.fullName ?? null,
+            warranties: r.warranties.map((w: { id: string; warrantyNumber: string }) => ({ id: w.id, number: w.warrantyNumber })),
+          }))}
+        />
       </div>
 
       <div className="mt-6 space-y-6">
