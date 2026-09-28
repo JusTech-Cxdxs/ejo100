@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { pluralize } from '@/lib/utils/pluralize';
 import { prisma } from '@ejo/database';
 import { getWarranty } from '@/lib/actions/warranty';
 import { createWarrantyClaimFormAction } from '@/lib/actions/warranty-claims-form-handlers';
@@ -34,7 +35,7 @@ export default async function NewWarrantyClaimPage({ searchParams }: { searchPar
         Against {w.warrantyNumber} — {w.subjectDescription} ({w.provider.name}). Covered {formatDateOnly(w.startsAt)} – {formatDateOnly(w.endsAt)}
         {w.startReading !== null && w.distanceLimit !== null ? ` or ${(w.startReading + w.distanceLimit).toLocaleString('en-NG')} km` : ''}.
         {' '}Pays for: {coverageLabel(w.policy)}.
-        {w.provider.claimSubmissionDays ? ` Claims must reach ${w.provider.name} within ${w.provider.claimSubmissionDays} days of the failure.` : ''}
+        {w.provider.claimSubmissionDays ? ` Claims must reach ${w.provider.name} within ${pluralize(w.provider.claimSubmissionDays, 'day')} of the failure.` : ''}
       </p>
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       <form action={createWarrantyClaimFormAction} className="max-w-3xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
