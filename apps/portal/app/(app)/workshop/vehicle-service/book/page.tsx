@@ -76,7 +76,7 @@ export default async function BookVehicleServicePage({ searchParams }: { searchP
                 ))}
               </select>
               {supervisorResult?.usingFallback ? (
-                <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">No Workshop Supervisor is set up for this department yet — Master Administrators are listed instead.</p>
+                <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">No Workshop Supervisor is set up for this department yet — an administrator is listed instead.</p>
               ) : null}
             </div>
             <div>
