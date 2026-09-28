@@ -56,6 +56,9 @@ export default async function PricingCommandCenterPage({
           Every real delivery cost, auto-compared against each Part&apos;s own target margin the moment it&apos;s
           recorded.
         </p>
+        <LoadingLink href="/inventory/analytics" className="mt-1 inline-block text-xs text-[var(--ejo-primary)] hover:underline">
+          See profitability, margins and reorder intelligence in Inventory Analytics →
+        </LoadingLink>
       </div>
 
       {params.error ? (
