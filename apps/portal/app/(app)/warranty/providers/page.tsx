@@ -107,7 +107,10 @@ export default async function WarrantyProvidersPage({ searchParams }: { searchPa
             <div><label className={label}>Name</label><input name="name" required placeholder="Foton International" className={input} /></div>
             <div>
               <label className={label}>Type</label>
-              <select name="type" className={input}>{Object.entries(PROVIDER_TYPE_LABEL).map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select>
+              <select name="type" required defaultValue="" className={input}>
+                <option value="" disabled>Choose a type…</option>
+                {Object.entries(PROVIDER_TYPE_LABEL).map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+              </select>
             </div>
             <div><label className={label}>Contact name</label><input name="contactName" className={input} /></div>
             <div className="grid grid-cols-2 gap-2">
