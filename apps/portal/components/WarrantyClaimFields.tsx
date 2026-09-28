@@ -21,6 +21,7 @@ export function WarrantyClaimFields({
     labourAmount?: number;
     partsAmount?: number;
     otherAmount?: number;
+    logisticsAmount?: number;
     jobCardId?: string | null;
     vehicleServiceId?: string | null;
     remedy?: string;
@@ -57,12 +58,13 @@ export function WarrantyClaimFields({
         <div><label className={label}>Failure date</label><input type="date" name="failureDate" required defaultValue={defaults.failureDate ?? ''} className={input} /></div>
         <div><label className={label}>Odometer at failure (km)</label><input type="number" name="failureReading" min={0} defaultValue={defaults.failureReading ?? ''} className={input} /></div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <div><label className={label}>Labour (₦)</label><input type="number" name="labourAmount" min={0} step="0.01" defaultValue={defaults.labourAmount ?? 0} className={input} /></div>
         <div><label className={label}>Parts (₦)</label><input type="number" name="partsAmount" min={0} step="0.01" defaultValue={defaults.partsAmount ?? 0} className={input} /></div>
         <div><label className={label}>Other (₦)</label><input type="number" name="otherAmount" min={0} step="0.01" defaultValue={defaults.otherAmount ?? 0} className={input} /></div>
+        <div><label className={label}>Logistics (₦)</label><input type="number" name="logisticsAmount" min={0} step="0.01" defaultValue={defaults.logisticsAmount ?? 0} className={input} /></div>
       </div>
-      <p className={hint}>The total claimed is labour + parts + other. Oil and fluids used in a warranty repair belong under Other.</p>
+      <p className={hint}>Total claimed = labour + parts + other + logistics. Oil and fluids used in the repair go under Other; freight for the replacement or the failed-part return goes under Logistics.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className={label}>How the provider makes it right</label>
