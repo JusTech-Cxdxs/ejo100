@@ -8,7 +8,9 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { createPart, recordGoodsReceipt, updateGoodsReceipt, updateGoodsReceiptLineCost, updatePart, setPartAlternativeUnits, setPartSellingPrice, setPartTargetMargin, dismissPricingAlert, syncPartPriceToTargetMargin, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching, jobCardHasUnmatchedStoreParts } from './store';
+import { createPart, recordGoodsReceipt, updateGoodsReceipt, updateGoodsReceiptLineCost, updatePart, setPartAlternativeUnits, setPartSellingPrice, setPartTargetMargin, dismissPricingAlert, syncPartPriceToTargetMargin, createPartFitment, updatePartFitment, deletePartFitment, createPartCategory, createPartType, matchEstimateStorePartLine, requestStoreMatching, jobCardHasUnmatchedStoreParts,
+  setPartStockLevels,
+} from './store';
 
 function str(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -309,4 +311,22 @@ export async function updateGoodsReceiptLineCostFormAction(formData: FormData) {
   }
   revalidatePath(`/inventory/goods-receipts/${goodsReceiptId}`);
   redirect(`/inventory/goods-receipts/${goodsReceiptId}?status=cost_updated`);
+}
+
+export async function setPartStockLevelsFormAction(formData: FormData) {
+  const partId = String(formData.get('partId') ?? '');
+  const back = String(formData.get('returnTo') ?? '') || `/inventory/parts/${partId}`;
+  const read = (k: string) => {
+    const v = String(formData.get(k) ?? '').trim();
+    return v === '' ? null : Number(v);
+  };
+  try {
+    await setPartStockLevels(partId, read('reorderPoint'), read('safetyStock'));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not update the stock levels.';
+    redirect(`${back}${back.includes('?') ? '&' : '?'}error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/inventory/parts/${partId}`);
+  revalidatePath('/inventory/analytics');
+  redirect(`${back}${back.includes('?') ? '&' : '?'}status=levels_set`);
 }

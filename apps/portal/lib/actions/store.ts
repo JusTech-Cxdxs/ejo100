@@ -2396,3 +2396,26 @@ export async function updateGoodsReceiptLineCost(lineId: string, newUnitCostAsEn
     `${line.part.name}'s cost corrected to ${newUnitCostAsEntered} per ${line.unitUsed} — real total now ₦${totalCost.toLocaleString('en-NG')}`,
   );
 }
+
+/**
+ * Set (or clear) a part's reorder point and safety stock — typically by
+ * applying the analytics suggestion. Safety stock can't exceed the reorder
+ * point. Audited with before → after.
+ */
+export async function setPartStockLevels(partId: string, reorderPoint: number | null, safetyStock: number | null): Promise<void> {
+  const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, name: true, reorderPoint: true, safetyStock: true } });
+  if (!part) throw new StoreActionError('Part not found.');
+  const user = await requireStoreStaff(part.branchId);
+  for (const [label, v] of [['Reorder point', reorderPoint], ['Safety stock', safetyStock]] as const) {
+    if (v !== null && (!Number.isFinite(v) || v < 0)) throw new StoreActionError(`${label} must be zero or more.`);
+  }
+  if (reorderPoint !== null && safetyStock !== null && safetyStock > reorderPoint) {
+    throw new StoreActionError('Safety stock cannot be higher than the reorder point.');
+  }
+  const round3 = (v: number | null) => (v === null ? null : Math.round(v * 1000) / 1000);
+  const next = { reorderPoint: round3(reorderPoint), safetyStock: round3(safetyStock) };
+  const before = { reorderPoint: part.reorderPoint === null ? null : Number(part.reorderPoint), safetyStock: part.safetyStock === null ? null : Number(part.safetyStock) };
+  if (before.reorderPoint === next.reorderPoint && before.safetyStock === next.safetyStock) throw new StoreActionError('Those are already the stock levels.');
+  await prisma.part.update({ where: { id: partId }, data: next });
+  await writeAuditLog({ userId: user.id, action: 'part.stock_levels_set', entityType: 'Part', entityId: partId, metadata: { name: part.name, from: before, to: next } });
+}
