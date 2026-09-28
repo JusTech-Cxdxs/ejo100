@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
 import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS } from '@/lib/warranty-claim-status';
 import { notFound } from 'next/navigation';
-import { getWarranty, getWarrantyAuditTrail, getWarrantyRoles } from '@/lib/actions/warranty';
-import { verifyWarrantyFormAction, setWarrantyStatusFormAction } from '@/lib/actions/warranty-form-handlers';
+import { getWarranty, getWarrantyAuditTrail, getWarrantyRoles, getWarrantyEmailState } from '@/lib/actions/warranty';
+import { EXPIRY_REMINDER_STAGES } from '@/lib/warranty-reminders';
+import { verifyWarrantyFormAction, setWarrantyStatusFormAction, sendWarrantyCertificateEmailFormAction, sendWarrantyExpiryReminderFormAction } from '@/lib/actions/warranty-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { AuditTrail } from '@/components/AuditTrail';
@@ -20,12 +21,17 @@ const ACTION_LABEL: Record<string, string> = {
   'warranty.void': 'Warranty voided',
   'warranty.transferred': 'Warranty transferred',
   'warranty.reinstated': 'Warranty reinstated',
+  'warranty.certificate_emailed': 'Certificate emailed to the customer',
+  'warranty.expiry_reminder_sent': 'Expiry reminder emailed to the customer',
+  'warranty.claim_opened': 'Claim opened',
 };
 
 const STATUS_BANNER: Record<string, string> = {
   registered: 'Warranty registered — it now needs verifying by a second person before it covers anything.',
   verified: 'Warranty verified — it is now active.',
   status_changed: 'Warranty status updated.',
+  certificate_emailed: 'Certificate emailed to the customer.',
+  reminder_sent: 'Expiry reminder emailed to the customer.',
 };
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -40,7 +46,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 export default async function WarrantyDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
   const { id } = await params;
   const { status, error } = await searchParams;
-  const [w, trail, claims, roles] = await Promise.all([getWarranty(id), getWarrantyAuditTrail(id), listWarrantyClaims({ warrantyId: id }), getWarrantyRoles()]);
+  const [w, trail, claims, roles, emails] = await Promise.all([getWarranty(id), getWarrantyAuditTrail(id), listWarrantyClaims({ warrantyId: id }), getWarrantyRoles(), getWarrantyEmailState(id)]);
   if (!w) notFound();
   const cov = warrantyCoverage(w, w.vehicle?.mileage ?? null);
   const distanceEnd = w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null;
@@ -206,6 +212,51 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
             ) : w.status !== 'ACTIVE' ? (
               <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">Claims can be started once the warranty is active.</p>
             ) : null}
+          </div>
+          <div id="customer-emails" className="scroll-mt-24 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Customer emails</h2>
+            {!emails.hasEmail ? (
+              <p className="mt-1 text-xs text-[var(--ejo-warning)]">The customer has no email address on file.</p>
+            ) : (
+              <div className="mt-2 space-y-3 text-xs">
+                {roles.isStaff && w.status === 'ACTIVE' ? (
+                  <form action={sendWarrantyCertificateEmailFormAction}>
+                    <FormPendingOverlay />
+                    <input type="hidden" name="warrantyId" value={w.id} />
+                    <SubmitButton label={emails.certificates.length ? `Re-send certificate (${emails.certificates.length} sent)` : 'Email certificate to customer'} pendingLabel="Sending…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]" />
+                  </form>
+                ) : null}
+                <div>
+                  <p className="font-medium text-[var(--ejo-text)]">Expiry reminders</p>
+                  <ol className="mt-1 space-y-0.5">
+                    {EXPIRY_REMINDER_STAGES.map((st) => {
+                      const sent = emails.reminders.find((r) => r.stage === st.stage);
+                      return (
+                        <li key={st.stage} className={sent ? 'text-[var(--ejo-success)]' : emails.schedule.dueStage === st.stage ? 'text-[var(--ejo-warning)]' : 'text-[var(--ejo-text-muted)]'}>
+                          {sent ? '✓' : emails.schedule.dueStage === st.stage ? '●' : '○'} {st.label}
+                          {sent ? ` — sent ${formatDateOnly(sent.at)}${sent.by ? ` by ${sent.by}` : ''}` : emails.schedule.dueStage === st.stage ? ' — due now' : ''}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                  {emails.schedule.dueStage && roles.isStaff ? (
+                    <form action={sendWarrantyExpiryReminderFormAction} className="mt-2">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="warrantyId" value={w.id} />
+                      <SubmitButton label="Send the reminder that is due" pendingLabel="Sending…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
+                    </form>
+                  ) : emails.schedule.nextDueFrom ? (
+                    <p className="mt-1 text-[var(--ejo-text-muted)]">Next reminder can be sent from {formatDateOnly(emails.schedule.nextDueFrom)} (working days only).</p>
+                  ) : !emails.covering ? (
+                    <p className="mt-1 text-[var(--ejo-text-muted)]">No reminders — this warranty is not currently covering anything.</p>
+                  ) : null}
+                </div>
+                {emails.certificates.length ? (
+                  <p className="text-[var(--ejo-text-muted)]">Certificate last emailed {formatDateTime(emails.certificates[emails.certificates.length - 1]!.at)}{emails.certificates[emails.certificates.length - 1]!.by ? ` by ${emails.certificates[emails.certificates.length - 1]!.by}` : ''}.</p>
+                ) : null}
+                <p className="text-[11px] text-[var(--ejo-text-muted)]">Customer emails never show staff names — who sent each one is recorded here and on the audit trail.</p>
+              </div>
+            )}
           </div>
           {w.status === 'PENDING_VERIFICATION' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/5 p-5">
