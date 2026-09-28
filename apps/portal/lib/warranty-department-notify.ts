@@ -1,7 +1,7 @@
 import { prisma } from '@ejo/database';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
-import { splitLines } from '@/lib/warranty-state';
+import { splitLines, durationLabel } from '@/lib/warranty-state';
 
 /**
  * Tells the warranty department (Warranty HOD + Warranty Officers at the
@@ -15,7 +15,7 @@ export async function notifyWarrantyDepartmentOfPartWarranty(opts: { partId: str
       where: { id: opts.partId },
       select: {
         id: true, name: true, partNumber: true, category: true, trackingType: true, baseUnitOfMeasure: true, branchId: true,
-        warrantyPolicy: { select: { code: true, name: true, durationMonths: true, distanceLimit: true, coversParts: true, coversLabour: true, coversLogistics: true, defaultRemedy: true, coverageSummary: true, isSample: true, provider: { select: { name: true } } } },
+        warrantyPolicy: { select: { code: true, name: true, durationMonths: true, durationUnit: true, distanceLimit: true, coversParts: true, coversLabour: true, coversLogistics: true, defaultRemedy: true, coverageSummary: true, isSample: true, provider: { select: { name: true } } } },
       },
     });
     if (!part) return;
@@ -41,7 +41,7 @@ export async function notifyWarrantyDepartmentOfPartWarranty(opts: { partId: str
       ...(p
         ? [
             `Warranty: ${p.name} (${p.code})${p.isSample ? ' — sample terms' : ''}`,
-            `Term: ${p.durationMonths} months${p.distanceLimit ? ` or ${p.distanceLimit.toLocaleString('en-NG')} km, whichever comes first` : ''}`,
+            `Term: ${durationLabel(p)}${p.distanceLimit ? ` or ${p.distanceLimit.toLocaleString('en-NG')} km, whichever comes first` : ''}`,
             `Provider: ${p.provider.name} · pays for: ${pays} · usual remedy: ${remedy}`,
             `Covers: ${splitLines(p.coverageSummary).join('; ')}`,
             'Every unit released to a customer from now on gets its own warranty number automatically.',

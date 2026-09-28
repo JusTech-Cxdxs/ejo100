@@ -63,3 +63,12 @@ export const PROVIDER_TYPE_LABEL: Record<string, string> = {
   SUPPLIER: 'Supplier',
   INTERNAL: 'Our own (workshop / goodwill)',
 };
+
+/** What the CUSTOMER received — separate from the provider's remedy. */
+export const CUSTOMER_RESOLUTION_LABEL: Record<string, string> = {
+  REPAIRED_NO_CHARGE: 'Repaired at no charge',
+  REPLACED_NO_CHARGE: 'Replaced at no charge',
+  GOODWILL_REFUND: 'Goodwill refund',
+  CUSTOMER_PAID: 'Customer paid',
+  NOT_COVERED: 'Not covered',
+};

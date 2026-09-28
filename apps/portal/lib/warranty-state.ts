@@ -78,3 +78,50 @@ export const WARRANTY_STATE_CLASS: Record<WarrantyCoverageState, string> = {
 export function splitLines(text: string | null | undefined): string[] {
   return (text ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
 }
+
+// ── Duration: days, working days or months ───────────────────────────
+
+export type DurationUnit = 'DAYS' | 'WORKING_DAYS' | 'MONTHS';
+
+/** Allowed amounts per unit (validation and form hints). */
+export const DURATION_LIMITS: Record<DurationUnit, { min: number; max: number; label: string }> = {
+  DAYS: { min: 1, max: 3650, label: 'days' },
+  WORKING_DAYS: { min: 1, max: 2600, label: 'working days' },
+  MONTHS: { min: 1, max: 240, label: 'months' },
+};
+
+/**
+ * When cover ends. Months: same date N months on (month-end safe). Days:
+ * N × 24 hours on. Working days: the END of the Nth working day after the
+ * start (Mon–Fri, Lagos) — so "5 working days" includes all of day 5.
+ */
+export function warrantyEndDate(start: Date, amount: number, unit: DurationUnit | string | null | undefined): Date {
+  if (unit === 'DAYS') return new Date(new Date(start).getTime() + amount * 86400000);
+  if (unit === 'WORKING_DAYS') {
+    const d = new Date(new Date(start).getTime());
+    let added = 0;
+    const lagosDay = (x: Date) => new Date(x.getTime() + 3600000).getUTCDay();
+    while (added < amount) {
+      d.setUTCDate(d.getUTCDate() + 1);
+      const wd = lagosDay(d);
+      if (wd !== 0 && wd !== 6) added += 1;
+    }
+    // 23:59:59.999 Lagos (UTC+1) on that working day.
+    const lagos = new Date(d.getTime() + 3600000);
+    return new Date(Date.UTC(lagos.getUTCFullYear(), lagos.getUTCMonth(), lagos.getUTCDate(), 22, 59, 59, 999));
+  }
+  return addMonths(start, amount);
+}
+
+/** "12 months", "1 month", "7 days", "5 working days". */
+export function durationLabel(p: { durationMonths: number; durationUnit?: DurationUnit | string | null }): string {
+  const n = p.durationMonths;
+  const unit = p.durationUnit ?? 'MONTHS';
+  const word = unit === 'DAYS' ? 'day' : unit === 'WORKING_DAYS' ? 'working day' : 'month';
+  return `${n.toLocaleString('en-NG')} ${n === 1 ? word : `${word}s`}`;
+}
+
+/** Compact form for badges: "12 mo", "7 days", "5 working days". */
+export function durationShort(p: { durationMonths: number; durationUnit?: DurationUnit | string | null }): string {
+  return (p.durationUnit ?? 'MONTHS') === 'MONTHS' ? `${p.durationMonths} mo` : durationLabel(p);
+}
