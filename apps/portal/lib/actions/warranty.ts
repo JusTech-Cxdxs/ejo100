@@ -1375,3 +1375,13 @@ export async function getPartWarrantyTrace(partId: string) {
     };
   });
 }
+
+/** Policy names for ids (archived included) — so older audit entries that
+ * stored an id still read as the policy's name. */
+export async function resolveWarrantyPolicyNames(ids: string[]): Promise<Record<string, string>> {
+  await requireUser();
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return {};
+  const rows = await prisma.warrantyPolicy.findMany({ where: { id: { in: unique } }, select: { id: true, name: true } });
+  return Object.fromEntries(rows.map((r: { id: string; name: string }) => [r.id, r.name]));
+}
