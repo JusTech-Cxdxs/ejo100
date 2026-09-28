@@ -235,6 +235,15 @@ export default async function VehicleServicePage({
                       <LoadingLink href={`/workshop/vehicle-service/${s.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">
                         {s.serviceNumber}
                       </LoadingLink>
+                      {s.escalatedToJobCard ? (
+                        <LoadingLink
+                          href={`/workshop/job-cards/${s.escalatedToJobCard.id}`}
+                          className="mt-1 block w-fit rounded-full bg-[var(--ejo-warning)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--ejo-warning)] hover:underline"
+                          title="Escalated — the work continues on this Job Card"
+                        >
+                          Escalated → {s.escalatedToJobCard.jobNumber}
+                        </LoadingLink>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text)]">{s.customer.fullName}</td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
