@@ -1,4 +1,5 @@
-import { listWarrantyPolicies, listWarrantyProviders, getWarrantyRoles, type PolicyStateFilter } from '@/lib/actions/warranty';
+import { listWarrantyPolicies, listWarrantyProviders, getWarrantyRoles, searchWarrantyProviderOptions, loadWarrantyProviderOptions, type PolicyStateFilter } from '@/lib/actions/warranty';
+import { SearchableSelect } from '@/components/SearchableSelect';
 import { PolicyCoverageFields } from '@/components/PolicyCoverageFields';
 import { coverageLabel, REMEDY_LABEL } from '@/lib/warranty-claim-status';
 import { createWarrantyPolicyFormAction, setWarrantyPolicyActiveFormAction, loadSampleWarrantyPoliciesFormAction } from '@/lib/actions/warranty-form-handlers';
@@ -158,14 +159,28 @@ export default async function WarrantyPoliciesPage({
             ) : null}
             <div className="grid grid-cols-2 gap-2">
               <div><label className={label}>Code</label><input name="code" required placeholder="FOTON-VEH-36" className={input} /></div>
-              <div><label className={label}>Applies to</label><select name="kind" className={input}><option value="ASSET">Vehicle</option><option value="PART">Part</option></select></div>
+              <div>
+                <label className={label}>Applies to</label>
+                <select name="kind" required defaultValue="" className={input}>
+                  <option value="" disabled>Choose…</option>
+                  <option value="ASSET">Vehicle</option>
+                  <option value="PART">Part</option>
+                </select>
+              </div>
             </div>
             <div><label className={label}>Name</label><input name="name" required placeholder="Foton new vehicle warranty" className={input} /></div>
             <div>
               <label className={label}>Provider</label>
-              <select name="providerId" required className={input}>
-                {activeProviders.map((p: (typeof activeProviders)[number]) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <SearchableSelect
+                name="providerId"
+                required
+                search={searchWarrantyProviderOptions}
+                loadDefaultOptions={loadWarrantyProviderOptions}
+                defaultOptionsLabel="Active providers"
+                placeholder="Search providers…"
+                emptyMessage="No active provider matches — add it under Providers first."
+                minQueryLength={1}
+              />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div><label className={label}>Brand (vehicle)</label><input name="brand" placeholder="Foton" className={input} /></div>
