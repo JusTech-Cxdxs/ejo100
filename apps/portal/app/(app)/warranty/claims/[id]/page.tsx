@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { pluralize } from '@/lib/utils/pluralize';
 import { humanizeAction } from '@/lib/humanize-action';
 import { prisma } from '@ejo/database';
 import { getWarrantyClaim, getWarrantyClaimAuditTrail } from '@/lib/actions/warranty-claims';
@@ -334,7 +335,7 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                 <form action={recordFailedPartSentFormAction} className="space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/5 p-3">
                   <FormPendingOverlay />
                   <input type="hidden" name="claimId" value={c.id} />
-                  <p className="text-xs text-[var(--ejo-text)]">{c.provider.name} needs the failed part back{c.provider.partRetentionDays ? ` (keep it ${c.provider.partRetentionDays} days from submission until they collect or ask for it)` : ''}.</p>
+                  <p className="text-xs text-[var(--ejo-text)]">{c.provider.name} needs the failed part back{c.provider.partRetentionDays ? ` (keep it ${pluralize(c.provider.partRetentionDays, 'day')} from submission until they collect or ask for it)` : ''}.</p>
                   <input name="reference" required placeholder="Waybill / courier / delivery reference" className={input} />
                   <SubmitButton label="Record failed part as sent" pendingLabel="Saving…" className={btnLine} />
                 </form>
