@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantiesFor, getPartWarrantyBadges } from '@/lib/actions/warranty';
 import { WarrantyList } from '@/components/WarrantyList';
 import { getVehicleService, getVehicleServiceAuditTrail, getVehicleServiceCloseRequests, getVehicleServiceCancellationRequests } from '@/lib/actions/vehicle-service';
@@ -1823,7 +1824,7 @@ export default async function VehicleServiceDetailPage({
           <AuditTrail
             entries={auditTrail.map((entry: (typeof auditTrail)[number]) => ({
               id: entry.id,
-              actionLabel: AUDIT_ACTION_LABEL[entry.action] ?? entry.action,
+              actionLabel: AUDIT_ACTION_LABEL[entry.action] ?? humanizeAction(entry.action),
               userName: entry.user?.fullName ?? null,
               detail: formatAuditDetail(entry),
               dateLabel: formatDateTime(entry.createdAt),
