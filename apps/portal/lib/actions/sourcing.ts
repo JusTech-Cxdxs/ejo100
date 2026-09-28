@@ -275,7 +275,7 @@ async function requireEligibleFinance(branchId: string): Promise<{ id: string }>
   const officers = await listEligibleFinanceOfficersForBranch(branchId);
   const isEligible = officers.supervisors.some((s) => s.id === user.id);
   if (!isEligible) {
-    throw new SourcingActionError('Only a Finance Officer for this branch, or a Master Administrator, can disburse this.');
+    throw new SourcingActionError('Only a Finance Officer for this branch can disburse this.');
   }
   return user;
 }

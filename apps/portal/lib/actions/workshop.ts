@@ -126,7 +126,7 @@ async function requireMasterAdmin(): Promise<{ id: string }> {
     where: { userId: user.id, role: { isSuperAdmin: true } },
   });
   if (!match) {
-    throw new WorkshopActionError('Only a Master Administrator can delete records.');
+    throw new WorkshopActionError('You do not have permission to delete records.');
   }
   return user;
 }
@@ -184,7 +184,7 @@ export async function requireJobCardApprover(jobCard: { supervisorId: string | n
   if (await currentUserIsMasterAdmin()) {
     return user;
   }
-  throw new WorkshopActionError('Only the assigned supervisor or a Master Administrator can approve or reject this Job Card.');
+  throw new WorkshopActionError('Only the assigned supervisor can approve or reject this Job Card.');
 }
 
 /** Notifies whoever created a Job Card the moment it's approved or
@@ -978,6 +978,7 @@ export async function listJobCards(status?: JobCardStatus, search?: string, vehi
       customer: { select: { fullName: true, phone: true } },
       vehicle: { select: { id: true, make: true, model: true, plateNumber: true, vehicleType: true } },
       assignedTechnician: { select: { fullName: true } },
+      escalatedFromVehicleService: { select: { id: true, serviceNumber: true } },
     },
   });
 }
@@ -1744,7 +1745,7 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
     throw new WorkshopActionError('Job Card not found.');
   }
   if (jobCard.createdById !== user.id && !(await currentUserIsMasterAdmin())) {
-    throw new WorkshopActionError('Only this Job Card\'s creator or a Master Administrator can reassign the supervisor.');
+    throw new WorkshopActionError('Only this Job Card\'s creator can reassign the supervisor.');
   }
   if (!jobCard.departmentId) {
     throw new WorkshopActionError('This Job Card has no Workshop department set — cannot validate supervisor eligibility.');
@@ -1905,7 +1906,7 @@ async function requireAssignedTechnician(jobCard: { assignedTechnicianId: string
   if (await currentUserIsMasterAdmin()) {
     return user;
   }
-  throw new WorkshopActionError('Only the assigned technician or a Master Administrator can respond to this assignment.');
+  throw new WorkshopActionError('Only the assigned technician can respond to this assignment.');
 }
 
 /** Notifies the supervisor of a technician's response — shared by
@@ -2164,7 +2165,7 @@ async function requireEstimateContributor(jobCard: {
     return user;
   }
   throw new WorkshopActionError(
-    'Only the assigned supervisor, the assigned technician, or a Master Administrator can work on this estimate.',
+    'Only the assigned supervisor or the assigned technician can work on this estimate.',
   );
 }
 
@@ -2458,7 +2459,7 @@ export async function deleteEstimateLineItem(lineItemId: string): Promise<void> 
   const isSupervisor = lineItem.estimate.jobCard.supervisorId === user.id;
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (!isOwnEntry && !isSupervisor && !isMasterAdmin) {
-    throw new WorkshopActionError('Only whoever entered this line, the assigned supervisor, or a Master Administrator can remove it.');
+    throw new WorkshopActionError('Only whoever entered this line or the assigned supervisor can remove it.');
   }
 
   await prisma.estimateLineItem.delete({ where: { id: lineItemId } });
@@ -2739,7 +2740,7 @@ export async function requireEligibleManager(branchId: string): Promise<{ id: st
     select: { id: true },
   });
   if (!match) {
-    throw new WorkshopActionError('Only a Workshop Manager for this branch, or a Master Administrator, can approve this.');
+    throw new WorkshopActionError('Only a Workshop Manager for this branch can approve this.');
   }
   return user;
 }
@@ -2943,7 +2944,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (user.id !== estimate.jobCard.createdById && !isMasterAdmin) {
-    throw new WorkshopActionError('Only whoever created this Job Card, or a Master Administrator, can notify the customer.');
+    throw new WorkshopActionError('Only whoever created this Job Card can notify the customer.');
   }
   if (estimate.customerNotifiedAt) {
     throw new WorkshopActionError('The customer has already been notified about this estimate.');
@@ -3150,7 +3151,7 @@ export async function requireEligibleFinanceOfficer(branchId: string): Promise<{
     select: { id: true },
   });
   if (!match) {
-    throw new WorkshopActionError('Only a Finance Officer for this branch, or a Master Administrator, can do this.');
+    throw new WorkshopActionError('Only a Finance Officer for this branch can do this.');
   }
   return user;
 }
@@ -3473,7 +3474,7 @@ async function requireJobCardCreatorOrSupervisor(jobCard: {
     return user;
   }
   throw new WorkshopActionError(
-    "Only this Job Card's creator, its assigned supervisor, or a Master Administrator can request cancellation.",
+    "Only this Job Card's creator or its assigned supervisor can request cancellation.",
   );
 }
 
@@ -4422,7 +4423,7 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
  * cancellation — never this function's own decision. */
 export async function runApprovalDeadlineChecks(): Promise<{ remindersSent: number; overdueCount: number }> {
   if (!(await currentUserIsMasterAdmin())) {
-    throw new WorkshopActionError('Only a Master Administrator can run this check.');
+    throw new WorkshopActionError('You do not have permission to run this check.');
   }
 
   const candidates = await prisma.jobCard.findMany({

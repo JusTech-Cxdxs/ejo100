@@ -398,7 +398,7 @@ async function requireAssignedVehicleServiceTechnician(service: { assignedTechni
   if (await currentUserIsMasterAdmin()) {
     return user;
   }
-  throw new VehicleServiceActionError('Only the assigned technician or a Master Administrator can respond to this assignment.');
+  throw new VehicleServiceActionError('Only the assigned technician can respond to this assignment.');
 }
 
 /** Notifies the supervisor of a technician's response — shared by
@@ -520,7 +520,7 @@ export async function rejectVehicleServiceTechnicianAssignment(serviceId: string
 export async function deleteVehicleService(serviceId: string): Promise<void> {
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (!isMasterAdmin) {
-    throw new VehicleServiceActionError('Only a Master Administrator can delete a Vehicle Service.');
+    throw new VehicleServiceActionError('You do not have permission to delete a Vehicle Service.');
   }
   const user = await requireUser();
   const snapshot = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { serviceNumber: true, status: true, customerId: true, vehicleId: true } });
@@ -1534,7 +1534,7 @@ export async function requestVehicleServiceCancellation(serviceId: string, reaso
   }
   const user = await requireUser();
   if (user.id !== service.createdById && user.id !== service.supervisorId && !(await currentUserIsMasterAdmin())) {
-    throw new VehicleServiceActionError("Only this Vehicle Service's creator, its assigned supervisor, or a Master Administrator can request a cancellation.");
+    throw new VehicleServiceActionError("Only this Vehicle Service's creator or its assigned supervisor can request a cancellation.");
   }
   const existingPending = await prisma.vehicleServiceCancellationRequest.findFirst({ where: { vehicleServiceId: serviceId, status: 'PENDING' }, select: { id: true } });
   if (existingPending) throw new VehicleServiceActionError('A cancellation request is already pending for this Vehicle Service.');
@@ -1848,7 +1848,7 @@ export async function requestVehicleServiceClose(serviceId: string): Promise<voi
   }
   const user = await requireUser();
   if (user.id !== service.createdById && user.id !== service.supervisorId && !(await currentUserIsMasterAdmin())) {
-    throw new VehicleServiceActionError("Only this Vehicle Service's creator, its assigned supervisor, or a Master Administrator can request a close.");
+    throw new VehicleServiceActionError("Only this Vehicle Service's creator or its assigned supervisor can request a close.");
   }
   const existingPending = await prisma.vehicleServiceCloseRequest.findFirst({ where: { vehicleServiceId: serviceId, status: 'PENDING' }, select: { id: true } });
   if (existingPending) {
@@ -2212,7 +2212,7 @@ export async function updatePrimaryServiceInterval(
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (!isMasterAdmin) {
-    throw new VehicleServiceActionError('Only a Master Administrator can change the Primary Service interval.');
+    throw new VehicleServiceActionError('You do not have permission to change the Primary Service interval.');
   }
   await prisma.organisation.update({
     where: { id: organisationId },

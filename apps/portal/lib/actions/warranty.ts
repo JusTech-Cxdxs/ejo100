@@ -6,6 +6,7 @@ import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { addMonths, warrantyCoverage, splitLines } from '@/lib/warranty-state';
 import { expiryReminderState } from '@/lib/warranty-reminders';
+import { notifyWarrantyDepartmentOfPartWarranty } from '@/lib/warranty-department-notify';
 import { renderCustomerWarrantyCertificateEmail } from '@/lib/email-templates/customer-warranty-certificate';
 import { renderCustomerWarrantyExpiryEmail } from '@/lib/email-templates/customer-warranty-expiry';
 
@@ -44,7 +45,7 @@ export async function getWarrantyRoles(): Promise<WarrantyRoles> {
 async function requireWarrantyStaff(): Promise<{ id: string; roles: WarrantyRoles }> {
   const user = await requireUser();
   const roles = await getWarrantyRoles();
-  if (!roles.isStaff) throw new WarrantyActionError('Only Warranty staff, the Warranty HOD, a Branch Manager or a Master Administrator can do this.');
+  if (!roles.isStaff) throw new WarrantyActionError('Only Warranty staff, the Warranty HOD or a Branch Manager can do this.');
   return { id: user.id, roles };
 }
 
@@ -53,7 +54,7 @@ async function requireWarrantyStaff(): Promise<{ id: string; roles: WarrantyRole
 async function requireWarrantyApprover(): Promise<{ id: string; roles: WarrantyRoles }> {
   const user = await requireUser();
   const roles = await getWarrantyRoles();
-  if (!roles.canApprove) throw new WarrantyActionError('Only the Warranty HOD, a Branch Manager or a Master Administrator can do this.');
+  if (!roles.canApprove) throw new WarrantyActionError('Only the Warranty HOD or a Branch Manager can do this.');
   return { id: user.id, roles };
 }
 
@@ -340,8 +341,14 @@ export async function setPartWarrantyPolicy(partId: string, policyId: string | n
   }
   const before = await prisma.part.findUnique({ where: { id: partId }, select: { warrantyPolicyId: true, name: true } });
   if (!before) throw new WarrantyActionError('Part not found.');
+  if ((before.warrantyPolicyId ?? null) === (policyId ?? null)) throw new WarrantyActionError('That is already this part’s warranty.');
+  const [fromPolicy, toPolicy] = await Promise.all([
+    before.warrantyPolicyId ? prisma.warrantyPolicy.findUnique({ where: { id: before.warrantyPolicyId }, select: { name: true } }) : Promise.resolve(null),
+    policyId ? prisma.warrantyPolicy.findUnique({ where: { id: policyId }, select: { name: true } }) : Promise.resolve(null),
+  ]);
   await prisma.part.update({ where: { id: partId }, data: { warrantyPolicyId: policyId } });
-  await writeAuditLog({ userId: user.id, action: 'part.warranty_policy_set', entityType: 'Part', entityId: partId, metadata: { name: before.name, from: before.warrantyPolicyId, to: policyId } });
+  await writeAuditLog({ userId: user.id, action: 'part.warranty_policy_set', entityType: 'Part', entityId: partId, metadata: { name: before.name, from: fromPolicy?.name ?? 'No warranty', to: toPolicy?.name ?? 'No warranty' } });
+  await notifyWarrantyDepartmentOfPartWarranty({ partId, previousPolicyId: before.warrantyPolicyId, actorId: user.id, context: 'CHANGED' });
 }
 
 // ── Asset warranty registration (e.g. a vehicle sold before integration) ─
@@ -1300,4 +1307,71 @@ export async function getPartWarrantyBadges(partIds: string[]): Promise<Record<s
     if (w) out[p.id] = `${w.durationMonths} mo${w.distanceLimit ? ` / ${w.distanceLimit.toLocaleString('en-NG')} km` : ''}${w.isSample ? ' (sample)' : ''}`;
   }
   return out;
+}
+
+// ── Part warranty: searchable policy options and the precise trace ─────
+
+/** Active, current PART policies matching the text — for the searchable
+ * policy dropdowns (part creation and the part's warranty editor). */
+export async function searchPartWarrantyPolicyOptions(query: string): Promise<{ value: string; label: string; sublabel?: string }[]> {
+  await requireUser();
+  const q = query.trim();
+  const rows = await prisma.warrantyPolicy.findMany({
+    where: {
+      kind: 'PART', isActive: true, archivedAt: null,
+      ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { code: { contains: q, mode: 'insensitive' } }, { provider: { name: { contains: q, mode: 'insensitive' } } }] } : {}),
+    },
+    orderBy: { name: 'asc' },
+    take: 25,
+    select: { id: true, name: true, code: true, durationMonths: true, distanceLimit: true, isSample: true, provider: { select: { name: true } } },
+  });
+  return rows.map((r: (typeof rows)[number]) => ({
+    value: r.id,
+    label: `${r.name} — ${r.durationMonths} months${r.distanceLimit ? ` / ${r.distanceLimit.toLocaleString('en-NG')} km` : ''}`,
+    sublabel: `${r.code} · ${r.provider.name}${r.isSample ? ' · sample terms' : ''}`,
+  }));
+}
+
+export async function loadPartWarrantyPolicyOptions(): Promise<{ value: string; label: string; sublabel?: string }[]> {
+  return searchPartWarrantyPolicyOptions('');
+}
+
+/** Every warranty issued for one part, with its exact source (goods
+ * receipt, serial or batch) and destination (Parts Request → Job Card /
+ * Vehicle Service → customer & vehicle) — each an exact link. */
+export async function getPartWarrantyTrace(partId: string) {
+  await requireUser();
+  const rows = await prisma.warranty.findMany({
+    where: { partId },
+    orderBy: { issuedAt: 'desc' },
+    select: {
+      id: true, warrantyNumber: true, status: true, startsAt: true, endsAt: true, startReading: true, distanceLimit: true, statusReason: true, quantity: true, issuedAt: true,
+      customer: { select: { fullName: true } },
+      vehicle: { select: { id: true, make: true, model: true, plateNumber: true, mileage: true } },
+      jobCard: { select: { id: true, jobNumber: true } },
+      vehicleService: { select: { id: true, serviceNumber: true } },
+      partSerial: { select: { serialNumber: true, goodsReceiptLine: { select: { goodsReceipt: { select: { id: true, referenceNumber: true } } } } } },
+      slipLine: {
+        select: {
+          slip: { select: { id: true, referenceNumber: true } },
+          batchConsumptions: { select: { batch: { select: { batchNumber: true, goodsReceiptLine: { select: { goodsReceipt: { select: { id: true, referenceNumber: true } } } } } } } },
+          quantityConsumptions: { select: { goodsReceiptLine: { select: { goodsReceipt: { select: { id: true, referenceNumber: true } } } } } },
+        },
+      },
+    },
+  });
+  return rows.map((w: (typeof rows)[number]) => {
+    const receipts = new Map<string, string>();
+    const add = (g: { id: string; referenceNumber: string } | null | undefined) => {
+      if (g) receipts.set(g.id, g.referenceNumber);
+    };
+    add(w.partSerial?.goodsReceiptLine?.goodsReceipt);
+    w.slipLine?.batchConsumptions.forEach((b: NonNullable<typeof w.slipLine>['batchConsumptions'][number]) => add(b.batch.goodsReceiptLine?.goodsReceipt));
+    w.slipLine?.quantityConsumptions.forEach((q: NonNullable<typeof w.slipLine>['quantityConsumptions'][number]) => add(q.goodsReceiptLine?.goodsReceipt));
+    return {
+      ...w,
+      sourceReceipts: [...receipts.entries()].map(([id, referenceNumber]) => ({ id, referenceNumber })),
+      batchNumbers: [...new Set((w.slipLine?.batchConsumptions ?? []).map((b: NonNullable<typeof w.slipLine>['batchConsumptions'][number]) => b.batch.batchNumber))],
+    };
+  });
 }

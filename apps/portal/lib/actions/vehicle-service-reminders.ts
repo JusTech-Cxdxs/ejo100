@@ -196,7 +196,7 @@ export async function runServiceRemindersNow(): Promise<{ evaluated: number; sen
   if (!(await currentUserIsMasterAdmin())) {
     const managers = await listEligibleManagersForBranch(await getWorkshopBranchId());
     if (!managers.supervisors.some((m: { id: string }) => m.id === user.id)) {
-      throw new Error('Only a Workshop Manager or Master Administrator can run reminders on demand.');
+      throw new Error('Only a Workshop Manager can run reminders on demand.');
     }
   }
   const needing = await getVehiclesNeedingServiceReminder();

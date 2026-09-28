@@ -44,7 +44,7 @@ export async function updateOrganisation(organisationId: string, input: UpdateOr
     select: { id: true },
   });
   if (!isMasterAdmin) {
-    throw new OrganisationActionError('Only a Master Administrator can edit organisation details.');
+    throw new OrganisationActionError('You do not have permission to edit organisation details.');
   }
   const trimmedName = input.name?.trim();
   if (!trimmedName) {

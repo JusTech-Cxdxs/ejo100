@@ -122,7 +122,7 @@ async function requireServiceEstimateContributor(service: {
     return user;
   }
   throw new ServiceEstimateActionError(
-    'Only the assigned supervisor, the assigned technician, or a Master Administrator can work on this estimate.',
+    'Only the assigned supervisor or the assigned technician can work on this estimate.',
   );
 }
 
@@ -397,7 +397,7 @@ export async function removeServiceEstimateLineItem(lineItemId: string): Promise
   const isSupervisor = line.estimate.vehicleService.supervisorId === user.id;
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (!isOwnEntry && !isSupervisor && !isMasterAdmin) {
-    throw new ServiceEstimateActionError('Only whoever entered this line, the assigned supervisor, or a Master Administrator can remove it.');
+    throw new ServiceEstimateActionError('Only whoever entered this line or the assigned supervisor can remove it.');
   }
   await prisma.serviceEstimateLineItem.delete({ where: { id: lineItemId } });
   await writeAuditLog({
@@ -817,7 +817,7 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (user.id !== estimate.vehicleService.createdById && !isMasterAdmin) {
-    throw new ServiceEstimateActionError('Only whoever created this Vehicle Service, or a Master Administrator, can notify the customer.');
+    throw new ServiceEstimateActionError('Only whoever created this Vehicle Service can notify the customer.');
   }
   if (estimate.customerNotifiedAt) {
     throw new ServiceEstimateActionError('The customer has already been notified about this estimate.');
@@ -1207,7 +1207,7 @@ export async function requestServiceEstimateStoreMatching(vehicleServiceId: stri
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (service.supervisorId !== user.id && service.assignedTechnicianId !== user.id && !isMasterAdmin) {
-    throw new ServiceEstimateActionError('Only the assigned supervisor, the assigned technician, or a Master Administrator can request Store matching.');
+    throw new ServiceEstimateActionError('Only the assigned supervisor or the assigned technician can request Store matching.');
   }
 
   await prisma.serviceEstimate.update({

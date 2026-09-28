@@ -305,7 +305,7 @@ export async function createAnnouncement(message: string, expiresAt: Date | null
   if (!isMasterAdmin) {
     const managers = fullUser.branchId ? await listEligibleManagersForBranch(fullUser.branchId).catch(() => ({ supervisors: [] as { id: string }[], usingFallback: true })) : { supervisors: [] as { id: string }[], usingFallback: true };
     if (!managers.supervisors.some((m) => m.id === user.id)) {
-      throw new Error('Only a Manager or Master Admin can post an announcement.');
+      throw new Error('Only a Manager can post an announcement.');
     }
   }
   const trimmed = message.trim();

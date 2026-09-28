@@ -46,7 +46,7 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
     select: { id: true },
   });
   if (!isMasterAdmin) {
-    throw new BranchActionError('Only a Master Administrator can edit branch details.');
+    throw new BranchActionError('You do not have permission to edit branch details.');
   }
   const trimmedName = input.name?.trim();
   if (!trimmedName) {

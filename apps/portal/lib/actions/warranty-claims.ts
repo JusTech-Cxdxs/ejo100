@@ -19,13 +19,13 @@ function naira(n: number): string {
 async function requireStaff(): Promise<{ id: string; roles: WarrantyRoles }> {
   const user = await requireUser();
   const roles = await getWarrantyRoles();
-  if (!roles.isStaff) throw new WarrantyClaimError('Only Warranty staff, the Warranty HOD, a Branch Manager or a Master Administrator can do this.');
+  if (!roles.isStaff) throw new WarrantyClaimError('Only Warranty staff, the Warranty HOD or a Branch Manager can do this.');
   return { id: user.id, roles };
 }
 async function requireApprover(): Promise<{ id: string; roles: WarrantyRoles }> {
   const user = await requireUser();
   const roles = await getWarrantyRoles();
-  if (!roles.canApprove) throw new WarrantyClaimError('Only the Warranty HOD, a Branch Manager or a Master Administrator can do this.');
+  if (!roles.canApprove) throw new WarrantyClaimError('Only the Warranty HOD or a Branch Manager can do this.');
   return { id: user.id, roles };
 }
 

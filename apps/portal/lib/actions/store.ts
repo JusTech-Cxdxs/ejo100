@@ -15,6 +15,7 @@
  */
 
 import { prisma, PartTrackingType } from '@ejo/database';
+import { notifyWarrantyDepartmentOfPartWarranty } from '@/lib/warranty-department-notify';
 import { loadQuantityTraces } from '@/lib/inventory/quantity-trace';
 import { pluralize } from '@/lib/utils/pluralize';
 import { markupToMargin, marginToMarkup, actualMargin, actualMarkup, priceForTargetMargin } from '@/lib/pricing-math';
@@ -257,6 +258,10 @@ export async function createPart(input: CreatePartInput): Promise<{ id: string }
     entityId: part.id,
     metadata: { name, partNumber: part.partNumber, trackingType: input.trackingType, baseUnitOfMeasure, warranty: warrantyPolicyName ?? 'None' },
   });
+  // The warranty department hears about every new part that carries a warranty.
+  if (input.warrantyPolicyId) {
+    await notifyWarrantyDepartmentOfPartWarranty({ partId: part.id, previousPolicyId: null, actorId: user.id, context: 'CREATED' });
+  }
 
   return { id: part.id };
 }
@@ -964,7 +969,7 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (jobCard.supervisorId !== user.id && jobCard.assignedTechnicianId !== user.id && !isMasterAdmin) {
-    throw new StoreActionError('Only the assigned supervisor, the assigned technician, or a Master Administrator can request Store matching.');
+    throw new StoreActionError('Only the assigned supervisor or the assigned technician can request Store matching.');
   }
 
   await prisma.estimate.update({
