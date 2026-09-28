@@ -9,7 +9,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { LineItemsInput } from '@/components/LineItemsInput';
 import { pluralize } from '@/lib/utils/pluralize';
-import { splitLines } from '@/lib/warranty-state';
+import { splitLines, durationLabel } from '@/lib/warranty-state';
 
 const BANNER: Record<string, string> = {
   policy_created: 'Policy added.',
@@ -119,7 +119,7 @@ export default async function WarrantyPoliciesPage({
                   </div>
                 </div>
                 <p className="mt-2 text-sm text-[var(--ejo-text)]">
-                  {pluralize(p.durationMonths, 'month')}{p.distanceLimit ? ` or ${p.distanceLimit.toLocaleString('en-NG')} km, whichever comes first` : ', no distance limit'}
+                  {durationLabel(p)}{p.distanceLimit ? ` or ${p.distanceLimit.toLocaleString('en-NG')} km, whichever comes first` : ', no distance limit'}
                 </p>
                 <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">{coverageLabel(p)} · Remedy: {REMEDY_LABEL[p.defaultRemedy]}</p>
                 <Items label="Covered" text={p.coverageSummary} />
@@ -186,8 +186,17 @@ export default async function WarrantyPoliciesPage({
               <div><label className={label}>Brand (vehicle)</label><input name="brand" placeholder="Foton" className={input} /></div>
               <div><label className={label}>Model (optional)</label><input name="model" placeholder="Tunland" className={input} /></div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div><label className={label}>Months</label><input name="durationMonths" type="number" min={1} max={240} required className={input} /></div>
+            <div className="grid grid-cols-3 gap-2">
+              <div><label className={label}>Duration</label><input name="durationMonths" type="number" min={1} max={3650} required className={input} /></div>
+              <div>
+                <label className={label}>In</label>
+                <select name="durationUnit" required defaultValue="" className={input}>
+                  <option value="" disabled>Choose…</option>
+                  <option value="DAYS">Days</option>
+                  <option value="WORKING_DAYS">Working days (Mon–Fri)</option>
+                  <option value="MONTHS">Months</option>
+                </select>
+              </div>
               <div><label className={label}>Km limit (blank = none)</label><input name="distanceLimit" type="number" min={1} className={input} /></div>
             </div>
             <PolicyCoverageFields />
