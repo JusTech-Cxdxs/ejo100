@@ -1,4 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
+import { getJobCardOutcomes } from '@/lib/actions/visit-outcomes';
+import { OutcomeFilterTabs } from '@/components/OutcomeFilterTabs';
+import { matchesOutcomeFilter, outcomeBadge, parseOutcomeFilter, OUTCOME_FILTERS } from '@/lib/visit-outcome';
 import { listJobCards, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
 import { createJobCardFormAction, deleteJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -38,14 +41,22 @@ const STATUS_COLOR: Record<string, string> = {
 export default async function WorkshopJobCardsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string; outcome?: string }>;
 }) {
-  const { q, type, status, error } = await searchParams;
+  const { q, type, status, error, outcome: rawOutcome } = await searchParams;
+  const outcomeFilter = parseOutcomeFilter(rawOutcome);
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   const [jobCards, isMasterAdmin] = await Promise.all([
     listJobCards(undefined, q, vehicleType),
     currentUserIsMasterAdmin(),
   ]);
+  // How each Job Card ended — completed normally, or cancelled (refunded or
+  // not). Works alongside the Passenger / Commercial filter above.
+  const outcomes = await getJobCardOutcomes(jobCards.map((jc: (typeof jobCards)[number]) => jc.id));
+  const outcomeCounts = Object.fromEntries(
+    OUTCOME_FILTERS.map((f) => [f.key, jobCards.filter((jc: (typeof jobCards)[number]) => outcomes[jc.id] && matchesOutcomeFilter(f.key, outcomes[jc.id]!.outcome, outcomes[jc.id]!.refund)).length]),
+  );
+  const shown = outcomeFilter ? jobCards.filter((jc: (typeof jobCards)[number]) => outcomes[jc.id] && matchesOutcomeFilter(outcomeFilter, outcomes[jc.id]!.outcome, outcomes[jc.id]!.refund)) : jobCards;
 
   return (
     <div className="p-8">
@@ -67,6 +78,7 @@ export default async function WorkshopJobCardsPage({
       </div>
 
       <CategoryFilterTabs basePath="/workshop/job-cards" currentType={vehicleType} preserveParams={{ q }} />
+      <OutcomeFilterTabs basePath="/workshop/job-cards" current={outcomeFilter} preserveParams={{ q, type: vehicleType }} counts={outcomeCounts} />
 
       <form className="mb-6 flex gap-2" action="/workshop/job-cards">
         {vehicleType ? <input type="hidden" name="type" value={vehicleType} /> : null}
@@ -87,11 +99,11 @@ export default async function WorkshopJobCardsPage({
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-x-auto">
-          {jobCards.length === 0 ? (
+          {shown.length === 0 ? (
             <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
               {q
                 ? `No Job Cards match "${q}".`
-                : vehicleType
+                : vehicleType || outcomeFilter
                   ? 'No Job Cards match this filter.'
                   : 'No Job Cards yet. Open the first one using the form on the right.'}
             </div>
@@ -104,11 +116,12 @@ export default async function WorkshopJobCardsPage({
                   <th className="px-4 py-3 font-medium">Vehicle</th>
                   <th className="px-4 py-3 font-medium">Technician</th>
                   <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Outcome</th>
                   {isMasterAdmin ? <th className="px-4 py-3 font-medium">&nbsp;</th> : null}
                 </tr>
               </thead>
               <tbody>
-                {jobCards.map((jc: (typeof jobCards)[number]) => (
+                {shown.map((jc: (typeof jobCards)[number]) => (
                   <tr key={jc.id} className="border-b border-[var(--ejo-border)] last:border-0">
                     <td className="px-4 py-3 font-medium">
                       <LoadingLink href={`/workshop/job-cards/${jc.id}`} className="text-[var(--ejo-primary)] hover:underline">
@@ -128,6 +141,13 @@ export default async function WorkshopJobCardsPage({
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[jc.status]}`}>
                         {STATUS_LABEL[jc.status]}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const o = outcomes[jc.id];
+                        const badge = o ? outcomeBadge(o.outcome, o.refund) : null;
+                        return badge ? <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span> : <span className="text-xs text-[var(--ejo-text-muted)]">In progress</span>;
+                      })()}
                     </td>
                     {isMasterAdmin ? (
                       <td className="px-4 py-3">
