@@ -2726,6 +2726,8 @@ model WarrantyPolicy {
   // What the provider pays for, and how they normally make it right.
   coversParts      Boolean        @default(true)
   coversLabour     Boolean        @default(true)
+  // Freight: shipping the replacement in and the failed part back.
+  coversLogistics  Boolean        @default(false)
   defaultRemedy    WarrantyRemedy @default(REIMBURSEMENT)
   // Sample terms loaded for demonstration — clearly flagged everywhere
   // until real terms replace them.
@@ -2893,6 +2895,8 @@ model WarrantyClaim {
   labourAmount      Decimal             @default(0) @db.Decimal(12, 2)
   partsAmount       Decimal             @default(0) @db.Decimal(12, 2)
   otherAmount       Decimal             @default(0) @db.Decimal(12, 2)
+  // Freight / courier for the replacement and the failed-part return.
+  logisticsAmount   Decimal             @default(0) @db.Decimal(12, 2)
   claimedAmount     Decimal             @default(0) @db.Decimal(12, 2)
   approvedAmount    Decimal?            @db.Decimal(12, 2)
   settledAmount     Decimal?            @db.Decimal(12, 2)
