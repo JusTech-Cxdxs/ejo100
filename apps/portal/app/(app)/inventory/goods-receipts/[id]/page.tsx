@@ -206,7 +206,6 @@ export default async function GoodsReceiptDetailPage({
           <WarrantyList
             warranties={grnWarranties}
             title="Warranties issued from this receipt's stock"
-            emptyText="No warranty numbers have been issued from this receipt yet — they appear here when its parts are released to customers under a warranty."
           />
         </div>
 
