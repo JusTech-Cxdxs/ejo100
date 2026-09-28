@@ -19,6 +19,7 @@ import {
   recordFailedPartReceivedFormAction,
   recordReplacementReceivedFormAction,
   recordRepairedPartReturnedFormAction,
+  recordCustomerResolutionFormAction,
 } from '@/lib/actions/warranty-claims-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
@@ -27,7 +28,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { WarrantyClaimFields } from '@/components/WarrantyClaimFields';
-import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS, REMEDY_LABEL, PART_RETURN_LABEL, coverageLabel } from '@/lib/warranty-claim-status';
+import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS, REMEDY_LABEL, PART_RETURN_LABEL, CUSTOMER_RESOLUTION_LABEL, coverageLabel } from '@/lib/warranty-claim-status';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 
 function naira(n: number): string {
@@ -47,6 +48,7 @@ const BANNER: Record<string, string> = {
   cancelled: 'Claim cancelled.',
   part_sent: 'Failed part recorded as sent to the provider.',
   part_received: 'Failed part recorded as received by the provider.',
+  resolution_set: 'What the customer received has been recorded.',
 };
 
 const ACTION_LABEL: Record<string, string> = {
@@ -65,6 +67,7 @@ const ACTION_LABEL: Record<string, string> = {
   'warranty_claim.part_received_by_provider': 'Failed part received by the provider',
   'warranty_claim.replacement_received': 'Replacement part received — claim settled',
   'warranty_claim.repaired_part_returned': 'Repaired part returned — claim settled',
+  'warranty_claim.customer_resolution_set': 'Customer outcome recorded',
 };
 
 export default async function WarrantyClaimPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string; edit?: string }> }) {
@@ -244,6 +247,7 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                   typeof meta.readinessScore === 'number' ? `Readiness ${meta.readinessScore}%` : null,
                   typeof meta.reference === 'string' && e.action === 'warranty_claim.part_sent' ? `Ref: ${meta.reference}` : null,
                   typeof meta.replacementSerial === 'string' ? `Serial: ${meta.replacementSerial}` : null,
+                  e.action === 'warranty_claim.customer_resolution_set' && typeof meta.to === 'string' ? `${meta.from ? `${CUSTOMER_RESOLUTION_LABEL[String(meta.from)] ?? meta.from} → ` : ''}${CUSTOMER_RESOLUTION_LABEL[meta.to] ?? meta.to}${typeof meta.notes === 'string' ? ` — ${meta.notes}` : ''}` : null,
                 ].filter(Boolean);
                 return { id: e.id, actionLabel: ACTION_LABEL[e.action] ?? humanizeAction(e.action), userName: e.userName, detail: parts.join(' · ') || null, dateLabel: formatDateTime(e.createdAt) };
               })}
@@ -271,6 +275,31 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                 </li>
               ))}
             </ul>
+          </div>
+
+          <div className="space-y-2 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">What the customer received</h2>
+            <p className="text-xs text-[var(--ejo-text-muted)]">Separate from what {c.provider.name} gives us.</p>
+            {c.customerResolution ? (
+              <p className="text-sm text-[var(--ejo-text)]">
+                <span className="font-medium">{CUSTOMER_RESOLUTION_LABEL[c.customerResolution]}</span>
+                {c.customerResolutionNotes ? <span className="block text-xs text-[var(--ejo-text-muted)]">{c.customerResolutionNotes}</span> : null}
+              </p>
+            ) : (
+              <p className="text-sm text-[var(--ejo-text-muted)]">Not recorded yet.</p>
+            )}
+            {roles.isStaff && c.status !== 'CANCELLED' ? (
+              <form action={recordCustomerResolutionFormAction} className="space-y-2 pt-1">
+                <FormPendingOverlay />
+                <input type="hidden" name="claimId" value={c.id} />
+                <select name="resolution" required defaultValue="" className={input}>
+                  <option value="" disabled>{c.customerResolution ? 'Change to…' : 'Choose…'}</option>
+                  {Object.entries(CUSTOMER_RESOLUTION_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <input name="notes" placeholder="Notes (needed for a goodwill refund or not covered)" className={input} />
+                <SubmitButton label={c.customerResolution ? 'Update' : 'Record'} pendingLabel="Saving…" className={btnLine} />
+              </form>
+            ) : null}
           </div>
 
           <div className="space-y-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
