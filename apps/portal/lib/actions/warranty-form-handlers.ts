@@ -20,6 +20,8 @@ import {
   requestWarrantyProviderDeletion,
   approveWarrantyProviderDeletion,
   declineWarrantyProviderDeletion,
+  sendWarrantyCertificateEmail,
+  sendWarrantyExpiryReminder,
   type WarrantyProviderInput,
 } from './warranty';
 
@@ -47,13 +49,15 @@ function coverage(formData: FormData) {
   return {
     coversParts: formData.get('coversParts') === 'true',
     coversLabour: formData.get('coversLabour') === 'true',
-    defaultRemedy: (remedy === 'REPLACEMENT' || remedy === 'REPAIR' ? remedy : 'REIMBURSEMENT') as 'REIMBURSEMENT' | 'REPLACEMENT' | 'REPAIR',
+    coversLogistics: formData.get('coversLogistics') === 'true',
+    // Empty stays empty — the server refuses it rather than guessing.
+    defaultRemedy: (['REIMBURSEMENT', 'REPLACEMENT', 'REPAIR'].includes(remedy) ? remedy : undefined) as 'REIMBURSEMENT' | 'REPLACEMENT' | 'REPAIR' | undefined,
   };
 }
 function providerInput(formData: FormData): WarrantyProviderInput {
   return {
     name: str(formData, 'name'),
-    type: (str(formData, 'type') || 'MANUFACTURER') as WarrantyProviderInput['type'],
+    type: str(formData, 'type') as WarrantyProviderInput['type'],
     contactName: str(formData, 'contactName') || undefined,
     email: str(formData, 'email') || undefined,
     phone: str(formData, 'phone') || undefined,
@@ -82,7 +86,7 @@ export async function createWarrantyPolicyFormAction(formData: FormData) {
     await createWarrantyPolicy({
       code: str(formData, 'code'),
       name: str(formData, 'name'),
-      kind: str(formData, 'kind') === 'PART' ? 'PART' : 'ASSET',
+      kind: str(formData, 'kind') as 'ASSET' | 'PART',
       providerId: str(formData, 'providerId'),
       brand: str(formData, 'brand') || undefined,
       model: str(formData, 'model') || undefined,
@@ -287,4 +291,28 @@ export async function declineWarrantyProviderDeletionFormAction(formData: FormDa
   }
   revalidatePath(`/warranty/providers/${providerId}`);
   redirect(`/warranty/providers/${providerId}?status=deletion_declined#deletion`);
+}
+
+export async function sendWarrantyCertificateEmailFormAction(formData: FormData) {
+  const id = str(formData, 'warrantyId');
+  try {
+    await sendWarrantyCertificateEmail(id);
+  } catch (err) {
+    fail(`/warranty/${id}`, err, 'Could not email the certificate.');
+  }
+  revalidatePath(`/warranty/${id}`);
+  redirect(`/warranty/${id}?status=certificate_emailed#customer-emails`);
+}
+
+export async function sendWarrantyExpiryReminderFormAction(formData: FormData) {
+  const id = str(formData, 'warrantyId');
+  const back = str(formData, 'returnTo') === 'register' ? '/warranty?filter=reminder' : `/warranty/${id}`;
+  try {
+    await sendWarrantyExpiryReminder(id);
+  } catch (err) {
+    fail(back, err, 'Could not send the reminder.');
+  }
+  revalidatePath(`/warranty/${id}`);
+  revalidatePath('/warranty');
+  redirect(`${back}${back.includes('?') ? '&' : '?'}status=reminder_sent${back.startsWith('/warranty/') ? '#customer-emails' : ''}`);
 }

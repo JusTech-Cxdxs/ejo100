@@ -4,7 +4,10 @@ import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog, getWorkshopBranchId, currentUserIsMasterAdmin, listEligibleManagersForBranch, getWorkshopOrgContext } from './workshop';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
-import { addMonths } from '@/lib/warranty-state';
+import { addMonths, warrantyCoverage, splitLines } from '@/lib/warranty-state';
+import { expiryReminderState } from '@/lib/warranty-reminders';
+import { renderCustomerWarrantyCertificateEmail } from '@/lib/email-templates/customer-warranty-certificate';
+import { renderCustomerWarrantyExpiryEmail } from '@/lib/email-templates/customer-warranty-expiry';
 
 class WarrantyActionError extends Error {}
 
@@ -134,10 +137,13 @@ export type WarrantyProviderInput = {
   notes?: string;
 };
 
+const PROVIDER_TYPES: WarrantyProviderInput['type'][] = ['MANUFACTURER', 'DISTRIBUTOR', 'COMPONENT_MAKER', 'SUPPLIER', 'INTERNAL'];
+
 export async function createWarrantyProvider(input: WarrantyProviderInput): Promise<{ id: string }> {
   const user = await requireWarrantyApprover();
   const name = input.name.trim();
   if (!name) throw new WarrantyActionError('A provider name is required.');
+  if (!PROVIDER_TYPES.includes(input.type)) throw new WarrantyActionError('Choose the provider type.');
   if (await prisma.warrantyProvider.findUnique({ where: { name }, select: { id: true } })) {
     throw new WarrantyActionError(`A provider named "${name}" already exists.`);
   }
@@ -204,6 +210,7 @@ export type WarrantyPolicyInput = {
   conditions?: string;
   coversParts?: boolean;
   coversLabour?: boolean;
+  coversLogistics?: boolean;
   defaultRemedy?: 'REIMBURSEMENT' | 'REPLACEMENT' | 'REPAIR';
   isSample?: boolean;
 };
@@ -212,6 +219,8 @@ export async function createWarrantyPolicy(input: WarrantyPolicyInput): Promise<
   const user = await requireWarrantyApprover();
   const code = input.code.trim().toUpperCase();
   if (!code || !input.name.trim()) throw new WarrantyActionError('A policy code and name are required.');
+  if (input.kind !== 'ASSET' && input.kind !== 'PART') throw new WarrantyActionError('Choose whether the policy applies to a vehicle or a part.');
+  if (!input.defaultRemedy) throw new WarrantyActionError('Choose how the provider usually makes it right (reimbursement, replacement or repair).');
   if (!Number.isInteger(input.durationMonths) || input.durationMonths < 1 || input.durationMonths > 240) {
     throw new WarrantyActionError('Duration must be between 1 and 240 months.');
   }
@@ -240,6 +249,7 @@ export async function createWarrantyPolicy(input: WarrantyPolicyInput): Promise<
       conditions: input.conditions?.trim() || null,
       coversParts: input.coversParts ?? true,
       coversLabour: input.coversLabour ?? true,
+      coversLogistics: input.coversLogistics ?? false,
       defaultRemedy: input.defaultRemedy ?? 'REIMBURSEMENT',
       isSample: Boolean(input.isSample),
       createdById: user.id,
@@ -285,7 +295,7 @@ export async function loadSampleWarrantyPolicies(): Promise<{ created: number }>
   }
   const policies: (Omit<WarrantyPolicyInput, 'providerId'> & { provider: string })[] = [
     {
-      provider: 'Foton (Sample)', code: 'SAMPLE-FOTON-VEH-36', name: 'Foton new vehicle warranty (sample)', kind: 'ASSET', brand: 'Foton', coversParts: true, coversLabour: true, defaultRemedy: 'REIMBURSEMENT',
+      provider: 'Foton (Sample)', code: 'SAMPLE-FOTON-VEH-36', name: 'Foton new vehicle warranty (sample)', kind: 'ASSET', brand: 'Foton', coversParts: true, coversLabour: true, coversLogistics: true, defaultRemedy: 'REIMBURSEMENT',
       durationMonths: 36, distanceLimit: 100000,
       coverageSummary: 'Engine\nTransmission\nDrive axle\nSteering system\nElectrical system\nEngine control unit (ECU)',
       exclusions: 'Brake pads and clutch disc\nFilters, belts, bulbs and wiper blades\nTyres\nFluids and consumables\nAccident or misuse damage\nUnauthorised modifications',
@@ -641,7 +651,7 @@ export type UpdateWarrantyPolicyInput = Omit<WarrantyPolicyInput, 'code' | 'isSa
 const POLICY_FIELD_LABEL: Record<string, string> = {
   name: 'Name', kind: 'Applies to', providerId: 'Provider', brand: 'Brand', model: 'Model', durationMonths: 'Months',
   distanceLimit: 'Km limit', coverageSummary: 'Covered', exclusions: 'Not covered', conditions: 'Conditions',
-  coversParts: 'Covers parts', coversLabour: 'Covers labour', defaultRemedy: 'Remedy',
+  coversParts: 'Covers parts', coversLabour: 'Covers labour', coversLogistics: 'Covers logistics', defaultRemedy: 'Remedy',
 };
 
 /** Edit a policy. Its code is its fixed identity; its type can't change
@@ -683,6 +693,7 @@ export async function updateWarrantyPolicy(policyId: string, input: UpdateWarran
     conditions: input.conditions?.trim() || null,
     coversParts: input.coversParts ?? true,
     coversLabour: input.coversLabour ?? true,
+    coversLogistics: input.coversLogistics ?? false,
     defaultRemedy: input.defaultRemedy ?? 'REIMBURSEMENT',
   };
   if (!next.coversParts && !next.coversLabour) throw new WarrantyActionError('A policy must cover parts, labour, or both.');
@@ -918,6 +929,7 @@ export async function updateWarrantyProvider(providerId: string, input: Warranty
   if (before.archivedAt) throw new WarrantyActionError('This provider is archived — it can no longer be edited.');
   const name = input.name.trim();
   if (!name) throw new WarrantyActionError('A provider name is required.');
+  if (!PROVIDER_TYPES.includes(input.type)) throw new WarrantyActionError('Choose the provider type.');
   if (name !== before.name && (await prisma.warrantyProvider.findUnique({ where: { name }, select: { id: true } }))) {
     throw new WarrantyActionError(`A provider named "${name}" already exists.`);
   }
@@ -1085,4 +1097,173 @@ export async function declineWarrantyProviderDeletion(requestId: string, reason:
   await writeAuditLog({ userId: user.id, action: 'warranty_provider.deletion_declined', entityType: 'WarrantyProvider', entityId: req.providerId ?? requestId, metadata: { name: req.providerName, reason: why } });
   const requester = await prisma.user.findUnique({ where: { id: req.requestedById }, select: { fullName: true, email: true } });
   if (requester) await notifyStaff([requester], `Deletion declined — warranty provider ${req.providerName}`, 'Your provider deletion request was declined', [req.providerName, `Reason: ${why}`], `/warranty/providers/${req.providerId ?? ''}`);
+}
+
+// ── Provider search (for the strict, searchable provider dropdown) ────
+
+/** Active, current providers matching the text — only these can be
+ * picked for a new policy. */
+export async function searchWarrantyProviderOptions(query: string): Promise<{ value: string; label: string; sublabel?: string }[]> {
+  await requireUser();
+  const q = query.trim();
+  const rows = await prisma.warrantyProvider.findMany({
+    where: { isActive: true, archivedAt: null, ...(q ? { name: { contains: q, mode: 'insensitive' } } : {}) },
+    orderBy: { name: 'asc' },
+    take: 20,
+    select: { id: true, name: true, type: true },
+  });
+  return rows.map((r: (typeof rows)[number]) => ({ value: r.id, label: r.name, sublabel: r.type.replace(/_/g, ' ').toLowerCase() }));
+}
+
+export async function loadWarrantyProviderOptions(): Promise<{ value: string; label: string; sublabel?: string }[]> {
+  return searchWarrantyProviderOptions('');
+}
+
+// ── Customer warranty emails (semi-automatic; no staff names) ─────────
+
+function fmtDate(d: Date): string {
+  return new Date(d).toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Lagos' });
+}
+
+async function loadForCustomerEmail(warrantyId: string) {
+  const w = await prisma.warranty.findUnique({
+    where: { id: warrantyId },
+    select: {
+      id: true, warrantyNumber: true, status: true, startsAt: true, endsAt: true, startReading: true, distanceLimit: true, statusReason: true,
+      subjectDescription: true, coverageSnapshot: true, exclusionsSnapshot: true, conditionsSnapshot: true,
+      customer: { select: { fullName: true, email: true } },
+      vehicle: { select: { mileage: true } },
+      provider: { select: { name: true } },
+      policy: { select: { isSample: true } },
+    },
+  });
+  if (!w) throw new WarrantyActionError('Warranty not found.');
+  return w;
+}
+
+/** Everything sent to the customer for one warranty — who sent it and when
+ * (internal), plus the reminder schedule. */
+export async function getWarrantyEmailState(warrantyId: string) {
+  await requireUser();
+  const w = await loadForCustomerEmail(warrantyId);
+  const entries = await prisma.auditLog.findMany({
+    where: { entityType: 'Warranty', entityId: warrantyId, action: { in: ['warranty.certificate_emailed', 'warranty.expiry_reminder_sent'] } },
+    orderBy: { createdAt: 'asc' },
+    select: { action: true, createdAt: true, userId: true, metadata: true },
+  });
+  const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
+  const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
+  const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
+  const rows = entries.map((e: (typeof entries)[number]) => ({ action: e.action, at: e.createdAt, by: e.userId ? name.get(e.userId) ?? null : null, stage: Number((e.metadata as { stage?: number } | null)?.stage ?? 0) }));
+  const cov = warrantyCoverage(w, w.vehicle?.mileage ?? null);
+  const covering = cov.state === 'COVERED' || cov.state === 'EXPIRING_SOON';
+  const sentStages = rows.filter((r) => r.action === 'warranty.expiry_reminder_sent').map((r) => r.stage);
+  return {
+    hasEmail: Boolean(w.customer.email),
+    covering,
+    certificates: rows.filter((r) => r.action === 'warranty.certificate_emailed'),
+    reminders: rows.filter((r) => r.action === 'warranty.expiry_reminder_sent'),
+    schedule: expiryReminderState(w.endsAt, sentStages, covering),
+  };
+}
+
+/** Email the warranty certificate to the customer (can be re-sent — each
+ * send is recorded). Only for an active warranty. */
+export async function sendWarrantyCertificateEmail(warrantyId: string): Promise<void> {
+  const user = await requireWarrantyStaff();
+  const w = await loadForCustomerEmail(warrantyId);
+  if (w.status !== 'ACTIVE') throw new WarrantyActionError('Only an active (verified) warranty can be sent to the customer.');
+  if (!w.customer.email) throw new WarrantyActionError('The customer has no email address on file.');
+  const previous = await prisma.auditLog.count({ where: { entityType: 'Warranty', entityId: warrantyId, action: 'warranty.certificate_emailed' } });
+  const orgContext = await getWorkshopOrgContext();
+  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const distanceEnd = w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null;
+  await sendEmail(
+    w.customer.email,
+    `Your warranty certificate ${w.warrantyNumber}`,
+    renderCustomerWarrantyCertificateEmail({
+      customerName: w.customer.fullName,
+      warrantyNumber: w.warrantyNumber,
+      subject: w.subjectDescription,
+      providerName: w.provider.name,
+      validFrom: fmtDate(w.startsAt),
+      validUntil: `${fmtDate(w.endsAt)}${distanceEnd !== null ? ` or ${distanceEnd.toLocaleString('en-NG')} km, whichever comes first` : ''}`,
+      covered: splitLines(w.coverageSnapshot),
+      notCovered: splitLines(w.exclusionsSnapshot),
+      conditions: splitLines(w.conditionsSnapshot),
+      isSample: w.policy.isSample,
+      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      companyName: orgContext.companyName,
+      branchName: orgContext.branchName,
+    }),
+  );
+  await writeAuditLog({ userId: user.id, action: 'warranty.certificate_emailed', entityType: 'Warranty', entityId: warrantyId, metadata: { warrantyNumber: w.warrantyNumber, number: previous + 1, to: w.customer.email } });
+}
+
+/** Send the expiry reminder that is due now (90 / 30 / 7 days before the
+ * end) — refused when none is due, with the date the next one opens. */
+export async function sendWarrantyExpiryReminder(warrantyId: string): Promise<void> {
+  const user = await requireWarrantyStaff();
+  const w = await loadForCustomerEmail(warrantyId);
+  if (!w.customer.email) throw new WarrantyActionError('The customer has no email address on file.');
+  const sent = await prisma.auditLog.findMany({ where: { entityType: 'Warranty', entityId: warrantyId, action: 'warranty.expiry_reminder_sent' }, select: { metadata: true } });
+  const sentStages = sent.map((e: { metadata: unknown }) => Number((e.metadata as { stage?: number } | null)?.stage ?? 0));
+  const cov = warrantyCoverage(w, w.vehicle?.mileage ?? null);
+  const covering = cov.state === 'COVERED' || cov.state === 'EXPIRING_SOON';
+  const state = expiryReminderState(w.endsAt, sentStages, covering);
+  if (!state.dueStage) {
+    throw new WarrantyActionError(
+      !covering
+        ? 'This warranty is not currently covering anything, so no expiry reminder applies.'
+        : state.nextDueFrom
+          ? `No reminder is due yet — the next one can be sent from ${fmtDate(state.nextDueFrom)}.`
+          : 'All expiry reminders for this warranty have been sent.',
+    );
+  }
+  const orgContext = await getWorkshopOrgContext();
+  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const distanceEnd = w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null;
+  const daysLeft = Math.max(0, Math.ceil((new Date(w.endsAt).getTime() - Date.now()) / 86400000));
+  const number = sentStages.length + 1;
+  await sendEmail(
+    w.customer.email,
+    `Your warranty ${w.warrantyNumber} ends on ${fmtDate(w.endsAt)}`,
+    renderCustomerWarrantyExpiryEmail({
+      customerName: w.customer.fullName,
+      warrantyNumber: w.warrantyNumber,
+      subject: w.subjectDescription,
+      endsOn: fmtDate(w.endsAt),
+      distanceEnd: distanceEnd !== null ? `${distanceEnd.toLocaleString('en-NG')} km` : null,
+      daysLeft,
+      reminderNumber: number,
+      isFinal: state.dueStage === 3,
+      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      companyName: orgContext.companyName,
+      branchName: orgContext.branchName,
+    }),
+  );
+  await writeAuditLog({ userId: user.id, action: 'warranty.expiry_reminder_sent', entityType: 'Warranty', entityId: warrantyId, metadata: { warrantyNumber: w.warrantyNumber, stage: state.dueStage, number, daysLeft } });
+}
+
+/** Ids of active warranties with an expiry reminder due now — the
+ * register's "Reminder due" filter and count. */
+export async function listWarrantyIdsWithReminderDue(): Promise<string[]> {
+  await requireUser();
+  const soon = new Date(Date.now() + 91 * 86400000);
+  const rows = await prisma.warranty.findMany({
+    where: { status: 'ACTIVE', endsAt: { gt: new Date(), lte: soon } },
+    select: { id: true, status: true, startsAt: true, endsAt: true, startReading: true, distanceLimit: true, vehicle: { select: { mileage: true } } },
+  });
+  if (rows.length === 0) return [];
+  const sent = await prisma.auditLog.findMany({
+    where: { entityType: 'Warranty', entityId: { in: rows.map((r: (typeof rows)[number]) => r.id) }, action: 'warranty.expiry_reminder_sent' },
+    select: { entityId: true, metadata: true },
+  });
+  return rows
+    .filter((r: (typeof rows)[number]) => {
+      const cov = warrantyCoverage(r, r.vehicle?.mileage ?? null);
+      const stages = sent.filter((e: { entityId: string | null }) => e.entityId === r.id).map((e: { metadata: unknown }) => Number((e.metadata as { stage?: number } | null)?.stage ?? 0));
+      return expiryReminderState(r.endsAt, stages, cov.state === 'COVERED' || cov.state === 'EXPIRING_SOON').dueStage !== null;
+    })
+    .map((r: (typeof rows)[number]) => r.id);
 }

@@ -42,6 +42,7 @@ function readInput(formData: FormData): WarrantyClaimInput {
     labourAmount: num(formData, 'labourAmount'),
     partsAmount: num(formData, 'partsAmount'),
     otherAmount: num(formData, 'otherAmount'),
+    logisticsAmount: num(formData, 'logisticsAmount'),
     jobCardId: str(formData, 'jobCardId') || undefined,
     vehicleServiceId: str(formData, 'vehicleServiceId') || undefined,
     remedy: (['REIMBURSEMENT', 'REPLACEMENT', 'REPAIR'].includes(str(formData, 'remedy')) ? str(formData, 'remedy') : undefined) as WarrantyClaimInput['remedy'],

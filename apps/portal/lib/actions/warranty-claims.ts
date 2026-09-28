@@ -81,6 +81,7 @@ export type WarrantyClaimInput = {
   labourAmount: number;
   partsAmount: number;
   otherAmount: number;
+  logisticsAmount?: number;
   jobCardId?: string;
   vehicleServiceId?: string;
   remedy?: 'REIMBURSEMENT' | 'REPLACEMENT' | 'REPAIR';
@@ -95,10 +96,10 @@ function cleanInput(input: WarrantyClaimInput) {
   if (input.failureReading !== undefined && (!Number.isInteger(input.failureReading) || input.failureReading < 0)) {
     throw new WarrantyClaimError('The odometer at failure must be a whole number of km.');
   }
-  const amounts = [input.labourAmount, input.partsAmount, input.otherAmount].map((a) => round2(Number(a) || 0));
+  const amounts = [input.labourAmount, input.partsAmount, input.otherAmount, input.logisticsAmount ?? 0].map((a) => round2(Number(a) || 0));
   if (amounts.some((a) => a < 0)) throw new WarrantyClaimError('Amounts cannot be negative.');
   if (input.jobCardId && input.vehicleServiceId) throw new WarrantyClaimError('Link the claim to a Job Card or a Vehicle Service, not both.');
-  const [labourAmount, partsAmount, otherAmount] = amounts as [number, number, number];
+  const [labourAmount, partsAmount, otherAmount, logisticsAmount] = amounts as [number, number, number, number];
   return {
     complaint: input.complaint.trim(),
     cause: input.cause.trim(),
@@ -110,7 +111,8 @@ function cleanInput(input: WarrantyClaimInput) {
     labourAmount,
     partsAmount,
     otherAmount,
-    claimedAmount: round2(labourAmount + partsAmount + otherAmount),
+    logisticsAmount,
+    claimedAmount: round2(labourAmount + partsAmount + otherAmount + logisticsAmount),
     jobCardId: input.jobCardId || null,
     vehicleServiceId: input.vehicleServiceId || null,
     ...(input.remedy ? { remedy: REMEDIES.includes(input.remedy) ? input.remedy : 'REIMBURSEMENT' } : {}),
@@ -159,12 +161,12 @@ export async function updateWarrantyClaim(claimId: string, input: WarrantyClaimI
 async function loadForReadiness(claimId: string) {
   const claim = await prisma.warrantyClaim.findUnique({
     where: { id: claimId },
-    include: { warranty: { select: { status: true, startsAt: true, endsAt: true, startReading: true, distanceLimit: true, policy: { select: { isSample: true, coversParts: true, coversLabour: true } } } } },
+    include: { warranty: { select: { status: true, startsAt: true, endsAt: true, startReading: true, distanceLimit: true, policy: { select: { isSample: true, coversParts: true, coversLabour: true, coversLogistics: true } } } } },
   });
   if (!claim) throw new WarrantyClaimError('Claim not found.');
   const readiness = claimReadiness(
-    { ...claim, labourAmount: Number(claim.labourAmount), partsAmount: Number(claim.partsAmount), otherAmount: Number(claim.otherAmount) },
-    { ...claim.warranty, isSamplePolicy: claim.warranty.policy.isSample, coversParts: claim.warranty.policy.coversParts, coversLabour: claim.warranty.policy.coversLabour },
+    { ...claim, labourAmount: Number(claim.labourAmount), partsAmount: Number(claim.partsAmount), otherAmount: Number(claim.otherAmount), logisticsAmount: Number(claim.logisticsAmount) },
+    { ...claim.warranty, isSamplePolicy: claim.warranty.policy.isSample, coversParts: claim.warranty.policy.coversParts, coversLabour: claim.warranty.policy.coversLabour, coversLogistics: claim.warranty.policy.coversLogistics },
   );
   return { claim, readiness };
 }
@@ -450,7 +452,7 @@ export async function getWarrantyClaim(claimId: string) {
         select: {
           id: true, warrantyNumber: true, subjectDescription: true, kind: true, status: true, startsAt: true, endsAt: true, startReading: true, distanceLimit: true,
           coverageSnapshot: true, exclusionsSnapshot: true, conditionsSnapshot: true, partSerial: { select: { serialNumber: true } },
-          policy: { select: { id: true, code: true, name: true, isSample: true, coversParts: true, coversLabour: true, defaultRemedy: true } },
+          policy: { select: { id: true, code: true, name: true, isSample: true, coversParts: true, coversLabour: true, coversLogistics: true, defaultRemedy: true } },
         },
       },
       provider: { select: { id: true, name: true, type: true, contactName: true, email: true, phone: true, claimSubmissionDays: true, partRetentionDays: true } },
@@ -473,8 +475,8 @@ export async function getWarrantyClaim(claimId: string) {
       ])
     : [[], []];
   const readiness = claimReadiness(
-    { ...claim, labourAmount: Number(claim.labourAmount), partsAmount: Number(claim.partsAmount), otherAmount: Number(claim.otherAmount) },
-    { status: claim.warranty.status, startsAt: claim.warranty.startsAt, endsAt: claim.warranty.endsAt, startReading: claim.warranty.startReading, distanceLimit: claim.warranty.distanceLimit, isSamplePolicy: claim.warranty.policy.isSample, coversParts: claim.warranty.policy.coversParts, coversLabour: claim.warranty.policy.coversLabour },
+    { ...claim, labourAmount: Number(claim.labourAmount), partsAmount: Number(claim.partsAmount), otherAmount: Number(claim.otherAmount), logisticsAmount: Number(claim.logisticsAmount) },
+    { status: claim.warranty.status, startsAt: claim.warranty.startsAt, endsAt: claim.warranty.endsAt, startReading: claim.warranty.startReading, distanceLimit: claim.warranty.distanceLimit, isSamplePolicy: claim.warranty.policy.isSample, coversParts: claim.warranty.policy.coversParts, coversLabour: claim.warranty.policy.coversLabour, coversLogistics: claim.warranty.policy.coversLogistics },
   );
   return { ...claim, serviceHistory: history[0], repairHistory: history[1], readiness };
 }
