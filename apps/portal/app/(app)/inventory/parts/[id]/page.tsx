@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
-import { listWarrantyPolicies } from '@/lib/actions/warranty';
+import { WarrantyList } from '@/components/WarrantyList';
+import { listWarrantyPolicies, listWarrantiesFor } from '@/lib/actions/warranty';
 import { setPartWarrantyPolicyFormAction } from '@/lib/actions/warranty-form-handlers';
 import { getPart, getPartAuditTrail } from '@/lib/actions/store';
 import { getLastEditInfo } from '@/lib/actions/workshop';
@@ -54,7 +55,7 @@ export default async function PartDetailPage({
   const { id } = await params;
   const { error, status, editFitmentId } = await searchParams;
   const part = await getPart(id);
-  const partWarrantyPolicies = await listWarrantyPolicies('PART');
+  const [partWarrantyPolicies, partWarranties] = await Promise.all([listWarrantyPolicies('PART'), listWarrantiesFor({ partId: id })]);
   if (!part) notFound();
   const [lastEdit, auditTrail] = await Promise.all([getLastEditInfo('Part', id, 'part.updated'), getPartAuditTrail(id)]);
 
@@ -156,11 +157,12 @@ export default async function PartDetailPage({
                   <SubmitButton label="Save warranty" pendingLabel="Saving…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]" />
                 </form>
                 <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">
-                  Workshop Managers and Master Administrators set warranties. Parts already released keep the warranty they were issued with.
+                  The Warranty HOD, Branch Manager or Master Administrator sets warranties. Parts already released keep the warranty they were issued with.
                 </p>
               </div>
             );
           })()}
+          <WarrantyList warranties={partWarranties} title="Warranties issued for this part" emptyText="No units of this part have been released under a warranty yet." />
           {part.trackingType === 'BATCH' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Batches</h2>
