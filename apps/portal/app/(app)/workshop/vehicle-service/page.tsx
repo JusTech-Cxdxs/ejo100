@@ -1,4 +1,7 @@
 import { headers } from 'next/headers';
+import { getVehicleServiceOutcomes } from '@/lib/actions/visit-outcomes';
+import { OutcomeFilterTabs } from '@/components/OutcomeFilterTabs';
+import { matchesOutcomeFilter, outcomeBadge, parseOutcomeFilter, OUTCOME_FILTERS } from '@/lib/visit-outcome';
 import { pluralize } from '@/lib/utils/pluralize';
 import { auth } from '@/lib/auth';
 import { prisma } from '@ejo/database';
@@ -49,9 +52,10 @@ const STATUS_CLASS: Record<string, string> = {
 export default async function VehicleServicePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; error?: string; status?: string; editInterval?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; error?: string; status?: string; editInterval?: string; outcome?: string }>;
 }) {
-  const { q, type, error, status, editInterval } = await searchParams;
+  const { q, type, error, status, editInterval, outcome: rawOutcome } = await searchParams;
+  const outcomeFilter = parseOutcomeFilter(rawOutcome);
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   const branchId = await getWorkshopBranchId().catch(() => null);
   const session = await auth.api.getSession({ headers: await headers() });
@@ -69,6 +73,13 @@ export default async function VehicleServicePage({
     branchId ? listVehicleServices(branchId, q, vehicleType) : Promise.resolve([]),
     branchId ? listVehiclesDueForService(branchId) : Promise.resolve([]),
   ]);
+  // How each service ended — completed normally, cancelled (refunded or
+  // not), or escalated. Works alongside the Passenger / Commercial filter.
+  const outcomes = await getVehicleServiceOutcomes(services.map((s: (typeof services)[number]) => s.id));
+  const outcomeCounts = Object.fromEntries(
+    OUTCOME_FILTERS.map((f) => [f.key, services.filter((s: (typeof services)[number]) => outcomes[s.id] && matchesOutcomeFilter(f.key, outcomes[s.id]!.outcome, outcomes[s.id]!.refund)).length]),
+  );
+  const shown = outcomeFilter ? services.filter((s: (typeof services)[number]) => outcomes[s.id] && matchesOutcomeFilter(outcomeFilter, outcomes[s.id]!.outcome, outcomes[s.id]!.refund)) : services;
 
   return (
     <div className="p-8">
@@ -180,6 +191,7 @@ export default async function VehicleServicePage({
       ) : null}
 
       <CategoryFilterTabs basePath="/workshop/vehicle-service" currentType={vehicleType} preserveParams={{ q }} />
+      <OutcomeFilterTabs basePath="/workshop/vehicle-service" current={outcomeFilter} preserveParams={{ q, type: vehicleType }} counts={outcomeCounts} />
 
       <form className="mb-6 flex gap-2" action="/workshop/vehicle-service">
         {vehicleType ? <input type="hidden" name="type" value={vehicleType} /> : null}
@@ -200,9 +212,9 @@ export default async function VehicleServicePage({
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-x-auto">
-          {services.length === 0 ? (
+          {shown.length === 0 ? (
             <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
-              {q || vehicleType ? 'No Vehicle Service matches this search or filter.' : 'No Vehicle Service records yet.'}
+              {q || vehicleType || outcomeFilter ? 'No Vehicle Service matches this search or filter.' : 'No Vehicle Service records yet.'}
             </div>
           ) : (
             <table className="w-full text-sm">
@@ -212,11 +224,12 @@ export default async function VehicleServicePage({
                   <th className="px-4 py-3 font-medium">Customer</th>
                   <th className="px-4 py-3 font-medium">Vehicle</th>
                   <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Outcome</th>
                   <th className="px-4 py-3 font-medium">Opened</th>
                 </tr>
               </thead>
               <tbody>
-                {services.map((s: (typeof services)[number]) => (
+                {shown.map((s: (typeof services)[number]) => (
                   <tr key={s.id} className="border-b border-[var(--ejo-border)] last:border-0 hover:bg-[var(--ejo-bg)]">
                     <td className="px-4 py-3">
                       <LoadingLink href={`/workshop/vehicle-service/${s.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">
@@ -238,6 +251,13 @@ export default async function VehicleServicePage({
                       >
                         {s.escalatedToJobCard ? 'Escalated' : STATUS_LABEL[s.status]}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const o = outcomes[s.id];
+                        const badge = o ? outcomeBadge(o.outcome, o.refund) : null;
+                        return badge ? <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span> : <span className="text-xs text-[var(--ejo-text-muted)]">In progress</span>;
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{formatDateOnly(s.createdAt)}</td>
                   </tr>
