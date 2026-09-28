@@ -65,7 +65,7 @@ export function SupervisorPicker({ vehicleType, defaultSupervisorId }: { vehicle
         </p>
       ) : supervisors.length === 0 ? (
         <p className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 px-3 py-2 text-xs text-[var(--ejo-error)]">
-          No eligible supervisor or Master Administrator is currently active.
+          No eligible supervisor is currently active.
         </p>
       ) : (
         <select

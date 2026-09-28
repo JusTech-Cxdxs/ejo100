@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { SearchableSelect, type SearchableOption } from '@/components/SearchableSelect';
 
 export type PartPolicyOption = { id: string; name: string; code: string; months: number; km: number | null; covers: string; remedy: string; provider: string; isSample: boolean };
 
@@ -10,7 +11,15 @@ export type PartPolicyOption = { id: string; name: string; code: string; months:
  * attach; every unit released to a customer then gets its own warranty
  * number automatically.
  */
-export function PartWarrantyChoice({ policies }: { policies: PartPolicyOption[] }) {
+export function PartWarrantyChoice({
+  policies,
+  search,
+  loadDefaultOptions,
+}: {
+  policies: PartPolicyOption[];
+  search: (query: string) => Promise<SearchableOption[]>;
+  loadDefaultOptions: () => Promise<SearchableOption[]>;
+}) {
   const [choice, setChoice] = useState('');
   const [policyId, setPolicyId] = useState('');
   const picked = policies.find((p) => p.id === policyId);
@@ -31,14 +40,17 @@ export function PartWarrantyChoice({ policies }: { policies: PartPolicyOption[] 
         ) : (
           <>
             <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Warranty policy</label>
-            <select name="warrantyPolicyId" required value={policyId} onChange={(e) => setPolicyId(e.target.value)} className={input}>
-              <option value="" disabled>Choose a policy…</option>
-              {policies.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} — {p.months} months{p.km ? ` / ${p.km.toLocaleString('en-NG')} km` : ''}{p.isSample ? ' (sample)' : ''}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              name="warrantyPolicyId"
+              required
+              search={search}
+              loadDefaultOptions={loadDefaultOptions}
+              defaultOptionsLabel="Active part policies"
+              placeholder="Search policies by name, code or provider…"
+              emptyMessage="No active part policy matches."
+              minQueryLength={1}
+              onChange={setPolicyId}
+            />
             {picked ? (
               <p className="text-xs text-[var(--ejo-text-muted)]">
                 {picked.code} · {picked.provider} · pays for {picked.covers} · remedy: {picked.remedy}. Every unit released to a customer gets its own warranty number.
