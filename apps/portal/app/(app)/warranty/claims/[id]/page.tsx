@@ -143,7 +143,7 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                 defaults={{
                   complaint: c.complaint, cause: c.cause, correction: c.correction, causalPart: c.causalPart, causalPartNumber: c.causalPartNumber,
                   failureDate: new Date(c.failureDate).toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }), failureReading: c.failureReading,
-                  labourAmount: Number(c.labourAmount), partsAmount: Number(c.partsAmount), otherAmount: Number(c.otherAmount),
+                  labourAmount: Number(c.labourAmount), partsAmount: Number(c.partsAmount), otherAmount: Number(c.otherAmount), logisticsAmount: Number(c.logisticsAmount),
                   jobCardId: c.jobCardId, vehicleServiceId: c.vehicleServiceId,
                   remedy: c.remedy, partReturnRequired: c.partReturnRequired,
                 }}
@@ -170,6 +170,7 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                   <tr><td className="py-1 text-[var(--ejo-text-muted)]">Labour</td><td className="py-1 text-right">{naira(Number(c.labourAmount))}</td></tr>
                   <tr><td className="py-1 text-[var(--ejo-text-muted)]">Parts</td><td className="py-1 text-right">{naira(Number(c.partsAmount))}</td></tr>
                   <tr><td className="py-1 text-[var(--ejo-text-muted)]">Other (incl. fluids)</td><td className="py-1 text-right">{naira(Number(c.otherAmount))}</td></tr>
+                  <tr><td className="py-1 text-[var(--ejo-text-muted)]">Logistics (freight)</td><td className="py-1 text-right">{naira(Number(c.logisticsAmount))}</td></tr>
                   <tr className="border-t border-[var(--ejo-border)] font-semibold"><td className="py-1">Claimed</td><td className="py-1 text-right">{naira(claimed)}</td></tr>
                   {approved !== null ? <tr><td className="py-1 text-[var(--ejo-text-muted)]">Approved by the provider</td><td className="py-1 text-right">{naira(approved)}</td></tr> : null}
                   {settled !== null ? <tr><td className="py-1 text-[var(--ejo-text-muted)]">Received</td><td className="py-1 text-right text-[var(--ejo-success)]">{naira(settled)}</td></tr> : null}
