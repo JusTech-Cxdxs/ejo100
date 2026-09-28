@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { listWarrantiesFor } from '@/lib/actions/warranty';
+import { WarrantiesIssuedPrint } from '@/components/print/WarrantiesIssuedPrint';
 import { getVehicleService, getVehicleServiceCloseRequests } from '@/lib/actions/vehicle-service';
 import { getServiceEstimate } from '@/lib/actions/vehicle-service-estimate';
 import { getVehicleServicePayments } from '@/lib/actions/vehicle-service-payment';
@@ -66,6 +68,7 @@ export default async function PrintVehicleServicePage({
     getVehicleServiceSourcingNeeds(id),
     getOrganisation(),
   ]);
+  const issuedWarranties = await listWarrantiesFor({ vehicleServiceId: id });
   if (!service || !organisation) notFound();
   if (service.status !== 'COLLECTED') notFound();
 
@@ -273,6 +276,7 @@ export default async function PrintVehicleServicePage({
         </div>
       ) : null}
 
+      <WarrantiesIssuedPrint warranties={issuedWarranties} />
       <SignatureBlock
         issuerLabel="Released By (Workshop)"
         issuerName={service.supervisor?.fullName ?? service.assignedTechnician?.fullName ?? null}
