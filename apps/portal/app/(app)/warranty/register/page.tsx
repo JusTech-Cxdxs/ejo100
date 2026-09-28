@@ -1,4 +1,5 @@
 import { prisma } from '@ejo/database';
+import { durationLabel } from '@/lib/warranty-state';
 import { requireUser } from '@/lib/actions/workshop';
 import { listWarrantyPolicies, listWarrantiesFor } from '@/lib/actions/warranty';
 import { registerAssetWarrantyFormAction } from '@/lib/actions/warranty-form-handlers';
@@ -105,7 +106,7 @@ export default async function RegisterWarrantyPage({ searchParams }: { searchPar
                 <select name="policyId" required className={input}>
                   {active.map((p: (typeof active)[number]) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} — {p.durationMonths} months{p.distanceLimit ? ` / ${p.distanceLimit.toLocaleString('en-NG')} km` : ''} ({p.provider.name}){p.isSample ? ' — SAMPLE' : ''}
+                      {p.name} — {durationLabel(p)}{p.distanceLimit ? ` / ${p.distanceLimit.toLocaleString('en-NG')} km` : ''} ({p.provider.name}){p.isSample ? ' — SAMPLE' : ''}
                     </option>
                   ))}
                 </select>
