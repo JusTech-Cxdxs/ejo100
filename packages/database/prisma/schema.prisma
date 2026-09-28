@@ -2717,7 +2717,10 @@ model WarrantyPolicy {
   providerId       String
   brand            String?
   model            String?
+  // The duration AMOUNT, in durationUnit (the column keeps its original
+  // name so existing data is untouched — historically always months).
   durationMonths   Int
+  durationUnit     WarrantyDurationUnit @default(MONTHS)
   // Distance limit from the start reading (km in automotive); null = unlimited.
   distanceLimit    Int?
   coverageSummary  String
@@ -2922,6 +2925,11 @@ model WarrantyClaim {
   // those remedies).
   replacementSerial String?
   remedyNotes       String?
+  // What the CUSTOMER received (separate from what the provider gives
+  // us): repaired or replaced at no charge, a goodwill refund, paid, or
+  // not covered — recorded whenever it's known.
+  customerResolution      CustomerResolution?
+  customerResolutionNotes String?
   createdById       String
   reviewRequestedAt DateTime?
   hodApprovedById   String?
@@ -2992,4 +3000,21 @@ model WarrantyProviderDeletionRequest {
   @@index([providerId])
   @@index([status])
   @@map("warranty_provider_deletion_requests")
+}
+
+// How long a policy lasts: calendar days, working days (Mon–Fri — e.g.
+// workshop goodwill "5 working days after checkout") or months.
+enum WarrantyDurationUnit {
+  DAYS
+  WORKING_DAYS
+  MONTHS
+}
+
+// What the customer received for a warranty problem.
+enum CustomerResolution {
+  REPAIRED_NO_CHARGE
+  REPLACED_NO_CHARGE
+  GOODWILL_REFUND
+  CUSTOMER_PAID
+  NOT_COVERED
 }
