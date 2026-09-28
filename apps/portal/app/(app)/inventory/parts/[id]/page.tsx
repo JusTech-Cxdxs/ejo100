@@ -35,6 +35,7 @@ const PART_AUDIT_ACTION_LABEL: Record<string, string> = {
   'part.selling_price_set': 'Selling price updated',
   'part.target_margin_set': 'Target margin updated',
   'part.warranty_policy_set': 'Warranty changed',
+  'part.stock_levels_set': 'Stock levels changed',
 };
 
 function formatQty(value: unknown): string {
@@ -926,6 +927,15 @@ export default async function PartDetailPage({
                 {auditTrail.map((entry: (typeof auditTrail)[number]) => (
                   <li key={entry.id} className="text-sm">
                     <p className="font-medium text-[var(--ejo-text)]">{PART_AUDIT_ACTION_LABEL[entry.action] ?? humanizeAction(entry.action)}</p>
+                    {entry.action === 'part.stock_levels_set' && entry.metadata && typeof entry.metadata === 'object' ? (
+                      <p className="text-xs text-[var(--ejo-text)]">
+                        {(() => {
+                          const m = entry.metadata as { from?: { reorderPoint?: number | null; safetyStock?: number | null }; to?: { reorderPoint?: number | null; safetyStock?: number | null } };
+                          const f = (v: number | null | undefined) => (v === null || v === undefined ? 'not set' : String(v));
+                          return `Reorder ${f(m.from?.reorderPoint)} → ${f(m.to?.reorderPoint)} · safety ${f(m.from?.safetyStock)} → ${f(m.to?.safetyStock)}`;
+                        })()}
+                      </p>
+                    ) : null}
                     {entry.action === 'part.warranty_policy_set' && entry.metadata && typeof entry.metadata === 'object' ? (
                       <p className="text-xs text-[var(--ejo-text)]">
                         {policyLabel((entry.metadata as { from?: unknown }).from)} → {policyLabel((entry.metadata as { to?: unknown }).to)}
