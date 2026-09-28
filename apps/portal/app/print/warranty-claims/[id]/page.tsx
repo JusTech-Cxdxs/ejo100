@@ -5,7 +5,7 @@ import { getOrganisation } from '@/lib/actions/organisation';
 import { getWorkshopBranchId } from '@/lib/actions/workshop';
 import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/print/DocumentHeader';
 import { PrintOnLoad } from '@/components/print/PrintOnLoad';
-import { CLAIM_STATUS_LABEL, REMEDY_LABEL, PART_RETURN_LABEL } from '@/lib/warranty-claim-status';
+import { CLAIM_STATUS_LABEL, REMEDY_LABEL, PART_RETURN_LABEL, CUSTOMER_RESOLUTION_LABEL } from '@/lib/warranty-claim-status';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 
 function naira(n: number): string {
@@ -115,6 +115,7 @@ export default async function PrintWarrantyClaimPage({ params, searchParams }: {
           <div>Warranty HOD: {c.hodApprovedBy ? `${c.hodApprovedBy.fullName} · ${formatDateTime(c.hodApprovedAt as Date)}` : 'pending'}</div>
           <div>Branch Manager: {c.managerApprovedBy ? `${c.managerApprovedBy.fullName} · ${formatDateTime(c.managerApprovedAt as Date)}` : 'pending'}</div>
           {c.submittedBy ? <div>Submitted by {c.submittedBy.fullName} · {formatDateTime(c.submittedAt as Date)}</div> : null}
+          <div>Customer received: {c.customerResolution ? `${CUSTOMER_RESOLUTION_LABEL[c.customerResolution]}${c.customerResolutionNotes ? ` — ${c.customerResolutionNotes}` : ''}` : 'not recorded yet'}</div>
           <div>Readiness at print: {c.readiness.score}% ({c.readiness.blockers} blocking, {c.readiness.warnings} warnings)</div>
         </div>
       ) : null}
