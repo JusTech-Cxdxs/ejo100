@@ -1,6 +1,7 @@
 import { listParts, getStoreBranchId, listAllPartTypesForSelect, searchPartTypesForSelect } from '@/lib/actions/store';
+import { StockLevelDot, stockLevel } from '@/components/StockLevelDot';
 import { PartWarrantyChoice } from '@/components/PartWarrantyChoice';
-import { listWarrantyPolicies } from '@/lib/actions/warranty';
+import { listWarrantyPolicies, searchPartWarrantyPolicyOptions, loadPartWarrantyPolicyOptions } from '@/lib/actions/warranty';
 import { coverageLabel, REMEDY_LABEL } from '@/lib/warranty-claim-status';
 import { createPartFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -97,7 +98,13 @@ export default async function InventoryPartsPage({
                     <th className="px-4 py-2">Tracking</th>
                     <th className="px-4 py-2">Warranty</th>
                     <th className="px-4 py-2">Unit</th>
-                    <th className="px-4 py-2">On Hand</th>
+                    <th className="px-4 py-2">
+                      On Hand
+                      <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-normal normal-case">
+                        <span className="inline-block h-2 w-2 rounded-full bg-[var(--ejo-error)]" /> safety
+                        <span className="ml-1 inline-block h-2 w-2 rounded-full bg-[var(--ejo-warning)]" /> reorder
+                      </span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -126,6 +133,13 @@ export default async function InventoryPartsPage({
                       <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{part.baseUnitOfMeasure}</td>
                       <td className="px-4 py-2 font-medium text-[var(--ejo-text)]">
                         {part.stock ? Number(part.stock.quantityOnHand).toLocaleString('en-NG', { maximumFractionDigits: 3 }) : '0'}
+                        <StockLevelDot
+                          level={stockLevel(
+                            Number(part.stock?.quantityOnHand ?? 0),
+                            part.reorderPoint === null ? null : Number(part.reorderPoint),
+                            part.safetyStock === null ? null : Number(part.safetyStock),
+                          )}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -176,15 +190,18 @@ export default async function InventoryPartsPage({
               <select
                 name="trackingType"
                 required
-                defaultValue="QUANTITY"
+                defaultValue=""
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               >
+                <option value="" disabled>Choose how this part is tracked…</option>
                 <option value="QUANTITY">Quantity — a running total (e.g. brake pads, filters)</option>
                 <option value="BATCH">Batch — grouped by delivery (e.g. engine oil, coolant)</option>
                 <option value="SERIALIZED">Serialized — every unit has its own ID (e.g. tyres, rims)</option>
               </select>
             </div>
             <PartWarrantyChoice
+              search={searchPartWarrantyPolicyOptions}
+              loadDefaultOptions={loadPartWarrantyPolicyOptions}
               policies={partPolicies.map((p: (typeof partPolicies)[number]) => ({
                 id: p.id, name: p.name, code: p.code, months: p.durationMonths, km: p.distanceLimit, covers: coverageLabel(p).toLowerCase(),
                 remedy: (REMEDY_LABEL[p.defaultRemedy] ?? p.defaultRemedy).toLowerCase(), provider: p.provider.name, isSample: p.isSample,
