@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
 import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS } from '@/lib/warranty-claim-status';
 import { notFound } from 'next/navigation';
@@ -181,7 +182,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
                   const meta = (e.metadata ?? {}) as Record<string, unknown>;
                   return {
                     id: e.id,
-                    actionLabel: ACTION_LABEL[e.action] ?? e.action,
+                    actionLabel: ACTION_LABEL[e.action] ?? humanizeAction(e.action),
                     userName: e.userName,
                     detail: typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : typeof meta.evidence === 'string' ? `Evidence: ${meta.evidence}` : null,
                     dateLabel: formatDateTime(e.createdAt),
