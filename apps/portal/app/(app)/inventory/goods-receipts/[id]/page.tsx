@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
 import { WarrantyList } from '@/components/WarrantyList';
 import { getGoodsReceipt, getGoodsReceiptAuditTrail } from '@/lib/actions/store';
@@ -217,7 +218,7 @@ export default async function GoodsReceiptDetailPage({
             <ul className="mt-3 space-y-3">
               {auditTrail.map((entry: (typeof auditTrail)[number]) => (
                 <li key={entry.id} className="text-sm">
-                  <p className="font-medium text-[var(--ejo-text)]">{AUDIT_ACTION_LABEL[entry.action] ?? entry.action}</p>
+                  <p className="font-medium text-[var(--ejo-text)]">{AUDIT_ACTION_LABEL[entry.action] ?? humanizeAction(entry.action)}</p>
                   <p className="text-xs text-[var(--ejo-text-muted)]">{entry.userName}</p>
                   <p className="text-xs text-[var(--ejo-text-muted)]">{formatDateTime(new Date(entry.createdAt))}</p>
                 </li>
