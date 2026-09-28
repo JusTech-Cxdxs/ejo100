@@ -1,5 +1,5 @@
 import { LoadingLink } from '@/components/LoadingLink';
-import { listWarrantiesFor } from '@/lib/actions/warranty';
+import { listWarrantiesFor, getPartWarrantyBadges } from '@/lib/actions/warranty';
 import { WarrantyList } from '@/components/WarrantyList';
 import { JobCardStatusForm } from '@/components/JobCardStatusForm';
 import { AuditTrail } from '@/components/AuditTrail';
@@ -370,6 +370,8 @@ export default async function JobCardDetailPage({
   const approvedCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'APPROVED') ?? null;
   const refunds = await listRefunds({ jobCardId: id });
   const warranties = await listWarrantiesFor({ jobCardId: id });
+  // Estimate lines whose part carries a warranty — shown before fitting.
+  const partWarrantyBadges = await getPartWarrantyBadges((estimate?.lineItems ?? []).map((li: { matchedPartId: string | null }) => li.matchedPartId ?? ''));
   const refundedTotal = refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
   const pendingCloseRequest = closeRequests.find((r: (typeof closeRequests)[number]) => r.status === 'PENDING');
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
@@ -880,6 +882,9 @@ export default async function JobCardDetailPage({
                             <td className="py-2 pr-2 text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</td>
                             <td className="py-2 pr-2 break-words text-[var(--ejo-text)]">
                               {item.description}
+                              { item.type === 'STORE_PART' && item.matchedPartId && partWarrantyBadges[item.matchedPartId] ? (
+                                  <div className="mt-0.5 text-[10px] font-medium text-[var(--ejo-success)]">Warranty: {partWarrantyBadges[item.matchedPartId]} — issued automatically when released</div>
+                                ) : null}
                               {item.type === 'STORE_PART' ? (
                                 item.matchedPart ? (
                                   <div className="mt-0.5 text-[10px] text-[var(--ejo-success)]">Matched: {item.matchedPart.name}</div>
