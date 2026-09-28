@@ -575,9 +575,25 @@ export async function listWarranties(search?: string) {
 }
 
 /** Every warranty linked to one vehicle, Job Card, Vehicle Service or slip. */
-export async function listWarrantiesFor(scope: { vehicleId: string } | { jobCardId: string } | { vehicleServiceId: string } | { slipId: string }) {
+export async function listWarrantiesFor(
+  scope: { vehicleId: string } | { jobCardId: string } | { vehicleServiceId: string } | { slipId: string } | { partId: string } | { goodsReceiptId: string },
+) {
   await requireUser();
-  const where = 'slipId' in scope ? { slipLine: { slipId: scope.slipId } } : scope;
+  // A goods receipt's warranties follow every stock trail back to it:
+  // the serial's own receipt line, the batch consumed, or the FIFO
+  // quantity consumed on the release.
+  const where =
+    'slipId' in scope
+      ? { slipLine: { slipId: scope.slipId } }
+      : 'goodsReceiptId' in scope
+        ? {
+            OR: [
+              { partSerial: { goodsReceiptLine: { goodsReceiptId: scope.goodsReceiptId } } },
+              { partSerialId: null, slipLine: { batchConsumptions: { some: { batch: { goodsReceiptLine: { goodsReceiptId: scope.goodsReceiptId } } } } } },
+              { partSerialId: null, slipLine: { quantityConsumptions: { some: { goodsReceiptLine: { goodsReceiptId: scope.goodsReceiptId } } } } },
+            ],
+          }
+        : scope;
   return prisma.warranty.findMany({ where, orderBy: { issuedAt: 'asc' }, include: LIST_INCLUDE });
 }
 
@@ -1266,4 +1282,22 @@ export async function listWarrantyIdsWithReminderDue(): Promise<string[]> {
       return expiryReminderState(r.endsAt, stages, cov.state === 'COVERED' || cov.state === 'EXPIRING_SOON').dueStage !== null;
     })
     .map((r: (typeof rows)[number]) => r.id);
+}
+
+/** For estimates: which matched parts carry a warranty, as a short label
+ * ("12 mo / 20,000 km") — shown before the part is fitted. */
+export async function getPartWarrantyBadges(partIds: string[]): Promise<Record<string, string>> {
+  await requireUser();
+  const ids = [...new Set(partIds.filter(Boolean))];
+  if (ids.length === 0) return {};
+  const parts = await prisma.part.findMany({
+    where: { id: { in: ids }, warrantyPolicy: { isActive: true, archivedAt: null } },
+    select: { id: true, warrantyPolicy: { select: { durationMonths: true, distanceLimit: true, isSample: true } } },
+  });
+  const out: Record<string, string> = {};
+  for (const p of parts) {
+    const w = p.warrantyPolicy;
+    if (w) out[p.id] = `${w.durationMonths} mo${w.distanceLimit ? ` / ${w.distanceLimit.toLocaleString('en-NG')} km` : ''}${w.isSample ? ' (sample)' : ''}`;
+  }
+  return out;
 }

@@ -28,6 +28,10 @@ export async function createPartFormAction(formData: FormData) {
   try {
     const altUnitName = str(formData, 'altUnitName');
     const altUnitFactor = num(formData, 'altUnitFactor');
+    const warrantyChoice = str(formData, 'warrantyChoice');
+    if (warrantyChoice !== 'YES' && warrantyChoice !== 'NO') throw new Error('Choose whether this part carries a warranty.');
+    const warrantyPolicyId = warrantyChoice === 'YES' ? str(formData, 'warrantyPolicyId') : '';
+    if (warrantyChoice === 'YES' && !warrantyPolicyId) throw new Error('Choose the warranty policy for this part.');
     await createPart({
       branchId,
       name: str(formData, 'name'),
@@ -38,6 +42,7 @@ export async function createPartFormAction(formData: FormData) {
       reorderPoint: num(formData, 'reorderPoint'),
       safetyStock: num(formData, 'safetyStock'),
       alternativeUnits: altUnitName && altUnitFactor ? [{ unitName: altUnitName, conversionFactor: altUnitFactor }] : undefined,
+      warrantyPolicyId: warrantyPolicyId || null,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not create part.';

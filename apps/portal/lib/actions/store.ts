@@ -150,6 +150,9 @@ export type CreatePartInput = {
   reorderPoint?: number;
   safetyStock?: number;
   alternativeUnits?: { unitName: string; conversionFactor: number }[];
+  /** Required choice on creation: null = no warranty; an id = the part
+   * warranty policy every released unit is issued under. */
+  warrantyPolicyId: string | null;
 };
 
 /** FLU-001, FIL-001, BRK-001 — mirrors generateGoodsReceiptNumber()'s
@@ -205,6 +208,15 @@ export async function createPart(input: CreatePartInput): Promise<{ id: string }
     throw new StoreActionError(`"${partType.category.name}" has no Part Number prefix set yet — add one to that category before registering parts under it.`);
   }
 
+  let warrantyPolicyName: string | null = null;
+  if (input.warrantyPolicyId) {
+    const policy = await prisma.warrantyPolicy.findUnique({ where: { id: input.warrantyPolicyId }, select: { name: true, kind: true, isActive: true, archivedAt: true } });
+    if (!policy || policy.kind !== 'PART' || !policy.isActive || policy.archivedAt) {
+      throw new StoreActionError('Choose an active part warranty policy (or "No warranty").');
+    }
+    warrantyPolicyName = policy.name;
+  }
+
   const generatedPartNumber = await generatePartNumber(input.branchId, partType.category.code);
 
   const part = await prisma.$transaction(async (tx) => {
@@ -221,6 +233,7 @@ export async function createPart(input: CreatePartInput): Promise<{ id: string }
         baseUnitOfMeasure,
         reorderPoint: input.reorderPoint,
         safetyStock: input.safetyStock,
+        warrantyPolicyId: input.warrantyPolicyId,
         createdById: user.id,
       },
     });
@@ -242,7 +255,7 @@ export async function createPart(input: CreatePartInput): Promise<{ id: string }
     action: 'part.created',
     entityType: 'Part',
     entityId: part.id,
-    metadata: { name, partNumber: part.partNumber, trackingType: input.trackingType, baseUnitOfMeasure },
+    metadata: { name, partNumber: part.partNumber, trackingType: input.trackingType, baseUnitOfMeasure, warranty: warrantyPolicyName ?? 'None' },
   });
 
   return { id: part.id };
