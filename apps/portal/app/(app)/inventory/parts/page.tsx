@@ -100,9 +100,9 @@ export default async function InventoryPartsPage({
                     <th className="px-4 py-2">Unit</th>
                     <th className="px-4 py-2">
                       On Hand
-                      <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-normal normal-case">
-                        <span className="inline-block h-2 w-2 rounded-full bg-[var(--ejo-error)]" /> safety
-                        <span className="ml-1 inline-block h-2 w-2 rounded-full bg-[var(--ejo-warning)]" /> reorder
+                      <span className="block whitespace-nowrap text-[10px] font-normal normal-case leading-tight text-[var(--ejo-text-muted)]">
+                        (<span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--ejo-warning)] align-middle" /> reorder{' '}
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--ejo-error)] align-middle" /> safety)
                       </span>
                     </th>
                   </tr>
