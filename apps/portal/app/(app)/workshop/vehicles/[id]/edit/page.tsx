@@ -1,4 +1,7 @@
 import { notFound } from 'next/navigation';
+import { listPartsFittedToVehicle } from '@/lib/actions/vehicle-history';
+import { VehiclePartsFitted } from '@/components/VehiclePartsFitted';
+import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
 import { WarrantyList } from '@/components/WarrantyList';
 import { getVehicle, getLastEditInfo, getVehicleAuditTrail, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
@@ -75,6 +78,7 @@ export default async function VehiclePage({
   const vehicle = await getVehicle(id);
   if (!vehicle) notFound();
   const vehicleWarranties = await listWarrantiesFor({ vehicleId: id });
+  const partsFitted = await listPartsFittedToVehicle(id);
   const [lastEdit, auditTrail, isMasterAdmin, serviceHealth, analytics, reminderHistory] = await Promise.all([
     getLastEditInfo('CustomerVehicle', id, 'vehicle.updated'),
     getVehicleAuditTrail(id),
@@ -304,7 +308,7 @@ export default async function VehiclePage({
                 <AuditTrail
                   entries={auditTrail.map((entry: (typeof auditTrail)[number]) => ({
                     id: entry.id,
-                    actionLabel: AUDIT_ACTION_LABEL[entry.action] ?? entry.action,
+                    actionLabel: AUDIT_ACTION_LABEL[entry.action] ?? humanizeAction(entry.action),
                     userName: entry.user?.fullName ?? null,
                     detail: formatAuditDetail(entry),
                     dateLabel: formatDateTime(entry.createdAt),
@@ -322,6 +326,7 @@ export default async function VehiclePage({
               Register a vehicle warranty →
             </LoadingLink>
           </div>
+          <VehiclePartsFitted rows={partsFitted} />
           {serviceHealth ? (
             <div
               className={`rounded-[var(--ejo-radius-lg)] border p-5 ${
