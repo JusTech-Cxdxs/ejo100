@@ -1,4 +1,7 @@
 import { listParts, getStoreBranchId, listAllPartTypesForSelect, searchPartTypesForSelect } from '@/lib/actions/store';
+import { PartWarrantyChoice } from '@/components/PartWarrantyChoice';
+import { listWarrantyPolicies } from '@/lib/actions/warranty';
+import { coverageLabel, REMEDY_LABEL } from '@/lib/warranty-claim-status';
 import { createPartFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -28,7 +31,7 @@ export default async function InventoryPartsPage({
 }) {
   const { error, status, q } = await searchParams;
   const branchId = await getStoreBranchId();
-  const parts = await listParts(branchId, q);
+  const [parts, partPolicies] = await Promise.all([listParts(branchId, q), listWarrantyPolicies('PART', { state: 'active' })]);
 
   return (
     <div className="p-8">
@@ -92,6 +95,7 @@ export default async function InventoryPartsPage({
                     <th className="px-4 py-2">Name</th>
                     <th className="px-4 py-2">Part No.</th>
                     <th className="px-4 py-2">Tracking</th>
+                    <th className="px-4 py-2">Warranty</th>
                     <th className="px-4 py-2">Unit</th>
                     <th className="px-4 py-2">On Hand</th>
                   </tr>
@@ -107,6 +111,18 @@ export default async function InventoryPartsPage({
                       </td>
                       <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{part.partNumber ?? '—'}</td>
                       <td className="px-4 py-2 text-[var(--ejo-text)]">{TRACKING_TYPE_LABEL[part.trackingType] ?? part.trackingType}</td>
+                      <td className="px-4 py-2 text-xs">
+                        {part.warrantyPolicyId ? (
+                          <LoadingLink href={`/warranty/policies/${part.warrantyPolicyId}`} className="rounded-full bg-[var(--ejo-success)]/15 px-2 py-0.5 font-medium text-[var(--ejo-success)] hover:underline">
+                            {(() => {
+                              const pol = partPolicies.find((x: (typeof partPolicies)[number]) => x.id === part.warrantyPolicyId);
+                              return pol ? `${pol.durationMonths} mo${pol.distanceLimit ? ` / ${pol.distanceLimit.toLocaleString('en-NG')} km` : ''}` : 'Warranty';
+                            })()}
+                          </LoadingLink>
+                        ) : (
+                          <span className="text-[var(--ejo-text-muted)]">None</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{part.baseUnitOfMeasure}</td>
                       <td className="px-4 py-2 font-medium text-[var(--ejo-text)]">
                         {part.stock ? Number(part.stock.quantityOnHand).toLocaleString('en-NG', { maximumFractionDigits: 3 }) : '0'}
@@ -168,6 +184,12 @@ export default async function InventoryPartsPage({
                 <option value="SERIALIZED">Serialized — every unit has its own ID (e.g. tyres, rims)</option>
               </select>
             </div>
+            <PartWarrantyChoice
+              policies={partPolicies.map((p: (typeof partPolicies)[number]) => ({
+                id: p.id, name: p.name, code: p.code, months: p.durationMonths, km: p.distanceLimit, covers: coverageLabel(p).toLowerCase(),
+                remedy: (REMEDY_LABEL[p.defaultRemedy] ?? p.defaultRemedy).toLowerCase(), provider: p.provider.name, isSample: p.isSample,
+              }))}
+            />
             <div>
               <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Base Unit of Measure</label>
               <UnitOfMeasureInput name="baseUnitOfMeasure" required />
