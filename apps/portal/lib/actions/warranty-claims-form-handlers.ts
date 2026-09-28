@@ -17,7 +17,9 @@ import {
   recordFailedPartReceived,
   recordReplacementReceived,
   recordRepairedPartReturned,
+  recordCustomerResolution,
   type WarrantyClaimInput,
+  type CustomerResolutionValue,
 } from './warranty-claims';
 
 function str(formData: FormData, key: string): string {
@@ -200,4 +202,14 @@ export async function recordRepairedPartReturnedFormAction(formData: FormData) {
     fail(`/warranty/claims/${claimId}`, err, 'Could not record the repaired part.');
   }
   done(claimId, 'settled');
+}
+
+export async function recordCustomerResolutionFormAction(formData: FormData) {
+  const claimId = str(formData, 'claimId');
+  try {
+    await recordCustomerResolution(claimId, str(formData, 'resolution') as CustomerResolutionValue, str(formData, 'notes'));
+  } catch (err) {
+    fail(`/warranty/claims/${claimId}`, err, 'Could not record what the customer received.');
+  }
+  done(claimId, 'resolution_set');
 }

@@ -4,13 +4,21 @@ import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog, getWorkshopBranchId, currentUserIsMasterAdmin, listEligibleManagersForBranch, getWorkshopOrgContext } from './workshop';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
-import { addMonths, warrantyCoverage, splitLines } from '@/lib/warranty-state';
+import { warrantyCoverage, splitLines, warrantyEndDate, durationLabel, durationShort, DURATION_LIMITS, type DurationUnit } from '@/lib/warranty-state';
 import { expiryReminderState } from '@/lib/warranty-reminders';
 import { notifyWarrantyDepartmentOfPartWarranty } from '@/lib/warranty-department-notify';
 import { renderCustomerWarrantyCertificateEmail } from '@/lib/email-templates/customer-warranty-certificate';
 import { renderCustomerWarrantyExpiryEmail } from '@/lib/email-templates/customer-warranty-expiry';
 
 class WarrantyActionError extends Error {}
+
+function assertDuration(amount: number, unit: DurationUnit | undefined) {
+  const lim = DURATION_LIMITS[unit ?? 'MONTHS'];
+  if (!lim) throw new WarrantyActionError('Choose whether the duration is in days, working days or months.');
+  if (!Number.isInteger(amount) || amount < lim.min || amount > lim.max) {
+    throw new WarrantyActionError(`Duration must be a whole number between ${lim.min} and ${lim.max} ${lim.label}.`);
+  }
+}
 
 // ── Roles: Branch Manager → Warranty HOD → Warranty staff ─────────────
 
@@ -204,7 +212,9 @@ export type WarrantyPolicyInput = {
   providerId: string;
   brand?: string;
   model?: string;
+  /** Amount, in durationUnit (default months). */
   durationMonths: number;
+  durationUnit?: DurationUnit;
   distanceLimit?: number;
   coverageSummary: string;
   exclusions?: string;
@@ -221,10 +231,9 @@ export async function createWarrantyPolicy(input: WarrantyPolicyInput): Promise<
   const code = input.code.trim().toUpperCase();
   if (!code || !input.name.trim()) throw new WarrantyActionError('A policy code and name are required.');
   if (input.kind !== 'ASSET' && input.kind !== 'PART') throw new WarrantyActionError('Choose whether the policy applies to a vehicle or a part.');
+  if (!input.durationUnit) throw new WarrantyActionError('Choose whether the duration is in days, working days or months.');
   if (!input.defaultRemedy) throw new WarrantyActionError('Choose how the provider usually makes it right (reimbursement, replacement or repair).');
-  if (!Number.isInteger(input.durationMonths) || input.durationMonths < 1 || input.durationMonths > 240) {
-    throw new WarrantyActionError('Duration must be between 1 and 240 months.');
-  }
+  assertDuration(input.durationMonths, input.durationUnit);
   if (input.distanceLimit !== undefined && (!Number.isInteger(input.distanceLimit) || input.distanceLimit < 1)) {
     throw new WarrantyActionError('The distance limit must be a whole number above 0 (or left blank for unlimited).');
   }
@@ -244,6 +253,7 @@ export async function createWarrantyPolicy(input: WarrantyPolicyInput): Promise<
       brand: input.brand?.trim() || null,
       model: input.model?.trim() || null,
       durationMonths: input.durationMonths,
+      durationUnit: input.durationUnit ?? 'MONTHS',
       distanceLimit: input.distanceLimit ?? null,
       coverageSummary: input.coverageSummary.trim(),
       exclusions: input.exclusions?.trim() || null,
@@ -256,7 +266,7 @@ export async function createWarrantyPolicy(input: WarrantyPolicyInput): Promise<
       createdById: user.id,
     },
   });
-  await writeAuditLog({ userId: user.id, action: 'warranty_policy.created', entityType: 'WarrantyPolicy', entityId: policy.id, metadata: { code, name: input.name.trim(), kind: input.kind, durationMonths: input.durationMonths, distanceLimit: input.distanceLimit ?? null } });
+  await writeAuditLog({ userId: user.id, action: 'warranty_policy.created', entityType: 'WarrantyPolicy', entityId: policy.id, metadata: { code, name: input.name.trim(), kind: input.kind, duration: durationLabel({ durationMonths: input.durationMonths, durationUnit: input.durationUnit }), durationMonths: input.durationMonths, distanceLimit: input.distanceLimit ?? null } });
   return { id: policy.id };
 }
 
@@ -368,7 +378,7 @@ export async function registerAssetWarranty(input: RegisterAssetWarrantyInput): 
   const user = await requireWarrantyStaff();
   const [vehicle, policy] = await Promise.all([
     prisma.customerVehicle.findUnique({ where: { id: input.vehicleId }, select: { id: true, customerId: true, make: true, model: true, year: true, plateNumber: true, chassisNumber: true } }),
-    prisma.warrantyPolicy.findUnique({ where: { id: input.policyId }, select: { id: true, kind: true, isActive: true, providerId: true, durationMonths: true, distanceLimit: true, coverageSummary: true, exclusions: true, conditions: true, name: true } }),
+    prisma.warrantyPolicy.findUnique({ where: { id: input.policyId }, select: { id: true, kind: true, isActive: true, providerId: true, durationMonths: true, durationUnit: true, distanceLimit: true, coverageSummary: true, exclusions: true, conditions: true, name: true } }),
   ]);
   if (!vehicle) throw new WarrantyActionError('Vehicle not found.');
   if (!policy || policy.kind !== 'ASSET' || !policy.isActive) throw new WarrantyActionError('Choose an active vehicle (asset) warranty policy.');
@@ -401,7 +411,7 @@ export async function registerAssetWarranty(input: RegisterAssetWarrantyInput): 
       vehicleId: vehicle.id,
       subjectDescription: subject,
       startsAt: start,
-      endsAt: addMonths(start, policy.durationMonths),
+      endsAt: warrantyEndDate(start, policy.durationMonths, policy.durationUnit),
       startReading: input.startReading ?? null,
       distanceLimit: policy.distanceLimit,
       coverageSnapshot: policy.coverageSummary,
@@ -481,7 +491,7 @@ export async function issuePartWarrantiesForSlip(slipId: string): Promise<{ issu
               name: true,
               partNumber: true,
               trackingType: true,
-              warrantyPolicy: { select: { id: true, isActive: true, kind: true, providerId: true, durationMonths: true, distanceLimit: true, coverageSummary: true, exclusions: true, conditions: true } },
+              warrantyPolicy: { select: { id: true, isActive: true, kind: true, providerId: true, durationMonths: true, durationUnit: true, distanceLimit: true, coverageSummary: true, exclusions: true, conditions: true } },
             },
           },
           issuedSerials: { select: { id: true, serialNumber: true } },
@@ -512,7 +522,7 @@ export async function issuePartWarrantiesForSlip(slipId: string): Promise<{ issu
       jobCardId: slip.jobCard?.id ?? null,
       vehicleServiceId: slip.vehicleService?.id ?? null,
       startsAt: start,
-      endsAt: addMonths(start, policy.durationMonths),
+      endsAt: warrantyEndDate(start, policy.durationMonths, policy.durationUnit),
       startReading: reading,
       distanceLimit: policy.distanceLimit,
       coverageSnapshot: policy.coverageSummary,
@@ -612,7 +622,7 @@ export async function getWarranty(id: string) {
       ...LIST_INCLUDE,
       customer: { select: { id: true, fullName: true, email: true, phone: true, address: true } },
       vehicle: { select: { id: true, make: true, model: true, year: true, plateNumber: true, chassisNumber: true, engineNumber: true, mileage: true, vehicleType: true } },
-      policy: { select: { id: true, code: true, name: true, isSample: true, durationMonths: true, distanceLimit: true, coversParts: true, coversLabour: true, defaultRemedy: true } },
+      policy: { select: { id: true, code: true, name: true, isSample: true, durationMonths: true, durationUnit: true, distanceLimit: true, coversParts: true, coversLabour: true, defaultRemedy: true } },
       provider: { select: { id: true, name: true, type: true, contactName: true, email: true, phone: true, claimSubmissionDays: true, partRetentionDays: true } },
       jobCard: { select: { id: true, jobNumber: true, branch: true } },
       vehicleService: { select: { id: true, serviceNumber: true, branch: true } },
@@ -672,7 +682,7 @@ export async function getWarrantyPolicyAuditTrail(policyId: string) {
 export type UpdateWarrantyPolicyInput = Omit<WarrantyPolicyInput, 'code' | 'isSample'>;
 
 const POLICY_FIELD_LABEL: Record<string, string> = {
-  name: 'Name', kind: 'Applies to', providerId: 'Provider', brand: 'Brand', model: 'Model', durationMonths: 'Months',
+  name: 'Name', kind: 'Applies to', providerId: 'Provider', brand: 'Brand', model: 'Model', durationMonths: 'Duration', durationUnit: 'Duration unit',
   distanceLimit: 'Km limit', coverageSummary: 'Covered', exclusions: 'Not covered', conditions: 'Conditions',
   coversParts: 'Covers parts', coversLabour: 'Covers labour', coversLogistics: 'Covers logistics', defaultRemedy: 'Remedy',
 };
@@ -691,9 +701,7 @@ export async function updateWarrantyPolicy(policyId: string, input: UpdateWarran
   if (!before) throw new WarrantyActionError('Policy not found.');
   if (before.archivedAt) throw new WarrantyActionError('This policy is archived — it can no longer be edited.');
   if (!input.name.trim()) throw new WarrantyActionError('A policy name is required.');
-  if (!Number.isInteger(input.durationMonths) || input.durationMonths < 1 || input.durationMonths > 240) {
-    throw new WarrantyActionError('Duration must be between 1 and 240 months.');
-  }
+  assertDuration(input.durationMonths, input.durationUnit);
   if (input.distanceLimit !== undefined && (!Number.isInteger(input.distanceLimit) || input.distanceLimit < 1)) {
     throw new WarrantyActionError('The distance limit must be a whole number above 0 (or left blank for unlimited).');
   }
@@ -710,6 +718,7 @@ export async function updateWarrantyPolicy(policyId: string, input: UpdateWarran
     brand: input.brand?.trim() || null,
     model: input.model?.trim() || null,
     durationMonths: input.durationMonths,
+    durationUnit: input.durationUnit ?? 'MONTHS',
     distanceLimit: input.distanceLimit ?? null,
     coverageSummary: input.coverageSummary.trim(),
     exclusions: input.exclusions?.trim() || null,
@@ -1299,12 +1308,12 @@ export async function getPartWarrantyBadges(partIds: string[]): Promise<Record<s
   if (ids.length === 0) return {};
   const parts = await prisma.part.findMany({
     where: { id: { in: ids }, warrantyPolicy: { isActive: true, archivedAt: null } },
-    select: { id: true, warrantyPolicy: { select: { durationMonths: true, distanceLimit: true, isSample: true } } },
+    select: { id: true, warrantyPolicy: { select: { durationMonths: true, durationUnit: true, distanceLimit: true, isSample: true } } },
   });
   const out: Record<string, string> = {};
   for (const p of parts) {
     const w = p.warrantyPolicy;
-    if (w) out[p.id] = `${w.durationMonths} mo${w.distanceLimit ? ` / ${w.distanceLimit.toLocaleString('en-NG')} km` : ''}${w.isSample ? ' (sample)' : ''}`;
+    if (w) out[p.id] = `${durationShort(w)}${w.distanceLimit ? ` / ${w.distanceLimit.toLocaleString('en-NG')} km` : ''}${w.isSample ? ' (sample)' : ''}`;
   }
   return out;
 }
@@ -1323,11 +1332,11 @@ export async function searchPartWarrantyPolicyOptions(query: string): Promise<{ 
     },
     orderBy: { name: 'asc' },
     take: 25,
-    select: { id: true, name: true, code: true, durationMonths: true, distanceLimit: true, isSample: true, provider: { select: { name: true } } },
+    select: { id: true, name: true, code: true, durationMonths: true, durationUnit: true, distanceLimit: true, isSample: true, provider: { select: { name: true } } },
   });
   return rows.map((r: (typeof rows)[number]) => ({
     value: r.id,
-    label: `${r.name} — ${r.durationMonths} months${r.distanceLimit ? ` / ${r.distanceLimit.toLocaleString('en-NG')} km` : ''}`,
+    label: `${r.name} — ${durationLabel(r)}${r.distanceLimit ? ` / ${r.distanceLimit.toLocaleString('en-NG')} km` : ''}`,
     sublabel: `${r.code} · ${r.provider.name}${r.isSample ? ' · sample terms' : ''}`,
   }));
 }

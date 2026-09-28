@@ -524,3 +524,26 @@ export async function getWarrantyClaimDashboardItems(): Promise<{ id: string; ti
     createdAt: c.updatedAt,
   }));
 }
+
+// ── What the customer received ────────────────────────────────────────
+
+const RESOLUTIONS = ['REPAIRED_NO_CHARGE', 'REPLACED_NO_CHARGE', 'GOODWILL_REFUND', 'CUSTOMER_PAID', 'NOT_COVERED'] as const;
+export type CustomerResolutionValue = (typeof RESOLUTIONS)[number];
+
+/** Record (or correct) what the CUSTOMER received — separate from what
+ * the provider gives us. A goodwill refund needs its amount / reference,
+ * and "not covered" its reason. */
+export async function recordCustomerResolution(claimId: string, resolution: CustomerResolutionValue, notes: string): Promise<void> {
+  const user = await requireStaff();
+  if (!RESOLUTIONS.includes(resolution)) throw new WarrantyClaimError('Choose what the customer received.');
+  const why = notes.trim();
+  if ((resolution === 'GOODWILL_REFUND' || resolution === 'NOT_COVERED') && !why) {
+    throw new WarrantyClaimError(resolution === 'GOODWILL_REFUND' ? 'Record the goodwill refund amount or reference.' : 'Record why the customer was not covered.');
+  }
+  const claim = await prisma.warrantyClaim.findUnique({ where: { id: claimId }, select: { status: true, claimNumber: true, customerResolution: true, customerResolutionNotes: true } });
+  if (!claim) throw new WarrantyClaimError('Claim not found.');
+  if (claim.status === 'CANCELLED') throw new WarrantyClaimError('This claim was cancelled.');
+  if (claim.customerResolution === resolution && (claim.customerResolutionNotes ?? '') === why) throw new WarrantyClaimError('That is already recorded.');
+  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { customerResolution: resolution, customerResolutionNotes: why || null } });
+  await audit(user.id, claimId, 'customer_resolution_set', { claimNumber: claim.claimNumber, from: claim.customerResolution, to: resolution, notes: why || undefined });
+}
