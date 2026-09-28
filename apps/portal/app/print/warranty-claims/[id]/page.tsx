@@ -88,6 +88,7 @@ export default async function PrintWarrantyClaimPage({ params, searchParams }: {
           <tr><td style={cell}>Labour</td><td style={{ ...cell, textAlign: 'right' }}>{naira(Number(c.labourAmount))}</td></tr>
           <tr><td style={cell}>Parts</td><td style={{ ...cell, textAlign: 'right' }}>{naira(Number(c.partsAmount))}</td></tr>
           <tr><td style={cell}>Other (incl. fluids)</td><td style={{ ...cell, textAlign: 'right' }}>{naira(Number(c.otherAmount))}</td></tr>
+          <tr><td style={cell}>Logistics (freight)</td><td style={{ ...cell, textAlign: 'right' }}>{naira(Number(c.logisticsAmount))}</td></tr>
           <tr><td style={{ ...cell, fontWeight: 700 }}>Total claimed</td><td style={{ ...cell, textAlign: 'right', fontWeight: 700 }}>{naira(Number(c.claimedAmount))}</td></tr>
           {c.approvedAmount !== null ? <tr><td style={cell}>Approved by the provider</td><td style={{ ...cell, textAlign: 'right' }}>{naira(Number(c.approvedAmount))}</td></tr> : null}
           {c.settledAmount !== null ? <tr><td style={cell}>Received</td><td style={{ ...cell, textAlign: 'right' }}>{naira(Number(c.settledAmount))}</td></tr> : null}
