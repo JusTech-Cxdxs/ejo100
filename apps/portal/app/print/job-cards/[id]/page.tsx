@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { listWarrantiesFor } from '@/lib/actions/warranty';
+import { WarrantiesIssuedPrint } from '@/components/print/WarrantiesIssuedPrint';
 import { getJobCard } from '@/lib/actions/workshop';
 import { getOrganisation } from '@/lib/actions/organisation';
 import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/print/DocumentHeader';
@@ -62,6 +64,7 @@ export default async function PrintJobCardPage({
   const isOrgCopy = variant !== 'client';
 
   const [jobCard, organisation] = await Promise.all([getJobCard(id), getOrganisation()]);
+  const issuedWarranties = await listWarrantiesFor({ jobCardId: id });
   if (!jobCard || !organisation) notFound();
   if (jobCard.status !== 'CHECKED_OUT') notFound();
 
@@ -373,6 +376,7 @@ export default async function PrintJobCardPage({
         </div>
       ) : null}
 
+      <WarrantiesIssuedPrint warranties={issuedWarranties} />
       <SignatureBlock
         issuerLabel={wasCancelled ? 'Returned By (Workshop)' : 'Released By (Workshop)'}
         issuerName={jobCard.supervisor?.fullName ?? jobCard.assignedTechnician?.fullName ?? null}
