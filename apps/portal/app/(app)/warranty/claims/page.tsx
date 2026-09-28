@@ -1,6 +1,6 @@
 import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
 import { LoadingLink } from '@/components/LoadingLink';
-import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS, CLAIM_GROUPS } from '@/lib/warranty-claim-status';
+import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS, CLAIM_GROUPS, REMEDY_LABEL, PART_RETURN_LABEL } from '@/lib/warranty-claim-status';
 import { formatDateOnly } from '@/lib/utils/format-date';
 
 function naira(n: number): string {
@@ -20,12 +20,22 @@ const GROUP_LABEL: Record<string, string> = {
 
 /** Warranty claims register — every claim, its stage, its money, and what
  * needs doing next. */
-export default async function WarrantyClaimsPage({ searchParams }: { searchParams: Promise<{ q?: string; group?: string }> }) {
-  const { q, group: rawGroup } = await searchParams;
+export default async function WarrantyClaimsPage({ searchParams }: { searchParams: Promise<{ q?: string; group?: string; remedy?: string; part?: string }> }) {
+  const { q, group: rawGroup, remedy: rawRemedy, part: rawPart } = await searchParams;
+  const remedy = rawRemedy && REMEDY_LABEL[rawRemedy] ? rawRemedy : null;
+  const part = rawPart && PART_RETURN_LABEL[rawPart] ? rawPart : null;
   const group = rawGroup && CLAIM_GROUPS[rawGroup] ? rawGroup : null;
   const claims = await listWarrantyClaims({ q });
   const inGroup = (key: string) => claims.filter((c: (typeof claims)[number]) => CLAIM_GROUPS[key]!.includes(c.status));
-  const shown = group ? inGroup(group) : claims;
+  const shown = (group ? inGroup(group) : claims)
+    .filter((c: (typeof claims)[number]) => !remedy || c.remedy === remedy)
+    .filter((c: (typeof claims)[number]) => !part || (c.partReturnRequired && (c.partReturnStatus ?? 'AWAITING') === part && !['CANCELLED', 'SETTLED'].includes(c.status)));
+  const byRemedy = (r: string) => {
+    const rows = claims.filter((c: (typeof claims)[number]) => c.remedy === r && c.status !== 'CANCELLED');
+    return { count: rows.length, settled: rows.filter((c: (typeof claims)[number]) => c.status === 'SETTLED').length, value: rows.reduce((s: number, c: (typeof claims)[number]) => s + Number(c.settledAmount ?? 0), 0) };
+  };
+  const partCount = (st: string) => claims.filter((c: (typeof claims)[number]) => c.partReturnRequired && (c.partReturnStatus ?? 'AWAITING') === st && !['CANCELLED', 'SETTLED'].includes(c.status)).length;
+  const link = (extra: Record<string, string | null>) => `/warranty/claims?${Object.entries({ group, q, remedy, part, ...extra }).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`).join('&')}`;
   const live = claims.filter((c: (typeof claims)[number]) => c.status !== 'CANCELLED');
   const claimed = live.reduce((s: number, c: (typeof claims)[number]) => s + Number(c.claimedAmount), 0);
   const decided = claims.filter((c: (typeof claims)[number]) => ['ACCEPTED', 'PARTIALLY_ACCEPTED', 'REJECTED', 'SETTLED'].includes(c.status));
@@ -50,10 +60,33 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4"><p className="text-xs text-[var(--ejo-text-muted)]">Claimed (excl. cancelled)</p><p className="mt-1 text-xl font-bold text-[var(--ejo-text)]">{naira(claimed)}</p></div>
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4"><p className="text-xs text-[var(--ejo-text-muted)]">Approved by providers</p><p className="mt-1 text-xl font-bold text-[var(--ejo-text)]">{naira(approved)}</p></div>
-        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4"><p className="text-xs text-[var(--ejo-text-muted)]">Recovered (money received)</p><p className="mt-1 text-xl font-bold text-[var(--ejo-success)]">{naira(recovered)}</p></div>
+        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4"><p className="text-xs text-[var(--ejo-text-muted)]">Recovered (cash + parts + repairs)</p><p className="mt-1 text-xl font-bold text-[var(--ejo-success)]">{naira(recovered)}</p></div>
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4"><p className="text-xs text-[var(--ejo-text-muted)]">Approval rate (decided claims)</p><p className="mt-1 text-xl font-bold text-[var(--ejo-text)]">{approvalRate === null ? '—' : `${approvalRate}%`}</p></div>
       </div>
 
+      <div className="mb-6 grid gap-3 md:grid-cols-3">
+        {(['REIMBURSEMENT', 'REPLACEMENT', 'REPAIR'] as const).map((r) => {
+          const b = byRemedy(r);
+          return (
+            <LoadingLink key={r} href={link({ remedy: remedy === r ? null : r })} className={`rounded-[var(--ejo-radius-lg)] border p-4 ${remedy === r ? 'border-[var(--ejo-primary)] ring-1 ring-[var(--ejo-primary)]' : 'border-[var(--ejo-border)]'} bg-[var(--ejo-surface)]`}>
+              <p className="text-xs text-[var(--ejo-text-muted)]">{REMEDY_LABEL[r]}</p>
+              <p className="mt-1 text-lg font-bold text-[var(--ejo-text)]">{b.count} {b.count === 1 ? 'claim' : 'claims'}</p>
+              <p className="text-xs text-[var(--ejo-text-muted)]">
+                {b.settled} settled · {r === 'REIMBURSEMENT' ? 'cash recovered' : r === 'REPLACEMENT' ? 'value of parts received' : 'value of repairs returned'} {naira(b.value)}
+              </p>
+            </LoadingLink>
+          );
+        })}
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-[var(--ejo-text-muted)]">Failed parts:</span>
+        {(['AWAITING', 'SENT', 'RECEIVED_BY_PROVIDER'] as const).map((st) => (
+          <LoadingLink key={st} href={link({ part: part === st ? null : st })} className={`rounded-full px-3 py-1 font-medium ${part === st ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>
+            {st === 'AWAITING' ? 'To send' : st === 'SENT' ? 'Sent' : 'Received by provider'} ({partCount(st)})
+          </LoadingLink>
+        ))}
+        {remedy || part ? <LoadingLink href={link({ remedy: null, part: null })} className="text-[var(--ejo-primary)] hover:underline">Clear remedy / part filters</LoadingLink> : null}
+      </div>
       <div className="mb-4 flex flex-wrap gap-2">
         <LoadingLink href={`/warranty/claims${q ? `?q=${encodeURIComponent(q)}` : ''}`} className={`rounded-full px-3 py-1 text-xs font-medium ${!group ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>All ({claims.length})</LoadingLink>
         {Object.keys(CLAIM_GROUPS).map((key) => (
@@ -96,7 +129,10 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
                       <div className="text-xs"><LoadingLink href={`/warranty/${c.warranty.id}`} className="text-[var(--ejo-text-muted)] hover:underline">{c.warranty.warrantyNumber}</LoadingLink></div>
                       {c.resubmissionCount > 0 ? <div className="text-xs text-[var(--ejo-warning)]">Resubmission {c.resubmissionCount}</div> : null}
                     </td>
-                    <td className="px-3 py-2 text-[var(--ejo-text)]">{c.causalPart}</td>
+                    <td className="px-3 py-2 text-[var(--ejo-text)]">
+                      {c.causalPart}
+                      <div className="text-xs text-[var(--ejo-text-muted)]">{REMEDY_LABEL[c.remedy]}{c.partReturnRequired ? ` · ${c.partReturnStatus === 'SENT' ? 'part sent' : c.partReturnStatus === 'RECEIVED_BY_PROVIDER' ? 'part received' : 'part to send'}` : ''}</div>
+                    </td>
                     <td className="px-3 py-2 text-xs text-[var(--ejo-text)]">
                       {c.customer.fullName}
                       <div className="text-[var(--ejo-text-muted)]">{c.vehicle ? [c.vehicle.make, c.vehicle.model, c.vehicle.plateNumber].filter(Boolean).join(' ') : ''}</div>
