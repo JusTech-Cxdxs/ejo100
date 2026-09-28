@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { humanizeAction } from '@/lib/humanize-action';
 import { getWarrantyProvider, getWarrantyProviderAuditTrail, getWarrantyRoles } from '@/lib/actions/warranty';
 import {
   updateWarrantyProviderFormAction,
@@ -145,7 +146,7 @@ export default async function WarrantyProviderPage({ params, searchParams }: { p
                 const changes = meta.changes as Record<string, { from: unknown; to: unknown }> | undefined;
                 return {
                   id: e.id,
-                  actionLabel: ACTION_LABEL[e.action] ?? e.action,
+                  actionLabel: ACTION_LABEL[e.action] ?? humanizeAction(e.action),
                   userName: e.userName,
                   detail: changes
                     ? Object.entries(changes).map(([k, c]) => `${FIELD[k] ?? k}: ${c.from ?? '—'} → ${c.to ?? '—'}`).join(' | ')
