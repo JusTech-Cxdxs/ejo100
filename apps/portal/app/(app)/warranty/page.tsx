@@ -1,12 +1,12 @@
-import { listWarranties } from '@/lib/actions/warranty';
+import { listWarranties, listWarrantyIdsWithReminderDue } from '@/lib/actions/warranty';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL, type WarrantyCoverageState } from '@/lib/warranty-state';
 import { formatDateOnly } from '@/lib/utils/format-date';
 
-type Filter = 'all' | 'covered' | 'expiring' | 'pending' | 'expired' | 'inactive' | 'asset' | 'part';
+type Filter = 'all' | 'covered' | 'expiring' | 'pending' | 'expired' | 'inactive' | 'asset' | 'part' | 'reminder';
 
-const FILTER_STATES: Record<Exclude<Filter, 'all' | 'asset' | 'part'>, WarrantyCoverageState[]> = {
+const FILTER_STATES: Record<Exclude<Filter, 'all' | 'asset' | 'part' | 'reminder'>, WarrantyCoverageState[]> = {
   covered: ['COVERED', 'EXPIRING_SOON'],
   expiring: ['EXPIRING_SOON'],
   pending: ['PENDING_VERIFICATION'],
@@ -22,12 +22,13 @@ const FILTER_STATES: Record<Exclude<Filter, 'all' | 'asset' | 'part'>, WarrantyC
  */
 export default async function WarrantyRegisterPage({ searchParams }: { searchParams: Promise<{ q?: string; filter?: string }> }) {
   const { q, filter: rawFilter } = await searchParams;
-  const filter: Filter = (['covered', 'expiring', 'pending', 'expired', 'inactive', 'asset', 'part'] as const).includes(rawFilter as never) ? (rawFilter as Filter) : 'all';
-  const warranties = await listWarranties(q);
+  const filter: Filter = (['covered', 'expiring', 'pending', 'expired', 'inactive', 'asset', 'part', 'reminder'] as const).includes(rawFilter as never) ? (rawFilter as Filter) : 'all';
+  const [warranties, reminderDueIds] = await Promise.all([listWarranties(q), listWarrantyIdsWithReminderDue()]);
+  const reminderDue = new Set(reminderDueIds);
   const rows = warranties.map((w: (typeof warranties)[number]) => ({ w, cov: warrantyCoverage(w, w.vehicle?.mileage ?? null) }));
   const count = (states: WarrantyCoverageState[]) => rows.filter((r) => states.includes(r.cov.state)).length;
   const shown = rows.filter((r) =>
-    filter === 'all' ? true : filter === 'asset' ? r.w.kind === 'ASSET' : filter === 'part' ? r.w.kind === 'PART' : FILTER_STATES[filter].includes(r.cov.state),
+    filter === 'all' ? true : filter === 'reminder' ? reminderDue.has(r.w.id) : filter === 'asset' ? r.w.kind === 'ASSET' : filter === 'part' ? r.w.kind === 'PART' : FILTER_STATES[filter].includes(r.cov.state),
   );
   const card = (key: Filter, label: string, value: number, tone: string) => (
     <LoadingLink
@@ -65,7 +66,7 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
         </div>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-8">
         {card('all', 'All warranties', rows.length, 'text-[var(--ejo-text)]')}
         {card('covered', 'Covered', count(['COVERED', 'EXPIRING_SOON']), 'text-[var(--ejo-success)]')}
         {card('expiring', 'Expiring in 30 days', count(['EXPIRING_SOON']), 'text-[var(--ejo-warning)]')}
@@ -73,6 +74,7 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
         {card('expired', 'Expired', count(['EXPIRED']), 'text-[var(--ejo-text-muted)]')}
         {card('asset', 'Vehicle warranties', rows.filter((r) => r.w.kind === 'ASSET').length, 'text-[var(--ejo-text)]')}
         {card('part', 'Part warranties', rows.filter((r) => r.w.kind === 'PART').length, 'text-[var(--ejo-text)]')}
+        {card('reminder', 'Expiry reminders due', rows.filter((r) => reminderDue.has(r.w.id)).length, 'text-[var(--ejo-warning)]')}
       </div>
 
       <form className="mb-4 flex gap-2" action="/warranty">
