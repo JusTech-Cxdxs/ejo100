@@ -1,4 +1,5 @@
 import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/print/DocumentHeader';
+import { humanizeAction } from '@/lib/humanize-action';
 import { PrintOnLoad } from '@/components/print/PrintOnLoad';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
@@ -441,7 +442,7 @@ export function EstimatePrintDocument({
                       <tr key={e.id} style={{ borderBottom: '1px solid #F1F5F9', verticalAlign: 'top' }}>
                         <td style={{ padding: '3px 0', color: '#475569', width: '30%' }}>{formatDateTime(e.createdAt)}</td>
                         <td style={{ padding: '3px 0' }}>
-                          <span style={{ fontWeight: 600 }}>{ESTIMATE_AUDIT_LABEL[e.action] ?? e.action}</span>
+                          <span style={{ fontWeight: 600 }}>{ESTIMATE_AUDIT_LABEL[e.action] ?? humanizeAction(e.action)}</span>
                           {e.user ? ` — ${e.user.fullName}` : ''}
                           {detail ? <div style={{ color: '#64748B' }}>{detail}</div> : null}
                         </td>
