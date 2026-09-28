@@ -51,8 +51,9 @@ export const PART_RETURN_LABEL: Record<string, string> = {
 };
 
 /** "Parts & labour", "Parts only", "Labour only". */
-export function coverageLabel(p: { coversParts: boolean; coversLabour: boolean }): string {
-  return p.coversParts && p.coversLabour ? 'Parts & labour' : p.coversParts ? 'Parts only' : 'Labour only';
+export function coverageLabel(p: { coversParts: boolean; coversLabour: boolean; coversLogistics?: boolean }): string {
+  const base = p.coversParts && p.coversLabour ? 'Parts & labour' : p.coversParts ? 'Parts only' : 'Labour only';
+  return p.coversLogistics ? `${base} + logistics` : base;
 }
 
 export const PROVIDER_TYPE_LABEL: Record<string, string> = {

@@ -26,11 +26,12 @@ export function claimReadiness(
     labourAmount: number;
     partsAmount: number;
     otherAmount: number;
+    logisticsAmount?: number;
     deadlineAt: Date | null;
     jobCardId: string | null;
     vehicleServiceId: string | null;
   },
-  warranty: { status: string; startsAt: Date; endsAt: Date; startReading: number | null; distanceLimit: number | null; isSamplePolicy: boolean; coversParts?: boolean; coversLabour?: boolean },
+  warranty: { status: string; startsAt: Date; endsAt: Date; startReading: number | null; distanceLimit: number | null; isSamplePolicy: boolean; coversParts?: boolean; coversLabour?: boolean; coversLogistics?: boolean },
   now: Date = new Date(),
 ): Readiness {
   const items: ReadinessItem[] = [];
@@ -59,11 +60,14 @@ export function claimReadiness(
   } else {
     add('readingRecorded', 'Odometer at failure recorded', claim.failureReading !== null, false, 'Recommended even without a km limit.');
   }
-  const amounts = [claim.labourAmount, claim.partsAmount, claim.otherAmount];
+  const amounts = [claim.labourAmount, claim.partsAmount, claim.otherAmount, claim.logisticsAmount ?? 0];
   add('amountsValid', 'Amounts are not negative', amounts.every((a) => Number.isFinite(a) && a >= 0), true);
   add('amountClaimed', 'An amount is being claimed', amounts.reduce((s, a) => s + (a > 0 ? a : 0), 0) > 0, true);
   if (warranty.coversLabour === false && claim.labourAmount > 0) {
     add('labourCovered', 'Policy does not cover labour — the labour amount will likely be rejected', false, false, 'Remove it, charge it to the customer, or treat it as goodwill.');
+  }
+  if (warranty.coversLogistics === false && (claim.logisticsAmount ?? 0) > 0) {
+    add('logisticsCovered', 'Policy does not cover logistics — the freight amount will likely be rejected', false, false, 'Absorb it, or agree it with the provider first.');
   }
   if (warranty.coversParts === false && claim.partsAmount > 0) {
     add('partsCovered', 'Policy does not cover parts — the parts amount will likely be rejected', false, false, 'This policy covers labour only.');
