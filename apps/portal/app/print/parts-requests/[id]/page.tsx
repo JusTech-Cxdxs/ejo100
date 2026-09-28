@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { listWarrantiesFor } from '@/lib/actions/warranty';
+import { WarrantiesIssuedPrint } from '@/components/print/WarrantiesIssuedPrint';
 import { getPartRequestSlip } from '@/lib/actions/sourcing';
 import { getOrganisation } from '@/lib/actions/organisation';
 import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/print/DocumentHeader';
@@ -54,6 +56,7 @@ export default async function PrintPartRequestSlipPage({
   const isOrgCopy = variant !== 'client';
 
   const [slip, organisation] = await Promise.all([getPartRequestSlip(id), getOrganisation()]);
+  const issuedWarranties = await listWarrantiesFor({ slipId: id });
   if (!slip || !organisation) notFound();
   if (slip.status !== 'RELEASED') notFound();
 
@@ -197,6 +200,7 @@ export default async function PrintPartRequestSlipPage({
         </div>
       ) : null}
 
+      <WarrantiesIssuedPrint warranties={issuedWarranties} />
       <SignatureBlock
         issuerLabel="Issued By (Store)"
         issuerName={slip.releasedBy?.fullName ?? null}
