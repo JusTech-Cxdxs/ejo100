@@ -18,7 +18,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { LineItemsInput } from '@/components/LineItemsInput';
 import { pluralize } from '@/lib/utils/pluralize';
-import { splitLines } from '@/lib/warranty-state';
+import { splitLines, durationLabel } from '@/lib/warranty-state';
 import { formatDateTime } from '@/lib/utils/format-date';
 
 const ACTION_LABEL: Record<string, string> = {
@@ -33,7 +33,7 @@ const ACTION_LABEL: Record<string, string> = {
   'warranty_policy.deleted': 'Policy deleted',
 };
 const FIELD: Record<string, string> = {
-  name: 'Name', kind: 'Applies to', providerId: 'Provider', brand: 'Brand', model: 'Model', durationMonths: 'Months',
+  name: 'Name', kind: 'Applies to', providerId: 'Provider', brand: 'Brand', model: 'Model', durationMonths: 'Duration', durationUnit: 'Duration unit',
   distanceLimit: 'Km limit', coverageSummary: 'Covered', exclusions: 'Not covered', conditions: 'Conditions',
   coversParts: 'Covers parts', coversLabour: 'Covers labour', coversLogistics: 'Covers logistics', defaultRemedy: 'Remedy',
 };
@@ -145,7 +145,16 @@ export default async function WarrantyPolicyPage({ params, searchParams }: { par
                 <div><label className={label}>Model</label><input name="model" defaultValue={policy.model ?? ''} className={input} /></div>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div><label className={label}>Months</label><input name="durationMonths" type="number" min={1} max={240} required defaultValue={policy.durationMonths} className={input} /></div>
+                <div><label className={label}>Duration</label><input name="durationMonths" type="number" min={1} max={3650} required defaultValue={policy.durationMonths} className={input} /></div>
+                <div>
+                  <label className={label}>In</label>
+                  <select name="durationUnit" required defaultValue={policy.durationUnit} className={input}>
+                    <option value="" disabled>Choose…</option>
+                    <option value="DAYS">Days</option>
+                    <option value="WORKING_DAYS">Working days (Mon–Fri)</option>
+                    <option value="MONTHS">Months</option>
+                  </select>
+                </div>
                 <div><label className={label}>Km limit (blank = none)</label><input name="distanceLimit" type="number" min={1} defaultValue={policy.distanceLimit ?? ''} className={input} /></div>
               </div>
               <PolicyCoverageFields coversParts={policy.coversParts} coversLabour={policy.coversLabour} coversLogistics={policy.coversLogistics} defaultRemedy={policy.defaultRemedy} />
@@ -161,7 +170,7 @@ export default async function WarrantyPolicyPage({ params, searchParams }: { par
           ) : (
             <div className="space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <p className="text-sm text-[var(--ejo-text)]">
-                {pluralize(policy.durationMonths, 'month')}{policy.distanceLimit ? ` or ${policy.distanceLimit.toLocaleString('en-NG')} km, whichever comes first` : ', no distance limit'}
+                {durationLabel(policy)}{policy.distanceLimit ? ` or ${policy.distanceLimit.toLocaleString('en-NG')} km, whichever comes first` : ', no distance limit'}
               </p>
               <p className="text-sm text-[var(--ejo-text)]">{coverageLabel(policy)} · Remedy: {REMEDY_LABEL[policy.defaultRemedy]}</p>
               <Items label="What is covered" text={policy.coverageSummary} />
