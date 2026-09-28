@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { listWarrantiesFor } from '@/lib/actions/warranty';
+import { listWarrantiesFor, getPartWarrantyBadges } from '@/lib/actions/warranty';
 import { WarrantyList } from '@/components/WarrantyList';
 import { getVehicleService, getVehicleServiceAuditTrail, getVehicleServiceCloseRequests, getVehicleServiceCancellationRequests } from '@/lib/actions/vehicle-service';
 import { listRefunds } from '@/lib/actions/refunds';
@@ -348,6 +348,8 @@ export default async function VehicleServiceDetailPage({
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const refunds = await listRefunds({ vehicleServiceId: id });
   const warranties = await listWarrantiesFor({ vehicleServiceId: id });
+  // Estimate lines whose part carries a warranty — shown before fitting.
+  const partWarrantyBadges = await getPartWarrantyBadges((serviceEstimate?.lineItems ?? []).map((li: { matchedPartId: string | null }) => li.matchedPartId ?? ''));
   const refundedTotal = refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
   const cancellationRequests = await getVehicleServiceCancellationRequests(id);
   const pendingCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'PENDING') ?? null;
@@ -995,6 +997,9 @@ export default async function VehicleServiceDetailPage({
                               <td className="py-1.5 pr-2 text-[var(--ejo-text-muted)]">{SERVICE_ESTIMATE_LINE_TYPE_DISPLAY[line.type] ?? line.type}</td>
                               <td className="py-1.5 pr-2 break-words text-[var(--ejo-text)]">
                                 {line.description}
+                                { line.type === 'STORE_PART' && line.matchedPartId && partWarrantyBadges[line.matchedPartId] ? (
+                                  <div className="mt-0.5 text-[10px] font-medium text-[var(--ejo-success)]">Warranty: {partWarrantyBadges[line.matchedPartId]} — issued automatically when released</div>
+                                ) : null}
                                 {line.type === 'STORE_PART' ? (
                                   line.matchedPart ? (
                                     <div className="mt-0.5 text-[10px] text-[var(--ejo-success)]">Matched: {line.matchedPart.name}</div>
