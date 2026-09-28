@@ -431,12 +431,23 @@ export default async function VehiclePage({
             </div>
           ) : null}
 
-          <div className="space-y-2">
-            <WarrantyList warranties={vehicleWarranties} title="Warranties" emptyText="No warranties recorded for this vehicle." />
-            <LoadingLink href={`/warranty/register?vehicleId=${vehicle.id}`} className="inline-block text-xs text-[var(--ejo-primary)] hover:underline">
-              Register a vehicle warranty →
-            </LoadingLink>
-          </div>
+          {vehicleWarranties.length > 0 ? (
+            <div className="space-y-2">
+              <WarrantyList warranties={vehicleWarranties} title="Warranties" />
+              <LoadingLink href={`/warranty/register?vehicleId=${vehicle.id}`} className="inline-block text-xs text-[var(--ejo-primary)] hover:underline">
+                Register another vehicle warranty →
+              </LoadingLink>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-5 py-3">
+              <p className="text-sm text-[var(--ejo-text-muted)]">
+                <span className="font-semibold text-[var(--ejo-text)]">Warranty</span> · No warranty on this vehicle
+              </p>
+              <LoadingLink href={`/warranty/register?vehicleId=${vehicle.id}`} className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">
+                Register a vehicle warranty →
+              </LoadingLink>
+            </div>
+          )}
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">History</h2>
           <dl className="mt-3 space-y-3 text-sm">
