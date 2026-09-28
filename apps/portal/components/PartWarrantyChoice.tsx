@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { SearchableSelect, type SearchableOption } from '@/components/SearchableSelect';
 
-export type PartPolicyOption = { id: string; name: string; code: string; months: number; km: number | null; covers: string; remedy: string; provider: string; isSample: boolean };
+export type PartPolicyOption = { id: string; name: string; code: string; term: string; km: number | null; covers: string; remedy: string; provider: string; isSample: boolean };
 
 /**
  * On part creation: "Does this part carry a warranty?" — a deliberate
@@ -53,7 +53,7 @@ export function PartWarrantyChoice({
             />
             {picked ? (
               <p className="text-xs text-[var(--ejo-text-muted)]">
-                {picked.code} · {picked.provider} · pays for {picked.covers} · remedy: {picked.remedy}. Every unit released to a customer gets its own warranty number.
+                {picked.code} · {picked.term}{picked.km ? ` / ${picked.km.toLocaleString('en-NG')} km` : ''} · {picked.provider} · pays for {picked.covers} · remedy: {picked.remedy}. Every unit released to a customer gets its own warranty number.
               </p>
             ) : null}
           </>

@@ -28,12 +28,10 @@ export function WarrantyList({ warranties, title = 'Warranties', emptyText }: { 
   if (warranties.length === 0 && !emptyText) return null;
   return (
     <div id="warranties" className="scroll-mt-24 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{title}</h2>
-        <LoadingLink href="/warranty" className="text-xs text-[var(--ejo-primary)] hover:underline">
-          Warranty register →
-        </LoadingLink>
-      </div>
+      <h2 className="text-sm font-semibold text-[var(--ejo-text)]">
+        {title}
+        {warranties.length > 0 ? ` (${warranties.length})` : ''}
+      </h2>
       {warranties.length === 0 ? (
         <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">{emptyText}</p>
       ) : (
