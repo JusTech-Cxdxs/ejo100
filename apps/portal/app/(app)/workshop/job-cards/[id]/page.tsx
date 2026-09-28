@@ -1,4 +1,5 @@
 import { LoadingLink } from '@/components/LoadingLink';
+import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantiesFor, getPartWarrantyBadges } from '@/lib/actions/warranty';
 import { WarrantyList } from '@/components/WarrantyList';
 import { JobCardStatusForm } from '@/components/JobCardStatusForm';
@@ -1348,7 +1349,7 @@ export default async function JobCardDetailPage({
               </p>
               {eligibleSupervisors.supervisors.length === 0 ? (
                 <p className="mt-3 text-xs text-[var(--ejo-error)]">
-                  No eligible supervisor or Master Administrator is currently active.
+                  No eligible supervisor is currently active.
                 </p>
               ) : (
                 <form action={reassignSupervisorFormAction} className="mt-3 space-y-2">
@@ -1374,7 +1375,7 @@ export default async function JobCardDetailPage({
               )}
               {eligibleSupervisors.usingFallback ? (
                 <p className="mt-1 text-[11px] text-[var(--ejo-warning)]">
-                  No one is placed in this department as a Supervisor yet — showing Master Administrators as a
+                  No one is placed in this department as a Supervisor yet — an administrator is shown as a
                   stand-in.
                 </p>
               ) : null}
@@ -1843,7 +1844,7 @@ export default async function JobCardDetailPage({
           <AuditTrail
             entries={auditTrail.map((entry) => ({
               id: entry.id,
-              actionLabel: AUDIT_ACTION_LABEL[entry.action] ?? entry.action,
+              actionLabel: AUDIT_ACTION_LABEL[entry.action] ?? humanizeAction(entry.action),
               userName: entry.user?.fullName ?? null,
               detail: formatAuditDetail(entry),
               dateLabel: formatDateTime(entry.createdAt),
