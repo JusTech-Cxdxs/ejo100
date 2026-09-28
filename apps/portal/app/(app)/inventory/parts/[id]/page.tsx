@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { durationLabel } from '@/lib/warranty-state';
 import { isPolicyId, policyAuditLabel } from '@/lib/audit-policy-label';
 import { humanizeAction } from '@/lib/humanize-action';
 import { SearchableSelect } from '@/components/SearchableSelect';
@@ -829,7 +830,7 @@ export default async function PartDetailPage({
                         emptyMessage="No active part policy matches — add one under Warranty → Policies."
                         minQueryLength={1}
                         defaultValue={current?.id}
-                        defaultLabel={current ? `${current.name} — ${current.durationMonths} months${current.distanceLimit ? ` / ${current.distanceLimit.toLocaleString('en-NG')} km` : ''}` : undefined}
+                        defaultLabel={current ? `${current.name} — ${durationLabel(current)}${current.distanceLimit ? ` / ${current.distanceLimit.toLocaleString('en-NG')} km` : ''}` : undefined}
                       />
                       <div className="flex gap-2">
                         <SubmitButton label="Save" pendingLabel="Saving…" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
@@ -853,7 +854,7 @@ export default async function PartDetailPage({
                       {current.isSample ? <span className="ml-2 rounded-full bg-[var(--ejo-warning)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--ejo-warning)]">Sample terms</span> : null}
                     </p>
                     <p className="text-xs text-[var(--ejo-text-muted)]">
-                      {current.durationMonths} months{current.distanceLimit ? ` or ${current.distanceLimit.toLocaleString('en-NG')} km, whichever comes first` : ''} · pays for {coverageLabel(current).toLowerCase()} · remedy: {(REMEDY_LABEL[current.defaultRemedy] ?? '').toLowerCase()} · {current.provider.name}
+                      {durationLabel(current)}{current.distanceLimit ? ` or ${current.distanceLimit.toLocaleString('en-NG')} km, whichever comes first` : ''} · pays for {coverageLabel(current).toLowerCase()} · remedy: {(REMEDY_LABEL[current.defaultRemedy] ?? '').toLowerCase()} · {current.provider.name}
                     </p>
                     <p className="text-xs text-[var(--ejo-text-muted)]">Every unit released to a customer gets its own warranty number automatically.</p>
                   </div>
