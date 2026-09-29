@@ -35,6 +35,7 @@ export function RefundsPanel({
   canRecord,
   defaultPaidTo,
   defaultReason,
+  customerOwes = 0,
 }: {
   target: { jobCardId: string } | { vehicleServiceId: string };
   paid: number;
@@ -43,9 +44,15 @@ export function RefundsPanel({
   canRecord: boolean;
   defaultPaidTo: string;
   defaultReason: string | null;
+  /** What the customer still owes on an active Job Card — only money
+   * paid beyond it (an overpayment) is owed back. */
+  customerOwes?: number;
 }) {
   const refunded = Math.round(refunds.reduce((s, r) => s + Number(r.amount), 0) * 100) / 100;
-  const remaining = Math.max(0, Math.round((paid - refunded) * 100) / 100);
+  const remaining = Math.max(0, Math.round((paid - refunded - (isCancelled ? 0 : customerOwes)) * 100) / 100);
+  // Active Job Card with an overpayment: refundable now, up to the excess.
+  const overpayment = !isCancelled && remaining > 0 && 'jobCardId' in target;
+  const canRefundNow = isCancelled || overpayment;
   const isJobCard = 'jobCardId' in target;
 
   return (
@@ -76,13 +83,16 @@ export function RefundsPanel({
         </div>
       </dl>
 
-      {remaining > 0 && !isCancelled ? (
+      {overpayment ? (
+        <p className="mt-3 text-xs text-[var(--ejo-warning)]">The customer has paid more than they now owe — refund the difference.</p>
+      ) : null}
+      {remaining > 0 && !canRefundNow ? (
         <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">
           A refund can be recorded once {isJobCard ? 'a Manager approves the cancellation' : 'this service is cancelled by a Manager'}.
         </p>
       ) : null}
 
-      {remaining > 0 && isCancelled && canRecord ? (
+      {remaining > 0 && canRefundNow && canRecord ? (
         <form action={recordRefundFormAction} className="mt-4 space-y-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4">
           <FormPendingOverlay />
           {isJobCard ? <input type="hidden" name="jobCardId" value={target.jobCardId} /> : <input type="hidden" name="vehicleServiceId" value={target.vehicleServiceId} />}
@@ -140,7 +150,7 @@ export function RefundsPanel({
             className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
           />
         </form>
-      ) : remaining > 0 && isCancelled ? (
+      ) : remaining > 0 && canRefundNow ? (
         <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
           Waiting on Finance to refund {naira(remaining)} to the customer.
           {isJobCard ? ' The vehicle can be handed back once the refund is complete.' : ''}

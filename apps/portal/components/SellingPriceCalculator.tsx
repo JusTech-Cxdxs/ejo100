@@ -5,7 +5,7 @@ import { setPartSellingPriceFormAction } from '@/lib/actions/store-form-handlers
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { pluralizeWord } from '@/lib/utils/pluralize';
-import { actualMargin, actualMarkup, marginToMarkup, priceForTargetMargin } from '@/lib/pricing-math';
+import { actualMargin, actualMarkup, marginToMarkup, roundedPriceForTargetMargin } from '@/lib/pricing-math';
 
 function formatNaira(amount: number): string {
   return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -88,7 +88,7 @@ export function SellingPriceCalculator({
   // after the fact.
   const equivalentTargetMarkup = targetMarginPercent !== null ? marginToMarkup(targetMarginPercent) : null;
   const marginGap = currentMarginPercent !== null && targetMarginPercent !== null ? currentMarginPercent - targetMarginPercent : null;
-  const recommendedPrice = unitCost !== null && targetMarginPercent !== null ? priceForTargetMargin(unitCost, targetMarginPercent) : null;
+  const recommendedPrice = unitCost !== null && targetMarginPercent !== null ? roundedPriceForTargetMargin(unitCost, targetMarginPercent) : null;
   const recommendedMarkup = recommendedPrice !== null && unitCost !== null ? actualMarkup(unitCost, recommendedPrice) : null;
 
   return (

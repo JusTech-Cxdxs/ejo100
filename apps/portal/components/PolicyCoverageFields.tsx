@@ -17,9 +17,9 @@ export function PolicyCoverageFields({
     <div className="space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-3">
       <p className="text-xs font-medium text-[var(--ejo-text-muted)]">What the provider pays for</p>
       <div className="flex flex-wrap gap-4 text-sm text-[var(--ejo-text)]">
-        <label className="flex items-center gap-2"><input type="checkbox" name="coversParts" value="true" defaultChecked={coversParts} /> Parts</label>
-        <label className="flex items-center gap-2"><input type="checkbox" name="coversLabour" value="true" defaultChecked={coversLabour} /> Labour</label>
-        <label className="flex items-center gap-2"><input type="checkbox" name="coversLogistics" value="true" defaultChecked={coversLogistics} /> Logistics (freight)</label>
+        <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-[var(--ejo-success)]" name="coversParts" value="true" defaultChecked={coversParts} /> Parts</label>
+        <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-[var(--ejo-success)]" name="coversLabour" value="true" defaultChecked={coversLabour} /> Labour</label>
+        <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-[var(--ejo-success)]" name="coversLogistics" value="true" defaultChecked={coversLogistics} /> Logistics (freight)</label>
       </div>
       <p className="text-[11px] text-[var(--ejo-text-muted)]">Logistics = shipping the replacement in and the failed part back.</p>
       <label className="block text-xs font-medium text-[var(--ejo-text-muted)]">How they usually make it right</label>

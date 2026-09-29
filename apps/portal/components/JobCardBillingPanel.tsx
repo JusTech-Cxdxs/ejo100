@@ -36,7 +36,7 @@ export function JobCardBillingPanel({ jobCardId, billing }: { jobCardId: string;
       </div>
       {billing.overpaid > 0 ? (
         <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/5 p-3 text-xs text-[var(--ejo-text)]">
-          The customer has paid {naira(billing.overpaid)} more than they now owe — record a refund in the Refunds panel.
+          The customer has paid {naira(billing.overpaid)} more than they now owe — Finance can refund the difference in the Refunds panel below.
         </p>
       ) : null}
       <ul className="mt-4 divide-y divide-[var(--ejo-border)]">

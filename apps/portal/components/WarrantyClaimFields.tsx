@@ -77,7 +77,7 @@ export function WarrantyClaimFields({
         <div className="flex items-end">
           <input type="hidden" name="partReturnField" value="1" />
           <label className="flex items-center gap-2 pb-2 text-sm text-[var(--ejo-text)]">
-            <input type="checkbox" name="partReturnRequired" value="true" defaultChecked={defaults.partReturnRequired ?? false} />
+            <input type="checkbox" className="h-4 w-4 accent-[var(--ejo-success)]" name="partReturnRequired" value="true" defaultChecked={defaults.partReturnRequired ?? false} />
             The provider needs the failed part back
           </label>
         </div>
