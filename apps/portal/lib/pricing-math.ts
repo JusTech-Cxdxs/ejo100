@@ -63,3 +63,14 @@ export function actualMarkup(cost: number, sellingPrice: number): number | null 
   if (cost <= 0) return null;
   return ((sellingPrice - cost) / cost) * 100;
 }
+
+/** Margins closer than this (percentage points) are the same margin —
+ * the difference is only kobo rounding, never a real change. */
+export const MARGIN_TOLERANCE_PP = 0.05;
+
+/** The selling price that meets a target margin, rounded UP to the kobo so
+ * the target is always met, never missed by rounding. */
+export function roundedPriceForTargetMargin(cost: number, marginPercent: number): number | null {
+  const raw = priceForTargetMargin(cost, marginPercent);
+  return raw === null ? null : Math.ceil(raw * 100 - 1e-9) / 100;
+}

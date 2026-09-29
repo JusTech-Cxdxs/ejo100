@@ -56,6 +56,15 @@ function stdev(xs: number[]): number {
 }
 const ratio = (a: number, b: number) => (b > 0 ? a / b : null);
 
+/** "1 day", "14 days", "8,109 days (about 22 years)". */
+export function coverText(days: number): string {
+  const d = Math.round(days);
+  const base = `${d.toLocaleString('en-NG')} ${d === 1 ? 'day' : 'days'}`;
+  if (d < 730) return base;
+  const years = Math.round(d / 365);
+  return `${base} (about ${years.toLocaleString('en-NG')} years)`;
+}
+
 export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IReceipt[]; issues: IIssue[]; openPricingAlerts: number; now?: Date; settings?: Partial<Settings> }) {
   const now = input.now ?? new Date();
   const s: Settings = { ...DEFAULT_SETTINGS, ...(input.settings ?? {}) };
@@ -92,9 +101,11 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
     const xyz: 'X' | 'Y' | 'Z' | null = cv === null ? null : cv < 0.5 ? 'X' : cv < 1 ? 'Y' : 'Z';
 
     // Suggestions
-    const suggestedSafety = r3(z * sigmaDaily * Math.sqrt(s.leadTimeDays));
-    const suggestedReorder = r3(avgDaily * s.leadTimeDays + suggestedSafety);
-    const suggestedOrderQty = avgDaily > 0 ? Math.max(0, Math.ceil(suggestedReorder + avgDaily * s.reviewDays - available)) : 0;
+    // Whole units, rounded up — you can't order 0.066 of a bottle. Any
+    // part with demand gets a reorder point of at least 1.
+    const suggestedSafety = Math.ceil(z * sigmaDaily * Math.sqrt(s.leadTimeDays) - 1e-9);
+    const suggestedReorder = avgDaily > 0 ? Math.max(1, Math.ceil(avgDaily * s.leadTimeDays + suggestedSafety - 1e-9)) : 0;
+    let suggestedOrderQty = avgDaily > 0 ? Math.max(0, Math.ceil(suggestedReorder + avgDaily * s.reviewDays - available - 1e-9)) : 0;
     const daysOfCover = avgDaily > 0 ? available / avgDaily : null;
     const stockoutDate = daysOfCover !== null ? new Date(now.getTime() + daysOfCover * DAY) : null;
 
@@ -104,11 +115,19 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
     const lastIssue = iss.length ? new Date(Math.max(...iss.map((i) => i.date.getTime()))) : null;
     const lastMovement = lastIssue ?? (recs.length ? recs[recs.length - 1]!.date : p.createdAt);
     let status: StockStatus;
-    if (p.onHand <= 0 && (avgDaily > 0 || (p.reorderPoint ?? 0) > 0)) status = 'OUT_OF_STOCK';
+    // Unused for the whole demand window but stock on hand: never a
+    // reorder (it would be ordering stock nobody uses) — "no recent demand",
+    // with a review note if it sits at or below its set level.
+    const idleAtLevel = avgDaily <= 0 && p.onHand > 0 && p.reorderPoint !== null && p.reorderPoint > 0 && p.onHand <= p.reorderPoint;
+    if (p.onHand <= 0 && (avgDaily > 0 || (p.reorderPoint ?? 0) > 0)) {
+      status = 'OUT_OF_STOCK';
+      // No demand history: restore the level you set, never "order 0".
+      if (suggestedOrderQty === 0 && (p.reorderPoint ?? 0) > 0) suggestedOrderQty = Math.ceil(p.reorderPoint! - available);
+    }
     else if (p.onHand > 0 && now.getTime() - lastMovement.getTime() > s.deadDays * DAY && (!lastIssue || now.getTime() - lastIssue.getTime() > s.deadDays * DAY)) status = 'DEAD';
+    else if (avgDaily <= 0) status = 'NO_DEMAND';
     else if (ss !== null && ss > 0 && p.onHand <= ss) status = 'BELOW_SAFETY';
     else if (rop !== null && rop > 0 && p.onHand <= rop) status = 'BELOW_REORDER';
-    else if (avgDaily <= 0) status = 'NO_DEMAND';
     else if (daysOfCover !== null && daysOfCover > s.overstockDays) status = 'OVERSTOCK';
     else status = 'HEALTHY';
 
@@ -122,7 +141,8 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
     const marginPercent = revenue365 > 0 ? (grossProfit / revenue365) * 100 : null;
     const markupPercent = cogs365 > 0 ? (grossProfit / cogs365) * 100 : null;
     const priceMarginNow = p.sellingPrice && lastCost !== null && p.sellingPrice > 0 ? ((p.sellingPrice - lastCost) / p.sellingPrice) * 100 : null;
-    const belowTarget = p.targetMarginPercent !== null && priceMarginNow !== null && priceMarginNow + 0.005 < p.targetMarginPercent;
+    // Same tolerance as the Pricing Command Center: kobo rounding is not a deficit.
+    const belowTarget = p.targetMarginPercent !== null && priceMarginNow !== null && priceMarginNow < p.targetMarginPercent - 0.05;
     const costInflation = avgCost && lastCost !== null ? ((lastCost - avgCost) / avgCost) * 100 : null;
     const stockValue = p.onHand * (avgCost ?? 0);
 
@@ -133,7 +153,7 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
       avgDaily: r3(avgDaily), sigmaDaily: r3(sigmaDaily), cv: cv === null ? null : r2(cv), xyz,
       suggestedSafety, suggestedReorder, suggestedOrderQty,
       daysOfCover: daysOfCover === null ? null : Math.round(daysOfCover), stockoutDate,
-      status, lastIssue, lastMovement,
+      status, idleAtLevel, lastIssue, lastMovement,
       avgCost: avgCost === null ? null : r2(avgCost), lastCost, sellingPrice: p.sellingPrice, targetMarginPercent: p.targetMarginPercent,
       qty365: r3(qty365), cogs365: r2(cogs365), revenue365: r2(revenue365), grossProfit: r2(grossProfit),
       marginPercent: marginPercent === null ? null : r2(marginPercent), markupPercent: markupPercent === null ? null : r2(markupPercent),
@@ -252,14 +272,15 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
   type Action = { priority: 1 | 2 | 3; title: string; detail: string; href: string };
   const actions: Action[] = [];
   const u = (n: number, unit: string) => `${n.toLocaleString('en-NG', { maximumFractionDigits: 3 })} ${pluralizeWord(n, unit)}`;
+  const order = (q: number, unit: string, fallback: string) => (q > 0 ? `order about ${u(q, unit)}` : fallback);
   rows.filter((r) => r.status === 'OUT_OF_STOCK').forEach((r) =>
     actions.push({ priority: 1, title: `${r.name} is out of stock`, detail: r.suggestedOrderQty > 0 ? `Order about ${u(r.suggestedOrderQty, r.unit)} now.` : 'Reorder — jobs needing it will wait.', href: `/inventory/parts/${r.id}` }),
   );
   rows.filter((r) => r.status === 'BELOW_SAFETY').forEach((r) =>
-    actions.push({ priority: 1, title: `${r.name} is below safety stock`, detail: `${u(r.onHand, r.unit)} left${r.daysOfCover !== null ? ` (about ${r.daysOfCover} ${r.daysOfCover === 1 ? 'day' : 'days'} of cover)` : ''} — order about ${u(r.suggestedOrderQty, r.unit)}.`, href: `/inventory/parts/${r.id}` }),
+    actions.push({ priority: 1, title: `${r.name} is below safety stock`, detail: `${u(r.onHand, r.unit)} left${r.daysOfCover !== null ? ` (${coverText(r.daysOfCover)} of cover)` : ''} — ${order(r.suggestedOrderQty, r.unit, 'reorder now')}.`, href: `/inventory/parts/${r.id}` }),
   );
   rows.filter((r) => r.status === 'BELOW_REORDER').forEach((r) =>
-    actions.push({ priority: 2, title: `Reorder ${r.name}`, detail: `At or below its reorder point — order about ${u(r.suggestedOrderQty, r.unit)}.`, href: `/inventory/parts/${r.id}` }),
+    actions.push({ priority: 2, title: `Reorder ${r.name}`, detail: `At or below its reorder point — ${order(r.suggestedOrderQty, r.unit, 'reorder soon')}.`, href: `/inventory/parts/${r.id}` }),
   );
   if (input.openPricingAlerts > 0) {
     actions.push({ priority: 2, title: `${input.openPricingAlerts} open pricing ${input.openPricingAlerts === 1 ? 'alert' : 'alerts'}`, detail: 'Cost changes have moved margins — review them in the Pricing Command Center.', href: '/inventory/pricing' });
@@ -273,11 +294,14 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
   rows
     .filter((r) => r.avgDaily > 0 && r.reorderPoint !== null && r.reorderPoint > 0 && Math.abs(r.reorderPoint - r.suggestedReorder) / r.reorderPoint > 0.3)
     .forEach((r) => actions.push({ priority: 3, title: `Review ${r.name}'s reorder point`, detail: `Set at ${u(r.reorderPoint!, r.unit)}; recent demand suggests ${u(r.suggestedReorder, r.unit)}.`, href: `/inventory/analytics?focus=${r.id}#planner` }));
+  rows.filter((r) => r.idleAtLevel).forEach((r) =>
+    actions.push({ priority: 3, title: `Review ${r.name}'s stock levels`, detail: `At its reorder level (${u(r.onHand, r.unit)}) but unused for ${s.demandWindowDays} days — no order suggested; consider lowering the level.`, href: `/inventory/analytics?focus=${r.id}#planner` }),
+  );
   diagnostic.deadStock.slice(0, 10).forEach((r) =>
     actions.push({ priority: 3, title: `Dead stock: ${r.name}`, detail: `No movement for over ${s.deadDays} days — ₦${r.stockValue.toLocaleString('en-NG')} tied up. Consider a promotion, return to supplier or write-off.`, href: `/inventory/parts/${r.id}` }),
   );
   diagnostic.overstock.slice(0, 10).forEach((r) =>
-    actions.push({ priority: 3, title: `Overstocked: ${r.name}`, detail: `About ${r.daysOfCover} days of cover — pause purchasing.`, href: `/inventory/parts/${r.id}` }),
+    actions.push({ priority: 3, title: `Overstocked: ${r.name}`, detail: `About ${coverText(r.daysOfCover ?? 0)} of cover — pause purchasing.`, href: `/inventory/parts/${r.id}` }),
   );
   actions.sort((a, b) => a.priority - b.priority);
 
