@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { customerTotal, billingSplit, isCustomerLine, coveredLabel } from '@/lib/estimate-billing';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
 import { WarrantiesIssuedPrint } from '@/components/print/WarrantiesIssuedPrint';
 import { getJobCard } from '@/lib/actions/workshop';
@@ -77,7 +78,9 @@ export default async function PrintJobCardPage({
   const wasCancelled = Boolean(cancellation);
 
   const lineItems = jobCard.estimate?.lineItems ?? [];
-  const totalEstimate = lineItems.reduce((sum: number, l: (typeof lineItems)[number]) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
+  // What the customer pays — covered lines (warranty / goodwill / internal) are shown but not charged.
+  const totalEstimate = customerTotal(lineItems);
+  const coveredTotal = billingSplit(lineItems).covered;
   const totalPaid = jobCard.payments.reduce((sum: number, p: (typeof jobCard.payments)[number]) => sum + Number(p.amount), 0);
   const vehicleSummary = [jobCard.vehicle.year, jobCard.vehicle.make, jobCard.vehicle.model, jobCard.vehicle.engineType].filter(Boolean).join(' ') || 'No vehicle details on file';
   const accentColor = wasCancelled ? '#DC2626' : '#16A34A';
@@ -215,14 +218,29 @@ export default async function PrintJobCardPage({
                 <td style={{ padding: '6px 4px', textAlign: 'right' }}>
                   {line.quantity}{line.unitOfMeasure ? ` ${pluralizeWord(line.quantity, line.unitOfMeasure)}` : ''}
                 </td>
-                <td style={{ padding: '6px 4px', textAlign: 'right' }}>{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
+                <td style={{ padding: '6px 4px', textAlign: 'right' }}>
+                  {isCustomerLine(line) ? (
+                    line.amount !== null ? formatNaira(Number(line.amount)) : '—'
+                  ) : (
+                    <span style={{ color: '#166534', fontSize: '11px' }}>
+                      {coveredLabel(line.billTo, line.coveringWarranty?.warrantyNumber)}
+                      {isOrgCopy && line.amount !== null ? ` (${formatNaira(Number(line.amount))})` : ''}
+                    </span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
           <tfoot>
+            {coveredTotal > 0 ? (
+              <tr style={{ color: '#166534' }}>
+                <td style={{ padding: '6px 4px' }} colSpan={isOrgCopy ? 4 : 3}>Covered by warranty / goodwill (not charged)</td>
+                <td style={{ padding: '6px 4px', textAlign: 'right' }}>{formatNaira(coveredTotal)}</td>
+              </tr>
+            ) : null}
             <tr style={{ borderTop: '1.5px solid #0F172A', fontWeight: 700 }}>
               <td style={{ padding: '6px 4px' }} colSpan={isOrgCopy ? 4 : 3}>
-                {pluralize(lineItems.length, 'Item')} total
+                {pluralize(lineItems.length, 'Item')} total{coveredTotal > 0 ? ' — customer pays' : ''}
               </td>
               <td style={{ padding: '6px 4px', textAlign: 'right' }}>{formatNaira(totalEstimate)}</td>
             </tr>
