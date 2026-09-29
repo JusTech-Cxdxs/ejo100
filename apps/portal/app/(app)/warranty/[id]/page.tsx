@@ -16,6 +16,7 @@ import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL, splitLine
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 
 const ACTION_LABEL: Record<string, string> = {
+  'warranty.covers_job_card_line': 'Covers a Job Card line',
   'warranty.registered': 'Warranty registered',
   'warranty.verified': 'Warranty verified — now active',
   'warranty.suspended': 'Warranty suspended',
@@ -184,7 +185,10 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
                     id: e.id,
                     actionLabel: ACTION_LABEL[e.action] ?? humanizeAction(e.action),
                     userName: e.userName,
-                    detail: typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : typeof meta.evidence === 'string' ? `Evidence: ${meta.evidence}` : null,
+                    detail:
+                      e.action === 'warranty.covers_job_card_line'
+                        ? `${String(meta.jobNumber ?? '')} — ${String(meta.line ?? '')}${typeof meta.amount === 'number' ? ` (₦${meta.amount.toLocaleString('en-NG')})` : ''}`
+                        : typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : typeof meta.evidence === 'string' ? `Evidence: ${meta.evidence}` : null,
                     dateLabel: formatDateTime(e.createdAt),
                   };
                 })}
