@@ -1,5 +1,8 @@
 import { notFound } from 'next/navigation';
-import { listPartsFittedToVehicle } from '@/lib/actions/vehicle-history';
+import { listPartsFittedToVehicle, getVehicleCoveredValue } from '@/lib/actions/vehicle-history';
+import { computeVehicleIntelligence } from '@/lib/vehicle-intelligence';
+import { VehicleIntelligenceCard } from '@/components/VehicleIntelligenceCard';
+import { warrantyCoverage } from '@/lib/warranty-state';
 import { VehiclePartsFitted } from '@/components/VehiclePartsFitted';
 import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
@@ -87,6 +90,25 @@ export default async function VehiclePage({
     getVehicleAnalytics(id),
     getVehicleReminderHistory(id),
   ]);
+  const coveredValue = await getVehicleCoveredValue(id);
+  // One vehicle's descriptive / diagnostic / predictive / prescriptive picture.
+  const intelligence = computeVehicleIntelligence({
+    mileage: analytics.mileageTimeline.map((m: (typeof analytics.mileageTimeline)[number]) => ({ date: new Date(m.date), km: m.mileage })),
+    visits: analytics.mileageTimeline.map((m: (typeof analytics.mileageTimeline)[number]) => ({ date: new Date(m.date) })),
+    customerSpend: analytics.totalSpend,
+    outstanding: analytics.outstanding,
+    coveredValue,
+    partsFitted: partsFitted.map((r: (typeof partsFitted)[number]) => ({
+      partId: r.part.id, partName: r.part.name, date: r.slip.releasedAt, slipId: r.slip.id,
+      jobCard: r.slip.jobCard ? { id: r.slip.jobCard.id, number: r.slip.jobCard.jobNumber } : null,
+      vehicleService: r.slip.vehicleService ? { id: r.slip.vehicleService.id, number: r.slip.vehicleService.serviceNumber } : null,
+    })),
+    warranties: vehicleWarranties.map((w: (typeof vehicleWarranties)[number]) => {
+      const cov = warrantyCoverage(w, w.vehicle?.mileage ?? null);
+      return { id: w.id, number: w.warrantyNumber, endsAt: new Date(w.endsAt), distanceEnd: w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null, covering: cov.state === 'COVERED' || cov.state === 'EXPIRING_SOON' };
+    }),
+    service: serviceHealth ? { dueDate: serviceHealth.nextServiceDueDate ? new Date(serviceHealth.nextServiceDueDate) : null, dueKm: serviceHealth.nextServiceDueOdometer } : null,
+  });
   const isEditing = edit === 'true';
 
   return (
@@ -516,6 +538,7 @@ export default async function VehiclePage({
 
       <div className="mt-6 space-y-6">
         <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Analytics</h2>
+        <VehicleIntelligenceCard vi={intelligence} />
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <h3 className="text-xs font-semibold text-[var(--ejo-text-muted)]">MILEAGE OVER TIME</h3>
