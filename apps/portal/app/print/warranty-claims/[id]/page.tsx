@@ -121,7 +121,7 @@ export default async function PrintWarrantyClaimPage({ params, searchParams }: {
       ) : null}
       <p style={{ marginTop: '12px', fontSize: '11px', color: '#475569' }}>
         We confirm the information above is accurate and that the failed part is retained for inspection
-        {c.provider.partRetentionDays ? ` for ${c.provider.partRetentionDays} days from submission` : ''}.
+        {c.provider.partRetentionDays ? ` for ${c.provider.partRetentionDays} ${c.provider.partRetentionDays === 1 ? 'day' : 'days'} from submission` : ''}.
       </p>
       <SignatureBlock issuerLabel="Submitted By (Warranty)" issuerName={isOrgCopy ? c.submittedBy?.fullName ?? '' : ''} collectorLabel="Received By (Provider)" collectorName="" />
       <DocumentFooter organisation={organisation} />
