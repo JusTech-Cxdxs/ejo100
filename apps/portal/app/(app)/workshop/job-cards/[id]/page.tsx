@@ -64,6 +64,8 @@ const STATUS_COLOR: Record<string, string> = {
 // phases add more audit actions (assignment.*, estimate.*, etc.); this
 // map only needs updating for a nicer label, never to avoid breaking.
 const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'job_card.line_bill_to_set': 'Who pays changed',
+  'warranty.issued': 'Warranties issued',
   'job_card.created': 'Job Card created',
   'job_card.created_from_vehicle_service': 'Created from Vehicle Service',
   'job_card.approved': 'Job Card approved',
@@ -151,6 +153,10 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
   const meta = entry.metadata as Record<string, unknown> | null;
   if (!meta) return null;
   switch (entry.action) {
+    case 'job_card.line_bill_to_set':
+      return `${typeof meta.line === 'string' ? meta.line : 'Line'}${typeof meta.amount === 'number' ? ` (${formatNaira(meta.amount)})` : ''}: ${String(meta.from ?? 'Customer')} → ${String(meta.to ?? '')}${typeof meta.note === 'string' ? ` — ${meta.note}` : ''}`;
+    case 'warranty.issued':
+      return Array.isArray(meta.warrantyNumbers) ? `${(meta.warrantyNumbers as string[]).join(', ')}${typeof meta.referenceNumber === 'string' ? ` — with ${meta.referenceNumber}` : ''}` : null;
     case 'job_card.created_from_vehicle_service':
       return typeof meta.serviceNumber === 'string' ? `From Vehicle Service ${meta.serviceNumber}` : null;
     case 'estimate.line_item_added':
@@ -1134,7 +1140,7 @@ export default async function JobCardDetailPage({
 
           <WarrantyList warranties={warranties} title="Warranties issued" />
 
-          {refunds.length > 0 || ((jobCard.status === 'CANCELLED' || pendingCancellationRequest) && paymentsTotal > 0) ? (
+          {refunds.length > 0 || ((jobCard.status === 'CANCELLED' || pendingCancellationRequest) && paymentsTotal > 0) || (billing?.overpaid ?? 0) > 0 ? (
             <RefundsPanel
               target={{ jobCardId: jobCard.id }}
               paid={paymentsTotal}
@@ -1142,7 +1148,8 @@ export default async function JobCardDetailPage({
               isCancelled={jobCard.status === 'CANCELLED' || Boolean(approvedCancellation)}
               canRecord={isEligibleFinance}
               defaultPaidTo={jobCard.customer.fullName}
-              defaultReason={approvedCancellation?.reason ?? pendingCancellationRequest?.reason ?? null}
+              defaultReason={approvedCancellation?.reason ?? pendingCancellationRequest?.reason ?? ((billing?.overpaid ?? 0) > 0 ? 'Overpayment — lines now covered by warranty, goodwill or internally' : null)}
+              customerOwes={jobCard.status === 'CANCELLED' || approvedCancellation ? 0 : estimateTotal}
             />
           ) : null}
 
