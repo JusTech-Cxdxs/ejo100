@@ -21,6 +21,7 @@
  * is already a dependency of apps/portal or packages/database.
  */
 
+import { customerTotal, isCustomerLine, coveredLabel } from '@/lib/estimate-billing';
 import { headers } from 'next/headers';
 import { prisma, JobCardStatus, Prisma, setAuditActor } from '@ejo/database';
 import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
@@ -1001,7 +1002,7 @@ export async function getJobCard(id: string) {
       // against it — the two things a genuine Vehicle Collection
       // Receipt needs to show what was actually done and what was
       // actually paid, not just the vehicle's own details.
-      estimate: { include: { lineItems: { orderBy: { createdAt: 'asc' } } } },
+      estimate: { include: { lineItems: { orderBy: { createdAt: 'asc' }, include: { coveringWarranty: { select: { id: true, warrantyNumber: true } } } } } },
       payments: { orderBy: { recordedAt: 'asc' }, include: { recordedBy: { select: { fullName: true } } } },
       refunds: { orderBy: { recordedAt: 'asc' }, include: { recordedBy: { select: { fullName: true } } } },
       escalatedFromVehicleService: { select: { id: true, serviceNumber: true, escalatedAt: true } },
@@ -1303,7 +1304,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       department: { select: { name: true } },
       customer: { select: { fullName: true, email: true } },
       vehicle: { select: { make: true, model: true } },
-      estimate: { select: { lineItems: { select: { amount: true } } } },
+      estimate: { select: { lineItems: { select: { amount: true, billTo: true } } } },
       payments: { select: { amount: true } },
       refunds: { select: { amount: true } },
     },
@@ -1355,7 +1356,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
     status === JobCardStatus.CHECKED_OUT
     && jobCard.status !== JobCardStatus.CANCELLED
   ) {
-    const totalEstimate = (jobCard.estimate?.lineItems ?? []).reduce((sum: number, l: { amount: unknown }) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
+    const totalEstimate = customerTotal(jobCard.estimate?.lineItems ?? []);
     const totalPaid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
     if (totalPaid < totalEstimate) {
       throw new WorkshopActionError('Payment must be completed in full before this Job Card can be checked out.');
@@ -2611,7 +2612,7 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
           supervisor: { select: { fullName: true, email: true } },
         },
       },
-      lineItems: { select: { id: true, type: true, matchedPartId: true, quantity: true, unitPrice: true, amount: true, description: true, matchedPart: { select: { sellingPrice: true } } } },
+      lineItems: { select: { id: true, type: true, matchedPartId: true, quantity: true, unitPrice: true, amount: true, billTo: true, description: true, matchedPart: { select: { sellingPrice: true } } } },
     },
   });
   if (!estimate) {
@@ -2670,7 +2671,7 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
     const submitter = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
     const orgContext = await getWorkshopOrgContext(estimate.jobCard.department?.name);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+    const total = customerTotal(estimate.lineItems);
     await sendEmail(
       estimate.jobCard.supervisor.email,
       `Estimate for Job Card ${estimate.jobCard.jobNumber} needs your validation`,
@@ -2804,8 +2805,8 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
     const managers = await listEligibleManagersForBranch(estimate.jobCard.branchId);
     if (managers.supervisors.length === 0) return;
     const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-    const lineItems = await prisma.estimateLineItem.findMany({ where: { estimateId: estimate.id }, select: { amount: true } });
-    const total = lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+    const lineItems = await prisma.estimateLineItem.findMany({ where: { estimateId: estimate.id }, select: { amount: true, billTo: true } });
+    const total = customerTotal(lineItems);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const companyName = estimate.jobCard.branch.businessUnit.organisation.name;
     const branchName = estimate.jobCard.branch.name;
@@ -2887,8 +2888,8 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
   // Fail-soft, matching every other notification in this file.
   try {
     const manager = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-    const lineItems = await prisma.estimateLineItem.findMany({ where: { estimateId: estimate.id }, select: { amount: true } });
-    const total = lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+    const lineItems = await prisma.estimateLineItem.findMany({ where: { estimateId: estimate.id }, select: { amount: true, billTo: true } });
+    const total = customerTotal(lineItems);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     await sendEmail(
       estimate.jobCard.createdBy.email,
@@ -2932,7 +2933,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
           branch: { select: { name: true, address: true, hotlines: true, email: true, businessUnit: { select: { organisation: { select: { name: true } } } } } },
         },
       },
-      lineItems: { orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true, unitOfMeasure: true } },
+      lineItems: { orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true, unitOfMeasure: true, billTo: true, coveringWarranty: { select: { warrantyNumber: true } } } },
     },
   });
   if (!estimate) {
@@ -2980,7 +2981,9 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
     let servicesTotal = 0;
     let labourTotal = 0;
     let sundryTotal = 0;
-    for (const li of estimate.lineItems as { type: string; amount: unknown }[]) {
+    for (const li of estimate.lineItems as { type: string; amount: unknown; billTo?: string | null }[]) {
+      // Covered lines (warranty / goodwill / internal) are never charged.
+      if (!isCustomerLine(li)) continue;
       const amount = Number(li.amount ?? 0);
       if (li.type === 'LABOUR') labourTotal += amount;
       else if (li.type === 'SUNDRY') sundryTotal += amount;
@@ -3005,7 +3008,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
       .filter(Boolean)
       .join(' — ');
 
-    const rawLineItems = estimate.lineItems as { description: string; quantity: number; unitOfMeasure: string | null; amount: unknown }[];
+    const rawLineItems = estimate.lineItems as { description: string; quantity: number; unitOfMeasure: string | null; amount: unknown; billTo?: string | null; coveringWarranty?: { warrantyNumber: string } | null }[];
 
     await sendEmail(
       estimate.jobCard.customer.email,
@@ -3018,7 +3021,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
           description: li.description,
           quantity: li.quantity,
           unitOfMeasure: li.unitOfMeasure,
-          amount: formatNaira(Number(li.amount ?? 0)),
+          amount: isCustomerLine(li) ? formatNaira(Number(li.amount ?? 0)) : coveredLabel(li.billTo, li.coveringWarranty?.warrantyNumber),
         })),
         servicesSubtotal: servicesTotal > 0 ? formatNaira(servicesTotal) : undefined,
         labourSubtotal: labourTotal > 0 ? formatNaira(labourTotal) : undefined,
@@ -3072,7 +3075,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
                 description: li.description,
                 quantity: li.quantity,
                 unitLabel: li.unitOfMeasure ? pluralizeWord(li.quantity, li.unitOfMeasure) : null,
-                amount: formatNairaForPdf(Number(li.amount ?? 0)),
+                amount: isCustomerLine(li) ? formatNairaForPdf(Number(li.amount ?? 0)) : coveredLabel(li.billTo, li.coveringWarranty?.warrantyNumber),
               })),
               servicesSubtotal: servicesTotal > 0 ? formatNairaForPdf(servicesTotal) : null,
               labourSubtotal: labourTotal > 0 ? formatNairaForPdf(labourTotal) : null,
@@ -3215,7 +3218,7 @@ export async function recordPayment(
       workStartedAt: true,
       customer: { select: { fullName: true, email: true } },
       department: { select: { name: true } },
-      estimate: { select: { lineItems: { select: { amount: true } } } },
+      estimate: { select: { lineItems: { select: { amount: true, billTo: true } } } },
       payments: { select: { amount: true } },
     },
   });
@@ -3242,7 +3245,7 @@ export async function recordPayment(
   }
   const user = await requireEligibleFinanceOfficer(jobCard.branchId);
 
-  const total = (jobCard.estimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+  const total = customerTotal(jobCard.estimate?.lineItems ?? []);
   const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
   const alreadyPaid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount ?? 0), 0);
   const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -3800,7 +3803,7 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
       supervisorId: true,
       customer: { select: { fullName: true } },
       department: { select: { name: true } },
-      estimate: { select: { lineItems: { select: { amount: true } } } },
+      estimate: { select: { lineItems: { select: { amount: true, billTo: true } } } },
       payments: { select: { amount: true } },
     },
   });
@@ -3821,7 +3824,7 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
   // money is still owed on it. Checked here, at the earliest possible
   // point, rather than only at approval — no point routing a request
   // to a Manager that could never legitimately be approved anyway.
-  const totalEstimate = (jobCard.estimate?.lineItems ?? []).reduce((sum: number, l: { amount: unknown }) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
+  const totalEstimate = customerTotal(jobCard.estimate?.lineItems ?? []);
   const totalPaid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
   if (totalPaid < totalEstimate) {
     throw new WorkshopActionError('Payment must be completed in full before a close can be requested.');
@@ -4351,7 +4354,7 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
         select: {
           id: true,
           customerNotifiedAt: true,
-          lineItems: { select: { amount: true } },
+          lineItems: { select: { amount: true, billTo: true } },
         },
       },
     },
@@ -4360,7 +4363,7 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
     throw new WorkshopActionError('This Job Card is not currently awaiting customer approval.');
   }
 
-  const total = jobCard.estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
+  const total = customerTotal(jobCard.estimate.lineItems);
   const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
   const dueDate = addWorkingDays(jobCard.estimate.customerNotifiedAt, APPROVAL_DEADLINE_WORKING_DAYS);
   const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
