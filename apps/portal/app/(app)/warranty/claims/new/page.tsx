@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { getCoveredAmountsForClaim } from '@/lib/actions/estimate-billing';
 import { pluralize } from '@/lib/utils/pluralize';
 import { prisma } from '@ejo/database';
 import { getWarranty } from '@/lib/actions/warranty';
@@ -24,6 +25,7 @@ export default async function NewWarrantyClaimPage({ searchParams }: { searchPar
         prisma.vehicleService.findMany({ where: { vehicleId: w.vehicle.id }, orderBy: { createdAt: 'desc' }, take: 30, select: { id: true, serviceNumber: true, createdAt: true, odometerAtService: true } }),
       ])
     : [[], []];
+  const covered = jobCardId ? await getCoveredAmountsForClaim(jobCardId, w.id) : null;
   const preselectedJc = jobCardId ? jobCards.find((j: (typeof jobCards)[number]) => j.id === jobCardId) : w.jobCard ? jobCards.find((j: (typeof jobCards)[number]) => j.id === w.jobCard?.id) : undefined;
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' });
 
@@ -38,6 +40,11 @@ export default async function NewWarrantyClaimPage({ searchParams }: { searchPar
         {w.provider.claimSubmissionDays ? ` Claims must reach ${w.provider.name} within ${pluralize(w.provider.claimSubmissionDays, 'day')} of the failure.` : ''}
       </p>
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
+      {covered ? (
+        <div className="mb-6 max-w-3xl rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-success)]/40 bg-[var(--ejo-success)]/5 p-4 text-sm text-[var(--ejo-text)]">
+          Amounts filled in from the Job Card lines billed to {w.warrantyNumber}: {covered.lines.join(', ')}. Check them before saving.
+        </div>
+      ) : null}
       <form action={createWarrantyClaimFormAction} className="max-w-3xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
         <FormPendingOverlay />
         <input type="hidden" name="warrantyId" value={w.id} />
@@ -48,6 +55,7 @@ export default async function NewWarrantyClaimPage({ searchParams }: { searchPar
             causalPart: w.kind === 'PART' ? w.part?.name ?? '' : '',
             causalPartNumber: w.kind === 'PART' ? w.part?.partNumber ?? null : null,
             jobCardId: preselectedJc?.id ?? null,
+            ...(covered ? { partsAmount: covered.parts, labourAmount: covered.labour, otherAmount: covered.other, correction: covered.lines.join('; ') } : {}),
             remedy: w.policy.defaultRemedy,
             partReturnRequired: w.provider.partRetentionDays !== null,
           }}
