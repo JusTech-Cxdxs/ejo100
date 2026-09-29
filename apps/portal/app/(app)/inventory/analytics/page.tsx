@@ -8,7 +8,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
-import type { StockStatus } from '@/lib/inventory-analytics';
+import { coverText, type StockStatus } from '@/lib/inventory-analytics';
 
 const naira = (n: number | null) => (n === null ? '—' : `₦${Math.round(n).toLocaleString('en-NG')}`);
 const pct = (n: number | null) => (n === null ? '—' : `${n.toFixed(1)}%`);
@@ -90,7 +90,7 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
   const d = a.descriptive, st = a.statistics, g = a.diagnostic, p = a.predictive;
   const showAll = params.show === 'all';
   const plannerRows = a.rows
-    .filter((r) => showAll || ATTENTION.includes(r.status) || r.id === params.focus || (r.avgDaily > 0 && (r.reorderPoint === null || r.safetyStock === null)))
+    .filter((r) => showAll || ATTENTION.includes(r.status) || r.idleAtLevel || r.id === params.focus || (r.avgDaily > 0 && (r.reorderPoint === null || r.safetyStock === null)))
     .sort((x, y) => ATTENTION.indexOf(x.status) - ATTENTION.indexOf(y.status) || (x.daysOfCover ?? 1e9) - (y.daysOfCover ?? 1e9));
   const trendMax = Math.max(1, ...d.trend.flatMap((t) => [t.received, t.issuedCost, t.revenue]));
   const keep = `lead=${lead}&service=${service}`;
@@ -186,7 +186,7 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
       <Section title="Statistics" subtitle="Efficiency and the shape of demand.">
         <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
           <Kpi label="Stock turnover" value={st.turnover === null ? '—' : `${st.turnover.toFixed(2)}×`} hint="Cost issued in a year ÷ stock value" />
-          <Kpi label="Days of inventory" value={st.daysOfInventory === null ? '—' : pluralize(st.daysOfInventory, 'day')} hint="How long current stock lasts at the yearly pace" />
+          <Kpi label="Days of inventory" value={st.daysOfInventory === null ? '—' : coverText(st.daysOfInventory)} hint="How long current stock lasts at the yearly pace" />
           <Kpi label="GMROI" value={st.gmroi === null ? '—' : `₦${st.gmroi.toFixed(2)}`} hint="Gross profit per ₦1 held in stock" />
           <Kpi label="Demand variability (X / Y / Z)" value={`${st.xyzCount.X} / ${st.xyzCount.Y} / ${st.xyzCount.Z}`} hint="Steady / variable / erratic weekly demand" />
         </div>
@@ -284,19 +284,20 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
                   <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-[var(--ejo-text)]">
                     <span className="text-[var(--ejo-text-muted)]">On hand / available</span><span>{qty(r.onHand, r.unit)} / {r.available.toLocaleString('en-NG', { maximumFractionDigits: 3 })}</span>
                     <span className="text-[var(--ejo-text-muted)]">Demand</span><span>{r.avgDaily > 0 ? `${r.avgDaily} a day · ${qty(r.qty365, r.unit)} a year` : 'none recently'}</span>
-                    <span className="text-[var(--ejo-text-muted)]">Days of cover</span><span>{r.daysOfCover === null ? '—' : pluralize(r.daysOfCover, 'day')}</span>
+                    <span className="text-[var(--ejo-text-muted)]">Days of cover</span><span>{r.daysOfCover === null ? '—' : coverText(r.daysOfCover)}</span>
                     <span className="text-[var(--ejo-text-muted)]">Set levels</span><span>reorder {r.reorderPoint ?? '—'} · safety {r.safetyStock ?? '—'}</span>
-                    <span className="text-[var(--ejo-text-muted)]">Suggested</span><span className="font-medium">reorder {r.suggestedReorder} · safety {r.suggestedSafety}</span>
+                    <span className="text-[var(--ejo-text-muted)]">Suggested</span><span className="font-medium">{r.avgDaily > 0 ? `reorder ${r.suggestedReorder} · safety ${r.suggestedSafety}` : 'needs demand history'}</span>
                   </div>
                   <div className="space-y-2 text-xs">
+                    {r.idleAtLevel ? <p className="text-[var(--ejo-warning)]">Unused for {a.settings.demandWindowDays} days while at its reorder level — consider lowering the level.</p> : null}
                     {r.suggestedOrderQty > 0 ? <p className="text-[var(--ejo-text)]">Order about <span className="font-semibold">{qty(r.suggestedOrderQty, r.unit)}</span>{r.lastCost !== null || r.avgCost !== null ? ` (≈ ${naira(r.reorderCost)})` : ''}</p> : <p className="text-[var(--ejo-text-muted)]">No order needed now.</p>}
                     {r.avgDaily > 0 ? (
                       <form action={setPartStockLevelsFormAction} className="flex flex-wrap items-end gap-2">
                         <FormPendingOverlay />
                         <input type="hidden" name="partId" value={r.id} />
                         <input type="hidden" name="returnTo" value={`/inventory/analytics?${keep}${showAll ? '&show=all' : ''}&focus=${r.id}#planner`} />
-                        <label className="text-[var(--ejo-text-muted)]">Reorder<input name="reorderPoint" type="number" step="any" min={0} defaultValue={r.suggestedReorder} className={`${input} ml-1 w-20`} /></label>
-                        <label className="text-[var(--ejo-text-muted)]">Safety<input name="safetyStock" type="number" step="any" min={0} defaultValue={r.suggestedSafety} className={`${input} ml-1 w-20`} /></label>
+                        <label className="text-[var(--ejo-text-muted)]">Reorder<input name="reorderPoint" type="number" step="1" min={0} defaultValue={r.suggestedReorder} className={`${input} ml-1 w-20`} /></label>
+                        <label className="text-[var(--ejo-text-muted)]">Safety<input name="safetyStock" type="number" step="1" min={0} defaultValue={r.suggestedSafety} className={`${input} ml-1 w-20`} /></label>
                         <SubmitButton label="Apply" pendingLabel="Saving…" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1 text-xs font-medium text-white hover:opacity-90" />
                       </form>
                     ) : (
