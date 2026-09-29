@@ -1,4 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
+import { customerTotal, isCustomerLine } from '@/lib/estimate-billing';
+import { getJobCardBilling } from '@/lib/actions/estimate-billing';
+import { JobCardBillingPanel } from '@/components/JobCardBillingPanel';
 import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantiesFor, getPartWarrantyBadges } from '@/lib/actions/warranty';
 import { WarrantyList } from '@/components/WarrantyList';
@@ -371,6 +374,7 @@ export default async function JobCardDetailPage({
   const approvedCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'APPROVED') ?? null;
   const refunds = await listRefunds({ jobCardId: id });
   const warranties = await listWarrantiesFor({ jobCardId: id });
+  const billing = await getJobCardBilling(id);
   // Estimate lines whose part carries a warranty — shown before fitting.
   const partWarrantyBadges = await getPartWarrantyBadges((estimate?.lineItems ?? []).map((li: { matchedPartId: string | null }) => li.matchedPartId ?? ''));
   const refundedTotal = refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
@@ -391,7 +395,8 @@ export default async function JobCardDetailPage({
     return item.amount !== null ? Number(item.amount) : 0;
   }
   const hasUnmatchedStoreParts = estimateLineItems.some((li: (typeof estimateLineItems)[number]) => li.type === 'STORE_PART' && !li.matchedPartId);
-  const estimateTotal = estimateLineItems.reduce((sum: number, li: (typeof estimateLineItems)[number]) => sum + Number(li.amount ?? 0), 0);
+  // What the customer pays — covered lines (warranty / goodwill / internal) excluded.
+  const estimateTotal = customerTotal(estimateLineItems);
   const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
   // A cancelled job that took money is about the refund, not payment
   // progress — never "Payment Completed" on money being given back.
@@ -463,6 +468,11 @@ export default async function JobCardDetailPage({
         </div>
       ) : null}
 
+      {status === 'bill_to_set' ? (
+        <div className="mb-6 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Who pays for that line is updated — the customer's total, deposit and balance follow it." />
+        </div>
+      ) : null}
       {status === 'refund_recorded' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Refund recorded — the customer has been emailed their receipt." />
@@ -959,6 +969,30 @@ export default async function JobCardDetailPage({
                       )}
                     </span>
                   </div>
+                  {estimate.lineItems.some((item: (typeof estimate.lineItems)[number]) => !isCustomerLine(item)) ? (
+                    <>
+                      <div className="flex justify-between text-sm text-[var(--ejo-success)]">
+                        <span>Covered — warranty / goodwill / internal (not charged)</span>
+                        <span>
+                          −{formatNaira(
+                            estimate.lineItems
+                              .filter((item: (typeof estimate.lineItems)[number]) => !isCustomerLine(item))
+                              .reduce((sum: number, item: (typeof estimate.lineItems)[number]) => sum + getLiveLineAmount(item), 0),
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-base font-bold text-[var(--ejo-text)]">
+                        <span>Customer pays</span>
+                        <span>
+                          {formatNaira(
+                            estimate.lineItems
+                              .filter((item: (typeof estimate.lineItems)[number]) => isCustomerLine(item))
+                              .reduce((sum: number, item: (typeof estimate.lineItems)[number]) => sum + getLiveLineAmount(item), 0),
+                          )}
+                        </span>
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               </>
             )}
@@ -1095,6 +1129,8 @@ export default async function JobCardDetailPage({
               </p>
             ) : null}
           </div>
+
+          {billing ? <JobCardBillingPanel jobCardId={jobCard.id} billing={billing} /> : null}
 
           <WarrantyList warranties={warranties} title="Warranties issued" />
 
