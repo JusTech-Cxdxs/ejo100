@@ -4,6 +4,7 @@ import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog, getWorkshopOrgContext, requireEligibleFinanceOfficer } from './workshop';
 import { sendEmail } from '@/lib/email';
 import { renderCustomerRefundReceiptEmail } from '@/lib/email-templates/customer-refund-receipt';
+import { customerTotal } from '@/lib/estimate-billing';
 
 class RefundActionError extends Error {}
 
@@ -30,6 +31,7 @@ async function loadTarget(target: RefundTarget) {
         payments: { select: { amount: true } },
         refunds: { select: { amount: true } },
         cancellationRequests: { where: { status: 'APPROVED' }, orderBy: { decidedAt: 'desc' }, take: 1, select: { reason: true } },
+        estimate: { select: { lineItems: { select: { amount: true, billTo: true } } } },
       },
     });
     if (!jc) return null;
@@ -46,6 +48,9 @@ async function loadTarget(target: RefundTarget) {
       payments: jc.payments,
       refunds: jc.refunds,
       cancellationReason: jc.cancellationRequests[0]?.reason ?? null,
+      // What the customer still owes on an active Job Card (customer lines
+      // only); nothing once it's cancelled — then everything paid is owed back.
+      customerOwes: jc.status === 'CANCELLED' ? 0 : customerTotal(jc.estimate?.lineItems ?? []),
       entityType: 'JobCard',
       portalAnchor: `jobcard-${jc.id}`,
     };
@@ -83,10 +88,13 @@ async function loadTarget(target: RefundTarget) {
   };
 }
 
-function position(payments: { amount: unknown }[], refunds: { amount: unknown }[]): RefundPosition {
+/** Paid in, refunded out, and what is still owed back: everything paid
+ * minus refunds minus whatever the customer still owes (nothing once
+ * cancelled; on an active Job Card only an overpayment is owed back). */
+function position(payments: { amount: unknown }[], refunds: { amount: unknown }[], customerOwes = 0): RefundPosition {
   const paid = round2(payments.reduce((s: number, p: { amount: unknown }) => s + Number(p.amount), 0));
   const refunded = round2(refunds.reduce((s: number, r: { amount: unknown }) => s + Number(r.amount), 0));
-  const remaining = round2(Math.max(0, paid - refunded));
+  const remaining = round2(Math.max(0, paid - refunded - customerOwes));
   return { paid, refunded, remaining, isFullyRefunded: remaining <= 0 };
 }
 
@@ -95,7 +103,7 @@ export async function getRefundPosition(target: RefundTarget): Promise<RefundPos
   await requireUser();
   const t = await loadTarget(target);
   if (!t) throw new RefundActionError('Record not found.');
-  return position(t.payments, t.refunds);
+  return position(t.payments, t.refunds, 'customerOwes' in t ? t.customerOwes : 0);
 }
 
 /** Every refund on one Job Card or Vehicle Service, newest first. */
@@ -175,10 +183,17 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
   if (!t) throw new RefundActionError('Record not found.');
   const user = await requireEligibleFinanceOfficer(t.branchId);
 
-  if (t.status !== 'CANCELLED') {
+  // An active Job Card can refund an OVERPAYMENT only (the customer paid
+  // more than they now owe — e.g. lines moved to warranty after a deposit).
+  const owes = 'customerOwes' in t ? t.customerOwes : 0;
+  const isOverpaymentRefund = t.status !== 'CANCELLED' && t.kind === 'JOB_CARD' && position(t.payments, t.refunds, owes).remaining > 0;
+  if (t.status !== 'CANCELLED' && t.kind === 'JOB_CARD' && !isOverpaymentRefund && t.refunds.length > 0) {
+    throw new RefundActionError('The overpayment on this Job Card has already been refunded — nothing more is owed back.');
+  }
+  if (t.status !== 'CANCELLED' && !isOverpaymentRefund) {
     throw new RefundActionError(
       t.kind === 'JOB_CARD'
-        ? 'A refund can only be recorded once the cancellation has been approved by a Manager.'
+        ? 'A refund can only be recorded once the cancellation has been approved by a Manager, or when the customer has paid more than they now owe.'
         : 'A refund can only be recorded once this Vehicle Service has been cancelled.',
     );
   }
@@ -186,7 +201,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new RefundActionError('Enter a refund amount greater than zero.');
   }
-  const pos = position(t.payments, t.refunds);
+  const pos = position(t.payments, t.refunds, t.status === 'CANCELLED' ? 0 : owes);
   if (pos.remaining <= 0) {
     throw new RefundActionError('Everything paid on this record has already been refunded.');
   }
@@ -200,7 +215,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
   if (!paidToName) {
     throw new RefundActionError('Enter the name of the person who received the refund.');
   }
-  const reason = input.reason?.trim() || t.cancellationReason || '';
+  const reason = input.reason?.trim() || (isOverpaymentRefund ? 'Overpayment — lines now covered by warranty, goodwill or internally' : t.cancellationReason) || '';
   if (!reason) {
     throw new RefundActionError('Enter the reason for this refund.');
   }
@@ -220,7 +235,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
     },
   });
 
-  const after = position(t.payments, [...t.refunds, { amount }]);
+  const after = position(t.payments, [...t.refunds, { amount }], t.status === 'CANCELLED' ? 0 : owes);
   await writeAuditLog({
     userId: user.id,
     action: 'refund.recorded',

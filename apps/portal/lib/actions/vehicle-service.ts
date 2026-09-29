@@ -1,5 +1,6 @@
 'use server';
 
+import { customerTotal } from '@/lib/estimate-billing';
 import { prisma } from '@ejo/database';
 import {
   requireUser,
@@ -649,7 +650,7 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
         jobNumber: true,
         createdAt: true,
         mileageAtCheckIn: true,
-        estimate: { select: { status: true, lineItems: { select: { amount: true } } } },
+        estimate: { select: { status: true, lineItems: { select: { amount: true, billTo: true } } } },
       },
     }),
     prisma.vehicleInspection.findMany({
@@ -721,7 +722,9 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
       .map((s: (typeof services)[number]) => ({ date: s.createdAt, amount: sumLines(s.serviceEstimate?.lineItems ?? []), label: s.serviceNumber, source: 'VEHICLE_SERVICE' as const })),
     ...jobCards
       .filter((j: (typeof jobCards)[number]) => j.estimate?.status === 'MANAGER_APPROVED')
-      .map((j: (typeof jobCards)[number]) => ({ date: j.createdAt, amount: sumLines(j.estimate?.lineItems ?? []), label: j.jobNumber, source: 'JOB_CARD' as const })),
+      // Job Cards: only what the CUSTOMER pays — warranty / goodwill /
+      // internal lines are never counted as the customer's spend or balance.
+      .map((j: (typeof jobCards)[number]) => ({ date: j.createdAt, amount: customerTotal(j.estimate?.lineItems ?? []), label: j.jobNumber, source: 'JOB_CARD' as const })),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
   const approvedJobCard = spendTimeline.filter((p) => p.source === 'JOB_CARD').reduce((sum, p) => sum + p.amount, 0);
   const approvedService = spendTimeline.filter((p) => p.source === 'VEHICLE_SERVICE').reduce((sum, p) => sum + p.amount, 0);

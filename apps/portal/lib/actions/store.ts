@@ -18,7 +18,7 @@ import { prisma, PartTrackingType } from '@ejo/database';
 import { notifyWarrantyDepartmentOfPartWarranty } from '@/lib/warranty-department-notify';
 import { loadQuantityTraces } from '@/lib/inventory/quantity-trace';
 import { pluralize } from '@/lib/utils/pluralize';
-import { markupToMargin, marginToMarkup, actualMargin, actualMarkup, priceForTargetMargin } from '@/lib/pricing-math';
+import { markupToMargin, marginToMarkup, actualMargin, actualMarkup, MARGIN_TOLERANCE_PP, roundedPriceForTargetMargin } from '@/lib/pricing-math';
 import { requireUser, writeAuditLog, currentUserIsMasterAdmin } from './workshop';
 import { sendEmail } from '@/lib/email';
 import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
@@ -1695,12 +1695,14 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
         const sellingPrice = Number(line.part.sellingPrice);
         const targetMarginPercent = Number(line.part.targetMarginPercent);
         const actualMarginPercent = ((sellingPrice - line.unitCostInBaseUnit) / sellingPrice) * 100;
+        // Differences smaller than MARGIN_TOLERANCE_PP are kobo rounding,
+        // not a real margin change — no alert.
         const severity =
           actualMarginPercent < 0
             ? 'CRITICAL_LOSS'
-            : actualMarginPercent < targetMarginPercent
+            : actualMarginPercent < targetMarginPercent - MARGIN_TOLERANCE_PP
               ? 'DEFICIT'
-              : actualMarginPercent > targetMarginPercent
+              : actualMarginPercent > targetMarginPercent + MARGIN_TOLERANCE_PP
                 ? 'BOOST'
                 : null;
         if (severity) {
@@ -1807,7 +1809,7 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
       const logoUrl = `${portalUrl}/images/logo/logo.png`;
       const formatNairaForAlert = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       for (const alert of newAlertsForEmail) {
-        const recommendedPrice = priceForTargetMargin(alert.newUnitCost, alert.targetMarginPercent);
+        const recommendedPrice = roundedPriceForTargetMargin(alert.newUnitCost, alert.targetMarginPercent);
         const recommendedMarkup = recommendedPrice !== null ? actualMarkup(alert.newUnitCost, recommendedPrice) : null;
         for (const recipient of recipients.values()) {
           const html = renderPricingAlertRaisedEmail({
@@ -1986,7 +1988,8 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
   const user = await requireStoreStaff(alert.part.branchId);
   const targetMargin = Number(alert.targetMarginPercentAtAlert);
   const newUnitCost = Number(alert.newUnitCost);
-  const newSellingPrice = Math.round((newUnitCost / (1 - targetMargin / 100)) * 100) / 100;
+  // Rounded UP to the kobo, so the target margin is always met.
+  const newSellingPrice = roundedPriceForTargetMargin(newUnitCost, targetMargin) ?? 0;
   const previousSellingPrice = alert.part.sellingPrice !== null ? Number(alert.part.sellingPrice) : null;
 
   await prisma.$transaction([

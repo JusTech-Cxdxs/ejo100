@@ -30,3 +30,14 @@ export async function listPartsFittedToVehicle(vehicleId: string) {
     },
   });
 }
+
+/** Value of work on this vehicle NOT charged to the customer — Job Card
+ * lines covered by warranty, goodwill or internally (cancelled jobs excluded). */
+export async function getVehicleCoveredValue(vehicleId: string): Promise<number> {
+  await requireUser();
+  const lines = await prisma.estimateLineItem.findMany({
+    where: { billTo: { not: 'CUSTOMER' }, estimate: { jobCard: { vehicleId, status: { not: 'CANCELLED' } } } },
+    select: { amount: true },
+  });
+  return Math.round(lines.reduce((s: number, l: { amount: unknown }) => s + Number(l.amount ?? 0), 0) * 100) / 100;
+}
