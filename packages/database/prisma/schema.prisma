@@ -1038,6 +1038,14 @@ model EstimateLineItem {
   matchedPart Part?     @relation("EstimateLineItemMatchedPart", fields: [matchedPartId], references: [id])
 
   @@map("estimate_line_items")
+  // Who pays for this line. CUSTOMER (default) counts towards what the
+  // customer owes; WARRANTY lines are covered by a specific warranty (and
+  // claimed from its provider); GOODWILL / INTERNAL are absorbed by the
+  // business. Only the Warranty HOD / Branch Manager set it; audited.
+  billTo             EstimateBillTo @default(CUSTOMER)
+  coveringWarrantyId String?
+  billToNote         String?
+  coveringWarranty   Warranty?      @relation("EstimateLineCoveringWarranty", fields: [coveringWarrantyId], references: [id])
 }
 
 // A payment toward a Job Card's estimate — deliberately one-to-many,
@@ -2813,6 +2821,7 @@ model Warranty {
   @@index([endsAt])
   @@map("warranties")
   claims WarrantyClaim[]
+  coveredEstimateLines EstimateLineItem[] @relation("EstimateLineCoveringWarranty")
 }
 
 // The branch chain for warranty decisions: Warranty staff request →
@@ -3017,4 +3026,12 @@ enum CustomerResolution {
   GOODWILL_REFUND
   CUSTOMER_PAID
   NOT_COVERED
+}
+
+// Who pays for a Job Card estimate line.
+enum EstimateBillTo {
+  CUSTOMER
+  WARRANTY
+  GOODWILL
+  INTERNAL
 }
