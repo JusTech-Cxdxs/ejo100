@@ -155,7 +155,7 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
   if (!meta) return null;
   switch (entry.action) {
     case 'vehicle.gate_exit':
-      return [typeof meta.exitNumber === 'string' ? meta.exitNumber : null, typeof meta.driver === 'string' ? `driven by ${meta.driver}` : null].filter(Boolean).join(' · ') || null;
+      return [typeof meta.exitNumber === 'string' ? meta.exitNumber : null, typeof (meta.collectedBy ?? meta.driver) === 'string' ? `collected by ${String(meta.collectedBy ?? meta.driver)}` : null].filter(Boolean).join(' · ') || null;
     case 'job_card.line_bill_to_set':
       return `${typeof meta.line === 'string' ? meta.line : 'Line'}${typeof meta.amount === 'number' ? ` (${formatNaira(meta.amount)})` : ''}: ${String(meta.from ?? 'Customer')} → ${String(meta.to ?? '')}${typeof meta.note === 'string' ? ` — ${meta.note}` : ''}`;
     case 'warranty.issued':
