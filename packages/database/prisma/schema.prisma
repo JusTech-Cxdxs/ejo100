@@ -3086,13 +3086,20 @@ model Visit {
   passNumber              String?     @unique
   branchId                String
   status                  VisitStatus
+  // The visitor, or the LEAD of a group (the one whose ID is taken).
   visitorName             String
+  // Group visits: how many people in total, and the other people's names
+  // (one per person — the lead is visitorName). One pass covers the group.
+  partySize               Int         @default(1)
+  memberNames             String[]    @default([])
+  // Organisation the visitor(s) come from; null = private individual(s).
   company                 String?
   phone                   String?
   idType                  String?
   idNumber                String?
   // How they came: ON_FOOT, CAR, MOTORCYCLE, TRUCK, BUS, OTHER — a plate
-  // is required for anything but on foot.
+  // is required for anything but on foot. vehiclePlate holds every plate
+  // (comma-separated) when a group came in more than one vehicle.
   vehicleType             String      @default("ON_FOOT")
   vehiclePlate            String?
   purpose                 String
@@ -3148,6 +3155,9 @@ model ExitPass {
   returning         Boolean
   expectedOutAt     DateTime?
   expectedReturnAt  DateTime?
+  // How long they plan to be out; the expected return is worked out from
+  // the actual time out at the gate.
+  expectedDurationMinutes Int?
   headApprovedById  String?
   headApprovedAt    DateTime?
   managerApprovedById String?
