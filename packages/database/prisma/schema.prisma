@@ -3376,6 +3376,9 @@ model Appointment {
   visitId           String?           @unique
   cancelReason      String?
   completedAt       DateTime?
+  cancelledAt       DateTime?
+  // When the ~1-hour reminder email went out (sent once; reset on reschedule).
+  reminderSentAt    DateTime?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @default(now()) @updatedAt
 
