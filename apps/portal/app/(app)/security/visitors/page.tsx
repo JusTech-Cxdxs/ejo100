@@ -2,24 +2,22 @@ import { getSecurityRoles, listVisits, searchStaffOptions, loadStaffOptions } fr
 import { registerVisitFormAction } from '@/lib/actions/security-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
-import { SearchableSelect } from '@/components/SearchableSelect';
+import { VisitorRegisterForm } from '@/components/VisitorRegisterForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
-import { FormPendingOverlay } from '@/components/FormPendingOverlay';
-import { SubmitButton } from '@/components/SubmitButton';
 import { VISIT_STATUS_LABEL, STATUS_CHIP, VEHICLE_TYPE_LABEL, durationText, minutesBetween } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
+import { pluralize } from '@/lib/utils/pluralize';
 
-const STAY = [30, 60, 90, 120, 180, 240, 300, 360, 480];
 
-export default async function VisitorsPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string }> }) {
-  const { q, error } = await searchParams;
+export default async function VisitorsPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; status?: string }> }) {
+  const { q, error, status } = await searchParams;
   const [roles, visits] = await Promise.all([getSecurityRoles(), listVisits(q)]);
   const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
-  const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <h1 className="mb-4 text-2xl font-bold text-[var(--ejo-text)]">Visitors</h1>
       <SecurityNav active="/security/visitors" />
+      {status === 'booking_cancelled' ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message="Booking cancelled and removed — the cancellation is kept on the audit log." /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="min-w-0 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
@@ -35,6 +33,7 @@ export default async function VisitorsPage({ searchParams }: { searchParams: Pro
                   <li key={v.id} className="flex flex-wrap items-start justify-between gap-2 py-3 text-sm">
                     <span className="min-w-0">
                       <LoadingLink href={`/security/visitors/${v.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">{v.visitorName}</LoadingLink>
+                      {v.partySize > 1 ? <span className="ml-2 text-[11px] text-[var(--ejo-text-muted)]">+ {pluralize(v.partySize - 1, 'other')} (group of {v.partySize})</span> : null}
                       {v.isWalkIn ? <span className="ml-2 text-[11px] text-[var(--ejo-text-muted)]">walk-in</span> : null}
                       {v.vehicleType !== 'ON_FOOT' ? <span className="ml-2 text-[11px] text-[var(--ejo-text-muted)]">{VEHICLE_TYPE_LABEL[v.vehicleType] ?? 'Vehicle'} {v.vehiclePlate}</span> : null}
                       <span className="block text-xs text-[var(--ejo-text-muted)]">
@@ -54,66 +53,10 @@ export default async function VisitorsPage({ searchParams }: { searchParams: Pro
           )}
         </div>
 
-        <form id="register" action={registerVisitFormAction} className="h-fit space-y-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-          <FormPendingOverlay />
-          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Register a visitor</h2>
-          {roles.isGate ? (
-            <div>
-              <label className={label}>Type</label>
-              <select name="mode" required defaultValue="" className={input}>
-                <option value="" disabled>Choose…</option>
-                <option value="ARRIVED">At the gate now — record and issue a pass</option>
-                <option value="EXPECTED">Expected later (pre-register)</option>
-              </select>
-            </div>
-          ) : (
-            <input type="hidden" name="mode" value="EXPECTED" />
-          )}
-          <div><label className={label}>Visitor&apos;s name</label><input name="visitorName" required className={input} /></div>
-          <div className="grid grid-cols-2 gap-2">
-            <div><label className={label}>Company</label><input name="company" className={input} /></div>
-            <div><label className={label}>Phone</label><input name="phone" className={input} /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div><label className={label}>ID type</label><input name="idType" placeholder="e.g. NIN, driver's licence" className={input} /></div>
-            <div><label className={label}>ID number</label><input name="idNumber" className={input} /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className={label}>Came by</label>
-              <select name="vehicleType" required defaultValue="" className={input}>
-                <option value="" disabled>Choose…</option>
-                {Object.entries(VEHICLE_TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-              </select>
-            </div>
-            <div><label className={label}>Plate number (if a vehicle)</label><input name="vehiclePlate" className={input} /></div>
-          </div>
-          <div><label className={label}>Purpose of visit</label><input name="purpose" required className={input} /></div>
-          {roles.isFrontDesk ? (
-            <div>
-              <label className={label}>Visiting</label>
-              <SearchableSelect name="hostUserId" required search={searchStaffOptions} loadDefaultOptions={loadStaffOptions} defaultOptionsLabel="Staff" placeholder="Search staff by name or ID…" emptyMessage="No active staff match." minQueryLength={1} />
-            </div>
-          ) : (
-            <>
-              <input type="hidden" name="hostUserId" value={roles.userId} />
-              <p className="text-xs text-[var(--ejo-text-muted)]">You are the host.</p>
-            </>
-          )}
-          <div className="grid grid-cols-2 gap-2">
-            <div><label className={label}>Expected arrival (pre-register)</label><input name="expectedAt" type="datetime-local" className={input} /></div>
-            <div>
-              <label className={label}>Expected stay</label>
-              <select name="expectedMinutes" required defaultValue="" className={input}>
-                <option value="" disabled>Choose…</option>
-                {STAY.map((m) => <option key={m} value={m}>{durationText(m)}</option>)}
-              </select>
-            </div>
-          </div>
-          <div><label className={label}>Notes</label><input name="notes" className={input} /></div>
-          <SubmitButton label="Register visitor" pendingLabel="Saving…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
-          <p className="text-[11px] text-[var(--ejo-text-muted)]">Past the expected stay, the Chief Security Officer is alerted.</p>
-        </form>
+        <div id="register" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">
+          <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Register a visitor</h2>
+          <VisitorRegisterForm canGate={roles.isGate} isFrontDesk={roles.isFrontDesk} meId={roles.userId} action={registerVisitFormAction} search={searchStaffOptions} loadDefaultOptions={loadStaffOptions} />
+        </div>
       </div>
     </div>
   );
