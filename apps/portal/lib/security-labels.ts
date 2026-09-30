@@ -30,6 +30,7 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'appointment.cancelled': 'Appointment cancelled',
   'appointment.completed': 'Appointment completed',
   'appointment.no_show': 'Marked as a no-show',
+  'appointment.reminder_sent': 'Reminder emailed',
   'road_test.requested': 'Road test requested',
   'road_test.approved': 'Road test approved by the Manager',
   'road_test.declined': 'Road test declined',
@@ -75,6 +76,8 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
       return s('reason') ? `Reason: ${s('reason')}` : null;
     case 'appointment.completed':
       return s('by');
+    case 'appointment.reminder_sent':
+      return typeof meta.minutesBefore === 'number' ? `About ${meta.minutesBefore} ${meta.minutesBefore === 1 ? 'minute' : 'minutes'} before` : null;
     case 'security.follow_up':
       return s('note');
     case 'visit.extended':
