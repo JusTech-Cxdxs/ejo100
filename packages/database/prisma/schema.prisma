@@ -242,6 +242,7 @@ model Branch {
   visits Visit[]
   exitPasses ExitPass[]
   vehicleGateExits VehicleGateExit[]
+  roadTestPermits RoadTestPermit[]
 }
 
 model Department {
@@ -419,6 +420,12 @@ model User {
   exitPassesGateIn ExitPass[] @relation("ExitPassGateInBy")
   exitPassPersons ExitPassPerson[] @relation("ExitPassPersonUser")
   vehicleGateExits VehicleGateExit[] @relation("VehicleGateExitBy")
+  roadTestsRequested RoadTestPermit[] @relation("RoadTestRequestedBy")
+  roadTestsDriven RoadTestPermit[] @relation("RoadTestDriver")
+  roadTestsApproved RoadTestPermit[] @relation("RoadTestManagerApprovedBy")
+  roadTestsDeclined RoadTestPermit[] @relation("RoadTestDeclinedBy")
+  roadTestsGateOut RoadTestPermit[] @relation("RoadTestGateOutBy")
+  roadTestsGateIn RoadTestPermit[] @relation("RoadTestGateInBy")
 }
 
 // One-to-one HR extension of User. Kept separate per the Phase 1 note so
@@ -644,6 +651,7 @@ model CustomerVehicle {
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]
   gateExits VehicleGateExit[]
+  roadTestPermits RoadTestPermit[]
 }
 
 enum VehicleCategory {
@@ -842,6 +850,7 @@ model JobCard {
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]
   gateExit VehicleGateExit?
+  roadTestPermits RoadTestPermit[]
 }
 
 // One row per distinct reported issue on a Job Card — e.g. "Fan not
@@ -1370,6 +1379,7 @@ model VehicleService {
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]
   gateExit VehicleGateExit?
+  roadTestPermits RoadTestPermit[]
 }
 
 // The Vehicle Service equivalent of Job Card's own CloseRequest — kept
@@ -3223,4 +3233,62 @@ model SecurityEmailLog {
 
   @@index([entityType, entityId])
   @@map("security_email_logs")
+}
+
+// Road Test Permit: a workshop vehicle leaving the compound for a road test
+// (quality check). Requested on a Job Card / Vehicle Service, approved by
+// the Manager, timed and odometer-read out and back by Security.
+enum RoadTestStatus {
+  PENDING_MANAGER
+  APPROVED
+  OUT
+  RETURNED
+  DECLINED
+  CANCELLED
+}
+
+model RoadTestPermit {
+  id                      String         @id @default(cuid())
+  permitNumber            String         @unique
+  branchId                String
+  status                  RoadTestStatus @default(PENDING_MANAGER)
+  jobCardId               String?
+  vehicleServiceId        String?
+  vehicleId               String
+  requestedById           String
+  driverId                String
+  purpose                 String
+  route                   String?
+  expectedDurationMinutes Int
+  managerApprovedById     String?
+  managerApprovedAt       DateTime?
+  declinedById            String?
+  declinedAt              DateTime?
+  declineReason           String?
+  cancelReason            String?
+  gateOutAt               DateTime?
+  gateOutById             String?
+  startOdometer           Int?
+  gateInAt                DateTime?
+  gateInById              String?
+  endOdometer             Int?
+  returnNotes             String?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @default(now()) @updatedAt
+
+  branch            Branch          @relation(fields: [branchId], references: [id])
+  jobCard           JobCard?        @relation(fields: [jobCardId], references: [id])
+  vehicleService    VehicleService? @relation(fields: [vehicleServiceId], references: [id])
+  vehicle           CustomerVehicle @relation(fields: [vehicleId], references: [id])
+  requestedBy       User            @relation("RoadTestRequestedBy", fields: [requestedById], references: [id])
+  driver            User            @relation("RoadTestDriver", fields: [driverId], references: [id])
+  managerApprovedBy User?           @relation("RoadTestManagerApprovedBy", fields: [managerApprovedById], references: [id])
+  declinedBy        User?           @relation("RoadTestDeclinedBy", fields: [declinedById], references: [id])
+  gateOutBy         User?           @relation("RoadTestGateOutBy", fields: [gateOutById], references: [id])
+  gateInBy          User?           @relation("RoadTestGateInBy", fields: [gateInById], references: [id])
+
+  @@index([status])
+  @@index([jobCardId])
+  @@index([vehicleServiceId])
+  @@map("road_test_permits")
 }
