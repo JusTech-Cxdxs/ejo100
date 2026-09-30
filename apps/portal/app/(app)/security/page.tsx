@@ -6,7 +6,7 @@ import { SecurityNav } from '@/components/SecurityNav';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
-import { visitOverdueMinutes, exitPassOverdueMinutes, durationText, VEHICLE_TYPE_LABEL } from '@/lib/security-rules';
+import { visitOverdueMinutes, exitPassOverdueMinutes, roadTestOverdueMinutes, durationText, VEHICLE_TYPE_LABEL } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5';
@@ -38,6 +38,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
   const now = new Date();
   const overdueVisits = d.onPremises.filter((v) => visitOverdueMinutes(v, now) > 0);
   const overduePasses = d.passesOut.filter((p) => exitPassOverdueMinutes(p, now) > 0);
+  const overdueTests = d.roadTestsOut.filter((r) => roadTestOverdueMinutes(r, now) > 0);
   const row = 'flex flex-wrap items-center justify-between gap-2 border-b border-[var(--ejo-border)] py-2 text-sm last:border-0';
 
   return (
@@ -57,7 +58,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
 
       <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">In the compound now</h2>
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         {([
           ['Visitors on premises', d.compound.visitors, 'Checked in, not yet out', '/security/on-premises'],
           ['Visitor vehicles', d.compound.visitorVehicles, 'Cars, motorcycles… of visitors inside', '/security/vehicles-inside?type=visitor'],
@@ -65,7 +66,8 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
           ['Cleared, not yet out', d.compound.awaitingExit, 'Released — waiting at the gate', '/security/vehicles'],
           ['Vehicles inside (total)', d.compound.vehiclesInside, 'All of the above', '/security/vehicles-inside'],
           ['People out on passes', d.compound.peopleOut, 'Employees and others on exit passes', '/security/people-out'],
-          ['Overdue', overdueVisits.length + overduePasses.length, 'Follow up or extend', '/security/overdue'],
+          ['On road test', d.compound.onRoadTest, 'Workshop vehicles out on a road test', '/security/road-tests?tab=out'],
+          ['Overdue', overdueVisits.length + overduePasses.length + overdueTests.length, 'Follow up or extend', '/security/overdue'],
         ] as const).map(([label, n, hint, href]) => (
           <LoadingLink key={label} href={href} className={`${card} block transition hover:border-[var(--ejo-primary)]`}>
             <p className="text-xs text-[var(--ejo-text-muted)]">{label}</p>
@@ -75,7 +77,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
         ))}
       </div>
 
-      {overdueVisits.length + overduePasses.length > 0 ? (
+      {overdueVisits.length + overduePasses.length + overdueTests.length > 0 ? (
         <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/40 bg-[var(--ejo-error)]/5 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Overdue</h2>
@@ -84,6 +86,9 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
           <ul className="mt-2 space-y-1 text-sm">
             {overdueVisits.map((v) => (
               <li key={v.id}><LoadingLink href={`/security/visitors/${v.id}`} className="text-[var(--ejo-primary)] hover:underline">{v.visitorName}</LoadingLink> — visiting {v.host.fullName}, over by {durationText(visitOverdueMinutes(v, now))}</li>
+            ))}
+            {overdueTests.map((r) => (
+              <li key={r.id}><LoadingLink href={`/security/road-tests/${r.id}`} className="text-[var(--ejo-primary)] hover:underline">{r.permitNumber}</LoadingLink> — {r.vehicle.plateNumber ?? 'vehicle'} on road test with {r.driver.fullName}, late by {durationText(roadTestOverdueMinutes(r, now))}</li>
             ))}
             {overduePasses.map((p) => (
               <li key={p.id}><LoadingLink href={`/security/exit-passes/${p.id}`} className="text-[var(--ejo-primary)] hover:underline">{p.passNumber}</LoadingLink> — {p.people.map((x) => x.name).join(', ')}, not back; over by {durationText(exitPassOverdueMinutes(p, now))}</li>
@@ -147,6 +152,28 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
                 </span>
               </span>
               {roles.isGate ? <Act action="gate_in" idName="passId" id={p.id} label="Time in" form={exitPassActionFormAction} /> : null}
+            </div>
+          ))}
+        </Panel>
+        <Panel title="Road tests — approved, may go out" count={d.roadTestsReady.length}>
+          {d.roadTestsReady.map((r) => (
+            <div key={r.id} className={row}>
+              <span className="min-w-0">
+                <LoadingLink href={`/security/road-tests/${r.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">{r.permitNumber}</LoadingLink>
+                <span className="block text-xs text-[var(--ejo-text-muted)]">{r.vehicle.plateNumber ?? 'Vehicle'} · driver {r.driver.fullName} · {durationText(r.expectedDurationMinutes)}</span>
+              </span>
+              {roles.isGate ? <LoadingLink href={`/security/road-tests/${r.id}`} className={btn}>Time out</LoadingLink> : null}
+            </div>
+          ))}
+        </Panel>
+        <Panel title="Out on road test" count={d.roadTestsOut.length}>
+          {d.roadTestsOut.map((r) => (
+            <div key={r.id} className={row}>
+              <span className="min-w-0">
+                <LoadingLink href={`/security/road-tests/${r.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">{r.permitNumber}</LoadingLink>
+                <span className={`block text-xs ${roadTestOverdueMinutes(r, now) > 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-text-muted)]'}`}>{r.vehicle.plateNumber ?? 'Vehicle'} · {r.driver.fullName} · out {r.gateOutAt ? formatDateTimeCompact(r.gateOutAt) : '—'}</span>
+              </span>
+              {roles.isGate ? <LoadingLink href={`/security/road-tests/${r.id}`} className={btn}>Time in</LoadingLink> : null}
             </div>
           ))}
         </Panel>
