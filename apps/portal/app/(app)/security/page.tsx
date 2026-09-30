@@ -58,15 +58,17 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
 
       <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">In the compound now</h2>
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
         {([
           ['Visitors on premises', d.compound.visitors, d.compound.visits === d.compound.visitors ? 'Checked in, not yet out' : `People on ${d.compound.visits} ${d.compound.visits === 1 ? 'pass' : 'passes'} (groups counted in full)`, '/security/on-premises'],
           ['Visitor vehicles', d.compound.visitorVehicles, 'Cars, motorcycles… of visitors inside', '/security/vehicles-inside?type=visitor'],
           ['Workshop vehicles', d.compound.workshopVehicles, 'Job Cards and Vehicle Services in progress', '/security/vehicles-inside?type=workshop'],
           ['Cleared, not yet out', d.compound.awaitingExit, 'Released — waiting at the gate', '/security/vehicles'],
-          ['Vehicles inside (total)', d.compound.vehiclesInside, 'All of the above', '/security/vehicles-inside'],
+          ['Vehicles inside (total)', d.compound.vehiclesInside, 'Visitor, workshop, cleared and delivery vehicles', '/security/vehicles-inside'],
           ['People out on passes', d.compound.peopleOut, 'Employees and others on exit passes', '/security/people-out'],
           ['On road test', d.compound.onRoadTest, 'Workshop vehicles out on a road test', '/security/road-tests?tab=out'],
+          ['Deliveries on site', d.compound.deliveriesOnSite, 'At the gate or received, not yet out', '/security/deliveries?tab=at_gate'],
+          ['Open incidents', d.compound.openIncidents, 'Open or under review', '/security/incidents?tab=open'],
           ['Overdue', overdueVisits.length + overduePasses.length + overdueTests.length, 'Follow up or extend', '/security/overdue'],
         ] as const).map(([label, n, hint, href]) => (
           <LoadingLink key={label} href={href} className={`${card} block transition hover:border-[var(--ejo-primary)]`}>
