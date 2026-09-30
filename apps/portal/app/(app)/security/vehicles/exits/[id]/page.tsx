@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getVehicleGateExit, getSecurityHistory } from '@/lib/actions/security';
+import { getVehicleGateExit, getVehicleExitHistory } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityHistory } from '@/components/SecurityHistory';
@@ -10,7 +10,7 @@ import { formatDateTime } from '@/lib/utils/format-date';
 export default async function VehicleExitPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string }> }) {
   const { id } = await params;
   const { status } = await searchParams;
-  const [x, history] = await Promise.all([getVehicleGateExit(id), getSecurityHistory('VehicleGateExit', id)]);
+  const [x, history] = await Promise.all([getVehicleGateExit(id), getVehicleExitHistory(id)]);
   if (!x) notFound();
   const rec = x.jobCard ? { number: x.jobCard.jobNumber, href: `/workshop/job-cards/${x.jobCardId}`, released: x.jobCard.checkedOutAt, customer: x.jobCard.customer.fullName } : x.vehicleService ? { number: x.vehicleService.serviceNumber, href: `/workshop/vehicle-service/${x.vehicleServiceId}`, released: x.vehicleService.collectedAt, customer: x.vehicleService.customer.fullName } : null;
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => <div className="flex justify-between gap-3 py-1.5 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right font-medium text-[var(--ejo-text)]">{val || '—'}</dd></div>;
