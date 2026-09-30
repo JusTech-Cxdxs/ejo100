@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getVisit, getSecurityRoles, getSecurityHistory } from '@/lib/actions/security';
 import { visitActionFormAction, securityFollowUpFormAction } from '@/lib/actions/security-form-handlers';
+import { VisitArrivalFields } from '@/components/VisitArrivalFields';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -12,7 +13,8 @@ import { VISIT_STATUS_LABEL, STATUS_CHIP, VEHICLE_TYPE_LABEL, durationText, minu
 import { formatDateTime } from '@/lib/utils/format-date';
 
 const DONE: Record<string, string> = {
-  registered: 'Visitor registered — Security will see them under Expected today.',
+  registered: 'Visit booked — Security will see it under Expected today. ID and vehicle are taken when they arrive.',
+  booking_saved: 'Booking updated.',
   arrived: 'Recorded at the gate — visitor pass issued. Send them to reception.',
   check_in: 'Checked in — visitor pass issued. Send them to reception.',
   receive: 'Received at reception — the host has been told.',
@@ -38,7 +40,7 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => (val ? <div className="flex justify-between gap-3 py-1 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right text-[var(--ejo-text)]">{val}</dd></div> : null);
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <LoadingLink href="/security/visitors" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Visitors</LoadingLink>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -54,10 +56,11 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
 
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
         <dl className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-          <Row k="Company" val={v.company} />
+          <Row k="Organisation" val={v.company} />
+          <Row k="People" val={v.partySize > 1 ? `${v.partySize} — ${[v.visitorName + ' (lead)', ...v.memberNames].join(', ')}` : null} />
           <Row k="Phone" val={v.phone} />
           <Row k="ID" val={[v.idType, v.idNumber].filter(Boolean).join(' ') || null} />
-          <Row k="Came by" val={v.vehicleType === 'ON_FOOT' ? 'On foot' : `${VEHICLE_TYPE_LABEL[v.vehicleType] ?? 'Vehicle'} — ${v.vehiclePlate ?? ''}`} />
+          <Row k="Came by" val={v.status === 'EXPECTED' ? 'Taken when they arrive' : v.vehicleType === 'ON_FOOT' ? 'On foot' : `${VEHICLE_TYPE_LABEL[v.vehicleType] ?? 'Vehicle'} — ${v.vehiclePlate ?? ''}`} />
           <Row k="Purpose" val={v.purpose} />
           <Row k="Visiting" val={v.host.fullName} />
           <Row k="Expected" val={v.expectedAt ? formatDateTime(v.expectedAt) : null} />
@@ -72,16 +75,15 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
         <div className="space-y-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Actions</h2>
           {v.status === 'EXPECTED' && roles.isGate ? (
-            <form action={visitActionFormAction} className="space-y-2">
+            <form action={visitActionFormAction} className="space-y-3">
               <Hidden action="check_in" />
-              <div className="flex flex-wrap gap-2">
-                <select name="vehicleType" defaultValue={v.vehicleType} className={input}>
-                  {Object.entries(VEHICLE_TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                </select>
-                <input name="vehiclePlate" defaultValue={v.vehiclePlate ?? ''} placeholder="Plate (if a vehicle)" className={`${input} min-w-0 flex-1`} />
-              </div>
+              <p className="text-sm font-medium text-[var(--ejo-text)]">They have arrived — complete these and issue the pass</p>
+              <VisitArrivalFields fromOrganisation={Boolean(v.company)} group={v.partySize > 1} />
               <SubmitButton label="Check in and issue pass" pendingLabel="Checking in…" className={btn} />
             </form>
+          ) : null}
+          {v.status === 'EXPECTED' && (roles.isFrontDesk || isHost || v.registeredById === roles.userId) ? (
+            <LoadingLink href={`/security/visitors/${v.id}/edit`} className={`inline-block ${line}`}>Edit booking</LoadingLink>
           ) : null}
           {v.status === 'EXPECTED' && !roles.isGate ? <p className="text-sm text-[var(--ejo-text-muted)]">Security checks the visitor in at the gate.</p> : null}
           {v.status === 'CHECKED_IN' && !v.receivedAt && roles.isFrontDesk ? (
@@ -101,7 +103,7 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
           {v.status === 'CHECKED_IN' && roles.isGate ? (
             <form action={visitActionFormAction}><Hidden action="check_out" /><SubmitButton label="Check out" pendingLabel="Checking out…" className={btn} /></form>
           ) : null}
-          {v.passNumber ? <PrintMenu orgHref={`/print/visitor-pass/${v.id}`} clientHref={`/print/visitor-pass/${v.id}?variant=client`} clientLabel="Visitor Copy" /> : null}
+          {v.passNumber ? <PrintMenu orgHref={`/print/visitor-pass/${v.id}`} clientHref={`/print/visitor-pass/${v.id}?variant=client`} clientLabel="Visitor Copy" align="right" /> : null}
           {roles.isFrontDesk && ['EXPECTED', 'CHECKED_IN'].includes(v.status) ? (
             <form action={securityFollowUpFormAction} className="flex flex-wrap gap-2 border-t border-[var(--ejo-border)] pt-3">
               <FormPendingOverlay />
