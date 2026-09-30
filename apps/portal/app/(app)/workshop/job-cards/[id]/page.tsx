@@ -64,6 +64,7 @@ const STATUS_COLOR: Record<string, string> = {
 // phases add more audit actions (assignment.*, estimate.*, etc.); this
 // map only needs updating for a nicer label, never to avoid breaking.
 const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'vehicle.gate_exit': 'Left through the gate',
   'job_card.line_bill_to_set': 'Who pays changed',
   'warranty.issued': 'Warranties issued',
   'job_card.created': 'Job Card created',
@@ -153,6 +154,8 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
   const meta = entry.metadata as Record<string, unknown> | null;
   if (!meta) return null;
   switch (entry.action) {
+    case 'vehicle.gate_exit':
+      return [typeof meta.exitNumber === 'string' ? meta.exitNumber : null, typeof meta.driver === 'string' ? `driven by ${meta.driver}` : null].filter(Boolean).join(' · ') || null;
     case 'job_card.line_bill_to_set':
       return `${typeof meta.line === 'string' ? meta.line : 'Line'}${typeof meta.amount === 'number' ? ` (${formatNaira(meta.amount)})` : ''}: ${String(meta.from ?? 'Customer')} → ${String(meta.to ?? '')}${typeof meta.note === 'string' ? ` — ${meta.note}` : ''}`;
     case 'warranty.issued':
