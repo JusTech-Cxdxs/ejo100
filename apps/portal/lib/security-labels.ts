@@ -9,7 +9,7 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'visit.extended': 'Stay extended',
   'visit.checked_out': 'Checked out',
   'visit.cancelled': 'Visit cancelled',
-  'visit.overdue': 'Stayed longer than expected — Chief Security Officer told',
+  'visit.overdue': 'Stayed longer than expected',
   'exit_pass.requested': 'Exit pass requested',
   'exit_pass.head_authorised': 'Authorised by the Department Head',
   'exit_pass.manager_approved': 'Approved by the Manager',
@@ -17,7 +17,9 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'exit_pass.cancelled': 'Cancelled',
   'exit_pass.gate_out': 'Time out recorded at the gate',
   'exit_pass.gate_in': 'Time in recorded at the gate',
-  'exit_pass.overdue': 'Not back on time — Chief Security Officer told',
+  'exit_pass.overdue': 'Not back on time',
+  'exit_pass.extended': 'Return time extended',
+  'security.follow_up': 'Follow-up',
   'security.email_sent': 'Email sent',
   'security.email_failed': 'Email could not be sent',
   'vehicle.gate_exit': 'Vehicle left through the gate',
@@ -38,6 +40,10 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
     case 'visit.checked_in':
     case 'visit.arrived':
       return [s('passNumber') ? `Pass ${s('passNumber')}` : null, s('vehicle') ? (s('vehicle') === 'On foot' ? 'on foot' : `vehicle ${s('vehicle')}`) : null].filter(Boolean).join(' · ') || null;
+    case 'exit_pass.extended':
+      return `By ${s('extra') ?? ''}${s('reason') ? ` — ${s('reason')}` : ''}`;
+    case 'security.follow_up':
+      return s('note');
     case 'visit.extended':
       return `By ${s('extra') ?? ''} (stay now ${s('newStay') ?? ''})${s('reason') ? ` — ${s('reason')}` : ''}`;
     case 'visit.checked_out':
@@ -54,7 +60,7 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
     case 'exit_pass.gate_in':
       return [s('away') ? `Away ${s('away')}` : null, s('late') ? `late by ${s('late')}` : null].filter(Boolean).join(' · ') || null;
     case 'vehicle.gate_exit':
-      return [s('exitNumber'), s('number'), s('driver') ? `driven by ${s('driver')}` : null].filter(Boolean).join(' · ') || null;
+      return [s('exitNumber'), s('number'), s('collectedBy') ?? s('driver') ? `collected by ${s('collectedBy') ?? s('driver')}` : null].filter(Boolean).join(' · ') || null;
     default:
       return null;
   }
