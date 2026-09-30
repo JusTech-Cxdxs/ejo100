@@ -15,7 +15,7 @@ export default async function VehiclesInsidePage({ searchParams }: { searchParam
   const t = TABS.some(([k]) => k === type) ? type! : 'all';
   const rows = all.filter((r) => t === 'all' || r.stage === t.toUpperCase());
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Vehicles in the compound</h1>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">{pluralize(all.length, 'vehicle')} inside right now.</p>
       <SecurityNav active="/security" />
