@@ -239,6 +239,9 @@ model Branch {
   vehicleServices VehicleService[]
 
   @@map("branches")
+  visits Visit[]
+  exitPasses ExitPass[]
+  vehicleGateExits VehicleGateExit[]
 }
 
 model Department {
@@ -403,6 +406,19 @@ model User {
   warrantyProviderDeletionsRequested WarrantyProviderDeletionRequest[] @relation("WarrantyProviderDeletionRequestedBy")
   warrantyProviderDeletionsHodDecided WarrantyProviderDeletionRequest[] @relation("WarrantyProviderDeletionHodDecidedBy")
   warrantyProviderDeletionsManagerDecided WarrantyProviderDeletionRequest[] @relation("WarrantyProviderDeletionManagerDecidedBy")
+  visitsHosted Visit[] @relation("VisitHost")
+  visitsRegistered Visit[] @relation("VisitRegisteredBy")
+  visitsCheckedIn Visit[] @relation("VisitCheckedInBy")
+  visitsCheckedOut Visit[] @relation("VisitCheckedOutBy")
+  exitPassesRequested ExitPass[] @relation("ExitPassRequestedBy")
+  exitPassesHeadApproved ExitPass[] @relation("ExitPassHeadApprovedBy")
+  exitPassesManagerApproved ExitPass[] @relation("ExitPassManagerApprovedBy")
+  visitsReceived Visit[] @relation("VisitReceivedBy")
+  exitPassesDeclined ExitPass[] @relation("ExitPassDeclinedBy")
+  exitPassesGateOut ExitPass[] @relation("ExitPassGateOutBy")
+  exitPassesGateIn ExitPass[] @relation("ExitPassGateInBy")
+  exitPassPersons ExitPassPerson[] @relation("ExitPassPersonUser")
+  vehicleGateExits VehicleGateExit[] @relation("VehicleGateExitBy")
 }
 
 // One-to-one HR extension of User. Kept separate per the Phase 1 note so
@@ -627,6 +643,7 @@ model CustomerVehicle {
   @@map("customer_vehicles")
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]
+  gateExits VehicleGateExit[]
 }
 
 enum VehicleCategory {
@@ -824,6 +841,7 @@ model JobCard {
   @@map("job_cards")
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]
+  gateExit VehicleGateExit?
 }
 
 // One row per distinct reported issue on a Job Card — e.g. "Fan not
@@ -1351,6 +1369,7 @@ model VehicleService {
   @@map("vehicle_services")
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]
+  gateExit VehicleGateExit?
 }
 
 // The Vehicle Service equivalent of Job Card's own CloseRequest — kept
@@ -3034,4 +3053,174 @@ enum EstimateBillTo {
   WARRANTY
   GOODWILL
   INTERNAL
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SECURITY — the gate. Visitors, Employee Exit Passes and vehicles cleared
+// to leave. Every step is audited and every email is logged
+// (SecurityEmailLog), so nothing that happened at the gate is ever missing.
+// ─────────────────────────────────────────────────────────────────────────
+
+// Security records arrival at the gate (CHECKED_IN = on the premises);
+// Reception then receives the visitor and tells the host.
+enum VisitStatus {
+  EXPECTED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+model Visit {
+  id                      String      @id @default(cuid())
+  visitNumber             String      @unique
+  passNumber              String?     @unique
+  branchId                String
+  status                  VisitStatus
+  visitorName             String
+  company                 String?
+  phone                   String?
+  idType                  String?
+  idNumber                String?
+  // How they came: ON_FOOT, CAR, MOTORCYCLE, TRUCK, BUS, OTHER — a plate
+  // is required for anything but on foot.
+  vehicleType             String      @default("ON_FOOT")
+  vehiclePlate            String?
+  purpose                 String
+  hostUserId              String
+  expectedAt              DateTime?
+  expectedDurationMinutes Int         @default(60)
+  isWalkIn                Boolean     @default(false)
+  registeredById          String
+  receivedAt              DateTime?
+  receivedById            String?
+  extendedMinutes         Int         @default(0)
+  checkedInAt             DateTime?
+  checkedInById           String?
+  checkedOutAt            DateTime?
+  checkedOutById          String?
+  overdueNotifiedAt       DateTime?
+  notes                   String?
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @default(now()) @updatedAt
+
+  branch       Branch @relation(fields: [branchId], references: [id])
+  host         User   @relation("VisitHost", fields: [hostUserId], references: [id])
+  registeredBy User   @relation("VisitRegisteredBy", fields: [registeredById], references: [id])
+  checkedInBy  User?  @relation("VisitCheckedInBy", fields: [checkedInById], references: [id])
+  checkedOutBy User?  @relation("VisitCheckedOutBy", fields: [checkedOutById], references: [id])
+  receivedBy   User?  @relation("VisitReceivedBy", fields: [receivedById], references: [id])
+
+  @@index([branchId, status])
+  @@index([hostUserId])
+  @@map("visits")
+}
+
+// Employee Exit Pass (the paper form, digital): Department Head authorises,
+// the Manager approves, security records Time out / Time in.
+enum ExitPassStatus {
+  PENDING_HEAD
+  PENDING_MANAGER
+  APPROVED
+  OUT
+  RETURNED
+  CLOSED
+  DECLINED
+  CANCELLED
+}
+
+model ExitPass {
+  id                String         @id @default(cuid())
+  passNumber        String         @unique
+  branchId          String
+  status            ExitPassStatus @default(PENDING_HEAD)
+  requestedById     String
+  reason            String
+  returning         Boolean
+  expectedOutAt     DateTime?
+  expectedReturnAt  DateTime?
+  headApprovedById  String?
+  headApprovedAt    DateTime?
+  managerApprovedById String?
+  managerApprovedAt   DateTime?
+  declinedById      String?
+  declinedAt        DateTime?
+  declineReason     String?
+  cancelReason      String?
+  gateOutAt         DateTime?
+  gateOutById       String?
+  gateInAt          DateTime?
+  gateInById        String?
+  overdueNotifiedAt DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @default(now()) @updatedAt
+
+  branch         Branch @relation(fields: [branchId], references: [id])
+  requestedBy    User   @relation("ExitPassRequestedBy", fields: [requestedById], references: [id])
+  headApprovedBy User?  @relation("ExitPassHeadApprovedBy", fields: [headApprovedById], references: [id])
+  managerApprovedBy User? @relation("ExitPassManagerApprovedBy", fields: [managerApprovedById], references: [id])
+  declinedBy     User?  @relation("ExitPassDeclinedBy", fields: [declinedById], references: [id])
+  gateOutBy      User?  @relation("ExitPassGateOutBy", fields: [gateOutById], references: [id])
+  gateInBy       User?  @relation("ExitPassGateInBy", fields: [gateInById], references: [id])
+  people         ExitPassPerson[]
+
+  @@index([branchId, status])
+  @@map("exit_passes")
+}
+
+// Everyone leaving on one pass — employees (linked) or named non-staff
+// (e.g. an intern), with the details the paper form asks for.
+model ExitPassPerson {
+  id          String  @id @default(cuid())
+  exitPassId  String
+  userId      String?
+  name        String
+  employeeId  String?
+  designation String?
+  department  String?
+
+  exitPass ExitPass @relation(fields: [exitPassId], references: [id], onDelete: Cascade)
+  user     User?    @relation("ExitPassPersonUser", fields: [userId], references: [id])
+
+  @@index([exitPassId])
+  @@map("exit_pass_people")
+}
+
+// A vehicle released by the Workshop (Job Card checked out / Vehicle
+// Service collected) confirmed through the gate by security.
+model VehicleGateExit {
+  id               String   @id @default(cuid())
+  exitNumber       String   @unique
+  branchId         String
+  jobCardId        String?  @unique
+  vehicleServiceId String?  @unique
+  vehicleId        String
+  exitedAt         DateTime @default(now())
+  exitedById       String
+  driverName       String?
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  branch         Branch          @relation(fields: [branchId], references: [id])
+  jobCard        JobCard?        @relation(fields: [jobCardId], references: [id])
+  vehicleService VehicleService? @relation(fields: [vehicleServiceId], references: [id])
+  vehicle        CustomerVehicle @relation(fields: [vehicleId], references: [id])
+  exitedBy       User            @relation("VehicleGateExitBy", fields: [exitedById], references: [id])
+
+  @@map("vehicle_gate_exits")
+}
+
+// Every email the Security module sends — who, what, when, and whether
+// it went — so a notice is never "maybe sent".
+model SecurityEmailLog {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  recipient  String
+  subject    String
+  sent       Boolean
+  error      String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@map("security_email_logs")
 }
