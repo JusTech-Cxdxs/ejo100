@@ -110,12 +110,15 @@ export type VehicleType = (typeof VEHICLE_TYPES)[number];
 
 export type VisitInput = {
   visitorName: string;
+  /** Group visits: total people (lead + members) and the members' names. */
+  partySize?: number;
+  memberNames?: string[];
   company?: string;
   phone?: string;
   idType?: string;
   idNumber?: string;
-  vehicleType: string;
-  vehiclePlate?: string;
+  vehicleType?: string;
+  plates?: string[];
   purpose: string;
   hostUserId: string;
   expectedAt?: Date;
@@ -123,23 +126,29 @@ export type VisitInput = {
   notes?: string;
 };
 
-function cleanVisit(i: VisitInput) {
+const t = (v?: string) => v?.trim() || null;
+
+/** People, organisation, purpose, host, stay — common to bookings and arrivals. */
+function cleanParty(i: VisitInput) {
   if (!i.visitorName.trim()) throw new SecurityError("Enter the visitor's name.");
+  const size = i.partySize ?? 1;
+  if (!Number.isInteger(size) || size < 1 || size > 50) throw new SecurityError('A group can have between 2 and 50 people.');
+  const members = (i.memberNames ?? []).map((n) => n.trim());
+  if (members.length !== size - 1 || members.some((n) => !n)) throw new SecurityError(`Enter a name for every person in the group — ${size} ${size === 1 ? 'name' : 'names'} in total.`);
   if (!i.purpose.trim()) throw new SecurityError('Enter the purpose of the visit.');
   if (!i.hostUserId) throw new SecurityError('Choose who they are visiting.');
-  if (!VEHICLE_TYPES.includes(i.vehicleType as VehicleType)) throw new SecurityError('Choose how the visitor came — on foot or by which vehicle.');
-  const plate = i.vehiclePlate?.trim().toUpperCase() || null;
-  if (i.vehicleType !== 'ON_FOOT' && !plate) throw new SecurityError('Enter the plate number of the vehicle they came with.');
-  if (!Number.isInteger(i.expectedDurationMinutes) || i.expectedDurationMinutes < 5 || i.expectedDurationMinutes > 24 * 60) {
-    throw new SecurityError('Expected stay must be between 5 minutes and 24 hours.');
-  }
-  if (i.expectedAt && Number.isNaN(new Date(i.expectedAt).getTime())) throw new SecurityError('Enter a valid expected arrival time.');
-  const t = (v?: string) => v?.trim() || null;
-  return {
-    visitorName: i.visitorName.trim(), company: t(i.company), phone: t(i.phone), idType: t(i.idType), idNumber: t(i.idNumber),
-    vehicleType: i.vehicleType, vehiclePlate: i.vehicleType === 'ON_FOOT' ? null : plate, purpose: i.purpose.trim(), hostUserId: i.hostUserId,
-    expectedAt: i.expectedAt ?? null, expectedDurationMinutes: i.expectedDurationMinutes, notes: t(i.notes),
-  };
+  if (!Number.isInteger(i.expectedDurationMinutes) || i.expectedDurationMinutes < 5 || i.expectedDurationMinutes > 24 * 60) throw new SecurityError('Expected stay must be between 5 minutes and 24 hours.');
+  return { visitorName: i.visitorName.trim(), partySize: size, memberNames: members, company: t(i.company), phone: t(i.phone), purpose: i.purpose.trim(), hostUserId: i.hostUserId, expectedDurationMinutes: i.expectedDurationMinutes, notes: t(i.notes) };
+}
+
+/** How they came and who they are — taken only when they are at the gate. */
+function cleanArrival(i: { vehicleType?: string; plates?: string[]; idType?: string; idNumber?: string }) {
+  if (!i.vehicleType || !VEHICLE_TYPES.includes(i.vehicleType as VehicleType)) throw new SecurityError('Choose how the visitor came — on foot or by which vehicle.');
+  const plates = [...new Set((i.plates ?? []).map((p) => p.trim().toUpperCase()).filter(Boolean))];
+  if (i.vehicleType !== 'ON_FOOT' && plates.length === 0) throw new SecurityError('Enter the plate number of the vehicle they came with.');
+  if (!t(i.idType)) throw new SecurityError('Choose the kind of ID the visitor showed.');
+  if (!t(i.idNumber)) throw new SecurityError('Enter the ID number.');
+  return { vehicleType: i.vehicleType, vehiclePlate: i.vehicleType === 'ON_FOOT' ? null : plates.join(', '), idType: t(i.idType), idNumber: t(i.idNumber) };
 }
 
 async function activeHost(id: string) {
@@ -148,49 +157,76 @@ async function activeHost(id: string) {
   return host;
 }
 
-/** Pre-register a visitor. Anyone can register their own visitor (they are
- * the host); Security / Reception can register one for anybody. */
+/** Book a visitor in advance. Anyone can book their own visitor (they are
+ * the host); Security / Reception can book one for anybody. A booking is
+ * only a booking: how they came and their ID are taken when they arrive. */
 export async function preRegisterVisit(input: VisitInput): Promise<{ id: string; visitNumber: string }> {
   const user = await requireUser();
   const roles = await getSecurityRoles();
-  const data = cleanVisit(input);
-  if (data.hostUserId !== user.id && !roles.isFrontDesk) throw new SecurityError('You can only pre-register your own visitors.');
-  if (!data.expectedAt) throw new SecurityError('Enter when the visitor is expected.');
+  const data = cleanParty(input);
+  if (data.hostUserId !== user.id && !roles.isFrontDesk) throw new SecurityError('You can only book your own visitors.');
+  if (!input.expectedAt || Number.isNaN(new Date(input.expectedAt).getTime())) throw new SecurityError('Enter when the visitor is expected.');
   await activeHost(data.hostUserId);
   const visitNumber = await nextNumber('VIS');
-  const visit = await prisma.visit.create({ data: { ...data, visitNumber, status: 'EXPECTED', branchId: await getWorkshopBranchId(), registeredById: user.id } });
-  await writeAuditLog({ userId: user.id, action: 'visit.pre_registered', entityType: 'Visit', entityId: visit.id, metadata: { visitNumber, visitor: data.visitorName, expectedAt: data.expectedAt } });
+  const visit = await prisma.visit.create({ data: { ...data, expectedAt: input.expectedAt, vehicleType: 'ON_FOOT', visitNumber, status: 'EXPECTED', branchId: await getWorkshopBranchId(), registeredById: user.id } });
+  await writeAuditLog({ userId: user.id, action: 'visit.pre_registered', entityType: 'Visit', entityId: visit.id, metadata: { visitNumber, visitor: data.visitorName, people: data.partySize, expectedAt: input.expectedAt } });
   return { id: visit.id, visitNumber };
 }
 
-/** A visitor arriving at the gate without being pre-registered: Security
- * records them and they are on the premises with a pass straight away. */
+/** Change a booking (before the visitor arrives). */
+export async function updateBooking(visitId: string, input: VisitInput): Promise<void> {
+  const user = await requireUser();
+  const roles = await getSecurityRoles();
+  const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true, hostUserId: true, registeredById: true } });
+  if (!v) throw new SecurityError('Visit not found.');
+  if (v.status !== 'EXPECTED') throw new SecurityError('Only a booking that has not arrived can be changed.');
+  if (!roles.isFrontDesk && v.hostUserId !== user.id && v.registeredById !== user.id) throw new SecurityError('Only the host, whoever booked it, Reception or Security can change it.');
+  const data = cleanParty(input);
+  if (data.hostUserId !== user.id && !roles.isFrontDesk && data.hostUserId !== v.hostUserId) throw new SecurityError('You can only book your own visitors.');
+  if (!input.expectedAt || Number.isNaN(new Date(input.expectedAt).getTime())) throw new SecurityError('Enter when the visitor is expected.');
+  await activeHost(data.hostUserId);
+  await prisma.visit.update({ where: { id: visitId }, data: { ...data, expectedAt: input.expectedAt } });
+  await writeAuditLog({ userId: user.id, action: 'visit.booking_changed', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, visitor: data.visitorName, people: data.partySize, expectedAt: input.expectedAt } });
+}
+
+/** A visitor at the gate who was not booked: recorded complete, with a
+ * pass, and on the premises from this moment. */
 export async function recordArrival(input: VisitInput): Promise<{ id: string; visitNumber: string; passNumber: string }> {
   const r = await requireGate();
-  const data = cleanVisit(input);
+  const data = cleanParty(input);
+  const arrival = cleanArrival(input);
   await activeHost(data.hostUserId);
   const [visitNumber, passNumber] = [await nextNumber('VIS'), await nextNumber('VP')];
   const visit = await prisma.visit.create({
-    data: { ...data, expectedAt: null, visitNumber, passNumber, status: 'CHECKED_IN', isWalkIn: true, checkedInAt: new Date(), checkedInById: r.userId, branchId: await getWorkshopBranchId(), registeredById: r.userId },
+    data: { ...data, ...arrival, expectedAt: null, visitNumber, passNumber, status: 'CHECKED_IN', isWalkIn: true, checkedInAt: new Date(), checkedInById: r.userId, branchId: await getWorkshopBranchId(), registeredById: r.userId },
   });
-  await writeAuditLog({ userId: r.userId, action: 'visit.arrived', entityType: 'Visit', entityId: visit.id, metadata: { visitNumber, passNumber, visitor: data.visitorName, vehicle: data.vehiclePlate ?? 'On foot' } });
+  await writeAuditLog({ userId: r.userId, action: 'visit.arrived', entityType: 'Visit', entityId: visit.id, metadata: { visitNumber, passNumber, visitor: data.visitorName, people: data.partySize, vehicle: arrival.vehiclePlate ?? 'On foot' } });
   return { id: visit.id, visitNumber, passNumber };
 }
 
-/** An expected visitor arrives: Security confirms how they came and issues
- * the pass. */
-export async function checkInVisit(visitId: string, vehicleType?: string, vehiclePlate?: string): Promise<{ passNumber: string }> {
+/** A booked visitor arrives: Security completes how they came and their ID,
+ * and issues the pass. */
+export async function checkInVisit(visitId: string, arrivalInput: { vehicleType?: string; plates?: string[]; idType?: string; idNumber?: string }): Promise<{ passNumber: string }> {
   const r = await requireGate();
-  const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true, vehicleType: true, vehiclePlate: true } });
+  const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true } });
   if (!v) throw new SecurityError('Visit not found.');
   if (v.status !== 'EXPECTED') throw new SecurityError('Only an expected visitor can be checked in.');
-  const type = vehicleType && VEHICLE_TYPES.includes(vehicleType as VehicleType) ? vehicleType : v.vehicleType;
-  const plate = type === 'ON_FOOT' ? null : (vehiclePlate?.trim().toUpperCase() || v.vehiclePlate);
-  if (type !== 'ON_FOOT' && !plate) throw new SecurityError('Enter the plate number of the vehicle they came with.');
+  const arrival = cleanArrival(arrivalInput);
   const passNumber = await nextNumber('VP');
-  await prisma.visit.update({ where: { id: visitId }, data: { status: 'CHECKED_IN', passNumber, checkedInAt: new Date(), checkedInById: r.userId, vehicleType: type, vehiclePlate: plate } });
-  await writeAuditLog({ userId: r.userId, action: 'visit.checked_in', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, passNumber, vehicle: plate ?? 'On foot' } });
+  await prisma.visit.update({ where: { id: visitId }, data: { ...arrival, status: 'CHECKED_IN', passNumber, checkedInAt: new Date(), checkedInById: r.userId } });
+  await writeAuditLog({ userId: r.userId, action: 'visit.checked_in', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, passNumber, vehicle: arrival.vehiclePlate ?? 'On foot' } });
   return { passNumber };
+}
+
+/** Bookings whose day has passed without the visitor coming are removed —
+ * no dead records. The removal is kept on the audit log. */
+async function purgeStaleBookings(actorId: string | null) {
+  const startOfToday = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }) + 'T00:00:00+01:00');
+  const stale = await prisma.visit.findMany({ where: { status: 'EXPECTED', expectedAt: { lt: startOfToday } }, select: { id: true, visitNumber: true, visitorName: true, expectedAt: true } });
+  for (const v of stale) {
+    await writeAuditLog({ userId: actorId, action: 'visit.booking_expired', entityType: 'Visit', entityId: v.id, metadata: { visitNumber: v.visitNumber, visitor: v.visitorName, expectedAt: v.expectedAt } });
+    await prisma.visit.delete({ where: { id: v.id } });
+  }
 }
 
 /** Reception receives the visitor and tells the host (email + dashboard). */
@@ -228,16 +264,18 @@ export async function checkOutVisit(visitId: string): Promise<void> {
   await writeAuditLog({ userId: r.userId, action: 'visit.checked_out', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, passNumber: v.passNumber, duration: v.checkedInAt ? durationText((out.getTime() - new Date(v.checkedInAt).getTime()) / 60000) : undefined } });
 }
 
+/** Cancel a booking: it is removed (the cancellation stays on the audit
+ * log) — a visit that never happened leaves no dead record. */
 export async function cancelVisit(visitId: string, reason: string): Promise<void> {
   const user = await requireUser();
   const roles = await getSecurityRoles();
-  const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true, hostUserId: true, registeredById: true } });
+  const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true, visitorName: true, hostUserId: true, registeredById: true } });
   if (!v) throw new SecurityError('Visit not found.');
-  if (!roles.isFrontDesk && v.hostUserId !== user.id && v.registeredById !== user.id) throw new SecurityError('Only the host, whoever registered it, Reception or Security can cancel.');
-  if (v.status !== 'EXPECTED') throw new SecurityError('Only a visit that has not started can be cancelled.');
+  if (!roles.isFrontDesk && v.hostUserId !== user.id && v.registeredById !== user.id) throw new SecurityError('Only the host, whoever booked it, Reception or Security can cancel.');
+  if (v.status !== 'EXPECTED') throw new SecurityError('Only a booking that has not arrived can be cancelled.');
   if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
-  await prisma.visit.update({ where: { id: visitId }, data: { status: 'CANCELLED', notes: reason.trim() } });
-  await writeAuditLog({ userId: user.id, action: 'visit.cancelled', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, reason: reason.trim() } });
+  await writeAuditLog({ userId: user.id, action: 'visit.cancelled', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, visitor: v.visitorName, reason: reason.trim() } });
+  await prisma.visit.delete({ where: { id: visitId } });
 }
 
 // ── Employee Exit Pass ────────────────────────────────────────────────
@@ -246,7 +284,8 @@ export type ExitPassInput = {
   reason: string;
   returning: boolean;
   expectedOutAt?: Date;
-  expectedReturnAt?: Date;
+  /** Returning passes: how long they plan to be out (minutes). */
+  expectedDurationMinutes?: number;
   employeeIds: string[];
   others: { name: string; designation?: string }[];
 };
@@ -286,11 +325,11 @@ export async function createExitPass(input: ExitPassInput): Promise<{ id: string
   const others = input.others.map((o) => ({ name: o.name.trim(), designation: o.designation?.trim() || null })).filter((o) => o.name);
   if (ids.length + others.length === 0) throw new SecurityError('Add at least one person going out.');
   const out = input.expectedOutAt ? new Date(input.expectedOutAt) : null;
-  const back = input.expectedReturnAt ? new Date(input.expectedReturnAt) : null;
-  if (input.returning) {
-    if (!back || Number.isNaN(back.getTime())) throw new SecurityError('Enter the expected time of return.');
-    if (out && back.getTime() <= out.getTime()) throw new SecurityError('The return time must be after the time out.');
-  }
+  if (out && Number.isNaN(out.getTime())) throw new SecurityError('Enter a valid time for leaving.');
+  const minutes = input.expectedDurationMinutes;
+  if (input.returning && (!Number.isInteger(minutes) || minutes! < 15 || minutes! > 600)) throw new SecurityError('Choose how long you will be out — between 15 minutes and 10 hours.');
+  // Provisional return time; reset from the actual time out at the gate.
+  const back = input.returning ? new Date((out ?? new Date()).getTime() + minutes! * 60000) : null;
   const employees = ids.length
     ? await prisma.user.findMany({ where: { id: { in: ids }, isActive: true }, select: { id: true, fullName: true, employeeId: true, department: { select: { name: true } }, employeeProfile: { select: { jobTitle: true } } } })
     : [];
@@ -303,7 +342,7 @@ export async function createExitPass(input: ExitPassInput): Promise<{ id: string
   const pass = await prisma.exitPass.create({
     data: {
       passNumber, branchId: await getWorkshopBranchId(), requestedById: user.id, reason, returning: input.returning,
-      expectedOutAt: out, expectedReturnAt: input.returning ? back : null,
+      expectedOutAt: out, expectedReturnAt: back, expectedDurationMinutes: input.returning ? minutes! : null,
       status: requesterIsHead ? 'PENDING_MANAGER' : 'PENDING_HEAD',
       ...(requesterIsHead ? { headApprovedById: user.id, headApprovedAt: now } : {}),
       people: {
@@ -317,7 +356,7 @@ export async function createExitPass(input: ExitPassInput): Promise<{ id: string
   const names = [...employees.map((e: (typeof employees)[number]) => e.fullName), ...others.map((o) => o.name)];
   await writeAuditLog({ userId: user.id, action: 'exit_pass.requested', entityType: 'ExitPass', entityId: pass.id, metadata: { passNumber, people: names, returning: input.returning, reason } });
   const approvers = requesterIsHead ? await managerApprovers(user.id) : await headApproversFor(user.id);
-  await sendLogged('ExitPass', pass.id, approvers, `Exit pass ${passNumber} needs your ${requesterIsHead ? 'approval' : 'authorisation'}`, 'An exit pass needs your decision', [`${passNumber} — ${names.join(', ')}`, `Reason: ${reason}`, input.returning && back ? `Expected back: ${back.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' })}` : 'Not returning today'], `/security/exit-passes/${pass.id}`, user.id);
+  await sendLogged('ExitPass', pass.id, approvers, `Exit pass ${passNumber} needs your ${requesterIsHead ? 'approval' : 'authorisation'}`, 'An exit pass needs your decision', [`${passNumber} — ${names.join(', ')}`, `Reason: ${reason}`, input.returning ? `Out for about ${durationText(minutes!)}` : 'Not returning today'], `/security/exit-passes/${pass.id}`, user.id);
   return { id: pass.id, passNumber };
 }
 
@@ -374,10 +413,13 @@ export async function cancelExitPass(passId: string, reason: string): Promise<vo
  * closes as they leave. */
 export async function exitPassGateOut(passId: string): Promise<void> {
   const r = await requireGate();
-  const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, passNumber: true, returning: true } });
+  const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, passNumber: true, returning: true, expectedDurationMinutes: true } });
   if (!p) throw new SecurityError('Exit pass not found.');
   if (p.status !== 'APPROVED') throw new SecurityError('Only an approved exit pass can be used to leave — Security will not permit exit without approval.');
-  await prisma.exitPass.update({ where: { id: passId }, data: { status: p.returning ? 'OUT' : 'CLOSED', gateOutAt: new Date(), gateOutById: r.userId } });
+  const now = new Date();
+  // Expected back = actual time out + how long they said they'd be.
+  const expectedReturnAt = p.returning && p.expectedDurationMinutes ? new Date(now.getTime() + p.expectedDurationMinutes * 60000) : undefined;
+  await prisma.exitPass.update({ where: { id: passId }, data: { status: p.returning ? 'OUT' : 'CLOSED', gateOutAt: now, gateOutById: r.userId, ...(expectedReturnAt ? { expectedReturnAt } : {}) } });
   await writeAuditLog({ userId: r.userId, action: 'exit_pass.gate_out', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber, returning: p.returning } });
 }
 
@@ -440,10 +482,11 @@ export async function confirmVehicleExit(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', r
 // ── Dashboard ─────────────────────────────────────────────────────────
 
 export async function getSecurityDashboard() {
-  await requireUser();
+  const me = await requireUser();
+  await purgeStaleBookings(me.id);
   const startOfDay = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }) + 'T00:00:00+01:00');
   const endOfDay = new Date(startOfDay.getTime() + 86400000);
-  const visitSelect = { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, company: true, purpose: true, vehicleType: true, vehiclePlate: true, expectedAt: true, expectedDurationMinutes: true, checkedInAt: true, receivedAt: true, isWalkIn: true, host: { select: { fullName: true } } } as const;
+  const visitSelect = { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, memberNames: true, company: true, purpose: true, vehicleType: true, vehiclePlate: true, expectedAt: true, expectedDurationMinutes: true, checkedInAt: true, receivedAt: true, isWalkIn: true, host: { select: { fullName: true } } } as const;
   const passSelect = { id: true, passNumber: true, status: true, reason: true, returning: true, expectedOutAt: true, expectedReturnAt: true, gateOutAt: true, people: { select: { name: true } } } as const;
   const [onPremises, expectedToday, passesReady, passesOut, vehicles, jobCardsIn, servicesIn, roadTestsOut, roadTestsReady] = await Promise.all([
     prisma.visit.findMany({ where: { status: 'CHECKED_IN' }, orderBy: { checkedInAt: 'asc' }, select: visitSelect }),
@@ -459,7 +502,10 @@ export async function getSecurityDashboard() {
   ]);
   // A workshop vehicle out on a road test is not inside the compound.
   const workshopInside = Math.max(0, jobCardsIn + servicesIn - roadTestsOut.length);
-  const visitorVehicles = onPremises.filter((v: (typeof onPremises)[number]) => v.vehicleType !== 'ON_FOOT').length;
+  // People, not visits (a group of 5 is 5); vehicles, not visits (every plate).
+  const plateCount = (v: { vehicleType: string; vehiclePlate: string | null }) => (v.vehicleType === 'ON_FOOT' ? 0 : Math.max(1, (v.vehiclePlate ?? '').split(',').filter((x) => x.trim()).length));
+  const visitorVehicles = onPremises.reduce((n: number, v: (typeof onPremises)[number]) => n + plateCount(v), 0);
+  const visitorPeople = onPremises.reduce((n: number, v: (typeof onPremises)[number]) => n + v.partySize, 0);
   const peopleOut = passesOut.reduce((s: number, p: (typeof passesOut)[number]) => s + p.people.length, 0);
   return {
     onPremises,
@@ -471,7 +517,8 @@ export async function getSecurityDashboard() {
     roadTestsOut,
     roadTestsReady,
     compound: {
-      visitors: onPremises.length,
+      visitors: visitorPeople,
+      visits: onPremises.length,
       peopleOut,
       visitorVehicles,
       workshopVehicles: workshopInside,
@@ -485,13 +532,14 @@ export async function getSecurityDashboard() {
 // ── Queries ───────────────────────────────────────────────────────────
 
 export async function listVisits(q?: string) {
-  await requireUser();
+  const me = await requireUser();
+  await purgeStaleBookings(me.id);
   const t = q?.trim();
   return prisma.visit.findMany({
     where: t ? { OR: [{ visitNumber: { contains: t, mode: 'insensitive' } }, { passNumber: { contains: t, mode: 'insensitive' } }, { visitorName: { contains: t, mode: 'insensitive' } }, { company: { contains: t, mode: 'insensitive' } }, { vehiclePlate: { contains: t, mode: 'insensitive' } }] } : undefined,
     orderBy: { createdAt: 'desc' },
     take: 300,
-    select: { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, company: true, purpose: true, vehicleType: true, vehiclePlate: true, expectedAt: true, expectedDurationMinutes: true, checkedInAt: true, checkedOutAt: true, receivedAt: true, isWalkIn: true, host: { select: { fullName: true } } },
+    select: { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, memberNames: true, company: true, purpose: true, vehicleType: true, vehiclePlate: true, expectedAt: true, expectedDurationMinutes: true, checkedInAt: true, checkedOutAt: true, receivedAt: true, isWalkIn: true, host: { select: { fullName: true } } },
   });
 }
 
@@ -651,8 +699,8 @@ export async function getVehicleGateExit(id: string) {
 
 // ── Individual pages behind each dashboard number ─────────────────────
 
-const VISIT_ROW = { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, company: true, phone: true, purpose: true, vehicleType: true, vehiclePlate: true, expectedAt: true, expectedDurationMinutes: true, extendedMinutes: true, checkedInAt: true, receivedAt: true, isWalkIn: true, host: { select: { fullName: true } } } as const;
-const PASS_ROW = { id: true, passNumber: true, status: true, reason: true, returning: true, expectedOutAt: true, expectedReturnAt: true, gateOutAt: true, requestedBy: { select: { fullName: true } }, people: { select: { name: true, employeeId: true, department: true } } } as const;
+const VISIT_ROW = { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, memberNames: true, company: true, phone: true, purpose: true, vehicleType: true, vehiclePlate: true, expectedAt: true, expectedDurationMinutes: true, extendedMinutes: true, checkedInAt: true, receivedAt: true, isWalkIn: true, host: { select: { fullName: true } } } as const;
+const PASS_ROW = { id: true, passNumber: true, status: true, reason: true, returning: true, expectedOutAt: true, expectedReturnAt: true, expectedDurationMinutes: true, gateOutAt: true, requestedBy: { select: { fullName: true } }, people: { select: { name: true, employeeId: true, department: true } } } as const;
 
 /** Visitors on the premises now. */
 export async function listOnPremises() {
@@ -698,7 +746,9 @@ export async function listVehiclesInside(): Promise<InsideVehicle[]> {
   ]);
   const car = (v: { make: string | null; model: string | null }) => [v.make, v.model].filter(Boolean).join(' ') || 'Vehicle';
   return [
-    ...visits.map((v: (typeof visits)[number]) => ({ kind: 'VISITOR' as const, stage: 'VISITOR' as const, id: v.id, number: v.passNumber ?? '', plate: v.vehiclePlate, description: v.vehicleType, who: v.visitorName, since: v.checkedInAt, href: `/security/visitors/${v.id}` })),
+    ...visits.flatMap((v: (typeof visits)[number]) =>
+      (v.vehiclePlate ?? '').split(',').map((x: string) => x.trim()).filter(Boolean).map((plate: string) => ({ kind: 'VISITOR' as const, stage: 'VISITOR' as const, id: v.id, number: v.passNumber ?? '', plate, description: v.vehicleType, who: v.visitorName, since: v.checkedInAt, href: `/security/visitors/${v.id}` })),
+    ),
     ...jcs.map((j: (typeof jcs)[number]) => ({ kind: 'JOB_CARD' as const, stage: 'WORKSHOP' as const, id: j.id, number: j.jobNumber, plate: j.vehicle.plateNumber, description: car(j.vehicle), who: j.customer.fullName, since: j.createdAt, href: `/workshop/job-cards/${j.id}` })),
     ...vss.map((v: (typeof vss)[number]) => ({ kind: 'VEHICLE_SERVICE' as const, stage: 'WORKSHOP' as const, id: v.id, number: v.serviceNumber, plate: v.vehicle.plateNumber, description: car(v.vehicle), who: v.customer.fullName, since: v.createdAt, href: `/workshop/vehicle-service/${v.id}` })),
     ...cleared.map((c) => ({ kind: c.kind, stage: 'CLEARED' as const, id: c.id, number: c.number, plate: c.vehicle.plateNumber, description: car(c.vehicle), who: c.customer, since: c.releasedAt, href: `/security/vehicles/release/${c.kind === 'JOB_CARD' ? 'job-card' : 'vehicle-service'}/${c.id}` })),

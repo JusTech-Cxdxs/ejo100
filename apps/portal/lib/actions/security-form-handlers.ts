@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
-  preRegisterVisit, recordArrival, checkInVisit, receiveVisit, extendVisit, checkOutVisit, cancelVisit,
+  preRegisterVisit, updateBooking, recordArrival, checkInVisit, receiveVisit, extendVisit, checkOutVisit, cancelVisit,
   createExitPass, decideExitPass, cancelExitPass, exitPassGateOut, exitPassGateIn, confirmVehicleExit,
   extendExitPassReturn, addSecurityFollowUp,
   requestRoadTest, decideRoadTest, cancelRoadTest, roadTestGateOut, roadTestGateIn, extendRoadTest,
@@ -23,11 +23,27 @@ function ok(path: string, status: string): never {
   redirect(`${path}${path.includes('?') ? '&' : '?'}status=${status}`);
 }
 
+/** ID type: a chosen suggestion, or "Other" with the typed name. */
+const idTypeOf = (f: FormData) => (str(f, 'idType') === 'OTHER' ? str(f, 'idTypeOther') : str(f, 'idType'));
+
 function visitInput(f: FormData): VisitInput {
+  const group = str(f, 'party') === 'GROUP';
+  const org = str(f, 'affiliation') === 'ORGANISATION';
   return {
-    visitorName: str(f, 'visitorName'), company: str(f, 'company'), phone: str(f, 'phone'), idType: str(f, 'idType'), idNumber: str(f, 'idNumber'),
-    vehicleType: str(f, 'vehicleType'), vehiclePlate: str(f, 'vehiclePlate'), purpose: str(f, 'purpose'), hostUserId: str(f, 'hostUserId'),
-    expectedAt: lagosDate(str(f, 'expectedAt')), expectedDurationMinutes: Math.round(Number(str(f, 'expectedHours') || '0') * 60 + Number(str(f, 'expectedMinutes') || '0')), notes: str(f, 'notes'),
+    visitorName: str(f, 'visitorName'),
+    partySize: group ? Number(str(f, 'partySize')) : 1,
+    memberNames: group ? f.getAll('memberName').map(String) : [],
+    company: org ? str(f, 'company') : '',
+    phone: str(f, 'phone'),
+    idType: idTypeOf(f),
+    idNumber: str(f, 'idNumber'),
+    vehicleType: str(f, 'vehicleType'),
+    plates: f.getAll('plate').map(String),
+    purpose: str(f, 'purpose'),
+    hostUserId: str(f, 'hostUserId'),
+    expectedAt: lagosDate(str(f, 'expectedAt')),
+    expectedDurationMinutes: Number(str(f, 'expectedMinutes') || '0'),
+    notes: str(f, 'notes'),
   };
 }
 
@@ -47,7 +63,7 @@ export async function visitActionFormAction(f: FormData) {
   const action = str(f, 'action');
   const path = str(f, 'returnTo') || `/security/visitors/${id}`;
   try {
-    if (action === 'check_in') await checkInVisit(id, str(f, 'vehicleType') || undefined, str(f, 'vehiclePlate') || undefined);
+    if (action === 'check_in') await checkInVisit(id, { vehicleType: str(f, 'vehicleType'), plates: f.getAll('plate').map(String), idType: idTypeOf(f), idNumber: str(f, 'idNumber') });
     else if (action === 'receive') await receiveVisit(id);
     else if (action === 'extend') await extendVisit(id, Number(str(f, 'extraMinutes')), str(f, 'reason'));
     else if (action === 'check_out') await checkOutVisit(id);
@@ -56,22 +72,27 @@ export async function visitActionFormAction(f: FormData) {
   } catch (err) {
     back(path, err, 'Could not update the visit.');
   }
+  // A cancelled booking is removed — go back to the list.
+  if (action === 'cancel') ok('/security/visitors', 'booking_cancelled');
   ok(path, action);
 }
 
 export async function createExitPassFormAction(f: FormData) {
-  const names = f.getAll('otherName').map(String);
-  const roles = f.getAll('otherDesignation').map(String);
+  const who = str(f, 'who');
+  const others = f.getAll('otherName').map(String);
+  const employees = f.getAll('employeeIds').map(String).filter(Boolean);
+  const leaveAt = str(f, 'leaveWhen') === 'LATER' && str(f, 'leaveTime') ? new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T${str(f, 'leaveTime')}:00+01:00`) : undefined;
   let id = '';
   try {
+    if (!who) throw new Error('Choose who is going out.');
     id = (
       await createExitPass({
         reason: str(f, 'reason'),
         returning: str(f, 'returning') === 'yes',
-        expectedOutAt: lagosDate(str(f, 'expectedOutAt')),
-        expectedReturnAt: lagosDate(str(f, 'expectedReturnAt')),
-        employeeIds: f.getAll('employeeIds').map(String).filter(Boolean),
-        others: names.map((n, i) => ({ name: n, designation: roles[i] ?? '' })),
+        expectedOutAt: leaveAt,
+        expectedDurationMinutes: Number(str(f, 'outHours') || '0') * 60 + Number(str(f, 'outMinutes') || '0'),
+        employeeIds: who === 'OTHERS' ? employees : [str(f, 'me'), ...employees],
+        others: others.map((n) => ({ name: n })),
       })
     ).id;
   } catch (err) {
@@ -170,4 +191,14 @@ export async function roadTestActionFormAction(f: FormData) {
   }
   revalidatePath(`/security/road-tests/${id}`);
   ok(path, action);
+}
+
+export async function updateBookingFormAction(f: FormData) {
+  const id = str(f, 'visitId');
+  try {
+    await updateBooking(id, visitInput(f));
+  } catch (err) {
+    back(`/security/visitors/${id}/edit`, err, 'Could not save the booking.');
+  }
+  ok(`/security/visitors/${id}`, 'booking_saved');
 }
