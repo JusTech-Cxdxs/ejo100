@@ -23,6 +23,13 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'security.email_sent': 'Email sent',
   'security.email_failed': 'Email could not be sent',
   'vehicle.gate_exit': 'Vehicle left through the gate',
+  'road_test.requested': 'Road test requested',
+  'road_test.approved': 'Road test approved by the Manager',
+  'road_test.declined': 'Road test declined',
+  'road_test.cancelled': 'Road test cancelled',
+  'road_test.gate_out': 'Out on road test',
+  'road_test.gate_in': 'Back from road test',
+  'road_test.extended': 'Road test extended',
 };
 
 export function securityActionLabel(action: string): string {
@@ -42,6 +49,18 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
       return [s('passNumber') ? `Pass ${s('passNumber')}` : null, s('vehicle') ? (s('vehicle') === 'On foot' ? 'on foot' : `vehicle ${s('vehicle')}`) : null].filter(Boolean).join(' · ') || null;
     case 'exit_pass.extended':
       return `By ${s('extra') ?? ''}${s('reason') ? ` — ${s('reason')}` : ''}`;
+    case 'road_test.requested':
+      return [s('permitNumber'), s('driver') ? `driver ${s('driver')}` : null].filter(Boolean).join(' · ') || null;
+    case 'road_test.gate_out':
+      return [s('permitNumber'), typeof meta.odometer === 'number' ? `${(meta.odometer as number).toLocaleString('en-NG')} km` : null].filter(Boolean).join(' · ') || null;
+    case 'road_test.gate_in':
+      return [s('permitNumber'), typeof meta.odometer === 'number' ? `${(meta.odometer as number).toLocaleString('en-NG')} km` : null, typeof meta.distance === 'number' ? `${(meta.distance as number).toLocaleString('en-NG')} km driven` : null, s('away'), s('notes')].filter(Boolean).join(' · ') || null;
+    case 'road_test.extended':
+      return `By ${s('extra') ?? ''}${s('reason') ? ` — ${s('reason')}` : ''}`;
+    case 'road_test.approved':
+    case 'road_test.declined':
+    case 'road_test.cancelled':
+      return [s('permitNumber'), s('reason') ? `Reason: ${s('reason')}` : null].filter(Boolean).join(' · ') || null;
     case 'security.follow_up':
       return s('note');
     case 'visit.extended':

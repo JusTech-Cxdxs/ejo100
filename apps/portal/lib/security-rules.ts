@@ -66,8 +66,24 @@ export const STATUS_CHIP: Record<string, string> = {
   CANCELLED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   PENDING_HEAD: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   PENDING_MANAGER: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  LEFT: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   APPROVED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   OUT: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
   RETURNED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
   CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+};
+
+export function roadTestOverdueMinutes(r: { status: string; gateOutAt: Date | null; expectedDurationMinutes: number }, now: Date = new Date()): number {
+  if (r.status !== 'OUT' || !r.gateOutAt) return 0;
+  const due = new Date(r.gateOutAt).getTime() + r.expectedDurationMinutes * 60000;
+  return Math.max(0, Math.floor((now.getTime() - due) / 60000));
+}
+
+export const ROAD_TEST_STATUS_LABEL: Record<string, string> = {
+  PENDING_MANAGER: 'Awaiting Manager',
+  APPROVED: 'Approved — may go out',
+  OUT: 'Out on road test',
+  RETURNED: 'Returned',
+  DECLINED: 'Declined',
+  CANCELLED: 'Cancelled',
 };
