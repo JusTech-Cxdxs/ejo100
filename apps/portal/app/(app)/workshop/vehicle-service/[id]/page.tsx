@@ -1,3 +1,6 @@
+import { RoadTestsPanel } from '@/components/RoadTestsPanel';
+import { listRoadTestsFor } from '@/lib/actions/security';
+import { securityActionDetail } from '@/lib/security-labels';
 import { notFound } from 'next/navigation';
 import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantiesFor, getPartWarrantyBadges } from '@/lib/actions/warranty';
@@ -151,6 +154,12 @@ const NEXT_ACTION: Record<string, { status: string; label: string } | null> = {
 };
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'road_test.requested': 'Road test requested',
+  'road_test.approved': 'Road test approved by the Manager',
+  'road_test.declined': 'Road test declined',
+  'road_test.cancelled': 'Road test cancelled',
+  'road_test.gate_out': 'Out on road test',
+  'road_test.gate_in': 'Back from road test',
   'vehicle.gate_exit': 'Left through the gate',
   'warranty.issued': 'Warranties issued',
   'vehicle_service.created': 'Vehicle Service opened',
@@ -211,6 +220,7 @@ function formatNaira(value: unknown): string {
 function formatAuditDetail(entry: { action: string; metadata: unknown }): string | null {
   const meta = entry.metadata as Record<string, unknown> | null;
   if (!meta) return null;
+  if (entry.action.startsWith('road_test.')) return securityActionDetail(entry.action, meta);
   switch (entry.action) {
     case 'vehicle.gate_exit':
       return [typeof meta.exitNumber === 'string' ? meta.exitNumber : null, typeof (meta.collectedBy ?? meta.driver) === 'string' ? `collected by ${String(meta.collectedBy ?? meta.driver)}` : null].filter(Boolean).join(' · ') || null;
@@ -355,6 +365,7 @@ export default async function VehicleServiceDetailPage({
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const refunds = await listRefunds({ vehicleServiceId: id });
   const warranties = await listWarrantiesFor({ vehicleServiceId: id });
+  const roadTests = await listRoadTestsFor({ vehicleServiceId: id });
   // Estimate lines whose part carries a warranty — shown before fitting.
   const partWarrantyBadges = await getPartWarrantyBadges((serviceEstimate?.lineItems ?? []).map((li: { matchedPartId: string | null }) => li.matchedPartId ?? ''));
   const refundedTotal = refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
@@ -1226,6 +1237,8 @@ export default async function VehicleServiceDetailPage({
               ) : null}
             </div>
           ) : null}
+
+          <RoadTestsPanel rows={roadTests} requestHref={['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'].includes(service.status) ? `/security/road-tests/new?vehicleServiceId=${service.id}` : null} />
 
           <WarrantyList warranties={warranties} title="Warranties issued" />
 
