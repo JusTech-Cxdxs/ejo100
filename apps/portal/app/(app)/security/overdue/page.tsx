@@ -1,5 +1,5 @@
 import { listOverdue, getSecurityRoles } from '@/lib/actions/security';
-import { visitActionFormAction, extendExitPassFormAction, securityFollowUpFormAction } from '@/lib/actions/security-form-handlers';
+import { visitActionFormAction, extendExitPassFormAction, securityFollowUpFormAction, roadTestActionFormAction } from '@/lib/actions/security-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityTable } from '@/components/SecurityTable';
@@ -10,7 +10,7 @@ import { durationText } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 
 const EXTRA = [15, 30, 60, 90, 120, 180, 240];
-const DONE: Record<string, string> = { extend: 'Stay extended.', extended: 'Return time extended.', follow_up: 'Follow-up saved on the record.' };
+const DONE: Record<string, string> = { extend: 'Time extended.', extended: 'Return time extended.', follow_up: 'Follow-up saved on the record.' };
 
 /** The Chief Security Officer's follow-up desk: who is overdue, by how
  * much — extend their time or record the follow-up, right here. */
@@ -33,7 +33,7 @@ export default async function OverduePage({ searchParams }: { searchParams: Prom
       <SubmitButton label="Extend" pendingLabel="…" className={small} />
     </form>
   );
-  const FollowUp = ({ type, id }: { type: 'Visit' | 'ExitPass'; id: string }) => (
+  const FollowUp = ({ type, id }: { type: 'Visit' | 'ExitPass' | 'RoadTestPermit'; id: string }) => (
     <form action={securityFollowUpFormAction} className="mt-1 flex flex-wrap gap-1">
       <FormPendingOverlay />
       <input type="hidden" name="entityType" value={type} />
@@ -61,6 +61,36 @@ export default async function OverduePage({ searchParams }: { searchParams: Prom
               <td className="text-xs font-semibold text-[var(--ejo-error)]">{durationText(v.overdueMinutes)}</td>
               <td>{roles.isFrontDesk ? <><Extend kind="visit" id={v.id} /><FollowUp type="Visit" id={v.id} /></> : null}</td>
               <td><LoadingLink href={`/security/visitors/${v.id}`} className="text-xs text-[var(--ejo-primary)] hover:underline">Open</LoadingLink></td>
+            </tr>
+          ))}
+        </SecurityTable>
+      </div>
+      <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">Road tests ({o.roadTests.length})</h2>
+      <div className="mb-8">
+        <SecurityTable headers={['Permit', 'Vehicle / driver', 'Out', 'Late by', roles.isGate ? 'Follow up / extend' : '', '']} widths={['12%', '22%', '12%', '11%', '36%', '7%']} empty={o.roadTests.length ? null : 'No road test is late.'}>
+          {o.roadTests.map((r) => (
+            <tr key={r.id}>
+              <td className="font-medium">{r.permitNumber}</td>
+              <td>{r.vehicle.plateNumber ?? 'Vehicle'}<span className="block text-xs text-[var(--ejo-text-muted)]">{r.driver.fullName} · {r.jobCard?.jobNumber ?? r.vehicleService?.serviceNumber ?? ''}</span></td>
+              <td className="text-xs">{r.gateOutAt ? formatDateTimeCompact(r.gateOutAt) : '—'}</td>
+              <td className="text-xs font-semibold text-[var(--ejo-error)]">{durationText(r.overdueMinutes)}</td>
+              <td>
+                {roles.isGate ? (
+                  <>
+                    <form action={roadTestActionFormAction} className="flex flex-wrap gap-1">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="permitId" value={r.id} />
+                      <input type="hidden" name="action" value="extend" />
+                      <input type="hidden" name="returnTo" value="/security/overdue" />
+                      <select name="extraMinutes" required defaultValue="" className={input}><option value="" disabled>Extend by…</option>{[15, 30, 45, 60, 90, 120].map((m) => <option key={m} value={m}>{durationText(m)}</option>)}</select>
+                      <input name="reason" required placeholder="Reason" className={`${input} min-w-0 flex-1`} />
+                      <SubmitButton label="Extend" pendingLabel="…" className={small} />
+                    </form>
+                    <FollowUp type="RoadTestPermit" id={r.id} />
+                  </>
+                ) : null}
+              </td>
+              <td><LoadingLink href={`/security/road-tests/${r.id}`} className="text-xs text-[var(--ejo-primary)] hover:underline">Open</LoadingLink></td>
             </tr>
           ))}
         </SecurityTable>
