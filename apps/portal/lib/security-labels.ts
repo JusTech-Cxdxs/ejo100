@@ -25,6 +25,11 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'security.email_sent': 'Email sent',
   'security.email_failed': 'Email could not be sent',
   'vehicle.gate_exit': 'Vehicle left through the gate',
+  'appointment.created': 'Appointment booked',
+  'appointment.changed': 'Appointment changed',
+  'appointment.cancelled': 'Appointment cancelled',
+  'appointment.completed': 'Appointment completed',
+  'appointment.no_show': 'Marked as a no-show',
   'road_test.requested': 'Road test requested',
   'road_test.approved': 'Road test approved by the Manager',
   'road_test.declined': 'Road test declined',
@@ -63,6 +68,13 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
     case 'road_test.declined':
     case 'road_test.cancelled':
       return [s('permitNumber'), s('reason') ? `Reason: ${s('reason')}` : null].filter(Boolean).join(' · ') || null;
+    case 'appointment.created':
+    case 'appointment.changed':
+      return [s('title'), s('onBehalfOf') ? `for ${s('onBehalfOf')}` : null].filter(Boolean).join(' · ') || null;
+    case 'appointment.cancelled':
+      return s('reason') ? `Reason: ${s('reason')}` : null;
+    case 'appointment.completed':
+      return s('by');
     case 'security.follow_up':
       return s('note');
     case 'visit.extended':
