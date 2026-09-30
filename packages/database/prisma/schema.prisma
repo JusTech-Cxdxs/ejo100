@@ -245,6 +245,8 @@ model Branch {
   roadTestPermits RoadTestPermit[]
   meetingRooms MeetingRoom[]
   appointments Appointment[]
+  securityIncidents SecurityIncident[]
+  gateDeliveries GateDelivery[]
 }
 
 model Department {
@@ -434,6 +436,13 @@ model User {
   appointmentsOwned Appointment[] @relation("AppointmentOwner")
   appointmentsCreated Appointment[] @relation("AppointmentCreatedBy")
   appointmentParticipations AppointmentParticipant[] @relation("AppointmentParticipantUser")
+  incidentsReported SecurityIncident[] @relation("IncidentReportedBy")
+  incidentsAssigned SecurityIncident[] @relation("IncidentAssignedTo")
+  incidentsClosed SecurityIncident[] @relation("IncidentClosedBy")
+  deliveriesRegistered GateDelivery[] @relation("DeliveryRegisteredBy")
+  deliveriesArrived GateDelivery[] @relation("DeliveryArrivedBy")
+  deliveriesReceived GateDelivery[] @relation("DeliveryReceivedBy")
+  deliveriesLeft GateDelivery[] @relation("DeliveryLeftBy")
 }
 
 // One-to-one HR extension of User. Kept separate per the Phase 1 note so
@@ -2136,6 +2145,7 @@ model GoodsReceipt {
   lines      GoodsReceiptLine[]
 
   @@map("goods_receipts")
+  gateDeliveries GateDelivery[]
 }
 
 // One line per part received on a single delivery. quantityReceivedInUnit
@@ -3404,4 +3414,106 @@ model AppointmentParticipant {
 
   @@unique([appointmentId, userId])
   @@map("appointment_participants")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SECURITY INCIDENTS — anything abnormal at the gate or on site, reported by
+// Security / Reception, reviewed and closed by the Chief Security Officer.
+// ─────────────────────────────────────────────────────────────────────────
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  UNDER_REVIEW
+  CLOSED
+}
+
+model SecurityIncident {
+  id               String           @id @default(cuid())
+  incidentNumber   String           @unique
+  branchId         String
+  type             String
+  severity         IncidentSeverity
+  status           IncidentStatus   @default(OPEN)
+  occurredAt       DateTime
+  location         String
+  description      String
+  peopleInvolved   String?
+  vehiclePlate     String?
+  actionTaken      String?
+  // Optional link to the record it concerns (Visit / ExitPass /
+  // RoadTestPermit / VehicleGateExit) — by type + id + its number.
+  relatedType      String?
+  relatedId        String?
+  relatedNumber    String?
+  reportedById     String
+  assignedToId     String?
+  resolution       String?
+  closedAt         DateTime?
+  closedById       String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @default(now()) @updatedAt
+
+  branch     Branch @relation(fields: [branchId], references: [id])
+  reportedBy User   @relation("IncidentReportedBy", fields: [reportedById], references: [id])
+  assignedTo User?  @relation("IncidentAssignedTo", fields: [assignedToId], references: [id])
+  closedBy   User?  @relation("IncidentClosedBy", fields: [closedById], references: [id])
+
+  @@index([status, severity])
+  @@map("security_incidents")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// DELIVERIES — suppliers arriving at the gate. Security records arrival and
+// departure; the Store confirms receipt (optionally linking its GRN).
+// ─────────────────────────────────────────────────────────────────────────
+enum DeliveryStatus {
+  EXPECTED
+  AT_GATE
+  RECEIVED
+  LEFT
+  CANCELLED
+}
+
+model GateDelivery {
+  id             String         @id @default(cuid())
+  deliveryNumber String         @unique
+  branchId       String
+  status         DeliveryStatus
+  supplierName   String
+  reference      String?
+  items          String
+  expectedAt     DateTime?
+  driverName     String?
+  driverPhone    String?
+  vehicleType    String?
+  vehiclePlate   String?
+  notes          String?
+  registeredById String
+  arrivedAt      DateTime?
+  arrivedById    String?
+  receivedAt     DateTime?
+  receivedById   String?
+  receiptNote    String?
+  goodsReceiptId String?
+  leftAt         DateTime?
+  leftById       String?
+  cancelReason   String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @default(now()) @updatedAt
+
+  branch       Branch        @relation(fields: [branchId], references: [id])
+  registeredBy User          @relation("DeliveryRegisteredBy", fields: [registeredById], references: [id])
+  arrivedBy    User?         @relation("DeliveryArrivedBy", fields: [arrivedById], references: [id])
+  receivedBy   User?         @relation("DeliveryReceivedBy", fields: [receivedById], references: [id])
+  leftBy       User?         @relation("DeliveryLeftBy", fields: [leftById], references: [id])
+  goodsReceipt GoodsReceipt? @relation(fields: [goodsReceiptId], references: [id])
+
+  @@index([status])
+  @@map("gate_deliveries")
 }
