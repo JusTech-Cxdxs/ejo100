@@ -27,6 +27,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateTime, formatDateTimeCompact, formatDateOnly } from '@/lib/utils/format-date';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'vehicle.gate_exit': 'Left through the gate',
   'vehicle.created': 'Vehicle registered',
   'vehicle.updated': 'Vehicle details updated',
   'vehicle.deleted': 'Vehicle deleted',
