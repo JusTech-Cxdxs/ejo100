@@ -9,10 +9,10 @@ export default async function ExitPassesPage({ searchParams }: { searchParams: P
   const roles = await getSecurityRoles();
   const canSeeAll = roles.isGate || roles.isManager || roles.isMaster;
   const scope = tab === 'to_decide' ? 'to_decide' : tab === 'all' && canSeeAll ? 'all' : 'mine';
-  const passes = await listExitPasses(scope, q);
-  const tabs = [['mine', 'My passes'], ['to_decide', 'To decide'], ...(canSeeAll ? [['all', 'All passes']] : [])] as [string, string][];
+  const [passes, mine, toDecide, everything] = await Promise.all([listExitPasses(scope, q), listExitPasses('mine', q), listExitPasses('to_decide', q), canSeeAll ? listExitPasses('all', q) : Promise.resolve([])]);
+  const tabs = [['mine', 'My passes', mine.length], ['to_decide', 'To decide', toDecide.length], ...(canSeeAll ? [['all', 'All passes', everything.length]] : [])] as [string, string, number][];
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Employee exit passes</h1>
@@ -22,10 +22,10 @@ export default async function ExitPassesPage({ searchParams }: { searchParams: P
       </div>
       <SecurityNav active="/security/exit-passes" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {tabs.map(([k, l]) => (
-          <LoadingLink key={k} href={`/security/exit-passes?tab=${k}`} className={`rounded-full px-3 py-1 text-xs font-medium ${scope === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l}</LoadingLink>
+        {tabs.map(([k, l, n]) => (
+          <LoadingLink key={k} href={`/security/exit-passes?tab=${k}${q ? `&q=${encodeURIComponent(q)}` : ''}`} className={`rounded-full px-3 py-1 text-xs font-medium ${scope === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l} ({n})</LoadingLink>
         ))}
-        <form className="ml-auto flex gap-2">
+        <form className="flex w-full gap-2 sm:ml-auto sm:w-auto">
           <input type="hidden" name="tab" value={scope} />
           <input name="q" defaultValue={q ?? ''} placeholder="Search pass number, name, reason…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)]" />
         </form>
