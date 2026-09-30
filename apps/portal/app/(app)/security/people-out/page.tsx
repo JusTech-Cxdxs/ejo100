@@ -11,7 +11,7 @@ export default async function PeopleOutPage() {
   const now = new Date();
   const people = rows.reduce((s, p) => s + p.people.length, 0);
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">People out on exit passes</h1>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">{pluralize(people, 'person', 'people')} out on {pluralize(rows.length, 'pass', 'passes')}.</p>
       <SecurityNav active="/security" />
