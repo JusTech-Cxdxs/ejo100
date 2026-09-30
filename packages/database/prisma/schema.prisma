@@ -243,6 +243,8 @@ model Branch {
   exitPasses ExitPass[]
   vehicleGateExits VehicleGateExit[]
   roadTestPermits RoadTestPermit[]
+  meetingRooms MeetingRoom[]
+  appointments Appointment[]
 }
 
 model Department {
@@ -426,6 +428,12 @@ model User {
   roadTestsDeclined RoadTestPermit[] @relation("RoadTestDeclinedBy")
   roadTestsGateOut RoadTestPermit[] @relation("RoadTestGateOutBy")
   roadTestsGateIn RoadTestPermit[] @relation("RoadTestGateInBy")
+  calendarDelegatesAsOwner CalendarDelegate[] @relation("CalendarOwner")
+  calendarDelegatesAsAide CalendarDelegate[] @relation("CalendarDelegateUser")
+  calendarDelegatesCreated CalendarDelegate[] @relation("CalendarDelegateCreatedBy")
+  appointmentsOwned Appointment[] @relation("AppointmentOwner")
+  appointmentsCreated Appointment[] @relation("AppointmentCreatedBy")
+  appointmentParticipations AppointmentParticipant[] @relation("AppointmentParticipantUser")
 }
 
 // One-to-one HR extension of User. Kept separate per the Phase 1 note so
@@ -3130,6 +3138,7 @@ model Visit {
   @@index([branchId, status])
   @@index([hostUserId])
   @@map("visits")
+  appointment Appointment?
 }
 
 // Employee Exit Pass (the paper form, digital): Department Head authorises,
@@ -3301,4 +3310,95 @@ model RoadTestPermit {
   @@index([jobCardId])
   @@index([vehicleServiceId])
   @@map("road_test_permits")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SCHEDULING — appointments for officials. Who may keep a calendar is the
+// organisation's choice (role "Calendar User"); an official can let aides
+// book for them (CalendarDelegate); "Scheduling Admin" manages rooms and
+// delegations. Visitors on an appointment become a Security booking.
+// ─────────────────────────────────────────────────────────────────────────
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model MeetingRoom {
+  id        String   @id @default(cuid())
+  branchId  String
+  name      String
+  location  String?
+  capacity  Int?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  branch       Branch        @relation(fields: [branchId], references: [id])
+  appointments Appointment[]
+
+  @@unique([branchId, name])
+  @@map("meeting_rooms")
+}
+
+model CalendarDelegate {
+  id          String   @id @default(cuid())
+  ownerId     String
+  delegateId  String
+  createdById String
+  createdAt   DateTime @default(now())
+
+  owner     User @relation("CalendarOwner", fields: [ownerId], references: [id])
+  delegate  User @relation("CalendarDelegateUser", fields: [delegateId], references: [id])
+  createdBy User @relation("CalendarDelegateCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([ownerId, delegateId])
+  @@map("calendar_delegates")
+}
+
+model Appointment {
+  id                String            @id @default(cuid())
+  appointmentNumber String            @unique
+  branchId          String
+  status            AppointmentStatus @default(SCHEDULED)
+  title             String
+  agenda            String?
+  // Whose calendar it is on (the official) and who booked it (maybe an aide).
+  ownerId           String
+  createdById       String
+  startsAt          DateTime
+  endsAt            DateTime
+  roomId            String?
+  location          String?
+  // External visitors are a Security booking (group, organisation, host).
+  visitId           String?           @unique
+  cancelReason      String?
+  completedAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @default(now()) @updatedAt
+
+  branch       Branch                   @relation(fields: [branchId], references: [id])
+  owner        User                     @relation("AppointmentOwner", fields: [ownerId], references: [id])
+  createdBy    User                     @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
+  room         MeetingRoom?             @relation(fields: [roomId], references: [id])
+  visit        Visit?                   @relation(fields: [visitId], references: [id], onDelete: SetNull)
+  participants AppointmentParticipant[]
+
+  @@index([ownerId, startsAt])
+  @@index([roomId, startsAt])
+  @@map("appointments")
+}
+
+model AppointmentParticipant {
+  id            String @id @default(cuid())
+  appointmentId String
+  userId        String
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  user        User        @relation("AppointmentParticipantUser", fields: [userId], references: [id])
+
+  @@unique([appointmentId, userId])
+  @@map("appointment_participants")
 }

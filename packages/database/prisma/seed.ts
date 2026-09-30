@@ -166,7 +166,7 @@ async function main() {
   console.log(`Seeded Workshop departments: ${passengerWorkshop.name} (${passengerWorkshop.id}), ${commercialWorkshop.name} (${commercialWorkshop.id})`);
 
   // --- Baseline roles (system roles, cannot be deleted) --------------------
-  const roleNames = ['Administrator', 'Workshop Manager', 'Workshop Supervisor', 'Technician', 'Store Manager', 'Store Officer', 'Finance Officer', 'Warranty HOD', 'Warranty Officer', 'Department Head', 'Chief Security Officer', 'Security Officer', 'Receptionist'];
+  const roleNames = ['Administrator', 'Workshop Manager', 'Workshop Supervisor', 'Technician', 'Store Manager', 'Store Officer', 'Finance Officer', 'Warranty HOD', 'Warranty Officer', 'Department Head', 'Chief Security Officer', 'Security Officer', 'Receptionist', 'Calendar User', 'Scheduling Admin'];
   for (const name of roleNames) {
     await prisma.role.upsert({
       where: { organisationId_slug: { organisationId: organisation.id, slug: slugify(name) } },
