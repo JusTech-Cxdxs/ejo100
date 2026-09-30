@@ -16,7 +16,7 @@ export default async function SecurityRegisterPage({ searchParams }: { searchPar
   const rows = await searchSecurityRecords(q, t || undefined);
   const statusLabel = (r: (typeof rows)[number]) => (r.type === 'VISIT' ? VISIT_STATUS_LABEL[r.status] : r.type === 'EXIT_PASS' ? EXIT_PASS_STATUS_LABEL[r.status] : r.type === 'ROAD_TEST' ? ROAD_TEST_STATUS_LABEL[r.status] : 'Left');
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Security register</h1>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Every visit (VIS / VP), exit pass (EP), road test (RT) and vehicle exit (VX) — search by any number, name or plate.</p>
       <SecurityNav active="/security/register" />
