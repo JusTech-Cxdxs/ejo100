@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getVisit, getSecurityRoles, getSecurityHistory } from '@/lib/actions/security';
-import { visitActionFormAction } from '@/lib/actions/security-form-handlers';
+import { visitActionFormAction, securityFollowUpFormAction } from '@/lib/actions/security-form-handlers';
+import { PrintMenu } from '@/components/print/PrintMenu';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityHistory } from '@/components/SecurityHistory';
@@ -18,6 +19,7 @@ const DONE: Record<string, string> = {
   extend: 'Stay extended.',
   check_out: 'Checked out.',
   cancel: 'Visit cancelled.',
+  follow_up: 'Follow-up saved.',
 };
 const EXTRA = [15, 30, 60, 90, 120, 180, 240];
 
@@ -99,8 +101,15 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
           {v.status === 'CHECKED_IN' && roles.isGate ? (
             <form action={visitActionFormAction}><Hidden action="check_out" /><SubmitButton label="Check out" pendingLabel="Checking out…" className={btn} /></form>
           ) : null}
-          {v.passNumber ? (
-            <a href={`/print/visitor-pass/${v.id}`} target="_blank" rel="noreferrer" className={`inline-block ${line}`}>Print pass — Organisation and Visitor copies</a>
+          {v.passNumber ? <PrintMenu orgHref={`/print/visitor-pass/${v.id}`} clientHref={`/print/visitor-pass/${v.id}?variant=client`} clientLabel="Visitor Copy" /> : null}
+          {roles.isFrontDesk && ['EXPECTED', 'CHECKED_IN'].includes(v.status) ? (
+            <form action={securityFollowUpFormAction} className="flex flex-wrap gap-2 border-t border-[var(--ejo-border)] pt-3">
+              <FormPendingOverlay />
+              <input type="hidden" name="entityType" value="Visit" />
+              <input type="hidden" name="entityId" value={v.id} />
+              <input name="note" required placeholder="Follow-up note" className={`${input} min-w-0 flex-1`} />
+              <SubmitButton label="Add note" pendingLabel="Saving…" className={line} />
+            </form>
           ) : null}
           {v.status === 'EXPECTED' && (roles.isFrontDesk || isHost || v.registeredById === roles.userId) ? (
             <form action={visitActionFormAction} className="flex flex-wrap gap-2 border-t border-[var(--ejo-border)] pt-3"><Hidden action="cancel" /><input name="reason" required placeholder="Reason for cancelling" className={`${input} min-w-0 flex-1`} /><SubmitButton label="Cancel visit" pendingLabel="Saving…" className="text-sm font-medium text-[var(--ejo-error)] hover:underline" /></form>
