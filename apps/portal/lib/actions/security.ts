@@ -170,6 +170,7 @@ export async function preRegisterVisit(input: VisitInput): Promise<{ id: string;
   const visitNumber = await nextNumber('VIS');
   const visit = await prisma.visit.create({ data: { ...data, expectedAt: input.expectedAt, vehicleType: 'ON_FOOT', visitNumber, status: 'EXPECTED', branchId: await getWorkshopBranchId(), registeredById: user.id } });
   await writeAuditLog({ userId: user.id, action: 'visit.pre_registered', entityType: 'Visit', entityId: visit.id, metadata: { visitNumber, visitor: data.visitorName, people: data.partySize, expectedAt: input.expectedAt } });
+  await emailGateAboutBooking('new', visit.id, user.id);
   return { id: visit.id, visitNumber };
 }
 
@@ -187,6 +188,7 @@ export async function updateBooking(visitId: string, input: VisitInput): Promise
   await activeHost(data.hostUserId);
   await prisma.visit.update({ where: { id: visitId }, data: { ...data, expectedAt: input.expectedAt } });
   await writeAuditLog({ userId: user.id, action: 'visit.booking_changed', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, visitor: data.visitorName, people: data.partySize, expectedAt: input.expectedAt } });
+  await emailGateAboutBooking('changed', visitId, user.id);
 }
 
 /** A visitor at the gate who was not booked: recorded complete, with a
@@ -216,6 +218,16 @@ export async function checkInVisit(visitId: string, arrivalInput: { vehicleType?
   await prisma.visit.update({ where: { id: visitId }, data: { ...arrival, status: 'CHECKED_IN', passNumber, checkedInAt: new Date(), checkedInById: r.userId } });
   await writeAuditLog({ userId: r.userId, action: 'visit.checked_in', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, passNumber, vehicle: arrival.vehiclePlate ?? 'On foot' } });
   return { passNumber };
+}
+
+/** Security and Reception hear about every booking: new, moved, cancelled. */
+async function emailGateAboutBooking(kind: 'new' | 'changed' | 'cancelled', visitId: string, actorId: string, reason?: string) {
+  const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { visitNumber: true, visitorName: true, memberNames: true, partySize: true, company: true, purpose: true, expectedAt: true, host: { select: { fullName: true } } } });
+  if (!v) return;
+  const who = `${[v.visitorName, ...v.memberNames].join(', ')}${v.company ? ` (${v.company})` : ''}`;
+  const when = v.expectedAt ? new Date(v.expectedAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+  const staff = await usersWithSlugs(['security-officer', 'chief-security-officer', 'receptionist']);
+  await sendLogged('Visit', visitId, staff, kind === 'cancelled' ? `Visit cancelled — ${who}` : `${kind === 'new' ? 'Visitor booked' : 'Visit rescheduled'} — ${who}, ${when}`, kind === 'cancelled' ? 'A booked visit was cancelled — do not expect them' : kind === 'new' ? 'Expect a visitor' : 'A booked visit has moved', [who, ...(v.partySize > 1 ? [`${v.partySize} people`] : []), `Visiting: ${v.host.fullName}`, `Purpose: ${v.purpose}`, kind === 'cancelled' ? `Reason: ${reason ?? ''}` : `Expected: ${when}`, v.visitNumber], kind === 'cancelled' ? '/security/visitors' : `/security/visitors/${visitId}`, actorId);
 }
 
 /** Bookings whose day has passed without the visitor coming are removed —
@@ -281,6 +293,7 @@ export async function cancelVisit(visitId: string, reason: string): Promise<void
   if (v.status !== 'EXPECTED') throw new SecurityError('Only a booking that has not arrived can be cancelled.');
   if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
   await writeAuditLog({ userId: user.id, action: 'visit.cancelled', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, visitor: v.visitorName, reason: reason.trim() } });
+  await emailGateAboutBooking('cancelled', visitId, user.id, reason.trim());
   await prisma.visit.delete({ where: { id: visitId } });
 }
 

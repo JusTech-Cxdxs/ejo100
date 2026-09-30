@@ -3,6 +3,8 @@
 import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog, getWorkshopBranchId } from './workshop';
 import { sendLoggedEmail, type Recipient } from '@/lib/logged-email';
+import { sendDueAppointmentReminders } from '@/lib/appointment-reminders';
+import { computeSchedulingAnalytics } from '@/lib/scheduling-analytics';
 
 class SchedulingError extends Error {}
 
@@ -73,8 +75,9 @@ export type AppointmentInput = {
   roomId?: string;
   location?: string;
   participantIds: string[];
-  /** External visitors — become a Security booking. Lead first. */
-  visitors?: { names: string[]; organisation?: string; phone?: string };
+  /** External visitors — become a Security booking (same details as
+   * "Book a visit for later"; the meeting's time and length are used). */
+  visitors?: { names: string[]; organisation?: string; phone?: string; purpose: string };
 };
 
 function clean(i: AppointmentInput) {
@@ -85,11 +88,12 @@ function clean(i: AppointmentInput) {
   if (mins(s, e) > 12 * 60) throw new SchedulingError('An appointment can last at most 12 hours.');
   if (!i.roomId && !i.location?.trim()) throw new SchedulingError('Choose a meeting room or say where it will hold.');
   const names = (i.visitors?.names ?? []).map((n) => n.trim()).filter(Boolean);
-  if (i.visitors && i.visitors.names.length > 0 && names.length !== i.visitors.names.length) throw new SchedulingError('Enter a name for every visitor.');
+  if (i.visitors && (i.visitors.names.length === 0 || names.length !== i.visitors.names.length)) throw new SchedulingError('Enter a name for every visitor.');
+  if (i.visitors && !i.visitors.purpose.trim()) throw new SchedulingError('Enter the purpose of the visit.');
   return {
     title: i.title.trim(), agenda: i.agenda?.trim() || null, startsAt: s, endsAt: e, roomId: i.roomId || null, location: i.roomId ? null : i.location!.trim(),
     participantIds: [...new Set(i.participantIds.filter((x) => x && x !== i.ownerId))],
-    visitors: names.length ? { names, organisation: i.visitors?.organisation?.trim() || null, phone: i.visitors?.phone?.trim() || null } : null,
+    visitors: names.length ? { names, organisation: i.visitors?.organisation?.trim() || null, phone: i.visitors?.phone?.trim() || null, purpose: i.visitors!.purpose.trim() } : null,
   };
 }
 
@@ -106,26 +110,52 @@ async function assertNoClash(ownerId: string, roomId: string | null, s: Date, e:
   if (busy) throw new SchedulingError(`The host already has ${busy.appointmentNumber} (${busy.title}) at ${fmt(busy.startsAt)}.`);
 }
 
+async function gateStaff(): Promise<Recipient[]> {
+  return prisma.user.findMany({ where: { isActive: true, roles: { some: { role: { slug: { in: ['security-officer', 'chief-security-officer', 'receptionist'] } } } } }, select: { fullName: true, email: true } });
+}
+
+/** Tell Security (and Reception) about an appointment's visitors. */
+async function emailGate(kind: 'new' | 'changed' | 'cancelled', visitId: string, d: { title: string; startsAt: Date; endsAt: Date }, visitors: { names: string[]; organisation: string | null } | null, hostName: string, actorId: string) {
+  const who = visitors ? `${visitors.names.join(', ')}${visitors.organisation ? ` (${visitors.organisation})` : ''}` : 'Visitors';
+  const count = visitors?.names.length ?? 0;
+  await sendLoggedEmail({
+    entityType: 'Visit', entityId: visitId, recipients: await gateStaff(),
+    subject: kind === 'cancelled' ? `Visit cancelled — ${who}` : `${kind === 'new' ? 'Visitor booked' : 'Visit rescheduled'} — ${who}, ${fmt(d.startsAt)}`,
+    heading: kind === 'cancelled' ? 'A booked visit was cancelled — do not expect them' : kind === 'new' ? 'Expect a visitor' : 'A booked visit has moved',
+    lines: [who, ...(count > 1 ? [`${count} people`] : []), `Visiting: ${hostName}`, kind === 'cancelled' ? 'The booking has been removed.' : `Expected: ${fmt(d.startsAt)}`, `Appointment: ${d.title}`],
+    path: kind === 'cancelled' ? '/security/visitors' : `/security/visitors/${visitId}`, actorId,
+  });
+}
+
 /** Create / update / remove the Security booking for the visitors. */
 async function syncVisitBooking(apptId: string, ownerId: string, bookerId: string, data: ReturnType<typeof clean>, existingVisitId: string | null) {
   const existing = existingVisitId ? await prisma.visit.findUnique({ where: { id: existingVisitId }, select: { id: true, status: true } }) : null;
+  const hostName = (await prisma.user.findUnique({ where: { id: ownerId }, select: { fullName: true } }))?.fullName ?? '';
   if (!data.visitors) {
     if (existing?.status === 'EXPECTED') {
+      const v = await prisma.visit.findUnique({ where: { id: existing.id }, select: { visitNumber: true, visitorName: true, memberNames: true, company: true } });
+      await writeAuditLog({ userId: bookerId, action: 'visit.cancelled', entityType: 'Visit', entityId: existing.id, metadata: { visitNumber: v?.visitNumber, reason: 'Visitors removed from the appointment' } });
+      await emailGate('cancelled', existing.id, data, v ? { names: [v.visitorName, ...v.memberNames], organisation: v.company } : null, hostName, bookerId);
       await prisma.appointment.update({ where: { id: apptId }, data: { visitId: null } });
       await prisma.visit.delete({ where: { id: existing.id } });
     }
     return;
   }
   const [lead, ...members] = data.visitors.names;
-  const fields = { visitorName: lead!, partySize: data.visitors.names.length, memberNames: members, company: data.visitors.organisation, phone: data.visitors.phone, purpose: data.title, hostUserId: ownerId, expectedAt: data.startsAt, expectedDurationMinutes: Math.max(5, mins(data.startsAt, data.endsAt)) };
+  const fields = { visitorName: lead!, partySize: data.visitors.names.length, memberNames: members, company: data.visitors.organisation, phone: data.visitors.phone, purpose: data.visitors.purpose, hostUserId: ownerId, expectedAt: data.startsAt, expectedDurationMinutes: Math.max(5, mins(data.startsAt, data.endsAt)) };
   if (existing) {
-    if (existing.status === 'EXPECTED') await prisma.visit.update({ where: { id: existing.id }, data: fields });
+    if (existing.status === 'EXPECTED') {
+      await prisma.visit.update({ where: { id: existing.id }, data: fields });
+      await writeAuditLog({ userId: bookerId, action: 'visit.booking_changed', entityType: 'Visit', entityId: existing.id, metadata: { visitor: lead, people: data.visitors.names.length, expectedAt: data.startsAt } });
+      await emailGate('changed', existing.id, data, data.visitors, hostName, bookerId);
+    }
     return;
   }
   const visitNumber = await nextNumber('VIS');
   const v = await prisma.visit.create({ data: { ...fields, visitNumber, status: 'EXPECTED', vehicleType: 'ON_FOOT', branchId: await getWorkshopBranchId(), registeredById: bookerId } });
   await prisma.appointment.update({ where: { id: apptId }, data: { visitId: v.id } });
   await writeAuditLog({ userId: bookerId, action: 'visit.pre_registered', entityType: 'Visit', entityId: v.id, metadata: { visitNumber, visitor: lead, people: data.visitors.names.length, expectedAt: data.startsAt } });
+  await emailGate('new', v.id, data, data.visitors, hostName, bookerId);
 }
 
 async function recipientsFor(apptId: string, excludeId: string): Promise<Recipient[]> {
@@ -162,7 +192,7 @@ export async function createAppointment(input: AppointmentInput): Promise<{ id: 
 
 async function loadForChange(id: string) {
   const user = await requireUser();
-  const appt = await prisma.appointment.findUnique({ where: { id }, select: { id: true, status: true, appointmentNumber: true, ownerId: true, createdById: true, visitId: true, startsAt: true, title: true } });
+  const appt = await prisma.appointment.findUnique({ where: { id }, select: { id: true, status: true, appointmentNumber: true, ownerId: true, createdById: true, visitId: true, startsAt: true, endsAt: true, title: true } });
   if (!appt) throw new SchedulingError('Appointment not found.');
   const access = await getSchedulingAccess();
   const allowed = access.isAdmin || appt.ownerId === user.id || appt.createdById === user.id || access.owners.some((o) => o.id === appt.ownerId);
@@ -178,7 +208,7 @@ export async function updateAppointment(id: string, input: AppointmentInput): Pr
   await assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt, id);
   await prisma.$transaction([
     prisma.appointmentParticipant.deleteMany({ where: { appointmentId: id } }),
-    prisma.appointment.update({ where: { id }, data: { title: d.title, agenda: d.agenda, ownerId: input.ownerId, startsAt: d.startsAt, endsAt: d.endsAt, roomId: d.roomId, location: d.location, participants: { create: d.participantIds.map((userId) => ({ userId })) } } }),
+    prisma.appointment.update({ where: { id }, data: { title: d.title, agenda: d.agenda, ownerId: input.ownerId, startsAt: d.startsAt, endsAt: d.endsAt, roomId: d.roomId, location: d.location, participants: { create: d.participantIds.map((userId) => ({ userId })) }, ...(+new Date(appt.startsAt) !== +d.startsAt ? { reminderSentAt: null } : {}) } }),
   ]);
   await syncVisitBooking(id, input.ownerId, user.id, d, appt.visitId);
   const fresh = await prisma.appointment.findUnique({ where: { id }, select: { owner: { select: { fullName: true } }, room: { select: { name: true } } } });
@@ -191,12 +221,13 @@ export async function cancelAppointment(id: string, reason: string): Promise<voi
   if (appt.status !== 'SCHEDULED') throw new SchedulingError('Only a scheduled appointment can be cancelled.');
   if (!reason.trim()) throw new SchedulingError('Give a reason for cancelling.');
   const recipients = await recipientsFor(id, user.id);
-  await prisma.appointment.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason.trim() } });
+  await prisma.appointment.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason.trim(), cancelledAt: new Date() } });
   // The visitors are no longer expected — remove their Security booking.
   if (appt.visitId) {
-    const v = await prisma.visit.findUnique({ where: { id: appt.visitId }, select: { status: true, visitNumber: true } });
+    const v = await prisma.visit.findUnique({ where: { id: appt.visitId }, select: { status: true, visitNumber: true, visitorName: true, memberNames: true, company: true, expectedAt: true, host: { select: { fullName: true } } } });
     if (v?.status === 'EXPECTED') {
       await writeAuditLog({ userId: user.id, action: 'visit.cancelled', entityType: 'Visit', entityId: appt.visitId, metadata: { visitNumber: v.visitNumber, reason: `Appointment ${appt.appointmentNumber} cancelled` } });
+      await emailGate('cancelled', appt.visitId, { title: appt.title, startsAt: appt.startsAt, endsAt: appt.startsAt }, { names: [v.visitorName, ...v.memberNames], organisation: v.company }, v.host.fullName, user.id);
       await prisma.appointment.update({ where: { id }, data: { visitId: null } });
       await prisma.visit.delete({ where: { id: appt.visitId } });
     }
@@ -237,7 +268,7 @@ export async function listCalendar(from: Date, to: Date, ownerId?: string) {
 
 export async function getAppointment(id: string) {
   const access = await getSchedulingAccess();
-  const a = await prisma.appointment.findUnique({ where: { id }, include: { owner: { select: { id: true, fullName: true } }, createdBy: { select: { fullName: true } }, room: true, visit: { select: { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, memberNames: true, company: true, phone: true, checkedInAt: true, checkedOutAt: true } }, participants: { select: { user: { select: { id: true, fullName: true } } } } } });
+  const a = await prisma.appointment.findUnique({ where: { id }, include: { owner: { select: { id: true, fullName: true } }, createdBy: { select: { fullName: true } }, room: true, visit: { select: { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, memberNames: true, company: true, phone: true, purpose: true, checkedInAt: true, checkedOutAt: true } }, participants: { select: { user: { select: { id: true, fullName: true } } } } } });
   if (!a) return null;
   const visible = access.isAdmin || access.owners.some((o) => o.id === a.ownerId) || a.createdById === access.userId || a.participants.some((p: { user: { id: string } }) => p.user.id === access.userId);
   return visible ? a : null;
@@ -325,12 +356,87 @@ export async function removeDelegate(id: string): Promise<void> {
  * participant), still to happen. */
 export async function getSchedulingDashboardItems(): Promise<{ id: string; title: string; detail: string; url: string; createdAt: Date }[]> {
   const user = await requireUser();
+  await sendDueAppointmentReminders().catch((err) => console.error('Reminder safety net failed', err));
   const now = new Date();
   const end = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }) + 'T23:59:59+01:00');
+  const cancelled = await prisma.appointment.findMany({
+    where: { status: 'CANCELLED', cancelledAt: { gte: new Date(now.getTime() - 86400000) }, OR: [{ ownerId: user.id }, { participants: { some: { userId: user.id } } }] },
+    select: { id: true, title: true, startsAt: true, cancelReason: true, cancelledAt: true },
+  });
   const rows = await prisma.appointment.findMany({
     where: { status: 'SCHEDULED', endsAt: { gt: now }, startsAt: { lte: end }, OR: [{ ownerId: user.id }, { participants: { some: { userId: user.id } } }] },
     orderBy: { startsAt: 'asc' },
     select: { id: true, title: true, startsAt: true, location: true, room: { select: { name: true } } },
   });
-  return rows.map((r: (typeof rows)[number]) => ({ id: `appt-${r.id}`, title: `Today ${new Date(r.startsAt).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' })} — ${r.title}`, detail: r.room?.name ?? r.location ?? '', url: `/schedule/${r.id}`, createdAt: r.startsAt }));
+  return [
+    ...rows.map((r: (typeof rows)[number]) => ({ id: `appt-${r.id}`, title: `Today ${new Date(r.startsAt).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' })} — ${r.title}`, detail: r.room?.name ?? r.location ?? '', url: `/schedule/${r.id}`, createdAt: r.startsAt })),
+    ...cancelled.map((c: (typeof cancelled)[number]) => ({ id: `appt-x-${c.id}`, title: `Cancelled: ${c.title} (${fmt(c.startsAt)})`, detail: c.cancelReason ?? '', url: `/schedule/${c.id}`, createdAt: c.cancelledAt as Date })),
+  ];
+}
+
+// ── Overview (the Scheduling dashboard) and the register ──────────────
+
+/** Everything the Scheduling dashboard shows, for the calendars this
+ * person can see; the room grid covers every room. */
+export async function getSchedulingOverview(gridDate?: string) {
+  const access = await getSchedulingAccess();
+  await sendDueAppointmentReminders().catch((err) => console.error('Reminder safety net failed', err));
+  const ids = access.owners.map((o) => o.id);
+  const since = new Date(Date.now() - 95 * 86400000);
+  const until = new Date(Date.now() + 60 * 86400000);
+  const [appts, rooms] = await Promise.all([
+    prisma.appointment.findMany({
+      where: { startsAt: { gte: since, lte: until }, OR: [{ ownerId: { in: ids } }, { participants: { some: { userId: access.userId } } }, ...(access.isAdmin ? [{}] : [])] },
+      select: { id: true, appointmentNumber: true, title: true, status: true, startsAt: true, endsAt: true, roomId: true, location: true, ownerId: true, room: { select: { name: true } }, owner: { select: { fullName: true } }, visit: { select: { partySize: true } } },
+    }),
+    prisma.meetingRoom.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, capacity: true, isActive: true } }),
+  ]);
+  // The room grid must see every booking of every room, not only my calendars.
+  const roomBookings = await prisma.appointment.findMany({
+    where: { roomId: { not: null }, status: { not: 'CANCELLED' }, startsAt: { gte: new Date(Date.now() - 2 * 86400000), lte: until } },
+    select: { id: true, appointmentNumber: true, title: true, status: true, startsAt: true, endsAt: true, roomId: true, location: true, ownerId: true, room: { select: { name: true } }, owner: { select: { fullName: true } }, visit: { select: { partySize: true } } },
+  });
+  const map = (a: (typeof appts)[number]) => ({ id: a.id, number: a.appointmentNumber, title: a.title, status: a.status, startsAt: a.startsAt, endsAt: a.endsAt, roomId: a.roomId, roomName: a.room?.name ?? null, location: a.location, ownerId: a.ownerId, ownerName: a.owner.fullName, visitors: a.visit?.partySize ?? 0 });
+  const mine = appts.map(map);
+  const seen = new Set(mine.map((a) => a.id));
+  const all = [...mine, ...roomBookings.map(map).filter((a) => !seen.has(a.id))];
+  const a = computeSchedulingAnalytics({ appts: all, rooms, gridDate });
+  // Glance / stats are about MY calendars; the grid is about every room.
+  const b = computeSchedulingAnalytics({ appts: mine, rooms, gridDate });
+  return { ...b, grid: a.grid, access };
+}
+
+const REGISTER_SHOW = ['upcoming', 'today', 'awaiting', 'completed', 'no_show', 'cancelled', 'all'] as const;
+export type RegisterShow = (typeof REGISTER_SHOW)[number];
+
+/** The appointments register: searchable, with a count for every tab. */
+export async function listAppointments(q?: string, show?: string) {
+  const access = await getSchedulingAccess();
+  const t = q?.trim();
+  const now = new Date();
+  const dayStart = new Date(`${now.toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T00:00:00+01:00`);
+  const dayEnd = new Date(dayStart.getTime() + 86400000);
+  const rows = await prisma.appointment.findMany({
+    where: {
+      OR: [{ ownerId: { in: access.owners.map((o) => o.id) } }, { participants: { some: { userId: access.userId } } }, ...(access.isAdmin ? [{}] : [])],
+      ...(t ? { AND: [{ OR: [{ appointmentNumber: { contains: t, mode: 'insensitive' as const } }, { title: { contains: t, mode: 'insensitive' as const } }, { location: { contains: t, mode: 'insensitive' as const } }, { owner: { fullName: { contains: t, mode: 'insensitive' as const } } }, { room: { name: { contains: t, mode: 'insensitive' as const } } }, { visit: { visitorName: { contains: t, mode: 'insensitive' as const } } }, { visit: { company: { contains: t, mode: 'insensitive' as const } } }] }] } : {}),
+    },
+    orderBy: { startsAt: 'desc' },
+    take: 500,
+    select: APPT_ROW,
+  });
+  const is = {
+    upcoming: (a: (typeof rows)[number]) => a.status === 'SCHEDULED' && +a.endsAt > +now,
+    today: (a: (typeof rows)[number]) => a.status !== 'CANCELLED' && +a.startsAt >= +dayStart && +a.startsAt < +dayEnd,
+    awaiting: (a: (typeof rows)[number]) => a.status === 'SCHEDULED' && +a.endsAt <= +now,
+    completed: (a: (typeof rows)[number]) => a.status === 'COMPLETED',
+    no_show: (a: (typeof rows)[number]) => a.status === 'NO_SHOW',
+    cancelled: (a: (typeof rows)[number]) => a.status === 'CANCELLED',
+    all: () => true,
+  } as const;
+  const tab: RegisterShow = (REGISTER_SHOW as readonly string[]).includes(show ?? '') ? (show as RegisterShow) : 'upcoming';
+  const counts = Object.fromEntries(REGISTER_SHOW.map((k) => [k, rows.filter(is[k]).length])) as Record<RegisterShow, number>;
+  const list = rows.filter(is[tab]);
+  if (tab === 'upcoming' || tab === 'today') list.sort((x, y) => +x.startsAt - +y.startsAt);
+  return { tab, counts, rows: list };
 }

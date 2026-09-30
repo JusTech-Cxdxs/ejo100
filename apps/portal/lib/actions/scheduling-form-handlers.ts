@@ -20,16 +20,25 @@ function input(f: FormData): AppointmentInput {
   const startsAt = date && time ? new Date(`${date}T${time}:00+01:00`) : new Date(NaN);
   const duration = Number(str(f, 'duration') || '0');
   const withVisitors = str(f, 'hasVisitors') === 'yes';
+  const group = str(f, 'party') === 'GROUP';
+  const where = str(f, 'where');
   return {
     ownerId: str(f, 'ownerId'),
     title: str(f, 'title'),
     agenda: str(f, 'agenda'),
     startsAt,
     endsAt: new Date(startsAt.getTime() + duration * 60000),
-    roomId: str(f, 'where') === 'ROOM' ? str(f, 'roomId') : undefined,
-    location: str(f, 'where') === 'OTHER' ? str(f, 'location') : undefined,
+    roomId: where === 'ROOM' ? str(f, 'roomId') : undefined,
+    location: where === 'OFFICE' ? "Host's office" : where === 'OTHER' ? str(f, 'location') : undefined,
     participantIds: f.getAll('participantIds').map(String).filter(Boolean),
-    visitors: withVisitors ? { names: f.getAll('visitorName').map(String), organisation: str(f, 'visitorOrganisation'), phone: str(f, 'visitorPhone') } : undefined,
+    visitors: withVisitors
+      ? {
+          names: [str(f, 'visitorName'), ...(group ? f.getAll('memberName').map(String) : [])],
+          organisation: str(f, 'affiliation') === 'ORGANISATION' ? str(f, 'company') : '',
+          phone: str(f, 'phone'),
+          purpose: str(f, 'purpose'),
+        }
+      : undefined,
   };
 }
 
