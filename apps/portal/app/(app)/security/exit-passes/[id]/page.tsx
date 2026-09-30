@@ -39,7 +39,7 @@ export default async function ExitPassPage({ params, searchParams }: { params: P
   const step = p.status === 'PENDING_HEAD' ? 'Authorise (Department Head)' : 'Approve (Manager)';
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <LoadingLink href="/security/exit-passes" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Exit passes</LoadingLink>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -91,7 +91,7 @@ export default async function ExitPassPage({ params, searchParams }: { params: P
           {p.status === 'OUT' && roles.isGate ? <form action={exitPassActionFormAction}><Hidden action="gate_in" /><SubmitButton label="Record time in" pendingLabel="Saving…" className={btn} /></form> : null}
           {p.status === 'APPROVED' && !roles.isGate ? <p className="text-sm text-[var(--ejo-text-muted)]">Approved — show this pass at the gate.</p> : null}
           {['APPROVED', 'OUT', 'RETURNED', 'CLOSED'].includes(p.status) ? (
-            <PrintMenu orgHref={`/print/exit-pass/${p.id}`} clientHref={`/print/exit-pass/${p.id}?variant=client`} clientLabel="Holder Copy" />
+            <PrintMenu orgHref={`/print/exit-pass/${p.id}`} clientHref={`/print/exit-pass/${p.id}?variant=client`} clientLabel="Holder Copy" align="right" />
           ) : <p className="text-xs text-[var(--ejo-text-muted)]">The pass can be printed once it is approved.</p>}
           {p.status === 'OUT' && p.returning && roles.isGate ? (
             <form action={extendExitPassFormAction} className="flex flex-wrap gap-2 border-t border-[var(--ejo-border)] pt-3">
