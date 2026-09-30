@@ -11,17 +11,18 @@ export default async function RoadTestsPage({ searchParams }: { searchParams: Pr
   const { tab, q } = await searchParams;
   const roles = await getSecurityRoles();
   const scope = (TABS.some(([k]) => k === tab) ? tab : 'out') as (typeof TABS)[number][0];
-  const rows = await listRoadTests(scope, q);
+  const [rows, cOut, cApproved, cDecide, cAll] = await Promise.all([listRoadTests(scope, q), listRoadTests('out', q), listRoadTests('approved', q), listRoadTests('to_decide', q), listRoadTests('all', q)]);
+  const counts: Record<string, number> = { out: cOut.length, approved: cApproved.length, to_decide: cDecide.length, all: cAll.length };
   const now = new Date();
   const link = 'text-[var(--ejo-primary)] hover:underline';
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Road tests</h1>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Workshop vehicles leaving for a road test — requested on the Job Card / Vehicle Service, approved by the Manager, timed and odometer-read out and back by Security.</p>
       <SecurityNav active="/security/road-tests" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {TABS.filter(([k]) => k !== 'to_decide' || roles.isManager || roles.isMaster).map(([k, l]) => (
-          <LoadingLink key={k} href={`/security/road-tests?tab=${k}`} className={`rounded-full px-3 py-1 text-xs font-medium ${scope === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l}</LoadingLink>
+          <LoadingLink key={k} href={`/security/road-tests?tab=${k}`} className={`rounded-full px-3 py-1 text-xs font-medium ${scope === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l} ({counts[k]})</LoadingLink>
         ))}
         <form className="ml-auto flex gap-2">
           <input type="hidden" name="tab" value={scope} />
