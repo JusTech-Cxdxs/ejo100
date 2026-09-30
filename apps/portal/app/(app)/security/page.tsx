@@ -59,25 +59,28 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
       <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">In the compound now</h2>
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         {([
-          ['Visitors on premises', d.compound.visitors, 'Checked in, not yet out'],
-          ['Visitor vehicles', d.compound.visitorVehicles, 'Cars, motorcycles… of visitors inside'],
-          ['Workshop vehicles', d.compound.workshopVehicles, 'Job Cards and Vehicle Services in progress'],
-          ['Cleared, not yet out', d.compound.awaitingExit, 'Released — waiting at the gate'],
-          ['Vehicles inside (total)', d.compound.vehiclesInside, 'All of the above'],
-          ['People out on passes', d.compound.peopleOut, 'Employees and others on exit passes'],
-          ['Overdue', overdueVisits.length + overduePasses.length, 'Chief Security Officer told'],
-        ] as const).map(([label, n, hint]) => (
-          <div key={label} className={card}>
+          ['Visitors on premises', d.compound.visitors, 'Checked in, not yet out', '/security/on-premises'],
+          ['Visitor vehicles', d.compound.visitorVehicles, 'Cars, motorcycles… of visitors inside', '/security/vehicles-inside?type=visitor'],
+          ['Workshop vehicles', d.compound.workshopVehicles, 'Job Cards and Vehicle Services in progress', '/security/vehicles-inside?type=workshop'],
+          ['Cleared, not yet out', d.compound.awaitingExit, 'Released — waiting at the gate', '/security/vehicles'],
+          ['Vehicles inside (total)', d.compound.vehiclesInside, 'All of the above', '/security/vehicles-inside'],
+          ['People out on passes', d.compound.peopleOut, 'Employees and others on exit passes', '/security/people-out'],
+          ['Overdue', overdueVisits.length + overduePasses.length, 'Follow up or extend', '/security/overdue'],
+        ] as const).map(([label, n, hint, href]) => (
+          <LoadingLink key={label} href={href} className={`${card} block transition hover:border-[var(--ejo-primary)]`}>
             <p className="text-xs text-[var(--ejo-text-muted)]">{label}</p>
             <p className={`mt-1 text-2xl font-bold ${label === 'Overdue' && n > 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-text)]'}`}>{n}</p>
-            <p className="mt-1 text-[10px] text-[var(--ejo-text-muted)]">{hint}</p>
-          </div>
+            <p className="mt-1 text-[10px] text-[var(--ejo-text-muted)]">{hint} →</p>
+          </LoadingLink>
         ))}
       </div>
 
       {overdueVisits.length + overduePasses.length > 0 ? (
         <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/40 bg-[var(--ejo-error)]/5 p-5">
-          <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Overdue — the Chief Security Officer has been told</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Overdue</h2>
+            <LoadingLink href="/security/overdue" className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">Follow up or extend →</LoadingLink>
+          </div>
           <ul className="mt-2 space-y-1 text-sm">
             {overdueVisits.map((v) => (
               <li key={v.id}><LoadingLink href={`/security/visitors/${v.id}`} className="text-[var(--ejo-primary)] hover:underline">{v.visitorName}</LoadingLink> — visiting {v.host.fullName}, over by {durationText(visitOverdueMinutes(v, now))}</li>
@@ -154,7 +157,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
                 {[v.vehicle.make, v.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'} {v.vehicle.plateNumber ? `— ${v.vehicle.plateNumber}` : ''}
                 <span className="block text-xs text-[var(--ejo-text-muted)]">{v.number} · {v.customer}</span>
               </span>
-              <LoadingLink href="/security/vehicles" className="text-xs text-[var(--ejo-primary)] hover:underline">Confirm exit →</LoadingLink>
+              <LoadingLink href={`/security/vehicles/release/${v.kind === 'JOB_CARD' ? 'job-card' : 'vehicle-service'}/${v.id}`} className="text-xs text-[var(--ejo-primary)] hover:underline">Confirm exit →</LoadingLink>
             </div>
           ))}
         </Panel>
