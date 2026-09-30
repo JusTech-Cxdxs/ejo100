@@ -1,33 +1,42 @@
 import type { ReactNode } from 'react';
 
+const ACCENT = '#16A34A';
+
 /**
- * A pass on 80 mm POS paper, printed once per copy (e.g. Organisation copy
- * kept at the gate, Holder / Visitor copy handed over) with a cut line
- * between — the organisation's logo and name, a boxed title, the content
- * and an optional note box.
+ * A pass on a POS receipt roll (58 / 80 mm): fills the roll's width, with
+ * the same header as every EJO document — logo beside the organisation
+ * wordmark ("Kewalram" over an accent rule and "Chanrai Group") — then the
+ * copy label, a boxed title, the content and an optional note.
  */
-export function PassSheet({ copies, orgName, subName, title, children, note }: { copies: string[]; orgName: string; subName?: string | null; title: string; children: ReactNode; note?: string }) {
+export function PassSheet({ copyLabel, orgName, subName, title, children, note }: { copyLabel: string; orgName: string; subName?: string | null; title: string; children: ReactNode; note?: string }) {
   const logo = `${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app'}/images/logo/logo.png`;
+  const words = orgName.trim().split(/\s+/);
+  const top = words[0] ?? orgName;
+  const bottom = words.slice(1).join(' ');
   return (
-    <div style={{ width: '72mm', margin: '0 auto', fontFamily: 'Arial, Helvetica, sans-serif', color: '#0F172A', fontSize: '11px' }}>
-      <style>{`@page { size: 80mm auto; margin: 3mm; } @media print { body { margin: 0; } }`}</style>
-      {copies.map((copy, i) => (
-        <div key={copy}>
-          {i > 0 ? <div style={{ borderTop: '1px dashed #64748B', margin: '10px 0', textAlign: 'center', fontSize: '9px', color: '#64748B' }}>✂ cut here</div> : null}
-          <div style={{ textAlign: 'center', marginBottom: '6px' }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={logo} alt="" style={{ height: '28px', objectFit: 'contain' }} />
-            <div style={{ fontWeight: 700, fontSize: '13px', letterSpacing: '0.02em' }}>{orgName}</div>
-            {subName ? <div style={{ fontSize: '10px', color: '#475569' }}>{subName}</div> : null}
-            <div style={{ fontSize: '9px', fontWeight: 700, marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{copy}</div>
-          </div>
-          <div style={{ border: '1.5px solid #0F172A' }}>
-            <div style={{ borderBottom: '1.5px solid #0F172A', textAlign: 'center', fontWeight: 700, padding: '4px', fontSize: '13px' }}>{title}</div>
-            <div style={{ padding: '6px' }}>{children}</div>
-            {note ? <div style={{ borderTop: '1.5px solid #0F172A', padding: '5px', fontSize: '9.5px', fontWeight: 600 }}>{note}</div> : null}
-          </div>
+    <div style={{ width: '100%', maxWidth: '80mm', margin: '0 auto', padding: '2mm', boxSizing: 'border-box', fontFamily: 'Arial, Helvetica, sans-serif', color: '#0F172A', fontSize: '11px' }}>
+      <style>{`@page { size: 80mm auto; margin: 0; } @media print { html, body { margin: 0; padding: 0; } }`}</style>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '4px' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logo} alt={orgName} style={{ width: '26px', height: '31px', display: 'block', marginRight: '4px' }} />
+        <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch' }}>
+          <div style={{ fontSize: '18px', fontWeight: 800, color: '#0F172A', letterSpacing: '0.01em', whiteSpace: 'nowrap', lineHeight: 1 }}>{top}</div>
+          {bottom ? (
+            <div style={{ display: 'flex', alignItems: 'center', marginTop: '3px' }}>
+              <div style={{ flex: 1, borderBottom: `1px solid ${ACCENT}`, marginRight: '4px' }} />
+              <span style={{ fontSize: '9.5px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{bottom}</span>
+            </div>
+          ) : null}
         </div>
-      ))}
+      </div>
+      {subName ? <div style={{ textAlign: 'center', fontSize: '9.5px', color: '#475569' }}>{subName}</div> : null}
+      <div style={{ textAlign: 'center', fontSize: '9px', fontWeight: 700, margin: '3px 0 5px', textTransform: 'uppercase', letterSpacing: '0.06em', color: ACCENT }}>{copyLabel}</div>
+      <div style={{ border: '1.5px solid #0F172A' }}>
+        <div style={{ borderBottom: '1.5px solid #0F172A', textAlign: 'center', fontWeight: 700, padding: '4px', fontSize: '13px' }}>{title}</div>
+        <div style={{ padding: '6px' }}>{children}</div>
+        {note ? <div style={{ borderTop: '1.5px solid #0F172A', padding: '5px', fontSize: '9.5px', fontWeight: 600 }}>{note}</div> : null}
+      </div>
+      <div style={{ textAlign: 'center', fontSize: '8.5px', color: '#64748B', marginTop: '4px' }}>Printed {new Date().toLocaleString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
     </div>
   );
 }
