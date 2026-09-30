@@ -34,7 +34,7 @@ export default async function AppointmentPage({ params, searchParams }: { params
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => (val ? <div className="flex justify-between gap-3 py-1 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right text-[var(--ejo-text)]">{val}</dd></div> : null);
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/schedule" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to the calendar</LoadingLink>
+      <LoadingLink href="/schedule/appointments" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Appointments</LoadingLink>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{a.title}</h1>
@@ -42,7 +42,7 @@ export default async function AppointmentPage({ params, searchParams }: { params
         </div>
         <span className="rounded-full bg-[var(--ejo-info)]/15 px-3 py-1 text-sm font-medium text-[var(--ejo-info)]">{STATUS[a.status]}</span>
       </div>
-      <ScheduleNav active="/schedule" />
+      <ScheduleNav active="/schedule/appointments" />
       {status && DONE[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={DONE[status]!} /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
