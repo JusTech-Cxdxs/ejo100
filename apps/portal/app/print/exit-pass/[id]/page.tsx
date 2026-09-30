@@ -7,8 +7,10 @@ import { EXIT_PASS_STATUS_LABEL } from '@/lib/security-rules';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 
 /** The Employee Exit Pass — the paper form, printed from the record. */
-export default async function ExitPassPrint({ params }: { params: Promise<{ id: string }> }) {
+export default async function ExitPassPrint({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ variant?: string }> }) {
   const { id } = await params;
+  const { variant } = await searchParams;
+  const isOrg = variant !== 'client';
   const [p, org] = await Promise.all([getExitPass(id), getOrganisation()]);
   if (!p) notFound();
   const valid = ['APPROVED', 'OUT', 'RETURNED', 'CLOSED'].includes(p.status);
@@ -17,7 +19,7 @@ export default async function ExitPassPrint({ params }: { params: Promise<{ id: 
     <>
       <PrintOnLoad />
       <PassSheet
-        copies={['Organisation copy', 'Holder copy']}
+        copyLabel={isOrg ? 'Organisation copy' : 'Holder copy'}
         orgName={org?.name ?? 'Kewalram Chanrai Group'}
         subName={p.branch.name}
         title="Employee Exit Pass"
@@ -38,8 +40,9 @@ export default async function ExitPassPrint({ params }: { params: Promise<{ id: 
           <span>{box(p.returning)} Return</span>
           <span>{box(!p.returning)} No Return</span>
         </div>
-        <PassLine label="Time out" value={p.gateOutAt ? formatDateTime(p.gateOutAt) : p.expectedOutAt ? `(planned) ${formatDateTime(p.expectedOutAt)}` : null} />
-        <PassLine label="Time in" value={p.gateInAt ? formatDateTime(p.gateInAt) : p.returning && p.expectedReturnAt ? `(expected) ${formatDateTime(p.expectedReturnAt)}` : null} />
+        <PassLine label="Time out" value={p.gateOutAt ? `${formatDateTime(p.gateOutAt)}${isOrg && p.gateOutBy ? ` · ${p.gateOutBy.fullName}` : ''}` : p.expectedOutAt ? `(planned) ${formatDateTime(p.expectedOutAt)}` : null} />
+        <PassLine label="Time in" value={p.gateInAt ? `${formatDateTime(p.gateInAt)}${isOrg && p.gateInBy ? ` · ${p.gateInBy.fullName}` : ''}` : p.returning && p.expectedReturnAt ? `(expected) ${formatDateTime(p.expectedReturnAt)}` : null} />
+        {isOrg ? <PassLine label="Requested by" value={`${p.requestedBy.fullName} · ${formatDateTime(p.createdAt)}`} /> : null}
         <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
           <div style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ borderBottom: '1px dotted #64748B', minHeight: '1.3em', fontWeight: 600 }}>{p.headApprovedBy?.fullName ?? ''}</div>
