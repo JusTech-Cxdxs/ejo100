@@ -6,8 +6,8 @@ import { VEHICLE_TYPE_LABEL } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 
-const TABS = [['all', 'All'], ['visitor', 'Visitor vehicles'], ['workshop', 'Workshop vehicles'], ['cleared', 'Cleared, not yet out']] as const;
-const STAGE: Record<string, string> = { VISITOR: 'Visitor', WORKSHOP: 'In the workshop', CLEARED: 'Cleared to leave' };
+const TABS = [['all', 'All'], ['visitor', 'Visitor vehicles'], ['workshop', 'Workshop vehicles'], ['cleared', 'Cleared, not yet out'], ['delivery', 'Deliveries']] as const;
+const STAGE: Record<string, string> = { VISITOR: 'Visitor', WORKSHOP: 'In the workshop', CLEARED: 'Cleared to leave', DELIVERY: 'Delivery' };
 
 export default async function VehiclesInsidePage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type } = await searchParams;
@@ -30,7 +30,7 @@ export default async function VehiclesInsidePage({ searchParams }: { searchParam
           <tr key={`${r.kind}-${r.id}`}>
             <td className="text-xs font-medium">{STAGE[r.stage]}</td>
             <td className="font-medium">{r.number}</td>
-            <td>{r.kind === 'VISITOR' ? VEHICLE_TYPE_LABEL[r.description] ?? 'Vehicle' : r.description}</td>
+            <td>{r.kind === 'VISITOR' || r.kind === 'DELIVERY' ? VEHICLE_TYPE_LABEL[r.description] ?? 'Vehicle' : r.description}</td>
             <td className="font-medium">{r.plate ?? '—'}</td>
             <td>{r.who}</td>
             <td className="text-xs">{r.since ? formatDateTimeCompact(r.since) : '—'}</td>
