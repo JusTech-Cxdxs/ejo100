@@ -7,6 +7,8 @@ import {
   createExitPass, decideExitPass, cancelExitPass, exitPassGateOut, exitPassGateIn, confirmVehicleExit,
   extendExitPassReturn, addSecurityFollowUp,
   requestRoadTest, decideRoadTest, cancelRoadTest, roadTestGateOut, roadTestGateIn, extendRoadTest,
+  reportIncident, assignIncident, closeIncident, reopenIncident,
+  expectDelivery, recordDeliveryArrival, confirmDeliveryReceived, recordDeliveryLeft, cancelDelivery, type DeliveryInput,
   type VisitInput,
 } from './security';
 
@@ -147,9 +149,9 @@ export async function extendExitPassFormAction(f: FormData) {
 /** Follow-up note on a visitor or exit pass. */
 export async function securityFollowUpFormAction(f: FormData) {
   const raw = str(f, 'entityType');
-  const type = raw === 'ExitPass' ? 'ExitPass' : raw === 'RoadTestPermit' ? 'RoadTestPermit' : 'Visit';
+  const type = raw === 'ExitPass' ? 'ExitPass' : raw === 'RoadTestPermit' ? 'RoadTestPermit' : raw === 'SecurityIncident' ? 'SecurityIncident' : raw === 'GateDelivery' ? 'GateDelivery' : 'Visit';
   const id = str(f, 'entityId');
-  const from = str(f, 'returnTo') || (type === 'ExitPass' ? `/security/exit-passes/${id}` : type === 'RoadTestPermit' ? `/security/road-tests/${id}` : `/security/visitors/${id}`);
+  const from = str(f, 'returnTo') || (type === 'ExitPass' ? `/security/exit-passes/${id}` : type === 'RoadTestPermit' ? `/security/road-tests/${id}` : type === 'SecurityIncident' ? `/security/incidents/${id}` : type === 'GateDelivery' ? `/security/deliveries/${id}` : `/security/visitors/${id}`);
   try {
     await addSecurityFollowUp(type, id, str(f, 'note'));
   } catch (err) {
@@ -201,4 +203,67 @@ export async function updateBookingFormAction(f: FormData) {
     back(`/security/visitors/${id}/edit`, err, 'Could not save the booking.');
   }
   ok(`/security/visitors/${id}`, 'booking_saved');
+}
+
+// ── Incidents ─────────────────────────────────────────────────────────
+
+export async function reportIncidentFormAction(f: FormData) {
+  let id = '';
+  try {
+    id = (await reportIncident({ type: str(f, 'type'), severity: str(f, 'severity'), occurredAt: lagosDate(str(f, 'occurredAt')) ?? new Date(NaN), location: str(f, 'location'), description: str(f, 'description'), peopleInvolved: str(f, 'peopleInvolved'), vehiclePlate: str(f, 'vehiclePlate'), actionTaken: str(f, 'actionTaken'), relatedNumber: str(f, 'relatedNumber') })).id;
+  } catch (err) {
+    back('/security/incidents/new', err, 'Could not report the incident.');
+  }
+  ok(`/security/incidents/${id}`, 'reported');
+}
+
+export async function incidentActionFormAction(f: FormData) {
+  const id = str(f, 'incidentId');
+  const action = str(f, 'action');
+  const path = `/security/incidents/${id}`;
+  try {
+    if (action === 'assign') await assignIncident(id, str(f, 'assigneeId'));
+    else if (action === 'close') await closeIncident(id, str(f, 'resolution'));
+    else if (action === 'reopen') await reopenIncident(id, str(f, 'reason'));
+    else throw new Error('Unknown action.');
+  } catch (err) {
+    back(path, err, 'Could not update the incident.');
+  }
+  ok(path, action);
+}
+
+// ── Deliveries ────────────────────────────────────────────────────────
+
+function deliveryInput(f: FormData): DeliveryInput {
+  return { supplierName: str(f, 'supplierName'), reference: str(f, 'reference'), items: str(f, 'items'), expectedAt: lagosDate(str(f, 'expectedAt')), driverName: str(f, 'driverName'), driverPhone: str(f, 'driverPhone'), vehicleType: str(f, 'vehicleType'), vehiclePlate: str(f, 'vehiclePlate'), notes: str(f, 'notes') };
+}
+
+export async function registerDeliveryFormAction(f: FormData) {
+  const arrived = str(f, 'mode') === 'ARRIVED';
+  let id = '';
+  try {
+    if (!str(f, 'mode')) throw new Error('Choose whether the delivery is at the gate now or expected later.');
+    id = (arrived ? await recordDeliveryArrival(deliveryInput(f)) : await expectDelivery(deliveryInput(f))).id;
+  } catch (err) {
+    back('/security/deliveries/new', err, 'Could not record the delivery.');
+  }
+  revalidatePath('/security/deliveries');
+  ok(`/security/deliveries/${id}`, arrived ? 'arrived' : 'expected');
+}
+
+export async function deliveryActionFormAction(f: FormData) {
+  const id = str(f, 'deliveryId');
+  const action = str(f, 'action');
+  const path = `/security/deliveries/${id}`;
+  try {
+    if (action === 'arrive') await recordDeliveryArrival(deliveryInput(f), id);
+    else if (action === 'receive') await confirmDeliveryReceived(id, str(f, 'note'), str(f, 'goodsReceiptId') || undefined);
+    else if (action === 'left') await recordDeliveryLeft(id, str(f, 'reason'));
+    else if (action === 'cancel') await cancelDelivery(id, str(f, 'reason'));
+    else throw new Error('Unknown action.');
+  } catch (err) {
+    back(path, err, 'Could not update the delivery.');
+  }
+  revalidatePath('/security/deliveries');
+  ok(path, action);
 }
