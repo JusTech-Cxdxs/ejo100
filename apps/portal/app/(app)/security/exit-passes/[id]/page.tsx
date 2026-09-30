@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getExitPass, getSecurityRoles, getSecurityHistory, canDecideExitPass } from '@/lib/actions/security';
-import { exitPassActionFormAction } from '@/lib/actions/security-form-handlers';
+import { exitPassActionFormAction, extendExitPassFormAction, securityFollowUpFormAction } from '@/lib/actions/security-form-handlers';
+import { PrintMenu } from '@/components/print/PrintMenu';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityHistory } from '@/components/SecurityHistory';
@@ -18,6 +19,8 @@ const DONE: Record<string, string> = {
   cancel: 'Exit pass cancelled.',
   gate_out: 'Time out recorded.',
   gate_in: 'Time in recorded — welcome back.',
+  extended: 'Return time extended.',
+  follow_up: 'Follow-up saved.',
 };
 
 export default async function ExitPassPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
@@ -88,8 +91,29 @@ export default async function ExitPassPage({ params, searchParams }: { params: P
           {p.status === 'OUT' && roles.isGate ? <form action={exitPassActionFormAction}><Hidden action="gate_in" /><SubmitButton label="Record time in" pendingLabel="Saving…" className={btn} /></form> : null}
           {p.status === 'APPROVED' && !roles.isGate ? <p className="text-sm text-[var(--ejo-text-muted)]">Approved — show this pass at the gate.</p> : null}
           {['APPROVED', 'OUT', 'RETURNED', 'CLOSED'].includes(p.status) ? (
-            <a href={`/print/exit-pass/${p.id}`} target="_blank" rel="noreferrer" className={`inline-block ${line}`}>Print pass — Organisation and Holder copies</a>
+            <PrintMenu orgHref={`/print/exit-pass/${p.id}`} clientHref={`/print/exit-pass/${p.id}?variant=client`} clientLabel="Holder Copy" />
           ) : <p className="text-xs text-[var(--ejo-text-muted)]">The pass can be printed once it is approved.</p>}
+          {p.status === 'OUT' && p.returning && roles.isGate ? (
+            <form action={extendExitPassFormAction} className="flex flex-wrap gap-2 border-t border-[var(--ejo-border)] pt-3">
+              <FormPendingOverlay />
+              <input type="hidden" name="passId" value={p.id} />
+              <select name="extraMinutes" required defaultValue="" className={input}>
+                <option value="" disabled>Extend return by…</option>
+                {[15, 30, 60, 90, 120, 180, 240].map((m) => <option key={m} value={m}>{durationText(m)}</option>)}
+              </select>
+              <input name="reason" required placeholder="Reason" className={`${input} min-w-0 flex-1`} />
+              <SubmitButton label="Extend" pendingLabel="Saving…" className={line} />
+            </form>
+          ) : null}
+          {roles.isFrontDesk && ['APPROVED', 'OUT'].includes(p.status) ? (
+            <form action={securityFollowUpFormAction} className="flex flex-wrap gap-2 border-t border-[var(--ejo-border)] pt-3">
+              <FormPendingOverlay />
+              <input type="hidden" name="entityType" value="ExitPass" />
+              <input type="hidden" name="entityId" value={p.id} />
+              <input name="note" required placeholder="Follow-up note" className={`${input} min-w-0 flex-1`} />
+              <SubmitButton label="Add note" pendingLabel="Saving…" className={line} />
+            </form>
+          ) : null}
           {['PENDING_HEAD', 'PENDING_MANAGER', 'APPROVED'].includes(p.status) && p.requestedBy.id === roles.userId ? (
             <form action={exitPassActionFormAction} className="flex flex-wrap gap-2 border-t border-[var(--ejo-border)] pt-3"><Hidden action="cancel" /><input name="reason" required placeholder="Reason for cancelling" className={`${input} min-w-0 flex-1`} /><SubmitButton label="Cancel pass" pendingLabel="Saving…" className="text-sm font-medium text-[var(--ejo-error)] hover:underline" /></form>
           ) : null}
