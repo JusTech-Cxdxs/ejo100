@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import {
   preRegisterVisit, recordArrival, checkInVisit, receiveVisit, extendVisit, checkOutVisit, cancelVisit,
   createExitPass, decideExitPass, cancelExitPass, exitPassGateOut, exitPassGateIn, confirmVehicleExit,
+  extendExitPassReturn, addSecurityFollowUp,
   type VisitInput,
 } from './security';
 
@@ -43,7 +44,7 @@ export async function registerVisitFormAction(f: FormData) {
 export async function visitActionFormAction(f: FormData) {
   const id = str(f, 'visitId');
   const action = str(f, 'action');
-  const path = `/security/visitors/${id}`;
+  const path = str(f, 'returnTo') || `/security/visitors/${id}`;
   try {
     if (action === 'check_in') await checkInVisit(id, str(f, 'vehicleType') || undefined, str(f, 'vehiclePlate') || undefined);
     else if (action === 'receive') await receiveVisit(id);
@@ -96,10 +97,40 @@ export async function exitPassActionFormAction(f: FormData) {
 }
 
 export async function confirmVehicleExitFormAction(f: FormData) {
+  const kind = str(f, 'kind') as 'JOB_CARD' | 'VEHICLE_SERVICE';
+  const recordId = str(f, 'recordId');
+  let id = '';
   try {
-    await confirmVehicleExit(str(f, 'kind') as 'JOB_CARD' | 'VEHICLE_SERVICE', str(f, 'recordId'), str(f, 'driverName'), str(f, 'notes'));
+    id = (await confirmVehicleExit(kind, recordId, str(f, 'collectedBy'), str(f, 'notes'))).id;
   } catch (err) {
-    back('/security/vehicles', err, 'Could not record the vehicle leaving.');
+    back(`/security/vehicles/release/${kind === 'JOB_CARD' ? 'job-card' : 'vehicle-service'}/${recordId}`, err, 'Could not record the vehicle leaving.');
   }
-  ok('/security/vehicles', 'vehicle_out');
+  revalidatePath('/security/vehicles');
+  ok(`/security/vehicles/exits/${id}`, 'vehicle_out');
+}
+
+/** Extend an exit pass's return time; back to where it was done from. */
+export async function extendExitPassFormAction(f: FormData) {
+  const id = str(f, 'passId');
+  const from = str(f, 'returnTo') || `/security/exit-passes/${id}`;
+  try {
+    await extendExitPassReturn(id, Number(str(f, 'extraMinutes')), str(f, 'reason'));
+  } catch (err) {
+    back(from, err, 'Could not extend the return time.');
+  }
+  revalidatePath(`/security/exit-passes/${id}`);
+  ok(from, 'extended');
+}
+
+/** Follow-up note on a visitor or exit pass. */
+export async function securityFollowUpFormAction(f: FormData) {
+  const type = str(f, 'entityType') === 'ExitPass' ? 'ExitPass' : 'Visit';
+  const id = str(f, 'entityId');
+  const from = str(f, 'returnTo') || (type === 'ExitPass' ? `/security/exit-passes/${id}` : `/security/visitors/${id}`);
+  try {
+    await addSecurityFollowUp(type, id, str(f, 'note'));
+  } catch (err) {
+    back(from, err, 'Could not save the follow-up.');
+  }
+  ok(from, 'follow_up');
 }

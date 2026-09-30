@@ -5,6 +5,7 @@ import { requireUser, writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext,
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { visitOverdueMinutes, exitPassOverdueMinutes, durationText } from '@/lib/security-rules';
+import { customerTotal } from '@/lib/estimate-billing';
 
 class SecurityError extends Error {}
 
@@ -56,10 +57,6 @@ async function masterAdmins(): Promise<Person[]> {
 }
 async function gateStaff(): Promise<Person[]> {
   return usersWithSlugs(['chief-security-officer', 'security-officer']);
-}
-async function csos(): Promise<Person[]> {
-  const list = await usersWithSlugs(['chief-security-officer']);
-  return list.length ? list : masterAdmins();
 }
 
 // ── Numbering & logged emails ─────────────────────────────────────────
@@ -418,7 +415,7 @@ export async function listVehiclesClearedToLeave() {
   ].sort((a, b) => (b.releasedAt?.getTime() ?? 0) - (a.releasedAt?.getTime() ?? 0));
 }
 
-export async function confirmVehicleExit(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', recordId: string, driverName: string, notes: string): Promise<{ exitNumber: string }> {
+export async function confirmVehicleExit(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', recordId: string, collectedBy: string, notes: string): Promise<{ id: string; exitNumber: string }> {
   const r = await requireGate();
   const rec =
     kind === 'JOB_CARD'
@@ -429,43 +426,19 @@ export async function confirmVehicleExit(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', r
   if (rec.done) throw new SecurityError('This vehicle has already been recorded leaving.');
   const exitNumber = await nextNumber('VX');
   const row = await prisma.vehicleGateExit.create({
-    data: { exitNumber, branchId: await getWorkshopBranchId(), vehicleId: rec.vehicleId, exitedById: r.userId, driverName: driverName.trim() || null, notes: notes.trim() || null, ...(kind === 'JOB_CARD' ? { jobCardId: recordId } : { vehicleServiceId: recordId }) },
+    data: { exitNumber, branchId: await getWorkshopBranchId(), vehicleId: rec.vehicleId, exitedById: r.userId, driverName: collectedBy.trim() || null, notes: notes.trim() || null, ...(kind === 'JOB_CARD' ? { jobCardId: recordId } : { vehicleServiceId: recordId }) },
   });
-  await writeAuditLog({ userId: r.userId, action: 'vehicle.gate_exit', entityType: kind === 'JOB_CARD' ? 'JobCard' : 'VehicleService', entityId: recordId, metadata: { exitNumber, number: rec.number, driver: driverName.trim() || undefined } });
+  const meta = { exitNumber, number: rec.number, collectedBy: collectedBy.trim() || undefined };
+  await writeAuditLog({ userId: r.userId, action: 'vehicle.gate_exit', entityType: 'VehicleGateExit', entityId: row.id, metadata: meta });
+  await writeAuditLog({ userId: r.userId, action: 'vehicle.gate_exit', entityType: kind === 'JOB_CARD' ? 'JobCard' : 'VehicleService', entityId: recordId, metadata: meta });
   await writeAuditLog({ userId: r.userId, action: 'vehicle.gate_exit', entityType: 'CustomerVehicle', entityId: rec.vehicleId, metadata: { exitNumber, number: rec.number } });
-  return { exitNumber: row.exitNumber };
+  return { id: row.id, exitNumber: row.exitNumber };
 }
 
-// ── Overdue sweep & dashboard ─────────────────────────────────────────
-
-/** Anyone overdue (visitor past their expected stay; someone out past
- * their return time) is flagged, and the Chief Security Officer is
- * emailed ONCE per case — logged like every other email. */
-async function sweepOverdue(actorId: string | null) {
-  const now = new Date();
-  const [visits, passes] = await Promise.all([
-    prisma.visit.findMany({ where: { status: 'CHECKED_IN', overdueNotifiedAt: null }, select: { id: true, visitNumber: true, visitorName: true, checkedInAt: true, expectedDurationMinutes: true, status: true, host: { select: { fullName: true } } } }),
-    prisma.exitPass.findMany({ where: { status: 'OUT', returning: true, overdueNotifiedAt: null }, select: { id: true, passNumber: true, expectedReturnAt: true, status: true, returning: true, people: { select: { name: true } } } }),
-  ]);
-  const overdueVisits = visits.filter((v: (typeof visits)[number]) => visitOverdueMinutes(v, now) > 0);
-  const overduePasses = passes.filter((p: (typeof passes)[number]) => exitPassOverdueMinutes(p, now) > 0);
-  if (overdueVisits.length + overduePasses.length === 0) return;
-  const chiefs = await csos();
-  for (const v of overdueVisits) {
-    await prisma.visit.update({ where: { id: v.id }, data: { overdueNotifiedAt: now } });
-    await writeAuditLog({ userId: actorId, action: 'visit.overdue', entityType: 'Visit', entityId: v.id, metadata: { visitNumber: v.visitNumber, over: durationText(visitOverdueMinutes(v, now)) } });
-    await sendLogged('Visit', v.id, chiefs, `Overdue visitor — ${v.visitorName}`, 'A visitor has stayed longer than expected', [`${v.visitNumber} — ${v.visitorName}, visiting ${v.host.fullName}`, `Over their expected stay by ${durationText(visitOverdueMinutes(v, now))}.`], `/security/visitors/${v.id}`, actorId);
-  }
-  for (const p of overduePasses) {
-    await prisma.exitPass.update({ where: { id: p.id }, data: { overdueNotifiedAt: now } });
-    await writeAuditLog({ userId: actorId, action: 'exit_pass.overdue', entityType: 'ExitPass', entityId: p.id, metadata: { passNumber: p.passNumber, over: durationText(exitPassOverdueMinutes(p, now)) } });
-    await sendLogged('ExitPass', p.id, chiefs, `Not back yet — exit pass ${p.passNumber}`, 'Someone has not returned on time', [`${p.passNumber} — ${p.people.map((x: { name: string }) => x.name).join(', ')}`, `Past their expected return by ${durationText(exitPassOverdueMinutes(p, now))}.`], `/security/exit-passes/${p.id}`, actorId);
-  }
-}
+// ── Dashboard ─────────────────────────────────────────────────────────
 
 export async function getSecurityDashboard() {
-  const user = await requireUser();
-  await sweepOverdue(user.id).catch((err) => console.error('Overdue sweep failed', err));
+  await requireUser();
   const startOfDay = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }) + 'T00:00:00+01:00');
   const endOfDay = new Date(startOfDay.getTime() + 86400000);
   const visitSelect = { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, company: true, purpose: true, vehicleType: true, vehiclePlate: true, expectedAt: true, expectedDurationMinutes: true, checkedInAt: true, receivedAt: true, isWalkIn: true, host: { select: { fullName: true } } } as const;
@@ -574,7 +547,7 @@ export async function canDecideExitPass(passId: string): Promise<boolean> {
 }
 
 /** Trail + every email for one Visit / Exit Pass. */
-export async function getSecurityHistory(entityType: 'Visit' | 'ExitPass', entityId: string) {
+export async function getSecurityHistory(entityType: 'Visit' | 'ExitPass' | 'VehicleGateExit', entityId: string) {
   await requireUser();
   const [entries, emails] = await Promise.all([
     prisma.auditLog.findMany({ where: { entityType, entityId }, orderBy: { createdAt: 'desc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } }),
@@ -663,4 +636,139 @@ export async function getVehicleGateExit(id: string) {
       vehicleService: { select: { serviceNumber: true, collectedAt: true, collectedByName: true, customer: { select: { fullName: true } } } },
     },
   });
+}
+
+// ── Individual pages behind each dashboard number ─────────────────────
+
+const VISIT_ROW = { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, company: true, phone: true, purpose: true, vehicleType: true, vehiclePlate: true, expectedAt: true, expectedDurationMinutes: true, extendedMinutes: true, checkedInAt: true, receivedAt: true, isWalkIn: true, host: { select: { fullName: true } } } as const;
+const PASS_ROW = { id: true, passNumber: true, status: true, reason: true, returning: true, expectedOutAt: true, expectedReturnAt: true, gateOutAt: true, requestedBy: { select: { fullName: true } }, people: { select: { name: true, employeeId: true, department: true } } } as const;
+
+/** Visitors on the premises now. */
+export async function listOnPremises() {
+  await requireUser();
+  return prisma.visit.findMany({ where: { status: 'CHECKED_IN' }, orderBy: { checkedInAt: 'asc' }, select: VISIT_ROW });
+}
+
+/** Everyone out on an exit pass now. */
+export async function listPeopleOut() {
+  await requireUser();
+  return prisma.exitPass.findMany({ where: { status: 'OUT' }, orderBy: { expectedReturnAt: 'asc' }, select: PASS_ROW });
+}
+
+/** Overdue now — visitors past their stay, people past their return time.
+ * Managed on the Overdue page (follow up, extend); no automatic emails. */
+export async function listOverdue() {
+  await requireUser();
+  const now = new Date();
+  const [visits, passes] = await Promise.all([
+    prisma.visit.findMany({ where: { status: 'CHECKED_IN' }, select: VISIT_ROW }),
+    prisma.exitPass.findMany({ where: { status: 'OUT', returning: true }, select: PASS_ROW }),
+  ]);
+  return {
+    visits: visits.map((v: (typeof visits)[number]) => ({ ...v, overdueMinutes: visitOverdueMinutes(v, now) })).filter((v: { overdueMinutes: number }) => v.overdueMinutes > 0).sort((a: { overdueMinutes: number }, b: { overdueMinutes: number }) => b.overdueMinutes - a.overdueMinutes),
+    passes: passes.map((p: (typeof passes)[number]) => ({ ...p, overdueMinutes: exitPassOverdueMinutes(p, now) })).filter((p: { overdueMinutes: number }) => p.overdueMinutes > 0).sort((a: { overdueMinutes: number }, b: { overdueMinutes: number }) => b.overdueMinutes - a.overdueMinutes),
+  };
+}
+
+export type InsideVehicle = { kind: 'VISITOR' | 'JOB_CARD' | 'VEHICLE_SERVICE'; stage: 'VISITOR' | 'WORKSHOP' | 'CLEARED'; id: string; number: string; plate: string | null; description: string; who: string; since: Date | null; href: string };
+
+/** Every vehicle inside the compound now: visitors' vehicles, workshop
+ * vehicles still being worked on, and released vehicles not yet out. */
+export async function listVehiclesInside(): Promise<InsideVehicle[]> {
+  await requireUser();
+  const [visits, jcs, vss, cleared] = await Promise.all([
+    prisma.visit.findMany({ where: { status: 'CHECKED_IN', vehicleType: { not: 'ON_FOOT' } }, select: { id: true, passNumber: true, visitorName: true, vehicleType: true, vehiclePlate: true, checkedInAt: true } }),
+    prisma.jobCard.findMany({ where: { status: { notIn: ['CHECKED_OUT', 'CANCELLED'] } }, select: { id: true, jobNumber: true, createdAt: true, vehicle: { select: { make: true, model: true, plateNumber: true } }, customer: { select: { fullName: true } } } }),
+    prisma.vehicleService.findMany({ where: { status: { in: ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'] } }, select: { id: true, serviceNumber: true, createdAt: true, vehicle: { select: { make: true, model: true, plateNumber: true } }, customer: { select: { fullName: true } } } }),
+    listVehiclesClearedToLeave(),
+  ]);
+  const car = (v: { make: string | null; model: string | null }) => [v.make, v.model].filter(Boolean).join(' ') || 'Vehicle';
+  return [
+    ...visits.map((v: (typeof visits)[number]) => ({ kind: 'VISITOR' as const, stage: 'VISITOR' as const, id: v.id, number: v.passNumber ?? '', plate: v.vehiclePlate, description: v.vehicleType, who: v.visitorName, since: v.checkedInAt, href: `/security/visitors/${v.id}` })),
+    ...jcs.map((j: (typeof jcs)[number]) => ({ kind: 'JOB_CARD' as const, stage: 'WORKSHOP' as const, id: j.id, number: j.jobNumber, plate: j.vehicle.plateNumber, description: car(j.vehicle), who: j.customer.fullName, since: j.createdAt, href: `/workshop/job-cards/${j.id}` })),
+    ...vss.map((v: (typeof vss)[number]) => ({ kind: 'VEHICLE_SERVICE' as const, stage: 'WORKSHOP' as const, id: v.id, number: v.serviceNumber, plate: v.vehicle.plateNumber, description: car(v.vehicle), who: v.customer.fullName, since: v.createdAt, href: `/workshop/vehicle-service/${v.id}` })),
+    ...cleared.map((c) => ({ kind: c.kind, stage: 'CLEARED' as const, id: c.id, number: c.number, plate: c.vehicle.plateNumber, description: car(c.vehicle), who: c.customer, since: c.releasedAt, href: `/security/vehicles/release/${c.kind === 'JOB_CARD' ? 'job-card' : 'vehicle-service'}/${c.id}` })),
+  ].sort((a, b) => (b.since?.getTime() ?? 0) - (a.since?.getTime() ?? 0));
+}
+
+/** One released vehicle, for its own release (confirm exit) page. */
+export async function getClearedVehicle(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', id: string) {
+  await requireUser();
+  if (kind === 'JOB_CARD') {
+    const j = await prisma.jobCard.findUnique({
+      where: { id },
+      select: { id: true, jobNumber: true, status: true, checkedOutAt: true, collectedByName: true, gateExit: { select: { id: true, exitNumber: true } }, vehicle: { select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, mileage: true } }, customer: { select: { fullName: true, phone: true } }, payments: { select: { amount: true } }, estimate: { select: { lineItems: { select: { amount: true, billTo: true } } } } },
+    });
+    if (!j) return null;
+    const paid = j.payments.reduce((s: number, p: { amount: unknown }) => s + Number(p.amount), 0);
+    return { kind, id: j.id, number: j.jobNumber, released: j.status === 'CHECKED_OUT', releasedAt: j.checkedOutAt, collectedBy: j.collectedByName, exit: j.gateExit, vehicle: j.vehicle, customer: j.customer, cancelled: false, total: customerTotal(j.estimate?.lineItems ?? []), paid };
+  }
+  const v = await prisma.vehicleService.findUnique({
+    where: { id },
+    select: { id: true, serviceNumber: true, status: true, collectedAt: true, collectedByName: true, gateExit: { select: { id: true, exitNumber: true } }, vehicle: { select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, mileage: true } }, customer: { select: { fullName: true, phone: true } }, payments: { select: { amount: true } } },
+  });
+  if (!v) return null;
+  return { kind, id: v.id, number: v.serviceNumber, released: Boolean(v.collectedAt) && ['COLLECTED', 'CANCELLED'].includes(v.status), releasedAt: v.collectedAt, collectedBy: v.collectedByName, exit: v.gateExit, vehicle: v.vehicle, customer: v.customer, cancelled: v.status === 'CANCELLED', total: null, paid: v.payments.reduce((s: number, p: { amount: unknown }) => s + Number(p.amount), 0) };
+}
+
+/** Vehicle exit history, newest first, searchable. */
+export async function listVehicleExits(q?: string) {
+  await requireUser();
+  const t = q?.trim();
+  return prisma.vehicleGateExit.findMany({
+    where: t ? { OR: [{ exitNumber: { contains: t, mode: 'insensitive' } }, { driverName: { contains: t, mode: 'insensitive' } }, { vehicle: { plateNumber: { contains: t, mode: 'insensitive' } } }, { jobCard: { jobNumber: { contains: t, mode: 'insensitive' } } }, { vehicleService: { serviceNumber: { contains: t, mode: 'insensitive' } } }] } : undefined,
+    orderBy: { exitedAt: 'desc' },
+    take: 300,
+    select: {
+      id: true, exitNumber: true, exitedAt: true, driverName: true, notes: true,
+      exitedBy: { select: { fullName: true } },
+      vehicle: { select: { id: true, make: true, model: true, plateNumber: true } },
+      jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
+      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
+    },
+  });
+}
+
+/** Give someone out on a pass more time to return (CSO / Security, with
+ * a reason). */
+export async function extendExitPassReturn(passId: string, extraMinutes: number, reason: string): Promise<void> {
+  const r = await requireGate();
+  if (!Number.isInteger(extraMinutes) || extraMinutes < 5 || extraMinutes > 12 * 60) throw new SecurityError('Choose how much more time — between 5 minutes and 12 hours.');
+  if (!reason.trim()) throw new SecurityError('Give the reason for the extra time.');
+  const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, returning: true, passNumber: true, expectedReturnAt: true } });
+  if (!p) throw new SecurityError('Exit pass not found.');
+  if (p.status !== 'OUT' || !p.returning || !p.expectedReturnAt) throw new SecurityError('Only someone out on a returning pass can be given more time.');
+  const next = new Date(new Date(p.expectedReturnAt).getTime() + extraMinutes * 60000);
+  await prisma.exitPass.update({ where: { id: passId }, data: { expectedReturnAt: next } });
+  await writeAuditLog({ userId: r.userId, action: 'exit_pass.extended', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber, extra: durationText(extraMinutes), newReturn: next.toISOString(), reason: reason.trim() } });
+}
+
+/** A follow-up note on a visitor or exit pass (e.g. "called — on the way
+ * back"), kept on its audit trail. */
+export async function addSecurityFollowUp(entityType: 'Visit' | 'ExitPass', id: string, note: string): Promise<void> {
+  const r = await requireFrontDesk();
+  if (!note.trim()) throw new SecurityError('Write the follow-up note.');
+  const exists = entityType === 'Visit' ? await prisma.visit.findUnique({ where: { id }, select: { id: true } }) : await prisma.exitPass.findUnique({ where: { id }, select: { id: true } });
+  if (!exists) throw new SecurityError('Record not found.');
+  await writeAuditLog({ userId: r.userId, action: 'security.follow_up', entityType, entityId: id, metadata: { note: note.trim() } });
+}
+
+export type SecurityRecord = { type: 'VISIT' | 'EXIT_PASS' | 'VEHICLE_EXIT'; id: string; number: string; title: string; detail: string; status: string; at: Date; href: string };
+
+/** The Security register: every visit, exit pass and vehicle exit, newest
+ * first, searchable by any number, name or plate. */
+export async function searchSecurityRecords(q?: string, type?: string): Promise<SecurityRecord[]> {
+  await requireUser();
+  const t = q?.trim();
+  const want = (x: string) => !type || type === x;
+  const [visits, passes, exits] = await Promise.all([
+    want('VISIT') ? listVisits(t) : Promise.resolve([]),
+    want('EXIT_PASS') ? listExitPasses('all', t) : Promise.resolve([]),
+    want('VEHICLE_EXIT') ? listVehicleExits(t) : Promise.resolve([]),
+  ]);
+  return [
+    ...visits.map((v: Awaited<ReturnType<typeof listVisits>>[number]) => ({ type: 'VISIT' as const, id: v.id, number: [v.visitNumber, v.passNumber].filter(Boolean).join(' · '), title: v.visitorName, detail: `${v.company ? `${v.company} · ` : ''}${v.purpose} · visiting ${v.host.fullName}`, status: v.status, at: v.checkedInAt ?? v.expectedAt ?? new Date(0), href: `/security/visitors/${v.id}` })),
+    ...passes.map((p: Awaited<ReturnType<typeof listExitPasses>>[number]) => ({ type: 'EXIT_PASS' as const, id: p.id, number: p.passNumber, title: p.people.map((x: { name: string }) => x.name).join(', '), detail: p.reason, status: p.status, at: p.createdAt, href: `/security/exit-passes/${p.id}` })),
+    ...exits.map((x: Awaited<ReturnType<typeof listVehicleExits>>[number]) => ({ type: 'VEHICLE_EXIT' as const, id: x.id, number: x.exitNumber, title: `${[x.vehicle.make, x.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}${x.vehicle.plateNumber ? ` — ${x.vehicle.plateNumber}` : ''}`, detail: `${x.jobCard?.jobNumber ?? x.vehicleService?.serviceNumber ?? ''} · ${x.jobCard?.customer.fullName ?? x.vehicleService?.customer.fullName ?? ''}`, status: 'LEFT', at: x.exitedAt, href: `/security/vehicles/exits/${x.id}` })),
+  ].sort((a, b) => b.at.getTime() - a.at.getTime());
 }
