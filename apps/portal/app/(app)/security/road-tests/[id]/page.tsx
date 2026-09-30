@@ -38,7 +38,7 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => (val ? <div className="flex justify-between gap-3 py-1 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right text-[var(--ejo-text)]">{val}</dd></div> : null);
   const kmText = (n: number | null) => (n === null ? null : `${n.toLocaleString('en-NG')} km`);
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <LoadingLink href="/security/road-tests" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Road tests</LoadingLink>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -46,7 +46,7 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{[r.vehicle.make, r.vehicle.model].filter(Boolean).join(' ')}{r.vehicle.plateNumber ? ` — ${r.vehicle.plateNumber}` : ''} · requested by {r.requestedBy.fullName} on {formatDateTime(r.createdAt)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {['APPROVED', 'OUT', 'RETURNED'].includes(r.status) ? <PrintMenu orgHref={`/print/road-test/${r.id}`} clientHref={`/print/road-test/${r.id}?variant=client`} clientLabel="Driver Copy" /> : null}
+          {['APPROVED', 'OUT', 'RETURNED'].includes(r.status) ? <PrintMenu orgHref={`/print/road-test/${r.id}`} clientHref={`/print/road-test/${r.id}?variant=client`} clientLabel="Driver Copy" align="right" /> : null}
           <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_CHIP[r.status] ?? ''}`}>{ROAD_TEST_STATUS_LABEL[r.status]}</span>
         </div>
       </div>
