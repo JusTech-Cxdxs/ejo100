@@ -14,9 +14,18 @@ const DONE: Record<string, string> = { extend: 'Time extended.', extended: 'Retu
 
 /** The Chief Security Officer's follow-up desk: who is overdue, by how
  * much — extend their time or record the follow-up, right here. */
-export default async function OverduePage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string }> }) {
-  const { status, error } = await searchParams;
-  const [o, roles] = await Promise.all([listOverdue(), getSecurityRoles()]);
+export default async function OverduePage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string; q?: string; show?: string }> }) {
+  const { status, error, q, show } = await searchParams;
+  const [all, roles] = await Promise.all([listOverdue(), getSecurityRoles()]);
+  const term = (q ?? '').trim().toLowerCase();
+  const hit = (...xs: (string | null | undefined)[]) => !term || xs.some((x) => (x ?? '').toLowerCase().includes(term));
+  const o = {
+    visits: all.visits.filter((v) => hit(v.visitorName, v.passNumber, v.company, v.phone, v.host.fullName, v.vehiclePlate, ...v.memberNames)),
+    passes: all.passes.filter((p) => hit(p.passNumber, p.reason, ...p.people.map((x) => x.name))),
+    roadTests: all.roadTests.filter((r) => hit(r.permitNumber, r.vehicle.plateNumber, r.driver.fullName, r.jobCard?.jobNumber, r.vehicleService?.serviceNumber)),
+  };
+  const view = ['visitors', 'road-tests', 'exit-passes'].includes(show ?? '') ? show! : 'all';
+  const tabs: [string, string, number][] = [['all', 'All', o.visits.length + o.roadTests.length + o.passes.length], ['visitors', 'Visitors', o.visits.length], ['road-tests', 'Road tests', o.roadTests.length], ['exit-passes', 'Exit passes', o.passes.length]];
   const input = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1 text-xs text-[var(--ejo-text)]';
   const small = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-2 py-1 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]';
   const Extend = ({ kind, id }: { kind: 'visit' | 'pass'; id: string }) => (
@@ -44,18 +53,28 @@ export default async function OverduePage({ searchParams }: { searchParams: Prom
     </form>
   );
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Overdue</h1>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Visitors past their expected stay and people past their return time. Follow up, extend their time, or check them out / in at the gate.</p>
       <SecurityNav active="/security/overdue" />
       {status && DONE[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={DONE[status]!} /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        {tabs.map(([k, l, n]) => (
+          <LoadingLink key={k} href={`/security/overdue?show=${k}${q ? `&q=${encodeURIComponent(q)}` : ''}`} className={`rounded-full px-3 py-1 text-xs font-medium ${view === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l} ({n})</LoadingLink>
+        ))}
+        <form className="flex w-full gap-2 sm:ml-auto sm:w-auto">
+          <input type="hidden" name="show" value={view} />
+          <input name="q" defaultValue={q ?? ''} placeholder="Search name, pass, plate, driver…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-72" />
+        </form>
+      </div>
+      {view === 'all' || view === 'visitors' ? (<>
       <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">Visitors ({o.visits.length})</h2>
       <div className="mb-8">
         <SecurityTable headers={['Visitor', 'Visiting', 'Time in', 'Overdue by', roles.isFrontDesk ? 'Follow up / extend' : '', '']} widths={['20%', '14%', '12%', '11%', '36%', '7%']} empty={o.visits.length ? null : 'No visitor is overdue.'}>
           {o.visits.map((v) => (
             <tr key={v.id}>
-              <td><span className="font-medium text-[var(--ejo-text)]">{v.visitorName}</span><span className="block text-xs text-[var(--ejo-text-muted)]">{v.passNumber}{v.phone ? ` · ${v.phone}` : ''}</span></td>
+              <td><span className="font-medium text-[var(--ejo-text)]">{v.visitorName}</span>{v.partySize > 1 ? <span className="text-xs text-[var(--ejo-text-muted)]"> + {v.partySize - 1}</span> : null}<span className="block text-xs text-[var(--ejo-text-muted)]">{v.passNumber}{v.phone ? ` · ${v.phone}` : ''}</span></td>
               <td>{v.host.fullName}</td>
               <td className="text-xs">{v.checkedInAt ? formatDateTimeCompact(v.checkedInAt) : '—'}</td>
               <td className="text-xs font-semibold text-[var(--ejo-error)]">{durationText(v.overdueMinutes)}</td>
@@ -65,6 +84,8 @@ export default async function OverduePage({ searchParams }: { searchParams: Prom
           ))}
         </SecurityTable>
       </div>
+      </>) : null}
+      {view === 'all' || view === 'road-tests' ? (<>
       <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">Road tests ({o.roadTests.length})</h2>
       <div className="mb-8">
         <SecurityTable headers={['Permit', 'Vehicle / driver', 'Out', 'Late by', roles.isGate ? 'Follow up / extend' : '', '']} widths={['12%', '22%', '12%', '11%', '36%', '7%']} empty={o.roadTests.length ? null : 'No road test is late.'}>
@@ -95,6 +116,8 @@ export default async function OverduePage({ searchParams }: { searchParams: Prom
           ))}
         </SecurityTable>
       </div>
+      </>) : null}
+      {view === 'all' || view === 'exit-passes' ? (<>
       <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">Exit passes ({o.passes.length})</h2>
       <SecurityTable headers={['Pass', 'People', 'Expected back', 'Late by', roles.isGate ? 'Follow up / extend' : '', '']} widths={['12%', '22%', '12%', '11%', '36%', '7%']} empty={o.passes.length ? null : 'Nobody is late back.'}>
         {o.passes.map((p) => (
@@ -108,6 +131,7 @@ export default async function OverduePage({ searchParams }: { searchParams: Prom
           </tr>
         ))}
       </SecurityTable>
+      </>) : null}
     </div>
   );
 }
