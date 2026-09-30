@@ -21,7 +21,7 @@ export default async function ReleaseVehiclePage({ params, searchParams }: { par
   const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => <div className="flex justify-between gap-3 py-1.5 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right font-medium text-[var(--ejo-text)]">{val || '—'}</dd></div>;
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <LoadingLink href="/security/vehicles" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Vehicles cleared to leave</LoadingLink>
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{[v.vehicle.make, v.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}{v.vehicle.plateNumber ? ` — ${v.vehicle.plateNumber}` : ''}</h1>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Released with {v.number}</p>
