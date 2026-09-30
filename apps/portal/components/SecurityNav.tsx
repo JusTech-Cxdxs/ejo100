@@ -6,6 +6,8 @@ const TABS = [
   { href: '/security/exit-passes', label: 'Exit passes' },
   { href: '/security/vehicles', label: 'Vehicles leaving' },
   { href: '/security/road-tests', label: 'Road tests' },
+  { href: '/security/deliveries', label: 'Deliveries' },
+  { href: '/security/incidents', label: 'Incidents' },
   { href: '/security/overdue', label: 'Overdue' },
   { href: '/security/register', label: 'Register' },
 ];
