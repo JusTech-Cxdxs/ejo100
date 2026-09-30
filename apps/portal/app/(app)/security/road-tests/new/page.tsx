@@ -25,7 +25,7 @@ export default async function NewRoadTestPage({ searchParams }: { searchParams: 
   const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
   const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <LoadingLink href={rec.back} className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to {rec.number}</LoadingLink>
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Request a road test</h1>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">{rec.number} · {[rec.vehicle.make, rec.vehicle.model].filter(Boolean).join(' ')}{rec.vehicle.plateNumber ? ` — ${rec.vehicle.plateNumber}` : ''} · {rec.customer}{rec.vehicle.mileage !== null ? ` · last odometer ${rec.vehicle.mileage.toLocaleString('en-NG')} km` : ''}</p>
