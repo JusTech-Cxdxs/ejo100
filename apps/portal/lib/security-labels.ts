@@ -2,13 +2,15 @@ import { humanizeAction } from '@/lib/humanize-action';
 
 /** Readable audit wording for every Security action. */
 export const SECURITY_ACTION_LABEL: Record<string, string> = {
-  'visit.pre_registered': 'Visitor pre-registered',
+  'visit.pre_registered': 'Visit booked',
+  'visit.booking_changed': 'Booking changed',
+  'visit.booking_expired': 'Booking removed — the visitor did not come',
   'visit.arrived': 'Recorded at the gate — pass issued',
   'visit.checked_in': 'Checked in at the gate — pass issued',
   'visit.received': 'Received at reception — host told',
   'visit.extended': 'Stay extended',
   'visit.checked_out': 'Checked out',
-  'visit.cancelled': 'Visit cancelled',
+  'visit.cancelled': 'Booking cancelled and removed',
   'visit.overdue': 'Stayed longer than expected',
   'exit_pass.requested': 'Exit pass requested',
   'exit_pass.head_authorised': 'Authorised by the Department Head',
