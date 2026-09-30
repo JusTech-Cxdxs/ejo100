@@ -213,7 +213,7 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
   if (!meta) return null;
   switch (entry.action) {
     case 'vehicle.gate_exit':
-      return [typeof meta.exitNumber === 'string' ? meta.exitNumber : null, typeof meta.driver === 'string' ? `driven by ${meta.driver}` : null].filter(Boolean).join(' · ') || null;
+      return [typeof meta.exitNumber === 'string' ? meta.exitNumber : null, typeof (meta.collectedBy ?? meta.driver) === 'string' ? `collected by ${String(meta.collectedBy ?? meta.driver)}` : null].filter(Boolean).join(' · ') || null;
     case 'warranty.issued':
       return Array.isArray(meta.warrantyNumbers) ? `${(meta.warrantyNumbers as string[]).join(', ')}${typeof meta.referenceNumber === 'string' ? ` — with ${meta.referenceNumber}` : ''}` : null;
     case 'vehicle_service.rejected':
