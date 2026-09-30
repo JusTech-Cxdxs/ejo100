@@ -151,6 +151,7 @@ const NEXT_ACTION: Record<string, { status: string; label: string } | null> = {
 };
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'vehicle.gate_exit': 'Left through the gate',
   'warranty.issued': 'Warranties issued',
   'vehicle_service.created': 'Vehicle Service opened',
   'vehicle_service.approved': 'Vehicle Service approved',
@@ -211,6 +212,8 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
   const meta = entry.metadata as Record<string, unknown> | null;
   if (!meta) return null;
   switch (entry.action) {
+    case 'vehicle.gate_exit':
+      return [typeof meta.exitNumber === 'string' ? meta.exitNumber : null, typeof meta.driver === 'string' ? `driven by ${meta.driver}` : null].filter(Boolean).join(' · ') || null;
     case 'warranty.issued':
       return Array.isArray(meta.warrantyNumbers) ? `${(meta.warrantyNumbers as string[]).join(', ')}${typeof meta.referenceNumber === 'string' ? ` — with ${meta.referenceNumber}` : ''}` : null;
     case 'vehicle_service.rejected':
