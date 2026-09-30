@@ -3,7 +3,7 @@ import { getExitPass } from '@/lib/actions/security';
 import { getOrganisation } from '@/lib/actions/organisation';
 import { PrintOnLoad } from '@/components/print/PrintOnLoad';
 import { PassSheet, PassLine } from '@/components/print/PassSheet';
-import { EXIT_PASS_STATUS_LABEL } from '@/lib/security-rules';
+import { EXIT_PASS_STATUS_LABEL, durationText } from '@/lib/security-rules';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 
 /** The Employee Exit Pass — the paper form, printed from the record. */
@@ -41,6 +41,7 @@ export default async function ExitPassPrint({ params, searchParams }: { params: 
           <span>{box(!p.returning)} No Return</span>
         </div>
         <PassLine label="Time out" value={p.gateOutAt ? `${formatDateTime(p.gateOutAt)}${isOrg && p.gateOutBy ? ` · ${p.gateOutBy.fullName}` : ''}` : p.expectedOutAt ? `(planned) ${formatDateTime(p.expectedOutAt)}` : null} />
+        {p.returning && p.expectedDurationMinutes ? <PassLine label="Out for about" value={durationText(p.expectedDurationMinutes)} /> : null}
         <PassLine label="Time in" value={p.gateInAt ? `${formatDateTime(p.gateInAt)}${isOrg && p.gateInBy ? ` · ${p.gateInBy.fullName}` : ''}` : p.returning && p.expectedReturnAt ? `(expected) ${formatDateTime(p.expectedReturnAt)}` : null} />
         {isOrg ? <PassLine label="Requested by" value={`${p.requestedBy.fullName} · ${formatDateTime(p.createdAt)}`} /> : null}
         <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
