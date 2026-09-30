@@ -21,6 +21,7 @@
  * is already a dependency of apps/portal or packages/database.
  */
 
+import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal, isCustomerLine, coveredLabel } from '@/lib/estimate-billing';
 import { headers } from 'next/headers';
 import { prisma, JobCardStatus, Prisma, setAuditActor } from '@ejo/database';
@@ -1429,6 +1430,11 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       collectedByName: status === JobCardStatus.CHECKED_OUT ? collectedByName?.trim() : undefined,
     },
   });
+
+  // Security expects the vehicle at the gate — checkout or hand-back.
+  if (status === JobCardStatus.CHECKED_OUT && priorStatus !== JobCardStatus.CHECKED_OUT) {
+    await notifyGateOfRelease('JOB_CARD', id, user.id);
+  }
 
   // A Job Card that came from a Vehicle Service: its genuine checkout
   // (never a cancelled hand-back) is when that vehicle's service was

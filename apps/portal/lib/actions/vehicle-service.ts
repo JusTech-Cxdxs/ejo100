@@ -1,5 +1,6 @@
 'use server';
 
+import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal } from '@/lib/estimate-billing';
 import { prisma } from '@ejo/database';
 import {
@@ -1295,6 +1296,11 @@ export async function updateVehicleServiceStatus(
     },
   });
 
+  // Security expects the vehicle at the gate.
+  if (newStatus === 'COLLECTED' && service.status !== 'COLLECTED') {
+    await notifyGateOfRelease('VEHICLE_SERVICE', serviceId, user.id);
+  }
+
   // Lifecycle emails — each fires exactly once, on a real transition,
   // the same pattern as Job Card's own updateJobCardStatus.
   if (newStatus !== 'COMPLETED' && newStatus !== 'READY_FOR_COLLECTION' && newStatus !== 'COLLECTED') return;
@@ -1760,6 +1766,7 @@ export async function handBackCancelledVehicleService(serviceId: string, collect
     throw new VehicleServiceActionError(`₦${owed.toLocaleString('en-NG', { minimumFractionDigits: 2 })} paid on this Vehicle Service must be refunded (recorded under Refunds) before the vehicle can be handed back.`);
   }
   await prisma.vehicleService.update({ where: { id: serviceId }, data: { collectedAt: new Date(), collectedByName: name } });
+  await notifyGateOfRelease('VEHICLE_SERVICE', serviceId, user.id);
   await writeAuditLog({ userId: user.id, action: 'vehicle_service.handed_back', entityType: 'VehicleService', entityId: serviceId, metadata: { serviceNumber: service.serviceNumber, collectedByName: name } });
 }
 

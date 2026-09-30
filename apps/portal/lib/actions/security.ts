@@ -262,6 +262,12 @@ export async function checkOutVisit(visitId: string): Promise<void> {
   const out = new Date();
   await prisma.visit.update({ where: { id: visitId }, data: { status: 'CHECKED_OUT', checkedOutAt: out, checkedOutById: r.userId } });
   await writeAuditLog({ userId: r.userId, action: 'visit.checked_out', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, passNumber: v.passNumber, duration: v.checkedInAt ? durationText((out.getTime() - new Date(v.checkedInAt).getTime()) / 60000) : undefined } });
+  // The visitors of an appointment have left — the appointment happened.
+  const appt = await prisma.appointment.findFirst({ where: { visitId, status: 'SCHEDULED' }, select: { id: true, appointmentNumber: true } });
+  if (appt) {
+    await prisma.appointment.update({ where: { id: appt.id }, data: { status: 'COMPLETED', completedAt: out } });
+    await writeAuditLog({ userId: r.userId, action: 'appointment.completed', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber: appt.appointmentNumber, by: 'Visitors checked out at the gate' } });
+  }
 }
 
 /** Cancel a booking: it is removed (the cancellation stays on the audit
@@ -1016,4 +1022,36 @@ export async function canDecideRoadTest(id: string): Promise<boolean> {
   if (!p || p.status !== 'PENDING_MANAGER') return false;
   if (p.requestedById === user.id && !roles.isMaster) return false;
   return roles.isMaster || (await managerApprovers(p.requestedById)).some((m) => m.id === user.id);
+}
+
+/** An exit's whole story: its own trail, plus — from its Job Card /
+ * Vehicle Service — the release email(s) to Security and the gate-exit
+ * entries (older exits were only recorded there). */
+export async function getVehicleExitHistory(exitId: string) {
+  await requireUser();
+  const x = await prisma.vehicleGateExit.findUnique({ where: { id: exitId }, select: { jobCardId: true, vehicleServiceId: true } });
+  if (!x) return { entries: [], emails: [] };
+  const recType = x.jobCardId ? 'JobCard' : 'VehicleService';
+  const recId = (x.jobCardId ?? x.vehicleServiceId)!;
+  const [entries, emails] = await Promise.all([
+    prisma.auditLog.findMany({
+      where: { OR: [{ entityType: 'VehicleGateExit', entityId: exitId }, { entityType: recType, entityId: recId, action: { in: ['vehicle.gate_exit', 'security.email_sent', 'security.email_failed'] } }] },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, action: true, createdAt: true, metadata: true, userId: true, entityType: true },
+    }),
+    prisma.securityEmailLog.findMany({ where: { OR: [{ entityType: 'VehicleGateExit', entityId: exitId }, { entityType: recType, entityId: recId }] }, orderBy: { createdAt: 'desc' } }),
+  ]);
+  // The same gate exit is written on the exit AND the record — show it once.
+  const seen = new Set<string>();
+  const unique = entries.filter((e: (typeof entries)[number]) => {
+    if (e.action !== 'vehicle.gate_exit') return true;
+    const key = `${(e.metadata as { exitNumber?: string } | null)?.exitNumber ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const ids = [...new Set(unique.map((e: { userId: string | null }) => e.userId).filter((v: string | null): v is string => Boolean(v)))];
+  const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
+  const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
+  return { entries: unique.map((e: (typeof unique)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null })), emails };
 }

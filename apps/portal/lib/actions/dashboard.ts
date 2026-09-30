@@ -3,13 +3,14 @@
 import { prisma } from '@ejo/database';
 import { getWarrantyDashboardItems } from './warranty';
 import { getSecurityDashboardItems } from './security';
+import { getSchedulingDashboardItems } from './scheduling';
 import { getWarrantyClaimDashboardItems } from './warranty-claims';
 import { requireUser, currentUserIsMasterAdmin, writeAuditLog, listEligibleManagersForBranch } from './workshop';
 import { isWeekend } from '@/lib/utils/working-days';
 
 export type DashboardNotification = {
   id: string;
-  kind: 'PRICING_ALERT' | 'CANCELLATION_REQUEST' | 'CLOSE_REQUEST' | 'JOB_CARD_APPROVAL' | 'TECHNICIAN_ASSIGNMENT' | 'VEHICLE_SERVICE_APPROVAL' | 'WARRANTY' | 'SECURITY';
+  kind: 'PRICING_ALERT' | 'CANCELLATION_REQUEST' | 'CLOSE_REQUEST' | 'JOB_CARD_APPROVAL' | 'TECHNICIAN_ASSIGNMENT' | 'VEHICLE_SERVICE_APPROVAL' | 'WARRANTY' | 'SECURITY' | 'SCHEDULING';
   title: string;
   detail: string;
   url: string;
@@ -231,6 +232,11 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   // this viewer's approval step.
   for (const item of await getSecurityDashboardItems().catch(() => [])) {
     notifications.push({ id: item.id, kind: 'SECURITY', title: item.title, detail: item.detail, url: item.url, createdAt: item.createdAt });
+  }
+
+  // Scheduling: today's appointments (host or participant) still to come.
+  for (const item of await getSchedulingDashboardItems().catch(() => [])) {
+    notifications.push({ id: item.id, kind: 'SCHEDULING', title: item.title, detail: item.detail, url: item.url, createdAt: item.createdAt });
   }
 
   return notifications.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
