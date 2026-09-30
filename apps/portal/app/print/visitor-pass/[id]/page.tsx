@@ -20,8 +20,10 @@ export default async function VisitorPassPrint({ params, searchParams }: { param
       <PrintOnLoad />
       <PassSheet copyLabel={isOrg ? 'Organisation copy' : 'Visitor copy'} orgName={org?.name ?? 'Kewalram Chanrai Group'} subName={v.branch.name} title="VISITOR PASS" note={isOrg ? undefined : 'Wear this pass at all times while on the premises and return it to Security when you leave.'}>
         <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '1.3em', marginBottom: '4px' }}>{v.passNumber}</div>
-        <PassLine label="Visitor" value={v.visitorName} />
-        <PassLine label="Company" value={v.company} />
+        <PassLine label={v.partySize > 1 ? 'Lead' : 'Visitor'} value={v.visitorName} />
+        {v.partySize > 1 ? <PassLine label={`With (${v.partySize - 1})`} value={v.memberNames.join(', ')} /> : null}
+        {v.partySize > 1 ? <PassLine label="Group" value={`${v.partySize} people`} /> : null}
+        <PassLine label="Organisation" value={v.company} />
         <PassLine label="Visiting" value={v.host.fullName} />
         <PassLine label="Purpose" value={v.purpose} />
         <PassLine label="Came by" value={v.vehicleType === 'ON_FOOT' ? 'On foot' : `${VEHICLE_TYPE_LABEL[v.vehicleType] ?? 'Vehicle'} ${v.vehiclePlate ?? ''}`} />
