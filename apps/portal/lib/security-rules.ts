@@ -67,6 +67,10 @@ export const STATUS_CHIP: Record<string, string> = {
   PENDING_HEAD: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   PENDING_MANAGER: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   LEFT: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+  OPEN: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
+  UNDER_REVIEW: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  AT_GATE: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  RECEIVED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   APPROVED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   OUT: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
   RETURNED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
@@ -87,3 +91,27 @@ export const ROAD_TEST_STATUS_LABEL: Record<string, string> = {
   DECLINED: 'Declined',
   CANCELLED: 'Cancelled',
 };
+
+export const INCIDENT_TYPES = [
+  'Unauthorised entry attempt',
+  'Visitor refused entry',
+  'Lost visitor pass',
+  'Employee going out without an exit pass',
+  'Vehicle leaving without release',
+  'Property damage',
+  'Theft or loss',
+  'Accident at the gate',
+  'Suspicious activity',
+  'Fire or safety hazard',
+  'Other',
+] as const;
+
+export const SEVERITY_LABEL: Record<string, string> = { LOW: 'Low', MEDIUM: 'Medium', HIGH: 'High', CRITICAL: 'Critical' };
+export const SEVERITY_CHIP: Record<string, string> = {
+  LOW: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+  MEDIUM: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  HIGH: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
+  CRITICAL: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
+};
+export const INCIDENT_STATUS_LABEL: Record<string, string> = { OPEN: 'Open', UNDER_REVIEW: 'Under review', CLOSED: 'Closed' };
+export const DELIVERY_STATUS_LABEL: Record<string, string> = { EXPECTED: 'Expected', AT_GATE: 'At the gate', RECEIVED: 'Received by Store', LEFT: 'Left', CANCELLED: 'Cancelled' };

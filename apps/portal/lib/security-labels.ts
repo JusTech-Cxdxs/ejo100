@@ -25,6 +25,16 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'security.email_sent': 'Email sent',
   'security.email_failed': 'Email could not be sent',
   'vehicle.gate_exit': 'Vehicle left through the gate',
+  'incident.reported': 'Incident reported',
+  'incident.linked': 'Incident reported about this record',
+  'incident.assigned': 'Incident assigned',
+  'incident.closed': 'Incident closed',
+  'incident.reopened': 'Incident reopened',
+  'delivery.expected': 'Delivery announced',
+  'delivery.arrived': 'Delivery arrived at the gate',
+  'delivery.received': 'Received by the Store',
+  'delivery.left': 'Delivery vehicle left',
+  'delivery.cancelled': 'Delivery cancelled',
   'appointment.created': 'Appointment booked',
   'appointment.changed': 'Appointment changed',
   'appointment.cancelled': 'Appointment cancelled',
@@ -78,6 +88,24 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
       return s('by');
     case 'appointment.reminder_sent':
       return typeof meta.minutesBefore === 'number' ? `About ${meta.minutesBefore} ${meta.minutesBefore === 1 ? 'minute' : 'minutes'} before` : null;
+    case 'incident.reported':
+    case 'incident.linked':
+      return [s('incidentNumber'), s('type'), s('severity') ? s('severity')!.toLowerCase() : null, s('related') ? `about ${s('related')}` : null].filter(Boolean).join(' · ') || null;
+    case 'incident.assigned':
+      return s('to') ? `To ${s('to')}` : null;
+    case 'incident.closed':
+      return s('resolution') ? `Resolution: ${s('resolution')}` : null;
+    case 'incident.reopened':
+    case 'delivery.cancelled':
+      return s('reason') ? `Reason: ${s('reason')}` : null;
+    case 'delivery.expected':
+      return [s('deliveryNumber'), s('supplier'), s('reference')].filter(Boolean).join(' · ') || null;
+    case 'delivery.arrived':
+      return [s('deliveryNumber'), s('driver') ? `driver ${s('driver')}` : null, s('vehicle')].filter(Boolean).join(' · ') || null;
+    case 'delivery.received':
+      return [s('deliveryNumber'), s('grn') ? `GRN ${s('grn')}` : null, s('note')].filter(Boolean).join(' · ') || null;
+    case 'delivery.left':
+      return [s('deliveryNumber'), meta.received === false ? 'not received' : null, s('reason')].filter(Boolean).join(' · ') || null;
     case 'security.follow_up':
       return s('note');
     case 'visit.extended':
