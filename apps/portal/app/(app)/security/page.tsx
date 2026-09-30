@@ -42,7 +42,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
   const row = 'flex flex-wrap items-center justify-between gap-2 border-b border-[var(--ejo-border)] py-2 text-sm last:border-0';
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Security</h1>
@@ -60,7 +60,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
       <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">In the compound now</h2>
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         {([
-          ['Visitors on premises', d.compound.visitors, 'Checked in, not yet out', '/security/on-premises'],
+          ['Visitors on premises', d.compound.visitors, d.compound.visits === d.compound.visitors ? 'Checked in, not yet out' : `People on ${d.compound.visits} ${d.compound.visits === 1 ? 'pass' : 'passes'} (groups counted in full)`, '/security/on-premises'],
           ['Visitor vehicles', d.compound.visitorVehicles, 'Cars, motorcycles… of visitors inside', '/security/vehicles-inside?type=visitor'],
           ['Workshop vehicles', d.compound.workshopVehicles, 'Job Cards and Vehicle Services in progress', '/security/vehicles-inside?type=workshop'],
           ['Cleared, not yet out', d.compound.awaitingExit, 'Released — waiting at the gate', '/security/vehicles'],
