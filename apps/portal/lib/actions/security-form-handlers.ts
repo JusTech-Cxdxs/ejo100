@@ -6,6 +6,7 @@ import {
   preRegisterVisit, recordArrival, checkInVisit, receiveVisit, extendVisit, checkOutVisit, cancelVisit,
   createExitPass, decideExitPass, cancelExitPass, exitPassGateOut, exitPassGateIn, confirmVehicleExit,
   extendExitPassReturn, addSecurityFollowUp,
+  requestRoadTest, decideRoadTest, cancelRoadTest, roadTestGateOut, roadTestGateIn, extendRoadTest,
   type VisitInput,
 } from './security';
 
@@ -124,13 +125,49 @@ export async function extendExitPassFormAction(f: FormData) {
 
 /** Follow-up note on a visitor or exit pass. */
 export async function securityFollowUpFormAction(f: FormData) {
-  const type = str(f, 'entityType') === 'ExitPass' ? 'ExitPass' : 'Visit';
+  const raw = str(f, 'entityType');
+  const type = raw === 'ExitPass' ? 'ExitPass' : raw === 'RoadTestPermit' ? 'RoadTestPermit' : 'Visit';
   const id = str(f, 'entityId');
-  const from = str(f, 'returnTo') || (type === 'ExitPass' ? `/security/exit-passes/${id}` : `/security/visitors/${id}`);
+  const from = str(f, 'returnTo') || (type === 'ExitPass' ? `/security/exit-passes/${id}` : type === 'RoadTestPermit' ? `/security/road-tests/${id}` : `/security/visitors/${id}`);
   try {
     await addSecurityFollowUp(type, id, str(f, 'note'));
   } catch (err) {
     back(from, err, 'Could not save the follow-up.');
   }
   ok(from, 'follow_up');
+}
+
+// ── Road tests ────────────────────────────────────────────────────────
+
+export async function requestRoadTestFormAction(f: FormData) {
+  const jobCardId = str(f, 'jobCardId') || undefined;
+  const vehicleServiceId = str(f, 'vehicleServiceId') || undefined;
+  let id = '';
+  try {
+    id = (await requestRoadTest({ jobCardId, vehicleServiceId, driverId: str(f, 'driverId'), purpose: str(f, 'purpose'), route: str(f, 'route'), expectedDurationMinutes: Number(str(f, 'expectedMinutes')) })).id;
+  } catch (err) {
+    back(`/security/road-tests/new?${jobCardId ? `jobCardId=${jobCardId}` : `vehicleServiceId=${vehicleServiceId}`}`, err, 'Could not request the road test.');
+  }
+  if (jobCardId) revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  if (vehicleServiceId) revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
+  ok(`/security/road-tests/${id}`, 'requested');
+}
+
+export async function roadTestActionFormAction(f: FormData) {
+  const id = str(f, 'permitId');
+  const action = str(f, 'action');
+  const path = str(f, 'returnTo') || `/security/road-tests/${id}`;
+  try {
+    if (action === 'approve') await decideRoadTest(id, true, '');
+    else if (action === 'decline') await decideRoadTest(id, false, str(f, 'reason'));
+    else if (action === 'cancel') await cancelRoadTest(id, str(f, 'reason'));
+    else if (action === 'gate_out') await roadTestGateOut(id, Number(str(f, 'odometer')));
+    else if (action === 'gate_in') await roadTestGateIn(id, Number(str(f, 'odometer')), str(f, 'notes'));
+    else if (action === 'extend') await extendRoadTest(id, Number(str(f, 'extraMinutes')), str(f, 'reason'));
+    else throw new Error('Unknown action.');
+  } catch (err) {
+    back(path, err, 'Could not update the road test.');
+  }
+  revalidatePath(`/security/road-tests/${id}`);
+  ok(path, action);
 }

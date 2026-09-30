@@ -4,7 +4,7 @@ import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext, listEligibleManagersForBranch } from './workshop';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
-import { visitOverdueMinutes, exitPassOverdueMinutes, durationText } from '@/lib/security-rules';
+import { visitOverdueMinutes, exitPassOverdueMinutes, roadTestOverdueMinutes, durationText } from '@/lib/security-rules';
 import { customerTotal } from '@/lib/estimate-billing';
 
 class SecurityError extends Error {}
@@ -61,7 +61,7 @@ async function gateStaff(): Promise<Person[]> {
 
 // ── Numbering & logged emails ─────────────────────────────────────────
 
-async function nextNumber(prefix: 'VIS' | 'VP' | 'EP' | 'VX'): Promise<string> {
+async function nextNumber(prefix: 'VIS' | 'VP' | 'EP' | 'VX' | 'RT'): Promise<string> {
   const year = new Date().getFullYear();
   const start = `${prefix}-${year}-`;
   const latest =
@@ -69,6 +69,8 @@ async function nextNumber(prefix: 'VIS' | 'VP' | 'EP' | 'VX'): Promise<string> {
       ? await prisma.visit.findFirst({ where: { visitNumber: { startsWith: start } }, orderBy: { visitNumber: 'desc' }, select: { visitNumber: true } }).then((r: { visitNumber: string } | null) => r?.visitNumber)
       : prefix === 'VP'
         ? await prisma.visit.findFirst({ where: { passNumber: { startsWith: start } }, orderBy: { passNumber: 'desc' }, select: { passNumber: true } }).then((r: { passNumber: string | null } | null) => r?.passNumber ?? undefined)
+        : prefix === 'RT'
+          ? await prisma.roadTestPermit.findFirst({ where: { permitNumber: { startsWith: start } }, orderBy: { permitNumber: 'desc' }, select: { permitNumber: true } }).then((r: { permitNumber: string } | null) => r?.permitNumber)
         : prefix === 'EP'
           ? await prisma.exitPass.findFirst({ where: { passNumber: { startsWith: start } }, orderBy: { passNumber: 'desc' }, select: { passNumber: true } }).then((r: { passNumber: string } | null) => r?.passNumber)
           : await prisma.vehicleGateExit.findFirst({ where: { exitNumber: { startsWith: start } }, orderBy: { exitNumber: 'desc' }, select: { exitNumber: true } }).then((r: { exitNumber: string } | null) => r?.exitNumber);
@@ -443,7 +445,7 @@ export async function getSecurityDashboard() {
   const endOfDay = new Date(startOfDay.getTime() + 86400000);
   const visitSelect = { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, company: true, purpose: true, vehicleType: true, vehiclePlate: true, expectedAt: true, expectedDurationMinutes: true, checkedInAt: true, receivedAt: true, isWalkIn: true, host: { select: { fullName: true } } } as const;
   const passSelect = { id: true, passNumber: true, status: true, reason: true, returning: true, expectedOutAt: true, expectedReturnAt: true, gateOutAt: true, people: { select: { name: true } } } as const;
-  const [onPremises, expectedToday, passesReady, passesOut, vehicles, jobCardsIn, servicesIn] = await Promise.all([
+  const [onPremises, expectedToday, passesReady, passesOut, vehicles, jobCardsIn, servicesIn, roadTestsOut, roadTestsReady] = await Promise.all([
     prisma.visit.findMany({ where: { status: 'CHECKED_IN' }, orderBy: { checkedInAt: 'asc' }, select: visitSelect }),
     prisma.visit.findMany({ where: { status: 'EXPECTED', expectedAt: { gte: startOfDay, lt: endOfDay } }, orderBy: { expectedAt: 'asc' }, select: visitSelect }),
     prisma.exitPass.findMany({ where: { status: 'APPROVED' }, orderBy: { managerApprovedAt: 'asc' }, select: passSelect }),
@@ -452,7 +454,11 @@ export async function getSecurityDashboard() {
     // Workshop vehicles physically inside: work not yet released.
     prisma.jobCard.count({ where: { status: { notIn: ['CHECKED_OUT', 'CANCELLED'] } } }),
     prisma.vehicleService.count({ where: { status: { in: ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'] } } }),
+    prisma.roadTestPermit.findMany({ where: { status: 'OUT' }, orderBy: { gateOutAt: 'asc' }, select: RT_ROW }),
+    prisma.roadTestPermit.findMany({ where: { status: 'APPROVED' }, orderBy: { managerApprovedAt: 'asc' }, select: RT_ROW }),
   ]);
+  // A workshop vehicle out on a road test is not inside the compound.
+  const workshopInside = Math.max(0, jobCardsIn + servicesIn - roadTestsOut.length);
   const visitorVehicles = onPremises.filter((v: (typeof onPremises)[number]) => v.vehicleType !== 'ON_FOOT').length;
   const peopleOut = passesOut.reduce((s: number, p: (typeof passesOut)[number]) => s + p.people.length, 0);
   return {
@@ -462,13 +468,16 @@ export async function getSecurityDashboard() {
     passesReady,
     passesOut,
     vehicles,
+    roadTestsOut,
+    roadTestsReady,
     compound: {
       visitors: onPremises.length,
       peopleOut,
       visitorVehicles,
-      workshopVehicles: jobCardsIn + servicesIn,
+      workshopVehicles: workshopInside,
       awaitingExit: vehicles.length,
-      vehiclesInside: visitorVehicles + jobCardsIn + servicesIn + vehicles.length,
+      onRoadTest: roadTestsOut.length,
+      vehiclesInside: visitorVehicles + workshopInside + vehicles.length,
     },
   };
 }
@@ -547,7 +556,7 @@ export async function canDecideExitPass(passId: string): Promise<boolean> {
 }
 
 /** Trail + every email for one Visit / Exit Pass. */
-export async function getSecurityHistory(entityType: 'Visit' | 'ExitPass' | 'VehicleGateExit', entityId: string) {
+export async function getSecurityHistory(entityType: 'Visit' | 'ExitPass' | 'VehicleGateExit' | 'RoadTestPermit', entityId: string) {
   await requireUser();
   const [entries, emails] = await Promise.all([
     prisma.auditLog.findMany({ where: { entityType, entityId }, orderBy: { createdAt: 'desc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } }),
@@ -573,12 +582,14 @@ export async function listActiveStaff() {
  * passes waiting at this viewer's step. */
 export async function getSecurityDashboardItems(): Promise<{ id: string; title: string; detail: string; url: string; createdAt: Date }[]> {
   const user = await requireUser();
-  const [atReception, passes] = await Promise.all([
+  const [atReception, passes, tests] = await Promise.all([
     prisma.visit.findMany({ where: { status: 'CHECKED_IN', hostUserId: user.id, receivedAt: { not: null } }, select: { id: true, visitorName: true, purpose: true, receivedAt: true } }),
     listExitPasses('to_decide'),
+    listRoadTests('to_decide'),
   ]);
   return [
     ...atReception.map((v: (typeof atReception)[number]) => ({ id: `visit-${v.id}`, title: `Your visitor is at reception — ${v.visitorName}`, detail: v.purpose, url: `/security/visitors/${v.id}`, createdAt: v.receivedAt as Date })),
+    ...tests.map((r: (typeof tests)[number]) => ({ id: `roadtest-${r.id}`, title: `Road test ${r.permitNumber} needs your approval`, detail: `${r.jobCard?.jobNumber ?? r.vehicleService?.serviceNumber ?? ''} · ${r.vehicle.plateNumber ?? ''} · driver ${r.driver.fullName}`, url: `/security/road-tests/${r.id}`, createdAt: r.createdAt })),
     ...passes.map((p: (typeof passes)[number]) => ({ id: `exitpass-${p.id}`, title: `Exit pass ${p.passNumber} needs your decision`, detail: p.people.map((x: { name: string }) => x.name).join(', '), url: `/security/exit-passes/${p.id}`, createdAt: p.createdAt })),
   ];
 }
@@ -660,11 +671,13 @@ export async function listPeopleOut() {
 export async function listOverdue() {
   await requireUser();
   const now = new Date();
-  const [visits, passes] = await Promise.all([
+  const [visits, passes, tests] = await Promise.all([
     prisma.visit.findMany({ where: { status: 'CHECKED_IN' }, select: VISIT_ROW }),
     prisma.exitPass.findMany({ where: { status: 'OUT', returning: true }, select: PASS_ROW }),
+    prisma.roadTestPermit.findMany({ where: { status: 'OUT' }, select: RT_ROW }),
   ]);
   return {
+    roadTests: tests.map((r: (typeof tests)[number]) => ({ ...r, overdueMinutes: roadTestOverdueMinutes(r, now) })).filter((r: { overdueMinutes: number }) => r.overdueMinutes > 0).sort((a: { overdueMinutes: number }, b: { overdueMinutes: number }) => b.overdueMinutes - a.overdueMinutes),
     visits: visits.map((v: (typeof visits)[number]) => ({ ...v, overdueMinutes: visitOverdueMinutes(v, now) })).filter((v: { overdueMinutes: number }) => v.overdueMinutes > 0).sort((a: { overdueMinutes: number }, b: { overdueMinutes: number }) => b.overdueMinutes - a.overdueMinutes),
     passes: passes.map((p: (typeof passes)[number]) => ({ ...p, overdueMinutes: exitPassOverdueMinutes(p, now) })).filter((p: { overdueMinutes: number }) => p.overdueMinutes > 0).sort((a: { overdueMinutes: number }, b: { overdueMinutes: number }) => b.overdueMinutes - a.overdueMinutes),
   };
@@ -676,10 +689,11 @@ export type InsideVehicle = { kind: 'VISITOR' | 'JOB_CARD' | 'VEHICLE_SERVICE'; 
  * vehicles still being worked on, and released vehicles not yet out. */
 export async function listVehiclesInside(): Promise<InsideVehicle[]> {
   await requireUser();
+  const outOnTest = new Set((await prisma.roadTestPermit.findMany({ where: { status: 'OUT' }, select: { vehicleId: true } })).map((r: { vehicleId: string }) => r.vehicleId));
   const [visits, jcs, vss, cleared] = await Promise.all([
     prisma.visit.findMany({ where: { status: 'CHECKED_IN', vehicleType: { not: 'ON_FOOT' } }, select: { id: true, passNumber: true, visitorName: true, vehicleType: true, vehiclePlate: true, checkedInAt: true } }),
-    prisma.jobCard.findMany({ where: { status: { notIn: ['CHECKED_OUT', 'CANCELLED'] } }, select: { id: true, jobNumber: true, createdAt: true, vehicle: { select: { make: true, model: true, plateNumber: true } }, customer: { select: { fullName: true } } } }),
-    prisma.vehicleService.findMany({ where: { status: { in: ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'] } }, select: { id: true, serviceNumber: true, createdAt: true, vehicle: { select: { make: true, model: true, plateNumber: true } }, customer: { select: { fullName: true } } } }),
+    prisma.jobCard.findMany({ where: { status: { notIn: ['CHECKED_OUT', 'CANCELLED'] } }, select: { id: true, jobNumber: true, createdAt: true, vehicleId: true, vehicle: { select: { make: true, model: true, plateNumber: true } }, customer: { select: { fullName: true } } } }).then((r) => r.filter((x) => !outOnTest.has(x.vehicleId))),
+    prisma.vehicleService.findMany({ where: { status: { in: ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'] } }, select: { id: true, serviceNumber: true, createdAt: true, vehicleId: true, vehicle: { select: { make: true, model: true, plateNumber: true } }, customer: { select: { fullName: true } } } }).then((r) => r.filter((x) => !outOnTest.has(x.vehicleId))),
     listVehiclesClearedToLeave(),
   ]);
   const car = (v: { make: string | null; model: string | null }) => [v.make, v.model].filter(Boolean).join(' ') || 'Vehicle';
@@ -745,15 +759,20 @@ export async function extendExitPassReturn(passId: string, extraMinutes: number,
 
 /** A follow-up note on a visitor or exit pass (e.g. "called — on the way
  * back"), kept on its audit trail. */
-export async function addSecurityFollowUp(entityType: 'Visit' | 'ExitPass', id: string, note: string): Promise<void> {
+export async function addSecurityFollowUp(entityType: 'Visit' | 'ExitPass' | 'RoadTestPermit', id: string, note: string): Promise<void> {
   const r = await requireFrontDesk();
   if (!note.trim()) throw new SecurityError('Write the follow-up note.');
-  const exists = entityType === 'Visit' ? await prisma.visit.findUnique({ where: { id }, select: { id: true } }) : await prisma.exitPass.findUnique({ where: { id }, select: { id: true } });
+  const exists =
+    entityType === 'Visit'
+      ? await prisma.visit.findUnique({ where: { id }, select: { id: true } })
+      : entityType === 'ExitPass'
+        ? await prisma.exitPass.findUnique({ where: { id }, select: { id: true } })
+        : await prisma.roadTestPermit.findUnique({ where: { id }, select: { id: true } });
   if (!exists) throw new SecurityError('Record not found.');
   await writeAuditLog({ userId: r.userId, action: 'security.follow_up', entityType, entityId: id, metadata: { note: note.trim() } });
 }
 
-export type SecurityRecord = { type: 'VISIT' | 'EXIT_PASS' | 'VEHICLE_EXIT'; id: string; number: string; title: string; detail: string; status: string; at: Date; href: string };
+export type SecurityRecord = { type: 'VISIT' | 'EXIT_PASS' | 'VEHICLE_EXIT' | 'ROAD_TEST'; id: string; number: string; title: string; detail: string; status: string; at: Date; href: string };
 
 /** The Security register: every visit, exit pass and vehicle exit, newest
  * first, searchable by any number, name or plate. */
@@ -761,14 +780,190 @@ export async function searchSecurityRecords(q?: string, type?: string): Promise<
   await requireUser();
   const t = q?.trim();
   const want = (x: string) => !type || type === x;
-  const [visits, passes, exits] = await Promise.all([
+  const [visits, passes, exits, tests] = await Promise.all([
     want('VISIT') ? listVisits(t) : Promise.resolve([]),
     want('EXIT_PASS') ? listExitPasses('all', t) : Promise.resolve([]),
     want('VEHICLE_EXIT') ? listVehicleExits(t) : Promise.resolve([]),
+    want('ROAD_TEST') ? listRoadTests('all', t) : Promise.resolve([]),
   ]);
   return [
     ...visits.map((v: Awaited<ReturnType<typeof listVisits>>[number]) => ({ type: 'VISIT' as const, id: v.id, number: [v.visitNumber, v.passNumber].filter(Boolean).join(' · '), title: v.visitorName, detail: `${v.company ? `${v.company} · ` : ''}${v.purpose} · visiting ${v.host.fullName}`, status: v.status, at: v.checkedInAt ?? v.expectedAt ?? new Date(0), href: `/security/visitors/${v.id}` })),
     ...passes.map((p: Awaited<ReturnType<typeof listExitPasses>>[number]) => ({ type: 'EXIT_PASS' as const, id: p.id, number: p.passNumber, title: p.people.map((x: { name: string }) => x.name).join(', '), detail: p.reason, status: p.status, at: p.createdAt, href: `/security/exit-passes/${p.id}` })),
+    ...tests.map((r: Awaited<ReturnType<typeof listRoadTests>>[number]) => ({ type: 'ROAD_TEST' as const, id: r.id, number: r.permitNumber, title: `${[r.vehicle.make, r.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}${r.vehicle.plateNumber ? ` — ${r.vehicle.plateNumber}` : ''}`, detail: `${r.jobCard?.jobNumber ?? r.vehicleService?.serviceNumber ?? ''} · driver ${r.driver.fullName} · ${r.purpose}`, status: r.status, at: r.gateOutAt ?? r.createdAt, href: `/security/road-tests/${r.id}` })),
     ...exits.map((x: Awaited<ReturnType<typeof listVehicleExits>>[number]) => ({ type: 'VEHICLE_EXIT' as const, id: x.id, number: x.exitNumber, title: `${[x.vehicle.make, x.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}${x.vehicle.plateNumber ? ` — ${x.vehicle.plateNumber}` : ''}`, detail: `${x.jobCard?.jobNumber ?? x.vehicleService?.serviceNumber ?? ''} · ${x.jobCard?.customer.fullName ?? x.vehicleService?.customer.fullName ?? ''}`, status: 'LEFT', at: x.exitedAt, href: `/security/vehicles/exits/${x.id}` })),
   ].sort((a, b) => b.at.getTime() - a.at.getTime());
+}
+
+// ── Road Test Permits ─────────────────────────────────────────────────
+//
+// A workshop vehicle leaving for a road test: requested on its Job Card /
+// Vehicle Service, approved by the Manager, and timed + odometer-read out
+// and back in by Security. The vehicle's odometer is updated on return.
+
+const JC_ACTIVE = ['CHECKED_IN', 'IN_PROGRESS', 'AWAITING_PARTS', 'QUALITY_CHECK', 'AWAITING_CUSTOMER_APPROVAL', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'];
+const VS_ACTIVE = ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'];
+const RT_OPEN: ('PENDING_MANAGER' | 'APPROVED' | 'OUT')[] = ['PENDING_MANAGER', 'APPROVED', 'OUT'];
+
+export type RoadTestInput = { jobCardId?: string; vehicleServiceId?: string; driverId: string; purpose: string; route?: string; expectedDurationMinutes: number };
+
+export async function requestRoadTest(input: RoadTestInput): Promise<{ id: string; permitNumber: string }> {
+  const user = await requireUser();
+  if (!input.jobCardId === !input.vehicleServiceId) throw new SecurityError('A road test belongs to one Job Card or one Vehicle Service.');
+  if (!input.purpose.trim()) throw new SecurityError('Say what the road test is checking.');
+  if (!input.driverId) throw new SecurityError('Choose who will drive.');
+  if (!Number.isInteger(input.expectedDurationMinutes) || input.expectedDurationMinutes < 5 || input.expectedDurationMinutes > 480) throw new SecurityError('Expected duration must be between 5 minutes and 8 hours.');
+  const rec = input.jobCardId
+    ? await prisma.jobCard.findUnique({ where: { id: input.jobCardId }, select: { status: true, jobNumber: true, vehicleId: true } }).then((j: { status: string; jobNumber: string; vehicleId: string } | null) => j && { active: JC_ACTIVE.includes(j.status), number: j.jobNumber, vehicleId: j.vehicleId })
+    : await prisma.vehicleService.findUnique({ where: { id: input.vehicleServiceId! }, select: { status: true, serviceNumber: true, vehicleId: true } }).then((v: { status: string; serviceNumber: string; vehicleId: string } | null) => v && { active: VS_ACTIVE.includes(v.status), number: v.serviceNumber, vehicleId: v.vehicleId });
+  if (!rec) throw new SecurityError('Record not found.');
+  if (!rec.active) throw new SecurityError('This vehicle is not in the workshop — a road test can only be requested while it is being worked on.');
+  const open = await prisma.roadTestPermit.findFirst({ where: { vehicleId: rec.vehicleId, status: { in: RT_OPEN } }, select: { permitNumber: true } });
+  if (open) throw new SecurityError(`This vehicle already has an open road test (${open.permitNumber}).`);
+  const driver = await prisma.user.findUnique({ where: { id: input.driverId }, select: { isActive: true, fullName: true } });
+  if (!driver?.isActive) throw new SecurityError('The driver must be an active member of staff.');
+  const permitNumber = await nextNumber('RT');
+  const permit = await prisma.roadTestPermit.create({
+    data: {
+      permitNumber, branchId: await getWorkshopBranchId(), jobCardId: input.jobCardId ?? null, vehicleServiceId: input.vehicleServiceId ?? null, vehicleId: rec.vehicleId,
+      requestedById: user.id, driverId: input.driverId, purpose: input.purpose.trim(), route: input.route?.trim() || null, expectedDurationMinutes: input.expectedDurationMinutes,
+    },
+  });
+  const meta = { permitNumber, number: rec.number, driver: driver.fullName };
+  await writeAuditLog({ userId: user.id, action: 'road_test.requested', entityType: 'RoadTestPermit', entityId: permit.id, metadata: meta });
+  await writeAuditLog({ userId: user.id, action: 'road_test.requested', entityType: input.jobCardId ? 'JobCard' : 'VehicleService', entityId: (input.jobCardId ?? input.vehicleServiceId)!, metadata: meta });
+  await sendLogged('RoadTestPermit', permit.id, await managerApprovers(user.id), `Road test ${permitNumber} needs your approval`, 'A road test needs your approval', [`${permitNumber} — ${rec.number}`, `Driver: ${driver.fullName}`, `Checking: ${input.purpose.trim()}`, `Expected: ${durationText(input.expectedDurationMinutes)}`], `/security/road-tests/${permit.id}`, user.id);
+  return { id: permit.id, permitNumber };
+}
+
+async function roadTestRecordAudit(p: { jobCardId: string | null; vehicleServiceId: string | null }, userId: string, action: string, metadata: Record<string, unknown>) {
+  const entityType = p.jobCardId ? 'JobCard' : 'VehicleService';
+  const entityId = p.jobCardId ?? p.vehicleServiceId;
+  if (entityId) await writeAuditLog({ userId, action, entityType, entityId, metadata });
+}
+
+export async function decideRoadTest(id: string, approve: boolean, reason: string): Promise<void> {
+  const user = await requireUser();
+  const roles = await getSecurityRoles();
+  const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, requestedById: true, jobCardId: true, vehicleServiceId: true, requestedBy: { select: { id: true, fullName: true, email: true } } } });
+  if (!p) throw new SecurityError('Road test not found.');
+  if (p.status !== 'PENDING_MANAGER') throw new SecurityError('This road test is not waiting for a decision.');
+  if (p.requestedById === user.id && !roles.isMaster) throw new SecurityError('You cannot approve your own road test.');
+  if (!roles.isMaster && !(await managerApprovers(p.requestedById)).some((m) => m.id === user.id)) throw new SecurityError('Only the Manager can decide a road test.');
+  if (!approve && !reason.trim()) throw new SecurityError('Give a reason for declining.');
+  const now = new Date();
+  await prisma.roadTestPermit.update({ where: { id }, data: approve ? { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: now } : { status: 'DECLINED', declinedById: user.id, declinedAt: now, declineReason: reason.trim() } });
+  const action = approve ? 'road_test.approved' : 'road_test.declined';
+  const meta = { permitNumber: p.permitNumber, reason: reason.trim() || undefined };
+  await writeAuditLog({ userId: user.id, action, entityType: 'RoadTestPermit', entityId: id, metadata: meta });
+  await roadTestRecordAudit(p, user.id, action, meta);
+  await sendLogged('RoadTestPermit', id, approve ? [p.requestedBy, ...(await gateStaff())] : [p.requestedBy], `Road test ${p.permitNumber} ${approve ? 'approved' : 'declined'}`, approve ? 'Road test approved' : 'Road test declined', approve ? [p.permitNumber, 'Security will record the time out and odometer at the gate.'] : [p.permitNumber, `Reason: ${reason.trim()}`], `/security/road-tests/${id}`, user.id);
+}
+
+export async function cancelRoadTest(id: string, reason: string): Promise<void> {
+  const user = await requireUser();
+  const roles = await getSecurityRoles();
+  const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, requestedById: true, jobCardId: true, vehicleServiceId: true } });
+  if (!p) throw new SecurityError('Road test not found.');
+  if (p.requestedById !== user.id && !roles.isManager && !roles.isMaster) throw new SecurityError('Only the requester or the Manager can cancel.');
+  if (!['PENDING_MANAGER', 'APPROVED'].includes(p.status)) throw new SecurityError('A road test already out cannot be cancelled — record its return.');
+  if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
+  await prisma.roadTestPermit.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason.trim() } });
+  const meta = { permitNumber: p.permitNumber, reason: reason.trim() };
+  await writeAuditLog({ userId: user.id, action: 'road_test.cancelled', entityType: 'RoadTestPermit', entityId: id, metadata: meta });
+  await roadTestRecordAudit(p, user.id, 'road_test.cancelled', meta);
+}
+
+/** Out through the gate — approved permits only, with the odometer. */
+export async function roadTestGateOut(id: string, startOdometer: number): Promise<void> {
+  const r = await requireGate();
+  const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, jobCardId: true, vehicleServiceId: true, vehicle: { select: { mileage: true } } } });
+  if (!p) throw new SecurityError('Road test not found.');
+  if (p.status !== 'APPROVED') throw new SecurityError('Only an approved road test can go out — Security will not permit it without the Manager\'s approval.');
+  if (!Number.isInteger(startOdometer) || startOdometer < 0) throw new SecurityError('Enter the odometer reading (km) as a whole number.');
+  if (p.vehicle.mileage !== null && startOdometer < p.vehicle.mileage) throw new SecurityError(`That is below the vehicle's last recorded reading (${p.vehicle.mileage.toLocaleString('en-NG')} km) — check the odometer.`);
+  await prisma.roadTestPermit.update({ where: { id }, data: { status: 'OUT', gateOutAt: new Date(), gateOutById: r.userId, startOdometer } });
+  const meta = { permitNumber: p.permitNumber, odometer: startOdometer };
+  await writeAuditLog({ userId: r.userId, action: 'road_test.gate_out', entityType: 'RoadTestPermit', entityId: id, metadata: meta });
+  await roadTestRecordAudit(p, r.userId, 'road_test.gate_out', meta);
+}
+
+/** Back through the gate — end odometer (never below the start); the
+ * vehicle's odometer is updated so every page stays in sync. */
+export async function roadTestGateIn(id: string, endOdometer: number, notes: string): Promise<void> {
+  const r = await requireGate();
+  const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, startOdometer: true, gateOutAt: true, vehicleId: true, jobCardId: true, vehicleServiceId: true, vehicle: { select: { mileage: true } } } });
+  if (!p) throw new SecurityError('Road test not found.');
+  if (p.status !== 'OUT') throw new SecurityError('Only a vehicle out on a road test can be recorded back in.');
+  if (!Number.isInteger(endOdometer) || endOdometer < 0) throw new SecurityError('Enter the odometer reading (km) as a whole number.');
+  if (p.startOdometer !== null && endOdometer < p.startOdometer) throw new SecurityError(`The reading can't be lower than when it went out (${p.startOdometer.toLocaleString('en-NG')} km).`);
+  const now = new Date();
+  await prisma.roadTestPermit.update({ where: { id }, data: { status: 'RETURNED', gateInAt: now, gateInById: r.userId, endOdometer, returnNotes: notes.trim() || null } });
+  if (p.vehicle.mileage === null || endOdometer > p.vehicle.mileage) await prisma.customerVehicle.update({ where: { id: p.vehicleId }, data: { mileage: endOdometer } });
+  const meta = { permitNumber: p.permitNumber, odometer: endOdometer, distance: p.startOdometer !== null ? endOdometer - p.startOdometer : undefined, away: p.gateOutAt ? durationText((now.getTime() - new Date(p.gateOutAt).getTime()) / 60000) : undefined, notes: notes.trim() || undefined };
+  await writeAuditLog({ userId: r.userId, action: 'road_test.gate_in', entityType: 'RoadTestPermit', entityId: id, metadata: meta });
+  await roadTestRecordAudit(p, r.userId, 'road_test.gate_in', meta);
+}
+
+export async function extendRoadTest(id: string, extraMinutes: number, reason: string): Promise<void> {
+  const r = await requireGate();
+  if (!Number.isInteger(extraMinutes) || extraMinutes < 5 || extraMinutes > 240) throw new SecurityError('Choose how much more time — between 5 minutes and 4 hours.');
+  if (!reason.trim()) throw new SecurityError('Give the reason for the extra time.');
+  const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, expectedDurationMinutes: true } });
+  if (!p) throw new SecurityError('Road test not found.');
+  if (p.status !== 'OUT') throw new SecurityError('Only a vehicle out on a road test can be given more time.');
+  await prisma.roadTestPermit.update({ where: { id }, data: { expectedDurationMinutes: p.expectedDurationMinutes + extraMinutes } });
+  await writeAuditLog({ userId: r.userId, action: 'road_test.extended', entityType: 'RoadTestPermit', entityId: id, metadata: { permitNumber: p.permitNumber, extra: durationText(extraMinutes), reason: reason.trim() } });
+}
+
+const RT_ROW = {
+  id: true, permitNumber: true, status: true, purpose: true, route: true, expectedDurationMinutes: true, gateOutAt: true, gateInAt: true, startOdometer: true, endOdometer: true, createdAt: true, requestedById: true,
+  jobCard: { select: { id: true, jobNumber: true } }, vehicleService: { select: { id: true, serviceNumber: true } },
+  vehicle: { select: { id: true, make: true, model: true, plateNumber: true } }, driver: { select: { fullName: true } }, requestedBy: { select: { fullName: true } },
+} as const;
+
+export async function listRoadTests(scope: 'to_decide' | 'approved' | 'out' | 'all', q?: string) {
+  const user = await requireUser();
+  const roles = await getSecurityRoles();
+  const t = q?.trim();
+  const status = scope === 'to_decide' ? 'PENDING_MANAGER' : scope === 'approved' ? 'APPROVED' : scope === 'out' ? 'OUT' : undefined;
+  const rows = await prisma.roadTestPermit.findMany({
+    where: {
+      ...(status ? { status } : {}),
+      ...(scope === 'to_decide' ? { NOT: { requestedById: user.id } } : {}),
+      ...(t ? { OR: [{ permitNumber: { contains: t, mode: 'insensitive' } }, { purpose: { contains: t, mode: 'insensitive' } }, { vehicle: { plateNumber: { contains: t, mode: 'insensitive' } } }, { jobCard: { jobNumber: { contains: t, mode: 'insensitive' } } }, { vehicleService: { serviceNumber: { contains: t, mode: 'insensitive' } } }, { driver: { fullName: { contains: t, mode: 'insensitive' } } }] } : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 300,
+    select: RT_ROW,
+  });
+  return scope === 'to_decide' && !roles.isManager && !roles.isMaster ? [] : rows;
+}
+
+export async function listRoadTestsFor(opts: { jobCardId?: string; vehicleServiceId?: string }) {
+  await requireUser();
+  return prisma.roadTestPermit.findMany({ where: opts.jobCardId ? { jobCardId: opts.jobCardId } : { vehicleServiceId: opts.vehicleServiceId }, orderBy: { createdAt: 'desc' }, select: RT_ROW });
+}
+
+export async function getRoadTest(id: string) {
+  await requireUser();
+  return prisma.roadTestPermit.findUnique({
+    where: { id },
+    include: {
+      branch: true,
+      jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
+      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
+      vehicle: { select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, mileage: true } },
+      requestedBy: { select: { id: true, fullName: true } }, driver: { select: { fullName: true, phone: true } },
+      managerApprovedBy: { select: { fullName: true } }, declinedBy: { select: { fullName: true } }, gateOutBy: { select: { fullName: true } }, gateInBy: { select: { fullName: true } },
+    },
+  });
+}
+
+export async function canDecideRoadTest(id: string): Promise<boolean> {
+  const user = await requireUser();
+  const roles = await getSecurityRoles();
+  const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, requestedById: true } });
+  if (!p || p.status !== 'PENDING_MANAGER') return false;
+  if (p.requestedById === user.id && !roles.isMaster) return false;
+  return roles.isMaster || (await managerApprovers(p.requestedById)).some((m) => m.id === user.id);
 }
