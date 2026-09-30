@@ -1,3 +1,6 @@
+import { RoadTestsPanel } from '@/components/RoadTestsPanel';
+import { listRoadTestsFor } from '@/lib/actions/security';
+import { securityActionDetail } from '@/lib/security-labels';
 import { LoadingLink } from '@/components/LoadingLink';
 import { customerTotal, isCustomerLine } from '@/lib/estimate-billing';
 import { getJobCardBilling } from '@/lib/actions/estimate-billing';
@@ -64,6 +67,12 @@ const STATUS_COLOR: Record<string, string> = {
 // phases add more audit actions (assignment.*, estimate.*, etc.); this
 // map only needs updating for a nicer label, never to avoid breaking.
 const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'road_test.requested': 'Road test requested',
+  'road_test.approved': 'Road test approved by the Manager',
+  'road_test.declined': 'Road test declined',
+  'road_test.cancelled': 'Road test cancelled',
+  'road_test.gate_out': 'Out on road test',
+  'road_test.gate_in': 'Back from road test',
   'vehicle.gate_exit': 'Left through the gate',
   'job_card.line_bill_to_set': 'Who pays changed',
   'warranty.issued': 'Warranties issued',
@@ -153,6 +162,7 @@ const EXTERNAL_PROCUREMENT_STATUS_BADGE_CLASS: Record<string, string> = {
 function formatAuditDetail(entry: { action: string; metadata: unknown }): string | null {
   const meta = entry.metadata as Record<string, unknown> | null;
   if (!meta) return null;
+  if (entry.action.startsWith('road_test.')) return securityActionDetail(entry.action, meta);
   switch (entry.action) {
     case 'vehicle.gate_exit':
       return [typeof meta.exitNumber === 'string' ? meta.exitNumber : null, typeof (meta.collectedBy ?? meta.driver) === 'string' ? `collected by ${String(meta.collectedBy ?? meta.driver)}` : null].filter(Boolean).join(' · ') || null;
@@ -383,6 +393,7 @@ export default async function JobCardDetailPage({
   const approvedCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'APPROVED') ?? null;
   const refunds = await listRefunds({ jobCardId: id });
   const warranties = await listWarrantiesFor({ jobCardId: id });
+  const roadTests = await listRoadTestsFor({ jobCardId: id });
   const billing = await getJobCardBilling(id);
   // Estimate lines whose part carries a warranty — shown before fitting.
   const partWarrantyBadges = await getPartWarrantyBadges((estimate?.lineItems ?? []).map((li: { matchedPartId: string | null }) => li.matchedPartId ?? ''));
@@ -1140,6 +1151,8 @@ export default async function JobCardDetailPage({
           </div>
 
           {billing ? <JobCardBillingPanel jobCardId={jobCard.id} billing={billing} /> : null}
+
+          <RoadTestsPanel rows={roadTests} requestHref={['CHECKED_IN', 'IN_PROGRESS', 'AWAITING_PARTS', 'QUALITY_CHECK', 'AWAITING_CUSTOMER_APPROVAL', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'].includes(jobCard.status) ? `/security/road-tests/new?jobCardId=${jobCard.id}` : null} />
 
           <WarrantyList warranties={warranties} title="Warranties issued" />
 
