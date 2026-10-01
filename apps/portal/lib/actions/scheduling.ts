@@ -1,5 +1,7 @@
 'use server';
 
+import { cache } from 'react';
+
 import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog, getWorkshopBranchId } from './workshop';
 import { sendLoggedEmail, type Recipient } from '@/lib/logged-email';
@@ -26,7 +28,7 @@ export type SchedulingAccess = {
 /** Who may use Scheduling is the organisation's choice: "Calendar User"
  * keeps their own calendar; an official can let aides book for them;
  * "Scheduling Admin" manages rooms and aides and can book for anyone. */
-export async function getSchedulingAccess(): Promise<SchedulingAccess> {
+async function getSchedulingAccessUncached(): Promise<SchedulingAccess> {
   const user = await requireUser();
   const roles = await prisma.userRole.findMany({ where: { userId: user.id }, select: { role: { select: { slug: true, isSuperAdmin: true } } } });
   const slugs = roles.map((r: { role: { slug: string } }) => r.role.slug);
@@ -486,4 +488,11 @@ export async function removeVisitorGroup(visitId: string, reason: string): Promi
   await writeAuditLog({ userId: user.id, action: 'appointment.visitors_removed', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber: appt.appointmentNumber, visitNumber: v.visitNumber, visitors: [v.visitorName, ...v.memberNames].join(', '), reason: reason.trim() } });
   await emailGate('cancelled', visitId, appt, { names: [v.visitorName, ...v.memberNames], organisation: v.company }, host, user.id);
   await prisma.visit.delete({ where: { id: visitId } });
+}
+
+
+// Once per request: repeated calls during one page load reuse the answer.
+const getSchedulingAccessCached = cache(getSchedulingAccessUncached);
+export async function getSchedulingAccess(): Promise<SchedulingAccess> {
+  return getSchedulingAccessCached();
 }

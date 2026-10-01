@@ -1,5 +1,7 @@
 'use server';
 
+import { cache } from 'react';
+
 import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog } from './workshop';
 import { getDashboardNotifications, type DashboardNotification } from './dashboard';
@@ -14,7 +16,8 @@ class NotificationError extends Error {}
 
 type Me = { id: string; fullName: string; organisationId: string | null; branchId: string | null; departmentId: string | null; roleSlugs: string[]; isMaster: boolean };
 
-async function me(): Promise<Me> {
+const me = cache(meUncached);
+async function meUncached(): Promise<Me> {
   const user = await requireUser();
   const u = await prisma.user.findUnique({ where: { id: user.id }, select: { id: true, fullName: true, organisationId: true, branchId: true, departmentId: true, roles: { select: { role: { select: { slug: true, isSuperAdmin: true } } } } } });
   if (!u) throw new NotificationError('Not signed in.');

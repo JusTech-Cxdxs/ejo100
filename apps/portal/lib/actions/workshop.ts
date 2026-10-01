@@ -1,5 +1,7 @@
 'use server';
 
+import { cache } from 'react';
+
 /**
  * Workshop Server Actions — Customers, Vehicles, Job Cards.
  *
@@ -85,8 +87,11 @@ class WorkshopActionError extends Error {}
  * of the actions below need anything but the id, claiming the full `User`
  * type here would be an unproven, unnecessary assumption — not something
  * this change should guess at. */
+/** The signed-in session — looked up once per request, then reused. */
+const sessionForRequest = cache(async () => auth.api.getSession({ headers: await headers() }));
+
 export async function requireUser(): Promise<{ id: string }> {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await sessionForRequest();
   if (!session?.user?.id) {
     throw new WorkshopActionError('Not authenticated.');
   }
@@ -109,7 +114,7 @@ export async function currentUserId(): Promise<string> {
   return user.id;
 }
 
-export async function currentUserIsMasterAdmin(): Promise<boolean> {
+async function currentUserIsMasterAdminUncached(): Promise<boolean> {
   const user = await requireUser();
   const match = await prisma.userRole.findFirst({
     where: { userId: user.id, role: { isSuperAdmin: true } },
@@ -251,7 +256,7 @@ async function notifyJobCardCreatorOfDecision(params: {
  * project's Phase-One rule — found by its Workshop department rather than
  * a hardcoded ID/name, so this keeps working unchanged once more Workshop
  * branches are added later. */
-export async function getWorkshopBranchId(): Promise<string> {
+async function getWorkshopBranchIdUncached(): Promise<string> {
   const department = await prisma.department.findFirst({
     where: { slug: 'workshop' },
     select: { branchId: true },
@@ -2712,7 +2717,7 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
  * fallback as everywhere else this project checks eligibility — see
  * listEligibleSupervisorsForVehicleType's own comment for why that
  * exists (no admin UI yet to place anyone into a role). */
-export async function listEligibleManagersForBranch(branchId: string): Promise<EligibleSupervisorResult> {
+async function listEligibleManagersForBranchUncached(branchId: string): Promise<EligibleSupervisorResult> {
   await requireUser();
   const branchManagers = await prisma.user.findMany({
     where: {
@@ -4608,4 +4613,25 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
       branchName: orgContext.branchName,
     }),
   );
+}
+
+
+// Once per request: repeated calls during one page load reuse the answer.
+const currentUserIsMasterAdminCached = cache(currentUserIsMasterAdminUncached);
+export async function currentUserIsMasterAdmin(): Promise<boolean> {
+  return currentUserIsMasterAdminCached();
+}
+
+
+// Once per request: repeated calls during one page load reuse the answer.
+const listEligibleManagersForBranchCached = cache(listEligibleManagersForBranchUncached);
+export async function listEligibleManagersForBranch(branchId: string): Promise<EligibleSupervisorResult> {
+  return listEligibleManagersForBranchCached(branchId);
+}
+
+
+// Once per request: repeated calls during one page load reuse the answer.
+const getWorkshopBranchIdCached = cache(getWorkshopBranchIdUncached);
+export async function getWorkshopBranchId(): Promise<string> {
+  return getWorkshopBranchIdCached();
 }

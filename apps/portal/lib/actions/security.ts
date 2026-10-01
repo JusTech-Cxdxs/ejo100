@@ -1,5 +1,7 @@
 'use server';
 
+import { cache } from 'react';
+
 import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext, listEligibleManagersForBranch } from './workshop';
 import { listEligibleStoreManagersForBranch, listEligibleStoreOfficersForBranch } from './store';
@@ -25,7 +27,7 @@ export type SecurityRoles = { userId: string; isMaster: boolean; isCso: boolean;
 
 /** The viewer's place at the gate: security (CSO / officer) run the gate;
  * reception can also register and check visitors in; HR approves passes. */
-export async function getSecurityRoles(): Promise<SecurityRoles> {
+async function getSecurityRolesUncached(): Promise<SecurityRoles> {
   const user = await requireUser();
   const { slugs, isMaster } = await slugsOf(user.id);
   const isCso = slugs.includes('chief-security-officer');
@@ -1544,4 +1546,11 @@ export async function canDecideContractorPass(id: string): Promise<boolean> {
   if (!p || p.status !== 'PENDING_MANAGER') return false;
   if (p.requestedById === user.id && !roles.isMaster) return false;
   return roles.isMaster || (await managerApprovers(p.requestedById)).some((m) => m.id === user.id);
+}
+
+
+// Once per request: repeated calls during one page load reuse the answer.
+const getSecurityRolesCached = cache(getSecurityRolesUncached);
+export async function getSecurityRoles(): Promise<SecurityRoles> {
+  return getSecurityRolesCached();
 }
