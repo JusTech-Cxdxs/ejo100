@@ -2694,8 +2694,8 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
   // notification in this file.
   try {
     if (!estimate.jobCard.supervisor) return;
-    const submitter = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-    const orgContext = await getWorkshopOrgContext(estimate.jobCard.department?.name);
+    // Independent lookups for the email — run together.
+    const [submitter, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(estimate.jobCard.department?.name)]);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const total = customerTotal(estimate.lineItems);
     await sendEmail(
@@ -3575,8 +3575,8 @@ export async function requestJobCardCancellation(jobCardId: string, reason: stri
   });
 
   try {
-    const requester = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-    const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+    // Independent lookups for the email — run together.
+    const [requester, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(jobCard.department?.name)]);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const managers = await listEligibleManagersForBranch(jobCard.branchId);
     for (const manager of managers.supervisors) {
@@ -3673,8 +3673,8 @@ export async function approveCancellationRequest(requestId: string, decisionNote
   });
 
   try {
-    const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-    const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
+    // Independent lookups for the email — run together.
+    const [approver, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(request.jobCard.department?.name)]);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
 
     const recipientIds = new Set<string>();
@@ -3885,8 +3885,8 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
   });
 
   try {
-    const requester = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-    const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
+    // Independent lookups for the email — run together.
+    const [requester, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(jobCard.department?.name)]);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const managers = await listEligibleManagersForBranch(jobCard.branchId);
     for (const manager of managers.supervisors) {
@@ -3983,8 +3983,8 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
   });
 
   try {
-    const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-    const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
+    // Independent lookups for the email — run together.
+    const [approver, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(request.jobCard.department?.name)]);
     const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const vehicleDescription = [request.jobCard.vehicle.make, request.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';

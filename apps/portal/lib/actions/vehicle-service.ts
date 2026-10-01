@@ -423,8 +423,8 @@ async function notifySupervisorOfVehicleServiceTechnicianResponse(params: {
       },
     });
     if (!service?.supervisor) return;
-    const technician = await prisma.user.findUnique({ where: { id: params.technicianId }, select: { fullName: true } });
-    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    // Independent lookups for the email — run together.
+    const [technician, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: params.technicianId }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
 
     await sendEmail(
@@ -1550,8 +1550,8 @@ export async function requestVehicleServiceCancellation(serviceId: string, reaso
   await prisma.vehicleServiceCancellationRequest.create({ data: { vehicleServiceId: serviceId, reason: trimmedReason, requestedById: user.id } });
   await writeAuditLog({ userId: user.id, action: 'vehicle_service.cancellation_requested', entityType: 'VehicleService', entityId: serviceId, metadata: { reason: trimmedReason } });
   try {
-    const requester = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    // Independent lookups for the email — run together.
+    const [requester, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const managers = await listEligibleManagersForBranch(service.branchId);
     for (const manager of managers.supervisors) {
@@ -1648,8 +1648,8 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
     });
   }
   try {
-    const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    // Independent lookups for the email — run together.
+    const [approver, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const staff = await vehicleServiceStaffRecipients(service);
     for (const recipient of staff) {
@@ -1874,8 +1874,8 @@ export async function requestVehicleServiceClose(serviceId: string): Promise<voi
   });
 
   try {
-    const requester = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    // Independent lookups for the email — run together.
+    const [requester, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const managers = await listEligibleManagersForBranch(service.branchId);
     for (const manager of managers.supervisors) {
@@ -1963,8 +1963,8 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
   });
 
   try {
-    const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-    const orgContext = await getWorkshopOrgContext(service.department?.name);
+    // Independent lookups for the email — run together.
+    const [approver, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
     const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const vehicleDescription = [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';

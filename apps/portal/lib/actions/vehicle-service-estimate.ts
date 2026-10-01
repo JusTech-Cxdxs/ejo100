@@ -578,8 +578,8 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
   // notification in this project.
   try {
     if (!estimate.vehicleService.supervisor) return;
-    const submitter = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-    const orgContext = await getWorkshopOrgContext(estimate.vehicleService.department?.name);
+    // Independent lookups for the email — run together.
+    const [submitter, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(estimate.vehicleService.department?.name)]);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
     await sendEmail(
