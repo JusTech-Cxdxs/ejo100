@@ -54,8 +54,8 @@ export default async function VehicleServiceMatchingPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/inventory/service-estimate-matching" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Service Estimate Matching
+      <LoadingLink href={`/workshop/vehicle-service/${vehicleServiceId}`} className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
+        ← Back to the Vehicle Service
       </LoadingLink>
       <div className="mb-2 flex items-center gap-2">
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Match — {service.serviceNumber}</h1>
