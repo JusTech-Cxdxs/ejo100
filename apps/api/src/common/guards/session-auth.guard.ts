@@ -1,4 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import type { Request } from 'express';
 import { setAuditActor } from '@ejo/database';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -17,10 +19,17 @@ import { PrismaService } from '../../prisma/prisma.service';
  */
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // Secure by default (registered globally): only @Public() routes skip it.
+    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [context.getHandler(), context.getClass()])) return true;
     const request = context.switchToHttp().getRequest<Request>();
+    // Already checked earlier in this request (route-level guard as well).
+    if ((request as Request & { user?: unknown }).user) return true;
     const token = this.extractToken(request);
 
     if (!token) {
