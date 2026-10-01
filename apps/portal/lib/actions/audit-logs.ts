@@ -4,6 +4,7 @@ import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
 import { recordUrl, describeApiEntry, areaOf, AREA_LABEL } from '@/lib/notification-rules';
+import { resolveRecords } from '@/lib/record-resolver';
 
 /** The full audit trail is for the Master Admin and Administrators. */
 export async function canSeeAuditLogs(): Promise<boolean> {
@@ -13,7 +14,7 @@ export async function canSeeAuditLogs(): Promise<boolean> {
 }
 
 export type AuditKind = 'all' | 'business' | 'data' | 'api';
-export type AuditRow = { id: string; at: Date; who: string; kind: 'Business' | 'Data change' | 'API'; title: string; detail: string | null; area: string; record: string | null; url: string | null; changes: { field: string; before: string; after: string }[]; ip: string | null };
+export type AuditRow = { id: string; at: Date; who: string; kind: 'Business' | 'Data change' | 'API'; title: string; detail: string | null; area: string; records: { label: string; url: string }[]; changes: { field: string; before: string; after: string }[]; ip: string | null };
 
 const PAGE = 50;
 const show = (v: unknown): string => (v === null || v === undefined ? '—' : typeof v === 'object' ? JSON.stringify(v).slice(0, 200) : String(v).slice(0, 200));
@@ -33,6 +34,8 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
   const rows = await prisma.auditLog.findMany({
     where: {
       ...kindWhere,
+      // Personal screen state (read markers, mute) is not business history.
+      entityType: { notIn: ['db:NotificationRead', 'db:NotificationPreference'] },
       ...(f.userId ? { userId: f.userId } : {}),
       ...(createdAt.gte || createdAt.lt ? { createdAt } : {}),
       ...(q ? { OR: [{ action: { contains: q, mode: 'insensitive' as const } }, { entityType: { contains: q, mode: 'insensitive' as const } }, { entityId: { contains: q } }] } : {}),
@@ -46,7 +49,9 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
   const ids = [...new Set(page.map((r: { userId: string | null }) => r.userId).filter((v: string | null): v is string => Boolean(v)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  const out: AuditRow[] = page.map((r: (typeof page)[number]) => {
+  const resolved = await resolveRecords(page.filter((r: { entityId: string | null; entityType: string }) => r.entityId && !r.entityType.startsWith('api:')).map((r: { entityType: string; entityId: string | null }) => ({ type: r.entityType, id: r.entityId! })));
+  const rec = (type: string, id: string | null) => (id ? [resolved.get(`${type}:${id}`) ?? { label: 'Record', url: recordUrl(type.replace(/^db:/, ''), id) }] : []);
+  const mapped: AuditRow[] = page.map((r: (typeof page)[number]) => {
     const who = r.userId ? name.get(r.userId) ?? 'Former user' : 'System';
     const meta = (r.metadata && typeof r.metadata === 'object' ? r.metadata : {}) as Record<string, unknown>;
     if (r.entityType.startsWith('db:')) {
@@ -55,15 +60,28 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
       const before = (meta.before ?? {}) as Record<string, unknown>;
       const after = (meta.after ?? {}) as Record<string, unknown>;
       const fields = op === 'update' || op === 'upsert' ? Object.keys(after).filter((k) => k !== 'updatedAt') : [];
-      return { id: r.id, at: r.createdAt, who, kind: 'Data change', title: `${words(model)} ${VERB[op] ?? op}`, detail: fields.length ? `Changed: ${fields.map((k) => words(k).toLowerCase()).join(', ')}` : null, area: AREA_LABEL[areaOf(model)] ?? 'System', record: r.entityId, url: r.entityId ? recordUrl(model, r.entityId) : null, changes: fields.slice(0, 30).map((k) => ({ field: words(k), before: show(before[k]), after: show(after[k]) })), ip: r.ipAddress };
+      return { id: r.id, at: r.createdAt, who, kind: 'Data change', title: `${words(model)} ${VERB[op] ?? op}`, detail: fields.length ? `Changed: ${fields.map((k) => words(k).toLowerCase()).join(', ')}` : null, area: AREA_LABEL[areaOf(model)] ?? 'System', records: rec(r.entityType, r.entityId), changes: fields.slice(0, 30).map((k) => ({ field: words(k), before: show(before[k]), after: show(after[k]) })).filter((c) => !(c.before === '—' && c.after === '—')), ip: r.ipAddress };
     }
     if (r.entityType.startsWith('api:')) {
       const d = describeApiEntry(r.action.replace(/\.failed$/, ''), r.entityType);
       const failed = r.action.endsWith('.failed');
-      return { id: r.id, at: r.createdAt, who, kind: 'API', title: `${failed ? 'Failed: ' : ''}${d?.title ?? 'Request'}`, detail: typeof meta.status === 'number' ? `Status ${meta.status}${typeof meta.durationMs === 'number' ? ` · ${meta.durationMs} ms` : ''}${failed && typeof meta.error === 'string' ? ` · ${meta.error}` : ''}` : null, area: 'System', record: r.entityId, url: d?.url ?? null, changes: [], ip: r.ipAddress };
+      return { id: r.id, at: r.createdAt, who, kind: 'API', title: `${failed ? 'Failed: ' : ''}${d?.title ?? 'Request'}`, detail: typeof meta.status === 'number' ? `Status ${meta.status}${typeof meta.durationMs === 'number' ? ` · ${meta.durationMs} ms` : ''}${failed && typeof meta.error === 'string' ? ` · ${meta.error}` : ''}` : null, area: 'System', records: d ? [{ label: d.title.replace(/ (created|updated|deleted)$/, ''), url: d.url }] : [], changes: [], ip: r.ipAddress };
     }
-    return { id: r.id, at: r.createdAt, who, kind: 'Business', title: securityActionLabel(r.action), detail: securityActionDetail(r.action, meta), area: AREA_LABEL[areaOf(r.entityType)] ?? 'System', record: r.entityId, url: r.entityId ? recordUrl(r.entityType, r.entityId) : null, changes: [], ip: r.ipAddress };
+    return { id: r.id, at: r.createdAt, who, kind: 'Business', title: securityActionLabel(r.action), detail: securityActionDetail(r.action, meta), area: AREA_LABEL[areaOf(r.entityType)] ?? 'System', records: rec(r.entityType, r.entityId), changes: [], ip: r.ipAddress };
   });
+  // One action recorded on several records at the same moment (e.g. a gate
+  // exit on both the exit record and its Job Card) shows once, with all of
+  // its records.
+  const out: AuditRow[] = [];
+  for (const r of mapped) {
+    const prev = out[out.length - 1];
+    if (prev && r.kind === 'Business' && prev.kind === 'Business' && prev.title === r.title && prev.who === r.who && Math.abs(+prev.at - +r.at) < 2000) {
+      for (const x of r.records) if (!prev.records.some((y) => y.url === x.url)) prev.records.push(x);
+      if (r.detail && (!prev.detail || r.detail.length > prev.detail.length)) prev.detail = r.detail;
+      continue;
+    }
+    out.push(r);
+  }
   return { kind, rows: out, nextCursor: rows.length > PAGE ? page[page.length - 1]!.id : null };
 }
 

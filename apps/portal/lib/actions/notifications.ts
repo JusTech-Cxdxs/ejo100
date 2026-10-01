@@ -12,6 +12,7 @@ import {
   broadcastEnd, durationLabel, broadcastState, reaches, type BroadcastState,
 } from '@/lib/notification-rules';
 import { deliverDueBroadcastEmails } from '@/lib/broadcast-delivery';
+import { resolveRecords } from '@/lib/record-resolver';
 
 class NotificationError extends Error {}
 
@@ -61,6 +62,8 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
     prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r: { userId: string | null }) => r.userId).filter((v: string | null): v is string => Boolean(v)))] } }, select: { id: true, fullName: true } }),
   ]);
   const read = new Set(reads.map((r: { key: string }) => r.key));
+  // Exact pages (an estimate line → its Job Card, a payment → its service…).
+  const resolved = await resolveRecords(rows.filter((r: { entityId: string | null; entityType: string }) => r.entityId && !r.entityType.startsWith('api:')).map((r: { entityType: string; entityId: string | null }) => ({ type: r.entityType, id: r.entityId! })));
   const name = new Map(actors.map((a: { id: string; fullName: string }) => [a.id, a.fullName]));
   const items = rows.flatMap((r: (typeof rows)[number]) => {
     // API request records (users, roles, branches…) read as plain events.
@@ -77,7 +80,7 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
       title: `${securityActionLabel(r.action)}${number ? ` — ${number}` : ''}`,
       detail: securityActionDetail(r.action, meta),
       area: areaOf(r.entityType),
-      url: r.entityId ? recordUrl(r.entityType, r.entityId) : '/audit-logs',
+      url: r.entityId ? resolved.get(`${r.entityType}:${r.entityId}`)?.url ?? recordUrl(r.entityType, r.entityId) : '/audit-logs',
       actor: r.userId ? name.get(r.userId) ?? null : 'System',
       at: r.createdAt,
       read: read.has(`audit:${r.id}`),
@@ -142,6 +145,13 @@ export async function markNotificationsRead(keys: string[]): Promise<void> {
   const m = await me();
   const clean = [...new Set(keys.filter((k) => /^(audit|bc):[A-Za-z0-9_-]+$/.test(k)))].slice(0, 500);
   if (clean.length) await prisma.notificationRead.createMany({ data: clean.map((key) => ({ userId: m.id, key })), skipDuplicates: true });
+}
+
+/** Undo "read" — removes only THIS person's own read markers. */
+export async function markNotificationsUnread(keys: string[]): Promise<void> {
+  const m = await me();
+  const clean = [...new Set(keys.filter((k) => /^(audit|bc):[A-Za-z0-9_-]+$/.test(k)))].slice(0, 500);
+  if (clean.length) await prisma.notificationRead.deleteMany({ where: { userId: m.id, key: { in: clean } } });
 }
 
 export async function markAllRead(kind: 'activity' | 'broadcasts' | 'all'): Promise<void> {
