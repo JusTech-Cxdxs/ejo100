@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getVehiclesNeedingServiceReminder } from '@/lib/actions/vehicle-service-reminders';
+import { setAuditActor } from '@ejo/database';
+import { getVehiclesNeedingServiceReminder } from '@/lib/service-reminders-core';
 
 /**
  * Service reminders are SEMI-AUTOMATIC by design: the system works out
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest) {
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  setAuditActor(null, 'cron:service-reminders');
   const due = await getVehiclesNeedingServiceReminder();
   return NextResponse.json({ mode: 'semi-automatic', remindersDue: due.length, sent: 0 });
 }
