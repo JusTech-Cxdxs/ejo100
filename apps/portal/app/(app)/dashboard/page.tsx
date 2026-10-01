@@ -17,8 +17,10 @@ import { prisma } from '@ejo/database';
  */
 export default async function DashboardPage() {
   const userId = await currentUserId();
-  const isMasterAdmin = await currentUserIsMasterAdmin();
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { branchId: true, organisationId: true } });
+  const [isMasterAdmin, user] = await Promise.all([
+    currentUserIsMasterAdmin(),
+    prisma.user.findUnique({ where: { id: userId }, select: { branchId: true, organisationId: true } }),
+  ]);
 
   let isManager = isMasterAdmin;
   if (!isMasterAdmin && user?.branchId) {
