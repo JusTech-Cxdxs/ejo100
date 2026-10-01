@@ -1,10 +1,9 @@
 import { getWorkshopDashboardCounts, currentUserIsMasterAdmin, currentUserId, listEligibleManagersForBranch } from '@/lib/actions/workshop';
-import { getDashboardTrend, getDashboardNotifications, listActiveAnnouncements } from '@/lib/actions/dashboard';
-import { createAnnouncementFormAction, deactivateAnnouncementFormAction } from '@/lib/actions/dashboard-form-handlers';
+import { getDashboardTrend, getDashboardNotifications } from '@/lib/actions/dashboard';
+import { getMyBroadcasts, canBroadcast } from '@/lib/actions/notifications';
+import { BROADCAST_CATEGORY } from '@/lib/notification-rules';
 import { DashboardTrendChart } from '@/components/DashboardTrendChart';
 import { LoadingLink } from '@/components/LoadingLink';
-import { FormPendingOverlay } from '@/components/FormPendingOverlay';
-import { SubmitButton } from '@/components/SubmitButton';
 import { prisma } from '@ejo/database';
 
 /**
@@ -27,11 +26,12 @@ export default async function DashboardPage() {
     isManager = managers.supervisors.some((m) => m.id === userId);
   }
 
-  const [counts, trend, notifications, announcements] = await Promise.all([
+  const [counts, trend, notifications, myBroadcasts, broadcaster] = await Promise.all([
     getWorkshopDashboardCounts(),
     getDashboardTrend(),
     getDashboardNotifications(),
-    user?.organisationId ? listActiveAnnouncements(user.organisationId) : Promise.resolve([]),
+    getMyBroadcasts(),
+    canBroadcast(),
   ]);
 
   const stats = [
@@ -102,41 +102,25 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {isManager ? (
-        <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Post an Announcement</h2>
-          <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Shown to everyone in the scrolling bar at the top of every page.</p>
-          <form action={createAnnouncementFormAction} className="mt-3 flex flex-wrap items-end gap-2">
-            <FormPendingOverlay />
-            <div className="flex-1" style={{ minWidth: '240px' }}>
-              <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Message</label>
-              <input name="message" required placeholder="e.g. Warehouse closed for stock count this Friday" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Expires (optional)</label>
-              <input name="expiresAt" type="date" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
-            </div>
-            <SubmitButton label="Post" pendingLabel="Posting…" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
-          </form>
-
-          {announcements.length > 0 ? (
-            <div className="mt-4 space-y-2 border-t border-[var(--ejo-border)] pt-4">
-              {announcements.map((a: (typeof announcements)[number]) => (
-                <div key={a.id} className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm">
-                  <div>
-                    <p className="text-[var(--ejo-text)]">{a.message}</p>
-                    <p className="text-[10px] text-[var(--ejo-text-muted)]">— {a.createdBy.fullName}</p>
-                  </div>
-                  <form action={deactivateAnnouncementFormAction}>
-                    <input type="hidden" name="announcementId" value={a.id} />
-                    <button type="submit" className="text-xs text-[var(--ejo-error)] hover:underline">Remove</button>
-                  </form>
-                </div>
-              ))}
-            </div>
-          ) : null}
+      <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Broadcasts</h2>
+          <span className="flex flex-wrap gap-3 text-xs">
+            <LoadingLink href="/notifications?tab=broadcasts" className="text-[var(--ejo-primary)] hover:underline">All for me →</LoadingLink>
+            {broadcaster ? <LoadingLink href="/notifications/broadcasts/new" className="font-medium text-[var(--ejo-primary)] hover:underline">+ New broadcast</LoadingLink> : null}
+          </span>
         </div>
-      ) : null}
+        {myBroadcasts.length === 0 ? <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No broadcasts running right now.</p> : (
+          <div className="mt-3 space-y-2">
+            {myBroadcasts.slice(0, 4).map((b) => (
+              <LoadingLink key={b.key} href={`/notifications?tab=broadcasts#${b.id}`} className={`block rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] border-l-4 ${BROADCAST_CATEGORY[b.category]!.bar} bg-[var(--ejo-bg)] px-3 py-2 hover:border-[var(--ejo-primary)]`}>
+                <span className="text-sm font-medium text-[var(--ejo-text)]">{BROADCAST_CATEGORY[b.category]!.icon} {b.title}</span>{!b.read ? <span className="ml-2 text-[10px] font-semibold text-[var(--ejo-primary)]">New</span> : null}
+                <span className="block truncate text-xs text-[var(--ejo-text-muted)]">{b.message}</span>
+              </LoadingLink>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
         <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Modules</h2>
