@@ -4,6 +4,28 @@ import path from 'path';
 const nextConfig: NextConfig = {
   transpilePackages: ['@ejo/ui', '@ejo/types', '@ejo/utils'],
   reactStrictMode: true,
+  // Don't advertise the framework.
+  poweredByHeader: false,
+  // Security headers on every response.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' },
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+          { key: 'X-DNS-Prefetch-Control', value: 'on' },
+          // Blocks plugins, foreign form targets, base-URL hijacking and being
+          // framed by other sites — without breaking Next.js's own scripts.
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests" },
+        ],
+      },
+    ];
+  },
   // This is an npm workspaces monorepo (apps/*, packages/*) — a
   // transitive dependency like pdfkit (pulled in by
   // @react-pdf/renderer) gets hoisted to the real repo ROOT's
