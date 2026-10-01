@@ -7,7 +7,7 @@ type Rows = Awaited<ReturnType<typeof listRoadTestsFor>>;
 
 /** Road tests on this Job Card / Vehicle Service, and the button to request
  * one while the vehicle is in the workshop. */
-export function RoadTestsPanel({ rows, requestHref }: { rows: Rows; requestHref: string | null }) {
+export function RoadTestsPanel({ rows, requestHref, ready = false }: { rows: Rows; requestHref: string | null; ready?: boolean }) {
   const open = rows.some((r) => ['PENDING_MANAGER', 'APPROVED', 'OUT'].includes(r.status));
   return (
     <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
@@ -17,6 +17,12 @@ export function RoadTestsPanel({ rows, requestHref }: { rows: Rows; requestHref:
           <LoadingLink href={requestHref} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">Request road test</LoadingLink>
         ) : null}
       </div>
+      {ready && requestHref && !open && !rows.some((r) => r.status === 'RETURNED') ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 p-3">
+          <span className="text-sm text-[var(--ejo-text)]">Ready for a road test — request it now so the Manager can approve it before the vehicle goes out.</span>
+          <LoadingLink href={requestHref} className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">Request road test</LoadingLink>
+        </div>
+      ) : null}
       {rows.length === 0 ? (
         <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">{requestHref ? 'None yet — request one when the vehicle is ready to be tested on the road.' : 'None.'}</p>
       ) : (
