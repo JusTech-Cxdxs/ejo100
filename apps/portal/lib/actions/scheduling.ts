@@ -93,7 +93,7 @@ function clean(i: AppointmentInput) {
   return {
     title: i.title.trim(), agenda: i.agenda?.trim() || null, startsAt: s, endsAt: e, roomId: i.roomId || null, location: i.roomId ? null : i.location!.trim(),
     participantIds: [...new Set(i.participantIds.filter((x) => x && x !== i.ownerId))],
-    visitors: names.length ? { names, organisation: i.visitors?.organisation?.trim() || null, phone: i.visitors?.phone?.trim() || null, purpose: i.visitors!.purpose.trim() } : null,
+    visitors: names.length ? cleanGroup(i.visitors!) : null,
   };
 }
 
@@ -127,35 +127,32 @@ async function emailGate(kind: 'new' | 'changed' | 'cancelled', visitId: string,
   });
 }
 
-/** Create / update / remove the Security booking for the visitors. */
-async function syncVisitBooking(apptId: string, ownerId: string, bookerId: string, data: ReturnType<typeof clean>, existingVisitId: string | null) {
-  const existing = existingVisitId ? await prisma.visit.findUnique({ where: { id: existingVisitId }, select: { id: true, status: true } }) : null;
-  const hostName = (await prisma.user.findUnique({ where: { id: ownerId }, select: { fullName: true } }))?.fullName ?? '';
-  if (!data.visitors) {
-    if (existing?.status === 'EXPECTED') {
-      const v = await prisma.visit.findUnique({ where: { id: existing.id }, select: { visitNumber: true, visitorName: true, memberNames: true, company: true } });
-      await writeAuditLog({ userId: bookerId, action: 'visit.cancelled', entityType: 'Visit', entityId: existing.id, metadata: { visitNumber: v?.visitNumber, reason: 'Visitors removed from the appointment' } });
-      await emailGate('cancelled', existing.id, data, v ? { names: [v.visitorName, ...v.memberNames], organisation: v.company } : null, hostName, bookerId);
-      await prisma.appointment.update({ where: { id: apptId }, data: { visitId: null } });
-      await prisma.visit.delete({ where: { id: existing.id } });
-    }
-    return;
-  }
-  const [lead, ...members] = data.visitors.names;
-  const fields = { visitorName: lead!, partySize: data.visitors.names.length, memberNames: members, company: data.visitors.organisation, phone: data.visitors.phone, purpose: data.visitors.purpose, hostUserId: ownerId, expectedAt: data.startsAt, expectedDurationMinutes: Math.max(5, mins(data.startsAt, data.endsAt)) };
-  if (existing) {
-    if (existing.status === 'EXPECTED') {
-      await prisma.visit.update({ where: { id: existing.id }, data: fields });
-      await writeAuditLog({ userId: bookerId, action: 'visit.booking_changed', entityType: 'Visit', entityId: existing.id, metadata: { visitor: lead, people: data.visitors.names.length, expectedAt: data.startsAt } });
-      await emailGate('changed', existing.id, data, data.visitors, hostName, bookerId);
-    }
-    return;
-  }
+export type VisitorGroupInput = { names: string[]; organisation?: string; phone?: string; purpose: string };
+
+function cleanGroup(g: VisitorGroupInput) {
+  const names = g.names.map((n) => n.trim());
+  if (names.length === 0 || names.some((n) => !n)) throw new SchedulingError('Enter a name for every visitor.');
+  if (names.length > 50) throw new SchedulingError('A group can have at most 50 people.');
+  if (!g.purpose.trim()) throw new SchedulingError('Enter the purpose of the visit.');
+  return { names, organisation: g.organisation?.trim() || null, phone: g.phone?.trim() || null, purpose: g.purpose.trim() };
+}
+
+/** One visitor group → one Security booking (lead + others), at the
+ * meeting's time and length, hosted by the meeting's host. */
+async function createGroupBooking(appt: { id: string; title: string; startsAt: Date; endsAt: Date; ownerId: string }, g: ReturnType<typeof cleanGroup>, bookerId: string) {
+  const [lead, ...members] = g.names;
   const visitNumber = await nextNumber('VIS');
-  const v = await prisma.visit.create({ data: { ...fields, visitNumber, status: 'EXPECTED', vehicleType: 'ON_FOOT', branchId: await getWorkshopBranchId(), registeredById: bookerId } });
-  await prisma.appointment.update({ where: { id: apptId }, data: { visitId: v.id } });
-  await writeAuditLog({ userId: bookerId, action: 'visit.pre_registered', entityType: 'Visit', entityId: v.id, metadata: { visitNumber, visitor: lead, people: data.visitors.names.length, expectedAt: data.startsAt } });
-  await emailGate('new', v.id, data, data.visitors, hostName, bookerId);
+  const v = await prisma.visit.create({
+    data: { visitNumber, status: 'EXPECTED', vehicleType: 'ON_FOOT', branchId: await getWorkshopBranchId(), registeredById: bookerId, appointmentId: appt.id, visitorName: lead!, partySize: g.names.length, memberNames: members, company: g.organisation, phone: g.phone, purpose: g.purpose, hostUserId: appt.ownerId, expectedAt: appt.startsAt, expectedDurationMinutes: Math.max(5, mins(appt.startsAt, appt.endsAt)) },
+  });
+  const host = (await prisma.user.findUnique({ where: { id: appt.ownerId }, select: { fullName: true } }))?.fullName ?? '';
+  await writeAuditLog({ userId: bookerId, action: 'visit.pre_registered', entityType: 'Visit', entityId: v.id, metadata: { visitNumber, visitor: lead, people: g.names.length, expectedAt: appt.startsAt } });
+  await emailGate('new', v.id, appt, g, host, bookerId);
+  return v;
+}
+
+async function groupsOf(apptId: string) {
+  return prisma.visit.findMany({ where: { appointmentId: apptId }, orderBy: { createdAt: 'asc' }, select: { id: true, visitNumber: true, status: true, visitorName: true, memberNames: true, partySize: true, company: true, phone: true, purpose: true } });
 }
 
 async function recipientsFor(apptId: string, excludeId: string): Promise<Recipient[]> {
@@ -184,7 +181,7 @@ export async function createAppointment(input: AppointmentInput): Promise<{ id: 
     data: { appointmentNumber, branchId: await getWorkshopBranchId(), title: d.title, agenda: d.agenda, ownerId: input.ownerId, createdById: a.userId, startsAt: d.startsAt, endsAt: d.endsAt, roomId: d.roomId, location: d.location, participants: { create: d.participantIds.map((userId) => ({ userId })) } },
     select: { id: true, owner: { select: { fullName: true } }, room: { select: { name: true } } },
   });
-  await syncVisitBooking(appt.id, input.ownerId, a.userId, d, null);
+  if (d.visitors) await createGroupBooking({ id: appt.id, title: d.title, startsAt: d.startsAt, endsAt: d.endsAt, ownerId: input.ownerId }, d.visitors, a.userId);
   await writeAuditLog({ userId: a.userId, action: 'appointment.created', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber, title: d.title, startsAt: d.startsAt, onBehalfOf: input.ownerId !== a.userId ? appt.owner.fullName : undefined } });
   await sendLoggedEmail({ entityType: 'Appointment', entityId: appt.id, recipients: await recipientsFor(appt.id, a.userId), subject: `New appointment: ${d.title} — ${fmt(d.startsAt)}`, heading: 'You have a new appointment', lines: describe(d, appt.room?.name ?? null, appt.owner.fullName, d.visitors?.names ?? null), path: `/schedule/${appt.id}`, actorId: a.userId });
   return { id: appt.id, appointmentNumber };
@@ -210,10 +207,19 @@ export async function updateAppointment(id: string, input: AppointmentInput): Pr
     prisma.appointmentParticipant.deleteMany({ where: { appointmentId: id } }),
     prisma.appointment.update({ where: { id }, data: { title: d.title, agenda: d.agenda, ownerId: input.ownerId, startsAt: d.startsAt, endsAt: d.endsAt, roomId: d.roomId, location: d.location, participants: { create: d.participantIds.map((userId) => ({ userId })) }, ...(+new Date(appt.startsAt) !== +d.startsAt ? { reminderSentAt: null } : {}) } }),
   ]);
-  await syncVisitBooking(id, input.ownerId, user.id, d, appt.visitId);
+  // Every group still expected moves with the meeting (time, length, host).
+  const moved = +new Date(appt.startsAt) !== +d.startsAt || +new Date(appt.endsAt) !== +d.endsAt || appt.ownerId !== input.ownerId;
+  if (moved) {
+    const host = (await prisma.user.findUnique({ where: { id: input.ownerId }, select: { fullName: true } }))?.fullName ?? '';
+    for (const g of (await groupsOf(id)).filter((x) => x.status === 'EXPECTED')) {
+      await prisma.visit.update({ where: { id: g.id }, data: { expectedAt: d.startsAt, expectedDurationMinutes: Math.max(5, mins(d.startsAt, d.endsAt)), hostUserId: input.ownerId } });
+      await writeAuditLog({ userId: user.id, action: 'visit.booking_changed', entityType: 'Visit', entityId: g.id, metadata: { visitNumber: g.visitNumber, visitor: g.visitorName, people: g.partySize, expectedAt: d.startsAt, reason: `Appointment ${appt.appointmentNumber} rescheduled` } });
+      await emailGate('changed', g.id, d, { names: [g.visitorName, ...g.memberNames], organisation: g.company }, host, user.id);
+    }
+  }
   const fresh = await prisma.appointment.findUnique({ where: { id }, select: { owner: { select: { fullName: true } }, room: { select: { name: true } } } });
   await writeAuditLog({ userId: user.id, action: 'appointment.changed', entityType: 'Appointment', entityId: id, metadata: { appointmentNumber: appt.appointmentNumber, title: d.title, startsAt: d.startsAt } });
-  await sendLoggedEmail({ entityType: 'Appointment', entityId: id, recipients: await recipientsFor(id, user.id), subject: `Appointment changed: ${d.title} — ${fmt(d.startsAt)}`, heading: 'An appointment has changed', lines: describe(d, fresh?.room?.name ?? null, fresh?.owner.fullName ?? '', d.visitors?.names ?? null), path: `/schedule/${id}`, actorId: user.id });
+  await sendLoggedEmail({ entityType: 'Appointment', entityId: id, recipients: await recipientsFor(id, user.id), subject: `Appointment changed: ${d.title} — ${fmt(d.startsAt)}`, heading: 'An appointment has changed', lines: describe(d, fresh?.room?.name ?? null, fresh?.owner.fullName ?? '', null), path: `/schedule/${id}`, actorId: user.id });
 }
 
 export async function cancelAppointment(id: string, reason: string): Promise<void> {
@@ -222,15 +228,12 @@ export async function cancelAppointment(id: string, reason: string): Promise<voi
   if (!reason.trim()) throw new SchedulingError('Give a reason for cancelling.');
   const recipients = await recipientsFor(id, user.id);
   await prisma.appointment.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason.trim(), cancelledAt: new Date() } });
-  // The visitors are no longer expected — remove their Security booking.
-  if (appt.visitId) {
-    const v = await prisma.visit.findUnique({ where: { id: appt.visitId }, select: { status: true, visitNumber: true, visitorName: true, memberNames: true, company: true, expectedAt: true, host: { select: { fullName: true } } } });
-    if (v?.status === 'EXPECTED') {
-      await writeAuditLog({ userId: user.id, action: 'visit.cancelled', entityType: 'Visit', entityId: appt.visitId, metadata: { visitNumber: v.visitNumber, reason: `Appointment ${appt.appointmentNumber} cancelled` } });
-      await emailGate('cancelled', appt.visitId, { title: appt.title, startsAt: appt.startsAt, endsAt: appt.startsAt }, { names: [v.visitorName, ...v.memberNames], organisation: v.company }, v.host.fullName, user.id);
-      await prisma.appointment.update({ where: { id }, data: { visitId: null } });
-      await prisma.visit.delete({ where: { id: appt.visitId } });
-    }
+  // None of the visitor groups are expected any more — remove their bookings.
+  const host = (await prisma.user.findUnique({ where: { id: appt.ownerId }, select: { fullName: true } }))?.fullName ?? '';
+  for (const g of (await groupsOf(id)).filter((x) => x.status === 'EXPECTED')) {
+    await writeAuditLog({ userId: user.id, action: 'visit.cancelled', entityType: 'Visit', entityId: g.id, metadata: { visitNumber: g.visitNumber, visitor: g.visitorName, reason: `Appointment ${appt.appointmentNumber} cancelled` } });
+    await emailGate('cancelled', g.id, { title: appt.title, startsAt: appt.startsAt, endsAt: appt.endsAt }, { names: [g.visitorName, ...g.memberNames], organisation: g.company }, host, user.id);
+    await prisma.visit.delete({ where: { id: g.id } });
   }
   await writeAuditLog({ userId: user.id, action: 'appointment.cancelled', entityType: 'Appointment', entityId: id, metadata: { appointmentNumber: appt.appointmentNumber, reason: reason.trim() } });
   await sendLoggedEmail({ entityType: 'Appointment', entityId: id, recipients, subject: `Cancelled: ${appt.title} — ${fmt(appt.startsAt)}`, heading: 'An appointment was cancelled', lines: [appt.title, fmt(appt.startsAt), `Reason: ${reason.trim()}`], path: `/schedule/${id}`, actorId: user.id });
@@ -249,7 +252,7 @@ export async function setAppointmentOutcome(id: string, outcome: 'COMPLETED' | '
 const APPT_ROW = {
   id: true, appointmentNumber: true, status: true, title: true, startsAt: true, endsAt: true, location: true, ownerId: true,
   owner: { select: { fullName: true } }, createdBy: { select: { fullName: true } }, room: { select: { name: true } },
-  visit: { select: { id: true, visitNumber: true, status: true, visitorName: true, partySize: true, company: true } },
+  visits: { select: { id: true, visitNumber: true, status: true, visitorName: true, partySize: true, company: true } },
   participants: { select: { user: { select: { id: true, fullName: true } } } },
 } as const;
 
@@ -268,7 +271,7 @@ export async function listCalendar(from: Date, to: Date, ownerId?: string) {
 
 export async function getAppointment(id: string) {
   const access = await getSchedulingAccess();
-  const a = await prisma.appointment.findUnique({ where: { id }, include: { owner: { select: { id: true, fullName: true } }, createdBy: { select: { fullName: true } }, room: true, visit: { select: { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, memberNames: true, company: true, phone: true, purpose: true, checkedInAt: true, checkedOutAt: true } }, participants: { select: { user: { select: { id: true, fullName: true } } } } } });
+  const a = await prisma.appointment.findUnique({ where: { id }, include: { owner: { select: { id: true, fullName: true } }, createdBy: { select: { fullName: true } }, room: true, visits: { orderBy: { createdAt: 'asc' }, select: { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, memberNames: true, company: true, phone: true, purpose: true, checkedInAt: true, checkedOutAt: true } }, participants: { select: { user: { select: { id: true, fullName: true } } } } } });
   if (!a) return null;
   const visible = access.isAdmin || access.owners.some((o) => o.id === a.ownerId) || a.createdById === access.userId || a.participants.some((p: { user: { id: string } }) => p.user.id === access.userId);
   return visible ? a : null;
@@ -387,16 +390,16 @@ export async function getSchedulingOverview(gridDate?: string) {
   const [appts, rooms] = await Promise.all([
     prisma.appointment.findMany({
       where: { startsAt: { gte: since, lte: until }, OR: [{ ownerId: { in: ids } }, { participants: { some: { userId: access.userId } } }, ...(access.isAdmin ? [{}] : [])] },
-      select: { id: true, appointmentNumber: true, title: true, status: true, startsAt: true, endsAt: true, roomId: true, location: true, ownerId: true, room: { select: { name: true } }, owner: { select: { fullName: true } }, visit: { select: { partySize: true } } },
+      select: { id: true, appointmentNumber: true, title: true, status: true, startsAt: true, endsAt: true, roomId: true, location: true, ownerId: true, room: { select: { name: true } }, owner: { select: { fullName: true } }, visits: { select: { partySize: true } } },
     }),
     prisma.meetingRoom.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, capacity: true, isActive: true } }),
   ]);
   // The room grid must see every booking of every room, not only my calendars.
   const roomBookings = await prisma.appointment.findMany({
     where: { roomId: { not: null }, status: { not: 'CANCELLED' }, startsAt: { gte: new Date(Date.now() - 2 * 86400000), lte: until } },
-    select: { id: true, appointmentNumber: true, title: true, status: true, startsAt: true, endsAt: true, roomId: true, location: true, ownerId: true, room: { select: { name: true } }, owner: { select: { fullName: true } }, visit: { select: { partySize: true } } },
+    select: { id: true, appointmentNumber: true, title: true, status: true, startsAt: true, endsAt: true, roomId: true, location: true, ownerId: true, room: { select: { name: true } }, owner: { select: { fullName: true } }, visits: { select: { partySize: true } } },
   });
-  const map = (a: (typeof appts)[number]) => ({ id: a.id, number: a.appointmentNumber, title: a.title, status: a.status, startsAt: a.startsAt, endsAt: a.endsAt, roomId: a.roomId, roomName: a.room?.name ?? null, location: a.location, ownerId: a.ownerId, ownerName: a.owner.fullName, visitors: a.visit?.partySize ?? 0 });
+  const map = (a: (typeof appts)[number]) => ({ id: a.id, number: a.appointmentNumber, title: a.title, status: a.status, startsAt: a.startsAt, endsAt: a.endsAt, roomId: a.roomId, roomName: a.room?.name ?? null, location: a.location, ownerId: a.ownerId, ownerName: a.owner.fullName, visitors: a.visits.reduce((n: number, v: { partySize: number }) => n + v.partySize, 0) });
   const mine = appts.map(map);
   const seen = new Set(mine.map((a) => a.id));
   const all = [...mine, ...roomBookings.map(map).filter((a) => !seen.has(a.id))];
@@ -419,7 +422,7 @@ export async function listAppointments(q?: string, show?: string) {
   const rows = await prisma.appointment.findMany({
     where: {
       OR: [{ ownerId: { in: access.owners.map((o) => o.id) } }, { participants: { some: { userId: access.userId } } }, ...(access.isAdmin ? [{}] : [])],
-      ...(t ? { AND: [{ OR: [{ appointmentNumber: { contains: t, mode: 'insensitive' as const } }, { title: { contains: t, mode: 'insensitive' as const } }, { location: { contains: t, mode: 'insensitive' as const } }, { owner: { fullName: { contains: t, mode: 'insensitive' as const } } }, { room: { name: { contains: t, mode: 'insensitive' as const } } }, { visit: { visitorName: { contains: t, mode: 'insensitive' as const } } }, { visit: { company: { contains: t, mode: 'insensitive' as const } } }] }] } : {}),
+      ...(t ? { AND: [{ OR: [{ appointmentNumber: { contains: t, mode: 'insensitive' as const } }, { title: { contains: t, mode: 'insensitive' as const } }, { location: { contains: t, mode: 'insensitive' as const } }, { owner: { fullName: { contains: t, mode: 'insensitive' as const } } }, { room: { name: { contains: t, mode: 'insensitive' as const } } }, { visits: { some: { visitorName: { contains: t, mode: 'insensitive' as const } } } }, { visits: { some: { company: { contains: t, mode: 'insensitive' as const } } } }] }] } : {}),
     },
     orderBy: { startsAt: 'desc' },
     take: 500,
@@ -439,4 +442,48 @@ export async function listAppointments(q?: string, show?: string) {
   const list = rows.filter(is[tab]);
   if (tab === 'upcoming' || tab === 'today') list.sort((x, y) => +x.startsAt - +y.startsAt);
   return { tab, counts, rows: list };
+}
+
+// ── Visitor groups on an appointment ──────────────────────────────────
+
+async function loadForGroups(apptId: string) {
+  const { user, appt } = await loadForChange(apptId);
+  if (appt.status !== 'SCHEDULED') throw new SchedulingError('Visitors can only be changed on a scheduled appointment.');
+  if (new Date(appt.endsAt).getTime() <= Date.now()) throw new SchedulingError('This appointment has already ended.');
+  return { user, appt };
+}
+
+/** Add another visitor group (e.g. "2 people from Soueast China"). */
+export async function addVisitorGroup(apptId: string, input: VisitorGroupInput): Promise<void> {
+  const { user, appt } = await loadForGroups(apptId);
+  const g = cleanGroup(input);
+  const v = await createGroupBooking({ id: appt.id, title: appt.title, startsAt: appt.startsAt, endsAt: appt.endsAt, ownerId: appt.ownerId }, g, user.id);
+  await writeAuditLog({ userId: user.id, action: 'appointment.visitors_added', entityType: 'Appointment', entityId: apptId, metadata: { appointmentNumber: appt.appointmentNumber, visitNumber: v.visitNumber, visitors: g.names.join(', '), organisation: g.organisation ?? undefined } });
+}
+
+export async function updateVisitorGroup(visitId: string, input: VisitorGroupInput): Promise<void> {
+  const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { appointmentId: true, status: true, visitNumber: true } });
+  if (!v?.appointmentId) throw new SchedulingError('That visitor group is not on an appointment.');
+  if (v.status !== 'EXPECTED') throw new SchedulingError('They have already arrived — the booking can no longer be changed.');
+  const { user, appt } = await loadForGroups(v.appointmentId);
+  const g = cleanGroup(input);
+  const [lead, ...members] = g.names;
+  await prisma.visit.update({ where: { id: visitId }, data: { visitorName: lead!, partySize: g.names.length, memberNames: members, company: g.organisation, phone: g.phone, purpose: g.purpose } });
+  const host = (await prisma.user.findUnique({ where: { id: appt.ownerId }, select: { fullName: true } }))?.fullName ?? '';
+  await writeAuditLog({ userId: user.id, action: 'visit.booking_changed', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, visitor: lead, people: g.names.length } });
+  await writeAuditLog({ userId: user.id, action: 'appointment.visitors_changed', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber: appt.appointmentNumber, visitNumber: v.visitNumber, visitors: g.names.join(', ') } });
+  await emailGate('changed', visitId, appt, g, host, user.id);
+}
+
+export async function removeVisitorGroup(visitId: string, reason: string): Promise<void> {
+  const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { appointmentId: true, status: true, visitNumber: true, visitorName: true, memberNames: true, company: true } });
+  if (!v?.appointmentId) throw new SchedulingError('That visitor group is not on an appointment.');
+  if (v.status !== 'EXPECTED') throw new SchedulingError('They have already arrived — check them out at the gate instead.');
+  if (!reason.trim()) throw new SchedulingError('Give a reason for removing them.');
+  const { user, appt } = await loadForGroups(v.appointmentId);
+  const host = (await prisma.user.findUnique({ where: { id: appt.ownerId }, select: { fullName: true } }))?.fullName ?? '';
+  await writeAuditLog({ userId: user.id, action: 'visit.cancelled', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, visitor: v.visitorName, reason: reason.trim() } });
+  await writeAuditLog({ userId: user.id, action: 'appointment.visitors_removed', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber: appt.appointmentNumber, visitNumber: v.visitNumber, visitors: [v.visitorName, ...v.memberNames].join(', '), reason: reason.trim() } });
+  await emailGate('cancelled', visitId, appt, { names: [v.visitorName, ...v.memberNames], organisation: v.company }, host, user.id);
+  await prisma.visit.delete({ where: { id: visitId } });
 }

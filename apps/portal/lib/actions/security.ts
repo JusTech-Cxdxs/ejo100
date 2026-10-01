@@ -5,7 +5,7 @@ import { requireUser, writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext,
 import { listEligibleStoreManagersForBranch, listEligibleStoreOfficersForBranch } from './store';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
-import { visitOverdueMinutes, exitPassOverdueMinutes, roadTestOverdueMinutes, durationText, INCIDENT_TYPES } from '@/lib/security-rules';
+import { visitOverdueMinutes, exitPassOverdueMinutes, roadTestOverdueMinutes, durationText, INCIDENT_TYPES, contractorState, contractorAfterHoursMinutes, lagosDay } from '@/lib/security-rules';
 import { customerTotal } from '@/lib/estimate-billing';
 
 class SecurityError extends Error {}
@@ -62,7 +62,7 @@ async function gateStaff(): Promise<Person[]> {
 
 // ── Numbering & logged emails ─────────────────────────────────────────
 
-async function nextNumber(prefix: 'VIS' | 'VP' | 'EP' | 'VX' | 'RT' | 'INC' | 'DLV'): Promise<string> {
+async function nextNumber(prefix: 'VIS' | 'VP' | 'EP' | 'VX' | 'RT' | 'INC' | 'DLV' | 'CTR'): Promise<string> {
   const year = new Date().getFullYear();
   const start = `${prefix}-${year}-`;
   const latest =
@@ -70,6 +70,8 @@ async function nextNumber(prefix: 'VIS' | 'VP' | 'EP' | 'VX' | 'RT' | 'INC' | 'D
       ? await prisma.visit.findFirst({ where: { visitNumber: { startsWith: start } }, orderBy: { visitNumber: 'desc' }, select: { visitNumber: true } }).then((r: { visitNumber: string } | null) => r?.visitNumber)
       : prefix === 'VP'
         ? await prisma.visit.findFirst({ where: { passNumber: { startsWith: start } }, orderBy: { passNumber: 'desc' }, select: { passNumber: true } }).then((r: { passNumber: string | null } | null) => r?.passNumber ?? undefined)
+        : prefix === 'CTR'
+          ? await prisma.contractorPass.findFirst({ where: { passNumber: { startsWith: start } }, orderBy: { passNumber: 'desc' }, select: { passNumber: true } }).then((r: { passNumber: string } | null) => r?.passNumber)
         : prefix === 'INC'
           ? await prisma.securityIncident.findFirst({ where: { incidentNumber: { startsWith: start } }, orderBy: { incidentNumber: 'desc' }, select: { incidentNumber: true } }).then((r: { incidentNumber: string } | null) => r?.incidentNumber)
         : prefix === 'DLV'
@@ -280,8 +282,12 @@ export async function checkOutVisit(visitId: string): Promise<void> {
   await prisma.visit.update({ where: { id: visitId }, data: { status: 'CHECKED_OUT', checkedOutAt: out, checkedOutById: r.userId } });
   await writeAuditLog({ userId: r.userId, action: 'visit.checked_out', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, passNumber: v.passNumber, duration: v.checkedInAt ? durationText((out.getTime() - new Date(v.checkedInAt).getTime()) / 60000) : undefined } });
   // The visitors of an appointment have left — the appointment happened.
-  const appt = await prisma.appointment.findFirst({ where: { visitId, status: 'SCHEDULED' }, select: { id: true, appointmentNumber: true } });
-  if (appt) {
+  // The appointment is done when its LAST visitor group has left (none still
+  // expected or on site). Older single-group links are honoured too.
+  const own = await prisma.visit.findUnique({ where: { id: visitId }, select: { appointmentId: true } });
+  const appt = await prisma.appointment.findFirst({ where: { status: 'SCHEDULED', OR: [{ visitId }, ...(own?.appointmentId ? [{ id: own.appointmentId }] : [])] }, select: { id: true, appointmentNumber: true } });
+  const stillComing = appt ? await prisma.visit.count({ where: { appointmentId: appt.id, status: { in: ['EXPECTED', 'CHECKED_IN'] } } }) : 0;
+  if (appt && stillComing === 0) {
     await prisma.appointment.update({ where: { id: appt.id }, data: { status: 'COMPLETED', completedAt: out } });
     await writeAuditLog({ userId: r.userId, action: 'appointment.completed', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber: appt.appointmentNumber, by: 'Visitors checked out at the gate' } });
   }
@@ -529,6 +535,9 @@ export async function getSecurityDashboard() {
     prisma.gateDelivery.findMany({ where: { status: { in: ['AT_GATE', 'RECEIVED'] } }, select: { vehiclePlate: true } }),
   ]);
   const deliveryVehicles = deliveriesOnSite.filter((d: { vehiclePlate: string | null }) => d.vehiclePlate).length;
+  const contractorsIn = await prisma.contractorAttendance.findMany({ where: { signedOutAt: null }, select: { workersPresent: true, signedInAt: true } });
+  const contractorPeopleOnSite = contractorsIn.reduce((n: number, a: { workersPresent: number }) => n + a.workersPresent, 0);
+  const contractorsAfterHours = contractorsIn.filter((a: { signedInAt: Date }) => contractorAfterHoursMinutes(a.signedInAt) > 0).length;
   // A workshop vehicle out on a road test is not inside the compound.
   const workshopInside = Math.max(0, jobCardsIn + servicesIn - roadTestsOut.length);
   // People, not visits (a group of 5 is 5); vehicles, not visits (every plate).
@@ -556,6 +565,9 @@ export async function getSecurityDashboard() {
       deliveriesOnSite: deliveriesOnSite.length,
       deliveryVehicles,
       openIncidents,
+      contractorsOnSite: contractorPeopleOnSite,
+      contractorTeamsOnSite: contractorsIn.length,
+      contractorsAfterHours,
       vehiclesInside: visitorVehicles + workshopInside + vehicles.length + deliveryVehicles,
     },
   };
@@ -636,7 +648,7 @@ export async function canDecideExitPass(passId: string): Promise<boolean> {
 }
 
 /** Trail + every email for one Visit / Exit Pass. */
-export async function getSecurityHistory(entityType: 'Visit' | 'ExitPass' | 'VehicleGateExit' | 'RoadTestPermit' | 'SecurityIncident' | 'GateDelivery', entityId: string) {
+export async function getSecurityHistory(entityType: 'Visit' | 'ExitPass' | 'VehicleGateExit' | 'RoadTestPermit' | 'SecurityIncident' | 'GateDelivery' | 'ContractorPass', entityId: string) {
   await requireUser();
   const [entries, emails] = await Promise.all([
     prisma.auditLog.findMany({ where: { entityType, entityId }, orderBy: { createdAt: 'desc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } }),
@@ -665,6 +677,13 @@ export async function getSecurityDashboardItems(): Promise<{ id: string; title: 
   const roles = await getSecurityRoles();
   const store = await isStore(user.id, roles.isMaster);
   const dayStart = new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T00:00:00+01:00`);
+  const ctr = roles.isManager || roles.isMaster || roles.isGate ? await listContractorPasses(undefined, 'all') : { rows: [] as Awaited<ReturnType<typeof listContractorPasses>>['rows'] };
+  const today = lagosDay(new Date());
+  const contractorItems = [
+    ...ctr.rows.filter((c) => (roles.isManager || roles.isMaster) && c.status === 'PENDING_MANAGER' && c.requestedById !== user.id).map((c) => ({ id: `ctr-d-${c.id}`, title: `Contractor pass ${c.passNumber} needs your approval`, detail: `${c.company} — ${c.work}`, url: `/security/contractors/${c.id}`, createdAt: c.createdAt })),
+    ...ctr.rows.filter((c) => roles.isGate && c.state === 'ACTIVE' && lagosDay(c.validFrom) <= today).map((c) => ({ id: `ctr-t-${c.id}`, title: `Contractors due today — ${c.company}`, detail: `${c.passNumber} · team of ${c.teamSize} · ${c.workArea}`, url: `/security/contractors/${c.id}`, createdAt: new Date() })),
+    ...ctr.rows.filter((c) => roles.isGate && c.afterHours > 0).map((c) => ({ id: `ctr-l-${c.id}`, title: `Contractors still on site after 5 pm — ${c.company}`, detail: `${c.passNumber} · ${durationText(c.afterHours)} past closing`, url: `/security/contractors/${c.id}`, createdAt: new Date() })),
+  ];
   const [newIncidents, atGateForStore, expectedDeliveries] = await Promise.all([
     roles.isCso || roles.isMaster ? prisma.securityIncident.findMany({ where: { status: 'OPEN' }, select: { id: true, incidentNumber: true, type: true, severity: true, createdAt: true } }) : Promise.resolve([]),
     store ? prisma.gateDelivery.findMany({ where: { status: 'AT_GATE' }, select: { id: true, deliveryNumber: true, supplierName: true, arrivedAt: true } }) : Promise.resolve([]),
@@ -677,6 +696,7 @@ export async function getSecurityDashboardItems(): Promise<{ id: string; title: 
   ]);
   return [
     ...atReception.map((v: (typeof atReception)[number]) => ({ id: `visit-${v.id}`, title: `Your visitor is at reception — ${v.visitorName}`, detail: v.purpose, url: `/security/visitors/${v.id}`, createdAt: v.receivedAt as Date })),
+    ...contractorItems,
     ...newIncidents.map((i: { id: string; incidentNumber: string; type: string; severity: string; createdAt: Date }) => ({ id: `inc-${i.id}`, title: `Incident ${i.incidentNumber}: ${i.type}`, detail: `${i.severity.toLowerCase()} — needs review`, url: `/security/incidents/${i.id}`, createdAt: i.createdAt })),
     ...atGateForStore.map((d: { id: string; deliveryNumber: string; supplierName: string; arrivedAt: Date | null }) => ({ id: `dlv-${d.id}`, title: `Delivery at the gate — ${d.supplierName}`, detail: `${d.deliveryNumber} — please receive it`, url: `/security/deliveries/${d.id}`, createdAt: d.arrivedAt ?? new Date() })),
     ...expectedDeliveries.map((d: { id: string; deliveryNumber: string; supplierName: string; expectedAt: Date | null }) => ({ id: `dlvx-${d.id}`, title: `Delivery expected today — ${d.supplierName}`, detail: d.deliveryNumber, url: `/security/deliveries/${d.id}`, createdAt: d.expectedAt ?? new Date() })),
@@ -768,6 +788,7 @@ export async function listOverdue() {
     prisma.roadTestPermit.findMany({ where: { status: 'OUT' }, select: RT_ROW }),
   ]);
   return {
+    contractors: (await listContractorPasses(undefined, 'on_site')).rows.filter((c) => c.afterHours > 0).map((c) => ({ ...c, overdueMinutes: c.afterHours })),
     roadTests: tests.map((r: (typeof tests)[number]) => ({ ...r, overdueMinutes: roadTestOverdueMinutes(r, now) })).filter((r: { overdueMinutes: number }) => r.overdueMinutes > 0).sort((a: { overdueMinutes: number }, b: { overdueMinutes: number }) => b.overdueMinutes - a.overdueMinutes),
     visits: visits.map((v: (typeof visits)[number]) => ({ ...v, overdueMinutes: visitOverdueMinutes(v, now) })).filter((v: { overdueMinutes: number }) => v.overdueMinutes > 0).sort((a: { overdueMinutes: number }, b: { overdueMinutes: number }) => b.overdueMinutes - a.overdueMinutes),
     passes: passes.map((p: (typeof passes)[number]) => ({ ...p, overdueMinutes: exitPassOverdueMinutes(p, now) })).filter((p: { overdueMinutes: number }) => p.overdueMinutes > 0).sort((a: { overdueMinutes: number }, b: { overdueMinutes: number }) => b.overdueMinutes - a.overdueMinutes),
@@ -854,7 +875,7 @@ export async function extendExitPassReturn(passId: string, extraMinutes: number,
 
 /** A follow-up note on a visitor or exit pass (e.g. "called — on the way
  * back"), kept on its audit trail. */
-export async function addSecurityFollowUp(entityType: 'Visit' | 'ExitPass' | 'RoadTestPermit' | 'SecurityIncident' | 'GateDelivery', id: string, note: string): Promise<void> {
+export async function addSecurityFollowUp(entityType: 'Visit' | 'ExitPass' | 'RoadTestPermit' | 'SecurityIncident' | 'GateDelivery' | 'ContractorPass', id: string, note: string): Promise<void> {
   const r = await requireFrontDesk();
   if (!note.trim()) throw new SecurityError('Write the follow-up note.');
   const exists =
@@ -866,12 +887,14 @@ export async function addSecurityFollowUp(entityType: 'Visit' | 'ExitPass' | 'Ro
           ? await prisma.roadTestPermit.findUnique({ where: { id }, select: { id: true } })
           : entityType === 'SecurityIncident'
             ? await prisma.securityIncident.findUnique({ where: { id }, select: { id: true } })
-            : await prisma.gateDelivery.findUnique({ where: { id }, select: { id: true } });
+            : entityType === 'GateDelivery'
+              ? await prisma.gateDelivery.findUnique({ where: { id }, select: { id: true } })
+              : await prisma.contractorPass.findUnique({ where: { id }, select: { id: true } });
   if (!exists) throw new SecurityError('Record not found.');
   await writeAuditLog({ userId: r.userId, action: 'security.follow_up', entityType, entityId: id, metadata: { note: note.trim() } });
 }
 
-export type SecurityRecord = { type: 'VISIT' | 'EXIT_PASS' | 'VEHICLE_EXIT' | 'ROAD_TEST' | 'INCIDENT' | 'DELIVERY'; id: string; number: string; title: string; detail: string; status: string; at: Date; href: string };
+export type SecurityRecord = { type: 'VISIT' | 'EXIT_PASS' | 'VEHICLE_EXIT' | 'ROAD_TEST' | 'INCIDENT' | 'DELIVERY' | 'CONTRACTOR'; id: string; number: string; title: string; detail: string; status: string; at: Date; href: string };
 
 /** The Security register: every visit, exit pass and vehicle exit, newest
  * first, searchable by any number, name or plate. */
@@ -885,10 +908,11 @@ export async function searchSecurityRecords(q?: string, type?: string): Promise<
     want('VEHICLE_EXIT') ? listVehicleExits(t) : Promise.resolve([]),
     want('ROAD_TEST') ? listRoadTests('all', t) : Promise.resolve([]),
   ]);
-  const [incidents, deliveries] = await Promise.all([want('INCIDENT') ? listIncidents(t, 'all') : Promise.resolve({ rows: [] }), want('DELIVERY') ? listDeliveries(t, 'all') : Promise.resolve({ rows: [] })]);
+  const [incidents, deliveries, contractors] = await Promise.all([want('INCIDENT') ? listIncidents(t, 'all') : Promise.resolve({ rows: [] }), want('DELIVERY') ? listDeliveries(t, 'all') : Promise.resolve({ rows: [] }), want('CONTRACTOR') ? listContractorPasses(t, 'all') : Promise.resolve({ rows: [] })]);
   return [
     ...visits.map((v: Awaited<ReturnType<typeof listVisits>>[number]) => ({ type: 'VISIT' as const, id: v.id, number: [v.visitNumber, v.passNumber].filter(Boolean).join(' · '), title: v.visitorName, detail: `${v.company ? `${v.company} · ` : ''}${v.purpose} · visiting ${v.host.fullName}`, status: v.status, at: v.checkedInAt ?? v.expectedAt ?? new Date(0), href: `/security/visitors/${v.id}` })),
     ...passes.map((p: Awaited<ReturnType<typeof listExitPasses>>[number]) => ({ type: 'EXIT_PASS' as const, id: p.id, number: p.passNumber, title: p.people.map((x: { name: string }) => x.name).join(', '), detail: p.reason, status: p.status, at: p.createdAt, href: `/security/exit-passes/${p.id}` })),
+    ...contractors.rows.map((c: { id: string; passNumber: string; company: string; work: string; teamSize: number; state: string; createdAt: Date }) => ({ type: 'CONTRACTOR' as const, id: c.id, number: c.passNumber, title: c.company, detail: `${c.work} · team of ${c.teamSize}`, status: c.state, at: c.createdAt, href: `/security/contractors/${c.id}` })),
     ...incidents.rows.map((r: { id: string; incidentNumber: string; type: string; location: string; status: string; occurredAt: Date; severity: string }) => ({ type: 'INCIDENT' as const, id: r.id, number: r.incidentNumber, title: r.type, detail: `${r.severity.toLowerCase()} · ${r.location}`, status: r.status, at: r.occurredAt, href: `/security/incidents/${r.id}` })),
     ...deliveries.rows.map((d: { id: string; deliveryNumber: string; supplierName: string; items: string; status: string; arrivedAt: Date | null; expectedAt: Date | null }) => ({ type: 'DELIVERY' as const, id: d.id, number: d.deliveryNumber, title: d.supplierName, detail: d.items, status: d.status, at: d.arrivedAt ?? d.expectedAt ?? new Date(0), href: `/security/deliveries/${d.id}` })),
     ...tests.map((r: Awaited<ReturnType<typeof listRoadTests>>[number]) => ({ type: 'ROAD_TEST' as const, id: r.id, number: r.permitNumber, title: `${[r.vehicle.make, r.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}${r.vehicle.plateNumber ? ` — ${r.vehicle.plateNumber}` : ''}`, detail: `${r.jobCard?.jobNumber ?? r.vehicleService?.serviceNumber ?? ''} · driver ${r.driver.fullName} · ${r.purpose}`, status: r.status, at: r.gateOutAt ?? r.createdAt, href: `/security/road-tests/${r.id}` })),
@@ -987,6 +1011,8 @@ export async function roadTestGateOut(id: string, startOdometer: number): Promis
   const meta = { permitNumber: p.permitNumber, odometer: startOdometer };
   await writeAuditLog({ userId: r.userId, action: 'road_test.gate_out', entityType: 'RoadTestPermit', entityId: id, metadata: meta });
   await roadTestRecordAudit(p, r.userId, 'road_test.gate_out', meta);
+  const who = await prisma.roadTestPermit.findUnique({ where: { id }, select: { expectedDurationMinutes: true, requestedBy: { select: { id: true, fullName: true, email: true } }, driver: { select: { fullName: true } } } });
+  if (who) await sendLogged('RoadTestPermit', id, [who.requestedBy], `Road test ${p.permitNumber} — the vehicle has gone out`, 'Your road test has started', [`${p.permitNumber} — out at the gate with ${who.driver.fullName}`, `Odometer out: ${startOdometer.toLocaleString('en-NG')} km`, `Expected back in about ${durationText(who.expectedDurationMinutes)}`], `/security/road-tests/${id}`, r.userId);
 }
 
 /** Back through the gate — end odometer (never below the start); the
@@ -1004,6 +1030,8 @@ export async function roadTestGateIn(id: string, endOdometer: number, notes: str
   const meta = { permitNumber: p.permitNumber, odometer: endOdometer, distance: p.startOdometer !== null ? endOdometer - p.startOdometer : undefined, away: p.gateOutAt ? durationText((now.getTime() - new Date(p.gateOutAt).getTime()) / 60000) : undefined, notes: notes.trim() || undefined };
   await writeAuditLog({ userId: r.userId, action: 'road_test.gate_in', entityType: 'RoadTestPermit', entityId: id, metadata: meta });
   await roadTestRecordAudit(p, r.userId, 'road_test.gate_in', meta);
+  const who = await prisma.roadTestPermit.findUnique({ where: { id }, select: { requestedBy: { select: { id: true, fullName: true, email: true } } } });
+  if (who) await sendLogged('RoadTestPermit', id, [who.requestedBy], `Road test ${p.permitNumber} — the vehicle is back`, 'Your road test vehicle is back', [`${p.permitNumber} — back at the gate`, `Odometer in: ${endOdometer.toLocaleString('en-NG')} km${typeof meta.distance === 'number' ? ` (${meta.distance.toLocaleString('en-NG')} km driven)` : ''}`, ...(meta.away ? [`Time out: ${meta.away}`] : []), ...(notes.trim() ? [`Notes: ${notes.trim()}`] : [])], `/security/road-tests/${id}`, r.userId);
 }
 
 export async function extendRoadTest(id: string, extraMinutes: number, reason: string): Promise<void> {
@@ -1116,8 +1144,9 @@ async function resolveRelated(raw?: string): Promise<{ relatedType: string; rela
     (await prisma.exitPass.findUnique({ where: { passNumber: n }, select: { id: true } }).then((r: { id: string } | null) => r && { relatedType: 'ExitPass', relatedId: r.id })) ??
     (await prisma.roadTestPermit.findUnique({ where: { permitNumber: n }, select: { id: true } }).then((r: { id: string } | null) => r && { relatedType: 'RoadTestPermit', relatedId: r.id })) ??
     (await prisma.vehicleGateExit.findUnique({ where: { exitNumber: n }, select: { id: true } }).then((r: { id: string } | null) => r && { relatedType: 'VehicleGateExit', relatedId: r.id })) ??
-    (await prisma.gateDelivery.findUnique({ where: { deliveryNumber: n }, select: { id: true } }).then((r: { id: string } | null) => r && { relatedType: 'GateDelivery', relatedId: r.id }));
-  if (!hit) throw new SecurityError(`No visit, pass, road test, vehicle exit or delivery numbered ${n} — check the number.`);
+    (await prisma.gateDelivery.findUnique({ where: { deliveryNumber: n }, select: { id: true } }).then((r: { id: string } | null) => r && { relatedType: 'GateDelivery', relatedId: r.id })) ??
+    (await prisma.contractorPass.findUnique({ where: { passNumber: n }, select: { id: true } }).then((r: { id: string } | null) => r && { relatedType: 'ContractorPass', relatedId: r.id }));
+  if (!hit) throw new SecurityError(`No visit, pass, road test, vehicle exit, delivery or contractor pass numbered ${n} — check the number.`);
   return { ...hit, relatedNumber: n };
 }
 
@@ -1347,4 +1376,172 @@ export async function canActForStore(): Promise<boolean> {
 export async function listRecentGoodsReceipts() {
   await requireUser();
   return prisma.goodsReceipt.findMany({ where: { receivedAt: { gte: new Date(Date.now() - 30 * 86400000) } }, orderBy: { receivedAt: 'desc' }, take: 50, select: { id: true, referenceNumber: true, supplierName: true, receivedAt: true } });
+}
+
+// ── Contractors ───────────────────────────────────────────────────────
+
+export type ContractorInput = { company: string; work: string; workArea: string; leadName: string; memberNames: string[]; phone?: string; validFrom: string; validUntil: string; hostUserId?: string };
+const dayStartOf = (ymd: string) => new Date(`${ymd}T00:00:00+01:00`);
+
+export async function requestContractorPass(input: ContractorInput): Promise<{ id: string; passNumber: string }> {
+  const user = await requireUser();
+  const roles = await getSecurityRoles();
+  const hostUserId = roles.isFrontDesk && input.hostUserId ? input.hostUserId : user.id;
+  if (!input.company.trim()) throw new SecurityError('Enter the contractor company.');
+  if (!input.work.trim()) throw new SecurityError('Describe the work to be done.');
+  if (!input.workArea.trim()) throw new SecurityError('Say where on site they will work.');
+  if (!input.leadName.trim()) throw new SecurityError("Enter the team lead's name.");
+  const members = input.memberNames.map((n) => n.trim());
+  if (members.some((n) => !n)) throw new SecurityError('Enter a name for every member of the team.');
+  if (members.length > 49) throw new SecurityError('A team can have at most 50 people.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.validFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(input.validUntil)) throw new SecurityError('Choose the first and last day of the work.');
+  const today = lagosDay(new Date());
+  if (input.validFrom < today) throw new SecurityError('The first day cannot be in the past.');
+  if (input.validUntil < input.validFrom) throw new SecurityError('The last day cannot be before the first day.');
+  if ((dayStartOf(input.validUntil).getTime() - dayStartOf(input.validFrom).getTime()) / 86400000 > 89) throw new SecurityError('A pass can cover at most 90 days — request a new one after that.');
+  const host = await prisma.user.findUnique({ where: { id: hostUserId }, select: { fullName: true, isActive: true } });
+  if (!host?.isActive) throw new SecurityError('The staff member responsible must be active.');
+  const passNumber = await nextNumber('CTR');
+  const pass = await prisma.contractorPass.create({
+    data: { passNumber, branchId: await getWorkshopBranchId(), company: input.company.trim(), work: input.work.trim(), workArea: input.workArea.trim(), leadName: input.leadName.trim(), memberNames: members, teamSize: members.length + 1, phone: input.phone?.trim() || null, validFrom: dayStartOf(input.validFrom), validUntil: dayStartOf(input.validUntil), hostUserId, requestedById: user.id },
+  });
+  const days = Math.round((dayStartOf(input.validUntil).getTime() - dayStartOf(input.validFrom).getTime()) / 86400000) + 1;
+  await writeAuditLog({ userId: user.id, action: 'contractor.requested', entityType: 'ContractorPass', entityId: pass.id, metadata: { passNumber, company: input.company.trim(), people: members.length + 1, days, host: host.fullName } });
+  await sendLogged('ContractorPass', pass.id, await managerApprovers(user.id), `Contractor pass ${passNumber} needs your approval`, 'A contractor pass needs your approval', [`${passNumber} — ${input.company.trim()}`, `Work: ${input.work.trim()} (${input.workArea.trim()})`, `Team: ${members.length + 1} ${members.length + 1 === 1 ? 'person' : 'people'}, led by ${input.leadName.trim()}`, `Days: ${input.validFrom} to ${input.validUntil} (${days} ${days === 1 ? 'day' : 'days'})`, `Responsible: ${host.fullName}`], `/security/contractors/${pass.id}`, user.id);
+  return { id: pass.id, passNumber };
+}
+
+async function contractorPeople(passId: string) {
+  return prisma.contractorPass.findUnique({ where: { id: passId }, select: { passNumber: true, company: true, status: true, requestedById: true, hostUserId: true, validFrom: true, validUntil: true, teamSize: true, host: { select: { id: true, fullName: true, email: true } }, requestedBy: { select: { id: true, fullName: true, email: true } } } });
+}
+
+export async function decideContractorPass(id: string, approve: boolean, reason: string): Promise<void> {
+  const user = await requireUser();
+  const roles = await getSecurityRoles();
+  const p = await contractorPeople(id);
+  if (!p) throw new SecurityError('Contractor pass not found.');
+  if (p.status !== 'PENDING_MANAGER') throw new SecurityError('This pass is not waiting for a decision.');
+  if (p.requestedById === user.id && !roles.isMaster) throw new SecurityError('You cannot approve your own request.');
+  if (!roles.isMaster && !(await managerApprovers(p.requestedById)).some((m) => m.id === user.id)) throw new SecurityError('Only the Manager can decide a contractor pass.');
+  if (!approve && !reason.trim()) throw new SecurityError('Give a reason for declining.');
+  await prisma.contractorPass.update({ where: { id }, data: approve ? { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: new Date() } : { status: 'DECLINED', declineReason: reason.trim() } });
+  await writeAuditLog({ userId: user.id, action: approve ? 'contractor.approved' : 'contractor.declined', entityType: 'ContractorPass', entityId: id, metadata: { passNumber: p.passNumber, reason: reason.trim() || undefined } });
+  const people = [p.host, p.requestedBy, ...(approve ? await gateStaff() : [])];
+  await sendLogged('ContractorPass', id, people, `Contractor pass ${p.passNumber} ${approve ? 'approved' : 'declined'} — ${p.company}`, approve ? 'Contractor pass approved' : 'Contractor pass declined', approve ? [`${p.passNumber} — ${p.company}`, `Valid ${lagosDay(p.validFrom)} to ${lagosDay(p.validUntil)}`, 'Security signs the team in and out at the gate each day.'] : [`${p.passNumber} — ${p.company}`, `Reason: ${reason.trim()}`], `/security/contractors/${id}`, user.id);
+}
+
+async function openAttendance(passId: string) {
+  return prisma.contractorAttendance.findFirst({ where: { passId, signedOutAt: null }, select: { id: true, signedInAt: true, workersPresent: true } });
+}
+
+export async function cancelContractorPass(id: string, reason: string): Promise<void> {
+  const user = await requireUser();
+  const roles = await getSecurityRoles();
+  const p = await contractorPeople(id);
+  if (!p) throw new SecurityError('Contractor pass not found.');
+  if (p.requestedById !== user.id && p.hostUserId !== user.id && !roles.isFrontDesk && !roles.isMaster) throw new SecurityError('Only whoever requested it, the staff member responsible or Security can cancel it.');
+  if (!['PENDING_MANAGER', 'APPROVED'].includes(p.status)) throw new SecurityError('This pass is already closed.');
+  if (await openAttendance(id)) throw new SecurityError('The team is on site — sign them out first.');
+  if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
+  await prisma.contractorPass.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason.trim() } });
+  await writeAuditLog({ userId: user.id, action: 'contractor.cancelled', entityType: 'ContractorPass', entityId: id, metadata: { passNumber: p.passNumber, reason: reason.trim() } });
+  if (p.status === 'APPROVED') await sendLogged('ContractorPass', id, [p.host, ...(await gateStaff())], `Contractor pass ${p.passNumber} cancelled — ${p.company}`, 'A contractor pass was cancelled', [`${p.passNumber} — ${p.company}`, `Reason: ${reason.trim()}`, 'Do not admit this team on this pass.'], `/security/contractors/${id}`, user.id);
+}
+
+/** CSO or Manager withdraws an approved pass (e.g. misconduct). */
+export async function revokeContractorPass(id: string, reason: string): Promise<void> {
+  const user = await requireUser();
+  const roles = await getSecurityRoles();
+  if (!roles.isCso && !roles.isManager && !roles.isMaster) throw new SecurityError('Only the Chief Security Officer or the Manager can revoke a pass.');
+  const p = await contractorPeople(id);
+  if (!p) throw new SecurityError('Contractor pass not found.');
+  if (p.status !== 'APPROVED') throw new SecurityError('Only an approved pass can be revoked.');
+  if (await openAttendance(id)) throw new SecurityError('The team is on site — sign them out first.');
+  if (!reason.trim()) throw new SecurityError('Give the reason for revoking it.');
+  await prisma.contractorPass.update({ where: { id }, data: { status: 'REVOKED', revokedById: user.id, revokedAt: new Date(), revokeReason: reason.trim() } });
+  await writeAuditLog({ userId: user.id, action: 'contractor.revoked', entityType: 'ContractorPass', entityId: id, metadata: { passNumber: p.passNumber, reason: reason.trim() } });
+  await sendLogged('ContractorPass', id, [p.host, p.requestedBy, ...(await gateStaff())], `Contractor pass ${p.passNumber} REVOKED — ${p.company}`, 'A contractor pass has been revoked', [`${p.passNumber} — ${p.company}`, `Reason: ${reason.trim()}`, 'Do not admit this team on this pass.'], `/security/contractors/${id}`, user.id);
+}
+
+/** The team arrives for the day — approved pass, within its dates. */
+export async function contractorSignIn(id: string, workersPresent: number): Promise<void> {
+  const r = await requireGate();
+  const p = await contractorPeople(id);
+  if (!p) throw new SecurityError('Contractor pass not found.');
+  if (p.status !== 'APPROVED') throw new SecurityError('This pass is not approved — the team cannot be let in on it.');
+  const today = lagosDay(new Date());
+  if (today < lagosDay(p.validFrom)) throw new SecurityError(`This pass starts on ${lagosDay(p.validFrom)} — not today.`);
+  if (today > lagosDay(p.validUntil)) throw new SecurityError(`This pass ended on ${lagosDay(p.validUntil)} — a new pass is needed.`);
+  if (await openAttendance(id)) throw new SecurityError('The team is already signed in — sign them out first.');
+  if (!Number.isInteger(workersPresent) || workersPresent < 1 || workersPresent > p.teamSize) throw new SecurityError(`Choose how many came today — between 1 and ${p.teamSize}.`);
+  const a = await prisma.contractorAttendance.create({ data: { passId: id, workersPresent, signedInAt: new Date(), signedInById: r.userId } });
+  await writeAuditLog({ userId: r.userId, action: 'contractor.signed_in', entityType: 'ContractorPass', entityId: id, metadata: { passNumber: p.passNumber, people: workersPresent, of: p.teamSize, attendanceId: a.id } });
+}
+
+export async function contractorSignOut(id: string, note: string): Promise<void> {
+  const r = await requireGate();
+  const p = await contractorPeople(id);
+  if (!p) throw new SecurityError('Contractor pass not found.');
+  const open = await openAttendance(id);
+  if (!open) throw new SecurityError('The team is not signed in.');
+  const now = new Date();
+  await prisma.contractorAttendance.update({ where: { id: open.id }, data: { signedOutAt: now, signedOutById: r.userId, note: note.trim() || null } });
+  await writeAuditLog({ userId: r.userId, action: 'contractor.signed_out', entityType: 'ContractorPass', entityId: id, metadata: { passNumber: p.passNumber, people: open.workersPresent, onSite: durationText((now.getTime() - new Date(open.signedInAt).getTime()) / 60000), note: note.trim() || undefined } });
+}
+
+const CTR_ROW = {
+  id: true, passNumber: true, status: true, company: true, work: true, workArea: true, leadName: true, teamSize: true, validFrom: true, validUntil: true, requestedById: true, createdAt: true,
+  host: { select: { fullName: true } }, attendance: { where: { signedOutAt: null }, select: { id: true, signedInAt: true, workersPresent: true } },
+} as const;
+const CTR_TABS = ['on_site', 'active', 'to_decide', 'upcoming', 'ended', 'all'] as const;
+
+export async function listContractorPasses(q?: string, tab?: string) {
+  const user = await requireUser();
+  const roles = await getSecurityRoles();
+  const t2 = q?.trim();
+  const raw = await prisma.contractorPass.findMany({
+    where: t2 ? { OR: [{ passNumber: { contains: t2, mode: 'insensitive' } }, { company: { contains: t2, mode: 'insensitive' } }, { work: { contains: t2, mode: 'insensitive' } }, { workArea: { contains: t2, mode: 'insensitive' } }, { leadName: { contains: t2, mode: 'insensitive' } }, { memberNames: { has: t2 } }] } : undefined,
+    orderBy: { createdAt: 'desc' },
+    take: 500,
+    select: CTR_ROW,
+  });
+  const now = new Date();
+  const rows = raw.map((p: (typeof raw)[number]) => {
+    const open = p.attendance[0] ?? null;
+    return { ...p, onSite: open, state: contractorState(p, Boolean(open), now), afterHours: open ? contractorAfterHoursMinutes(open.signedInAt, now) : 0 };
+  });
+  const canDecide = roles.isManager || roles.isMaster;
+  const is: Record<(typeof CTR_TABS)[number], (r: (typeof rows)[number]) => boolean> = {
+    on_site: (r) => r.state === 'ON_SITE',
+    active: (r) => r.state === 'ACTIVE' || r.state === 'ON_SITE',
+    to_decide: (r) => canDecide && r.status === 'PENDING_MANAGER' && r.requestedById !== user.id,
+    upcoming: (r) => r.state === 'UPCOMING' || r.state === 'PENDING_MANAGER',
+    ended: (r) => ['ENDED', 'DECLINED', 'REVOKED', 'CANCELLED'].includes(r.state),
+    all: () => true,
+  };
+  const current = ((CTR_TABS as readonly string[]).includes(tab ?? '') ? tab : 'on_site') as (typeof CTR_TABS)[number];
+  return { tab: current, canDecide, counts: Object.fromEntries(CTR_TABS.map((k) => [k, rows.filter(is[k]).length])) as Record<(typeof CTR_TABS)[number], number>, rows: rows.filter(is[current]) };
+}
+
+export async function getContractorPass(id: string) {
+  await requireUser();
+  const p = await prisma.contractorPass.findUnique({
+    where: { id },
+    include: {
+      branch: true, host: { select: { id: true, fullName: true, phone: true } }, requestedBy: { select: { id: true, fullName: true } }, managerApprovedBy: { select: { fullName: true } }, revokedBy: { select: { fullName: true } },
+      attendance: { orderBy: { signedInAt: 'desc' }, include: { signedInBy: { select: { fullName: true } }, signedOutBy: { select: { fullName: true } } } },
+    },
+  });
+  if (!p) return null;
+  const open = p.attendance.find((a: { signedOutAt: Date | null }) => !a.signedOutAt) ?? null;
+  return { ...p, onSite: open, state: contractorState(p, Boolean(open)), afterHours: open ? contractorAfterHoursMinutes(open.signedInAt) : 0 };
+}
+
+export async function canDecideContractorPass(id: string): Promise<boolean> {
+  const user = await requireUser();
+  const roles = await getSecurityRoles();
+  const p = await prisma.contractorPass.findUnique({ where: { id }, select: { status: true, requestedById: true } });
+  if (!p || p.status !== 'PENDING_MANAGER') return false;
+  if (p.requestedById === user.id && !roles.isMaster) return false;
+  return roles.isMaster || (await managerApprovers(p.requestedById)).some((m) => m.id === user.id);
 }

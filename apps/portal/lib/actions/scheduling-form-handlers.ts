@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { createAppointment, updateAppointment, cancelAppointment, setAppointmentOutcome, saveRoom, setRoomActive, addDelegate, removeDelegate, type AppointmentInput } from './scheduling';
+import { createAppointment, updateAppointment, cancelAppointment, setAppointmentOutcome, saveRoom, setRoomActive, addDelegate, removeDelegate, addVisitorGroup, updateVisitorGroup, removeVisitorGroup, type AppointmentInput } from './scheduling';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 function back(path: string, err: unknown, fallback: string): never {
@@ -114,4 +114,51 @@ export async function removeDelegateFormAction(f: FormData) {
     back('/schedule/aides', err, 'Could not remove the aide.');
   }
   ok('/schedule/aides', 'aide_removed');
+}
+
+// ── Visitor groups ────────────────────────────────────────────────────
+
+function groupInput(f: FormData) {
+  const group = str(f, 'party') === 'GROUP';
+  return {
+    names: [str(f, 'visitorName'), ...(group ? f.getAll('memberName').map(String) : [])],
+    organisation: str(f, 'affiliation') === 'ORGANISATION' ? str(f, 'company') : '',
+    phone: str(f, 'phone'),
+    purpose: str(f, 'purpose'),
+  };
+}
+
+export async function addVisitorGroupFormAction(f: FormData) {
+  const id = str(f, 'appointmentId');
+  try {
+    if (!str(f, 'party') || !str(f, 'affiliation')) throw new Error('Choose how many people and how they are coming.');
+    await addVisitorGroup(id, groupInput(f));
+  } catch (err) {
+    back(`/schedule/${id}/visitors/new`, err, 'Could not add the visitors.');
+  }
+  revalidatePath('/security');
+  ok(`/schedule/${id}`, 'visitors_added');
+}
+
+export async function updateVisitorGroupFormAction(f: FormData) {
+  const id = str(f, 'appointmentId');
+  const visitId = str(f, 'visitId');
+  try {
+    await updateVisitorGroup(visitId, groupInput(f));
+  } catch (err) {
+    back(`/schedule/${id}/visitors/${visitId}`, err, 'Could not save the visitors.');
+  }
+  revalidatePath('/security');
+  ok(`/schedule/${id}`, 'visitors_changed');
+}
+
+export async function removeVisitorGroupFormAction(f: FormData) {
+  const id = str(f, 'appointmentId');
+  try {
+    await removeVisitorGroup(str(f, 'visitId'), str(f, 'reason'));
+  } catch (err) {
+    back(`/schedule/${id}`, err, 'Could not remove the visitors.');
+  }
+  revalidatePath('/security');
+  ok(`/schedule/${id}`, 'visitors_removed');
 }

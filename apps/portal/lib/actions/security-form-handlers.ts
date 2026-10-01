@@ -9,6 +9,7 @@ import {
   requestRoadTest, decideRoadTest, cancelRoadTest, roadTestGateOut, roadTestGateIn, extendRoadTest,
   reportIncident, assignIncident, closeIncident, reopenIncident,
   expectDelivery, recordDeliveryArrival, confirmDeliveryReceived, recordDeliveryLeft, cancelDelivery, type DeliveryInput,
+  requestContractorPass, decideContractorPass, cancelContractorPass, revokeContractorPass, contractorSignIn, contractorSignOut,
   type VisitInput,
 } from './security';
 
@@ -149,9 +150,9 @@ export async function extendExitPassFormAction(f: FormData) {
 /** Follow-up note on a visitor or exit pass. */
 export async function securityFollowUpFormAction(f: FormData) {
   const raw = str(f, 'entityType');
-  const type = raw === 'ExitPass' ? 'ExitPass' : raw === 'RoadTestPermit' ? 'RoadTestPermit' : raw === 'SecurityIncident' ? 'SecurityIncident' : raw === 'GateDelivery' ? 'GateDelivery' : 'Visit';
+  const type = raw === 'ExitPass' ? 'ExitPass' : raw === 'RoadTestPermit' ? 'RoadTestPermit' : raw === 'SecurityIncident' ? 'SecurityIncident' : raw === 'GateDelivery' ? 'GateDelivery' : raw === 'ContractorPass' ? 'ContractorPass' : 'Visit';
   const id = str(f, 'entityId');
-  const from = str(f, 'returnTo') || (type === 'ExitPass' ? `/security/exit-passes/${id}` : type === 'RoadTestPermit' ? `/security/road-tests/${id}` : type === 'SecurityIncident' ? `/security/incidents/${id}` : type === 'GateDelivery' ? `/security/deliveries/${id}` : `/security/visitors/${id}`);
+  const from = str(f, 'returnTo') || (type === 'ExitPass' ? `/security/exit-passes/${id}` : type === 'RoadTestPermit' ? `/security/road-tests/${id}` : type === 'SecurityIncident' ? `/security/incidents/${id}` : type === 'GateDelivery' ? `/security/deliveries/${id}` : type === 'ContractorPass' ? `/security/contractors/${id}` : `/security/visitors/${id}`);
   try {
     await addSecurityFollowUp(type, id, str(f, 'note'));
   } catch (err) {
@@ -265,5 +266,38 @@ export async function deliveryActionFormAction(f: FormData) {
     back(path, err, 'Could not update the delivery.');
   }
   revalidatePath('/security/deliveries');
+  ok(path, action);
+}
+
+// ── Contractors ───────────────────────────────────────────────────────
+
+export async function requestContractorFormAction(f: FormData) {
+  const team = str(f, 'party') === 'GROUP';
+  let id = '';
+  try {
+    if (!str(f, 'party')) throw new Error('Choose whether it is one person or a team.');
+    id = (await requestContractorPass({ company: str(f, 'company'), work: str(f, 'work'), workArea: str(f, 'workArea'), leadName: str(f, 'leadName'), memberNames: team ? f.getAll('memberName').map(String) : [], phone: str(f, 'phone'), validFrom: str(f, 'validFrom'), validUntil: str(f, 'validUntil'), hostUserId: str(f, 'hostUserId') || undefined })).id;
+  } catch (err) {
+    back('/security/contractors/new', err, 'Could not request the contractor pass.');
+  }
+  ok(`/security/contractors/${id}`, 'requested');
+}
+
+export async function contractorActionFormAction(f: FormData) {
+  const id = str(f, 'passId');
+  const action = str(f, 'action');
+  const path = str(f, 'returnTo') || `/security/contractors/${id}`;
+  try {
+    if (action === 'approve') await decideContractorPass(id, true, '');
+    else if (action === 'decline') await decideContractorPass(id, false, str(f, 'reason'));
+    else if (action === 'cancel') await cancelContractorPass(id, str(f, 'reason'));
+    else if (action === 'revoke') await revokeContractorPass(id, str(f, 'reason'));
+    else if (action === 'sign_in') await contractorSignIn(id, Number(str(f, 'workersPresent')));
+    else if (action === 'sign_out') await contractorSignOut(id, str(f, 'note'));
+    else throw new Error('Unknown action.');
+  } catch (err) {
+    back(path, err, 'Could not update the contractor pass.');
+  }
+  revalidatePath('/security/contractors');
   ok(path, action);
 }
