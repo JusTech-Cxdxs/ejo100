@@ -57,8 +57,10 @@ export default async function VehicleServicePage({
   const { q, type, error, status, editInterval, outcome: rawOutcome } = await searchParams;
   const outcomeFilter = parseOutcomeFilter(rawOutcome);
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
-  const branchId = await getWorkshopBranchId().catch(() => null);
-  const session = await auth.api.getSession({ headers: await headers() });
+  const [branchId, session] = await Promise.all([
+    getWorkshopBranchId().catch(() => null),
+    auth.api.getSession({ headers: await headers() }),
+  ]);
   const [isMasterAdmin, organisation] = await Promise.all([
     currentUserIsMasterAdmin(),
     session?.user?.id
