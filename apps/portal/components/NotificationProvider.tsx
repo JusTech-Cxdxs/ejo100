@@ -2,9 +2,14 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { useChangePings } from '@/lib/hooks/use-change-pings';
 import { getNotificationSummary, getNotificationPulse, markNotificationsRead, setNotificationsMuted, type NotificationSummary } from '@/lib/actions/notifications';
 
 const PULSE_MS = 5000;
+/** With instant push connected, the regular check is only a safety net. */
+const PULSE_WHEN_PUSHED_MS = 30000;
+/** On a push ping: refresh within ~1 s, at most once per 3 s (last ping always honoured). */
+const PING_GAP_MS = 3000;
 /** At most one full summary fetch (and page refresh) per 15 seconds. */
 const MIN_LOAD_GAP_MS = 15000;
 const RING_MS = 120000;
@@ -104,14 +109,31 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, [load]);
 
+  // Instant push: a ping means "something changed" — refresh now (coalesced).
+  const pingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onPing = useCallback(() => {
+    if (pingTimer.current) return;
+    const wait = Math.max(300, PING_GAP_MS - (Date.now() - lastLoad.current));
+    pingTimer.current = setTimeout(() => {
+      pingTimer.current = null;
+      if (document.visibilityState !== 'hidden') void load();
+    }, wait);
+  }, [load]);
+  const pushed = useChangePings(onPing);
+
+  useEffect(() => () => { if (pingTimer.current) clearTimeout(pingTimer.current); }, []);
+
   useEffect(() => {
     void load().then(() => check());
-    const t = setInterval(() => void check(), PULSE_MS);
+  }, [load, check]);
+
+  useEffect(() => {
+    const t = setInterval(() => void check(), pushed ? PULSE_WHEN_PUSHED_MS : PULSE_MS);
     const onVisible = () => { if (document.visibilityState === 'visible') void check(); };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
-  }, [load, check]);
+  }, [check, pushed]);
 
   // Browsers allow sound only after the first tap / click.
   useEffect(() => {
