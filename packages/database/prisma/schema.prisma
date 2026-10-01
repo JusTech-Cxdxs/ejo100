@@ -247,6 +247,7 @@ model Branch {
   appointments Appointment[]
   securityIncidents SecurityIncident[]
   gateDeliveries GateDelivery[]
+  contractorPasses ContractorPass[]
 }
 
 model Department {
@@ -443,6 +444,12 @@ model User {
   deliveriesArrived GateDelivery[] @relation("DeliveryArrivedBy")
   deliveriesReceived GateDelivery[] @relation("DeliveryReceivedBy")
   deliveriesLeft GateDelivery[] @relation("DeliveryLeftBy")
+  contractorsHosted ContractorPass[] @relation("ContractorHost")
+  contractorsRequested ContractorPass[] @relation("ContractorRequestedBy")
+  contractorsApproved ContractorPass[] @relation("ContractorApprovedBy")
+  contractorsRevoked ContractorPass[] @relation("ContractorRevokedBy")
+  contractorSignIns ContractorAttendance[] @relation("ContractorSignedInBy")
+  contractorSignOuts ContractorAttendance[] @relation("ContractorSignedOutBy")
 }
 
 // One-to-one HR extension of User. Kept separate per the Phase 1 note so
@@ -3149,6 +3156,9 @@ model Visit {
   @@index([hostUserId])
   @@map("visits")
   appointment Appointment?
+  // Visitor groups booked on an appointment (one appointment, many groups).
+  appointmentId String?
+  appointmentGroup Appointment? @relation("AppointmentVisits", fields: [appointmentId], references: [id], onDelete: SetNull)
 }
 
 // Employee Exit Pass (the paper form, digital): Department Head authorises,
@@ -3398,6 +3408,7 @@ model Appointment {
   room         MeetingRoom?             @relation(fields: [roomId], references: [id])
   visit        Visit?                   @relation(fields: [visitId], references: [id], onDelete: SetNull)
   participants AppointmentParticipant[]
+  visits       Visit[]                  @relation("AppointmentVisits")
 
   @@index([ownerId, startsAt])
   @@index([roomId, startsAt])
@@ -3516,4 +3527,73 @@ model GateDelivery {
 
   @@index([status])
   @@map("gate_deliveries")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CONTRACTORS — a work permit for an outside team: requested by the staff
+// member responsible (host), approved by the Manager, valid for set days.
+// Security signs the team in and out every day (attendance log).
+// ─────────────────────────────────────────────────────────────────────────
+enum ContractorPassStatus {
+  PENDING_MANAGER
+  APPROVED
+  DECLINED
+  REVOKED
+  CANCELLED
+}
+
+model ContractorPass {
+  id                  String               @id @default(cuid())
+  passNumber          String               @unique
+  branchId            String
+  status              ContractorPassStatus @default(PENDING_MANAGER)
+  company             String
+  work                String
+  workArea            String
+  leadName            String
+  memberNames         String[]             @default([])
+  teamSize            Int
+  phone               String?
+  // Valid days (Lagos dates, inclusive).
+  validFrom           DateTime
+  validUntil          DateTime
+  hostUserId          String
+  requestedById       String
+  managerApprovedById String?
+  managerApprovedAt   DateTime?
+  declineReason       String?
+  revokedById         String?
+  revokedAt           DateTime?
+  revokeReason        String?
+  cancelReason        String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @default(now()) @updatedAt
+
+  branch            Branch                 @relation(fields: [branchId], references: [id])
+  host              User                   @relation("ContractorHost", fields: [hostUserId], references: [id])
+  requestedBy       User                   @relation("ContractorRequestedBy", fields: [requestedById], references: [id])
+  managerApprovedBy User?                  @relation("ContractorApprovedBy", fields: [managerApprovedById], references: [id])
+  revokedBy         User?                  @relation("ContractorRevokedBy", fields: [revokedById], references: [id])
+  attendance        ContractorAttendance[]
+
+  @@index([status])
+  @@map("contractor_passes")
+}
+
+model ContractorAttendance {
+  id             String    @id @default(cuid())
+  passId         String
+  workersPresent Int
+  signedInAt     DateTime
+  signedInById   String
+  signedOutAt    DateTime?
+  signedOutById  String?
+  note           String?
+
+  pass        ContractorPass @relation(fields: [passId], references: [id], onDelete: Cascade)
+  signedInBy  User           @relation("ContractorSignedInBy", fields: [signedInById], references: [id])
+  signedOutBy User?          @relation("ContractorSignedOutBy", fields: [signedOutById], references: [id])
+
+  @@index([passId, signedInAt])
+  @@map("contractor_attendance")
 }
