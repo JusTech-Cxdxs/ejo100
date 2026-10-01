@@ -7,8 +7,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { Topbar } from '@/components/Topbar';
 import { Marquee } from '@/components/Marquee';
 import { NavigationLoadingProvider } from '@/components/NavigationLoadingProvider';
-import { getMarqueeItems } from '@/lib/actions/dashboard';
-import { getNotificationSummary } from '@/lib/actions/notifications';
+import { NotificationProvider } from '@/components/NotificationProvider';
 
 /**
  * Fetches the logged-in user's real name/role server-side (via Prisma
@@ -42,23 +41,22 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     },
   });
 
-  const notifications = await getNotificationSummary();
-  const marqueeItems = user?.organisationId ? await getMarqueeItems(user.organisationId, notifications) : [];
 
   return (
+    <NotificationProvider>
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar
           userName={user?.fullName ?? 'Unknown user'}
           roleName={user?.roles[0]?.role.name ?? 'No role assigned'}
-          notifications={notifications}
         />
-        <Marquee items={marqueeItems} />
+        <Marquee />
         <main className="flex flex-1 overflow-y-auto bg-[var(--ejo-bg)]">
           <NavigationLoadingProvider>{children}</NavigationLoadingProvider>
         </main>
       </div>
     </div>
+    </NotificationProvider>
   );
 }
