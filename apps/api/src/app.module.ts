@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
+import { SessionAuthGuard } from './common/guards/session-auth.guard';
 import { ConfigModule } from '@nestjs/config';
 
 import { PrismaModule } from './prisma/prisma.module';
@@ -70,6 +71,8 @@ import { SettingsModule } from './modules/settings/settings.module';
   providers: [
     // Every state-changing API request is written to audit_logs.
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+    // Secure by default: every route needs a valid session unless @Public().
+    { provide: APP_GUARD, useClass: SessionAuthGuard },
   ],
 })
 export class AppModule {}

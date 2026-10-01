@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { securityHeaders, rateLimit } from './common/middleware/security';
 
 /**
  * EJO 100 API entrypoint. Phase 1: bootstraps the app with every domain
@@ -33,6 +34,10 @@ async function bootstrap() {
     origin: [portalOrigin],
     credentials: true, // required so an explicitly-attached session token is accepted cross-origin
   });
+  // Security headers and per-client rate limiting on every request.
+  app.use(securityHeaders);
+  app.use(rateLimit);
+  (app.getHttpAdapter().getInstance() as { disable?: (s: string) => void }).disable?.('x-powered-by');
   app.use(cookieParser());
   app.setGlobalPrefix('api/v1');
 
