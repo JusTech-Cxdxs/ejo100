@@ -10,12 +10,26 @@ import { pluralize } from '@/lib/utils/pluralize';
 
 const AREAS = ['WORKSHOP', 'STORE', 'WARRANTY', 'SECURITY', 'SCHEDULING', 'SYSTEM'];
 
-export default async function NotificationCenter({ searchParams }: { searchParams: Promise<{ tab?: string; show?: string; area?: string; status?: string }> }) {
-  const { tab, show, area, status } = await searchParams;
-  const [summary, activity, broadcasts, broadcaster] = await Promise.all([getNotificationSummary(), getActivityFeed({ take: 300 }), getMyBroadcasts(), canBroadcast()]);
+const PAGE = 25;
+
+export default async function NotificationCenter({ searchParams }: { searchParams: Promise<{ tab?: string; show?: string; area?: string; status?: string; q?: string; limit?: string }> }) {
+  const { tab, show, area, status, q, limit } = await searchParams;
+  const term = q?.trim() ?? '';
+  const [summary, activity, allBroadcasts, broadcaster] = await Promise.all([getNotificationSummary(), getActivityFeed({ take: 1000, q: term }), getMyBroadcasts(), canBroadcast()]);
+  const broadcasts = term ? allBroadcasts.filter((b) => [b.title, b.message, b.number].some((x) => x.toLowerCase().includes(term.toLowerCase()))) : allBroadcasts;
+  const shown = Math.max(PAGE, Number(limit) || PAGE);
   const current = ['actions', 'activity', 'broadcasts'].includes(tab ?? '') ? tab! : summary.actions.length ? 'actions' : 'activity';
-  const unreadOnly = show !== 'all';
-  const feed = activity.filter((a) => (!unreadOnly || !a.read) && (!area || a.area === area));
+  const view = show === 'all' || show === 'read' ? show : 'unread';
+  const unreadOnly = view === 'unread';
+  const inArea = activity.filter((a) => !area || a.area === area);
+  const matching = inArea.filter((a) => (view === 'unread' ? !a.read : view === 'read' ? a.read : true));
+  const feed = matching.slice(0, shown);
+  const keep = (extra: Record<string, string | undefined>) => {
+    const p = new URLSearchParams();
+    const merged = { tab: current, show: view === 'unread' ? undefined : view, area, q: term || undefined, ...extra };
+    for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v);
+    return `/notifications?${p.toString()}`;
+  };
   const tabs: [string, string, number][] = [['actions', 'Action required', summary.actions.length], ['activity', 'Activity', summary.unreadActivity.length], ['broadcasts', 'Broadcasts', summary.unreadBroadcasts.length]];
   const pill = (on: boolean) => `rounded-full px-3 py-1 text-xs font-medium ${on ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`;
   const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]';
@@ -29,8 +43,16 @@ export default async function NotificationCenter({ searchParams }: { searchParam
         {broadcaster ? <LoadingLink href="/notifications/broadcasts" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Manage broadcasts →</LoadingLink> : null}
       </div>
       {status === 'read' ? <div className="mb-4 max-w-2xl"><FormFeedbackBanner kind="success" message="Marked as read." /></div> : null}
-      <div className="mb-5 flex flex-wrap gap-2">
+      <div className="mb-5 flex flex-wrap items-center gap-2">
         {tabs.map(([k, l, n]) => <LoadingLink key={k} href={`/notifications?tab=${k}`} className={pill(current === k)}>{l} ({n})</LoadingLink>)}
+        {current !== 'actions' ? (
+          <form className="flex w-full gap-2 sm:ml-auto sm:w-auto">
+            <input type="hidden" name="tab" value={current} />
+            {view !== 'unread' ? <input type="hidden" name="show" value={view} /> : null}
+            {area ? <input type="hidden" name="area" value={area} /> : null}
+            <input name="q" defaultValue={term} placeholder={current === 'broadcasts' ? 'Search broadcasts…' : 'Search activity — number, name, area…'} className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-72" />
+          </form>
+        ) : null}
       </div>
 
       {current === 'actions' ? (
@@ -54,17 +76,18 @@ export default async function NotificationCenter({ searchParams }: { searchParam
       {current === 'activity' ? (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <LoadingLink href={`/notifications?tab=activity${area ? `&area=${area}` : ''}`} className={pill(unreadOnly)}>Unread ({activity.filter((a) => !a.read && (!area || a.area === area)).length})</LoadingLink>
-            <LoadingLink href={`/notifications?tab=activity&show=all${area ? `&area=${area}` : ''}`} className={pill(!unreadOnly)}>All ({activity.filter((a) => !area || a.area === area).length})</LoadingLink>
+            <LoadingLink href={keep({ show: undefined, limit: undefined })} className={pill(view === 'unread')}>Unread ({inArea.filter((a) => !a.read).length})</LoadingLink>
+            <LoadingLink href={keep({ show: 'read', limit: undefined })} className={pill(view === 'read')}>Read ({inArea.filter((a) => a.read).length})</LoadingLink>
+            <LoadingLink href={keep({ show: 'all', limit: undefined })} className={pill(view === 'all')}>All ({inArea.length})</LoadingLink>
             <span className="mx-1 text-[var(--ejo-border)]">|</span>
-            <LoadingLink href={`/notifications?tab=activity${unreadOnly ? '' : '&show=all'}`} className={pill(!area)}>Every area</LoadingLink>
-            {AREAS.filter((x) => activity.some((a) => a.area === x)).map((x) => <LoadingLink key={x} href={`/notifications?tab=activity&area=${x}${unreadOnly ? '' : '&show=all'}`} className={pill(area === x)}>{AREA_LABEL[x]}</LoadingLink>)}
+            <LoadingLink href={keep({ area: undefined, limit: undefined })} className={pill(!area)}>Every area</LoadingLink>
+            {AREAS.filter((x) => activity.some((a) => a.area === x)).map((x) => <LoadingLink key={x} href={keep({ area: x, limit: undefined })} className={pill(area === x)}>{AREA_LABEL[x]}</LoadingLink>)}
             {summary.unreadActivity.length ? (
               <form action={markAllReadFormAction} className="sm:ml-auto"><input type="hidden" name="kind" value="activity" /><input type="hidden" name="returnTo" value="/notifications?tab=activity" /><SubmitButton label="Mark all as read" pendingLabel="…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)]" /></form>
             ) : null}
           </div>
           <div className={card}>
-            {feed.length === 0 ? <p className="p-6 text-sm text-[var(--ejo-text-muted)]">{unreadOnly ? 'No unread activity.' : 'No activity in the last 30 days.'}</p> : (
+            {feed.length === 0 ? <p className="p-6 text-sm text-[var(--ejo-text-muted)]">{term ? `Nothing matches "${term}".` : unreadOnly ? 'No unread activity.' : view === 'read' ? 'Nothing read yet.' : 'No activity in the last 90 days.'}</p> : (
               <ul className="divide-y divide-[var(--ejo-border)]">
                 {feed.map((a) => (
                   <li key={a.key} className={`flex flex-wrap items-start justify-between gap-2 px-4 py-3 ${a.read ? '' : 'bg-[var(--ejo-primary)]/5'}`}>
@@ -78,7 +101,13 @@ export default async function NotificationCenter({ searchParams }: { searchParam
                 ))}
               </ul>
             )}
+            {matching.length > feed.length ? (
+              <div className="border-t border-[var(--ejo-border)] p-3 text-center">
+                <LoadingLink href={keep({ limit: String(shown + PAGE) })} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">View more ({matching.length - feed.length} more)</LoadingLink>
+              </div>
+            ) : null}
           </div>
+          <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">Showing {pluralize(feed.length, 'item')} of {matching.length}.</p>
         </>
       ) : null}
 
