@@ -3,9 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
 import { NotificationBell } from '@/components/NotificationBell';
-import type { NotificationSummary } from '@/lib/actions/notifications';
 
-export function Topbar({ userName, roleName, notifications }: { userName: string; roleName: string; notifications: NotificationSummary }) {
+export function Topbar({ userName, roleName }: { userName: string; roleName: string }) {
   const router = useRouter();
 
   async function handleSignOut() {
@@ -21,7 +20,7 @@ export function Topbar({ userName, roleName, notifications }: { userName: string
         className="w-80 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-4 py-2 text-sm outline-none focus:border-[var(--ejo-primary)]"
       />
       <div className="flex items-center gap-4">
-        <NotificationBell initial={notifications} />
+        <NotificationBell />
         <div className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-full bg-[var(--ejo-primary)]/20" />
           <div className="text-sm">
