@@ -7,7 +7,7 @@ import { requireUser, writeAuditLog } from './workshop';
 import { getDashboardNotifications, type DashboardNotification } from './dashboard';
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
 import {
-  entityTypesForRoles, recordUrl, areaOf, HIDDEN_ACTIONS, BROADCAST_CATEGORIES, DURATIONS,
+  entityTypesForRoles, recordUrl, areaOf, HIDDEN_ACTIONS, describeApiEntry, BROADCAST_CATEGORIES, DURATIONS,
   broadcastEnd, durationLabel, broadcastState, reaches, type BroadcastState,
 } from '@/lib/notification-rules';
 import { deliverDueBroadcastEmails } from '@/lib/broadcast-delivery';
@@ -38,13 +38,17 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
   const scope = m.isMaster ? 'ALL' : entityTypesForRoles(m.roleSlugs);
   const since = new Date(Date.now() - FEED_DAYS * 86400000);
   // Records I have acted on (my "chains").
-  const mine = await prisma.auditLog.findMany({ where: { userId: m.id, createdAt: { gte: new Date(Date.now() - 90 * 86400000) } }, distinct: ['entityType', 'entityId'], select: { entityType: true, entityId: true }, take: 2000 });
+  // Business events only — the low-level data journal ("db:…") is the
+  // complete record for the audit dashboard, never shown as activity.
+  const mine = await prisma.auditLog.findMany({ where: { userId: m.id, createdAt: { gte: new Date(Date.now() - 90 * 86400000) }, NOT: { entityType: { startsWith: 'db:' } } }, distinct: ['entityType', 'entityId'], select: { entityType: true, entityId: true }, take: 2000 });
   const byType = new Map<string, string[]>();
   for (const r of mine) if (r.entityId) byType.set(r.entityType, [...(byType.get(r.entityType) ?? []), r.entityId]);
   const involved = [...byType.entries()].map(([entityType, ids]) => ({ entityType, entityId: { in: ids } }));
   const where = {
     createdAt: { gte: since },
     action: { notIn: HIDDEN_ACTIONS },
+    // Not the low-level data journal, and not failed API attempts.
+    NOT: [{ entityType: { startsWith: 'db:' } }, { action: { endsWith: '.failed' } }],
     OR: [{ userId: null }, { userId: { not: m.id } }],
     ...(scope === 'ALL' ? {} : { AND: [{ OR: [...(scope.length ? [{ entityType: { in: scope } }] : []), ...involved] }] }),
   };
@@ -57,10 +61,16 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
   ]);
   const read = new Set(reads.map((r: { key: string }) => r.key));
   const name = new Map(actors.map((a: { id: string; fullName: string }) => [a.id, a.fullName]));
-  const items = rows.map((r: (typeof rows)[number]) => {
+  const items = rows.flatMap((r: (typeof rows)[number]) => {
+    // API request records (users, roles, branches…) read as plain events.
+    if (r.entityType.startsWith('api:')) {
+      const d = describeApiEntry(r.action, r.entityType);
+      if (!d) return [];
+      return [{ key: `audit:${r.id}`, id: r.id, title: d.title, detail: null, area: 'SYSTEM', url: d.url, actor: r.userId ? name.get(r.userId) ?? null : 'System', at: r.createdAt, read: read.has(`audit:${r.id}`) }];
+    }
     const meta = r.metadata && typeof r.metadata === 'object' ? (r.metadata as Record<string, unknown>) : null;
     const number = meta && typeof meta === 'object' ? (['jobNumber', 'serviceNumber', 'visitNumber', 'passNumber', 'permitNumber', 'exitNumber', 'incidentNumber', 'deliveryNumber', 'appointmentNumber', 'warrantyNumber', 'claimNumber', 'slipNumber', 'referenceNumber', 'broadcastNumber'].map((k) => meta[k]).find((v) => typeof v === 'string') as string | undefined) : undefined;
-    return {
+    return [{
       key: `audit:${r.id}`,
       id: r.id,
       title: `${securityActionLabel(r.action)}${number ? ` — ${number}` : ''}`,
@@ -70,7 +80,7 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
       actor: r.userId ? name.get(r.userId) ?? null : 'System',
       at: r.createdAt,
       read: read.has(`audit:${r.id}`),
-    };
+    }];
   });
   const term = opts.q?.trim().toLowerCase();
   const found = term ? items.filter((i: ActivityItem) => [i.title, i.detail, i.actor, i.area].some((x) => (x ?? '').toLowerCase().includes(term))) : items;
@@ -265,7 +275,7 @@ export async function getNotificationPulse(): Promise<string> {
   try {
     await requireUser();
     const [a, b] = await Promise.all([
-      prisma.auditLog.findFirst({ orderBy: { createdAt: 'desc' }, select: { id: true } }),
+      prisma.auditLog.findFirst({ where: { NOT: [{ entityType: { startsWith: 'db:' } }, { action: { endsWith: '.failed' } }] }, orderBy: { createdAt: 'desc' }, select: { id: true } }),
       prisma.broadcast.findFirst({ orderBy: { updatedAt: 'desc' }, select: { id: true, updatedAt: true } }),
     ]);
     return `${a?.id ?? ''}|${b?.id ?? ''}:${b ? +new Date(b.updatedAt) : 0}`;
