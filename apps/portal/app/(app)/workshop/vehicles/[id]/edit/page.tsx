@@ -79,19 +79,20 @@ export default async function VehiclePage({
 }) {
   const { id } = await params;
   const { error, edit, status } = await searchParams;
-  const vehicle = await getVehicle(id);
-  if (!vehicle) notFound();
-  const vehicleWarranties = await listWarrantiesFor({ vehicleId: id });
-  const partsFitted = await listPartsFittedToVehicle(id);
-  const [lastEdit, auditTrail, isMasterAdmin, serviceHealth, analytics, reminderHistory] = await Promise.all([
+  // Everything on this page needs only the vehicle's id — one round, all at once.
+  const [vehicle, vehicleWarranties, partsFitted, lastEdit, auditTrail, isMasterAdmin, serviceHealth, analytics, reminderHistory, coveredValue] = await Promise.all([
+    getVehicle(id),
+    listWarrantiesFor({ vehicleId: id }),
+    listPartsFittedToVehicle(id),
     getLastEditInfo('CustomerVehicle', id, 'vehicle.updated'),
     getVehicleAuditTrail(id),
     currentUserIsMasterAdmin(),
     getVehicleServiceHealth(id),
     getVehicleAnalytics(id),
     getVehicleReminderHistory(id),
+    getVehicleCoveredValue(id),
   ]);
-  const coveredValue = await getVehicleCoveredValue(id);
+  if (!vehicle) notFound();
   // One vehicle's descriptive / diagnostic / predictive / prescriptive picture.
   const intelligence = computeVehicleIntelligence({
     mileage: analytics.mileageTimeline.map((m: (typeof analytics.mileageTimeline)[number]) => ({ date: new Date(m.date), km: m.mileage })),
