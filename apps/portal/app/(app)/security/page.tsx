@@ -67,6 +67,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
           ['Vehicles inside (total)', d.compound.vehiclesInside, 'Visitor, workshop, cleared and delivery vehicles', '/security/vehicles-inside'],
           ['People out on passes', d.compound.peopleOut, 'Employees and others on exit passes', '/security/people-out'],
           ['On road test', d.compound.onRoadTest, 'Workshop vehicles out on a road test', '/security/road-tests?tab=out'],
+          ['Contractors on site', d.compound.contractorsOnSite, d.compound.contractorsAfterHours ? `${d.compound.contractorsAfterHours} ${d.compound.contractorsAfterHours === 1 ? 'team' : 'teams'} past 5 pm` : `${d.compound.contractorTeamsOnSite} ${d.compound.contractorTeamsOnSite === 1 ? 'team' : 'teams'} signed in`, '/security/contractors?tab=on_site'],
           ['Deliveries on site', d.compound.deliveriesOnSite, 'At the gate or received, not yet out', '/security/deliveries?tab=at_gate'],
           ['Open incidents', d.compound.openIncidents, 'Open or under review', '/security/incidents?tab=open'],
           ['Overdue', overdueVisits.length + overduePasses.length + overdueTests.length, 'Follow up or extend', '/security/overdue'],
