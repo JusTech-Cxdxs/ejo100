@@ -140,6 +140,7 @@ model Organisation {
   announcements Announcement[]
 
   @@map("organisations")
+  broadcasts Broadcast[]
 }
 
 model BusinessUnit {
@@ -450,6 +451,10 @@ model User {
   contractorsRevoked ContractorPass[] @relation("ContractorRevokedBy")
   contractorSignIns ContractorAttendance[] @relation("ContractorSignedInBy")
   contractorSignOuts ContractorAttendance[] @relation("ContractorSignedOutBy")
+  broadcastsCreated Broadcast[] @relation("BroadcastCreatedBy")
+  broadcastsStopped Broadcast[] @relation("BroadcastStoppedBy")
+  notificationReads NotificationRead[] @relation("NotificationReads")
+  notificationPreference NotificationPreference? @relation("NotificationPreference")
 }
 
 // One-to-one HR extension of User. Kept separate per the Phase 1 note so
@@ -3596,4 +3601,82 @@ model ContractorAttendance {
 
   @@index([passId, signedInAt])
   @@map("contractor_attendance")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS & BROADCASTS
+// ─────────────────────────────────────────────────────────────────────────
+enum BroadcastCategory {
+  NEWS
+  ANNOUNCEMENT
+  IMPORTANT
+  URGENT
+  SECURITY_ALERT
+  MAINTENANCE
+  GREETING
+}
+
+enum BroadcastAudience {
+  ALL
+  BRANCH
+  DEPARTMENT
+  ROLE
+}
+
+/// A message to staff — dashboard, marquee, notification centre and
+/// (optionally) email — live from startsAt to endsAt, then it switches
+/// itself off (an admin can stop, reactivate or delete it).
+model Broadcast {
+  id              String            @id @default(cuid())
+  broadcastNumber String            @unique
+  organisationId  String
+  category        BroadcastCategory
+  title           String
+  message         String
+  audience        BroadcastAudience @default(ALL)
+  // Branch / department ids or role slugs, per the audience.
+  audienceIds     String[]          @default([])
+  startsAt        DateTime
+  // Null = runs until stopped.
+  endsAt          DateTime?
+  durationLabel   String?
+  sendEmail       Boolean           @default(false)
+  emailedAt       DateTime?
+  isActive        Boolean           @default(true)
+  stoppedAt       DateTime?
+  stoppedById     String?
+  createdById     String
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @default(now()) @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("BroadcastCreatedBy", fields: [createdById], references: [id])
+  stoppedBy    User?        @relation("BroadcastStoppedBy", fields: [stoppedById], references: [id])
+
+  @@index([isActive, startsAt])
+  @@map("broadcasts")
+}
+
+/// What a person has read in their notification centre: "audit:<id>"
+/// for activity, "bc:<id>" for broadcasts.
+model NotificationRead {
+  id     String   @id @default(cuid())
+  userId String
+  key    String
+  readAt DateTime @default(now())
+
+  user User @relation("NotificationReads", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@map("notification_reads")
+}
+
+model NotificationPreference {
+  userId    String   @id
+  muted     Boolean  @default(false)
+  updatedAt DateTime @default(now()) @updatedAt
+
+  user User @relation("NotificationPreference", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
 }
