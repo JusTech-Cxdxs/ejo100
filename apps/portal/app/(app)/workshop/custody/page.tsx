@@ -1,4 +1,5 @@
-import { getWorkshopCustodySummary, type WorkshopCustodyEntry, currentUserIsMasterAdmin, listEligibleManagersForBranch, getWorkshopBranchId, currentUserId } from '@/lib/actions/workshop';
+import { getWorkshopCustodySummary, type WorkshopCustodyEntry, currentUserIsMasterAdmin, listEligibleManagersForBranch, currentUserId } from '@/lib/actions/workshop';
+import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { sendApprovalReminderFormAction, notifyOverdueCancelledVehicleFormAction, sendReadyForCollectionReminderFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
