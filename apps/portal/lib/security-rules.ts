@@ -71,6 +71,11 @@ export const STATUS_CHIP: Record<string, string> = {
   UNDER_REVIEW: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   AT_GATE: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
   RECEIVED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  ACTIVE: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
+  ON_SITE: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  UPCOMING: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
+  ENDED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+  REVOKED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
   APPROVED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
   OUT: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
   RETURNED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
@@ -115,3 +120,35 @@ export const SEVERITY_CHIP: Record<string, string> = {
 };
 export const INCIDENT_STATUS_LABEL: Record<string, string> = { OPEN: 'Open', UNDER_REVIEW: 'Under review', CLOSED: 'Closed' };
 export const DELIVERY_STATUS_LABEL: Record<string, string> = { EXPECTED: 'Expected', AT_GATE: 'At the gate', RECEIVED: 'Received by Store', LEFT: 'Left', CANCELLED: 'Cancelled' };
+
+export const CONTRACTOR_STATUS_LABEL: Record<string, string> = {
+  PENDING_MANAGER: 'Awaiting Manager',
+  UPCOMING: 'Approved — starts later',
+  ACTIVE: 'Active',
+  ON_SITE: 'On site',
+  ENDED: 'Ended',
+  DECLINED: 'Declined',
+  REVOKED: 'Revoked',
+  CANCELLED: 'Cancelled',
+};
+
+/** Lagos calendar date "YYYY-MM-DD" of a moment. */
+export const lagosDay = (d: Date) => new Date(new Date(d).getTime() + 3600000).toISOString().slice(0, 10);
+
+/** What a contractor pass is right now (approved passes depend on the date). */
+export function contractorState(p: { status: string; validFrom: Date; validUntil: Date }, onSite: boolean, now: Date = new Date()): string {
+  if (p.status !== 'APPROVED') return p.status;
+  if (onSite) return 'ON_SITE';
+  const today = lagosDay(now);
+  if (today < lagosDay(p.validFrom)) return 'UPCOMING';
+  if (today > lagosDay(p.validUntil)) return 'ENDED';
+  return 'ACTIVE';
+}
+
+/** Minutes a team has been on site past 5 pm closing (0 if not). */
+export function contractorAfterHoursMinutes(signedInAt: Date, now: Date = new Date()): number {
+  const close = new Date(`${lagosDay(now)}T17:00:00+01:00`);
+  const start = new Date(signedInAt);
+  const from = start > close ? start : close;
+  return now > close ? Math.floor((now.getTime() - from.getTime()) / 60000) : 0;
+}

@@ -26,6 +26,16 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'security.email_failed': 'Email could not be sent',
   'vehicle.gate_exit': 'Vehicle left through the gate',
   'incident.reported': 'Incident reported',
+  'contractor.requested': 'Contractor pass requested',
+  'contractor.approved': 'Contractor pass approved by the Manager',
+  'contractor.declined': 'Contractor pass declined',
+  'contractor.cancelled': 'Contractor pass cancelled',
+  'contractor.revoked': 'Contractor pass revoked',
+  'contractor.signed_in': 'Contractors signed in',
+  'contractor.signed_out': 'Contractors signed out',
+  'appointment.visitors_added': 'Visitors added',
+  'appointment.visitors_changed': 'Visitors changed',
+  'appointment.visitors_removed': 'Visitors removed',
   'incident.linked': 'Incident reported about this record',
   'incident.assigned': 'Incident assigned',
   'incident.closed': 'Incident closed',
@@ -88,6 +98,20 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
       return s('by');
     case 'appointment.reminder_sent':
       return typeof meta.minutesBefore === 'number' ? `About ${meta.minutesBefore} ${meta.minutesBefore === 1 ? 'minute' : 'minutes'} before` : null;
+    case 'contractor.requested':
+      return [s('passNumber'), s('company'), typeof meta.people === 'number' ? `${meta.people} ${meta.people === 1 ? 'person' : 'people'}` : null, typeof meta.days === 'number' ? `${meta.days} ${meta.days === 1 ? 'day' : 'days'}` : null].filter(Boolean).join(' · ') || null;
+    case 'contractor.signed_in':
+      return typeof meta.people === 'number' ? `${meta.people} of ${meta.of} ${meta.of === 1 ? 'person' : 'people'}` : null;
+    case 'contractor.signed_out':
+      return [typeof meta.people === 'number' ? `${meta.people} ${meta.people === 1 ? 'person' : 'people'}` : null, s('onSite') ? `on site ${s('onSite')}` : null, s('note')].filter(Boolean).join(' · ') || null;
+    case 'contractor.declined':
+    case 'contractor.cancelled':
+    case 'contractor.revoked':
+      return s('reason') ? `Reason: ${s('reason')}` : null;
+    case 'appointment.visitors_added':
+    case 'appointment.visitors_changed':
+    case 'appointment.visitors_removed':
+      return [s('visitNumber'), s('visitors'), s('organisation'), s('reason') ? `Reason: ${s('reason')}` : null].filter(Boolean).join(' · ') || null;
     case 'incident.reported':
     case 'incident.linked':
       return [s('incidentNumber'), s('type'), s('severity') ? s('severity')!.toLowerCase() : null, s('related') ? `about ${s('related')}` : null].filter(Boolean).join(' · ') || null;
