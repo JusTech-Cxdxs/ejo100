@@ -648,7 +648,7 @@ export async function canDecideExitPass(passId: string): Promise<boolean> {
 }
 
 /** Trail + every email for one Visit / Exit Pass. */
-export async function getSecurityHistory(entityType: 'Visit' | 'ExitPass' | 'VehicleGateExit' | 'RoadTestPermit' | 'SecurityIncident' | 'GateDelivery' | 'ContractorPass', entityId: string) {
+export async function getSecurityHistory(entityType: 'Visit' | 'ExitPass' | 'VehicleGateExit' | 'RoadTestPermit' | 'SecurityIncident' | 'GateDelivery' | 'ContractorPass' | 'Broadcast', entityId: string) {
   await requireUser();
   const [entries, emails] = await Promise.all([
     prisma.auditLog.findMany({ where: { entityType, entityId }, orderBy: { createdAt: 'desc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } }),

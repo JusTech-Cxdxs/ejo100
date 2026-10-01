@@ -242,71 +242,27 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   return notifications.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
-export type MarqueeItem = { id: string; text: string; kind: 'ANNOUNCEMENT' | 'ACTIVITY' };
+export type MarqueeItem = { id: string; text: string; kind: 'BROADCAST' | 'ACTION' | 'ACTIVITY'; url: string; icon: string; urgent: boolean };
 
-/** Real, live announcements plus real recent activity, mixed into one
- * real feed — never fabricated filler when either list is thin. */
-export async function getMarqueeItems(organisationId: string): Promise<MarqueeItem[]> {
+/** What scrolls across the top until it is read or done: live broadcasts
+ * not yet read, actions waiting for this person, and new activity. */
+export async function getMarqueeItems(organisationId: string, summary?: import('./notifications').NotificationSummary): Promise<MarqueeItem[]> {
   try {
-    return await getMarqueeItemsInner(organisationId);
+    void organisationId;
+    if (!summary) return [];
+    const { BROADCAST_CATEGORY } = await import('@/lib/notification-rules');
+    return [
+      ...summary.unreadBroadcasts.map((b) => ({ id: `bc-${b.id}`, text: `${b.title} — ${b.message.split('\n')[0]}`, kind: 'BROADCAST' as const, url: `/notifications?tab=broadcasts#${b.id}`, icon: BROADCAST_CATEGORY[b.category]?.icon ?? '📢', urgent: ['URGENT', 'SECURITY_ALERT'].includes(b.category) })),
+      ...summary.actions.slice(0, 8).map((n) => ({ id: `act-${n.id}`, text: n.title, kind: 'ACTION' as const, url: n.url, icon: '⏳', urgent: false })),
+      ...summary.unreadActivity.slice(0, 6).map((a) => ({ id: `new-${a.id}`, text: a.title, kind: 'ACTIVITY' as const, url: a.url, icon: '•', urgent: false })),
+    ];
   } catch (err) {
-    // Same real reasoning as getDashboardNotifications above — this
-    // also runs on every single page via the shared layout, so a
-    // real failure here must degrade to "no marquee shown", never a
-    // "server issue" blocking the whole app.
     // eslint-disable-next-line no-console
     console.error('Failed to load marquee items', err);
     return [];
   }
 }
 
-async function getMarqueeItemsInner(organisationId: string): Promise<MarqueeItem[]> {
-  await requireUser();
-  const [announcements, recentActivity] = await Promise.all([
-    prisma.announcement.findMany({
-      where: { organisationId, isActive: true, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      select: { id: true, message: true },
-    }),
-    prisma.auditLog.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 8,
-      select: { id: true, action: true, entityType: true, metadata: true },
-    }),
-  ]);
-
-  const items: MarqueeItem[] = announcements.map((a: { id: string; message: string }) => ({ id: `ann-${a.id}`, text: a.message, kind: 'ANNOUNCEMENT' as const }));
-  for (const entry of recentActivity) {
-    const text = describeActivity(entry.action, entry.entityType, entry.metadata);
-    if (text) items.push({ id: `act-${entry.id}`, text, kind: 'ACTIVITY' as const });
-  }
-  return items;
-}
-
-/** Turns a raw audit action into one short, real, human sentence for
- * the marquee — deliberately conservative: an action this function
- * doesn't recognize is silently skipped rather than shown as a raw
- * code, matching this project's own standing rule that a real action
- * label is always required, never a fallback to the database string
- * itself. */
-function describeActivity(action: string, entityType: string, metadata: unknown): string | null {
-  const meta = (metadata && typeof metadata === 'object' ? metadata : {}) as Record<string, unknown>;
-  switch (action) {
-    case 'job_card.status_updated': {
-      const to = typeof meta.to === 'string' ? meta.to : null;
-      return to === 'CHECKED_OUT' ? 'A vehicle was just checked out.' : to === 'COMPLETED' ? 'A Job Card was just marked Completed.' : null;
-    }
-    case 'goods_receipt.recorded':
-      return 'A new Goods Receipt was just recorded.';
-    case 'pricing_alert.dismissed':
-      return null;
-    case 'part.selling_price_set':
-      return typeof meta.name === 'string' ? `Selling price updated for ${meta.name}.` : null;
-    default:
-      return entityType === 'JobCard' && action === 'job_card.created' ? 'A new Job Card was just opened.' : null;
-  }
-}
 
 export async function createAnnouncement(message: string, expiresAt: Date | null): Promise<void> {
   const user = await requireUser();
