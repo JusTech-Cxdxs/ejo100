@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendDueAppointmentReminders, sendMorningDigest } from '@/lib/appointment-reminders';
+import { deliverDueBroadcastEmails } from '@/lib/broadcast-delivery';
 
 /**
  * Appointment reminders. Protected by CRON_SECRET (same as the other cron
@@ -15,6 +16,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const reminders = await sendDueAppointmentReminders();
+  // Scheduled broadcasts go out by email at their start time.
+  const broadcastEmails = await deliverDueBroadcastEmails();
   const digests = request.nextUrl.searchParams.get('digest') === '1' ? await sendMorningDigest() : 0;
-  return NextResponse.json({ ok: true, remindersSent: reminders, digestsSent: digests });
+  return NextResponse.json({ ok: true, remindersSent: reminders, digestsSent: digests, broadcastEmailsSent: broadcastEmails });
 }
