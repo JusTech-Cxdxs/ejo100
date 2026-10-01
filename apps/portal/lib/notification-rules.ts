@@ -149,3 +149,25 @@ export function reaches(b: { audience: string; audienceIds: string[] }, u: { bra
   if (b.audience === 'ROLE') return u.roleSlugs.some((r) => b.audienceIds.includes(r));
   return false;
 }
+
+// ── API request records → readable activity ─────────────────────────────
+
+const API_RESOURCE: Record<string, { one: string; page: string }> = {
+  users: { one: 'User', page: '/users' }, roles: { one: 'Role', page: '/roles' }, permissions: { one: 'Permission', page: '/permissions' },
+  branches: { one: 'Branch', page: '/branches' }, departments: { one: 'Department', page: '/departments' }, teams: { one: 'Team', page: '/teams' },
+  'business-units': { one: 'Business unit', page: '/business-units' }, organisations: { one: 'Organisation', page: '/organisation' },
+  countries: { one: 'Country', page: '/countries' }, states: { one: 'State', page: '/states' }, cities: { one: 'City', page: '/cities' },
+  settings: { one: 'Setting', page: '/settings' }, suppliers: { one: 'Supplier', page: '/suppliers' }, documents: { one: 'Document', page: '/documents' },
+};
+const VERB: Record<string, string> = { post: 'created', put: 'updated', patch: 'updated', delete: 'deleted' };
+
+/** "api.patch" on "api:/users/:id" → "User updated" (links to Users).
+ * Failed attempts and sign-in / technical endpoints are not activity. */
+export function describeApiEntry(action: string, entityType: string): { title: string; url: string } | null {
+  const m = /^api\.(post|put|patch|delete)$/.exec(action);
+  if (!m) return null;
+  const segment = entityType.replace(/^api:\/?/, '').split('/')[0] ?? '';
+  const r = API_RESOURCE[segment];
+  if (!r) return null;
+  return { title: `${r.one} ${VERB[m[1]!]}`, url: r.page };
+}
