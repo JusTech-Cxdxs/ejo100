@@ -44,7 +44,7 @@ export default async function ReportIncidentPage({ searchParams }: { searchParam
           <div><label className={label}>Vehicle plate (optional)</label><input name="vehiclePlate" placeholder="e.g. KJA 453 GX" className={`${input} uppercase`} /></div>
         </div>
         <div><label className={label}>Action already taken (optional)</label><input name="actionTaken" placeholder="e.g. Visitor escorted out, CSO called" className={input} /></div>
-        <div><label className={label}>Related record number (optional)</label><input name="relatedNumber" defaultValue={related ?? ''} placeholder="A VIS, VP, EP, RT, VX or DLV number" className={`${input} uppercase`} /></div>
+        <div><label className={label}>Related record number (optional)</label><input name="relatedNumber" defaultValue={related ?? ''} placeholder="A VIS, VP, EP, RT, VX, DLV or CTR number" className={`${input} uppercase`} /></div>
         <SubmitButton label="Report incident" pendingLabel="Reporting…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-3 text-sm font-medium text-white hover:opacity-90 sm:w-auto" />
       </form>
     </div>
