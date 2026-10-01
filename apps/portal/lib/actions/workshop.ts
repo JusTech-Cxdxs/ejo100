@@ -2,6 +2,8 @@
 
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
+import { after } from 'next/server';
+import { announceChange } from '@/lib/realtime-ping';
 
 /**
  * Workshop Server Actions — Customers, Vehicles, Job Cards.
@@ -174,6 +176,13 @@ export async function writeAuditLog(params: {
         metadata: params.metadata as Prisma.InputJsonValue | undefined,
       },
     });
+    // Tell every open browser "something changed" — sent after the response,
+    // so it never slows the action down.
+    try {
+      after(() => announceChange());
+    } catch {
+      void announceChange();
+    }
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Failed to write audit log:', params.action, params.entityId, err);
