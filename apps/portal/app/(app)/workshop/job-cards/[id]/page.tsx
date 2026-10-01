@@ -356,25 +356,33 @@ export default async function JobCardDetailPage({
 }) {
   const { id } = await params;
   const { status, error, editLineId, editStatus } = await searchParams;
-  const [jobCard, technicians, isMasterAdmin, viewerId] = await Promise.all([
+  // Round 1 — everything that needs only the Job Card's id, all at once
+  // (each database trip crosses regions, so fewer rounds = a faster page).
+  const [jobCard, technicians, isMasterAdmin, viewerId, auditTrail, eligibleSupervisors, estimate, payments, cancellationRequests, closeRequests, sourcingNeeds, refunds, warranties, roadTests, billing] = await Promise.all([
     getJobCard(id),
     listTechnicianCandidates(),
     currentUserIsMasterAdmin(),
     currentUserId(),
-  ]);
-  if (!jobCard) notFound();
-  const [auditTrail, eligibleSupervisors, estimate, eligibleManagers, eligibleFinance, payments, cancellationRequests, closeRequests, sourcingNeeds, partCategories, partTypes] = await Promise.all([
     getJobCardAuditTrail(id),
     listEligibleSupervisorsForJobCard(id),
     getJobCardEstimate(id),
-    listEligibleManagersForBranch(jobCard.branchId),
-    listEligibleFinanceOfficersForBranch(jobCard.branchId),
     getJobCardPayments(id),
     getCancellationRequests(id),
     getCloseRequests(id),
     getJobCardSourcingNeeds(id),
+    listRefunds({ jobCardId: id }),
+    listWarrantiesFor({ jobCardId: id }),
+    listRoadTestsFor({ jobCardId: id }),
+    getJobCardBilling(id),
+  ]);
+  if (!jobCard) notFound();
+  // Round 2 — what needs the Job Card's branch or its estimate, all at once.
+  const [eligibleManagers, eligibleFinance, partCategories, partTypes, partWarrantyBadges] = await Promise.all([
+    listEligibleManagersForBranch(jobCard.branchId),
+    listEligibleFinanceOfficersForBranch(jobCard.branchId),
     listPartCategories(jobCard.branchId),
     listPartTypes(jobCard.branchId),
+    getPartWarrantyBadges((estimate?.lineItems ?? []).map((li: { matchedPartId: string | null }) => li.matchedPartId ?? '')),
   ]);
   const partCategoriesWithTypes = partCategories.map((category: (typeof partCategories)[number]) => ({
     id: category.id,
@@ -391,12 +399,7 @@ export default async function JobCardDetailPage({
   const canRequestClose = isCreator || isApprover;
   const pendingCancellationRequest = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'PENDING');
   const approvedCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'APPROVED') ?? null;
-  const refunds = await listRefunds({ jobCardId: id });
-  const warranties = await listWarrantiesFor({ jobCardId: id });
-  const roadTests = await listRoadTestsFor({ jobCardId: id });
-  const billing = await getJobCardBilling(id);
   // Estimate lines whose part carries a warranty — shown before fitting.
-  const partWarrantyBadges = await getPartWarrantyBadges((estimate?.lineItems ?? []).map((li: { matchedPartId: string | null }) => li.matchedPartId ?? ''));
   const refundedTotal = refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
   const pendingCloseRequest = closeRequests.find((r: (typeof closeRequests)[number]) => r.status === 'PENDING');
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
