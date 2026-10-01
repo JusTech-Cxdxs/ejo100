@@ -27,6 +27,7 @@ export const platformModules: PlatformModuleDescriptor[] = [
   { key: 'warranty', name: 'Warranty', status: 'LIVE', href: '/warranty', icon: 'shield' },
   { key: 'security', name: 'Security', status: 'LIVE', href: '/security', icon: 'shield' },
   { key: 'scheduling', name: 'Scheduling', status: 'LIVE', href: '/schedule', icon: 'calendar' },
+  { key: 'analytics', name: 'Business Analytics', status: 'LIVE', href: '/analytics', icon: 'bar-chart' },
   { key: 'warehouse', name: 'Warehouse', status: 'COMING_SOON', href: '/warehouse', icon: 'warehouse' },
   { key: 'suppliers', name: 'Suppliers', status: 'COMING_SOON', href: '/suppliers', icon: 'truck' },
   { key: 'procurement', name: 'Procurement', status: 'COMING_SOON', href: '/procurement', icon: 'shopping-cart' },

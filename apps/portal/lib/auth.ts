@@ -29,7 +29,7 @@ export const auth = betterAuth({
       await sendEmail(
         user.email,
         'Reset your EJO 100 password',
-        `<p>Hello ${user.name ?? ''},</p>
+        `<p>Hello ${escapeHtml(user.name ?? '')},</p>
          <p>Click the link below to reset your EJO 100 Enterprise Platform password. This link expires in 1 hour.</p>
          <p><a href="${url}">Reset password</a></p>
          <p>If you didn't request this, you can safely ignore this email.</p>`,
@@ -42,7 +42,7 @@ export const auth = betterAuth({
       await sendEmail(
         user.email,
         'Verify your EJO 100 email address',
-        `<p>Hello ${user.name ?? ''},</p>
+        `<p>Hello ${escapeHtml(user.name ?? '')},</p>
          <p>Please verify your email address to finish setting up your EJO 100 account.</p>
          <p><a href="${url}">Verify email</a></p>`,
       );
@@ -64,6 +64,21 @@ export const auth = betterAuth({
     },
   },
 
+  // Brute-force protection: at most 5 sign-in attempts a minute per client,
+  // and 100 auth requests a minute overall. (Per server instance; a WAF /
+  // shared store adds a global limit in front — see the platform blueprint.)
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 100,
+    customRules: {
+      '/sign-in/email': { window: 60, max: 5 },
+      '/sign-up/email': { window: 60, max: 5 },
+      '/forget-password': { window: 300, max: 3 },
+      '/reset-password': { window: 300, max: 5 },
+    },
+  },
+
   advanced: {
     // Better Auth's Prisma adapter maps model names 1:1 to our schema's
     // User / Session / Account / Verification models — no field mapping
@@ -73,3 +88,8 @@ export const auth = betterAuth({
 });
 
 export type Session = typeof auth.$Infer.Session;
+
+/** Text placed into an HTML email is always escaped (no markup injection). */
+function escapeHtml(v: string): string {
+  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
