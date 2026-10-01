@@ -1,9 +1,23 @@
 import { canSeeAuditLogs, getAuditLogPage, listAuditUsers } from '@/lib/actions/audit-logs';
 import { LoadingLink } from '@/components/LoadingLink';
-import { formatDateTime } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 
 const KINDS: [string, string][] = [['all', 'Everything'], ['business', 'Business events'], ['data', 'Data changes'], ['api', 'API requests']];
+const AREA_DOT: Record<string, string> = { Workshop: 'bg-[var(--ejo-primary)]', Store: 'bg-[var(--ejo-info)]', Warranty: 'bg-[var(--ejo-warning)]', Security: 'bg-[var(--ejo-error)]', Scheduling: 'bg-purple-500', System: 'bg-[var(--ejo-text-muted)]' };
+const timeOf = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' });
+function groupByDay<T extends { at: Date }>(rows: T[]): [string, T[]][] {
+  const ymd = (d: Date) => new Date(new Date(d).getTime() + 3600000).toISOString().slice(0, 10);
+  const today = ymd(new Date());
+  const yesterday = ymd(new Date(Date.now() - 86400000));
+  const groups = new Map<string, T[]>();
+  for (const r of rows) {
+    const k = ymd(r.at);
+    const label = k === today ? 'Today' : k === yesterday ? 'Yesterday' : new Date(r.at).toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label)!.push(r);
+  }
+  return [...groups.entries()];
+}
 const KIND_CHIP: Record<string, string> = { Business: 'bg-[var(--ejo-primary)]/15 text-[var(--ejo-primary)]', 'Data change': 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]', API: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]' };
 
 export default async function AuditLogsPage({ searchParams }: { searchParams: Promise<{ kind?: string; q?: string; userId?: string; from?: string; to?: string; cursor?: string }> }) {
@@ -43,36 +57,45 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Pr
         <LoadingLink href="/audit-logs" className="px-2 py-1.5 text-sm text-[var(--ejo-text-muted)] hover:underline">Clear</LoadingLink>
       </form>
       <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">{pluralize(rows.length, 'entry', 'entries')} on this page{sp.cursor ? ' (older)' : ''}</p>
-      <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
-        {rows.length === 0 ? <p className="p-6 text-sm text-[var(--ejo-text-muted)]">Nothing matches.</p> : (
-          <ul className="divide-y divide-[var(--ejo-border)]">
-            {rows.map((r) => (
-              <li key={r.id} className="px-4 py-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className={`mr-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${KIND_CHIP[r.kind]}`}>{r.kind}</span>
-                    {r.url ? <LoadingLink href={r.url} className="text-sm font-medium text-[var(--ejo-text)] hover:underline">{r.title}</LoadingLink> : <span className="text-sm font-medium text-[var(--ejo-text)]">{r.title}</span>}
-                    {r.detail ? <span className="block text-xs text-[var(--ejo-text-muted)]">{r.detail}</span> : null}
-                  </div>
-                  <span className="shrink-0 text-right text-[11px] text-[var(--ejo-text-muted)]">{formatDateTime(r.at)}<span className="block">{r.who} · {r.area}</span></span>
-                </div>
-                {r.changes.length ? (
-                  <details className="mt-2">
-                    <summary className="cursor-pointer text-xs text-[var(--ejo-primary)]">What changed ({pluralize(r.changes.length, 'field')})</summary>
-                    <div className="mt-2 overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead><tr className="text-left text-[var(--ejo-text-muted)]"><th className="py-1 pr-3">Field</th><th className="pr-3">Before</th><th>After</th></tr></thead>
-                        <tbody>{r.changes.map((c) => <tr key={c.field} className="border-t border-[var(--ejo-border)] align-top"><td className="py-1 pr-3 text-[var(--ejo-text)]">{c.field}</td><td className="break-all pr-3 text-[var(--ejo-text-muted)]">{c.before}</td><td className="break-all text-[var(--ejo-text)]">{c.after}</td></tr>)}</tbody>
-                      </table>
+      {rows.length === 0 ? <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6 text-sm text-[var(--ejo-text-muted)]">Nothing matches.</div> : (
+        <div className="space-y-5">
+          {groupByDay(rows).map(([day, items]) => (
+            <section key={day}>
+              <h2 className="sticky top-0 z-10 mb-2 bg-[var(--ejo-bg)] py-1 text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">{day}</h2>
+              <ul className="divide-y divide-[var(--ejo-border)] overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+                {items.map((r) => (
+                  <li key={r.id} className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-3 px-4 py-3 sm:grid-cols-[4.5rem_minmax(0,1fr)]">
+                    <span className="pt-0.5 text-xs tabular-nums text-[var(--ejo-text-muted)]">{timeOf(r.at)}</span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${AREA_DOT[r.area] ?? 'bg-[var(--ejo-text-muted)]'}`} title={r.area} />
+                        <span className="text-sm font-medium text-[var(--ejo-text)]">{r.title}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${KIND_CHIP[r.kind]}`}>{r.kind}</span>
+                      </div>
+                      {r.detail ? <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">{r.detail}</p> : null}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        {r.records.map((x) => <LoadingLink key={x.url + x.label} href={x.url} className="rounded-full border border-[var(--ejo-border)] px-2 py-0.5 text-[var(--ejo-primary)] hover:bg-[var(--ejo-bg)]">{x.label} →</LoadingLink>)}
+                        <span className="text-[var(--ejo-text-muted)]">by {r.who} · {r.area}{r.ip ? ` · IP ${r.ip}` : ''}</span>
+                      </div>
+                      {r.changes.length ? (
+                        <details className="mt-2">
+                          <summary className="cursor-pointer text-xs text-[var(--ejo-primary)]">What changed ({pluralize(r.changes.length, 'field')})</summary>
+                          <div className="mt-2 overflow-x-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)]">
+                            <table className="w-full text-xs">
+                              <thead className="bg-[var(--ejo-bg)]"><tr className="text-left text-[var(--ejo-text-muted)]"><th className="px-2 py-1">Field</th><th className="px-2">Before</th><th className="px-2">After</th></tr></thead>
+                              <tbody>{r.changes.map((c) => <tr key={c.field} className="border-t border-[var(--ejo-border)] align-top"><td className="px-2 py-1 text-[var(--ejo-text)]">{c.field}</td><td className="break-all px-2 text-[var(--ejo-error)]/80 line-through decoration-1">{c.before}</td><td className="break-all px-2 text-[var(--ejo-success)]">{c.after}</td></tr>)}</tbody>
+                            </table>
+                          </div>
+                        </details>
+                      ) : null}
                     </div>
-                  </details>
-                ) : null}
-                {r.record || r.ip ? <p className="mt-1 text-[10px] text-[var(--ejo-text-muted)]">{r.record ? `Record ${r.record}` : ''}{r.record && r.ip ? ' · ' : ''}{r.ip ? `IP ${r.ip}` : ''}</p> : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
       <div className="mt-3 flex flex-wrap gap-3 text-sm">
         {sp.cursor ? <LoadingLink href={keep({ cursor: undefined })} className="text-[var(--ejo-primary)] hover:underline">← Back to newest</LoadingLink> : null}
         {nextCursor ? <LoadingLink href={keep({ cursor: nextCursor })} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-1.5 font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Older →</LoadingLink> : null}
