@@ -34,7 +34,6 @@ export default async function EditAppointmentPage({ params, searchParams }: { pa
               appointmentId: a.id, ownerId: a.ownerId, title: a.title, agenda: a.agenda, date: local.slice(0, 10), time: local.slice(11, 16),
               duration: Math.round((new Date(a.endsAt).getTime() - new Date(a.startsAt).getTime()) / 60000), roomId: a.roomId, location: a.location,
               participants: a.participants.map((p) => p.user),
-              visitors: a.visit ? { names: [a.visit.visitorName, ...a.visit.memberNames], organisation: a.visit.company, phone: a.visit.phone, purpose: a.visit.purpose } : null,
             }}
           />
         </div>
