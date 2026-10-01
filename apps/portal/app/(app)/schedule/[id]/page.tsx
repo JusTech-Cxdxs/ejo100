@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getAppointment, getAppointmentHistory, getSchedulingAccess } from '@/lib/actions/scheduling';
-import { appointmentActionFormAction } from '@/lib/actions/scheduling-form-handlers';
+import { appointmentActionFormAction, removeVisitorGroupFormAction } from '@/lib/actions/scheduling-form-handlers';
+import { pluralize } from '@/lib/utils/pluralize';
 import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
 import { SecurityHistory } from '@/components/SecurityHistory';
@@ -13,6 +14,9 @@ import { formatDateTime } from '@/lib/utils/format-date';
 const DONE: Record<string, string> = {
   created: 'Appointment booked — the host and participants have been emailed.',
   changed: 'Appointment updated — everyone involved has been emailed.',
+  visitors_added: 'Visitors added — Security has been emailed and will expect them.',
+  visitors_changed: 'Visitors updated — Security has been emailed.',
+  visitors_removed: 'Visitors removed — Security has been emailed.',
   cancel: 'Appointment cancelled — everyone involved has been emailed.',
   complete: 'Marked as completed.',
   no_show: 'Marked as a no-show.',
@@ -26,6 +30,7 @@ export default async function AppointmentPage({ params, searchParams }: { params
   if (!a) notFound();
   const canManage = access.isAdmin || a.ownerId === access.userId || access.owners.some((o) => o.id === a.ownerId);
   const started = new Date(a.startsAt).getTime() <= Date.now();
+  const open = a.status === 'SCHEDULED' && new Date(a.endsAt).getTime() > Date.now();
   const t = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' });
   const input = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
   const btn = 'rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90';
@@ -52,16 +57,8 @@ export default async function AppointmentPage({ params, searchParams }: { params
           <Row k="Where" val={a.room ? `${a.room.name}${a.room.location ? ` · ${a.room.location}` : ''}` : a.location} />
           <Row k="Agenda" val={a.agenda} />
           <Row k="Staff taking part" val={a.participants.map((p) => p.user.fullName).join(', ') || null} />
-          <Row k="Visitors" val={a.visit ? [a.visit.visitorName, ...a.visit.memberNames].join(', ') + (a.visit.company ? ` (${a.visit.company})` : '') : null} />
           <Row k="Cancelled because" val={a.cancelReason} />
           <Row k="Completed" val={a.completedAt ? formatDateTime(a.completedAt) : null} />
-          {a.visit ? (
-            <p className="mt-2 text-xs">
-              <LoadingLink href={`/security/visitors/${a.visit.id}`} className="text-[var(--ejo-primary)] hover:underline">
-                Security booking {a.visit.visitNumber} — {VISIT_STATUS_LABEL[a.visit.status]}{a.visit.checkedInAt ? `, arrived ${formatDateTime(a.visit.checkedInAt)}` : ''} →
-              </LoadingLink>
-            </p>
-          ) : null}
         </dl>
         <div className="h-fit space-y-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Actions</h2>
@@ -78,6 +75,44 @@ export default async function AppointmentPage({ params, searchParams }: { params
             </>
           )}
         </div>
+      </div>
+      <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">
+            Visitor groups{a.visits.length ? ` (${pluralize(a.visits.reduce((n, v) => n + v.partySize, 0), 'person', 'people')} in ${pluralize(a.visits.length, 'group')})` : ''}
+          </h2>
+          {canManage && open ? <LoadingLink href={`/schedule/${a.id}/visitors/new`} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">+ Add visitors</LoadingLink> : null}
+        </div>
+        {a.visits.length === 0 ? (
+          <p className="text-sm text-[var(--ejo-text-muted)]">No visitors from outside{canManage && open ? ' — add a group for each company or person coming; Security is told about each one.' : '.'}</p>
+        ) : (
+          <ul className="divide-y divide-[var(--ejo-border)]">
+            {a.visits.map((v) => (
+              <li key={v.id} className="py-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <span className="min-w-0">
+                    <span className="text-sm font-medium text-[var(--ejo-text)]">{v.company ?? 'Private'}{v.partySize > 1 ? ` — ${pluralize(v.partySize, 'person', 'people')}` : ''}</span>
+                    <span className="block text-xs text-[var(--ejo-text-muted)]">{[v.visitorName + (v.partySize > 1 ? ' (lead)' : ''), ...v.memberNames].join(', ')}</span>
+                    <span className="block text-xs text-[var(--ejo-text-muted)]">{v.purpose}{v.phone ? ` · ${v.phone}` : ''}</span>
+                  </span>
+                  <LoadingLink href={`/security/visitors/${v.id}`} className="shrink-0 text-xs text-[var(--ejo-primary)] hover:underline">{v.visitNumber} — {VISIT_STATUS_LABEL[v.status]}{v.checkedInAt ? `, arrived ${formatDateTime(v.checkedInAt)}` : ''} →</LoadingLink>
+                </div>
+                {canManage && open && v.status === 'EXPECTED' ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <LoadingLink href={`/schedule/${a.id}/visitors/${v.id}`} className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">Change</LoadingLink>
+                    <form action={removeVisitorGroupFormAction} className="flex min-w-0 flex-1 flex-wrap gap-2">
+                      <FormPendingOverlay />
+                      <input type="hidden" name="appointmentId" value={a.id} />
+                      <input type="hidden" name="visitId" value={v.id} />
+                      <input name="reason" required placeholder="Reason for removing them" className={`${input} min-w-0 flex-1 py-1 text-xs`} />
+                      <SubmitButton label="Remove" pendingLabel="…" className="text-xs font-medium text-[var(--ejo-error)] hover:underline" />
+                    </form>
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       <SecurityHistory history={history} />
     </div>
