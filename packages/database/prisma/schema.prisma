@@ -1808,6 +1808,10 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([userId])
   @@index([createdAt])
+  // The activity feed reads "this kind of record, newest first" and "this
+  // person's actions, newest first".
+  @@index([entityType, createdAt])
+  @@index([userId, createdAt])
   @@map("audit_logs")
 }
 
