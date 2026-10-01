@@ -1,3 +1,4 @@
+import { Public } from '../../common/decorators/public.decorator';
 import { Controller, Get, HttpCode, HttpStatus, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -10,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service';
  * what would actually catch that, either for Render's own Health Check
  * Path setting or for manual verification after a deploy.
  */
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
