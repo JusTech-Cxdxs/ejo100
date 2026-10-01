@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@ejo/database';
 import { getWarrantyClaim } from '@/lib/actions/warranty-claims';
 import { getOrganisation } from '@/lib/actions/organisation';
-import { getWorkshopBranchId } from '@/lib/actions/workshop';
+import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/print/DocumentHeader';
 import { PrintOnLoad } from '@/components/print/PrintOnLoad';
 import { CLAIM_STATUS_LABEL, REMEDY_LABEL, PART_RETURN_LABEL, CUSTOMER_RESOLUTION_LABEL } from '@/lib/warranty-claim-status';
