@@ -9,9 +9,11 @@ const PULSE_MS = 5000;
 /** With instant push connected, the regular check is only a safety net. */
 const PULSE_WHEN_PUSHED_MS = 30000;
 /** On a push ping: refresh within ~1 s, at most once per 3 s (last ping always honoured). */
-const PING_GAP_MS = 3000;
+const PING_GAP_MS = 2000;
 /** At most one full summary fetch (and page refresh) per 15 seconds. */
-const MIN_LOAD_GAP_MS = 15000;
+const MIN_LOAD_GAP_MS = 8000;
+/** Open pages update themselves when anything changes — at most every 8 s. */
+const PAGE_REFRESH_GAP_MS = 8000;
 const RING_MS = 120000;
 const EMPTY: NotificationSummary = { actions: [], unreadActivity: [], unreadBroadcasts: [], total: 0, signature: '', muted: false };
 
@@ -19,22 +21,40 @@ type Ctx = { summary: NotificationSummary; loaded: boolean; muted: boolean; togg
 const NotificationContext = createContext<Ctx>({ summary: EMPTY, loaded: false, muted: false, toggleMute: () => undefined, markRead: async () => undefined });
 export const useNotifications = () => useContext(NotificationContext);
 
-/** A short chime made in the browser (no sound file). */
-function chime(ctx: AudioContext | null, urgent: boolean) {
-  if (!ctx) return;
-  (urgent ? [880, 660, 880] : [660, 880]).forEach((f, i) => {
+/**
+ * Real notification sounds, made in the browser (no sound files to load):
+ *  • message — a soft two-note "ding-dong" with a natural attack and fade;
+ *  • ring    — a distinct three-note ring, played twice, for actions that
+ *              need you (repeats every 2 minutes until done, unless muted).
+ */
+function playNote(ctx: AudioContext, freq: number, at: number, length: number, volume: number) {
+  // Two layered oscillators (fundamental + soft octave) give a bell-like tone.
+  for (const [mult, type, vol] of [[1, 'sine', 1], [2, 'triangle', 0.25]] as const) {
     const o = ctx.createOscillator();
     const g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.value = f;
-    const t = ctx.currentTime + i * 0.18;
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.type = type;
+    o.frequency.value = freq * mult;
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(volume * vol, at + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + length);
     o.connect(g).connect(ctx.destination);
-    o.start(t);
-    o.stop(t + 0.17);
-  });
+    o.start(at);
+    o.stop(at + length + 0.02);
+  }
+}
+function chime(ctx: AudioContext | null, urgent: boolean) {
+  if (!ctx) return;
+  const t = ctx.currentTime + 0.02;
+  if (!urgent) {
+    playNote(ctx, 1046.5, t, 0.35, 0.22); // C6
+    playNote(ctx, 784.0, t + 0.16, 0.55, 0.2); // G5
+    return;
+  }
+  for (const rep of [0, 0.75]) {
+    playNote(ctx, 880.0, t + rep, 0.22, 0.25); // A5
+    playNote(ctx, 1108.7, t + rep + 0.16, 0.22, 0.25); // C#6
+    playNote(ctx, 1318.5, t + rep + 0.32, 0.4, 0.25); // E6
+  }
 }
 
 /**
@@ -69,6 +89,23 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     refreshWaiting.current = false;
     router.refresh();
   }, [router]);
+  // Live pages: whenever anything changes, the page you are looking at updates
+  // itself (at most every 8 s; the last change is always applied; never while
+  // you are typing — refreshPage waits for you to leave the field).
+  const lastPageRefresh = useRef(0);
+  const pageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshPageSoon = useCallback(() => {
+    if (pageTimer.current) return;
+    const wait = Math.max(0, PAGE_REFRESH_GAP_MS - (Date.now() - lastPageRefresh.current));
+    pageTimer.current = setTimeout(() => {
+      pageTimer.current = null;
+      if (document.visibilityState === 'hidden') return;
+      lastPageRefresh.current = Date.now();
+      refreshPage();
+    }, wait);
+  }, [refreshPage]);
+  useEffect(() => () => { if (pageTimer.current) clearTimeout(pageTimer.current); }, []);
+
   useEffect(() => {
     const onLeaveField = () => { if (refreshWaiting.current) setTimeout(() => { if (!typing()) refreshPage(); }, 300); };
     document.addEventListener('focusout', onLeaveField);
@@ -89,8 +126,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setSummary(next);
     if (first) setMuted(next.muted);
     setLoaded(true);
-    if (mine) refreshPage();
-  }, [refreshPage]);
+    if (mine) refreshPageSoon();
+  }, [refreshPageSoon]);
 
   const check = useCallback(async () => {
     if (busy.current || document.visibilityState === 'hidden') return;
@@ -103,11 +140,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         // next check, so a busy day never floods the server.)
         pulse.current = p;
         await load();
+        refreshPageSoon();
       }
     } finally {
       busy.current = false;
     }
-  }, [load]);
+  }, [load, refreshPageSoon]);
 
   // Instant push: a ping means "something changed" — refresh now (coalesced).
   const pingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -116,9 +154,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const wait = Math.max(300, PING_GAP_MS - (Date.now() - lastLoad.current));
     pingTimer.current = setTimeout(() => {
       pingTimer.current = null;
-      if (document.visibilityState !== 'hidden') void load();
+      if (document.visibilityState !== 'hidden') { void load(); refreshPageSoon(); }
     }, wait);
-  }, [load]);
+  }, [load, refreshPageSoon]);
   const pushed = useChangePings(onPing);
 
   useEffect(() => () => { if (pingTimer.current) clearTimeout(pingTimer.current); }, []);
