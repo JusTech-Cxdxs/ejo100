@@ -1,9 +1,8 @@
 import Link from 'next/link';
 import { getNotificationSummary, getActivityFeed, getMyBroadcasts, canBroadcast } from '@/lib/actions/notifications';
-import { markReadFormAction, markAllReadFormAction } from '@/lib/actions/notification-form-handlers';
+import { NotificationReadToggle, NotificationOpenLink, MarkAllReadButton } from '@/components/NotificationReadToggle';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
-import { SubmitButton } from '@/components/SubmitButton';
 import { BROADCAST_CATEGORY, AREA_LABEL } from '@/lib/notification-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
@@ -83,7 +82,7 @@ export default async function NotificationCenter({ searchParams }: { searchParam
             <LoadingLink href={keep({ area: undefined, limit: undefined })} className={pill(!area)}>Every area</LoadingLink>
             {AREAS.filter((x) => activity.some((a) => a.area === x)).map((x) => <LoadingLink key={x} href={keep({ area: x, limit: undefined })} className={pill(area === x)}>{AREA_LABEL[x]}</LoadingLink>)}
             {summary.unreadActivity.length ? (
-              <form action={markAllReadFormAction} className="sm:ml-auto"><input type="hidden" name="kind" value="activity" /><input type="hidden" name="returnTo" value="/notifications?tab=activity" /><SubmitButton label="Mark all as read" pendingLabel="…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)]" /></form>
+              <span className="sm:ml-auto"><MarkAllReadButton kind="activity" /></span>
             ) : null}
           </div>
           <div className={card}>
@@ -91,12 +90,12 @@ export default async function NotificationCenter({ searchParams }: { searchParam
               <ul className="divide-y divide-[var(--ejo-border)]">
                 {feed.map((a) => (
                   <li key={a.key} className={`flex flex-wrap items-start justify-between gap-2 px-4 py-3 ${a.read ? '' : 'bg-[var(--ejo-primary)]/5'}`}>
-                    <Link href={a.url} className="min-w-0 flex-1">
+                    <NotificationOpenLink href={a.url} itemKey={a.key} read={a.read} className="min-w-0 flex-1">
                       <span className="block text-sm text-[var(--ejo-text)]">{a.read ? null : <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-[var(--ejo-primary)]" />}{a.title}</span>
                       {a.detail ? <span className="block text-xs text-[var(--ejo-text-muted)]">{a.detail}</span> : null}
                       <span className="block text-[11px] text-[var(--ejo-text-muted)]">{AREA_LABEL[a.area]} · {a.actor ?? 'System'} · {formatDateTime(a.at)}</span>
-                    </Link>
-                    {!a.read ? <form action={markReadFormAction}><input type="hidden" name="key" value={a.key} /><input type="hidden" name="returnTo" value={`/notifications?tab=activity${area ? `&area=${area}` : ''}`} /><SubmitButton label="Mark read" pendingLabel="…" className="text-xs text-[var(--ejo-primary)] hover:underline" /></form> : null}
+                    </NotificationOpenLink>
+                    <NotificationReadToggle itemKey={a.key} read={a.read} />
                   </li>
                 ))}
               </ul>
@@ -114,7 +113,7 @@ export default async function NotificationCenter({ searchParams }: { searchParam
       {current === 'broadcasts' ? (
         <>
           {summary.unreadBroadcasts.length ? (
-            <form action={markAllReadFormAction} className="mb-3"><input type="hidden" name="kind" value="broadcasts" /><input type="hidden" name="returnTo" value="/notifications?tab=broadcasts" /><SubmitButton label="Mark all as read" pendingLabel="…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)]" /></form>
+            <div className="mb-3"><MarkAllReadButton kind="broadcasts" /></div>
           ) : null}
           {broadcasts.length === 0 ? <div className={card}><p className="p-6 text-sm text-[var(--ejo-text-muted)]">No broadcasts running for you right now.</p></div> : (
             <div className="space-y-3">
@@ -128,7 +127,7 @@ export default async function NotificationCenter({ searchParams }: { searchParam
                         {!b.read ? <span className="ml-2 text-[11px] font-semibold text-[var(--ejo-primary)]">New</span> : null}
                         <h2 className="mt-2 text-base font-semibold text-[var(--ejo-text)]">{b.title}</h2>
                       </div>
-                      {!b.read ? <form action={markReadFormAction}><input type="hidden" name="key" value={b.key} /><input type="hidden" name="returnTo" value="/notifications?tab=broadcasts" /><SubmitButton label="Mark read" pendingLabel="…" className="text-xs text-[var(--ejo-primary)] hover:underline" /></form> : null}
+                      <NotificationReadToggle itemKey={b.key} read={b.read} />
                     </div>
                     <p className="mt-2 whitespace-pre-line text-sm text-[var(--ejo-text)]">{b.message}</p>
                     <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">{b.number} · from {formatDateTime(b.startsAt)}{b.endsAt ? ` until ${formatDateTime(b.endsAt)}` : ' until stopped'}</p>
