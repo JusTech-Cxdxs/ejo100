@@ -94,7 +94,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                           <span className="block text-xs text-[var(--ejo-text-muted)]">
                             {a.owner.fullName} · {a.room?.name ?? a.location ?? '—'}
                             {a.participants.length ? ` · ${pluralize(a.participants.length, 'colleague')}` : ''}
-                            {a.visit ? ` · ${pluralize(a.visit.partySize, 'visitor')}${a.visit.company ? ` from ${a.visit.company}` : ''}` : ''}
+                            {a.visits.length ? ` · ${pluralize(a.visits.reduce((n, v) => n + v.partySize, 0), 'visitor')}${a.visits.length > 1 ? ` (${a.visits.length} groups)` : a.visits[0]!.company ? ` from ${a.visits[0]!.company}` : ''}` : ''}
                           </span>
                         </span>
                         <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS[a.status]![1]}`}>{STATUS[a.status]![0]}</span>
