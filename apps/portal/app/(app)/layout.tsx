@@ -7,7 +7,8 @@ import { Sidebar } from '@/components/Sidebar';
 import { Topbar } from '@/components/Topbar';
 import { Marquee } from '@/components/Marquee';
 import { NavigationLoadingProvider } from '@/components/NavigationLoadingProvider';
-import { getDashboardNotifications, getMarqueeItems } from '@/lib/actions/dashboard';
+import { getMarqueeItems } from '@/lib/actions/dashboard';
+import { getNotificationSummary } from '@/lib/actions/notifications';
 
 /**
  * Fetches the logged-in user's real name/role server-side (via Prisma
@@ -41,10 +42,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     },
   });
 
-  const [notifications, marqueeItems] = await Promise.all([
-    getDashboardNotifications(),
-    user?.organisationId ? getMarqueeItems(user.organisationId) : Promise.resolve([]),
-  ]);
+  const notifications = await getNotificationSummary();
+  const marqueeItems = user?.organisationId ? await getMarqueeItems(user.organisationId, notifications) : [];
 
   return (
     <div className="flex h-screen overflow-hidden">
