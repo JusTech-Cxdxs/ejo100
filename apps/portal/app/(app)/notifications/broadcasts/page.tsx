@@ -21,7 +21,10 @@ export default async function BroadcastsPage({ searchParams }: { searchParams: P
           <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Broadcasts</h1>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">News, announcements, alerts, maintenance notices and greetings — on dashboards, the scrolling bar, notifications and email.</p>
         </div>
-        {allowed ? <LoadingLink href="/notifications/broadcasts/new" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">+ New broadcast</LoadingLink> : null}
+        <span className="flex flex-wrap gap-2">
+          <LoadingLink href="/notifications/broadcasts/analytics" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Analytics</LoadingLink>
+          {allowed ? <LoadingLink href="/notifications/broadcasts/new" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">+ New broadcast</LoadingLink> : null}
+        </span>
       </div>
       {status === 'deleted' ? <p className="mb-4 text-sm text-[var(--ejo-success)]">Broadcast deleted.</p> : null}
       <div className="mb-4 flex flex-wrap items-center gap-2">
