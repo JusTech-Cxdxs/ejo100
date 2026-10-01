@@ -26,11 +26,11 @@ async function me(): Promise<Me> {
 
 export type ActivityItem = { key: string; id: string; title: string; detail: string | null; area: string; url: string; actor: string | null; at: Date; read: boolean };
 
-const FEED_DAYS = 30;
+const FEED_DAYS = 90;
 
 /** Everything this person should see: their area (heads), everything
  * (administrators), plus any record they have acted on themselves. */
-export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: number } = {}): Promise<ActivityItem[]> {
+export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: number; q?: string } = {}): Promise<ActivityItem[]> {
   const m = await me();
   const scope = m.isMaster ? 'ALL' : entityTypesForRoles(m.roleSlugs);
   const since = new Date(Date.now() - FEED_DAYS * 86400000);
@@ -46,7 +46,7 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
     ...(scope === 'ALL' ? {} : { AND: [{ OR: [...(scope.length ? [{ entityType: { in: scope } }] : []), ...involved] }] }),
   };
   if (scope !== 'ALL' && scope.length === 0 && involved.length === 0) return [];
-  const rows = await prisma.auditLog.findMany({ where, orderBy: { createdAt: 'desc' }, take: Math.min(opts.take ?? 150, 300), select: { id: true, action: true, entityType: true, entityId: true, metadata: true, createdAt: true, userId: true } });
+  const rows = await prisma.auditLog.findMany({ where, orderBy: { createdAt: 'desc' }, take: Math.min(opts.take ?? 150, 1000), select: { id: true, action: true, entityType: true, entityId: true, metadata: true, createdAt: true, userId: true } });
   const keys = rows.map((r: { id: string }) => `audit:${r.id}`);
   const [reads, actors] = await Promise.all([
     prisma.notificationRead.findMany({ where: { userId: m.id, key: { in: keys } }, select: { key: true } }),
@@ -69,7 +69,9 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
       read: read.has(`audit:${r.id}`),
     };
   });
-  return opts.unreadOnly ? items.filter((i: ActivityItem) => !i.read) : items;
+  const term = opts.q?.trim().toLowerCase();
+  const found = term ? items.filter((i: ActivityItem) => [i.title, i.detail, i.actor, i.area].some((x) => (x ?? '').toLowerCase().includes(term))) : items;
+  return opts.unreadOnly ? found.filter((i: ActivityItem) => !i.read) : found;
 }
 
 // ── Broadcasts for me ─────────────────────────────────────────────────
@@ -106,8 +108,6 @@ export type NotificationSummary = {
 export async function getNotificationSummary(): Promise<NotificationSummary> {
   try {
     const m = await me();
-    // Due broadcast emails go out on any page load too (safety net).
-    await deliverDueBroadcastEmails().catch(() => undefined);
     const [actions, activity, broadcasts, pref] = await Promise.all([
       getDashboardNotifications(),
       getActivityFeed({ unreadOnly: true, take: 100 }),
@@ -250,4 +250,89 @@ export async function listAudienceOptions() {
     prisma.role.findMany({ where: { organisationId: m.organisationId ?? '' }, orderBy: { name: 'asc' }, select: { slug: true, name: true } }),
   ]);
   return { branches, departments, roles: roles.filter((r: { slug: string }, i: number, a: { slug: string }[]) => a.findIndex((x) => x.slug === r.slug) === i) };
+}
+
+/**
+ * The cheap "has anything changed?" check the browser makes every few
+ * seconds: the newest audit entry and the newest broadcast change — two
+ * indexed single-row reads. Only when this changes does the browser fetch
+ * the full summary and refresh the page's data.
+ */
+export async function getNotificationPulse(): Promise<string> {
+  try {
+    await requireUser();
+    const [a, b] = await Promise.all([
+      prisma.auditLog.findFirst({ orderBy: { createdAt: 'desc' }, select: { id: true } }),
+      prisma.broadcast.findFirst({ orderBy: { updatedAt: 'desc' }, select: { id: true, updatedAt: true } }),
+    ]);
+    return `${a?.id ?? ''}|${b?.id ?? ''}:${b ? +new Date(b.updatedAt) : 0}`;
+  } catch {
+    return '';
+  }
+}
+
+// ── Broadcast analytics ───────────────────────────────────────────────
+
+/** Everything the broadcast dashboard shows (last 12 months). */
+export async function getBroadcastAnalytics() {
+  const m = await me();
+  const since = new Date(Date.now() - 365 * 86400000);
+  const [rows, users, emails] = await Promise.all([
+    prisma.broadcast.findMany({ where: { organisationId: m.organisationId ?? '', createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, select: { id: true, broadcastNumber: true, category: true, title: true, audience: true, audienceIds: true, startsAt: true, endsAt: true, isActive: true, stoppedAt: true, sendEmail: true, createdAt: true } }),
+    prisma.user.findMany({ where: { organisationId: m.organisationId ?? '', isActive: true }, select: { branchId: true, departmentId: true, roles: { select: { role: { select: { slug: true } } } } } }),
+    prisma.auditLog.findMany({ where: { action: 'broadcast.emailed', createdAt: { gte: since } }, select: { entityId: true, metadata: true } }),
+  ]);
+  const people = users.map((u: (typeof users)[number]) => ({ branchId: u.branchId, departmentId: u.departmentId, roleSlugs: u.roles.map((r: { role: { slug: string } }) => r.role.slug) }));
+  const readRows = rows.length ? await prisma.notificationRead.groupBy({ by: ['key'], where: { key: { in: rows.map((r: { id: string }) => `bc:${r.id}`) } }, _count: { key: true } }) : [];
+  const reads = new Map(readRows.map((r: { key: string; _count: { key: number } }) => [r.key, r._count.key]));
+  const emailed = new Map<string, { sent: number; failed: number }>();
+  for (const e of emails) {
+    const meta = (e.metadata ?? {}) as { sent?: number; failed?: number };
+    if (e.entityId) emailed.set(e.entityId, { sent: meta.sent ?? 0, failed: meta.failed ?? 0 });
+  }
+  const now = new Date();
+  const list = rows.map((b: (typeof rows)[number]) => {
+    const reach = people.filter((p: (typeof people)[number]) => reaches(b, p)).length;
+    const read = Math.min(reach, Number(reads.get(`bc:${b.id}`) ?? 0));
+    const state = broadcastState(b, now);
+    const started = +new Date(b.startsAt) <= +now;
+    return { ...b, state, reach, read, readRate: reach && started ? Math.round((read / reach) * 1000) / 10 : null, email: emailed.get(b.id) ?? null };
+  });
+  const started = list.filter((b: (typeof list)[number]) => +new Date(b.startsAt) <= +now);
+  const sumBy = (xs: typeof list, f: (b: (typeof list)[number]) => number) => xs.reduce((s: number, b: (typeof list)[number]) => s + f(b), 0);
+  const reach = sumBy(started, (b) => b.reach);
+  const read = sumBy(started, (b) => b.read);
+  const sent = sumBy(list, (b) => b.email?.sent ?? 0);
+  const failed = sumBy(list, (b) => b.email?.failed ?? 0);
+  const rate = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : null);
+  const byCategory = BROADCAST_CATEGORIES.map((c) => {
+    const xs = started.filter((b: (typeof list)[number]) => b.category === c);
+    const r = sumBy(xs, (b) => b.reach), rd = sumBy(xs, (b) => b.read);
+    return { category: c, count: list.filter((b: (typeof list)[number]) => b.category === c).length, reach: r, read: rd, readRate: rate(rd, r) };
+  });
+  const byAudience = ['ALL', 'BRANCH', 'DEPARTMENT', 'ROLE'].map((a) => ({ audience: a, count: list.filter((b: (typeof list)[number]) => b.audience === a).length }));
+  const months = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return { label: d.toLocaleDateString('en-NG', { month: 'short', year: '2-digit' }), count: list.filter((b: (typeof list)[number]) => new Date(b.createdAt).toISOString().slice(0, 7) === key).length };
+  });
+  const rated = started.filter((b: (typeof list)[number]) => b.readRate !== null && b.reach > 0);
+  const actions: { priority: 1 | 2 | 3; title: string; detail: string; href: string }[] = [];
+  for (const b of list.filter((x: (typeof list)[number]) => x.state === 'LIVE' && ['URGENT', 'SECURITY_ALERT'].includes(x.category) && x.read < x.reach)) {
+    actions.push({ priority: 1, title: `${b.title}: ${b.reach - b.read} ${b.reach - b.read === 1 ? 'person has' : 'people have'} not read this alert`, detail: `${b.broadcastNumber} — consider calling or messaging them directly.`, href: `/notifications/broadcasts/${b.id}` });
+  }
+  for (const b of list.filter((x: (typeof list)[number]) => (x.email?.failed ?? 0) > 0)) {
+    actions.push({ priority: 2, title: `${b.email!.failed} ${b.email!.failed === 1 ? 'email' : 'emails'} failed for ${b.broadcastNumber}`, detail: 'Check those staff email addresses in Users.', href: `/notifications/broadcasts/${b.id}` });
+  }
+  for (const b of list.filter((x: (typeof list)[number]) => x.state === 'LIVE' && x.readRate !== null && x.readRate < 30 && (+now - +new Date(x.startsAt)) > 86400000)) {
+    actions.push({ priority: 3, title: `${b.title}: only ${b.readRate}% have read it`, detail: `Live for more than a day — consider emailing it, or making it Important.`, href: `/notifications/broadcasts/${b.id}` });
+  }
+  actions.sort((a, b) => a.priority - b.priority);
+  return {
+    totals: { total: list.length, live: list.filter((b: (typeof list)[number]) => b.state === 'LIVE').length, scheduled: list.filter((b: (typeof list)[number]) => b.state === 'SCHEDULED').length, ended: list.filter((b: (typeof list)[number]) => b.state === 'ENDED').length, stopped: list.filter((b: (typeof list)[number]) => b.state === 'STOPPED').length, reach, read, readRate: rate(read, reach), emailsSent: sent, emailsFailed: failed, deliveryRate: rate(sent, sent + failed) },
+    byCategory, byAudience, months,
+    best: [...rated].sort((a, b) => (b.readRate ?? 0) - (a.readRate ?? 0)).slice(0, 5),
+    worst: [...rated].sort((a, b) => (a.readRate ?? 0) - (b.readRate ?? 0)).slice(0, 5),
+    actions,
+  };
 }

@@ -242,28 +242,6 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   return notifications.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
-export type MarqueeItem = { id: string; text: string; kind: 'BROADCAST' | 'ACTION' | 'ACTIVITY'; url: string; icon: string; urgent: boolean };
-
-/** What scrolls across the top until it is read or done: live broadcasts
- * not yet read, actions waiting for this person, and new activity. */
-export async function getMarqueeItems(organisationId: string, summary?: import('./notifications').NotificationSummary): Promise<MarqueeItem[]> {
-  try {
-    void organisationId;
-    if (!summary) return [];
-    const { BROADCAST_CATEGORY } = await import('@/lib/notification-rules');
-    return [
-      ...summary.unreadBroadcasts.map((b) => ({ id: `bc-${b.id}`, text: `${b.title} — ${b.message.split('\n')[0]}`, kind: 'BROADCAST' as const, url: `/notifications?tab=broadcasts#${b.id}`, icon: BROADCAST_CATEGORY[b.category]?.icon ?? '📢', urgent: ['URGENT', 'SECURITY_ALERT'].includes(b.category) })),
-      ...summary.actions.slice(0, 8).map((n) => ({ id: `act-${n.id}`, text: n.title, kind: 'ACTION' as const, url: n.url, icon: '⏳', urgent: false })),
-      ...summary.unreadActivity.slice(0, 6).map((a) => ({ id: `new-${a.id}`, text: a.title, kind: 'ACTIVITY' as const, url: a.url, icon: '•', urgent: false })),
-    ];
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to load marquee items', err);
-    return [];
-  }
-}
-
-
 export async function createAnnouncement(message: string, expiresAt: Date | null): Promise<void> {
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
