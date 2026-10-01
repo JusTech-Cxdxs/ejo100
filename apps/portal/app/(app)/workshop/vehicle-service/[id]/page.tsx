@@ -312,10 +312,23 @@ export default async function VehicleServiceDetailPage({
 }) {
   const { editMileage, editLineId, error, status } = await searchParams;
   const { id } = await params;
-  const [service, isMasterAdmin, viewerId] = await Promise.all([
+  // Round 1 — everything that needs only the service's id, all at once
+  // (each database trip crosses regions, so fewer rounds = a faster page).
+  const [service, isMasterAdmin, viewerId, technicians, auditTrail, inspection, serviceEstimate, payments, sourcingNeeds, closeRequests, refunds, warranties, roadTests, cancellationRequests] = await Promise.all([
     getVehicleService(id),
     currentUserIsMasterAdmin(),
     currentUserId(),
+    listTechnicianCandidates(),
+    getVehicleServiceAuditTrail(id),
+    getVehicleInspection(id),
+    getServiceEstimate(id),
+    getVehicleServicePayments(id),
+    getVehicleServiceSourcingNeeds(id),
+    getVehicleServiceCloseRequests(id),
+    listRefunds({ vehicleServiceId: id }),
+    listWarrantiesFor({ vehicleServiceId: id }),
+    listRoadTestsFor({ vehicleServiceId: id }),
+    getVehicleServiceCancellationRequests(id),
   ]);
   if (!service) notFound();
 
@@ -326,18 +339,13 @@ export default async function VehicleServiceDetailPage({
   const isReadOnly = service.status === 'ESCALATED' || Boolean(service.escalatedToJobCard);
   const isEstimateContributor = !isReadOnly && (isMasterAdmin || service.supervisor?.id === viewerId || service.assignedTechnician?.id === viewerId);
   const nextAction = NEXT_ACTION[service.status];
-  const [technicians, auditTrail, inspection, serviceEstimate, partTypes, partCategories, payments, eligibleFinance, eligibleManagers, sourcingNeeds, closeRequests] = await Promise.all([
-    listTechnicianCandidates(),
-    getVehicleServiceAuditTrail(id),
-    getVehicleInspection(id),
-    getServiceEstimate(id),
+  // Round 2 — what needs the service's branch or its estimate, all at once.
+  const [partTypes, partCategories, eligibleFinance, eligibleManagers, partWarrantyBadges] = await Promise.all([
     listPartTypes(service.branchId),
     listPartCategories(service.branchId),
-    getVehicleServicePayments(id),
     listEligibleFinanceOfficersForBranch(service.branchId),
     listEligibleManagersForBranch(service.branchId),
-    getVehicleServiceSourcingNeeds(id),
-    getVehicleServiceCloseRequests(id),
+    getPartWarrantyBadges((serviceEstimate?.lineItems ?? []).map((li: { matchedPartId: string | null }) => li.matchedPartId ?? '')),
   ]);
   const partCategoriesWithTypes = partCategories.map((category: (typeof partCategories)[number]) => ({
     id: category.id,
@@ -363,13 +371,8 @@ export default async function VehicleServiceDetailPage({
   }
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
-  const refunds = await listRefunds({ vehicleServiceId: id });
-  const warranties = await listWarrantiesFor({ vehicleServiceId: id });
-  const roadTests = await listRoadTestsFor({ vehicleServiceId: id });
   // Estimate lines whose part carries a warranty — shown before fitting.
-  const partWarrantyBadges = await getPartWarrantyBadges((serviceEstimate?.lineItems ?? []).map((li: { matchedPartId: string | null }) => li.matchedPartId ?? ''));
   const refundedTotal = refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
-  const cancellationRequests = await getVehicleServiceCancellationRequests(id);
   const pendingCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'PENDING') ?? null;
   const approvedCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'APPROVED') ?? null;
   // Same rule as the server: creator, supervisor or Master Admin, while
