@@ -1,7 +1,8 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog } from './workshop';
+import { requireUser } from './workshop';
+import { writeAuditLog } from '@/lib/workshop-core';
 
 // Deliberately NOT exported — a 'use server' file may only export
 // async functions or types, per the standing rule this project

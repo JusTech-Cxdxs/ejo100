@@ -1,7 +1,8 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog, getWorkshopBranchId, currentUserIsMasterAdmin, listEligibleManagersForBranch, getWorkshopOrgContext } from './workshop';
+import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
+import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { warrantyCoverage, splitLines, warrantyEndDate, durationLabel, durationShort, DURATION_LIMITS, type DurationUnit } from '@/lib/warranty-state';

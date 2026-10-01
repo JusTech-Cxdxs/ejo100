@@ -1,7 +1,8 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog } from './workshop';
+import { requireUser } from './workshop';
+import { writeAuditLog } from '@/lib/workshop-core';
 import { getWarrantyRoles } from './warranty';
 import { warrantyCoverage } from '@/lib/warranty-state';
 import { BILL_TO_LABEL, billingSplit, type BillTo } from '@/lib/estimate-billing';

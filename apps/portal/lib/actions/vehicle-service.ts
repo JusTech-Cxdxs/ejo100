@@ -3,19 +3,8 @@
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal } from '@/lib/estimate-billing';
 import { prisma } from '@ejo/database';
-import {
-  requireUser,
-  writeAuditLog,
-  createJobCard,
-  getWorkshopBranchId,
-  getWorkshopDepartmentForVehicleType,
-  isEligibleSupervisor,
-  currentUserIsMasterAdmin,
-  requireJobCardApprover,
-  getWorkshopOrgContext,
-  listEligibleManagersForBranch,
-  requireEligibleManager,
-} from './workshop';
+import { requireUser, createJobCard, currentUserIsMasterAdmin, requireJobCardApprover, listEligibleManagersForBranch, requireEligibleManager } from './workshop';
+import { writeAuditLog, getWorkshopBranchId, getWorkshopDepartmentForVehicleType, isEligibleSupervisor, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { computeServiceCycle, loadServiceTracking, assertServiceNotEscalated, type WorkshopVisit } from '@/lib/vehicle-service-cycle';
 import { custodyReminderState, notDueYetMessage } from '@/lib/custody-reminders';
 import { pluralize } from '@/lib/utils/pluralize';

@@ -1,14 +1,8 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import {
-  requireUser,
-  writeAuditLog,
-  requireEligibleFinanceOfficer,
-  listEligibleManagersForBranch,
-  listEligibleFinanceOfficersForBranch,
-  getWorkshopOrgContext,
-} from './workshop';
+import { requireUser, requireEligibleFinanceOfficer, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch } from './workshop';
+import { writeAuditLog, getWorkshopOrgContext } from '@/lib/workshop-core';
 import type { PaymentMethod } from './workshop';
 import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { sendEmail } from '@/lib/email';

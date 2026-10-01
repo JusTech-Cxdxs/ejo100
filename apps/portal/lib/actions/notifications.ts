@@ -3,7 +3,8 @@
 import { cache } from 'react';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog } from './workshop';
+import { requireUser } from './workshop';
+import { writeAuditLog } from '@/lib/workshop-core';
 import { getDashboardNotifications, type DashboardNotification } from './dashboard';
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
 import {

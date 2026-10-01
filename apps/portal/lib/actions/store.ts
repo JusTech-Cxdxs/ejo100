@@ -19,7 +19,8 @@ import { notifyWarrantyDepartmentOfPartWarranty } from '@/lib/warranty-departmen
 import { loadQuantityTraces } from '@/lib/inventory/quantity-trace';
 import { pluralize } from '@/lib/utils/pluralize';
 import { markupToMargin, marginToMarkup, actualMargin, actualMarkup, MARGIN_TOLERANCE_PP, roundedPriceForTargetMargin } from '@/lib/pricing-math';
-import { requireUser, writeAuditLog, currentUserIsMasterAdmin } from './workshop';
+import { requireUser, currentUserIsMasterAdmin } from './workshop';
+import { writeAuditLog } from '@/lib/workshop-core';
 import { sendEmail } from '@/lib/email';
 import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
 import { renderPricingAlertRaisedEmail } from '@/lib/email-templates/pricing-alert-raised';
@@ -1124,6 +1125,7 @@ async function sendStoreMatchingCompleteNotification(
  * made it false.
  */
 export async function jobCardHasUnmatchedStoreParts(jobCardId: string): Promise<boolean> {
+  await requireUser();
   const remaining = await prisma.estimateLineItem.count({
     where: { estimate: { jobCardId }, type: 'STORE_PART', matchedPartId: null },
   });

@@ -4,7 +4,8 @@ import { cache } from 'react';
 import { after } from 'next/server';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog, getWorkshopBranchId } from './workshop';
+import { requireUser } from './workshop';
+import { writeAuditLog, getWorkshopBranchId } from '@/lib/workshop-core';
 import { sendLoggedEmail, type Recipient } from '@/lib/logged-email';
 import { sendDueAppointmentReminders } from '@/lib/appointment-reminders';
 import { computeSchedulingAnalytics } from '@/lib/scheduling-analytics';

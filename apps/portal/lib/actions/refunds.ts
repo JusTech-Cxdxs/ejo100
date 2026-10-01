@@ -1,7 +1,8 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog, getWorkshopOrgContext, requireEligibleFinanceOfficer } from './workshop';
+import { requireUser, requireEligibleFinanceOfficer } from './workshop';
+import { writeAuditLog, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { sendEmail } from '@/lib/email';
 import { renderCustomerRefundReceiptEmail } from '@/lib/email-templates/customer-refund-receipt';
 import { customerTotal } from '@/lib/estimate-billing';

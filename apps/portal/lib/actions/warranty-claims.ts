@@ -1,7 +1,8 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog, getWorkshopBranchId, listEligibleManagersForBranch, getWorkshopOrgContext } from './workshop';
+import { requireUser, listEligibleManagersForBranch } from './workshop';
+import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { getWarrantyRoles, type WarrantyRoles } from './warranty';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';

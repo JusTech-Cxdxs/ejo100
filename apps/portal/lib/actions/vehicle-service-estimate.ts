@@ -2,7 +2,8 @@
 
 import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog, getWorkshopOrgContext, currentUserIsMasterAdmin, requireJobCardApprover, listEligibleManagersForBranch, requireEligibleManager } from './workshop';
+import { requireUser, currentUserIsMasterAdmin, requireJobCardApprover, listEligibleManagersForBranch, requireEligibleManager } from './workshop';
+import { writeAuditLog, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { requireStoreStaff, listEligibleStoreOfficersForBranch, listEligibleStoreManagersForBranch } from './store';
 import { renderServiceEstimateNudgeEmail } from '@/lib/email-templates/service-estimate-nudge';
 import { renderServiceStoreMatchingRequestedEmail, renderServiceStoreMatchingStatusEmail } from '@/lib/email-templates/service-store-matching-status';
@@ -231,6 +232,7 @@ export async function addServiceEstimateLineItem(estimateId: string, input: Serv
  * general queue.
  */
 export async function serviceEstimateHasUnmatchedStoreParts(vehicleServiceId: string): Promise<boolean> {
+  await requireUser();
   const remaining = await prisma.serviceEstimateLineItem.count({
     where: { estimate: { vehicleServiceId }, type: 'STORE_PART', matchedPartId: null },
   });

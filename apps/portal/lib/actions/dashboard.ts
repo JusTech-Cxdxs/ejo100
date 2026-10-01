@@ -5,7 +5,8 @@ import { getWarrantyDashboardItems } from './warranty';
 import { getSecurityDashboardItems } from './security';
 import { getSchedulingDashboardItems } from './scheduling';
 import { getWarrantyClaimDashboardItems } from './warranty-claims';
-import { requireUser, currentUserIsMasterAdmin, writeAuditLog, listEligibleManagersForBranch } from './workshop';
+import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
+import { writeAuditLog } from '@/lib/workshop-core';
 import { isWeekend } from '@/lib/utils/working-days';
 
 export type DashboardNotification = {

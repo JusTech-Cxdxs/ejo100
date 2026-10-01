@@ -2,7 +2,8 @@
 
 import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
 import { prisma } from '@ejo/database';
-import { requireUser, writeAuditLog } from './workshop';
+import { requireUser } from './workshop';
+import { writeAuditLog } from '@/lib/workshop-core';
 import { getApplicableTemplate, VEHICLE_INSPECTION_TEMPLATE } from '@/lib/vehicle-inspection-template';
 
 class VehicleInspectionActionError extends Error {}
