@@ -1,5 +1,5 @@
 import { getServiceTracker } from '@/lib/actions/vehicle-service';
-import { getWorkshopBranchId } from '@/lib/actions/workshop';
+import { getWorkshopBranchId } from '@/lib/workshop-core';
 import {
   attendToOverdueVehicleFormAction,
   sendManualServiceReminderFormAction,
