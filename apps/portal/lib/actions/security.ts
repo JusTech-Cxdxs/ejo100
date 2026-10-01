@@ -677,25 +677,25 @@ export async function listActiveStaff() {
 export async function getSecurityDashboardItems(): Promise<{ id: string; title: string; detail: string; url: string; createdAt: Date }[]> {
   const user = await requireUser();
   const roles = await getSecurityRoles();
-  const store = await isStore(user.id, roles.isMaster);
   const dayStart = new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T00:00:00+01:00`);
-  const ctr = roles.isManager || roles.isMaster || roles.isGate ? await listContractorPasses(undefined, 'all') : { rows: [] as Awaited<ReturnType<typeof listContractorPasses>>['rows'] };
+  // Everything below is independent — one parallel round instead of five.
+  const [store, ctr, newIncidents, atGateAll, expectedDeliveries, atReception, passes, tests] = await Promise.all([
+    isStore(user.id, roles.isMaster),
+    roles.isManager || roles.isMaster || roles.isGate ? listContractorPasses(undefined, 'all') : Promise.resolve({ rows: [] as Awaited<ReturnType<typeof listContractorPasses>>['rows'] }),
+    roles.isCso || roles.isMaster ? prisma.securityIncident.findMany({ where: { status: 'OPEN' }, select: { id: true, incidentNumber: true, type: true, severity: true, createdAt: true } }) : Promise.resolve([]),
+    prisma.gateDelivery.findMany({ where: { status: 'AT_GATE' }, select: { id: true, deliveryNumber: true, supplierName: true, arrivedAt: true } }),
+    roles.isGate ? prisma.gateDelivery.findMany({ where: { status: 'EXPECTED', expectedAt: { gte: dayStart, lt: new Date(dayStart.getTime() + 86400000) } }, select: { id: true, deliveryNumber: true, supplierName: true, expectedAt: true } }) : Promise.resolve([]),
+    prisma.visit.findMany({ where: { status: 'CHECKED_IN', hostUserId: user.id, receivedAt: { not: null } }, select: { id: true, visitorName: true, purpose: true, receivedAt: true } }),
+    listExitPasses('to_decide'),
+    listRoadTests('to_decide'),
+  ]);
+  const atGateForStore = store ? atGateAll : [];
   const today = lagosDay(new Date());
   const contractorItems = [
     ...ctr.rows.filter((c) => (roles.isManager || roles.isMaster) && c.status === 'PENDING_MANAGER' && c.requestedById !== user.id).map((c) => ({ id: `ctr-d-${c.id}`, title: `Contractor pass ${c.passNumber} needs your approval`, detail: `${c.company} — ${c.work}`, url: `/security/contractors/${c.id}`, createdAt: c.createdAt })),
     ...ctr.rows.filter((c) => roles.isGate && c.state === 'ACTIVE' && lagosDay(c.validFrom) <= today).map((c) => ({ id: `ctr-t-${c.id}`, title: `Contractors due today — ${c.company}`, detail: `${c.passNumber} · team of ${c.teamSize} · ${c.workArea}`, url: `/security/contractors/${c.id}`, createdAt: new Date() })),
     ...ctr.rows.filter((c) => roles.isGate && c.afterHours > 0).map((c) => ({ id: `ctr-l-${c.id}`, title: `Contractors still on site after 5 pm — ${c.company}`, detail: `${c.passNumber} · ${durationText(c.afterHours)} past closing`, url: `/security/contractors/${c.id}`, createdAt: new Date() })),
   ];
-  const [newIncidents, atGateForStore, expectedDeliveries] = await Promise.all([
-    roles.isCso || roles.isMaster ? prisma.securityIncident.findMany({ where: { status: 'OPEN' }, select: { id: true, incidentNumber: true, type: true, severity: true, createdAt: true } }) : Promise.resolve([]),
-    store ? prisma.gateDelivery.findMany({ where: { status: 'AT_GATE' }, select: { id: true, deliveryNumber: true, supplierName: true, arrivedAt: true } }) : Promise.resolve([]),
-    roles.isGate ? prisma.gateDelivery.findMany({ where: { status: 'EXPECTED', expectedAt: { gte: dayStart, lt: new Date(dayStart.getTime() + 86400000) } }, select: { id: true, deliveryNumber: true, supplierName: true, expectedAt: true } }) : Promise.resolve([]),
-  ]);
-  const [atReception, passes, tests] = await Promise.all([
-    prisma.visit.findMany({ where: { status: 'CHECKED_IN', hostUserId: user.id, receivedAt: { not: null } }, select: { id: true, visitorName: true, purpose: true, receivedAt: true } }),
-    listExitPasses('to_decide'),
-    listRoadTests('to_decide'),
-  ]);
   return [
     ...atReception.map((v: (typeof atReception)[number]) => ({ id: `visit-${v.id}`, title: `Your visitor is at reception — ${v.visitorName}`, detail: v.purpose, url: `/security/visitors/${v.id}`, createdAt: v.receivedAt as Date })),
     ...contractorItems,

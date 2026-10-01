@@ -1,6 +1,7 @@
 'use server';
 
 import { cache } from 'react';
+import { after } from 'next/server';
 
 import { prisma } from '@ejo/database';
 import { requireUser, writeAuditLog, getWorkshopBranchId } from './workshop';
@@ -361,7 +362,8 @@ export async function removeDelegate(id: string): Promise<void> {
  * participant), still to happen. */
 export async function getSchedulingDashboardItems(): Promise<{ id: string; title: string; detail: string; url: string; createdAt: Date }[]> {
   const user = await requireUser();
-  await sendDueAppointmentReminders().catch((err) => console.error('Reminder safety net failed', err));
+  // The reminder safety net runs AFTER the response is sent — nobody waits for it.
+  after(() => sendDueAppointmentReminders().then(() => undefined).catch((err) => console.error('Reminder safety net failed', err)));
   const now = new Date();
   const end = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }) + 'T23:59:59+01:00');
   const cancelled = await prisma.appointment.findMany({

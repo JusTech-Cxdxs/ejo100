@@ -43,6 +43,13 @@ export async function getDashboardNotifications(): Promise<DashboardNotification
 
 async function getDashboardNotificationsInner(): Promise<DashboardNotification[]> {
   const user = await requireUser();
+  // Each module's items start NOW and run alongside the Workshop checks
+  // below — the total wait is the slowest module, not all of them added up
+  // (every database trip crosses from the server to the database region).
+  const warrantyP = getWarrantyDashboardItems().catch(() => []);
+  const claimsP = getWarrantyClaimDashboardItems().catch(() => []);
+  const securityP = getSecurityDashboardItems().catch(() => []);
+  const schedulingP = getSchedulingDashboardItems().catch(() => []);
   const isMasterAdmin = await currentUserIsMasterAdmin();
   const notifications: DashboardNotification[] = [];
 
@@ -220,22 +227,20 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
 
   // Warranty work waiting on this viewer (verify registrations, approve
   // policy deletions at their level in the chain).
-  const warrantyItems = [
-    ...(await getWarrantyDashboardItems().catch(() => [])),
-    ...(await getWarrantyClaimDashboardItems().catch(() => [])),
-  ];
+  const [warrantyA, warrantyB, securityItems, schedulingItems] = await Promise.all([warrantyP, claimsP, securityP, schedulingP]);
+  const warrantyItems = [...warrantyA, ...warrantyB];
   for (const item of warrantyItems) {
     notifications.push({ id: item.id, kind: 'WARRANTY', title: item.title, detail: item.detail, url: item.url, createdAt: item.createdAt });
   }
 
   // Security: visitors at reception for this host; exit passes waiting at
   // this viewer's approval step.
-  for (const item of await getSecurityDashboardItems().catch(() => [])) {
+  for (const item of securityItems) {
     notifications.push({ id: item.id, kind: 'SECURITY', title: item.title, detail: item.detail, url: item.url, createdAt: item.createdAt });
   }
 
   // Scheduling: today's appointments (host or participant) still to come.
-  for (const item of await getSchedulingDashboardItems().catch(() => [])) {
+  for (const item of schedulingItems) {
     notifications.push({ id: item.id, kind: 'SCHEDULING', title: item.title, detail: item.detail, url: item.url, createdAt: item.createdAt });
   }
 

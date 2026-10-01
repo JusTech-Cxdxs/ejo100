@@ -1,6 +1,7 @@
 'use server';
 
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 
 /**
  * Workshop Server Actions — Customers, Vehicles, Job Cards.
@@ -256,11 +257,16 @@ async function notifyJobCardCreatorOfDecision(params: {
  * project's Phase-One rule — found by its Workshop department rather than
  * a hardcoded ID/name, so this keeps working unchanged once more Workshop
  * branches are added later. */
+/** Which branch holds the Workshop department — shared across requests for
+ * five minutes (it practically never changes). */
+const workshopDepartmentShared = unstable_cache(
+  async () => prisma.department.findFirst({ where: { slug: 'workshop' }, select: { branchId: true } }),
+  ['workshop-branch-v1'],
+  { revalidate: 300, tags: ['org-structure'] },
+);
+
 async function getWorkshopBranchIdUncached(): Promise<string> {
-  const department = await prisma.department.findFirst({
-    where: { slug: 'workshop' },
-    select: { branchId: true },
-  });
+  const department = await workshopDepartmentShared();
   if (!department) {
     throw new WorkshopActionError(
       'No branch has a Workshop department yet — run the seed script, or create one under Branches.',
@@ -2719,6 +2725,14 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
  * exists (no admin UI yet to place anyone into a role). */
 async function listEligibleManagersForBranchUncached(branchId: string): Promise<EligibleSupervisorResult> {
   await requireUser();
+  return managersForBranchShared(branchId);
+}
+
+/** Branch managers rarely change, so the list is shared across requests for
+ * up to 60 seconds (a newly appointed manager appears within a minute).
+ * Only ids, names and emails — nothing private beyond what every staff
+ * member already sees on the approval screens. */
+const managersForBranchShared = unstable_cache(async (branchId: string): Promise<EligibleSupervisorResult> => {
   const branchManagers = await prisma.user.findMany({
     where: {
       branchId,
@@ -2737,7 +2751,7 @@ async function listEligibleManagersForBranchUncached(branchId: string): Promise<
     select: { id: true, fullName: true, email: true },
   });
   return { supervisors: masterAdmins, usingFallback: true };
-}
+}, ['branch-managers-v1'], { revalidate: 60, tags: ['org-structure'] });
 
 /** Any eligible manager for the branch, or a Master Admin, may perform
  * the manager-approval step — there's no single "assigned manager" on
