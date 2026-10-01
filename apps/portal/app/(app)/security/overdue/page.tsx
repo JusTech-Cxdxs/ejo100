@@ -23,9 +23,10 @@ export default async function OverduePage({ searchParams }: { searchParams: Prom
     visits: all.visits.filter((v) => hit(v.visitorName, v.passNumber, v.company, v.phone, v.host.fullName, v.vehiclePlate, ...v.memberNames)),
     passes: all.passes.filter((p) => hit(p.passNumber, p.reason, ...p.people.map((x) => x.name))),
     roadTests: all.roadTests.filter((r) => hit(r.permitNumber, r.vehicle.plateNumber, r.driver.fullName, r.jobCard?.jobNumber, r.vehicleService?.serviceNumber)),
+    contractors: all.contractors.filter((c) => hit(c.passNumber, c.company, c.leadName, c.workArea)),
   };
-  const view = ['visitors', 'road-tests', 'exit-passes'].includes(show ?? '') ? show! : 'all';
-  const tabs: [string, string, number][] = [['all', 'All', o.visits.length + o.roadTests.length + o.passes.length], ['visitors', 'Visitors', o.visits.length], ['road-tests', 'Road tests', o.roadTests.length], ['exit-passes', 'Exit passes', o.passes.length]];
+  const view = ['visitors', 'road-tests', 'exit-passes', 'contractors'].includes(show ?? '') ? show! : 'all';
+  const tabs: [string, string, number][] = [['all', 'All', o.visits.length + o.roadTests.length + o.passes.length + o.contractors.length], ['visitors', 'Visitors', o.visits.length], ['road-tests', 'Road tests', o.roadTests.length], ['exit-passes', 'Exit passes', o.passes.length], ['contractors', 'Contractors', o.contractors.length]];
   const input = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1 text-xs text-[var(--ejo-text)]';
   const small = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-2 py-1 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]';
   const Extend = ({ kind, id }: { kind: 'visit' | 'pass'; id: string }) => (
@@ -80,6 +81,23 @@ export default async function OverduePage({ searchParams }: { searchParams: Prom
               <td className="text-xs font-semibold text-[var(--ejo-error)]">{durationText(v.overdueMinutes)}</td>
               <td>{roles.isFrontDesk ? <><Extend kind="visit" id={v.id} /><FollowUp type="Visit" id={v.id} /></> : null}</td>
               <td><LoadingLink href={`/security/visitors/${v.id}`} className="text-xs text-[var(--ejo-primary)] hover:underline">Open</LoadingLink></td>
+            </tr>
+          ))}
+        </SecurityTable>
+      </div>
+      </>) : null}
+      {view === 'all' || view === 'contractors' ? (<>
+      <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">Contractors still on site after 5 pm ({o.contractors.length})</h2>
+      <div className="mb-8">
+        <SecurityTable headers={['Pass', 'Company / lead', 'Where', 'People', 'Past 5 pm', '']} widths={['14%', '28%', '20%', '12%', '14%', '12%']} empty={o.contractors.length ? null : 'No contractors on site after hours.'}>
+          {o.contractors.map((c) => (
+            <tr key={c.id}>
+              <td className="font-medium">{c.passNumber}</td>
+              <td>{c.company}<span className="block text-xs text-[var(--ejo-text-muted)]">Lead: {c.leadName} · {c.host.fullName}</span></td>
+              <td className="text-xs">{c.workArea}</td>
+              <td className="text-xs">{c.onSite ? `${c.onSite.workersPresent} of ${c.teamSize}` : '—'}</td>
+              <td className="text-xs font-semibold text-[var(--ejo-error)]">{durationText(c.overdueMinutes)}</td>
+              <td><LoadingLink href={`/security/contractors/${c.id}`} className="text-xs text-[var(--ejo-primary)] hover:underline">Sign out / follow up</LoadingLink></td>
             </tr>
           ))}
         </SecurityTable>
