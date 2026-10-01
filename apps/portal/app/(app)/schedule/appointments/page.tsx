@@ -39,7 +39,7 @@ export default async function AppointmentsRegisterPage({ searchParams }: { searc
             <td>{a.title}</td>
             <td className="text-xs">{a.owner.fullName}{a.createdBy.fullName !== a.owner.fullName ? <span className="block text-[var(--ejo-text-muted)]">booked by {a.createdBy.fullName}</span> : null}</td>
             <td className="text-xs">{a.room?.name ?? a.location ?? '—'}</td>
-            <td className="text-xs">{a.visit ? `${a.visit.partySize}${a.visit.company ? ` · ${a.visit.company}` : ''}` : '—'}</td>
+            <td className="text-xs">{a.visits.length ? `${a.visits.reduce((n, v) => n + v.partySize, 0)}${a.visits.length > 1 ? ` in ${a.visits.length} groups` : a.visits[0]!.company ? ` · ${a.visits[0]!.company}` : ''}` : '—'}</td>
             <td><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS[a.status]![1]}`}>{STATUS[a.status]![0]}</span></td>
           </tr>
         ))}
