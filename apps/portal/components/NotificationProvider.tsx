@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { getNotificationSummary, getNotificationPulse, markNotificationsRead, setNotificationsMuted, type NotificationSummary } from '@/lib/actions/notifications';
 
 const PULSE_MS = 5000;
+/** At most one full summary fetch (and page refresh) per 15 seconds. */
+const MIN_LOAD_GAP_MS = 15000;
 const RING_MS = 120000;
 const EMPTY: NotificationSummary = { actions: [], unreadActivity: [], unreadBroadcasts: [], total: 0, signature: '', muted: false };
 
@@ -49,20 +51,41 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const mutedRef = useRef(false);
   const audio = useRef<AudioContext | null>(null);
   const busy = useRef(false);
+  const lastLoad = useRef(0);
+  const refreshWaiting = useRef(false);
+
+  /** Typing in a field? Then a page refresh waits until the field is left. */
+  const typing = () => {
+    const el = document.activeElement as HTMLElement | null;
+    return Boolean(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable));
+  };
+  const refreshPage = useCallback(() => {
+    if (typing()) { refreshWaiting.current = true; return; }
+    refreshWaiting.current = false;
+    router.refresh();
+  }, [router]);
+  useEffect(() => {
+    const onLeaveField = () => { if (refreshWaiting.current) setTimeout(() => { if (!typing()) refreshPage(); }, 300); };
+    document.addEventListener('focusout', onLeaveField);
+    return () => document.removeEventListener('focusout', onLeaveField);
+  }, [refreshPage]);
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
 
-  const load = useCallback(async (refreshPage: boolean) => {
+  const load = useCallback(async () => {
+    lastLoad.current = Date.now();
     const next = await getNotificationSummary().catch(() => null);
     if (!next) return;
     const first = sig.current === null;
-    if (!first && next.signature !== sig.current && next.total > 0 && !mutedRef.current) chime(audio.current, next.actions.length > 0);
+    // Only something that concerns THIS person chimes and refreshes the page.
+    const mine = !first && next.signature !== sig.current;
+    if (mine && next.total > 0 && !mutedRef.current) chime(audio.current, next.actions.length > 0);
     sig.current = next.signature;
     setSummary(next);
     if (first) setMuted(next.muted);
     setLoaded(true);
-    if (refreshPage && !first) router.refresh();
-  }, [router]);
+    if (mine) refreshPage();
+  }, [refreshPage]);
 
   const check = useCallback(async () => {
     if (busy.current || document.visibilityState === 'hidden') return;
@@ -70,9 +93,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     try {
       const p = await getNotificationPulse();
       if (pulse.current === null) pulse.current = p;
-      else if (p && p !== pulse.current) {
+      else if (p && p !== pulse.current && Date.now() - lastLoad.current >= MIN_LOAD_GAP_MS) {
+        // (Within 15 seconds of the last fetch the change is left for the
+        // next check, so a busy day never floods the server.)
         pulse.current = p;
-        await load(true);
+        await load();
       }
     } finally {
       busy.current = false;
@@ -80,7 +105,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [load]);
 
   useEffect(() => {
-    void load(false).then(() => check());
+    void load().then(() => check());
     const t = setInterval(() => void check(), PULSE_MS);
     const onVisible = () => { if (document.visibilityState === 'visible') void check(); };
     document.addEventListener('visibilitychange', onVisible);
