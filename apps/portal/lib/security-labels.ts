@@ -26,6 +26,11 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'security.email_failed': 'Email could not be sent',
   'vehicle.gate_exit': 'Vehicle left through the gate',
   'incident.reported': 'Incident reported',
+  'broadcast.created': 'Broadcast published',
+  'broadcast.stopped': 'Broadcast stopped',
+  'broadcast.reactivated': 'Broadcast reactivated',
+  'broadcast.deleted': 'Broadcast deleted',
+  'broadcast.emailed': 'Broadcast emailed',
   'contractor.requested': 'Contractor pass requested',
   'contractor.approved': 'Contractor pass approved by the Manager',
   'contractor.declined': 'Contractor pass declined',
@@ -112,6 +117,12 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
     case 'appointment.visitors_changed':
     case 'appointment.visitors_removed':
       return [s('visitNumber'), s('visitors'), s('organisation'), s('reason') ? `Reason: ${s('reason')}` : null].filter(Boolean).join(' · ') || null;
+    case 'broadcast.created':
+      return [s('title'), s('duration'), meta.email ? 'emailed' : null].filter(Boolean).join(' · ') || null;
+    case 'broadcast.reactivated':
+      return [s('duration'), meta.email ? 'emailed again' : null].filter(Boolean).join(' · ') || null;
+    case 'broadcast.emailed':
+      return typeof meta.sent === 'number' ? `${meta.sent} ${meta.sent === 1 ? 'email' : 'emails'} sent${typeof meta.failed === 'number' && meta.failed ? `, ${meta.failed} failed` : ''}` : null;
     case 'incident.reported':
     case 'incident.linked':
       return [s('incidentNumber'), s('type'), s('severity') ? s('severity')!.toLowerCase() : null, s('related') ? `about ${s('related')}` : null].filter(Boolean).join(' · ') || null;
