@@ -1,5 +1,5 @@
 import { getVehicleServiceCustodySummary, type VehicleDueForService } from '@/lib/actions/vehicle-service';
-import { getWorkshopBranchId } from '@/lib/actions/workshop';
+import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { attendToOverdueVehicleFormAction, sendVehicleServiceCollectionReminderFormAction, sendManualServiceReminderFormAction, sendVehicleServiceCancelledCollectionNoticeFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
