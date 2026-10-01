@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@ejo/database';
-import { getWorkshopBranchId } from '@/lib/actions/workshop';
+import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { getWarranty } from '@/lib/actions/warranty';
 import { getOrganisation } from '@/lib/actions/organisation';
 import { DocumentHeader, SignatureBlock, DocumentFooter } from '@/components/print/DocumentHeader';
