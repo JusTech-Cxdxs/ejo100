@@ -15,7 +15,7 @@ const PAGE = 25;
 export default async function NotificationCenter({ searchParams }: { searchParams: Promise<{ tab?: string; show?: string; area?: string; status?: string; q?: string; limit?: string }> }) {
   const { tab, show, area, status, q, limit } = await searchParams;
   const term = q?.trim() ?? '';
-  const [summary, activity, allBroadcasts, broadcaster] = await Promise.all([getNotificationSummary(), getActivityFeed({ take: 1000, q: term }), getMyBroadcasts(), canBroadcast()]);
+  const [summary, activity, allBroadcasts, broadcaster] = await Promise.all([getNotificationSummary(), getActivityFeed({ take: 400, q: term }), getMyBroadcasts(), canBroadcast()]);
   const broadcasts = term ? allBroadcasts.filter((b) => [b.title, b.message, b.number].some((x) => x.toLowerCase().includes(term.toLowerCase()))) : allBroadcasts;
   const shown = Math.max(PAGE, Number(limit) || PAGE);
   const current = ['actions', 'activity', 'broadcasts'].includes(tab ?? '') ? tab! : summary.actions.length ? 'actions' : 'activity';
