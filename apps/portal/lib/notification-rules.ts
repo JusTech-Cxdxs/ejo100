@@ -40,7 +40,7 @@ export function recordUrl(entityType: string, id: string): string {
   const map: Record<string, string> = {
     JobCard: `/workshop/job-cards/${id}`,
     VehicleService: `/workshop/vehicle-service/${id}`,
-    CustomerVehicle: `/workshop/vehicles/${id}`,
+    CustomerVehicle: `/workshop/vehicles/${id}/edit`,
     Customer: '/workshop/customers',
     PartRequestSlip: `/workshop/parts-requests/${id}`,
     ExternalProcurementRequest: `/workshop/external-procurement/${id}`,
