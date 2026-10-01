@@ -1238,7 +1238,7 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          <RoadTestsPanel rows={roadTests} requestHref={['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'].includes(service.status) ? `/security/road-tests/new?vehicleServiceId=${service.id}` : null} />
+          <RoadTestsPanel rows={roadTests} ready={service.status === 'COMPLETED'} requestHref={['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'].includes(service.status) ? `/security/road-tests/new?vehicleServiceId=${service.id}` : null} />
 
           <WarrantyList warranties={warranties} title="Warranties issued" />
 
