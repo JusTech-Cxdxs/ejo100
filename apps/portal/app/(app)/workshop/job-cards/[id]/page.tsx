@@ -1152,7 +1152,7 @@ export default async function JobCardDetailPage({
 
           {billing ? <JobCardBillingPanel jobCardId={jobCard.id} billing={billing} /> : null}
 
-          <RoadTestsPanel rows={roadTests} requestHref={['CHECKED_IN', 'IN_PROGRESS', 'AWAITING_PARTS', 'QUALITY_CHECK', 'AWAITING_CUSTOMER_APPROVAL', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'].includes(jobCard.status) ? `/security/road-tests/new?jobCardId=${jobCard.id}` : null} />
+          <RoadTestsPanel rows={roadTests} ready={jobCard.status === 'QUALITY_CHECK'} requestHref={['CHECKED_IN', 'IN_PROGRESS', 'AWAITING_PARTS', 'QUALITY_CHECK', 'AWAITING_CUSTOMER_APPROVAL', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'].includes(jobCard.status) ? `/security/road-tests/new?jobCardId=${jobCard.id}` : null} />
 
           <WarrantyList warranties={warranties} title="Warranties issued" />
 
