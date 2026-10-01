@@ -11,7 +11,7 @@ import { INCIDENT_STATUS_LABEL, SEVERITY_LABEL, SEVERITY_CHIP, STATUS_CHIP } fro
 import { formatDateTime } from '@/lib/utils/format-date';
 
 const DONE: Record<string, string> = { reported: 'Incident reported — the Chief Security Officer has been emailed.', assign: 'Assigned — the officer has been emailed.', close: 'Incident closed.', reopen: 'Incident reopened.', follow_up: 'Follow-up saved.' };
-const HREF: Record<string, string> = { Visit: '/security/visitors/', ExitPass: '/security/exit-passes/', RoadTestPermit: '/security/road-tests/', VehicleGateExit: '/security/vehicles/exits/', GateDelivery: '/security/deliveries/' };
+const HREF: Record<string, string> = { Visit: '/security/visitors/', ExitPass: '/security/exit-passes/', RoadTestPermit: '/security/road-tests/', VehicleGateExit: '/security/vehicles/exits/', GateDelivery: '/security/deliveries/', ContractorPass: '/security/contractors/' };
 
 export default async function IncidentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
   const { id } = await params;
