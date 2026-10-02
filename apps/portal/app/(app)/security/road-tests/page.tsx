@@ -4,6 +4,7 @@ import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityTable } from '@/components/SecurityTable';
 import { ROAD_TEST_STATUS_LABEL, STATUS_CHIP, durationText, roadTestOverdueMinutes } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const TABS = [['out', 'Out now'], ['approved', 'Approved — ready to go'], ['to_decide', 'To approve'], ['all', 'All']] as const;
 
@@ -26,7 +27,7 @@ export default async function RoadTestsPage({ searchParams }: { searchParams: Pr
         ))}
         <form className="ml-auto flex gap-2">
           <input type="hidden" name="tab" value={scope} />
-          <input name="q" defaultValue={q ?? ''} placeholder="Search RT number, plate, JC / SV, driver…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)]" />
+          <LiveSearchInput name="q" defaultValue={q ?? ''} placeholder="Search RT number, plate, JC / SV, driver…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)]" />
         </form>
       </div>
       <SecurityTable headers={['Permit', 'Record', 'Vehicle', 'Driver', 'Checking', 'Out / back', 'Km', 'Status']} widths={['12%', '11%', '15%', '12%', '18%', '13%', '7%', '12%']} empty={rows.length ? null : 'No road tests here.'}>
