@@ -11,6 +11,7 @@ import { CustomerVehiclePicker } from '@/components/CustomerVehiclePicker';
 import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { ComplaintListInput } from '@/components/ComplaintListInput';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -82,9 +83,8 @@ export default async function WorkshopJobCardsPage({
 
       <form className="mb-6 flex gap-2" action="/workshop/job-cards">
         {vehicleType ? <input type="hidden" name="type" value={vehicleType} /> : null}
-        <input
-          type="search"
-          name="q"
+        <LiveSearchInput
+          type="search" name="q"
           defaultValue={q ?? ''}
           placeholder="Search by job number, customer, vehicle/VIN, or technician…"
           className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
