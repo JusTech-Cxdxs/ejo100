@@ -1,6 +1,10 @@
 import { canSeeAuditLogs, getAuditLogPage, listAuditUsers } from '@/lib/actions/audit-logs';
+import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
+import { SearchableSelect } from '@/components/SearchableSelect';
+import { LinkedText } from '@/components/LinkedText';
 import { LoadingLink } from '@/components/LoadingLink';
 import { pluralize } from '@/lib/utils/pluralize';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const KINDS: [string, string][] = [['all', 'Everything'], ['business', 'Business events'], ['data', 'Data changes'], ['api', 'API requests']];
 const AREA_DOT: Record<string, string> = { Workshop: 'bg-[var(--ejo-primary)]', Store: 'bg-[var(--ejo-info)]', Warranty: 'bg-[var(--ejo-warning)]', Security: 'bg-[var(--ejo-error)]', Scheduling: 'bg-purple-500', System: 'bg-[var(--ejo-text-muted)]' };
@@ -31,7 +35,8 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Pr
       </div>
     );
   }
-  const [{ kind, rows, nextCursor }, users] = await Promise.all([getAuditLogPage(sp), listAuditUsers()]);
+  const [{ kind, rows, nextCursor, refLinks }, users] = await Promise.all([getAuditLogPage(sp), listAuditUsers()]);
+  const whoLabel = users.find((u) => u.id === sp.userId)?.fullName;
   const keep = (extra: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries({ kind: kind === 'all' ? undefined : kind, q: sp.q, userId: sp.userId, from: sp.from, to: sp.to, ...extra })) if (v) p.set(k, v);
@@ -48,11 +53,11 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Pr
       </div>
       <form className="mb-4 flex flex-wrap items-end gap-2">
         {kind !== 'all' ? <input type="hidden" name="kind" value={kind} /> : null}
-        <div><label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Who</label>
-          <select name="userId" defaultValue={sp.userId ?? ''} className={input}><option value="">Anyone</option>{users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}</select></div>
+        <div className="w-full sm:w-64"><label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Who (type a name or employee ID)</label>
+          <SearchableSelect name="userId" search={searchStaffOptions} loadDefaultOptions={loadStaffOptions} defaultOptionsLabel="Staff" placeholder="Anyone" emptyMessage="No staff match." minQueryLength={1} defaultValue={sp.userId} defaultLabel={whoLabel} /></div>
         <div><label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">From</label><input type="date" name="from" defaultValue={sp.from ?? ''} className={input} /></div>
         <div><label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">To</label><input type="date" name="to" defaultValue={sp.to ?? ''} className={input} /></div>
-        <div className="min-w-0 flex-1"><label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Search</label><input name="q" defaultValue={sp.q ?? ''} placeholder="e.g. job_card, Visit, a record id…" className={`${input} w-full`} /></div>
+        <div className="min-w-0 flex-1"><label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Search</label><LiveSearchInput name="q" defaultValue={sp.q ?? ''} placeholder="Search a number (JC-2026-000013), a name or an action…" className={`${input} w-full`} /></div>
         <button type="submit" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-1.5 text-sm font-medium text-white">Filter</button>
         <LoadingLink href="/audit-logs" className="px-2 py-1.5 text-sm text-[var(--ejo-text-muted)] hover:underline">Clear</LoadingLink>
       </form>
@@ -69,10 +74,10 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Pr
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`h-2 w-2 shrink-0 rounded-full ${AREA_DOT[r.area] ?? 'bg-[var(--ejo-text-muted)]'}`} title={r.area} />
-                        <span className="text-sm font-medium text-[var(--ejo-text)]">{r.title}</span>
+                        <LinkedText text={r.title} links={refLinks} className="text-sm font-medium text-[var(--ejo-text)]" />
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${KIND_CHIP[r.kind]}`}>{r.kind}</span>
                       </div>
-                      {r.detail ? <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">{r.detail}</p> : null}
+                      {r.detail ? <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]"><LinkedText text={r.detail} links={refLinks} /></p> : null}
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
                         {r.records.map((x) => <LoadingLink key={x.url + x.label} href={x.url} className="rounded-full border border-[var(--ejo-border)] px-2 py-0.5 text-[var(--ejo-primary)] hover:bg-[var(--ejo-bg)]">{x.label} →</LoadingLink>)}
                         <span className="text-[var(--ejo-text-muted)]">by {r.who} · {r.area}{r.ip ? ` · IP ${r.ip}` : ''}</span>
