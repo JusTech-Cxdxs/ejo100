@@ -3,6 +3,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { EXIT_PASS_STATUS_LABEL, STATUS_CHIP } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 export default async function ExitPassesPage({ searchParams }: { searchParams: Promise<{ tab?: string; q?: string }> }) {
   const { tab, q } = await searchParams;
@@ -27,7 +28,7 @@ export default async function ExitPassesPage({ searchParams }: { searchParams: P
         ))}
         <form className="flex w-full gap-2 sm:ml-auto sm:w-auto">
           <input type="hidden" name="tab" value={scope} />
-          <input name="q" defaultValue={q ?? ''} placeholder="Search pass number, name, reason…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)]" />
+          <LiveSearchInput name="q" defaultValue={q ?? ''} placeholder="Search pass number, name, reason…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)]" />
         </form>
       </div>
       <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
