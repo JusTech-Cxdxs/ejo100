@@ -3,6 +3,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
 import { SecurityTable } from '@/components/SecurityTable';
 import { pluralize } from '@/lib/utils/pluralize';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const TABS: [string, string][] = [['upcoming', 'Upcoming'], ['today', 'Today'], ['awaiting', 'Awaiting outcome'], ['completed', 'Completed'], ['no_show', 'No-show'], ['cancelled', 'Cancelled'], ['all', 'All']];
 const STATUS: Record<string, [string, string]> = {
@@ -27,7 +28,7 @@ export default async function AppointmentsRegisterPage({ searchParams }: { searc
         ))}
         <form className="flex w-full gap-2 sm:ml-auto sm:w-auto">
           <input type="hidden" name="show" value={tab} />
-          <input name="q" defaultValue={q ?? ''} placeholder="Search APT, title, host, room, visitor…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-72" />
+          <LiveSearchInput name="q" defaultValue={q ?? ''} placeholder="Search APT, title, host, room, visitor…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-72" />
         </form>
       </div>
       <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">{pluralize(rows.length, 'appointment')}</p>
