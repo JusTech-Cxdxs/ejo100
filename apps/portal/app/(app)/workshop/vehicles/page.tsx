@@ -9,6 +9,7 @@ import { CustomerSearchField } from '@/components/CustomerSearchField';
 import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
 import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 export default async function WorkshopVehiclesPage({
   searchParams,
@@ -52,9 +53,8 @@ export default async function WorkshopVehiclesPage({
 
       <form className="mb-6 flex gap-2" action="/workshop/vehicles">
         {vehicleType ? <input type="hidden" name="type" value={vehicleType} /> : null}
-        <input
-          type="search"
-          name="q"
+        <LiveSearchInput
+          type="search" name="q"
           defaultValue={q ?? ''}
           placeholder="Search by plate, chassis/VIN, make, or model…"
           className="w-full max-w-sm rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
