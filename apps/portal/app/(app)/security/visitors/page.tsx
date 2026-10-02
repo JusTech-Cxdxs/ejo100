@@ -7,6 +7,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { VISIT_STATUS_LABEL, STATUS_CHIP, VEHICLE_TYPE_LABEL, durationText, minutesBetween } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 
 export default async function VisitorsPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; status?: string }> }) {
@@ -22,7 +23,7 @@ export default async function VisitorsPage({ searchParams }: { searchParams: Pro
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="min-w-0 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
           <form className="mb-4 flex flex-wrap gap-2">
-            <input name="q" defaultValue={q ?? ''} placeholder="Search visit or pass number, name, company, plate…" className={`${input} max-w-md`} />
+            <LiveSearchInput name="q" defaultValue={q ?? ''} placeholder="Search visit or pass number, name, company, plate…" className={`${input} max-w-md`} />
             <button type="submit" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm text-[var(--ejo-text)]">Search</button>
           </form>
           {visits.length === 0 ? <p className="text-sm text-[var(--ejo-text-muted)]">No visits{q ? ' match' : ' yet'}.</p> : (
