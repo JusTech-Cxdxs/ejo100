@@ -4,6 +4,7 @@ import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityTable } from '@/components/SecurityTable';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 export default async function ClearedToLeavePage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string }> }) {
   const { q, kind } = await searchParams;
@@ -30,7 +31,7 @@ export default async function ClearedToLeavePage({ searchParams }: { searchParam
         ))}
         <form className="flex w-full gap-2 sm:ml-auto sm:w-auto">
           {kind ? <input type="hidden" name="kind" value={kind} /> : null}
-          <input name="q" defaultValue={q ?? ''} placeholder="Search plate, VIN, JC / SV, customer, collector…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-80" />
+          <LiveSearchInput name="q" defaultValue={q ?? ''} placeholder="Search plate, VIN, JC / SV, customer, collector…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-80" />
         </form>
       </div>
       <SecurityTable headers={['Record', 'Vehicle', 'Plate / VIN', 'Customer', 'Released', 'Collected by', '']} widths={['13%', '17%', '17%', '17%', '13%', '12%', '11%']} empty={rows.length ? null : term || k ? 'No vehicles match.' : 'No vehicles waiting to leave.'}>
