@@ -8,6 +8,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { WarrantyList } from '@/components/WarrantyList';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 /**
  * Register a vehicle (asset) warranty — the manual bridge until the sales
@@ -60,7 +61,7 @@ export default async function RegisterWarrantyPage({ searchParams }: { searchPar
       {!vehicle ? (
         <div className="max-w-2xl">
           <form className="mb-4 flex gap-2" action="/warranty/register">
-            <input type="search" name="q" defaultValue={q ?? ''} placeholder="Find the vehicle by VIN, plate or customer…" className={input} />
+            <LiveSearchInput type="search" name="q" defaultValue={q ?? ''} placeholder="Find the vehicle by VIN, plate or customer…" className={input} />
             <button type="submit" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Find</button>
           </form>
           {q && matches.length === 0 ? (
