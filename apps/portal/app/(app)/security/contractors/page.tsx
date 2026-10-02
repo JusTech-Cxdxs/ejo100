@@ -5,6 +5,7 @@ import { SecurityTable } from '@/components/SecurityTable';
 import { CONTRACTOR_STATUS_LABEL, STATUS_CHIP, durationText, lagosDay } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 export default async function ContractorsPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string }> }) {
   const { q, tab } = await searchParams;
@@ -24,7 +25,7 @@ export default async function ContractorsPage({ searchParams }: { searchParams: 
         {tabs.map(([k, l]) => <LoadingLink key={k} href={`/security/contractors?tab=${k}${q ? `&q=${encodeURIComponent(q)}` : ''}`} className={`rounded-full px-3 py-1 text-xs font-medium ${current === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l} ({counts[k as keyof typeof counts]})</LoadingLink>)}
         <form className="flex w-full gap-2 sm:ml-auto sm:w-auto">
           <input type="hidden" name="tab" value={current} />
-          <input name="q" defaultValue={q ?? ''} placeholder="Search CTR, company, work, area, name…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-72" />
+          <LiveSearchInput name="q" defaultValue={q ?? ''} placeholder="Search CTR, company, work, area, name…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-72" />
         </form>
       </div>
       <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">{pluralize(rows.length, 'pass', 'passes')}</p>
