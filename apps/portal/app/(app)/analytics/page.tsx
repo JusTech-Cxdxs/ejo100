@@ -5,10 +5,10 @@ import { pluralize } from '@/lib/utils/pluralize';
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5';
 const naira = (n: number | null) => (n === null ? '—' : `₦${n.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`);
 const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
-const PERIODS: [string, string][] = [['this_month', 'This month'], ['last_month', 'Last month'], ['last_30', 'Last 30 days'], ['this_quarter', 'This quarter'], ['this_year', 'This year']];
+const PERIODS: [string, string][] = [['today', 'Today'], ['this_month', 'This month'], ['last_month', 'Last month'], ['last_30', 'Last 30 days'], ['this_quarter', 'This quarter'], ['this_year', 'This year']];
 
-export default async function BusinessAnalyticsPage({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
-  const { period } = await searchParams;
+export default async function BusinessAnalyticsPage({ searchParams }: { searchParams: Promise<{ period?: string; from?: string; to?: string }> }) {
+  const { period, from, to } = await searchParams;
   // Refused on the server — typing the address directly does not get round it.
   if (!(await canSeeMasterAnalytics())) {
     return (
@@ -18,7 +18,9 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
       </div>
     );
   }
-  const a = await getMasterAnalytics(period);
+  const a = await getMasterAnalytics(period, { from, to });
+  const e = a.current.earnings;
+  const earnedTotal = Math.max(1, a.current.sales);
   const c = a.current;
   const Change = ({ v, invert = false }: { v: number | null; invert?: boolean }) =>
     v === null ? <span className="text-[10px] text-[var(--ejo-text-muted)]">no comparison</span> : <span className={`text-[11px] font-semibold ${(v >= 0) !== invert ? 'text-[var(--ejo-success)]' : 'text-[var(--ejo-error)]'}`}>{v >= 0 ? '▲' : '▼'} {Math.abs(v)}% vs previous</span>;
@@ -40,16 +42,32 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
       </div>
       <div className="mb-6 flex flex-wrap gap-2">
         {PERIODS.map(([k, l]) => <LoadingLink key={k} href={`/analytics?period=${k}`} className={`rounded-full px-3 py-1 text-xs font-medium ${a.periodKey === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l}</LoadingLink>)}
+        <form className="flex flex-wrap items-center gap-1.5">
+          <input type="hidden" name="period" value="custom" />
+          <input type="date" name="from" required defaultValue={from ?? ''} aria-label="From" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1 text-xs text-[var(--ejo-text)]" />
+          <span className="text-xs text-[var(--ejo-text-muted)]">to</span>
+          <input type="date" name="to" defaultValue={to ?? ''} aria-label="To" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1 text-xs text-[var(--ejo-text)]" />
+          <button type="submit" className={`rounded-full px-3 py-1 text-xs font-medium ${a.periodKey === 'custom' ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>Custom</button>
+        </form>
       </div>
 
       {a.actions.length ? (
         <section className="mb-8 space-y-2">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">What to do now <span className="font-normal text-[var(--ejo-text-muted)]">· prescriptive</span></h2>
           {a.actions.map((x, i) => (
-            <LoadingLink key={i} href={x.href} className={`flex items-start gap-3 ${card} hover:border-[var(--ejo-primary)]`}>
+            <div key={i} className={`flex items-start gap-3 ${card}`}>
               <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${x.priority === 1 ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' : x.priority === 2 ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]' : 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]'}`}>P{x.priority}</span>
-              <span className="min-w-0"><span className="block text-sm font-medium text-[var(--ejo-text)]">{x.title}</span><span className="block text-xs text-[var(--ejo-text-muted)]">{x.detail}</span></span>
-            </LoadingLink>
+              <div className="min-w-0 flex-1">
+                <LoadingLink href={x.href} className="block text-sm font-medium text-[var(--ejo-text)] hover:underline">{x.title}</LoadingLink>
+                <span className="block text-xs text-[var(--ejo-text-muted)]">{x.detail}</span>
+                {x.items.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {x.items.map((it) => <LoadingLink key={it.href + it.label} href={it.href} className="rounded-full border border-[var(--ejo-border)] px-2 py-0.5 text-[11px] text-[var(--ejo-primary)] hover:bg-[var(--ejo-bg)]">{it.label} →</LoadingLink>)}
+                  </div>
+                ) : null}
+              </div>
+              {x.items.length > 1 ? <LoadingLink href={x.href} className="shrink-0 text-xs text-[var(--ejo-primary)] hover:underline">Open the list →</LoadingLink> : null}
+            </div>
           ))}
         </section>
       ) : null}
@@ -88,6 +106,36 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
             <div className="flex justify-between border-t border-[var(--ejo-border)] pt-1 font-medium"><dt className="text-[var(--ejo-text)]">Total</dt><dd className="text-[var(--ejo-text)]">{naira(c.cost)}</dd></div>
             <div className="flex justify-between pt-1"><dt className="text-[var(--ejo-text-muted)]">Store purchases in period</dt><dd className="text-[var(--ejo-text)]">{naira(c.purchases)}</dd></div>
           </dl>
+        </div>
+      </div>
+
+      <div className="mb-8 grid gap-4 lg:grid-cols-2">
+        <div className={card}>
+          <h3 className="mb-1 text-sm font-semibold text-[var(--ejo-text)]">How the money is earned</h3>
+          <p className="mb-3 text-[11px] text-[var(--ejo-text-muted)]">Billed on completed jobs in the period (warranty-covered lines included; goodwill and internal lines are given away, not earned).</p>
+          <table className="w-full text-sm">
+            <tbody>
+              {([['Labour', e.labour], ['Internal jobs (in-house work)', e.internalJobs], ['Store parts', e.storeParts], ['Outside parts (bought through EPR)', e.outsideParts], ['Outside jobs (sublet through EPR)', e.outsideJobs], ['Sundry', e.sundry]] as [string, number][]).map(([l, v]) => (
+                <tr key={l} className="border-t border-[var(--ejo-border)]"><td className="py-1.5 text-[var(--ejo-text)]">{l}</td><td className="py-1.5 text-right text-[var(--ejo-text)]">{naira(v)}</td><td className="w-14 py-1.5 text-right text-xs text-[var(--ejo-text-muted)]">{Math.round((v / earnedTotal) * 100)}%</td></tr>
+              ))}
+              <tr className="border-t-2 border-[var(--ejo-border)] font-semibold"><td className="py-1.5 text-[var(--ejo-text)]">Total sales</td><td className="py-1.5 text-right text-[var(--ejo-text)]">{naira(a.current.sales)}</td><td /></tr>
+              <tr className="border-t border-[var(--ejo-border)] text-xs"><td className="py-1.5 text-[var(--ejo-text-muted)]">From Job Cards / from Vehicle Services</td><td className="py-1.5 text-right text-[var(--ejo-text-muted)]" colSpan={2}>{naira(e.jobCards)} / {naira(e.vehicleServices)}</td></tr>
+            </tbody>
+          </table>
+          <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">Outside parts and jobs are billed to the customer and paid for in cash through EPR, so the business keeps only the difference — shown below as outside purchases.</p>
+        </div>
+        <div className={card}>
+          <h3 className="mb-1 text-sm font-semibold text-[var(--ejo-text)]">Where the money goes</h3>
+          <p className="mb-3 text-[11px] text-[var(--ejo-text-muted)]">Costs of the jobs completed in the period, and money paid out in the period.</p>
+          <table className="w-full text-sm">
+            <tbody>
+              {([['Store parts used (at their goods-receipt cost)', c.partsCost], ['Outside purchases (EPR cash paid out)', c.subletCost], ['Refunds paid back to customers', c.refunds], ['Goodwill and internal work given away', c.givenAway]] as [string, number][]).map(([l, v]) => (
+                <tr key={l} className="border-t border-[var(--ejo-border)]"><td className="py-1.5 text-[var(--ejo-text)]">{l}</td><td className="py-1.5 text-right text-[var(--ejo-text)]">{naira(v)}</td></tr>
+              ))}
+              <tr className="border-t-2 border-[var(--ejo-border)] font-semibold"><td className="py-1.5 text-[var(--ejo-text)]">Gross profit on the work</td><td className="py-1.5 text-right text-[var(--ejo-text)]">{naira(c.grossProfit)} · {pct(c.grossMargin)}</td></tr>
+              <tr className="border-t border-[var(--ejo-border)] text-xs"><td className="py-1.5 text-[var(--ejo-text-muted)]">Stock bought for the store in the period (not yet a cost until used)</td><td className="py-1.5 text-right text-[var(--ejo-text-muted)]">{naira(c.purchases)}</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
