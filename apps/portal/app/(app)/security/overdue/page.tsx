@@ -8,6 +8,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { durationText } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const EXTRA = [15, 30, 60, 90, 120, 180, 240];
 const DONE: Record<string, string> = { extend: 'Time extended.', extended: 'Return time extended.', follow_up: 'Follow-up saved on the record.' };
@@ -66,7 +67,7 @@ export default async function OverduePage({ searchParams }: { searchParams: Prom
         ))}
         <form className="flex w-full gap-2 sm:ml-auto sm:w-auto">
           <input type="hidden" name="show" value={view} />
-          <input name="q" defaultValue={q ?? ''} placeholder="Search name, pass, plate, driver…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-72" />
+          <LiveSearchInput name="q" defaultValue={q ?? ''} placeholder="Search name, pass, plate, driver…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-72" />
         </form>
       </div>
       {view === 'all' || view === 'visitors' ? (<>
