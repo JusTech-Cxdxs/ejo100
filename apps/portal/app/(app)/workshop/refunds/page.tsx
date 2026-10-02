@@ -3,6 +3,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 function naira(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -49,9 +50,8 @@ export default async function RefundsRegisterPage({ searchParams }: { searchPara
       </div>
 
       <form className="mb-4 flex gap-2" action="/workshop/refunds">
-        <input
-          type="search"
-          name="q"
+        <LiveSearchInput
+          type="search" name="q"
           defaultValue={q ?? ''}
           placeholder="Search by RF number, Job Card / Service number, customer or recipient…"
           className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
