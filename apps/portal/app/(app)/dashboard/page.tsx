@@ -1,5 +1,5 @@
 import { getWorkshopDashboardCounts, currentUserIsMasterAdmin, currentUserId, listEligibleManagersForBranch } from '@/lib/actions/workshop';
-import { getDashboardTrend, getDashboardNotifications } from '@/lib/actions/dashboard';
+import { getDashboardTrend, getDashboardNotifications, getPlatformGlance } from '@/lib/actions/dashboard';
 import { getMyBroadcasts, canBroadcast } from '@/lib/actions/notifications';
 import { BROADCAST_CATEGORY } from '@/lib/notification-rules';
 import { DashboardTrendChart } from '@/components/DashboardTrendChart';
@@ -28,12 +28,13 @@ export default async function DashboardPage() {
     isManager = managers.supervisors.some((m) => m.id === userId);
   }
 
-  const [counts, trend, notifications, myBroadcasts, broadcaster] = await Promise.all([
+  const [counts, trend, notifications, myBroadcasts, broadcaster, glance] = await Promise.all([
     getWorkshopDashboardCounts(),
     getDashboardTrend(),
     getDashboardNotifications(),
     getMyBroadcasts(),
     canBroadcast(),
+    getPlatformGlance(),
   ]);
 
   const stats = [
@@ -95,9 +96,23 @@ export default async function DashboardPage() {
         </div>
       )}
 
+      <div className="mt-6">
+        <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">The whole business at a glance</h2>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+          {glance.map((t) => (
+            <LoadingLink key={t.label} href={t.href} className="group rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 hover:border-[var(--ejo-primary)]">
+              <span className={`mb-2 block h-1 w-8 rounded-full ${t.tone === 'primary' ? 'bg-[var(--ejo-primary)]' : t.tone === 'info' ? 'bg-[var(--ejo-info)]' : t.tone === 'warning' ? 'bg-[var(--ejo-warning)]' : t.tone === 'error' ? 'bg-[var(--ejo-error)]' : t.tone === 'success' ? 'bg-[var(--ejo-success)]' : 'bg-[var(--ejo-border)]'}`} />
+              <p className="text-2xl font-bold text-[var(--ejo-text)]">{t.value}</p>
+              <p className="text-xs font-medium text-[var(--ejo-text)]">{t.label}</p>
+              <p className="text-[10px] text-[var(--ejo-text-muted)] group-hover:text-[var(--ejo-primary)]">{t.hint} →</p>
+            </LoadingLink>
+          ))}
+        </div>
+      </div>
+
       <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
         <h2 className="text-sm font-semibold text-[var(--ejo-text)]">
-          {isManager ? 'Job Cards & Revenue' : 'Job Cards'} — Last 14 Working Days
+          {isManager ? 'Work opened and money collected' : 'Work opened'} — last 14 working days
         </h2>
         <div className="mt-3">
           <DashboardTrendChart data={trend} showRevenue={isManager} />
