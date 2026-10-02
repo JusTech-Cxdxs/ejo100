@@ -5,6 +5,7 @@ import { SecurityTable } from '@/components/SecurityTable';
 import { INCIDENT_STATUS_LABEL, SEVERITY_LABEL, SEVERITY_CHIP, STATUS_CHIP } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const TABS: [string, string][] = [['open', 'Open'], ['under_review', 'Under review'], ['closed', 'Closed'], ['all', 'All']];
 
@@ -30,7 +31,7 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Pr
             <option value="">Any severity</option>
             {Object.entries(SEVERITY_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
-          <input name="q" defaultValue={q ?? ''} placeholder="Search INC, type, place, people, plate…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-64" />
+          <LiveSearchInput name="q" defaultValue={q ?? ''} placeholder="Search INC, type, place, people, plate…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-64" />
           <button type="submit" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-sm text-[var(--ejo-text)]">Filter</button>
         </form>
       </div>
