@@ -10,6 +10,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { LineItemsInput } from '@/components/LineItemsInput';
 import { pluralize } from '@/lib/utils/pluralize';
 import { splitLines, durationLabel } from '@/lib/warranty-state';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const BANNER: Record<string, string> = {
   policy_created: 'Policy added.',
@@ -74,7 +75,7 @@ export default async function WarrantyPoliciesPage({
         <div>
           <form className="mb-3 flex gap-2" action="/warranty/policies">
             {state ? <input type="hidden" name="state" value={state} /> : null}
-            <input type="search" name="q" defaultValue={q ?? ''} placeholder="Search by code, name, brand, model or provider…" className={input} />
+            <LiveSearchInput type="search" name="q" defaultValue={q ?? ''} placeholder="Search by code, name, brand, model or provider…" className={input} />
             <select name="kind" defaultValue={kind ?? ''} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]">
               <option value="">Vehicle &amp; part</option>
               <option value="ASSET">Vehicle</option>
