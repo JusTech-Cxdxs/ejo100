@@ -2,6 +2,7 @@ import { listPartRequestSlips } from '@/lib/actions/sourcing';
 import { getStoreBranchId } from '@/lib/actions/store';
 import { LoadingLink } from '@/components/LoadingLink';
 import { pluralize } from '@/lib/utils/pluralize';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_HOD_APPROVAL: 'Awaiting HOD approval',
@@ -80,9 +81,8 @@ export default async function PartsRequestsPage({
 
       <form className="mb-6 flex gap-2" action="/workshop/parts-requests">
         {type ? <input type="hidden" name="type" value={type} /> : null}
-        <input
-          type="search"
-          name="q"
+        <LiveSearchInput
+          type="search" name="q"
           defaultValue={q ?? ''}
           placeholder="Search by reference, Job Card, or Service number…"
           className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
