@@ -2,6 +2,7 @@ import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
 import { LoadingLink } from '@/components/LoadingLink';
 import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS, CLAIM_GROUPS, REMEDY_LABEL, PART_RETURN_LABEL } from '@/lib/warranty-claim-status';
 import { formatDateOnly } from '@/lib/utils/format-date';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 function naira(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -97,7 +98,7 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
       </div>
       <form className="mb-4 flex gap-2" action="/warranty/claims">
         {group ? <input type="hidden" name="group" value={group} /> : null}
-        <input type="search" name="q" defaultValue={q ?? ''} placeholder="Search by claim, warranty, part, provider reference, customer or plate…" className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+        <LiveSearchInput type="search" name="q" defaultValue={q ?? ''} placeholder="Search by claim, warranty, part, provider reference, customer or plate…" className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
         <button type="submit" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Search</button>
       </form>
 
