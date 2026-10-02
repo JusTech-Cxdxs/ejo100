@@ -5,20 +5,21 @@ import { useRouter } from 'next/navigation';
 import { useChangePings } from '@/lib/hooks/use-change-pings';
 import { getNotificationSummary, getNotificationPulse, markNotificationsRead, setNotificationsMuted, type NotificationSummary } from '@/lib/actions/notifications';
 
-const PULSE_MS = 5000;
+const PULSE_MS = 3000;
 /** With instant push connected, the regular check is only a safety net. */
 const PULSE_WHEN_PUSHED_MS = 30000;
 /** On a push ping: refresh within ~1 s, at most once per 3 s (last ping always honoured). */
 const PING_GAP_MS = 2000;
 /** At most one full summary fetch (and page refresh) per 15 seconds. */
-const MIN_LOAD_GAP_MS = 8000;
+const MIN_LOAD_GAP_MS = 3000;
 /** Open pages update themselves when anything changes — at most every 8 s. */
-const PAGE_REFRESH_GAP_MS = 8000;
+const PAGE_REFRESH_GAP_MS = 3000;
 const RING_MS = 120000;
 const EMPTY: NotificationSummary = { actions: [], unreadActivity: [], unreadBroadcasts: [], total: 0, signature: '', muted: false };
 
-type Ctx = { summary: NotificationSummary; loaded: boolean; muted: boolean; toggleMute: () => void; markRead: (key: string) => Promise<void> };
-const NotificationContext = createContext<Ctx>({ summary: EMPTY, loaded: false, muted: false, toggleMute: () => undefined, markRead: async () => undefined });
+export type LiveMode = 'push' | 'polling' | 'offline';
+type Ctx = { summary: NotificationSummary; loaded: boolean; muted: boolean; toggleMute: () => void; markRead: (key: string) => Promise<void>; mode: LiveMode; lastSync: number };
+const NotificationContext = createContext<Ctx>({ summary: EMPTY, loaded: false, muted: false, toggleMute: () => undefined, markRead: async () => undefined, mode: 'polling', lastSync: 0 });
 export const useNotifications = () => useContext(NotificationContext);
 
 /**
@@ -72,6 +73,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const [muted, setMuted] = useState(false);
   const pulse = useRef<string | null>(null);
+  const [online, setOnline] = useState(true);
+  const [lastSync, setLastSync] = useState(0);
   const sig = useRef<string | null>(null);
   const mutedRef = useRef(false);
   const audio = useRef<AudioContext | null>(null);
@@ -133,14 +136,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (busy.current || document.visibilityState === 'hidden') return;
     busy.current = true;
     try {
-      const p = await getNotificationPulse();
+      const p = await getNotificationPulse().catch(() => '');
+      if (!p) { setOnline(false); return; }
+      setOnline(true);
+      setLastSync(Date.now());
       if (pulse.current === null) pulse.current = p;
       else if (p && p !== pulse.current && Date.now() - lastLoad.current >= MIN_LOAD_GAP_MS) {
         // (Within 15 seconds of the last fetch the change is left for the
         // next check, so a busy day never floods the server.)
         pulse.current = p;
-        await load();
         refreshPageSoon();
+        await load();
       }
     } finally {
       busy.current = false;
@@ -154,10 +160,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const wait = Math.max(300, PING_GAP_MS - (Date.now() - lastLoad.current));
     pingTimer.current = setTimeout(() => {
       pingTimer.current = null;
-      if (document.visibilityState !== 'hidden') { void load(); refreshPageSoon(); }
+      if (document.visibilityState !== 'hidden') { refreshPageSoon(); void load(); setLastSync(Date.now()); }
     }, wait);
   }, [load, refreshPageSoon]);
   const pushed = useChangePings(onPing);
+  useEffect(() => {
+    const on = () => { setOnline(true); void check(); };
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  });
+  const mode: LiveMode = !online ? 'offline' : pushed ? 'push' : 'polling';
 
   useEffect(() => () => { if (pingTimer.current) clearTimeout(pingTimer.current); }, []);
 
@@ -209,5 +223,5 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     await markNotificationsRead([key]).catch(() => undefined);
   }, []);
 
-  return <NotificationContext.Provider value={{ summary, loaded, muted, toggleMute, markRead }}>{children}</NotificationContext.Provider>;
+  return <NotificationContext.Provider value={{ summary, loaded, muted, toggleMute, markRead, mode, lastSync }}>{children}</NotificationContext.Provider>;
 }
