@@ -6,6 +6,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { BROADCAST_CATEGORY, AREA_LABEL } from '@/lib/notification-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const AREAS = ['WORKSHOP', 'STORE', 'WARRANTY', 'SECURITY', 'SCHEDULING', 'SYSTEM'];
 
@@ -49,7 +50,7 @@ export default async function NotificationCenter({ searchParams }: { searchParam
             <input type="hidden" name="tab" value={current} />
             {view !== 'unread' ? <input type="hidden" name="show" value={view} /> : null}
             {area ? <input type="hidden" name="area" value={area} /> : null}
-            <input name="q" defaultValue={term} placeholder={current === 'broadcasts' ? 'Search broadcasts…' : 'Search activity — number, name, area…'} className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-72" />
+            <LiveSearchInput name="q" defaultValue={term} placeholder={current === 'broadcasts' ? 'Search broadcasts…' : 'Search activity — number, name, area…'} className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-72" />
           </form>
         ) : null}
       </div>
