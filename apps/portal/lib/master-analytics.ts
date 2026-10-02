@@ -74,6 +74,18 @@ function periodTotals(jobs: Job[], purchases: Purchase[], settlements: Settlemen
   const cost = t('cost');
   const partsCost = r2(sum(done.map((j) => j.partsCost)));
   const subletCost = r2(sum(done.map((j) => j.subletCost)));
+  // Detailed earnings: every billable line type, and Job Cards vs services.
+  const byType: Record<string, number> = { LABOUR: 0, INTERNAL_JOB: 0, STORE_PART: 0, EXTERNAL_PART: 0, EXTERNAL_JOB: 0, SUNDRY: 0 };
+  const bySource = { JC: 0, SV: 0 };
+  for (const j of done) {
+    for (const l of j.lines) {
+      if (l.billTo === 'GOODWILL' || l.billTo === 'INTERNAL') continue;
+      const k = l.type in byType ? l.type : 'SUNDRY';
+      byType[k] = (byType[k] ?? 0) + (l.amount || 0);
+      bySource[j.kind] += l.amount || 0;
+    }
+  }
+  const refundsInPeriod = r2(sum(jobs.flatMap((j) => j.refunds.filter((p) => inRange(p.at, from, to)).map((p) => p.amount))));
   const collections = r2(sum(jobs.flatMap((j) => j.payments.filter((p) => inRange(p.at, from, to)).map((p) => p.amount))) - sum(jobs.flatMap((j) => j.refunds.filter((p) => inRange(p.at, from, to)).map((p) => p.amount))));
   return {
     jobsCompleted: done.length,
@@ -90,6 +102,8 @@ function periodTotals(jobs: Job[], purchases: Purchase[], settlements: Settlemen
     labourShare: pct(t('labour'), sales),
     averageJob: done.length ? r2(sales / done.length) : null,
     collections,
+    refunds: refundsInPeriod,
+    earnings: { labour: r2(byType.LABOUR!), internalJobs: r2(byType.INTERNAL_JOB!), storeParts: r2(byType.STORE_PART!), outsideParts: r2(byType.EXTERNAL_PART!), outsideJobs: r2(byType.EXTERNAL_JOB!), sundry: r2(byType.SUNDRY!), jobCards: r2(bySource.JC), vehicleServices: r2(bySource.SV) },
     purchases: r2(sum(purchases.filter((p) => inRange(p.at, from, to)).map((p) => p.cost))),
     warrantySettled: r2(sum(settlements.filter((s) => inRange(s.at, from, to)).map((s) => s.amount))),
   };
@@ -121,6 +135,20 @@ function workingDaysBetween(fromYmd: string, toYmdInclusive: string) {
   return n;
 }
 
+/** Working days (Mon–Fri, not Nigerian public holidays) from a to b. */
+export function workingDaysSince(a: Date, b: Date): number {
+  const from = lagosYmd(a), to = lagosYmd(b);
+  if (from >= to) return 0;
+  let n = 0;
+  const d = new Date(`${from}T12:00:00+01:00`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  while (d.toISOString().slice(0, 10) <= to) {
+    if (dayKind(d.toISOString().slice(0, 10)).working) n += 1;
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return n;
+}
+
 export function computeMasterAnalytics(input: { jobs: Job[]; purchases: Purchase[]; settlements: Settlement[]; from: Date; to: Date; now?: Date }) {
   const now = input.now ?? new Date();
   const { jobs, purchases, settlements, from, to } = input;
@@ -133,7 +161,12 @@ export function computeMasterAnalytics(input: { jobs: Job[]; purchases: Purchase
   // ── Position now (not period-bound)
   const open = jobs.filter((j) => !j.cancelled && !j.finishedAt);
   const finishedOwing = jobs.filter((j) => !j.cancelled && j.finishedAt).map((j) => ({ j, m: jobMoney(j) })).filter((x) => x.m.owed > 0.009);
-  const overpaid = jobs.filter((j) => !j.cancelled).map((j) => ({ j, m: jobMoney(j) })).filter((x) => x.m.owed < -0.009);
+  // Money to give back: paid more than owed on a live job, or anything still
+  // held on a cancelled job (a cancelled job owes the customer all of it).
+  const overpaid = jobs.map((j) => {
+    const m = jobMoney(j);
+    return { j, m: j.cancelled ? { ...m, owed: r2(-m.paid) } : m };
+  }).filter((x) => x.m.owed < -0.009);
   const aging = { d0_7: 0, d8_30: 0, d31_60: 0, d60plus: 0 };
   for (const { j, m } of finishedOwing) {
     const age = (+now - +j.finishedAt!) / DAY;
@@ -203,24 +236,25 @@ export function computeMasterAnalytics(input: { jobs: Job[]; purchases: Purchase
   };
 
   // ── Prescriptive
-  type Action = { priority: 1 | 2 | 3; title: string; detail: string; href: string };
+  type Action = { priority: 1 | 2 | 3; title: string; detail: string; href: string; items: { label: string; href: string }[] };
+  const item = (j: Job, extra?: string) => ({ label: `${j.number}${extra ? ` (${extra})` : ''}`, href: j.kind === 'JC' ? `/workshop/job-cards/${j.id}` : `/workshop/vehicle-service/${j.id}` });
   const actions: Action[] = [];
   const money = (n: number) => `₦${n.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
   const plural = (n: number, w: string, p = `${w}s`) => `${n} ${n === 1 ? w : p}`;
   const href = (j: Job) => (j.kind === 'JC' ? `/workshop/job-cards/${j.id}` : `/workshop/vehicle-service/${j.id}`);
   const chase = finishedOwing.sort((a, b) => b.m.owed - a.m.owed);
-  if (chase.length) actions.push({ priority: 1, title: `${money(position.receivables)} owed on ${plural(chase.length, 'finished job')}`, detail: `Largest: ${chase.slice(0, 3).map((x) => `${x.j.number} (${money(x.m.owed)})`).join(', ')}.`, href: href(chase[0]!.j) });
-  if (overpaid.length) actions.push({ priority: 1, title: `${money(position.overpaidTotal)} to refund on ${plural(overpaid.length, 'job')}`, detail: 'Customers paid more than they owe — Finance can refund from the job.', href: href(overpaid[0]!.j) });
+  if (chase.length) actions.push({ priority: 1, title: `${money(position.receivables)} owed on ${plural(chase.length, 'finished job')}`, detail: 'Collect the balance from each customer.', href: chase.length === 1 ? href(chase[0]!.j) : '/workshop/custody', items: chase.slice(0, 12).map((x) => item(x.j, money(x.m.owed))) });
+  if (overpaid.length) actions.push({ priority: 1, title: `${money(position.overpaidTotal)} to refund on ${plural(overpaid.length, 'job')}`, detail: 'Customers paid more than they owe — Finance can refund from the job.', href: href(overpaid[0]!.j), items: overpaid.slice(0, 12).map((x) => item(x.j, money(-x.m.owed))) });
   const loss = doneNow.map((j) => ({ j, m: jobMoney(j) })).filter((x) => x.m.sales > 0 && x.m.grossProfit < 0);
-  if (loss.length) actions.push({ priority: 1, title: `${plural(loss.length, 'job')} sold below cost this period`, detail: loss.slice(0, 3).map((x) => `${x.j.number} (${money(x.m.grossProfit)})`).join(', ') + ' — check pricing.', href: href(loss[0]!.j) });
+  if (loss.length) actions.push({ priority: 1, title: `${plural(loss.length, 'job')} sold below cost this period`, detail: 'Check the pricing on each.', href: href(loss[0]!.j), items: loss.slice(0, 12).map((x) => item(x.j, money(x.m.grossProfit))) });
   const thin = doneNow.map((j) => ({ j, m: jobMoney(j) })).filter((x) => x.m.sales > 0 && x.m.grossProfit >= 0 && x.m.grossProfit / x.m.sales < 0.1);
-  if (thin.length) actions.push({ priority: 2, title: `${plural(thin.length, 'job')} with a margin under 10%`, detail: thin.slice(0, 3).map((x) => x.j.number).join(', '), href: href(thin[0]!.j) });
-  const stalled = open.filter((j) => (+now - +j.openedAt) / DAY > 14).sort((a, b) => +a.openedAt - +b.openedAt);
-  if (stalled.length) actions.push({ priority: 2, title: `${plural(stalled.length, 'job')} open for more than 14 days`, detail: stalled.slice(0, 3).map((j) => `${j.number} (${Math.floor((+now - +j.openedAt) / DAY)} days)`).join(', '), href: href(stalled[0]!) });
+  if (thin.length) actions.push({ priority: 2, title: `${plural(thin.length, 'job')} with a margin under 10%`, detail: 'Review the parts and labour pricing.', href: href(thin[0]!.j), items: thin.slice(0, 12).map((x) => item(x.j)) });
+  const stalled = open.map((j) => ({ j, wd: workingDaysSince(j.openedAt, now) })).filter((x) => x.wd > 10).sort((a, b) => b.wd - a.wd);
+  if (stalled.length) actions.push({ priority: 2, title: `${plural(stalled.length, 'job')} open for more than 10 working days`, detail: 'Move each one forward or explain the delay.', href: '/workshop/custody', items: stalled.slice(0, 12).map((x) => item(x.j, plural(x.wd, 'working day'))) });
   const uncosted = jobs.filter((j) => j.partsIssuedWithoutCost > 0);
-  if (uncosted.length) actions.push({ priority: 2, title: `${plural(uncosted.length, 'job')} with parts issued without a recorded cost`, detail: 'Profit on these jobs is overstated until the goods receipt cost is recorded.', href: '/inventory/goods-receipts' });
-  if (current.purchases > 0 && current.partsCost > 0 && current.purchases > current.partsCost * 1.5) actions.push({ priority: 3, title: 'Buying much more than is being used', detail: `Purchases ${money(current.purchases)} vs parts used ${money(current.partsCost)} this period — stock is building up.`, href: '/inventory/analytics' });
-  if (predictive.monthProjection !== null && previous.sales > 0 && predictive.monthProjection < previous.sales * 0.85) actions.push({ priority: 3, title: 'This month is tracking below the last period', detail: `Projected ${money(predictive.monthProjection)} — follow up open estimates and due services.`, href: '/workshop' });
+  if (uncosted.length) actions.push({ priority: 2, title: `${plural(uncosted.length, 'job')} with parts issued without a recorded cost`, detail: 'Profit on these jobs is overstated until the cost of each part is recorded on its goods receipt.', href: href(uncosted[0]!), items: uncosted.slice(0, 12).map((j) => item(j, plural(j.partsIssuedWithoutCost, 'part'))) });
+  if (current.purchases > 0 && current.partsCost > 0 && current.purchases > current.partsCost * 1.5) actions.push({ priority: 3, title: 'Buying much more than is being used', detail: `Purchases ${money(current.purchases)} vs parts used ${money(current.partsCost)} this period — stock is building up.`, href: '/inventory/analytics', items: [] });
+  if (predictive.monthProjection !== null && previous.sales > 0 && predictive.monthProjection < previous.sales * 0.85) actions.push({ priority: 3, title: 'This month is tracking below the last period', detail: `Projected ${money(predictive.monthProjection)} — follow up open estimates and due services.`, href: '/workshop', items: [] });
   actions.sort((a, b) => a.priority - b.priority);
 
   return {

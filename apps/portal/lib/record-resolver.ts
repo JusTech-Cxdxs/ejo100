@@ -78,3 +78,42 @@ export async function resolveRecords(pairs: Pair[]): Promise<Map<string, Resolve
   }
   return out;
 }
+
+// ── Reference numbers in text → exact pages ────────────────────────────
+
+/** Every EJO 100 reference number: PREFIX-YYYY-NNNNNN. */
+export const REFERENCE_PATTERN = /\b(JC|SV|VX|VIS|VP|EP|RT|INC|DLV|CTR|APT|BC|PRS|EPR|GRN|RF|WR|WC)-\d{4}-\d{6}\b/g;
+
+/**
+ * Finds every reference number in the given texts and returns
+ * number → exact page. One batched query per prefix. Unknown numbers (e.g.
+ * deleted records) are simply left as plain text.
+ */
+export async function resolveReferenceNumbers(texts: (string | null | undefined)[]): Promise<Map<string, string>> {
+  const found = new Set<string>();
+  for (const t of texts) for (const m of (t ?? '').matchAll(REFERENCE_PATTERN)) found.add(m[0]);
+  const by = (p: string) => [...found].filter((n) => n.startsWith(`${p}-`));
+  const out = new Map<string, string>();
+  const jobs: Promise<unknown>[] = [];
+  const q = (p: string, f: (nums: string[]) => Promise<void>) => { const nums = by(p); if (nums.length) jobs.push(f(nums).catch(() => undefined)); };
+  q('JC', async (n) => { for (const r of await prisma.jobCard.findMany({ where: { jobNumber: { in: n } }, select: { id: true, jobNumber: true } })) out.set(r.jobNumber, jcUrl(r.id)); });
+  q('SV', async (n) => { for (const r of await prisma.vehicleService.findMany({ where: { serviceNumber: { in: n } }, select: { id: true, serviceNumber: true } })) out.set(r.serviceNumber, svUrl(r.id)); });
+  q('VX', async (n) => { for (const r of await prisma.vehicleGateExit.findMany({ where: { exitNumber: { in: n } }, select: { id: true, exitNumber: true } })) out.set(r.exitNumber, `/security/vehicles/exits/${r.id}`); });
+  q('VIS', async (n) => { for (const r of await prisma.visit.findMany({ where: { visitNumber: { in: n } }, select: { id: true, visitNumber: true } })) out.set(r.visitNumber, `/security/visitors/${r.id}`); });
+  q('VP', async (n) => { for (const r of await prisma.visit.findMany({ where: { passNumber: { in: n } }, select: { id: true, passNumber: true } })) if (r.passNumber) out.set(r.passNumber, `/security/visitors/${r.id}`); });
+  q('EP', async (n) => { for (const r of await prisma.exitPass.findMany({ where: { passNumber: { in: n } }, select: { id: true, passNumber: true } })) out.set(r.passNumber, `/security/exit-passes/${r.id}`); });
+  q('RT', async (n) => { for (const r of await prisma.roadTestPermit.findMany({ where: { permitNumber: { in: n } }, select: { id: true, permitNumber: true } })) out.set(r.permitNumber, `/security/road-tests/${r.id}`); });
+  q('INC', async (n) => { for (const r of await prisma.securityIncident.findMany({ where: { incidentNumber: { in: n } }, select: { id: true, incidentNumber: true } })) out.set(r.incidentNumber, `/security/incidents/${r.id}`); });
+  q('DLV', async (n) => { for (const r of await prisma.gateDelivery.findMany({ where: { deliveryNumber: { in: n } }, select: { id: true, deliveryNumber: true } })) out.set(r.deliveryNumber, `/security/deliveries/${r.id}`); });
+  q('CTR', async (n) => { for (const r of await prisma.contractorPass.findMany({ where: { passNumber: { in: n } }, select: { id: true, passNumber: true } })) out.set(r.passNumber, `/security/contractors/${r.id}`); });
+  q('APT', async (n) => { for (const r of await prisma.appointment.findMany({ where: { appointmentNumber: { in: n } }, select: { id: true, appointmentNumber: true } })) out.set(r.appointmentNumber, `/schedule/${r.id}`); });
+  q('BC', async (n) => { for (const r of await prisma.broadcast.findMany({ where: { broadcastNumber: { in: n } }, select: { id: true, broadcastNumber: true } })) out.set(r.broadcastNumber, `/notifications/broadcasts/${r.id}`); });
+  q('PRS', async (n) => { for (const r of await prisma.partRequestSlip.findMany({ where: { referenceNumber: { in: n } }, select: { id: true, referenceNumber: true } })) out.set(r.referenceNumber, `/workshop/parts-requests/${r.id}`); });
+  q('EPR', async (n) => { for (const r of await prisma.externalProcurementRequest.findMany({ where: { referenceNumber: { in: n } }, select: { id: true, referenceNumber: true } })) out.set(r.referenceNumber, `/workshop/external-procurement/${r.id}`); });
+  q('GRN', async (n) => { for (const r of await prisma.goodsReceipt.findMany({ where: { referenceNumber: { in: n } }, select: { id: true, referenceNumber: true } })) out.set(r.referenceNumber, `/inventory/goods-receipts/${r.id}`); });
+  q('RF', async (n) => { for (const r of await prisma.refund.findMany({ where: { referenceNumber: { in: n } }, select: { referenceNumber: true, jobCardId: true, vehicleServiceId: true } })) { const u = r.jobCardId ? jcUrl(r.jobCardId) : r.vehicleServiceId ? svUrl(r.vehicleServiceId) : null; if (u) out.set(r.referenceNumber, u); } });
+  q('WR', async (n) => { for (const r of await prisma.warranty.findMany({ where: { warrantyNumber: { in: n } }, select: { id: true, warrantyNumber: true } })) out.set(r.warrantyNumber, `/warranty/${r.id}`); });
+  q('WC', async (n) => { for (const r of await prisma.warrantyClaim.findMany({ where: { claimNumber: { in: n } }, select: { id: true, claimNumber: true } })) out.set(r.claimNumber, `/warranty/claims/${r.id}`); });
+  await Promise.all(jobs);
+  return out;
+}
