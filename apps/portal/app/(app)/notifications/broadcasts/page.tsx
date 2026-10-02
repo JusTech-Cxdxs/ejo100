@@ -4,6 +4,7 @@ import { SecurityTable } from '@/components/SecurityTable';
 import { BROADCAST_CATEGORY, BROADCAST_STATE_LABEL } from '@/lib/notification-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const TABS: [string, string][] = [['live', 'Live'], ['scheduled', 'Scheduled'], ['ended', 'Ended'], ['all', 'All']];
 const STATE_CHIP: Record<string, string> = { LIVE: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]', SCHEDULED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]', ENDED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]', STOPPED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' };
@@ -35,7 +36,7 @@ export default async function BroadcastsPage({ searchParams }: { searchParams: P
             <option value="">Every kind</option>
             {Object.entries(BROADCAST_CATEGORY).map(([k, m]) => <option key={k} value={k}>{m.icon} {m.label}</option>)}
           </select>
-          <input name="q" defaultValue={q ?? ''} placeholder="Search BC number, title, message…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-64" />
+          <LiveSearchInput name="q" defaultValue={q ?? ''} placeholder="Search BC number, title, message…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)] sm:w-64" />
           <button type="submit" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-sm text-[var(--ejo-text)]">Filter</button>
         </form>
       </div>
