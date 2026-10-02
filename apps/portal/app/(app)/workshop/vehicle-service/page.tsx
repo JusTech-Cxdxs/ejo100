@@ -17,6 +17,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SubmitButton } from '@/components/SubmitButton';
 import { ServiceComplaintListInput } from '@/components/ServiceComplaintListInput';
 import { formatDateOnly } from '@/lib/utils/format-date';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -198,9 +199,8 @@ export default async function VehicleServicePage({
 
       <form className="mb-6 flex gap-2" action="/workshop/vehicle-service">
         {vehicleType ? <input type="hidden" name="type" value={vehicleType} /> : null}
-        <input
-          type="search"
-          name="q"
+        <LiveSearchInput
+          type="search" name="q"
           defaultValue={q ?? ''}
           placeholder="Search by service number, customer, or vehicle/VIN…"
           className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
