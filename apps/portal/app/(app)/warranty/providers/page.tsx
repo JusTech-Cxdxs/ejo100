@@ -6,6 +6,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { pluralize } from '@/lib/utils/pluralize';
 import { PROVIDER_TYPE_LABEL } from '@/lib/warranty-claim-status';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 
 const BANNER: Record<string, string> = {
@@ -47,7 +48,7 @@ export default async function WarrantyProvidersPage({ searchParams }: { searchPa
         <div>
           <form className="mb-3 flex gap-2" action="/warranty/providers">
             {state ? <input type="hidden" name="state" value={state} /> : null}
-            <input type="search" name="q" defaultValue={q ?? ''} placeholder="Search by name, contact, email or phone…" className={input} />
+            <LiveSearchInput type="search" name="q" defaultValue={q ?? ''} placeholder="Search by name, contact, email or phone…" className={input} />
             <select name="type" defaultValue={type ?? ''} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]">
               <option value="">All types</option>
               {Object.entries(PROVIDER_TYPE_LABEL).map(([v, t]) => <option key={v} value={v}>{t}</option>)}
