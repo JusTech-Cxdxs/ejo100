@@ -2,6 +2,7 @@ import { listUnmatchedStorePartLines, getStoreBranchId } from '@/lib/actions/sto
 import { listUnmatchedServiceEstimateStorePartLines } from '@/lib/actions/vehicle-service-estimate';
 import { LoadingLink } from '@/components/LoadingLink';
 import { pluralize } from '@/lib/utils/pluralize';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const WRENCH_ICON = (
   <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5 shrink-0 text-[var(--ejo-warning)]">
@@ -97,9 +98,8 @@ export default async function EstimateMatchingPage({ searchParams }: { searchPar
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <form className="flex gap-2" action="/inventory/estimate-matching">
           {type ? <input type="hidden" name="type" value={type} /> : null}
-          <input
-            type="text"
-            name="q"
+          <LiveSearchInput
+            type="text" name="q"
             defaultValue={q}
             placeholder="Search job number, service number, or vehicle…"
             className="w-72 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
