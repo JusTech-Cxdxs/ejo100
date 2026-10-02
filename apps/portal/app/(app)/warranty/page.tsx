@@ -3,6 +3,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL, type WarrantyCoverageState } from '@/lib/warranty-state';
 import { formatDateOnly } from '@/lib/utils/format-date';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 type Filter = 'all' | 'covered' | 'expiring' | 'pending' | 'expired' | 'inactive' | 'asset' | 'part' | 'reminder';
 
@@ -82,9 +83,8 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
 
       <form className="mb-4 flex gap-2" action="/warranty">
         {filter !== 'all' ? <input type="hidden" name="filter" value={filter} /> : null}
-        <input
-          type="search"
-          name="q"
+        <LiveSearchInput
+          type="search" name="q"
           defaultValue={q ?? ''}
           placeholder="Search by warranty number, customer, plate, VIN or part…"
           className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
