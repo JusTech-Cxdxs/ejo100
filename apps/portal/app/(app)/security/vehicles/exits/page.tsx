@@ -3,6 +3,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityTable } from '@/components/SecurityTable';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 export default async function VehicleExitsPage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string }> }) {
   const { q, kind } = await searchParams;
@@ -21,7 +22,7 @@ export default async function VehicleExitsPage({ searchParams }: { searchParams:
       </div>
       <form className="mb-4 flex max-w-xl gap-2">
         {kind ? <input type="hidden" name="kind" value={kind} /> : null}
-        <input name="q" defaultValue={q ?? ''} placeholder="Search VX number, plate, Job Card, Vehicle Service, collector…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+        <LiveSearchInput name="q" defaultValue={q ?? ''} placeholder="Search VX number, plate, Job Card, Vehicle Service, collector…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
         <button type="submit" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm text-[var(--ejo-text)]">Search</button>
       </form>
       <SecurityTable headers={['Exit', 'Left', 'Vehicle', 'Plate', 'Record', 'Customer', 'Collected by', '']} widths={['13%', '12%', '15%', '10%', '12%', '15%', '14%', '9%']} empty={rows.length ? null : q ? 'Nothing matches.' : 'No vehicles have left yet.'}>
