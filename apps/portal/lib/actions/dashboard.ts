@@ -7,7 +7,6 @@ import { getSchedulingDashboardItems } from './scheduling';
 import { getWarrantyClaimDashboardItems } from './warranty-claims';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
-import { isWeekend } from '@/lib/utils/working-days';
 
 export type DashboardNotification = {
   id: string;
@@ -286,59 +285,42 @@ export async function listActiveAnnouncements(organisationId: string) {
   });
 }
 
-export type DashboardTrendPoint = { label: string; jobCardsOpened: number; revenue: number };
+export type DashboardTrendPoint = { label: string; jobCardsOpened: number; servicesOpened: number; collected: number; refunded: number; net: number };
 
-/** Real, day-by-day figures for the last 14 real days — never a
- * projection or an estimate, purely counting/summing what actually
- * happened. A day with genuinely nothing shows a real 0, not an
- * omitted point, so the chart's own x-axis stays a real, unbroken
- * calendar. */
+/** Real, day-by-day figures for the last 14 WORKING days ending today
+ * (weekends and Nigerian public holidays skipped) — never a projection.
+ * Money is shown as what was collected and what was refunded, separately,
+ * so a refund day never shows as "negative revenue". */
 export async function getDashboardTrend(): Promise<DashboardTrendPoint[]> {
   await requireUser();
-  const workingDays = 14;
-  // No real work happens Saturday or Sunday, so a real "last 14 days"
-  // trend has to mean 14 real WORKING days, not 14 calendar days —
-  // showing two dead, always-zero weekend points per week would just
-  // be visual noise, not a real trend. A generous 25-calendar-day
-  // starting window comfortably covers 14 real working days (roughly
-  // 19-20 calendar days), with real room to spare.
-  const start = new Date();
-  start.setDate(start.getDate() - 24);
-  start.setHours(0, 0, 0, 0);
-
-  const [jobCards, payments, refunds]: [{ createdAt: Date }[], { recordedAt: Date; amount: unknown }[], { recordedAt: Date; amount: unknown }[]] = await Promise.all([
+  const { dayKind, lagosYmd } = await import('@/lib/nigeria-calendar');
+  const days: string[] = [];
+  const d = new Date(`${lagosYmd(new Date())}T12:00:00+01:00`);
+  while (days.length < 14) {
+    const ymd = d.toISOString().slice(0, 10);
+    if (dayKind(ymd).working) days.unshift(ymd);
+    d.setUTCDate(d.getUTCDate() - 1);
+  }
+  const start = new Date(`${days[0]}T00:00:00+01:00`);
+  const [jobCards, services, payments, refunds] = await Promise.all([
     prisma.jobCard.findMany({ where: { createdAt: { gte: start } }, select: { createdAt: true } }),
+    prisma.vehicleService.findMany({ where: { createdAt: { gte: start } }, select: { createdAt: true } }),
     prisma.payment.findMany({ where: { recordedAt: { gte: start } }, select: { recordedAt: true, amount: true } }),
-    // Money paid back the same day reduces that day's revenue — the
-    // chart shows net cash actually kept, never overstated after refunds.
     prisma.refund.findMany({ where: { recordedAt: { gte: start } }, select: { recordedAt: true, amount: true } }),
   ]);
-
-  const points: DashboardTrendPoint[] = [];
-  const cursor = new Date(start);
-  while (points.length < workingDays) {
-    if (!isWeekend(cursor)) {
-      const day = new Date(cursor);
-      const dayEnd = new Date(day);
-      dayEnd.setDate(dayEnd.getDate() + 1);
-      const label = day.toLocaleDateString('en-NG', { month: 'short', day: 'numeric', timeZone: 'Africa/Lagos' });
-      const jobCardsOpened = jobCards.filter((jc) => jc.createdAt >= day && jc.createdAt < dayEnd).length;
-      const received = payments
-        .filter((p) => p.recordedAt >= day && p.recordedAt < dayEnd)
-        .reduce((sum, p) => sum + Number(p.amount), 0);
-      const refunded = refunds
-        .filter((r) => r.recordedAt >= day && r.recordedAt < dayEnd)
-        .reduce((sum, r) => sum + Number(r.amount), 0);
-      const revenue = received - refunded;
-      points.push({ label, jobCardsOpened, revenue: Math.round(revenue * 100) / 100 });
-    }
-    cursor.setDate(cursor.getDate() + 1);
-    // Real safety valve — never actually reached in practice (25
-    // calendar days always contains at least 14 working days), but a
-    // genuinely broken date somewhere must never spin this forever.
-    if (cursor.getTime() - start.getTime() > 60 * 24 * 60 * 60 * 1000) break;
-  }
-  return points;
+  const onDay = (t: Date, ymd: string) => lagosYmd(t) === ymd;
+  return days.map((ymd) => {
+    const collected = payments.filter((p: { recordedAt: Date }) => onDay(p.recordedAt, ymd)).reduce((n: number, p: { amount: unknown }) => n + Number(p.amount), 0);
+    const refunded = refunds.filter((r: { recordedAt: Date }) => onDay(r.recordedAt, ymd)).reduce((n: number, r: { amount: unknown }) => n + Number(r.amount), 0);
+    return {
+      label: new Date(`${ymd}T12:00:00+01:00`).toLocaleDateString('en-NG', { month: 'short', day: 'numeric', timeZone: 'Africa/Lagos' }),
+      jobCardsOpened: jobCards.filter((j: { createdAt: Date }) => onDay(j.createdAt, ymd)).length,
+      servicesOpened: services.filter((v: { createdAt: Date }) => onDay(v.createdAt, ymd)).length,
+      collected: Math.round(collected * 100) / 100,
+      refunded: Math.round(refunded * 100) / 100,
+      net: Math.round((collected - refunded) * 100) / 100,
+    };
+  });
 }
 
 export type NeedsAttentionSummary = {
@@ -358,4 +340,40 @@ export async function getNeedsAttentionSummary(): Promise<NeedsAttentionSummary>
     pendingApprovals: notifications.filter((n) => n.kind === 'CANCELLATION_REQUEST' || n.kind === 'CLOSE_REQUEST' || n.kind === 'JOB_CARD_APPROVAL').length,
     pendingAssignments: notifications.filter((n) => n.kind === 'TECHNICIAN_ASSIGNMENT').length,
   };
+}
+
+export type GlanceTile = { label: string; value: number; hint: string; href: string; tone: 'primary' | 'info' | 'warning' | 'error' | 'success' | 'muted' };
+
+/** The whole business at a glance — one tile per area, each a link to its
+ * list. All counts in ONE parallel round (cheap indexed counts). */
+export async function getPlatformGlance(): Promise<GlanceTile[]> {
+  await requireUser();
+  const dayStart = new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T00:00:00+01:00`);
+  const dayEnd = new Date(dayStart.getTime() + 86400000);
+  const n = (p: Promise<number>) => p.catch(() => 0);
+  const [jcActive, svActive, prsOpen, eprOpen, claimsOpen, visitors, incidents, apptsToday, broadcasts, grnsToday] = await Promise.all([
+    n(prisma.jobCard.count({ where: { status: { notIn: ['CHECKED_OUT', 'CANCELLED'] } } })),
+    n(prisma.vehicleService.count({ where: { status: { in: ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'] } } })),
+    n(prisma.partRequestSlip.count({ where: { status: { in: ['PENDING_HOD_APPROVAL', 'PENDING_STORE_APPROVAL', 'APPROVED'] } } })),
+    n(prisma.externalProcurementRequest.count({ where: { status: { in: ['PENDING_FINANCE_REVIEW', 'PENDING_MANAGER_APPROVAL', 'APPROVED'] } } })),
+    n(prisma.warrantyClaim.count({ where: { status: { in: ['DRAFT', 'PENDING_HOD', 'PENDING_MANAGER', 'APPROVED_TO_SUBMIT', 'SUBMITTED'] } } })),
+    n(prisma.visit.count({ where: { status: 'CHECKED_IN' } })),
+    n(prisma.securityIncident.count({ where: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } })),
+    n(prisma.appointment.count({ where: { status: 'SCHEDULED', startsAt: { gte: dayStart, lt: dayEnd } } })),
+    n(prisma.broadcast.count({ where: { isActive: true, startsAt: { lte: new Date() }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] } })),
+    n(prisma.goodsReceipt.count({ where: { receivedAt: { gte: dayStart, lt: dayEnd } } })),
+  ]);
+  const p = (v: number, one: string, many: string) => `${v} ${v === 1 ? one : many}`;
+  return [
+    { label: 'Job Cards in progress', value: jcActive, hint: 'Open, not yet checked out', href: '/workshop/custody', tone: 'primary' },
+    { label: 'Vehicle Services in progress', value: svActive, hint: 'In the workshop now', href: '/workshop/vehicle-service', tone: 'info' },
+    { label: 'Parts requests open', value: prsOpen, hint: 'Awaiting approval or release', href: '/workshop/parts-requests', tone: prsOpen ? 'warning' : 'muted' },
+    { label: 'Outside purchases (EPR) open', value: eprOpen, hint: 'Awaiting review, approval or cash', href: '/workshop/external-procurement', tone: eprOpen ? 'warning' : 'muted' },
+    { label: 'Goods received today', value: grnsToday, hint: p(grnsToday, 'goods receipt', 'goods receipts'), href: '/inventory/goods-receipts', tone: 'success' },
+    { label: 'Warranty claims open', value: claimsOpen, hint: 'Not yet settled or closed', href: '/warranty/claims', tone: claimsOpen ? 'warning' : 'muted' },
+    { label: 'Visitors on premises', value: visitors, hint: 'Checked in, not yet out', href: '/security/on-premises', tone: 'info' },
+    { label: 'Open incidents', value: incidents, hint: 'Open or under review', href: '/security/incidents?tab=open', tone: incidents ? 'error' : 'muted' },
+    { label: "Today's appointments", value: apptsToday, hint: 'Still scheduled', href: '/schedule/appointments?show=today', tone: 'primary' },
+    { label: 'Live broadcasts', value: broadcasts, hint: 'Running now', href: '/notifications?tab=broadcasts', tone: 'success' },
+  ];
 }

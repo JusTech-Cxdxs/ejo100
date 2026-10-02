@@ -4,7 +4,7 @@ import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
 import { recordUrl, describeApiEntry, areaOf, AREA_LABEL } from '@/lib/notification-rules';
-import { resolveRecords } from '@/lib/record-resolver';
+import { resolveRecords, resolveReferenceNumbers, REFERENCE_PATTERN } from '@/lib/record-resolver';
 
 /** The full audit trail is for the Master Admin and Administrators. */
 export async function canSeeAuditLogs(): Promise<boolean> {
@@ -30,6 +30,13 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
   const createdAt: { gte?: Date; lt?: Date } = {};
   if (f.from && /^\d{4}-\d{2}-\d{2}$/.test(f.from)) createdAt.gte = new Date(`${f.from}T00:00:00+01:00`);
   if (f.to && /^\d{4}-\d{2}-\d{2}$/.test(f.to)) createdAt.lt = new Date(new Date(`${f.to}T00:00:00+01:00`).getTime() + 86400000);
+  // A reference number (JC-2026-000013, VX-…, GRN-…) finds that record's
+  // whole history: resolve the number to the record, then search its id.
+  let refId: string | null = null;
+  if (q && new RegExp(`^${REFERENCE_PATTERN.source}$`).test(q.toUpperCase())) {
+    const url = (await resolveReferenceNumbers([q.toUpperCase()])).get(q.toUpperCase());
+    refId = url?.split('/').filter(Boolean).pop() ?? null;
+  }
   const kindWhere = kind === 'data' ? { entityType: { startsWith: 'db:' } } : kind === 'api' ? { entityType: { startsWith: 'api:' } } : kind === 'business' ? { NOT: [{ entityType: { startsWith: 'db:' } }, { entityType: { startsWith: 'api:' } }] } : {};
   const rows = await prisma.auditLog.findMany({
     where: {
@@ -38,7 +45,7 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
       entityType: { notIn: ['db:NotificationRead', 'db:NotificationPreference'] },
       ...(f.userId ? { userId: f.userId } : {}),
       ...(createdAt.gte || createdAt.lt ? { createdAt } : {}),
-      ...(q ? { OR: [{ action: { contains: q, mode: 'insensitive' as const } }, { entityType: { contains: q, mode: 'insensitive' as const } }, { entityId: { contains: q } }] } : {}),
+      ...(refId ? { entityId: refId } : q ? { OR: [{ action: { contains: q.replace(/\s+/g, '_'), mode: 'insensitive' as const } }, { action: { contains: q, mode: 'insensitive' as const } }, { entityType: { contains: q.replace(/\s+/g, ''), mode: 'insensitive' as const } }, { entityId: { contains: q } }] } : {}),
     },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: PAGE + 1,
@@ -82,7 +89,8 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
     }
     out.push(r);
   }
-  return { kind, rows: out, nextCursor: rows.length > PAGE ? page[page.length - 1]!.id : null };
+  const refLinks = await resolveReferenceNumbers(out.flatMap((r) => [r.title, r.detail]));
+  return { kind, rows: out, refLinks, nextCursor: rows.length > PAGE ? page[page.length - 1]!.id : null };
 }
 
 export async function listAuditUsers() {
