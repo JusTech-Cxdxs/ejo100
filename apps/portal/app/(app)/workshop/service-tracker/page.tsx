@@ -12,6 +12,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const STAGE_LABEL: Record<number, string> = { 1: '1st — Friendly', 2: '2nd — Follow-up', 3: '3rd — Due', 4: 'Overdue' };
 
@@ -164,9 +165,8 @@ export default async function ServiceTrackerPage({
           <option value="PASSENGER">Passenger</option>
           <option value="COMMERCIAL">Commercial</option>
         </select>
-        <input
-          type="search"
-          name="q"
+        <LiveSearchInput
+          type="search" name="q"
           defaultValue={q ?? ''}
           placeholder="Search by vehicle, plate, customer or service number…"
           className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
