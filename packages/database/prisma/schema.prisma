@@ -222,6 +222,11 @@ model Branch {
   // same reason: a branch commonly has more than one real line.
   hotlines       String[] @default([])
   email          String?
+  // The branch's own bank account for customer deposits and payments —
+  // printed on every estimate email, PDF and print-out for this branch.
+  bankName          String?
+  bankAccountName   String?
+  bankAccountNumber String?
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -425,6 +430,7 @@ model User {
   exitPassesGateOut ExitPass[] @relation("ExitPassGateOutBy")
   exitPassesGateIn ExitPass[] @relation("ExitPassGateInBy")
   exitPassPersons ExitPassPerson[] @relation("ExitPassPersonUser")
+  roadTestPersons RoadTestPerson[] @relation("RoadTestPersonUser")
   vehicleGateExits VehicleGateExit[] @relation("VehicleGateExitBy")
   roadTestsRequested RoadTestPermit[] @relation("RoadTestRequestedBy")
   roadTestsDriven RoadTestPermit[] @relation("RoadTestDriver")
@@ -3334,6 +3340,7 @@ model RoadTestPermit {
   declinedBy        User?           @relation("RoadTestDeclinedBy", fields: [declinedById], references: [id])
   gateOutBy         User?           @relation("RoadTestGateOutBy", fields: [gateOutById], references: [id])
   gateInBy          User?           @relation("RoadTestGateInBy", fields: [gateInById], references: [id])
+  people            RoadTestPerson[]
 
   @@index([status])
   @@index([jobCardId])
@@ -3683,4 +3690,20 @@ model NotificationPreference {
   user User @relation("NotificationPreference", fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notification_preferences")
+}
+
+/// Everyone going out on a road test besides the driver — staff (linked to
+/// their user) or other people by name, like the exit pass.
+model RoadTestPerson {
+  id          String  @id @default(cuid())
+  roadTestId  String
+  userId      String?
+  name        String
+  employeeId  String?
+
+  roadTest RoadTestPermit @relation(fields: [roadTestId], references: [id], onDelete: Cascade)
+  user     User?          @relation("RoadTestPersonUser", fields: [userId], references: [id])
+
+  @@index([roadTestId])
+  @@map("road_test_people")
 }
