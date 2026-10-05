@@ -60,6 +60,7 @@ import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
+import { IdempotencyKey } from '@/components/IdempotencyKey';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -1308,6 +1309,7 @@ export default async function VehicleServiceDetailPage({
                     exactly what gets recorded.
                   </p>
                   <form key={payments.length} action={recordServicePaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
+                    <IdempotencyKey />
                     <input type="hidden" name="vehicleServiceId" value={service.id} />
                     <FormPendingOverlay />
                     <PaymentAmountField
