@@ -1,11 +1,6 @@
 import { getServiceTracker } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
-import {
-  attendToOverdueVehicleFormAction,
-  sendManualServiceReminderFormAction,
-  runServiceRemindersNowFormAction,
-  stopTrackingVehicleFormAction,
-} from '@/lib/actions/vehicle-service-form-handlers';
+import { attendToOverdueVehicleFormAction, sendManualServiceReminderFormAction, runServiceRemindersNowFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -13,6 +8,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { StopTrackingDialog } from '@/components/StopTrackingDialog';
 
 const STAGE_LABEL: Record<number, string> = { 1: '1st — Friendly', 2: '2nd — Follow-up', 3: '3rd — Due', 4: 'Overdue' };
 
@@ -316,23 +312,7 @@ export default async function ServiceTrackerPage({
                           </form>
                         ) : null}
                         {!v.inWorkshop && !v.attendedAt ? (
-                          <details className="relative self-start text-left">
-                            <summary className="cursor-pointer rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1 text-xs font-medium text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)]">
-                              Stop tracking
-                            </summary>
-                            <form action={stopTrackingVehicleFormAction} className="absolute right-0 top-full z-30 mt-1 w-60 space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-3 shadow-lg">
-                              <FormPendingOverlay />
-                              <input type="hidden" name="vehicleId" value={v.vehicleId} />
-                              <input type="hidden" name="returnTo" value="/workshop/service-tracker" />
-                              <input
-                                name="reason"
-                                required
-                                placeholder="Reason (e.g. customer asked, sold the car)"
-                                className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1 text-xs text-[var(--ejo-text)]"
-                              />
-                              <SubmitButton label="Stop tracking" pendingLabel="Stopping…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-text-muted)] px-2 py-1 text-xs font-medium text-white" />
-                            </form>
-                          </details>
+                          <StopTrackingDialog vehicleId={v.vehicleId} vehicleLabel={`${v.vehicleDescription}${v.plateNumber ? ` — ${v.plateNumber}` : ''}`} returnTo="/workshop/service-tracker" />
                         ) : null}
                         {!v.inWorkshop ? (
                           <LoadingLink
