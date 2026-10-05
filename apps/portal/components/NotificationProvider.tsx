@@ -82,7 +82,10 @@ function chime(ctx: AudioContext | null, urgent: boolean) {
  *    refresh the page's data — so dashboards and lists stay current without
  *    reloading, at almost no cost when nothing is happening.
  */
-export function NotificationProvider({ children, initial }: { children: ReactNode; initial?: Promise<NotificationSummary | null> }) {
+export function NotificationProvider({ children, userId }: { children: ReactNode; userId: string | null }) {
+  // Last known notifications for THIS user in this tab — shown instantly on every
+  // page / reload, then refreshed in the background (stale-while-revalidate).
+  const cacheKey = userId ? `ejo.notifications.v1.${userId}` : null;
   const router = useRouter();
   const [summary, setSummary] = useState<NotificationSummary>(EMPTY);
   const [loaded, setLoaded] = useState(false);
@@ -143,8 +146,9 @@ export function NotificationProvider({ children, initial }: { children: ReactNod
     if (first) setMuted(next.muted);
     setLoaded(true);
     setState('ready');
+    if (cacheKey) { try { sessionStorage.setItem(cacheKey, JSON.stringify(next)); } catch { /* storage full or blocked */ } }
     if (mine) refreshPageSoon();
-  }, [refreshPageSoon]);
+  }, [refreshPageSoon, cacheKey]);
 
   const load = useCallback(async () => {
     lastLoad.current = Date.now();
@@ -196,16 +200,28 @@ export function NotificationProvider({ children, initial }: { children: ReactNod
 
   useEffect(() => () => { if (pingTimer.current) clearTimeout(pingTimer.current); }, []);
 
-  // First load: use the fetch the server already started with the page request
-  // (earliest possible, never blocking the page); if that fails or is missing,
-  // fetch from the browser. Then realtime / checks take over.
+  // First load: last known state instantly, then fresh data; then realtime /
+  // checks take over. Notifications never sit on the page request.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      lastLoad.current = Date.now();
-      const early = initial ? await initial.catch(() => null) : null;
+      // 1. Instantly: the last known state for this user (no chime, no flicker).
+      if (cacheKey) {
+        try {
+          const raw = sessionStorage.getItem(cacheKey);
+          if (raw) {
+            const cached = JSON.parse(raw) as NotificationSummary;
+            sig.current = cached.signature;
+            setSummary(cached);
+            setMuted(cached.muted);
+            setLoaded(true);
+            setState('ready');
+          }
+        } catch { /* ignore a damaged cache */ }
+      }
+      // 2. Then fresh data (cheap when nothing changed — the server caches it).
+      await load();
       if (cancelled) return;
-      if (early) apply(early); else await load();
       if (!cancelled) await check();
     })();
     return () => { cancelled = true; };
