@@ -41,9 +41,13 @@ export function logError(where: string, err: unknown, extra?: Record<string, unk
 
 /** The message to show the person. */
 export function friendlyError(err: unknown, fallback = 'That could not be completed.', where = 'action'): string {
-  const e = err as { code?: string; message?: string; digest?: string };
+  const e = err as { code?: string; message?: string; digest?: string; meta?: { target?: unknown } };
   // Next.js redirects / not-found are control flow, not errors.
   if (e?.digest?.startsWith?.('NEXT_')) throw err;
+  // Two identical submissions raced: the database kept exactly one — it went through.
+  if (e?.code === 'P2002' && JSON.stringify(e.meta?.target ?? '').includes('idempotencyKey')) {
+    return 'This was already recorded — it went through. Refresh the page to see it.';
+  }
   if (e?.code && PRISMA[e.code]) {
     logError(where, err);
     return PRISMA[e.code]!;
