@@ -5,6 +5,7 @@ import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { getApplicableTemplate, VEHICLE_INSPECTION_TEMPLATE } from '@/lib/vehicle-inspection-template';
+import { sendLoggedEmail } from '@/lib/logged-email';
 
 class VehicleInspectionActionError extends Error {}
 
@@ -199,6 +200,13 @@ export async function completeVehicleInspection(inspectionId: string, notes?: st
     data: { status: 'COMPLETED', completedAt: new Date(), notes: notes?.trim() || null },
   });
   await logInspectionEvent({ userId: user.id, action: 'vehicle_inspection.completed', inspectionId, vehicleServiceId: inspection.vehicleServiceId });
+  // Tell the supervisor (and the service technician) — the estimate is next.
+  try {
+    const sv = await prisma.vehicleService.findUnique({ where: { id: inspection.vehicleServiceId }, select: { serviceNumber: true, supervisor: { select: { fullName: true, email: true } }, assignedTechnician: { select: { fullName: true, email: true } } } });
+    if (sv) await sendLoggedEmail({ entityType: 'VehicleService', entityId: inspection.vehicleServiceId, recipients: [sv.supervisor, sv.assignedTechnician].filter((x): x is { fullName: string; email: string } => Boolean(x?.email)), subject: `Inspection completed — ${sv.serviceNumber}`, heading: 'The vehicle inspection is complete', lines: [sv.serviceNumber, 'The findings are recorded — the estimate can now be prepared.'], path: `/workshop/vehicle-service/${inspection.vehicleServiceId}`, actorId: user.id });
+  } catch (err) {
+    console.error('Inspection completed email failed', err);
+  }
 }
 
 export async function getVehicleInspection(vehicleServiceId: string) {

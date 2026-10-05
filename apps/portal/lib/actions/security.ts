@@ -213,6 +213,7 @@ export async function recordArrival(input: VisitInput): Promise<{ id: string; vi
     data: { ...data, ...arrival, expectedAt: null, visitNumber, passNumber, status: 'CHECKED_IN', isWalkIn: true, checkedInAt: new Date(), checkedInById: r.userId, branchId: await getWorkshopBranchId(), registeredById: r.userId },
   });
   await writeAuditLog({ userId: r.userId, action: 'visit.arrived', entityType: 'Visit', entityId: visit.id, metadata: { visitNumber, passNumber, visitor: data.visitorName, people: data.partySize, vehicle: arrival.vehiclePlate ?? 'On foot' } });
+  await followUpEmail('visit.arrived', visit.id, r.userId);
   return { id: visit.id, visitNumber, passNumber };
 }
 
@@ -227,6 +228,7 @@ export async function checkInVisit(visitId: string, arrivalInput: { vehicleType?
   const passNumber = await nextNumber('VP');
   await prisma.visit.update({ where: { id: visitId }, data: { ...arrival, status: 'CHECKED_IN', passNumber, checkedInAt: new Date(), checkedInById: r.userId } });
   await writeAuditLog({ userId: r.userId, action: 'visit.checked_in', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, passNumber, vehicle: arrival.vehiclePlate ?? 'On foot' } });
+  await followUpEmail('visit.checked_in', visitId, r.userId);
   return { passNumber };
 }
 
@@ -440,6 +442,7 @@ export async function cancelExitPass(passId: string, reason: string): Promise<vo
   if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
   await prisma.exitPass.update({ where: { id: passId }, data: { status: 'CANCELLED', cancelReason: reason.trim() } });
   await writeAuditLog({ userId: user.id, action: 'exit_pass.cancelled', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber, reason: reason.trim() } });
+  await followUpEmail('exit_pass.cancelled', passId, user.id);
 }
 
 /** Time out at the gate — only on an approved pass. A no-return pass
@@ -454,6 +457,7 @@ export async function exitPassGateOut(passId: string): Promise<void> {
   const expectedReturnAt = p.returning && p.expectedDurationMinutes ? new Date(now.getTime() + p.expectedDurationMinutes * 60000) : undefined;
   await prisma.exitPass.update({ where: { id: passId }, data: { status: p.returning ? 'OUT' : 'CLOSED', gateOutAt: now, gateOutById: r.userId, ...(expectedReturnAt ? { expectedReturnAt } : {}) } });
   await writeAuditLog({ userId: r.userId, action: 'exit_pass.gate_out', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber, returning: p.returning } });
+  await followUpEmail('exit_pass.gate_out', passId, r.userId);
 }
 
 export async function exitPassGateIn(passId: string): Promise<void> {
@@ -465,6 +469,7 @@ export async function exitPassGateIn(passId: string): Promise<void> {
   await prisma.exitPass.update({ where: { id: passId }, data: { status: 'RETURNED', gateInAt: now, gateInById: r.userId } });
   const late = p.expectedReturnAt && now.getTime() > new Date(p.expectedReturnAt).getTime() ? durationText((now.getTime() - new Date(p.expectedReturnAt).getTime()) / 60000) : null;
   await writeAuditLog({ userId: r.userId, action: 'exit_pass.gate_in', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber, away: p.gateOutAt ? durationText((now.getTime() - new Date(p.gateOutAt).getTime()) / 60000) : undefined, late: late ?? undefined } });
+  await followUpEmail('exit_pass.gate_in', passId, r.userId);
 }
 
 // ── Vehicles cleared to leave (from the Workshop) ─────────────────────
@@ -507,6 +512,7 @@ export async function confirmVehicleExit(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', r
   });
   const meta = { exitNumber, number: rec.number, collectedBy: collectedBy.trim() || undefined };
   await writeAuditLog({ userId: r.userId, action: 'vehicle.gate_exit', entityType: 'VehicleGateExit', entityId: row.id, metadata: meta });
+  await followUpEmail('vehicle.gate_exit', row.id, r.userId);
   await writeAuditLog({ userId: r.userId, action: 'vehicle.gate_exit', entityType: kind === 'JOB_CARD' ? 'JobCard' : 'VehicleService', entityId: recordId, metadata: meta });
   await writeAuditLog({ userId: r.userId, action: 'vehicle.gate_exit', entityType: 'CustomerVehicle', entityId: rec.vehicleId, metadata: { exitNumber, number: rec.number } });
   return { id: row.id, exitNumber: row.exitNumber };
@@ -874,6 +880,7 @@ export async function extendExitPassReturn(passId: string, extraMinutes: number,
   const next = new Date(new Date(p.expectedReturnAt).getTime() + extraMinutes * 60000);
   await prisma.exitPass.update({ where: { id: passId }, data: { expectedReturnAt: next } });
   await writeAuditLog({ userId: r.userId, action: 'exit_pass.extended', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber, extra: durationText(extraMinutes), newReturn: next.toISOString(), reason: reason.trim() } });
+  await followUpEmail('exit_pass.extended', passId, r.userId);
 }
 
 /** A follow-up note on a visitor or exit pass (e.g. "called — on the way
@@ -1006,6 +1013,7 @@ export async function cancelRoadTest(id: string, reason: string): Promise<void> 
   await prisma.roadTestPermit.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason.trim() } });
   const meta = { permitNumber: p.permitNumber, reason: reason.trim() };
   await writeAuditLog({ userId: user.id, action: 'road_test.cancelled', entityType: 'RoadTestPermit', entityId: id, metadata: meta });
+  await followUpEmail('road_test.cancelled', id, user.id);
   await roadTestRecordAudit(p, user.id, 'road_test.cancelled', meta);
 }
 
@@ -1055,6 +1063,7 @@ export async function extendRoadTest(id: string, extraMinutes: number, reason: s
   if (p.status !== 'OUT') throw new SecurityError('Only a vehicle out on a road test can be given more time.');
   await prisma.roadTestPermit.update({ where: { id }, data: { expectedDurationMinutes: p.expectedDurationMinutes + extraMinutes } });
   await writeAuditLog({ userId: r.userId, action: 'road_test.extended', entityType: 'RoadTestPermit', entityId: id, metadata: { permitNumber: p.permitNumber, extra: durationText(extraMinutes), reason: reason.trim() } });
+  await followUpEmail('road_test.extended', id, r.userId);
 }
 
 const RT_ROW = {
@@ -1216,6 +1225,7 @@ export async function closeIncident(id: string, resolution: string): Promise<voi
   if (inc.status === 'CLOSED') throw new SecurityError('This incident is already closed.');
   await prisma.securityIncident.update({ where: { id }, data: { status: 'CLOSED', resolution: resolution.trim(), closedAt: new Date(), closedById: r.userId } });
   await writeAuditLog({ userId: r.userId, action: 'incident.closed', entityType: 'SecurityIncident', entityId: id, metadata: { incidentNumber: inc.incidentNumber, resolution: resolution.trim() } });
+  await followUpEmail('incident.closed', id, r.userId);
 }
 
 export async function reopenIncident(id: string, reason: string): Promise<void> {
@@ -1226,6 +1236,7 @@ export async function reopenIncident(id: string, reason: string): Promise<void> 
   if (inc.status !== 'CLOSED') throw new SecurityError('Only a closed incident can be reopened.');
   await prisma.securityIncident.update({ where: { id }, data: { status: 'UNDER_REVIEW', closedAt: null, closedById: null } });
   await writeAuditLog({ userId: r.userId, action: 'incident.reopened', entityType: 'SecurityIncident', entityId: id, metadata: { incidentNumber: inc.incidentNumber, reason: reason.trim() } });
+  await followUpEmail('incident.reopened', id, r.userId);
 }
 
 const INCIDENT_TABS = ['open', 'under_review', 'closed', 'all'] as const;
@@ -1331,6 +1342,7 @@ export async function confirmDeliveryReceived(id: string, note: string, goodsRec
   }
   await prisma.gateDelivery.update({ where: { id }, data: { status: 'RECEIVED', receivedAt: new Date(), receivedById: user.id, receiptNote: note.trim() || null, goodsReceiptId: grn?.id ?? null } });
   await writeAuditLog({ userId: user.id, action: 'delivery.received', entityType: 'GateDelivery', entityId: id, metadata: { deliveryNumber: d.deliveryNumber, grn: grn?.referenceNumber, note: note.trim() || undefined } });
+  await followUpEmail('delivery.received', id, user.id);
 }
 
 /** The delivery vehicle leaves. Turned away without receipt → a reason. */
@@ -1488,6 +1500,7 @@ export async function contractorSignIn(id: string, workersPresent: number): Prom
   if (!Number.isInteger(workersPresent) || workersPresent < 1 || workersPresent > p.teamSize) throw new SecurityError(`Choose how many came today — between 1 and ${p.teamSize}.`);
   const a = await prisma.contractorAttendance.create({ data: { passId: id, workersPresent, signedInAt: new Date(), signedInById: r.userId } });
   await writeAuditLog({ userId: r.userId, action: 'contractor.signed_in', entityType: 'ContractorPass', entityId: id, metadata: { passNumber: p.passNumber, people: workersPresent, of: p.teamSize, attendanceId: a.id } });
+  await followUpEmail('contractor.signed_in', id, r.userId);
 }
 
 export async function contractorSignOut(id: string, note: string): Promise<void> {
@@ -1563,4 +1576,61 @@ export async function canDecideContractorPass(id: string): Promise<boolean> {
 const getSecurityRolesCached = cache(getSecurityRolesUncached);
 export async function getSecurityRoles(): Promise<SecurityRoles> {
   return getSecurityRolesCached();
+}
+
+// ── Follow-up emails: who must hear about each gate / security step ────
+// One place for "who gets told what" after an action. Loads exactly the
+// people and numbers it needs; never lets an email failure undo the action.
+type FollowUp = 'visit.arrived' | 'visit.checked_in' | 'exit_pass.cancelled' | 'exit_pass.gate_out' | 'exit_pass.gate_in' | 'exit_pass.extended' | 'vehicle.gate_exit' | 'road_test.cancelled' | 'road_test.extended' | 'incident.closed' | 'incident.reopened' | 'delivery.received' | 'contractor.signed_in';
+async function followUpEmail(kind: FollowUp, id: string, actorId: string | null): Promise<void> {
+  const P = { select: { id: true, fullName: true, email: true } } as const;
+  const uniq = (xs: (Person | null | undefined)[]) => xs.filter((x): x is Person => Boolean(x?.email)).filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i);
+  try {
+    if (kind === 'visit.arrived' || kind === 'visit.checked_in') {
+      const v = await prisma.visit.findUnique({ where: { id }, select: { visitNumber: true, visitorName: true, company: true, partySize: true, host: P } });
+      if (!v?.host) return;
+      const who = `${v.visitorName}${v.company ? ` (${v.company})` : ''}${v.partySize > 1 ? ` + ${v.partySize - 1} more` : ''}`;
+      await sendLogged('Visit', id, uniq([v.host]), kind === 'visit.arrived' ? `Your visitor has arrived — ${v.visitorName}` : `Your visitor is at reception — ${v.visitorName}`, kind === 'visit.arrived' ? 'Your visitor is at the gate' : 'Your visitor is at reception', [`${v.visitNumber} — ${who}`, kind === 'visit.arrived' ? 'Security has let them in; reception will receive them.' : 'Please come and receive them.'], `/security/visitors/${id}`, actorId);
+    } else if (kind.startsWith('exit_pass.')) {
+      const p = await prisma.exitPass.findUnique({ where: { id }, select: { passNumber: true, requestedById: true, headApprovedAt: true, managerApprovedAt: true, expectedReturnAt: true, requestedBy: P } });
+      if (!p) return;
+      if (kind === 'exit_pass.cancelled') {
+        const deciding = p.managerApprovedAt ? await gateStaff() : p.headApprovedAt ? await managerApprovers(p.requestedById) : await headApproversFor(p.requestedById);
+        await sendLogged('ExitPass', id, uniq(deciding), `Exit pass ${p.passNumber} was cancelled`, 'An exit pass was cancelled', [p.passNumber, p.managerApprovedAt ? 'Do not let anyone out on this pass.' : 'No decision is needed any more.'], `/security/exit-passes/${id}`, actorId);
+      } else {
+        const back = p.expectedReturnAt ? new Date(p.expectedReturnAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }) : null;
+        const text = kind === 'exit_pass.gate_out' ? ['Security recorded you going out.', ...(back ? [`Expected back by ${back}.`] : [])] : kind === 'exit_pass.gate_in' ? ['Security recorded you back in. Welcome back.'] : [`More time was given${back ? ` — now expected back by ${back}` : ''}.`];
+        await sendLogged('ExitPass', id, uniq([p.requestedBy]), `Exit pass ${p.passNumber} — ${kind === 'exit_pass.gate_out' ? 'out through the gate' : kind === 'exit_pass.gate_in' ? 'back through the gate' : 'more time given'}`, 'Your exit pass', [p.passNumber, ...text], `/security/exit-passes/${id}`, actorId);
+      }
+    } else if (kind === 'vehicle.gate_exit') {
+      const x = await prisma.vehicleGateExit.findUnique({ where: { id }, select: { exitNumber: true, jobCard: { select: { jobNumber: true, createdBy: P, supervisor: P } }, vehicleService: { select: { serviceNumber: true, createdBy: P, supervisor: P } } } });
+      const rec = x?.jobCard ?? x?.vehicleService;
+      if (!x || !rec) return;
+      const number = x.jobCard?.jobNumber ?? x.vehicleService?.serviceNumber ?? '';
+      await sendLogged('VehicleGateExit', id, uniq([rec.createdBy, rec.supervisor]), `Vehicle has left the premises — ${number}`, 'The vehicle has left through the gate', [`${x.exitNumber} — ${number}`, 'Security confirmed the vehicle left with the customer.'], `/security/vehicles/exits/${id}`, actorId);
+    } else if (kind.startsWith('road_test.')) {
+      const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { permitNumber: true, requestedById: true, managerApprovedAt: true, expectedDurationMinutes: true, requestedBy: P } });
+      if (!p) return;
+      if (kind === 'road_test.cancelled') {
+        const to = p.managerApprovedAt ? await gateStaff() : await managerApprovers(p.requestedById);
+        await sendLogged('RoadTestPermit', id, uniq(to), `Road test ${p.permitNumber} was cancelled`, 'A road test was cancelled', [p.permitNumber, p.managerApprovedAt ? 'Do not let the vehicle out on this permit.' : 'No decision is needed any more.'], `/security/road-tests/${id}`, actorId);
+      } else {
+        await sendLogged('RoadTestPermit', id, uniq([p.requestedBy]), `Road test ${p.permitNumber} — more time given`, 'Your road test has more time', [p.permitNumber, `Now expected to take ${durationText(p.expectedDurationMinutes)} in total.`], `/security/road-tests/${id}`, actorId);
+      }
+    } else if (kind === 'incident.closed' || kind === 'incident.reopened') {
+      const i = await prisma.securityIncident.findUnique({ where: { id }, select: { incidentNumber: true, type: true, resolution: true, reportedBy: P, assignedTo: P } });
+      if (!i) return;
+      await sendLogged('SecurityIncident', id, uniq([i.reportedBy, i.assignedTo]), `Incident ${i.incidentNumber} ${kind === 'incident.closed' ? 'closed' : 'reopened'}`, kind === 'incident.closed' ? 'An incident was closed' : 'An incident was reopened', [`${i.incidentNumber} — ${i.type}`, ...(kind === 'incident.closed' && i.resolution ? [`Resolution: ${i.resolution}`] : [])], `/security/incidents/${id}`, actorId);
+    } else if (kind === 'delivery.received') {
+      const d = await prisma.gateDelivery.findUnique({ where: { id }, select: { deliveryNumber: true, supplierName: true } });
+      if (!d) return;
+      await sendLogged('GateDelivery', id, uniq(await gateStaff()), `Delivery received by the Store — ${d.supplierName}`, 'The Store has received the delivery', [`${d.deliveryNumber} — ${d.supplierName}`, 'The delivery vehicle may now leave — record it at the gate.'], `/security/deliveries/${id}`, actorId);
+    } else if (kind === 'contractor.signed_in') {
+      const c = await prisma.contractorPass.findUnique({ where: { id }, select: { passNumber: true, company: true, host: P } });
+      if (!c) return;
+      await sendLogged('ContractorPass', id, uniq([c.host]), `Your contractors have arrived — ${c.company}`, 'Your contractor team is on site', [`${c.passNumber} — ${c.company}`, 'Security has signed them in for today.'], `/security/contractors/${id}`, actorId);
+    }
+  } catch (err) {
+    console.error('Follow-up email failed', kind, id, err);
+  }
 }

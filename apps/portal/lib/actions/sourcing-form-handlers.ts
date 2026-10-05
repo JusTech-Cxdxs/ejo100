@@ -112,7 +112,8 @@ export async function releasePartRequestSlipFormAction(formData: FormData) {
     }
     await releasePartRequestSlip(
       slipId,
-      { receivedByUserId: str(formData, 'receivedByUserId') || undefined, receivedByName: str(formData, 'receivedByName') || undefined },
+      // A typed name (someone not on staff) is used INSTEAD of the staff box.
+      str(formData, 'receivedByName') ? { receivedByName: str(formData, 'receivedByName') } : { receivedByUserId: str(formData, 'receivedByUserId') || undefined },
       Object.keys(lineSerials).length > 0 ? lineSerials : undefined,
     );
   } catch (err) {
