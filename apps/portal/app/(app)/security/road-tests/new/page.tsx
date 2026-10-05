@@ -14,6 +14,7 @@ import { durationText } from '@/lib/security-rules';
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 
 export default async function NewRoadTestPage({ searchParams }: { searchParams: Promise<{ jobCardId?: string; vehicleServiceId?: string; error?: string }> }) {
+  const staffForCompanions = await loadStaffOptions();
   const { jobCardId, vehicleServiceId, error } = await searchParams;
   await requireUser();
   const rec = jobCardId
@@ -39,6 +40,12 @@ export default async function NewRoadTestPage({ searchParams }: { searchParams: 
           <SearchableSelect name="driverId" required search={searchStaffOptions} loadDefaultOptions={loadStaffOptions} defaultOptionsLabel="Staff" placeholder="Search staff by name or ID…" emptyMessage="No active staff match." minQueryLength={1} />
         </div>
         <div><label className={label}>What the road test is checking</label><input name="purpose" required placeholder="e.g. brake repair — braking under load, noise" className={input} /></div>
+        <div><label className={label}>Staff going along (optional — any number)</label>
+          <select name="companionIds" multiple size={5} className={input} aria-describedby="companions-hint">
+            {staffForCompanions.map((s) => <option key={s.value} value={s.value}>{s.label}{s.sublabel ? ` — ${s.sublabel}` : ''}</option>)}
+          </select>
+          <p id="companions-hint" className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">Hold Ctrl (or ⌘) to choose more than one. The driver is already included.</p></div>
+        <div><label className={label}>Other people going along (optional — one name per line)</label><textarea name="otherCompanions" rows={2} placeholder="e.g. Customer's representative" className={input} /></div>
         <div><label className={label}>Route (optional)</label><input name="route" placeholder="e.g. Isolo → Oshodi expressway and back" className={input} /></div>
         <div>
           <label className={label}>Expected duration</label>
