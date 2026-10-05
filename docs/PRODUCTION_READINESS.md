@@ -71,3 +71,18 @@ exports, documents, notifications, realtime and analytics — with allowed AND d
 | Permissions page | Live matrix generated from the same code |
 | Tests | 19 allowed / denied cases on the real code |
 | Next | Workflow actions → `authorize()`; scope on lists, search, exports, notifications, realtime; role editor |
+
+## 7. Permanent architectural principles (binding on every change)
+1. **No subsystem on another's critical path without a compelling reason.** Prefer independent
+   loading, caching, background reconciliation, targeted invalidation and graceful degradation.
+   (Learned from notifications: adding them to the page request slowed every page.)
+2. **Caches and realtime signals are accelerators, never authorities.** A cache may say "you have 3
+   notifications"; only the server / database decides what they are and whether you may see them.
+   A realtime ping means "something may have changed — reconcile", never "trust this data".
+3. **Authorization decides who may ATTEMPT; the workflow decides whether it is valid NOW.** Layers:
+   identity → central permission → scope (branch / department / assigned / own) → workflow state →
+   transaction. Existing branch / workflow checks are never removed just because a central check exists.
+4. **Every path, not just the page.** Pages, actions, API, search, lists, exports, notifications,
+   realtime, documents and analytics drill-downs follow the same rule — and are tested, allowed AND denied.
+5. **Critical invariants live in the database too** (e.g. the Master Administrator rule, unique
+   operation ids, compare-and-set) — application code alone is not trusted to keep them forever.
