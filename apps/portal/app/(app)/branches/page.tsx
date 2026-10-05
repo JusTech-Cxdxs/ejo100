@@ -36,7 +36,7 @@ export default async function BranchesPage() {
                   {branch.businessUnit.name} · {branch.city.name}, {branch.city.state.name}
                 </p>
               </div>
-              <span className="text-xs font-medium text-[var(--ejo-primary)]">Edit</span>
+              <span className="text-xs font-medium text-[var(--ejo-primary)]">View / Edit</span>
             </LoadingLink>
           ))}
         </div>
