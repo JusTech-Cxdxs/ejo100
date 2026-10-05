@@ -21,6 +21,10 @@ records what is verified, what was fixed, what is deliberately deferred, and wha
 | Notifications | Every workflow step → action item (until done) + activity + email + audit trail; live updates with push + fallback |
 | Performance | Request / cross-request caching, parallel loading, indexes, cursor paging, search as you type |
 | CI | Install → database build → lint → typecheck → build → dependency vulnerability report |
+| Production build | Full `next build` passes (96 pages); every data page is dynamic (no frozen data) |
+| Durable idempotency | Payments and refunds carry a form operation id with a UNIQUE constraint (v21) — never recorded twice, even after a dropped connection |
+| Large data | Ever-growing lists (GRNs, PRS, EPR, services by status) capped at the newest 500, search reaches older; analytics all-history reads documented with a pre-computation trigger |
+| Runbooks | `docs/RUNBOOKS.md` — GitHub hardening, Supabase surface proof, staging, restore drill, load test, failure drills, infrastructure triggers |
 
 ## 2. Deliberately NOT added yet (and why)
 | Item | Why not now | Add when |
