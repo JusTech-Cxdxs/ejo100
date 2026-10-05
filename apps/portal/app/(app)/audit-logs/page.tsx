@@ -53,8 +53,8 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Pr
       </div>
       <form className="mb-4 flex flex-wrap items-end gap-2">
         {kind !== 'all' ? <input type="hidden" name="kind" value={kind} /> : null}
-        <div className="w-full sm:w-64"><label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Who (type a name or employee ID)</label>
-          <SearchableSelect name="userId" search={searchStaffOptions} loadDefaultOptions={loadStaffOptions} defaultOptionsLabel="Staff" placeholder="Anyone" emptyMessage="No staff match." minQueryLength={1} defaultValue={sp.userId} defaultLabel={whoLabel} /></div>
+        <div className="relative z-30 w-full sm:w-72"><label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Who — everyone, or type a name or employee ID</label>
+          <SearchableSelect name="userId" search={searchStaffOptions} loadDefaultOptions={loadStaffOptions} defaultOptionsLabel="Staff" placeholder="Everyone" emptyMessage="No staff match." minQueryLength={1} defaultValue={sp.userId} defaultLabel={whoLabel} /></div>
         <div><label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">From</label><input type="date" name="from" defaultValue={sp.from ?? ''} className={input} /></div>
         <div><label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">To</label><input type="date" name="to" defaultValue={sp.to ?? ''} className={input} /></div>
         <div className="min-w-0 flex-1"><label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Search</label><LiveSearchInput name="q" defaultValue={sp.q ?? ''} placeholder="Search a number (JC-2026-000013), a name or an action…" className={`${input} w-full`} /></div>
@@ -66,7 +66,7 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Pr
         <div className="space-y-5">
           {groupByDay(rows).map(([day, items]) => (
             <section key={day}>
-              <h2 className="sticky top-0 z-10 mb-2 bg-[var(--ejo-bg)] py-1 text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">{day}</h2>
+              <h2 className="mb-2 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">{day}</h2>
               <ul className="divide-y divide-[var(--ejo-border)] overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
                 {items.map((r) => (
                   <li key={r.id} className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-3 px-4 py-3 sm:grid-cols-[4.5rem_minmax(0,1fr)]">
