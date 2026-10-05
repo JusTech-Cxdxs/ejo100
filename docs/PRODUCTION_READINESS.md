@@ -64,7 +64,7 @@ exports, documents, notifications, realtime and analytics — with allowed AND d
 ## 6. Phase B — Authorization (status)
 | Piece | State |
 |---|---|
-| Catalogue (`lib/authz/catalogue.ts`) | 36 permissions, 16 roles, 5 scopes; pure `decide()` |
+| Catalogue (`lib/authz/catalogue.ts`) | 35 permissions (count derived from the catalogue and locked by a test), 16 roles, 5 scopes; pure `decide()` |
 | Enforcement (`lib/authz/server.ts`) | `guardPage` (pages), `authorize` (actions), `canSeeRecord` (records); every refusal audited |
 | Pages | 16 protected areas refuse on the server (pasted links included) → Access denied |
 | Records | Job Cards / Vehicle Services outside scope behave as "not found" |
