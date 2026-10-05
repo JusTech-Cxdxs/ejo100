@@ -95,6 +95,22 @@ export default async function BranchEditPage({
             <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Hotlines</label>
             <HotlineListInput initialValues={branch.hotlines} />
           </div>
+          <fieldset className="space-y-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-4">
+            <legend className="px-1 text-sm font-medium text-[var(--ejo-text)]">Bank account for customer payments</legend>
+            <p className="text-xs text-[var(--ejo-text-muted)]">Printed on every estimate email, PDF and print-out from this branch. Fill in all three, or leave all three empty.</p>
+            <div>
+              <label htmlFor="bankName" className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Bank name</label>
+              <input id="bankName" name="bankName" defaultValue={branch.bankName ?? ''} placeholder="e.g. Zenith Bank" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+            </div>
+            <div>
+              <label htmlFor="bankAccountName" className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Account name</label>
+              <input id="bankAccountName" name="bankAccountName" defaultValue={branch.bankAccountName ?? ''} placeholder="e.g. Kewalram Nigeria Ltd" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+            </div>
+            <div>
+              <label htmlFor="bankAccountNumber" className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Account number (10 digits)</label>
+              <input id="bankAccountNumber" name="bankAccountNumber" defaultValue={branch.bankAccountNumber ?? ''} inputMode="numeric" pattern="[0-9]{10}" maxLength={10} placeholder="0123456789" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+            </div>
+          </fieldset>
 
           <div className="flex gap-2">
             <SubmitButton
