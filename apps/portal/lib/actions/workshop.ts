@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize, canSeeRecord } from '@/lib/authz/server';
+import { authorize, canSeeRecord, reachWhere } from '@/lib/authz/server';
 
 
 import { bankDetailsFor } from '@/lib/workshop-core';
@@ -862,9 +862,11 @@ async function generateJobNumber(): Promise<string> {
 export async function listJobCards(status?: JobCardStatus, search?: string, vehicleType?: 'PASSENGER' | 'COMMERCIAL') {
   await requireUser();
   const q = search?.trim();
+  const reach = await reachWhere('workshop.job_card.view');
 
   return prisma.jobCard.findMany({
     where: {
+      ...reach,
       ...(status ? { status } : {}),
       ...(vehicleType ? { vehicle: { vehicleType } } : {}),
       ...(q
@@ -2684,6 +2686,7 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
     );
   }
   const user = await requireJobCardApprover(estimate.jobCard);
+  await authorize('workshop.estimate.approve', { branchId: estimate.jobCard.branchId, assigneeIds: [estimate.jobCard.supervisorId] }, 'approveEstimate');
 
   await prisma.estimate.update({
     where: { id: estimate.id },
@@ -2767,6 +2770,7 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
     throw new WorkshopActionError('This estimate has not been approved by its supervisor yet.');
   }
   const user = await requireEligibleManager(estimate.jobCard.branchId);
+  await authorize('workshop.estimate.final_approve', { branchId: estimate.jobCard.branchId }, 'approveEstimateAsManager');
 
   await prisma.estimate.update({
     where: { id: estimate.id },

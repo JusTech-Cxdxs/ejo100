@@ -1,6 +1,6 @@
 'use server';
 
-import { canSeeRecord } from '@/lib/authz/server';
+import { canSeeRecord, reachWhere } from '@/lib/authz/server';
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal } from '@/lib/estimate-billing';
@@ -1070,9 +1070,11 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
 export async function listVehicleServices(branchId: string, search?: string, vehicleType?: 'PASSENGER' | 'COMMERCIAL', status?: string) {
   await requireUser();
   const q = search?.trim();
+  const reach = await reachWhere('workshop.job_card.view');
   return prisma.vehicleService.findMany({
     where: {
       branchId,
+      ...reach,
       ...(status ? { status: status as never } : {}),
       ...(vehicleType ? { vehicle: { vehicleType } } : {}),
       ...(q

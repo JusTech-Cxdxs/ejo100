@@ -1,5 +1,7 @@
 'use server';
 
+import { authorize } from '@/lib/authz/server';
+
 import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
 import { prisma } from '@ejo/database';
 import { requireUser, currentUserIsMasterAdmin, requireJobCardApprover, listEligibleManagersForBranch, requireEligibleManager } from './workshop';
@@ -644,6 +646,7 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
     );
   }
   const user = await requireJobCardApprover(estimate.vehicleService);
+  await authorize('workshop.estimate.approve', { branchId: estimate.vehicleService.branchId, assigneeIds: [estimate.vehicleService.supervisorId] }, 'approveServiceEstimate');
   await prisma.serviceEstimate.update({
     where: { id: estimateId },
     data: { status: 'APPROVED', approvedAt: new Date(), approvedById: user.id },
@@ -724,6 +727,7 @@ export async function approveServiceEstimateAsManager(estimateId: string): Promi
     throw new ServiceEstimateActionError('This estimate has not been approved by its supervisor yet.');
   }
   const user = await requireEligibleManager(estimate.vehicleService.branchId);
+  await authorize('workshop.estimate.final_approve', { branchId: estimate.vehicleService.branchId }, 'approveServiceEstimateAsManager');
 
   await prisma.serviceEstimate.update({
     where: { id: estimateId },
