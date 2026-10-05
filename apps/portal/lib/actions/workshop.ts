@@ -1,6 +1,7 @@
 'use server';
 
-import { canSeeRecord } from '@/lib/authz/server';
+import { authorize, canSeeRecord } from '@/lib/authz/server';
+
 
 import { bankDetailsFor } from '@/lib/workshop-core';
 import { writeAuditLog, getWorkshopOrgContext, getWorkshopDepartmentForVehicleType, isEligibleSupervisor, getWorkshopBranchId } from '@/lib/workshop-core';
@@ -3099,6 +3100,9 @@ export async function recordPayment(
   notes?: string,
   idempotencyKey?: string,
 ): Promise<void> {
+  // Central catalogue first (who may attempt this); branch eligibility and the
+  // workflow state are still checked below, exactly as before.
+  await authorize('workshop.payment.record', undefined, 'recordPayment');
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new WorkshopActionError('Enter a valid payment amount.');
   }
@@ -3796,6 +3800,9 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
  * updateJobCardStatus — that function now refuses CLOSED outright,
  * reachable only via this real approval path. */
 export async function approveCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Central catalogue first (who may attempt this); branch eligibility and the
+  // workflow state are still checked below, exactly as before.
+  await authorize('workshop.close.approve', undefined, 'approveCloseRequest');
   const request = await prisma.closeRequest.findUnique({
     where: { id: requestId },
     select: {

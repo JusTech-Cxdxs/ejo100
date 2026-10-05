@@ -1,5 +1,7 @@
 'use server';
 
+import { authorize } from '@/lib/authz/server';
+
 import { prisma } from '@ejo/database';
 import { requireUser, requireEligibleFinanceOfficer } from './workshop';
 import { writeAuditLog, getWorkshopOrgContext } from '@/lib/workshop-core';
@@ -181,6 +183,9 @@ export type RecordRefundInput = {
  * receipt. The vehicle can't be handed back until the refund is complete.
  */
 export async function recordRefund(input: RecordRefundInput): Promise<{ id: string; referenceNumber: string }> {
+  // Central catalogue first (who may attempt this); branch eligibility and the
+  // workflow state are still checked below, exactly as before.
+  await authorize('workshop.refund.record', undefined, 'recordRefund');
   const t = await loadTarget(input.target);
   if (!t) throw new RefundActionError('Record not found.');
   const user = await requireEligibleFinanceOfficer(t.branchId);

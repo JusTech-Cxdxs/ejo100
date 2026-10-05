@@ -1,5 +1,7 @@
 'use server';
 
+import { authorize } from '@/lib/authz/server';
+
 import { prisma } from '@ejo/database';
 import { requireUser, requireEligibleFinanceOfficer, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopOrgContext } from '@/lib/workshop-core';
@@ -39,6 +41,9 @@ export async function recordServicePayment(
   notes?: string,
   idempotencyKey?: string,
 ): Promise<void> {
+  // Central catalogue first (who may attempt this); branch eligibility and the
+  // workflow state are still checked below, exactly as before.
+  await authorize('workshop.payment.record', undefined, 'recordServicePayment');
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new ServicePaymentActionError('Enter a valid payment amount.');
   }

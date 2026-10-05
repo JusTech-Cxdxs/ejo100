@@ -137,9 +137,35 @@ export type NotificationSummary = {
   muted: boolean;
 };
 
+// Per-user summary cache (per server instance): if nothing has changed since
+// this person's last summary (same change signal) and it is under a minute old,
+// return it instantly instead of recomputing ~25 queries. Own read / unread /
+// mute actions clear it; the minute limit covers time-based items (overdue…).
+const SUMMARY_TTL_MS = 60_000;
+const summaryCache = new Map<string, { pulse: string; at: number; value: NotificationSummary }>();
+function forgetSummary(userId: string) { summaryCache.delete(userId); }
+
 export async function getNotificationSummary(): Promise<NotificationSummary> {
   try {
     const m = await me();
+    const pulse = await pulseSignature().catch(() => '');
+    const hit = summaryCache.get(m.id);
+    if (hit && pulse && hit.pulse === pulse && Date.now() - hit.at < SUMMARY_TTL_MS) return hit.value;
+    const value = await computeSummary(m);
+    if (pulse) {
+      if (summaryCache.size > 2000) summaryCache.clear();
+      summaryCache.set(m.id, { pulse, at: Date.now(), value });
+    }
+    return value;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Notification summary failed', err);
+    return { actions: [], unreadActivity: [], unreadBroadcasts: [], total: 0, signature: '', muted: false };
+  }
+}
+
+async function computeSummary(m: Me): Promise<NotificationSummary> {
+  {
     const [actions, activity, broadcasts, pref] = await Promise.all([
       getDashboardNotifications(),
       getActivityFeed({ unreadOnly: true, take: 100 }),
@@ -149,15 +175,12 @@ export async function getNotificationSummary(): Promise<NotificationSummary> {
     const unreadBroadcasts = broadcasts.filter((b) => !b.read);
     const signature = [actions.map((a) => a.id).join(','), activity[0]?.key ?? '', unreadBroadcasts[0]?.key ?? ''].join('|');
     return { actions, unreadActivity: activity, unreadBroadcasts, total: actions.length + activity.length + unreadBroadcasts.length, signature, muted: pref?.muted ?? false };
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('Notification summary failed', err);
-    return { actions: [], unreadActivity: [], unreadBroadcasts: [], total: 0, signature: '', muted: false };
   }
 }
 
 export async function markNotificationsRead(keys: string[]): Promise<void> {
   const m = await me();
+  forgetSummary(m.id);
   const clean = [...new Set(keys.filter((k) => /^(audit|bc):[A-Za-z0-9_-]+$/.test(k)))].slice(0, 500);
   if (clean.length) await prisma.notificationRead.createMany({ data: clean.map((key) => ({ userId: m.id, key })), skipDuplicates: true });
 }
@@ -165,6 +188,7 @@ export async function markNotificationsRead(keys: string[]): Promise<void> {
 /** Undo "read" — removes only THIS person's own read markers. */
 export async function markNotificationsUnread(keys: string[]): Promise<void> {
   const m = await me();
+  forgetSummary(m.id);
   const clean = [...new Set(keys.filter((k) => /^(audit|bc):[A-Za-z0-9_-]+$/.test(k)))].slice(0, 500);
   if (clean.length) await prisma.notificationRead.deleteMany({ where: { userId: m.id, key: { in: clean } } });
 }
@@ -179,6 +203,7 @@ export async function markAllRead(kind: 'activity' | 'broadcasts' | 'all'): Prom
 
 export async function setNotificationsMuted(muted: boolean): Promise<void> {
   const m = await me();
+  forgetSummary(m.id);
   await prisma.notificationPreference.upsert({ where: { userId: m.id }, create: { userId: m.id, muted }, update: { muted } });
 }
 
@@ -297,14 +322,19 @@ export async function listAudienceOptions() {
  * indexed single-row reads. Only when this changes does the browser fetch
  * the full summary and refresh the page's data.
  */
+/** The cheap change signal (newest business event + newest broadcast change). */
+async function pulseSignature(): Promise<string> {
+  const [a, b] = await Promise.all([
+    prisma.auditLog.findFirst({ where: { NOT: [{ entityType: { startsWith: 'db:' } }, { action: { endsWith: '.failed' } }] }, orderBy: { createdAt: 'desc' }, select: { id: true } }),
+    prisma.broadcast.findFirst({ orderBy: { updatedAt: 'desc' }, select: { id: true, updatedAt: true } }),
+  ]);
+  return `${a?.id ?? ''}|${b?.id ?? ''}:${b ? +new Date(b.updatedAt) : 0}`;
+}
+
 export async function getNotificationPulse(): Promise<string> {
   try {
     await requireUser();
-    const [a, b] = await Promise.all([
-      prisma.auditLog.findFirst({ where: { NOT: [{ entityType: { startsWith: 'db:' } }, { action: { endsWith: '.failed' } }] }, orderBy: { createdAt: 'desc' }, select: { id: true } }),
-      prisma.broadcast.findFirst({ orderBy: { updatedAt: 'desc' }, select: { id: true, updatedAt: true } }),
-    ]);
-    return `${a?.id ?? ''}|${b?.id ?? ''}:${b ? +new Date(b.updatedAt) : 0}`;
+    return await pulseSignature();
   } catch {
     return '';
   }

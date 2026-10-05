@@ -1,5 +1,7 @@
 'use server';
 
+import { authorize } from '@/lib/authz/server';
+
 /**
  * Sourcing — the two paths a Job Card's estimate can genuinely need once
  * work has actually started: Store-held parts (a Parts Request Slip,
@@ -934,6 +936,9 @@ export async function requestServiceEstimatePartRequestSlip(serviceEstimateId: s
 /** Step one of three — the Workshop HOD confirming the request itself is
  * legitimate, before Store ever looks at stock availability. */
 export async function approvePartRequestSlipByHod(slipId: string, notes?: string): Promise<void> {
+  // Central catalogue first (who may attempt this); branch eligibility and the
+  // workflow state are still checked below, exactly as before.
+  await authorize('store.prs.approve_hod', undefined, 'approvePartRequestSlipByHod');
   const slip = await prisma.partRequestSlip.findUnique({ where: { id: slipId }, select: { status: true, branchId: true, jobCardId: true, vehicleServiceId: true, referenceNumber: true } });
   if (!slip) {
     throw new SourcingActionError('Request not found.');
@@ -1074,6 +1079,9 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
  * one already claimed. Checks every line's real availability (on hand
  * minus already reserved) before reserving any of them. */
 export async function approvePartRequestSlipByStore(slipId: string, notes?: string): Promise<void> {
+  // Central catalogue first (who may attempt this); branch eligibility and the
+  // workflow state are still checked below, exactly as before.
+  await authorize('store.prs.release', undefined, 'approvePartRequestSlipByStore');
   const slip = await prisma.partRequestSlip.findUnique({
     where: { id: slipId },
     select: {
@@ -1154,6 +1162,9 @@ export async function releasePartRequestSlip(
   receivedBy: { receivedByUserId?: string; receivedByName?: string },
   lineSerials?: Record<string, string[]>,
 ): Promise<void> {
+  // Central catalogue first (who may attempt this); branch eligibility and the
+  // workflow state are still checked below, exactly as before.
+  await authorize('store.prs.release', undefined, 'releasePartRequestSlip');
   const slip = await prisma.partRequestSlip.findUnique({
     where: { id: slipId },
     select: {
@@ -1676,6 +1687,9 @@ export async function getExternalProcurementRequestAuditTrail(requestId: string)
  * fine to send forward with zero supplementary lines added — not
  * every request needs one. */
 export async function sendExternalProcurementToManager(requestId: string): Promise<void> {
+  // Central catalogue first (who may attempt this); branch eligibility and the
+  // workflow state are still checked below, exactly as before.
+  await authorize('procurement.epr.review', undefined, 'sendExternalProcurementToManager');
   const request = await prisma.externalProcurementRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -1776,6 +1790,9 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
  * genuine full picture rather than only the technician's initial
  * guess. */
 export async function approveExternalProcurementRequest(requestId: string, notes?: string): Promise<void> {
+  // Central catalogue first (who may attempt this); branch eligibility and the
+  // workflow state are still checked below, exactly as before.
+  await authorize('procurement.epr.approve', undefined, 'approveExternalProcurementRequest');
   const request = await prisma.externalProcurementRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -1846,6 +1863,9 @@ export async function disburseExternalProcurementRequest(
   requestId: string,
   payment: { paymentMethod: string; paymentReference?: string; disbursementNotes?: string },
 ): Promise<void> {
+  // Central catalogue first (who may attempt this); branch eligibility and the
+  // workflow state are still checked below, exactly as before.
+  await authorize('procurement.epr.disburse', undefined, 'disburseExternalProcurementRequest');
   const request = await prisma.externalProcurementRequest.findUnique({
     where: { id: requestId },
     select: { status: true, branchId: true, jobCardId: true, referenceNumber: true, approvedTotal: true },
