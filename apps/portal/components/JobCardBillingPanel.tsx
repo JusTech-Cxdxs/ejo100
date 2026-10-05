@@ -21,6 +21,11 @@ const CHIP: Record<BillTo, string> = {
  */
 export function JobCardBillingPanel({ jobCardId, billing }: { jobCardId: string; billing: Billing }) {
   const { lines, split, warranties } = billing;
+  // No warranty on the vehicle and every line paid by the customer: show one
+  // plain sentence; the per-line editor is tucked away for the rare goodwill
+  // / internal case. "Warranty" is only offered when a warranty exists.
+  const simple = warranties.length === 0 && lines.every((l) => (l.billTo ?? 'CUSTOMER') === 'CUSTOMER');
+  const choices = (Object.keys(BILL_TO_LABEL) as BillTo[]).filter((k) => k !== 'WARRANTY' || warranties.length > 0);
   if (lines.length === 0) return null;
   const input = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1 text-xs text-[var(--ejo-text)]';
   const claimable = [...new Map(lines.filter((l) => l.billTo === 'WARRANTY' && l.coveringWarranty).map((l) => [l.coveringWarranty!.id, l.coveringWarranty!])).values()];
@@ -39,7 +44,10 @@ export function JobCardBillingPanel({ jobCardId, billing }: { jobCardId: string;
           The customer has paid {naira(billing.overpaid)} more than they now owe — Finance can refund the difference in the Refunds panel below.
         </p>
       ) : null}
-      <ul className="mt-4 divide-y divide-[var(--ejo-border)]">
+      {simple ? <p className="mt-3 text-sm text-[var(--ejo-text-muted)]">No active warranty on this vehicle — the customer pays for every line.</p> : null}
+      <details open={!simple} className="mt-3">
+        <summary className="cursor-pointer text-xs font-medium text-[var(--ejo-primary)]">{simple ? 'Change who pays (goodwill or internal work)' : 'Who pays — line by line'}</summary>
+      <ul className="mt-2 divide-y divide-[var(--ejo-border)]">
         {lines.map((l) => {
           const bt = (l.billTo ?? 'CUSTOMER') as BillTo;
           return (
@@ -64,13 +72,15 @@ export function JobCardBillingPanel({ jobCardId, billing }: { jobCardId: string;
                   <input type="hidden" name="jobCardId" value={jobCardId} />
                   <input type="hidden" name="lineId" value={l.id} />
                   <select name="billTo" required defaultValue={bt} className={input}>
-                    {(Object.keys(BILL_TO_LABEL) as BillTo[]).map((k) => <option key={k} value={k}>{BILL_TO_LABEL[k]}</option>)}
+                    {choices.map((k) => <option key={k} value={k}>{BILL_TO_LABEL[k]}</option>)}
                   </select>
-                  <select name="warrantyId" defaultValue={l.coveringWarranty?.id ?? ''} className={`${input} max-w-[14rem]`}>
-                    <option value="">{warranties.length ? 'Covering warranty (for Warranty)…' : 'No active warranty on this vehicle'}</option>
-                    {warranties.map((w) => <option key={w.id} value={w.id}>{w.warrantyNumber} — {w.subject}</option>)}
-                  </select>
-                  <input name="note" defaultValue={l.billToNote ?? ''} placeholder="Note (required for goodwill / internal)" className={`${input} min-w-0 flex-1`} />
+                  {warranties.length ? (
+                    <select name="warrantyId" defaultValue={l.coveringWarranty?.id ?? ''} className={`${input} max-w-[14rem]`}>
+                      <option value="">Covering warranty (when Warranty pays)…</option>
+                      {warranties.map((w) => <option key={w.id} value={w.id}>{w.warrantyNumber} — {w.subject}</option>)}
+                    </select>
+                  ) : <input type="hidden" name="warrantyId" value="" />}
+                  <input name="note" defaultValue={l.billToNote ?? ''} placeholder="Reason (needed for goodwill or internal)" className={`${input} min-w-0 flex-1`} />
                   <SubmitButton label="Save" pendingLabel="Saving…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]" />
                 </form>
               ) : null}
@@ -78,6 +88,7 @@ export function JobCardBillingPanel({ jobCardId, billing }: { jobCardId: string;
           );
         })}
       </ul>
+      </details>
       {claimable.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {claimable.map((w) => (

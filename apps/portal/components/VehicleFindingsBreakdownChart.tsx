@@ -28,13 +28,13 @@ export function VehicleFindingsBreakdownChart({ data }: { data: VehicleFindingsB
   return (
     <ResponsiveContainer width="100%" height={220}>
       <PieChart>
-        <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={(d) => `${d.value}`}>
+        <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="45%" innerRadius={42} outerRadius={78} paddingAngle={2} label={false} labelLine={false}>
           {chartData.map((entry) => (
             <Cell key={entry.name} fill={SEVERITY_COLORS[entry.name as keyof typeof SEVERITY_COLORS]} />
           ))}
         </Pie>
         <Tooltip contentStyle={{ backgroundColor: 'var(--ejo-surface)', border: '1px solid var(--ejo-border)', borderRadius: 8, fontSize: 12 }} />
-        <Legend wrapperStyle={{ fontSize: 11 }} />
+        <Legend wrapperStyle={{ fontSize: 11 }} formatter={(value, entry) => `${value} — ${(entry?.payload as { value?: number } | undefined)?.value ?? 0}`} />
       </PieChart>
     </ResponsiveContainer>
   );

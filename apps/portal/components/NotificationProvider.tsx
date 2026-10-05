@@ -28,17 +28,29 @@ export const useNotifications = () => useContext(NotificationContext);
  *  • ring    — a distinct three-note ring, played twice, for actions that
  *              need you (repeats every 2 minutes until done, unless muted).
  */
+/** One loud master chain: a compressor makes it loud without distortion. */
+let master: AudioNode | null = null;
+function out(ctx: AudioContext): AudioNode {
+  if (master) return master;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.knee.value = 6; comp.ratio.value = 8; comp.attack.value = 0.002; comp.release.value = 0.2;
+  const gain = ctx.createGain();
+  gain.gain.value = 1.6;
+  comp.connect(gain).connect(ctx.destination);
+  master = comp;
+  return master;
+}
 function playNote(ctx: AudioContext, freq: number, at: number, length: number, volume: number) {
-  // Two layered oscillators (fundamental + soft octave) give a bell-like tone.
-  for (const [mult, type, vol] of [[1, 'sine', 1], [2, 'triangle', 0.25]] as const) {
+  // Layered tones (fundamental, octave and a bright square edge) — bell-like and clearly audible.
+  for (const [mult, type, vol] of [[1, 'sine', 1], [2, 'triangle', 0.45], [1, 'square', 0.12]] as const) {
     const o = ctx.createOscillator();
     const g = ctx.createGain();
     o.type = type;
     o.frequency.value = freq * mult;
     g.gain.setValueAtTime(0.0001, at);
-    g.gain.exponentialRampToValueAtTime(volume * vol, at + 0.012);
+    g.gain.exponentialRampToValueAtTime(volume * vol, at + 0.01);
     g.gain.exponentialRampToValueAtTime(0.0001, at + length);
-    o.connect(g).connect(ctx.destination);
+    o.connect(g).connect(out(ctx));
     o.start(at);
     o.stop(at + length + 0.02);
   }
@@ -47,14 +59,15 @@ function chime(ctx: AudioContext | null, urgent: boolean) {
   if (!ctx) return;
   const t = ctx.currentTime + 0.02;
   if (!urgent) {
-    playNote(ctx, 1046.5, t, 0.35, 0.22); // C6
-    playNote(ctx, 784.0, t + 0.16, 0.55, 0.2); // G5
+    playNote(ctx, 1046.5, t, 0.3, 0.9); // C6
+    playNote(ctx, 1318.5, t + 0.13, 0.3, 0.9); // E6
+    playNote(ctx, 1568.0, t + 0.26, 0.6, 0.9); // G6
     return;
   }
-  for (const rep of [0, 0.75]) {
-    playNote(ctx, 880.0, t + rep, 0.22, 0.25); // A5
-    playNote(ctx, 1108.7, t + rep + 0.16, 0.22, 0.25); // C#6
-    playNote(ctx, 1318.5, t + rep + 0.32, 0.4, 0.25); // E6
+  for (const rep of [0, 0.7, 1.4]) {
+    playNote(ctx, 880.0, t + rep, 0.2, 1); // A5
+    playNote(ctx, 1108.7, t + rep + 0.15, 0.2, 1); // C#6
+    playNote(ctx, 1318.5, t + rep + 0.3, 0.35, 1); // E6
   }
 }
 
@@ -206,6 +219,44 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const t = setInterval(() => chime(audio.current, true), RING_MS);
     return () => clearInterval(t);
   }, [summary.actions.length, muted]);
+
+  // Count in the browser tab — "(3) Dashboard" — like WhatsApp.
+  useEffect(() => {
+    const apply = () => {
+      const base = document.title.replace(/^\(\d+\+?\) /, '');
+      const n = summary.total;
+      const want = n > 0 ? `(${n > 99 ? '99+' : n}) ${base}` : base;
+      if (document.title !== want) document.title = want;
+    };
+    apply();
+    const t = setInterval(apply, 1000); // pages change their own title on navigation
+    return () => clearInterval(t);
+  }, [summary.total]);
+
+  // Desktop alerts when the portal is in a background tab (permission asked once).
+  const seenAlert = useRef<string | null>(null);
+  useEffect(() => {
+    const ask = () => { if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission().catch(() => undefined); };
+    window.addEventListener('pointerdown', ask, { once: true });
+    return () => window.removeEventListener('pointerdown', ask);
+  }, []);
+  useEffect(() => {
+    const top = summary.actions[0] ?? summary.unreadBroadcasts[0] ?? summary.unreadActivity[0];
+    if (!top || !loaded) return;
+    const key = 'id' in top ? String(top.id) : '';
+    if (seenAlert.current === null) { seenAlert.current = key; return; }
+    if (key === seenAlert.current) return;
+    seenAlert.current = key;
+    if (document.visibilityState === 'visible' || mutedRef.current || !('Notification' in window) || Notification.permission !== 'granted') return;
+    const title = 'title' in top ? String(top.title) : 'EJO 100';
+    const url = 'url' in top ? String((top as { url: string }).url) : '/notifications?tab=broadcasts';
+    try {
+      const n = new Notification(title, { body: summary.total > 1 ? `${summary.total} things need your attention` : 'Needs your attention', tag: 'ejo100', icon: '/favicon.ico' });
+      n.onclick = () => { window.focus(); router.push(url); n.close(); };
+    } catch {
+      // some browsers only allow this from a service worker — the tab count still shows
+    }
+  }, [summary, loaded, router]);
 
   const toggleMute = useCallback(() => {
     setMuted((m) => {
