@@ -60,7 +60,7 @@ export default async function PrintVehicleServiceEstimatePage({
       requestsTitle="Customer's Requests"
       requests={service.complaints.map((c: (typeof service.complaints)[number]) => c.description)}
       people={{
-        technician: service.assignedTechnician?.fullName ?? null,
+        technician: ((service as { technicianAcceptanceStatus?: string | null }).technicianAcceptanceStatus === 'ACCEPTED' ? service.assignedTechnician?.fullName : null) ?? null,
         supervisor: service.supervisor?.fullName ?? null,
         department: service.department?.name ?? null,
         openedBy: service.createdBy?.fullName ?? null,
