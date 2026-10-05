@@ -34,3 +34,7 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+      # Known vulnerabilities in production dependencies — reported on every push
+      # (report-only so a new advisory never blocks an urgent fix; review the log).
+      - name: Dependency vulnerability report
+        run: npm audit --omit=dev --audit-level=high || echo "::warning::npm audit found vulnerabilities — review the log above"
