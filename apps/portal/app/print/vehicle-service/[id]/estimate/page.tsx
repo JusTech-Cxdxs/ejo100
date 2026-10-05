@@ -4,7 +4,8 @@ import { getServiceEstimate } from '@/lib/actions/vehicle-service-estimate';
 import { getVehicleServicePayments } from '@/lib/actions/vehicle-service-payment';
 import { getOrganisation } from '@/lib/actions/organisation';
 import { EstimatePrintDocument, isEstimateAuditAction } from '@/components/print/EstimatePrintDocument';
-import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
+import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
+import { bankDetailsFor } from '@/lib/workshop-core';
 
 const TYPE_ORDER = ['STORE_PART', 'INTERNAL_JOB', 'LABOUR', 'SUNDRY'];
 const TYPE_LABEL: Record<string, string> = {
@@ -97,7 +98,7 @@ export default async function PrintVehicleServiceEstimatePage({
       auditEntries={auditTrail
         .filter((e: (typeof auditTrail)[number]) => isEstimateAuditAction(e.action))
         .sort((a: (typeof auditTrail)[number], b: (typeof auditTrail)[number]) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())}
-      bank={COMPANY_BANK_DETAILS}
+      bank={await bankDetailsFor(service.branchId)}
       minimumDepositFraction={MINIMUM_DEPOSIT_FRACTION}
       paymentReference={[service.serviceNumber, vehicleDescription, service.vehicle.plateNumber].filter(Boolean).join(' — ')}
     />
