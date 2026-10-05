@@ -119,7 +119,7 @@ export default async function PrintVehicleServicePage({
         {service.customer.address ? <Field label="CUSTOMER ADDRESS" value={service.customer.address} /> : null}
         {isOrgCopy ? (
           <>
-            <Field label="TECHNICIAN IN CHARGE" value={service.assignedTechnician?.fullName ?? '—'} />
+            <Field label="TECHNICIAN IN CHARGE" value={((service as { technicianAcceptanceStatus?: string | null }).technicianAcceptanceStatus === 'ACCEPTED' ? service.assignedTechnician?.fullName : null) ?? (service.assignedTechnician ? 'Not yet accepted' : '—')} />
             <Field label="WORKSHOP SUPERVISOR" value={service.supervisor?.fullName ?? '—'} />
             <Field label="TOTAL TIME IN CUSTODY" value={pluralize(daysInCustody, 'working day')} />
             {inServiceDuration !== null ? <Field label="IN SERVICE DURATION" value={pluralize(inServiceDuration, 'working day')} /> : null}
@@ -279,7 +279,7 @@ export default async function PrintVehicleServicePage({
       <WarrantiesIssuedPrint warranties={issuedWarranties} />
       <SignatureBlock
         issuerLabel="Released By (Workshop)"
-        issuerName={service.supervisor?.fullName ?? service.assignedTechnician?.fullName ?? null}
+        issuerName={service.supervisor?.fullName ?? ((service as { technicianAcceptanceStatus?: string | null }).technicianAcceptanceStatus === 'ACCEPTED' ? service.assignedTechnician?.fullName : null) ?? null}
         collectorLabel="Collected By"
         collectorName={service.collectedByName}
       />
