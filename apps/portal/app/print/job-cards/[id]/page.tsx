@@ -142,7 +142,7 @@ export default async function PrintJobCardPage({
         {jobCard.customer.address ? <Field label="CUSTOMER ADDRESS" value={jobCard.customer.address} /> : null}
         {isOrgCopy ? (
           <>
-            <Field label="TECHNICIAN IN CHARGE" value={jobCard.assignedTechnician?.fullName ?? '—'} />
+            <Field label="TECHNICIAN IN CHARGE" value={((jobCard as { technicianAcceptanceStatus?: string | null }).technicianAcceptanceStatus === 'ACCEPTED' ? jobCard.assignedTechnician?.fullName : null) ?? (jobCard.assignedTechnician ? 'Not yet accepted' : '—')} />
             <Field label="WORKSHOP SUPERVISOR" value={jobCard.supervisor?.fullName ?? '—'} />
             <Field label="TOTAL TIME IN CUSTODY" value={pluralize(daysInCustody, 'working day')} />
             {inServiceDuration !== null ? (
@@ -397,7 +397,7 @@ export default async function PrintJobCardPage({
       <WarrantiesIssuedPrint warranties={issuedWarranties} />
       <SignatureBlock
         issuerLabel={wasCancelled ? 'Returned By (Workshop)' : 'Released By (Workshop)'}
-        issuerName={jobCard.supervisor?.fullName ?? jobCard.assignedTechnician?.fullName ?? null}
+        issuerName={jobCard.supervisor?.fullName ?? ((jobCard as { technicianAcceptanceStatus?: string | null }).technicianAcceptanceStatus === 'ACCEPTED' ? jobCard.assignedTechnician?.fullName : null) ?? null}
         collectorLabel="Collected By"
         collectorName={jobCard.collectedByName}
       />
