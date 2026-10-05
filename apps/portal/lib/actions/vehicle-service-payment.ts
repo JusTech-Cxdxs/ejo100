@@ -77,7 +77,15 @@ export async function recordServicePayment(
   }
   const user = await requireEligibleFinanceOfficer(service.branchId);
   // Same form submitted again (e.g. after a dropped connection): already done — nothing to record.
-  if (idempotencyKey && (await prisma.payment.findUnique({ where: { idempotencyKey }, select: { id: true } }))) return;
+  // Same form submitted again (e.g. after a dropped connection): if it is the SAME
+  // payment, it is already done; if the id was reused for anything different, refuse.
+  if (idempotencyKey) {
+    const done = await prisma.payment.findUnique({ where: { idempotencyKey }, select: { vehicleServiceId: true, amount: true, method: true } });
+    if (done) {
+      if (done.vehicleServiceId === vehicleServiceId && Number(done.amount) === amount && done.method === method) return;
+      throw new ServicePaymentActionError('This form was already used for a different payment — refresh the page and enter it again.');
+    }
+  }
   // Duplicate guard: the same amount, method and record by the same person
   // within 20 seconds is a double click or a resend after a dropped network.
   if (await prisma.payment.findFirst({ where: { vehicleServiceId, amount, method, recordedById: user.id, recordedAt: { gte: new Date(Date.now() - 20000) } }, select: { id: true } })) {

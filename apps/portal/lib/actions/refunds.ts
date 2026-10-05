@@ -186,8 +186,12 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
   const user = await requireEligibleFinanceOfficer(t.branchId);
   // Same form submitted again (e.g. after a dropped connection): return the refund already recorded.
   if (input.idempotencyKey) {
-    const done = await prisma.refund.findUnique({ where: { idempotencyKey: input.idempotencyKey }, select: { id: true, referenceNumber: true } });
-    if (done) return done;
+    const done = await prisma.refund.findUnique({ where: { idempotencyKey: input.idempotencyKey }, select: { id: true, referenceNumber: true, amount: true, jobCardId: true, vehicleServiceId: true } });
+    if (done) {
+      const sameRecord = t.kind === 'JOB_CARD' ? done.jobCardId === t.id : done.vehicleServiceId === t.id;
+      if (sameRecord && Number(done.amount) === input.amount) return { id: done.id, referenceNumber: done.referenceNumber };
+      throw new RefundActionError('This form was already used for a different refund — refresh the page and enter it again.');
+    }
   }
   // Duplicate guard: the same amount, method and record by the same person
   // within 20 seconds is a double click or a resend after a dropped network.

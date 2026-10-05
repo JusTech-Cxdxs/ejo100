@@ -1,5 +1,7 @@
 'use server';
 
+import { canSeeRecord } from '@/lib/authz/server';
+
 import { bankDetailsFor } from '@/lib/workshop-core';
 import { writeAuditLog, getWorkshopOrgContext, getWorkshopDepartmentForVehicleType, isEligibleSupervisor, getWorkshopBranchId } from '@/lib/workshop-core';
 
@@ -887,7 +889,7 @@ export async function listJobCards(status?: JobCardStatus, search?: string, vehi
   });
 }
 
-export async function getJobCard(id: string) {
+async function getJobCardUnscoped(id: string) {
   await requireUser();
   return prisma.jobCard.findUnique({
     where: { id },
@@ -3139,7 +3141,15 @@ export async function recordPayment(
   }
   const user = await requireEligibleFinanceOfficer(jobCard.branchId);
   // Same form submitted again (e.g. after a dropped connection): already done — nothing to record.
-  if (idempotencyKey && (await prisma.payment.findUnique({ where: { idempotencyKey }, select: { id: true } }))) return;
+  // Same form submitted again (e.g. after a dropped connection): if it is the SAME
+  // payment, it is already done; if the id was reused for anything different, refuse.
+  if (idempotencyKey) {
+    const done = await prisma.payment.findUnique({ where: { idempotencyKey }, select: { jobCardId: true, amount: true, method: true } });
+    if (done) {
+      if (done.jobCardId === jobCardId && Number(done.amount) === amount && done.method === method) return;
+      throw new WorkshopActionError('This form was already used for a different payment — refresh the page and enter it again.');
+    }
+  }
   // Duplicate guard: the same amount, method and record by the same person
   // within 20 seconds is a double click or a resend after a dropped network.
   if (await prisma.payment.findFirst({ where: { jobCardId, amount, method, recordedById: user.id, recordedAt: { gte: new Date(Date.now() - 20000) } }, select: { id: true } })) {
@@ -4520,3 +4530,10 @@ export async function listEligibleManagersForBranch(branchId: string): Promise<E
   return listEligibleManagersForBranchCached(branchId);
 }
 
+/** JobCard — only within the person's scope (branch); out of scope behaves as "not found". */
+export async function getJobCard(id: string) {
+  const rec = await getJobCardUnscoped(id);
+  if (!rec) return rec;
+  const allowed = await canSeeRecord('workshop.job_card.view', { branchId: (rec as { branchId?: string | null }).branchId ?? null }, `JobCard:${id}`);
+  return allowed ? rec : null;
+}

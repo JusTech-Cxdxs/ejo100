@@ -1,5 +1,7 @@
 'use server';
 
+import { canSeeRecord } from '@/lib/authz/server';
+
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal } from '@/lib/estimate-billing';
 import { prisma } from '@ejo/database';
@@ -1099,7 +1101,7 @@ export async function listVehicleServices(branchId: string, search?: string, veh
   });
 }
 
-export async function getVehicleService(serviceId: string) {
+async function getVehicleServiceUnscoped(serviceId: string) {
   await requireUser();
   return prisma.vehicleService.findUnique({
     where: { id: serviceId },
@@ -2225,4 +2227,12 @@ export async function updatePrimaryServiceInterval(
     entityId: organisationId,
     metadata: { intervalKm: intervalKm ?? null, intervalDays: intervalDays ?? null },
   });
+}
+
+/** VehicleService — only within the person's scope (branch); out of scope behaves as "not found". */
+export async function getVehicleService(serviceId: string) {
+  const rec = await getVehicleServiceUnscoped(serviceId);
+  if (!rec) return rec;
+  const allowed = await canSeeRecord('workshop.job_card.view', { branchId: (rec as { branchId?: string | null }).branchId ?? null }, `VehicleService:${serviceId}`);
+  return allowed ? rec : null;
 }
