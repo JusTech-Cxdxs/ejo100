@@ -31,6 +31,7 @@ import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
+import { IdempotencyKey } from '@/components/IdempotencyKey';
 
 
 const STATUS_LABEL: Record<string, string> = {
@@ -1223,6 +1224,7 @@ export default async function JobCardDetailPage({
                     shows is exactly what gets recorded.
                   </p>
                   <form key={payments.length} action={recordPaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
+                    <IdempotencyKey />
                     <input type="hidden" name="jobCardId" value={jobCard.id} />
                     <FormPendingOverlay />
                     <PaymentAmountField
