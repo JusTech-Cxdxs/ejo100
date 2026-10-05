@@ -1138,6 +1138,8 @@ model Payment {
   recordedAt    DateTime      @default(now())
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @default(now()) @updatedAt
+  /// Operation id from the form — UNIQUE, so the same submission is never recorded twice.
+  idempotencyKey String? @unique
 
   jobCard        JobCard?        @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
   vehicleService VehicleService? @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
@@ -1168,6 +1170,8 @@ model Refund {
   recordedAt       DateTime      @default(now())
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @default(now()) @updatedAt
+  /// Operation id from the form — UNIQUE, so the same submission is never recorded twice.
+  idempotencyKey String? @unique
 
   jobCard        JobCard?        @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
   vehicleService VehicleService? @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
