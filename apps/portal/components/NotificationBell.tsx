@@ -18,7 +18,7 @@ function timeAgo(date: Date): string {
 
 /** The bell — reads the shared live source (no requests of its own). */
 export function NotificationBell() {
-  const { summary: s, muted, toggleMute, markRead } = useNotifications();
+  const { summary: s, state, muted, toggleMute, markRead } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -54,7 +54,7 @@ export function NotificationBell() {
           <div className="flex items-center justify-between border-b border-[var(--ejo-border)] px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-[var(--ejo-text)]">Notifications</p>
-              <p className="text-xs text-[var(--ejo-text-muted)]">{total === 0 ? "You're all caught up." : `${total} ${total === 1 ? 'item needs' : 'items need'} your attention`}</p>
+              <p className="text-xs text-[var(--ejo-text-muted)]">{state === 'loading' ? 'Loading your notifications…' : state === 'error' && total === 0 ? 'Couldn’t load notifications — retrying…' : total === 0 ? "You're all caught up." : `${total} ${total === 1 ? 'item needs' : 'items need'} your attention`}</p>
             </div>
             <button type="button" onClick={() => toggleMute()} className="text-xs text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)] sm:hidden">{muted ? '🔇 Sounds off' : '🔊 Sounds on'}</button>
           </div>

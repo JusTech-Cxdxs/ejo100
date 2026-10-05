@@ -18,8 +18,10 @@ const RING_MS = 120000;
 const EMPTY: NotificationSummary = { actions: [], unreadActivity: [], unreadBroadcasts: [], total: 0, signature: '', muted: false };
 
 export type LiveMode = 'push' | 'polling' | 'offline';
-type Ctx = { summary: NotificationSummary; loaded: boolean; muted: boolean; toggleMute: () => void; markRead: (key: string) => Promise<void>; mode: LiveMode; lastSync: number };
-const NotificationContext = createContext<Ctx>({ summary: EMPTY, loaded: false, muted: false, toggleMute: () => undefined, markRead: async () => undefined, mode: 'polling', lastSync: 0 });
+/** Loading → Ready (with or without items) · Error (retrying) — never a false "caught up". */
+export type LoadState = 'loading' | 'ready' | 'error';
+type Ctx = { summary: NotificationSummary; loaded: boolean; state: LoadState; muted: boolean; toggleMute: () => void; markRead: (key: string) => Promise<void>; mode: LiveMode; lastSync: number };
+const NotificationContext = createContext<Ctx>({ summary: EMPTY, loaded: false, state: 'loading', muted: false, toggleMute: () => undefined, markRead: async () => undefined, mode: 'polling', lastSync: 0 });
 export const useNotifications = () => useContext(NotificationContext);
 
 /**
@@ -80,7 +82,7 @@ function chime(ctx: AudioContext | null, urgent: boolean) {
  *    refresh the page's data — so dashboards and lists stay current without
  *    reloading, at almost no cost when nothing is happening.
  */
-export function NotificationProvider({ children }: { children: ReactNode }) {
+export function NotificationProvider({ children, initial }: { children: ReactNode; initial?: Promise<NotificationSummary | null> }) {
   const router = useRouter();
   const [summary, setSummary] = useState<NotificationSummary>(EMPTY);
   const [loaded, setLoaded] = useState(false);
@@ -130,10 +132,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
 
-  const load = useCallback(async () => {
-    lastLoad.current = Date.now();
-    const next = await getNotificationSummary().catch(() => null);
-    if (!next) return;
+  const [state, setState] = useState<LoadState>('loading');
+  const apply = useCallback((next: NotificationSummary) => {
     const first = sig.current === null;
     // Only something that concerns THIS person chimes and refreshes the page.
     const mine = !first && next.signature !== sig.current;
@@ -142,8 +142,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setSummary(next);
     if (first) setMuted(next.muted);
     setLoaded(true);
+    setState('ready');
     if (mine) refreshPageSoon();
   }, [refreshPageSoon]);
+
+  const load = useCallback(async () => {
+    lastLoad.current = Date.now();
+    const next = await getNotificationSummary().catch(() => null);
+    if (!next) { if (sig.current === null) setState('error'); return; }
+    apply(next);
+  }, [apply]);
 
   const check = useCallback(async () => {
     if (busy.current || document.visibilityState === 'hidden') return;
@@ -188,9 +196,28 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => { if (pingTimer.current) clearTimeout(pingTimer.current); }, []);
 
+  // First load: use the fetch the server already started with the page request
+  // (earliest possible, never blocking the page); if that fails or is missing,
+  // fetch from the browser. Then realtime / checks take over.
   useEffect(() => {
-    void load().then(() => check());
-  }, [load, check]);
+    let cancelled = false;
+    (async () => {
+      lastLoad.current = Date.now();
+      const early = initial ? await initial.catch(() => null) : null;
+      if (cancelled) return;
+      if (early) apply(early); else await load();
+      if (!cancelled) await check();
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // While in the error state, retry every few seconds until it loads.
+  useEffect(() => {
+    if (state !== 'error') return;
+    const t = setInterval(() => void load(), 5000);
+    return () => clearInterval(t);
+  }, [state, load]);
 
   useEffect(() => {
     const t = setInterval(() => void check(), pushed ? PULSE_WHEN_PUSHED_MS : PULSE_MS);
@@ -274,5 +301,5 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     await markNotificationsRead([key]).catch(() => undefined);
   }, []);
 
-  return <NotificationContext.Provider value={{ summary, loaded, muted, toggleMute, markRead, mode, lastSync }}>{children}</NotificationContext.Provider>;
+  return <NotificationContext.Provider value={{ summary, loaded, state, muted, toggleMute, markRead, mode, lastSync }}>{children}</NotificationContext.Provider>;
 }
