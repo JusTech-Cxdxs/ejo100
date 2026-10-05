@@ -33,29 +33,31 @@ export const PERMISSIONS = {
   // Workshop
   'workshop.view': { module: 'Workshop', label: 'Open the Workshop' },
   'workshop.job_card.view': { module: 'Workshop', label: 'View Job Cards and Vehicle Services' },
-  'workshop.job_card.create': { module: 'Workshop', label: 'Open Job Cards and Vehicle Services' },
-  'workshop.estimate.approve': { module: 'Workshop', label: 'Approve estimates (Supervisor)' },
-  'workshop.estimate.final_approve': { module: 'Workshop', label: 'Final approval of estimates (Manager)' },
-  'workshop.close.approve': { module: 'Workshop', label: 'Approve closing and cancellation' },
+  'workshop.job_card.create': { module: 'Workshop', label: 'Open Job Cards and Vehicle Services (front desk)' },
+  'workshop.customer.manage': { module: 'Workshop', label: 'Register customers and vehicles (front desk)' },
+  'workshop.estimate.approve': { module: 'Workshop', label: 'Approve estimates — as the assigned supervisor of the job' },
+  'workshop.estimate.final_approve': { module: 'Workshop', label: 'Give final approval to estimates (Manager)' },
+  'workshop.close.approve': { module: 'Workshop', label: 'Approve closing and cancelling jobs (Manager)' },
   'workshop.payment.record': { module: 'Finance', label: 'Record payments' },
   'workshop.refund.record': { module: 'Finance', label: 'Record refunds' },
   // Store & procurement
   'store.view': { module: 'Store', label: 'Open the Store' },
   'store.parts.manage': { module: 'Store', label: 'Manage parts, pricing and stock levels' },
   'store.grn.record': { module: 'Store', label: 'Record goods receipts' },
-  'store.prs.approve_hod': { module: 'Store', label: 'Approve parts requests (HOD)' },
-  'store.prs.release': { module: 'Store', label: 'Approve, reserve and release parts' },
-  'procurement.epr.review': { module: 'Procurement', label: 'Review outside purchases (Finance)' },
-  'procurement.epr.approve': { module: 'Procurement', label: 'Approve outside purchases (Manager)' },
-  'procurement.epr.disburse': { module: 'Procurement', label: 'Disburse cash for outside purchases' },
+  'store.prs.approve_hod': { module: 'Store', label: 'Parts requests — first approval (Manager)' },
+  'store.prs.release': { module: 'Store', label: 'Parts requests — approve, reserve and release (Store)' },
+  'procurement.epr.review': { module: 'Procurement', label: 'Outside purchases — review (Finance)' },
+  'procurement.epr.approve': { module: 'Procurement', label: 'Outside purchases — approve (Manager)' },
+  'procurement.epr.disburse': { module: 'Procurement', label: 'Outside purchases — pay out the cash (Finance)' },
   // Warranty
   'warranty.view': { module: 'Warranty', label: 'View warranties and claims' },
   'warranty.manage': { module: 'Warranty', label: 'Register warranties and prepare claims' },
   'warranty.claim.approve': { module: 'Warranty', label: 'Approve warranty claims' },
   // Security
   'security.view': { module: 'Security', label: 'Open Security and book visitors' },
-  'security.gate.operate': { module: 'Security', label: 'Operate the gate (visitors, vehicles, passes)' },
-  'security.pass.approve': { module: 'Security', label: 'Approve exit passes, road tests and contractors' },
+  'security.gate.operate': { module: 'Security', label: 'Operate the gate — visitors, vehicles and passes in and out' },
+  'security.reception.operate': { module: 'Security', label: 'Receive visitors at reception' },
+  'security.pass.approve': { module: 'Security', label: 'Approve exit passes, road tests and contractors (Head / Manager)' },
   'security.incident.manage': { module: 'Security', label: 'Assign, close and reopen incidents' },
   // Scheduling & notifications
   'schedule.view': { module: 'Scheduling', label: 'Use calendars and appointments' },
@@ -76,15 +78,17 @@ const BASELINE: Partial<Record<PermissionKey, Scope>> = {
 /** Default grants per role slug (database grants may add to these later). */
 export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> = {
   administrator: {
+    'workshop.job_card.create': 'ALL', 'workshop.customer.manage': 'ALL', 'security.reception.operate': 'ALL',
     'admin.organisation.manage': 'ALL', 'admin.structure.manage': 'ALL', 'admin.users.manage': 'ALL', 'admin.roles.manage': 'ALL', 'admin.settings.manage': 'ALL',
     'audit.view': 'ALL', 'analytics.business.view': 'ALL', 'analytics.inventory.view': 'ALL', 'analytics.warranty.view': 'ALL',
     'workshop.view': 'ALL', 'workshop.job_card.view': 'ALL', 'store.view': 'ALL', 'warranty.view': 'ALL', 'security.view': 'ALL', 'schedule.view': 'ALL', 'notifications.broadcast.send': 'ALL',
   },
   'workshop-manager': {
-    'workshop.job_card.create': 'BRANCH', 'workshop.estimate.final_approve': 'BRANCH', 'workshop.close.approve': 'BRANCH', 'analytics.business.view': 'BRANCH',
+    'workshop.job_card.create': 'BRANCH', 'workshop.customer.manage': 'BRANCH', 'workshop.estimate.final_approve': 'BRANCH', 'workshop.close.approve': 'BRANCH', 'analytics.business.view': 'BRANCH',
     'store.prs.approve_hod': 'BRANCH', 'procurement.epr.approve': 'BRANCH', 'security.pass.approve': 'BRANCH', 'analytics.inventory.view': 'BRANCH', 'analytics.warranty.view': 'BRANCH',
   },
-  'workshop-supervisor': { 'workshop.job_card.create': 'BRANCH' },
+  // Supervisors approve the estimates of jobs assigned to them (everyone's assigned scope) — they do not open jobs.
+  'workshop-supervisor': {},
   technician: {},
   'finance-officer': { 'workshop.payment.record': 'BRANCH', 'workshop.refund.record': 'BRANCH', 'procurement.epr.review': 'BRANCH', 'procurement.epr.disburse': 'BRANCH', 'analytics.business.view': 'BRANCH' },
   'store-manager': { 'store.parts.manage': 'BRANCH', 'store.grn.record': 'BRANCH', 'store.prs.release': 'BRANCH', 'analytics.inventory.view': 'BRANCH' },
@@ -92,9 +96,10 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   'warranty-hod': { 'warranty.manage': 'BRANCH', 'warranty.claim.approve': 'BRANCH', 'analytics.warranty.view': 'BRANCH' },
   'warranty-officer': { 'warranty.manage': 'BRANCH' },
   'department-head': { 'security.pass.approve': 'DEPARTMENT' },
-  'chief-security-officer': { 'security.gate.operate': 'BRANCH', 'security.incident.manage': 'BRANCH' },
-  'security-officer': { 'security.gate.operate': 'BRANCH' },
-  receptionist: { 'security.gate.operate': 'BRANCH' },
+  'chief-security-officer': { 'security.gate.operate': 'BRANCH', 'security.reception.operate': 'BRANCH', 'security.incident.manage': 'BRANCH' },
+  'security-officer': { 'security.gate.operate': 'BRANCH', 'security.reception.operate': 'BRANCH' },
+  // Front desk: receives visitors, registers customers and vehicles, opens jobs.
+  receptionist: { 'security.reception.operate': 'BRANCH', 'workshop.job_card.create': 'BRANCH', 'workshop.customer.manage': 'BRANCH' },
   'calendar-user': { 'schedule.view': 'OWN' },
   'scheduling-admin': { 'schedule.view': 'ALL', 'schedule.manage': 'ALL' },
   broadcaster: { 'notifications.broadcast.send': 'ALL' },
@@ -136,4 +141,12 @@ export const PAGE_PERMISSIONS: Record<string, PermissionKey> = {
   cities: 'admin.structure.manage', branches: 'admin.structure.manage', departments: 'admin.structure.manage', teams: 'admin.structure.manage',
   users: 'admin.users.manage', roles: 'admin.roles.manage', permissions: 'admin.roles.manage', settings: 'admin.settings.manage', branding: 'admin.settings.manage',
   'module-registry': 'admin.settings.manage', 'audit-logs': 'audit.view', analytics: 'analytics.business.view',
+};
+
+/** How each role is named to people. */
+export const ROLE_LABELS: Record<string, string> = {
+  administrator: 'Administrator', 'workshop-manager': 'Workshop Manager', 'workshop-supervisor': 'Workshop Supervisor', technician: 'Technician',
+  'finance-officer': 'Finance Officer', 'store-manager': 'Store Manager', 'store-officer': 'Store Officer', 'warranty-hod': 'Warranty HOD',
+  'warranty-officer': 'Warranty Officer', 'department-head': 'Department Head', 'chief-security-officer': 'Chief Security Officer',
+  'security-officer': 'Security Officer', receptionist: 'Receptionist', 'calendar-user': 'Calendar User', 'scheduling-admin': 'Scheduling Admin', broadcaster: 'Broadcaster',
 };
