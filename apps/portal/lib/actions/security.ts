@@ -933,7 +933,7 @@ const JC_ACTIVE = ['CHECKED_IN', 'IN_PROGRESS', 'AWAITING_PARTS', 'QUALITY_CHECK
 const VS_ACTIVE = ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'];
 const RT_OPEN: ('PENDING_MANAGER' | 'APPROVED' | 'OUT')[] = ['PENDING_MANAGER', 'APPROVED', 'OUT'];
 
-export type RoadTestInput = { jobCardId?: string; vehicleServiceId?: string; driverId: string; purpose: string; route?: string; expectedDurationMinutes: number };
+export type RoadTestInput = { jobCardId?: string; vehicleServiceId?: string; driverId: string; purpose: string; route?: string; expectedDurationMinutes: number; companionIds?: string[]; otherCompanions?: string[] };
 
 export async function requestRoadTest(input: RoadTestInput): Promise<{ id: string; permitNumber: string }> {
   const user = await requireUser();
@@ -950,14 +950,21 @@ export async function requestRoadTest(input: RoadTestInput): Promise<{ id: strin
   if (open) throw new SecurityError(`This vehicle already has an open road test (${open.permitNumber}).`);
   const driver = await prisma.user.findUnique({ where: { id: input.driverId }, select: { isActive: true, fullName: true } });
   if (!driver?.isActive) throw new SecurityError('The driver must be an active member of staff.');
+  // Companions: staff (any number) and other people by name — like the exit pass.
+  const companionIds = [...new Set((input.companionIds ?? []).filter((id) => id && id !== input.driverId))].slice(0, 20);
+  const companions = companionIds.length ? await prisma.user.findMany({ where: { id: { in: companionIds }, isActive: true }, select: { id: true, fullName: true, employeeId: true } }) : [];
+  if (companions.length !== companionIds.length) throw new SecurityError('Every staff companion must be an active member of staff.');
+  const others = (input.otherCompanions ?? []).map((n) => n.trim()).filter(Boolean).slice(0, 20);
   const permitNumber = await nextNumber('RT');
   const permit = await prisma.roadTestPermit.create({
     data: {
       permitNumber, branchId: await getWorkshopBranchId(), jobCardId: input.jobCardId ?? null, vehicleServiceId: input.vehicleServiceId ?? null, vehicleId: rec.vehicleId,
       requestedById: user.id, driverId: input.driverId, purpose: input.purpose.trim(), route: input.route?.trim() || null, expectedDurationMinutes: input.expectedDurationMinutes,
+      people: { create: [...companions.map((c: (typeof companions)[number]) => ({ userId: c.id, name: c.fullName, employeeId: c.employeeId })), ...others.map((name) => ({ name }))] },
     },
   });
-  const meta = { permitNumber, number: rec.number, driver: driver.fullName };
+  const withNames = [...companions.map((c: (typeof companions)[number]) => c.fullName), ...others];
+  const meta = { permitNumber, number: rec.number, driver: driver.fullName, ...(withNames.length ? { with: withNames.join(', ') } : {}) };
   await writeAuditLog({ userId: user.id, action: 'road_test.requested', entityType: 'RoadTestPermit', entityId: permit.id, metadata: meta });
   await writeAuditLog({ userId: user.id, action: 'road_test.requested', entityType: input.jobCardId ? 'JobCard' : 'VehicleService', entityId: (input.jobCardId ?? input.vehicleServiceId)!, metadata: meta });
   await sendLogged('RoadTestPermit', permit.id, await managerApprovers(user.id), `Road test ${permitNumber} needs your approval`, 'A road test needs your approval', [`${permitNumber} — ${rec.number}`, `Driver: ${driver.fullName}`, `Checking: ${input.purpose.trim()}`, `Expected: ${durationText(input.expectedDurationMinutes)}`], `/security/road-tests/${permit.id}`, user.id);
@@ -1010,6 +1017,7 @@ export async function roadTestGateOut(id: string, startOdometer: number): Promis
   if (p.status !== 'APPROVED') throw new SecurityError('Only an approved road test can go out — Security will not permit it without the Manager\'s approval.');
   if (!Number.isInteger(startOdometer) || startOdometer < 0) throw new SecurityError('Enter the odometer reading (km) as a whole number.');
   if (p.vehicle.mileage !== null && startOdometer < p.vehicle.mileage) throw new SecurityError(`That is below the vehicle's last recorded reading (${p.vehicle.mileage.toLocaleString('en-NG')} km) — check the odometer.`);
+  if (p.vehicle.mileage !== null && startOdometer > p.vehicle.mileage + 2000) throw new SecurityError(`That is ${(startOdometer - p.vehicle.mileage).toLocaleString('en-NG')} km more than the vehicle's last recorded reading (${p.vehicle.mileage.toLocaleString('en-NG')} km) — check you read the odometer, not the trip meter.`);
   await prisma.roadTestPermit.update({ where: { id }, data: { status: 'OUT', gateOutAt: new Date(), gateOutById: r.userId, startOdometer } });
   const meta = { permitNumber: p.permitNumber, odometer: startOdometer };
   await writeAuditLog({ userId: r.userId, action: 'road_test.gate_out', entityType: 'RoadTestPermit', entityId: id, metadata: meta });
@@ -1027,6 +1035,7 @@ export async function roadTestGateIn(id: string, endOdometer: number, notes: str
   if (p.status !== 'OUT') throw new SecurityError('Only a vehicle out on a road test can be recorded back in.');
   if (!Number.isInteger(endOdometer) || endOdometer < 0) throw new SecurityError('Enter the odometer reading (km) as a whole number.');
   if (p.startOdometer !== null && endOdometer < p.startOdometer) throw new SecurityError(`The reading can't be lower than when it went out (${p.startOdometer.toLocaleString('en-NG')} km).`);
+  if (p.startOdometer !== null && endOdometer - p.startOdometer > 500) throw new SecurityError(`That is ${(endOdometer - p.startOdometer).toLocaleString('en-NG')} km for one road test (it went out at ${p.startOdometer.toLocaleString('en-NG')} km) — check the reading.`);
   const now = new Date();
   await prisma.roadTestPermit.update({ where: { id }, data: { status: 'RETURNED', gateInAt: now, gateInById: r.userId, endOdometer, returnNotes: notes.trim() || null } });
   if (p.vehicle.mileage === null || endOdometer > p.vehicle.mileage) await prisma.customerVehicle.update({ where: { id: p.vehicleId }, data: { mileage: endOdometer } });
@@ -1086,7 +1095,7 @@ export async function getRoadTest(id: string) {
       jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
       vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
       vehicle: { select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, mileage: true } },
-      requestedBy: { select: { id: true, fullName: true } }, driver: { select: { fullName: true, phone: true } },
+      requestedBy: { select: { id: true, fullName: true } }, driver: { select: { fullName: true, phone: true } }, people: { select: { id: true, name: true, employeeId: true, userId: true } },
       managerApprovedBy: { select: { fullName: true } }, declinedBy: { select: { fullName: true } }, gateOutBy: { select: { fullName: true } }, gateInBy: { select: { fullName: true } },
     },
   });

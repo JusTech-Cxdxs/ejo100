@@ -3,6 +3,7 @@
 import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
 import { prisma } from '@ejo/database';
 import { requireUser, currentUserIsMasterAdmin, requireJobCardApprover, listEligibleManagersForBranch, requireEligibleManager } from './workshop';
+import { bankDetailsFor } from '@/lib/workshop-core';
 import { writeAuditLog, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { requireStoreStaff, listEligibleStoreOfficersForBranch, listEligibleStoreManagersForBranch } from './store';
 import { renderServiceEstimateNudgeEmail } from '@/lib/email-templates/service-estimate-nudge';
@@ -17,7 +18,7 @@ import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
 import { InspectionPdf } from '@/lib/pdf/inspection-pdf';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
-import { MINIMUM_DEPOSIT_FRACTION, COMPANY_BANK_DETAILS } from '@/lib/workshop-constants';
+import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 
 class ServiceEstimateActionError extends Error {}
 
@@ -878,9 +879,7 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
         sundrySubtotal: sundryTotal > 0 ? formatNaira(sundryTotal) : undefined,
         totalAmount: formatNaira(total),
         minimumDepositAmount: formatNaira(minimumDepositForEmail),
-        bankName: COMPANY_BANK_DETAILS.bankName,
-        accountName: COMPANY_BANK_DETAILS.accountName,
-        accountNumber: COMPANY_BANK_DETAILS.accountNumber,
+        ...(await bankDetailsFor((await prisma.vehicleService.findUnique({ where: { id: estimate.vehicleService.id }, select: { branchId: true } }))?.branchId)),
         paymentRemarkSuggestion,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${estimate.vehicleService.id}`,
         logoUrl: `${portalUrl}/images/logo/logo.png`,
@@ -936,9 +935,7 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
               sundrySubtotal: sundryTotal > 0 ? formatNairaForPdf(sundryTotal) : null,
               totalAmount: formatNairaForPdf(total),
               minimumDepositAmount: formatNairaForPdf(minimumDeposit),
-              bankName: COMPANY_BANK_DETAILS.bankName,
-              accountName: COMPANY_BANK_DETAILS.accountName,
-              accountNumber: COMPANY_BANK_DETAILS.accountNumber,
+              ...(await bankDetailsFor((await prisma.vehicleService.findUnique({ where: { id: estimate.vehicleService.id }, select: { branchId: true } }))?.branchId)),
               paymentRemarkSuggestion,
             }),
           );

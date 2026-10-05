@@ -34,6 +34,9 @@ export type UpdateBranchInput = {
   address?: string;
   email?: string;
   hotlines?: string[];
+  bankName?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
 };
 
 /** Only a Master Administrator edits a branch's own real, printed
@@ -54,6 +57,18 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
     throw new BranchActionError('Branch name is required.');
   }
   const hotlines = (input.hotlines ?? []).map((h) => h.trim()).filter(Boolean);
+  // Bank details: all three together, or none. Nigerian account numbers
+  // (NUBAN) are exactly 10 digits.
+  const bankName = input.bankName?.trim() || null;
+  const bankAccountName = input.bankAccountName?.trim() || null;
+  const bankAccountNumber = input.bankAccountNumber?.replace(/\s+/g, '') || null;
+  const anyBank = bankName || bankAccountName || bankAccountNumber;
+  if (anyBank && !(bankName && bankAccountName && bankAccountNumber)) {
+    throw new BranchActionError('Fill in the bank name, account name and account number together — or leave all three empty.');
+  }
+  if (bankAccountNumber && !/^\d{10}$/.test(bankAccountNumber)) {
+    throw new BranchActionError('The account number must be exactly 10 digits.');
+  }
   await prisma.branch.update({
     where: { id: branchId },
     data: {
@@ -62,6 +77,9 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
       address: input.address?.trim() || null,
       email: input.email?.trim() || null,
       hotlines,
+      bankName,
+      bankAccountName,
+      bankAccountNumber,
     },
   });
   await writeAuditLog({
@@ -69,6 +87,6 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
     action: 'branch.updated',
     entityType: 'Branch',
     entityId: branchId,
-    metadata: { name: trimmedName },
+    metadata: { name: trimmedName, bankDetails: anyBank ? 'set' : 'not set' },
   });
 }

@@ -168,7 +168,7 @@ export async function requestRoadTestFormAction(f: FormData) {
   const vehicleServiceId = str(f, 'vehicleServiceId') || undefined;
   let id = '';
   try {
-    id = (await requestRoadTest({ jobCardId, vehicleServiceId, driverId: str(f, 'driverId'), purpose: str(f, 'purpose'), route: str(f, 'route'), expectedDurationMinutes: Number(str(f, 'expectedMinutes')) })).id;
+    id = (await requestRoadTest({ jobCardId, vehicleServiceId, driverId: str(f, 'driverId'), purpose: str(f, 'purpose'), route: str(f, 'route'), expectedDurationMinutes: Number(str(f, 'expectedMinutes')), companionIds: f.getAll('companionIds').map(String).filter(Boolean), otherCompanions: str(f, 'otherCompanions').split('\n') })).id;
   } catch (err) {
     back(`/security/road-tests/new?${jobCardId ? `jobCardId=${jobCardId}` : `vehicleServiceId=${vehicleServiceId}`}`, err, 'Could not request the road test.');
   }

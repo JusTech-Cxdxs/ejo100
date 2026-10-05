@@ -26,6 +26,9 @@ export async function updateBranchFormAction(formData: FormData) {
       address: str(formData, 'address'),
       email: str(formData, 'email'),
       hotlines: strList(formData, 'hotlines'),
+      bankName: String(formData.get('bankName') ?? ''),
+      bankAccountName: String(formData.get('bankAccountName') ?? ''),
+      bankAccountNumber: String(formData.get('bankAccountNumber') ?? ''),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not update branch details.';

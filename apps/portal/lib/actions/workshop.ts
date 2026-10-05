@@ -1,5 +1,6 @@
 'use server';
 
+import { bankDetailsFor } from '@/lib/workshop-core';
 import { writeAuditLog, getWorkshopOrgContext, getWorkshopDepartmentForVehicleType, isEligibleSupervisor, getWorkshopBranchId } from '@/lib/workshop-core';
 
 import { cache } from 'react';
@@ -30,7 +31,7 @@ import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal, isCustomerLine, coveredLabel } from '@/lib/estimate-billing';
 import { headers } from 'next/headers';
 import { prisma, JobCardStatus, setAuditActor } from '@ejo/database';
-import { COMPANY_BANK_DETAILS, MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
+import { MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
 import { workingDaysBetween, addWorkingDays } from '@/lib/utils/working-days';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { getOrganisation } from '@/lib/actions/organisation';
@@ -2826,7 +2827,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
           jobNumber: true,
           vehicle: { select: { make: true, model: true, plateNumber: true, chassisNumber: true } },
           customer: { select: { fullName: true, email: true, address: true } },
-          branch: { select: { name: true, address: true, hotlines: true, email: true, businessUnit: { select: { organisation: { select: { name: true } } } } } },
+          branch: { select: { id: true, name: true, address: true, hotlines: true, email: true, businessUnit: { select: { organisation: { select: { name: true } } } } } },
         },
       },
       lineItems: { orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true, unitOfMeasure: true, billTo: true, coveringWarranty: { select: { warrantyNumber: true } } } },
@@ -2924,9 +2925,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
         sundrySubtotal: sundryTotal > 0 ? formatNaira(sundryTotal) : undefined,
         totalAmount: formatNaira(total),
         minimumDepositAmount: formatNaira(minimumDeposit),
-        bankName: COMPANY_BANK_DETAILS.bankName,
-        accountName: COMPANY_BANK_DETAILS.accountName,
-        accountNumber: COMPANY_BANK_DETAILS.accountNumber,
+        ...(await bankDetailsFor(estimate.jobCard.branch.id)),
         paymentRemarkSuggestion,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
         logoUrl: `${websiteUrl}/images/logo/logo.png`,
@@ -2978,9 +2977,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
               sundrySubtotal: sundryTotal > 0 ? formatNairaForPdf(sundryTotal) : null,
               totalAmount: formatNairaForPdf(total),
               minimumDepositAmount: formatNairaForPdf(minimumDeposit),
-              bankName: COMPANY_BANK_DETAILS.bankName,
-              accountName: COMPANY_BANK_DETAILS.accountName,
-              accountNumber: COMPANY_BANK_DETAILS.accountNumber,
+              ...(await bankDetailsFor(estimate.jobCard.branch.id)),
               paymentRemarkSuggestion,
             }),
           );
