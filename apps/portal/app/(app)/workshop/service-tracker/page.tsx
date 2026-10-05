@@ -316,11 +316,11 @@ export default async function ServiceTrackerPage({
                           </form>
                         ) : null}
                         {!v.inWorkshop && !v.attendedAt ? (
-                          <details className="text-left">
+                          <details className="relative self-start text-left">
                             <summary className="cursor-pointer rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1 text-xs font-medium text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)]">
                               Stop tracking
                             </summary>
-                            <form action={stopTrackingVehicleFormAction} className="mt-2 w-56 space-y-2">
+                            <form action={stopTrackingVehicleFormAction} className="absolute right-0 top-full z-30 mt-1 w-60 space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-3 shadow-lg">
                               <FormPendingOverlay />
                               <input type="hidden" name="vehicleId" value={v.vehicleId} />
                               <input type="hidden" name="returnTo" value="/workshop/service-tracker" />
@@ -337,7 +337,7 @@ export default async function ServiceTrackerPage({
                         {!v.inWorkshop ? (
                           <LoadingLink
                             href={`/workshop/vehicle-service/book?vehicleId=${v.vehicleId}`}
-                            className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+                            className="self-start whitespace-nowrap rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
                           >
                             Book in
                           </LoadingLink>
