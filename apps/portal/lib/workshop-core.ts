@@ -164,3 +164,14 @@ const getWorkshopBranchIdCached = cache(getWorkshopBranchIdUncached);
 export async function getWorkshopBranchId(): Promise<string> {
   return getWorkshopBranchIdCached();
 }
+
+/**
+ * The bank account customers pay into, for this branch. Never shows a made-up
+ * number: if the branch's details are not filled in yet, documents say
+ * "ask the branch" instead.
+ */
+export async function bankDetailsFor(branchId: string | null | undefined): Promise<{ bankName: string; accountName: string; accountNumber: string }> {
+  const b = branchId ? await prisma.branch.findUnique({ where: { id: branchId }, select: { bankName: true, bankAccountName: true, bankAccountNumber: true } }).catch(() => null) : null;
+  if (b?.bankName && b.bankAccountName && b.bankAccountNumber) return { bankName: b.bankName, accountName: b.bankAccountName, accountNumber: b.bankAccountNumber };
+  return { bankName: 'Please ask the branch', accountName: '—', accountNumber: 'Ask the branch for the account number' };
+}
