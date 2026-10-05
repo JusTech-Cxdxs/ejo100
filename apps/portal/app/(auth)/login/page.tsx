@@ -20,7 +20,10 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirect') ?? '/dashboard';
+  // Only ever return to a page on THIS site — never an outside address
+  // (blocks "…/login?redirect=https://fake-site" phishing links).
+  const requested = searchParams.get('redirect') ?? '';
+  const redirectTo = /^\/(?![/\\])/.test(requested) ? requested : '/dashboard';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
