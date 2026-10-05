@@ -1,6 +1,6 @@
 'use server';
 
-import { canSeeRecord, reachWhere } from '@/lib/authz/server';
+import { authorize, canSeeRecord, reachWhere } from '@/lib/authz/server';
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal } from '@/lib/estimate-billing';
@@ -55,6 +55,7 @@ export type CreateVehicleServiceInput = {
 };
 
 export async function createVehicleService(input: CreateVehicleServiceInput): Promise<{ id: string; serviceNumber: string }> {
+  await authorize('workshop.job_card.create', undefined, 'createVehicleService');
   const user = await requireUser();
   if (!input.supervisorId) {
     throw new VehicleServiceActionError('A supervisor must be assigned to open a Vehicle Service.');

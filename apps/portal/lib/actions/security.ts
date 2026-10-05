@@ -719,7 +719,7 @@ export async function searchStaffOptions(query: string): Promise<{ value: string
   await requireUser();
   const q = query.trim();
   const rows = await prisma.user.findMany({
-    where: { isActive: true, ...(q ? { OR: [{ fullName: { contains: q, mode: 'insensitive' } }, { employeeId: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] } : {}) },
+    where: { isActive: true, ...((await viewerIsPlatform()) ? {} : { NOT: { roles: { some: { role: { isSuperAdmin: true } } } } }), ...(q ? { OR: [{ fullName: { contains: q, mode: 'insensitive' } }, { employeeId: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] } : {}) },
     orderBy: { fullName: 'asc' },
     take: 25,
     select: { id: true, fullName: true, employeeId: true, department: { select: { name: true } }, employeeProfile: { select: { jobTitle: true } } },
@@ -1633,4 +1633,10 @@ async function followUpEmail(kind: FollowUp, id: string, actorId: string | null)
   } catch (err) {
     console.error('Follow-up email failed', kind, id, err);
   }
+}
+
+/** Is the person looking at this part of the platform team? (Platform team is invisible to organisations.) */
+async function viewerIsPlatform(): Promise<boolean> {
+  const user = await requireUser();
+  return Boolean(await prisma.userRole.findFirst({ where: { userId: user.id, role: { isSuperAdmin: true } }, select: { id: true } }));
 }

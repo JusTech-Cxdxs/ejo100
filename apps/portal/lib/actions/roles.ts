@@ -13,7 +13,7 @@ export async function listRolesForEditor(): Promise<RoleForEditor[]> {
   await authorize('admin.roles.manage', undefined, 'roles.list');
   const me = await prisma.user.findUnique({ where: { id: (await getPrincipal()).userId }, select: { organisationId: true } });
   const roles = await prisma.role.findMany({
-    where: me?.organisationId ? { organisationId: me.organisationId } : {},
+    where: { ...(me?.organisationId ? { organisationId: me.organisationId } : {}), ...((await getPrincipal()).isSuperAdmin ? {} : { isSuperAdmin: false }) },
     orderBy: { name: 'asc' },
     select: { id: true, name: true, slug: true, isSuperAdmin: true, _count: { select: { users: true } }, permissions: { select: { permission: { select: { key: true } } } } },
   });

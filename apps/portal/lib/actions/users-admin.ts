@@ -21,7 +21,8 @@ export async function listUsersForAdmin(q?: string): Promise<{ users: AdminUserR
   const term = q?.trim().slice(0, 80);
   const [users, roles] = await Promise.all([
     prisma.user.findMany({
-      where: { ...(organisationId ? { organisationId } : {}), ...(term ? { OR: [{ fullName: { contains: term, mode: 'insensitive' } }, { email: { contains: term, mode: 'insensitive' } }, { employeeId: { contains: term, mode: 'insensitive' } }] } : {}) },
+      // The platform team is invisible to organisations.
+      where: { ...(organisationId ? { organisationId } : {}), ...(p.isSuperAdmin ? {} : { NOT: { roles: { some: { role: { isSuperAdmin: true } } } } }), ...(term ? { OR: [{ fullName: { contains: term, mode: 'insensitive' } }, { email: { contains: term, mode: 'insensitive' } }, { employeeId: { contains: term, mode: 'insensitive' } }] } : {}) },
       orderBy: { fullName: 'asc' },
       take: 300,
       select: { id: true, fullName: true, email: true, employeeId: true, isActive: true, branch: { select: { name: true } }, department: { select: { name: true } }, roles: { select: { role: { select: { id: true, name: true, isSuperAdmin: true } } } } },
@@ -40,13 +41,21 @@ export async function listUsersForAdmin(q?: string): Promise<{ users: AdminUserR
 async function checkPair(userId: string, roleId: string) {
   const { p, organisationId } = await actorOrg();
   const [user, role] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { id: true, fullName: true, organisationId: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { id: true, fullName: true, email: true, organisationId: true, roles: { select: { role: { select: { isSuperAdmin: true } } } } } }),
     prisma.role.findUnique({ where: { id: roleId }, select: { id: true, name: true, isSuperAdmin: true, organisationId: true } }),
   ]);
   if (!user || !role) throw new Error('That person or role no longer exists — refresh the page.');
   if (!p.isSuperAdmin && (user.organisationId !== organisationId || role.organisationId !== organisationId)) throw new Error('You can only manage people and roles in your own organisation.');
   if (role.isSuperAdmin && !p.isSuperAdmin) throw new Error('Only the platform team can grant or remove the Master Administrator role.');
   if (userId === p.userId) throw new Error('You cannot change your own roles — ask another administrator.');
+  const targetIsPlatform = user.roles.some((r: { role: { isSuperAdmin: boolean } }) => r.role.isSuperAdmin);
+  if (targetIsPlatform && !p.isSuperAdmin) throw new Error('That person no longer exists — refresh the page.');
+  // The platform OWNER (PLATFORM_OWNER_EMAIL) can only be changed by the owner — not even by other platform-team members.
+  const owner = process.env.PLATFORM_OWNER_EMAIL?.trim().toLowerCase();
+  if (owner && user.email.toLowerCase() === owner) {
+    const actor = await prisma.user.findUnique({ where: { id: p.userId }, select: { email: true } });
+    if (actor?.email.toLowerCase() !== owner) throw new Error("The platform owner's account can only be changed by the owner.");
+  }
   return { p, user, role };
 }
 

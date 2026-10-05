@@ -403,6 +403,7 @@ export type CreateCustomerInput = {
  * a returning customer must never get a duplicate record. Only creates a
  * new row when no existing customer has that email. */
 export async function findOrCreateCustomer(input: CreateCustomerInput) {
+  await authorize('workshop.customer.manage', undefined, 'findOrCreateCustomer');
   const currentUser = await requireUser();
   const email = input.email.trim().toLowerCase();
   if (!email || !input.fullName.trim()) {
@@ -602,6 +603,7 @@ function normalizeChassis(value: string): string {
 }
 
 export async function createVehicle(input: CreateVehicleInput) {
+  await authorize('workshop.customer.manage', undefined, 'createVehicle');
   const currentUser = await requireUser();
   if (!input.customerId) {
     throw new WorkshopActionError('A vehicle must belong to a customer.');
@@ -1001,6 +1003,7 @@ export type CreateJobCardInput = {
 
 
 export async function createJobCard(input: CreateJobCardInput) {
+  await authorize('workshop.job_card.create', undefined, 'createJobCard');
   const user = await requireUser();
   const complaints = input.complaints.map((c) => c.trim()).filter((c) => c.length > 0);
   if (!input.customerId || !input.vehicleId || complaints.length === 0) {

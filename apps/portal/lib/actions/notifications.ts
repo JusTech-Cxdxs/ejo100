@@ -74,12 +74,13 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
   const keys = rows.map((r: { id: string }) => `audit:${r.id}`);
   const [reads, actors] = await Promise.all([
     prisma.notificationRead.findMany({ where: { userId: m.id, key: { in: keys } }, select: { key: true } }),
-    prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r: { userId: string | null }) => r.userId).filter((v: string | null): v is string => Boolean(v)))] } }, select: { id: true, fullName: true } }),
+    prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r: { userId: string | null }) => r.userId).filter((v: string | null): v is string => Boolean(v)))] } }, select: { id: true, fullName: true, roles: { select: { role: { select: { isSuperAdmin: true } } } } } }),
   ]);
   const read = new Set(reads.map((r: { key: string }) => r.key));
   // Exact pages (an estimate line → its Job Card, a payment → its service…).
   const resolved = await resolveRecords(rows.filter((r: { entityId: string | null; entityType: string }) => r.entityId && !r.entityType.startsWith('api:')).map((r: { entityType: string; entityId: string | null }) => ({ type: r.entityType, id: r.entityId! })));
-  const name = new Map(actors.map((a: { id: string; fullName: string }) => [a.id, a.fullName]));
+  // The platform team is shown to organisations as "Platform support".
+  const name = new Map(actors.map((a: { id: string; fullName: string; roles: { role: { isSuperAdmin: boolean } }[] }) => [a.id, !m.isMaster && a.roles.some((r) => r.role.isSuperAdmin) ? 'Platform support' : a.fullName]));
   const items = rows.flatMap((r: (typeof rows)[number]) => {
     // API request records (users, roles, branches…) read as plain events.
     if (r.entityType.startsWith('api:')) {

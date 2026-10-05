@@ -54,8 +54,10 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
   });
   const page = rows.slice(0, PAGE);
   const ids = [...new Set(page.map((r: { userId: string | null }) => r.userId).filter((v: string | null): v is string => Boolean(v)))];
-  const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
-  const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
+  const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true, roles: { select: { role: { select: { isSuperAdmin: true } } } } } }) : [];
+  const viewerPlatform = await prisma.userRole.findFirst({ where: { userId: (await requireUser()).id, role: { isSuperAdmin: true } }, select: { id: true } });
+  // The platform team is shown to organisations as "Platform support".
+  const name = new Map(users.map((u: { id: string; fullName: string; roles: { role: { isSuperAdmin: boolean } }[] }) => [u.id, !viewerPlatform && u.roles.some((r) => r.role.isSuperAdmin) ? 'Platform support' : u.fullName]));
   const resolved = await resolveRecords(page.filter((r: { entityId: string | null; entityType: string }) => r.entityId && !r.entityType.startsWith('api:')).map((r: { entityType: string; entityId: string | null }) => ({ type: r.entityType, id: r.entityId! })));
   const rec = (type: string, id: string | null) => (id ? [resolved.get(`${type}:${id}`) ?? { label: 'Record', url: recordUrl(type.replace(/^db:/, ''), id) }] : []);
   const mapped: AuditRow[] = page.map((r: (typeof page)[number]) => {
