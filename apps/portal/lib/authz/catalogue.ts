@@ -68,6 +68,9 @@ export type PermissionKey = keyof typeof PERMISSIONS;
 const BASELINE: Partial<Record<PermissionKey, Scope>> = {
   'workshop.view': 'BRANCH', 'workshop.job_card.view': 'BRANCH', 'store.view': 'BRANCH', 'warranty.view': 'BRANCH',
   'security.view': 'BRANCH', 'schedule.view': 'OWN',
+  // Assignment-based: anyone may approve the estimate of a job where THEY are the
+  // assigned supervisor (the supervisor may be a manager or anyone else).
+  'workshop.estimate.approve': 'ASSIGNED',
 };
 
 /** Default grants per role slug (database grants may add to these later). */
@@ -81,7 +84,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'workshop.job_card.create': 'BRANCH', 'workshop.estimate.final_approve': 'BRANCH', 'workshop.close.approve': 'BRANCH', 'analytics.business.view': 'BRANCH',
     'store.prs.approve_hod': 'BRANCH', 'procurement.epr.approve': 'BRANCH', 'security.pass.approve': 'BRANCH', 'analytics.inventory.view': 'BRANCH', 'analytics.warranty.view': 'BRANCH',
   },
-  'workshop-supervisor': { 'workshop.job_card.create': 'BRANCH', 'workshop.estimate.approve': 'ASSIGNED' },
+  'workshop-supervisor': { 'workshop.job_card.create': 'BRANCH' },
   technician: {},
   'finance-officer': { 'workshop.payment.record': 'BRANCH', 'workshop.refund.record': 'BRANCH', 'procurement.epr.review': 'BRANCH', 'procurement.epr.disburse': 'BRANCH', 'analytics.business.view': 'BRANCH' },
   'store-manager': { 'store.parts.manage': 'BRANCH', 'store.grn.record': 'BRANCH', 'store.prs.release': 'BRANCH', 'analytics.inventory.view': 'BRANCH' },

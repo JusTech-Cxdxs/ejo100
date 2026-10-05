@@ -67,3 +67,15 @@ export async function canSeeRecord(key: PermissionKey, record: RecordContext, wh
   if (!d.allowed) await logDenied(p.userId, key, where, d.reason);
   return d.allowed;
 }
+
+/**
+ * Lists, search and exports: turn the person's reach into a database filter,
+ * so a list can never show more than the record pages would. Branch-scoped
+ * people get their branch; organisation-wide people get no extra filter.
+ */
+export async function reachWhere(key: PermissionKey): Promise<{ branchId?: string }> {
+  const p = await getPrincipal();
+  const d = decide(p, key);
+  if (!d.allowed) return { branchId: '__no_access__' };
+  return d.scope === 'BRANCH' && p.branchId ? { branchId: p.branchId } : {};
+}
