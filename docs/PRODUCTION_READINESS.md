@@ -49,7 +49,10 @@ records what is verified, what was fixed, what is deliberately deferred, and wha
 2. **Rate limits are per instance** (portal and API); a distributed attack needs the edge WAF above.
 3. **Regions are split** (Vercel US, Render US, Supabase EU) — latency, not correctness; align on paid plans.
 4. **Free-tier services** (Render sleeps; Supabase limits) — upgrade before real production load.
-5. **Authorization is enforced per action, not yet from one catalogue** — that is Phase B (RBAC).
+5. **Authorization (Phase B, in progress):** the catalogue, decision engine, page guards (16 areas), branch
+   scope on Job Cards / Vehicle Services and the Permissions matrix are live. Remaining: migrate each
+   workflow action's own role checks to `authorize()`, apply scope to lists / search / exports /
+   notifications / realtime, and the role editor (database grants).
 6. **No load test against staging yet** — run one (e.g. k6) against a staging copy before go-live.
 7. **No staging environment yet** — create a Vercel Preview + a second Supabase project for staging.
 
@@ -57,3 +60,14 @@ records what is verified, what was fixed, what is deliberately deferred, and wha
 **Phase B — Authorization Catalogue**: User → Role → Permission → Scope (branch / department /
 own / assigned) → Record → State → Action, enforced the same way on pages, actions, API, search,
 exports, documents, notifications, realtime and analytics — with allowed AND denied tests.
+
+## 6. Phase B — Authorization (status)
+| Piece | State |
+|---|---|
+| Catalogue (`lib/authz/catalogue.ts`) | 36 permissions, 16 roles, 5 scopes; pure `decide()` |
+| Enforcement (`lib/authz/server.ts`) | `guardPage` (pages), `authorize` (actions), `canSeeRecord` (records); every refusal audited |
+| Pages | 16 protected areas refuse on the server (pasted links included) → Access denied |
+| Records | Job Cards / Vehicle Services outside scope behave as "not found" |
+| Permissions page | Live matrix generated from the same code |
+| Tests | 19 allowed / denied cases on the real code |
+| Next | Workflow actions → `authorize()`; scope on lists, search, exports, notifications, realtime; role editor |
