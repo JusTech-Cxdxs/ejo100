@@ -67,7 +67,7 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
       const before = (meta.before ?? {}) as Record<string, unknown>;
       const after = (meta.after ?? {}) as Record<string, unknown>;
       const fields = op === 'update' || op === 'upsert' ? Object.keys(after).filter((k) => k !== 'updatedAt') : [];
-      return { id: r.id, at: r.createdAt, who, kind: 'Data change', title: `${words(model)} ${VERB[op] ?? op}`, detail: fields.length ? `Changed: ${fields.map((k) => words(k).toLowerCase()).join(', ')}` : null, area: AREA_LABEL[areaOf(model)] ?? 'System', records: rec(r.entityType, r.entityId), changes: fields.slice(0, 30).map((k) => ({ field: words(k), before: show(before[k]), after: show(after[k]) })).filter((c) => !(c.before === '—' && c.after === '—')), ip: r.ipAddress };
+      return { id: r.id, at: r.createdAt, who, kind: 'Data change', title: `${words(model)} ${VERB[op] ?? op}`, detail: fields.length ? `Changed: ${fields.map((k) => words(k).toLowerCase()).join(', ')}` : null, area: AREA_LABEL[areaOf(model)] ?? 'System', records: rec(r.entityType, r.entityId), changes: fields.slice(0, 30).map((k) => ({ field: words(k), key: k, rawBefore: before[k], rawAfter: after[k], before: show(before[k]), after: show(after[k]) })).filter((c) => !(c.before === '—' && c.after === '—')), ip: r.ipAddress };
     }
     if (r.entityType.startsWith('api:')) {
       const d = describeApiEntry(r.action.replace(/\.failed$/, ''), r.entityType);
@@ -89,6 +89,34 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
     }
     out.push(r);
   }
+  // Values in plain words: dates, statuses, yes / no, and ids → names.
+  type Raw = { field: string; key?: string; rawBefore?: unknown; rawAfter?: unknown; before: string; after: string };
+  const userIds = new Set<string>(); const partIds = new Set<string>();
+  for (const r of out) for (const c of r.changes as Raw[]) for (const v of [c.rawBefore, c.rawAfter]) {
+    if (typeof v !== 'string' || !c.key) continue;
+    if (/(ById|UserId|userId)$/.test(c.key)) userIds.add(v);
+    else if (/[pP]artId$/.test(c.key)) partIds.add(v);
+  }
+  const [uRows, pRows] = await Promise.all([
+    userIds.size ? prisma.user.findMany({ where: { id: { in: [...userIds] } }, select: { id: true, fullName: true } }) : [],
+    partIds.size ? prisma.part.findMany({ where: { id: { in: [...partIds] } }, select: { id: true, partNumber: true, name: true } }) : [],
+  ]);
+  const names = new Map<string, string>([...uRows.map((u: { id: string; fullName: string }) => [u.id, u.fullName] as [string, string]), ...pRows.map((x: { id: string; partNumber: string | null; name: string }) => [x.id, `${x.partNumber ? `${x.partNumber} ` : ''}${x.name}`] as [string, string])]);
+  const readable = (v: unknown, key?: string): string => {
+    if (v === null || v === undefined || v === '') return '—';
+    if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+    if (typeof v === 'string') {
+      if (key && names.has(v)) return names.get(v)!;
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) return new Date(v).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+      if (/^[A-Z][A-Z0-9_]+$/.test(v)) return v.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+      if (key && /Id$/.test(key) && /^c[a-z0-9]{20,}$/.test(v)) return 'A record';
+      return v.slice(0, 200);
+    }
+    if (typeof v === 'number') return v.toLocaleString('en-NG');
+    return show(v);
+  };
+  for (const r of out) r.changes = (r.changes as Raw[]).map((c) => ({ field: c.field.replace(/ id$/i, ''), before: c.key ? readable(c.rawBefore, c.key) : c.before, after: c.key ? readable(c.rawAfter, c.key) : c.after }));
+  for (const r of out) if (r.detail?.startsWith('Changed: ')) r.detail = r.detail.replace(/ id(,|$)/g, '$1');
   const refLinks = await resolveReferenceNumbers(out.flatMap((r) => [r.title, r.detail]));
   return { kind, rows: out, refLinks, nextCursor: rows.length > PAGE ? page[page.length - 1]!.id : null };
 }

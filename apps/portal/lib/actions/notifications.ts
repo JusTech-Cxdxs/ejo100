@@ -42,9 +42,24 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
   // Records I have acted on (my "chains").
   // Business events only — the low-level data journal ("db:…") is the
   // complete record for the audit dashboard, never shown as activity.
-  const mine = await prisma.auditLog.findMany({ where: { userId: m.id, createdAt: { gte: new Date(Date.now() - 90 * 86400000) }, NOT: { entityType: { startsWith: 'db:' } } }, distinct: ['entityType', 'entityId'], select: { entityType: true, entityId: true }, take: 2000 });
+  // …and records I am PART OF even before acting: the technician assigned,
+  // the supervisor, the person who opened the Job Card / service, and the
+  // person who raised a parts request or outside purchase.
+  const recent = new Date(Date.now() - 90 * 86400000);
+  const [mine, jcs, svs, prss, eprs] = await Promise.all([
+    prisma.auditLog.findMany({ where: { userId: m.id, createdAt: { gte: recent }, NOT: { entityType: { startsWith: 'db:' } } }, distinct: ['entityType', 'entityId'], select: { entityType: true, entityId: true }, take: 2000 }),
+    prisma.jobCard.findMany({ where: { updatedAt: { gte: recent }, OR: [{ assignedTechnicianId: m.id }, { supervisorId: m.id }, { createdById: m.id }] }, select: { id: true }, take: 500 }),
+    prisma.vehicleService.findMany({ where: { createdAt: { gte: new Date(Date.now() - 180 * 86400000) }, OR: [{ assignedTechnicianId: m.id }, { supervisorId: m.id }, { createdById: m.id }] }, select: { id: true }, take: 500 }),
+    prisma.partRequestSlip.findMany({ where: { updatedAt: { gte: recent }, requestedById: m.id }, select: { id: true }, take: 500 }),
+    prisma.externalProcurementRequest.findMany({ where: { updatedAt: { gte: recent }, requestedById: m.id }, select: { id: true }, take: 500 }),
+  ]);
   const byType = new Map<string, string[]>();
   for (const r of mine) if (r.entityId) byType.set(r.entityType, [...(byType.get(r.entityType) ?? []), r.entityId]);
+  const add = (t: string, ids: { id: string }[]) => { if (ids.length) byType.set(t, [...new Set([...(byType.get(t) ?? []), ...ids.map((x) => x.id)])]); };
+  add('JobCard', jcs); add('VehicleService', svs); add('PartRequestSlip', prss); add('ExternalProcurementRequest', eprs);
+  // Finance hears about every payment, refund, customer notification and
+  // outside purchase — so they know when money is expected or moves.
+  const financeWatch = m.roleSlugs.includes('finance-officer') ? [{ action: { contains: 'payment' } }, { action: { contains: 'refund' } }, { action: { contains: 'customer_notified' } }, { entityType: 'ExternalProcurementRequest' }] : [];
   const involved = [...byType.entries()].map(([entityType, ids]) => ({ entityType, entityId: { in: ids } }));
   const where = {
     createdAt: { gte: since },
@@ -52,9 +67,9 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
     // Not the low-level data journal, and not failed API attempts.
     NOT: [{ entityType: { startsWith: 'db:' } }, { action: { endsWith: '.failed' } }],
     OR: [{ userId: null }, { userId: { not: m.id } }],
-    ...(scope === 'ALL' ? {} : { AND: [{ OR: [...(scope.length ? [{ entityType: { in: scope } }] : []), ...involved] }] }),
+    ...(scope === 'ALL' ? {} : { AND: [{ OR: [...(scope.length ? [{ entityType: { in: scope } }] : []), ...involved, ...financeWatch] }] }),
   };
-  if (scope !== 'ALL' && scope.length === 0 && involved.length === 0) return [];
+  if (scope !== 'ALL' && scope.length === 0 && involved.length === 0 && financeWatch.length === 0) return [];
   const rows = await prisma.auditLog.findMany({ where, orderBy: { createdAt: 'desc' }, take: Math.min(opts.take ?? 150, 1000), select: { id: true, action: true, entityType: true, entityId: true, metadata: true, createdAt: true, userId: true } });
   const keys = rows.map((r: { id: string }) => `audit:${r.id}`);
   const [reads, actors] = await Promise.all([

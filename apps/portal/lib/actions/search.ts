@@ -39,7 +39,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     ...MORE_PAGES.filter((x) => x.label.toLowerCase().includes(lower)),
   ].slice(0, 6);
   const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
-  const [jcs, svs, vehicles, customers, parts, prs, eprs, grns, warranties, claims, visits, passes, tests, incidents, deliveries, contractors, appts, broadcasts, staff] = await Promise.all([
+  const [jcs, svs, vehicles, customers, parts, prs, eprs, grns, warranties, claims, visits, passes, tests, incidents, deliveries, contractors, appts, broadcasts, exits, refunds, policies, providers, rooms, branches, departments, staff] = await Promise.all([
     safe(prisma.jobCard.findMany({ where: { OR: [m('jobNumber'), { customer: m('fullName') }, { vehicle: m('plateNumber') }] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, jobNumber: true, status: true, customer: { select: { fullName: true } } } })),
     safe(prisma.vehicleService.findMany({ where: { OR: [m('serviceNumber'), { customer: m('fullName') }, { vehicle: m('plateNumber') }] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, serviceNumber: true, status: true, customer: { select: { fullName: true } } } })),
     safe(prisma.customerVehicle.findMany({ where: { OR: [m('make'), m('model'), m('plateNumber'), m('chassisNumber')] }, take, select: { id: true, make: true, model: true, plateNumber: true } })),
@@ -58,6 +58,13 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     safe(prisma.contractorPass.findMany({ where: { OR: [m('passNumber'), m('company')] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, passNumber: true, company: true } })),
     safe(prisma.appointment.findMany({ where: { OR: [m('appointmentNumber'), m('title')] }, take, orderBy: { startsAt: 'desc' }, select: { id: true, appointmentNumber: true, title: true } })),
     safe(prisma.broadcast.findMany({ where: { OR: [m('broadcastNumber'), m('title')] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, broadcastNumber: true, title: true } })),
+    safe(prisma.vehicleGateExit.findMany({ where: m('exitNumber'), take, orderBy: { createdAt: 'desc' }, select: { id: true, exitNumber: true } })),
+    safe(prisma.refund.findMany({ where: m('referenceNumber'), take, orderBy: { recordedAt: 'desc' }, select: { referenceNumber: true, jobCardId: true, vehicleServiceId: true } })),
+    safe(prisma.warrantyPolicy.findMany({ where: m('name'), take, select: { id: true, name: true } })),
+    safe(prisma.warrantyProvider.findMany({ where: m('name'), take, select: { id: true, name: true } })),
+    safe(prisma.meetingRoom.findMany({ where: m('name'), take, select: { id: true, name: true } })),
+    isAdmin ? safe(prisma.branch.findMany({ where: m('name'), take, select: { id: true, name: true } })) : Promise.resolve([]),
+    isAdmin ? safe(prisma.department.findMany({ where: m('name'), take, select: { id: true, name: true } })) : Promise.resolve([]),
     isAdmin ? safe(prisma.user.findMany({ where: { OR: [m('fullName'), m('email'), m('employeeId')] }, take, select: { id: true, fullName: true, email: true } })) : Promise.resolve([]),
   ]);
   const words = (s: string) => s.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
@@ -81,6 +88,13 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     { group: 'Contractors', hits: contractors.map((r) => ({ label: r.passNumber, sub: r.company, href: `/security/contractors/${r.id}` })) },
     { group: 'Appointments', hits: appts.map((r) => ({ label: r.appointmentNumber, sub: r.title, href: `/schedule/${r.id}` })) },
     { group: 'Broadcasts', hits: broadcasts.map((r) => ({ label: r.broadcastNumber, sub: r.title, href: `/notifications/broadcasts/${r.id}` })) },
+    { group: 'Vehicles leaving (VX)', hits: exits.map((r) => ({ label: r.exitNumber, href: `/security/vehicles/exits/${r.id}` })) },
+    { group: 'Refunds', hits: refunds.filter((r) => r.jobCardId || r.vehicleServiceId).map((r) => ({ label: r.referenceNumber, href: r.jobCardId ? `/workshop/job-cards/${r.jobCardId}` : `/workshop/vehicle-service/${r.vehicleServiceId}` })) },
+    { group: 'Warranty policies', hits: policies.map((r) => ({ label: r.name, href: `/warranty/policies/${r.id}` })) },
+    { group: 'Warranty providers', hits: providers.map((r) => ({ label: r.name, href: `/warranty/providers/${r.id}` })) },
+    { group: 'Meeting rooms', hits: rooms.map((r) => ({ label: r.name, href: '/schedule/rooms' })) },
+    { group: 'Branches', hits: (branches as { id: string; name: string }[]).map((r) => ({ label: r.name, href: `/branches/${r.id}` })) },
+    { group: 'Departments', hits: (departments as { id: string; name: string }[]).map((r) => ({ label: r.name, href: '/departments' })) },
     { group: 'Staff', hits: (staff as { id: string; fullName: string; email: string }[]).map((r) => ({ label: r.fullName, sub: r.email, href: '/users' })) },
   ];
   return groups.filter((g) => g.hits.length > 0);

@@ -3,6 +3,7 @@
 import { prisma } from '@ejo/database';
 import { getWarrantyDashboardItems } from './warranty';
 import { getSecurityDashboardItems } from './security';
+import { getWorkflowActionItems } from './workflow-actions';
 import { getSchedulingDashboardItems } from './scheduling';
 import { getWarrantyClaimDashboardItems } from './warranty-claims';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
@@ -10,7 +11,7 @@ import { writeAuditLog } from '@/lib/workshop-core';
 
 export type DashboardNotification = {
   id: string;
-  kind: 'PRICING_ALERT' | 'CANCELLATION_REQUEST' | 'CLOSE_REQUEST' | 'JOB_CARD_APPROVAL' | 'TECHNICIAN_ASSIGNMENT' | 'VEHICLE_SERVICE_APPROVAL' | 'WARRANTY' | 'SECURITY' | 'SCHEDULING';
+  kind: 'PRICING_ALERT' | 'CANCELLATION_REQUEST' | 'CLOSE_REQUEST' | 'JOB_CARD_APPROVAL' | 'TECHNICIAN_ASSIGNMENT' | 'VEHICLE_SERVICE_APPROVAL' | 'WARRANTY' | 'SECURITY' | 'SCHEDULING' | 'WORKFLOW';
   title: string;
   detail: string;
   url: string;
@@ -50,6 +51,7 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   const claimsP = getWarrantyClaimDashboardItems().catch(() => []);
   const securityP = getSecurityDashboardItems().catch(() => []);
   const schedulingP = getSchedulingDashboardItems().catch(() => []);
+  const workflowP = getWorkflowActionItems().catch(() => []);
   const isMasterAdmin = await currentUserIsMasterAdmin();
   const notifications: DashboardNotification[] = [];
 
@@ -166,7 +168,8 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
       select: { id: true, jobNumber: true, createdAt: true },
     }),
     prisma.jobCard.findMany({
-      where: { assignedTechnicianId: user.id, technicianAcceptanceStatus: 'PENDING' },
+      // Not once the work is already done — nothing left to accept.
+      where: { assignedTechnicianId: user.id, technicianAcceptanceStatus: 'PENDING', status: { notIn: ['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED', 'CHECKED_OUT', 'CANCELLED'] } },
       orderBy: { createdAt: 'desc' },
       take: 10,
       select: { id: true, jobNumber: true, createdAt: true },
@@ -178,7 +181,7 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
       select: { id: true, serviceNumber: true, createdAt: true },
     }),
     prisma.vehicleService.findMany({
-      where: { assignedTechnicianId: user.id, technicianAcceptanceStatus: 'PENDING', escalatedToJobCardId: null },
+      where: { assignedTechnicianId: user.id, technicianAcceptanceStatus: 'PENDING', escalatedToJobCardId: null, status: { notIn: ['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED', 'COLLECTED', 'CANCELLED', 'ESCALATED'] } },
       orderBy: { createdAt: 'desc' },
       take: 10,
       select: { id: true, serviceNumber: true, createdAt: true },
@@ -240,6 +243,7 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   }
 
   // Scheduling: today's appointments (host or participant) still to come.
+  for (const w of await workflowP) notifications.push({ ...w, kind: 'WORKFLOW' });
   for (const item of schedulingItems) {
     notifications.push({ id: item.id, kind: 'SCHEDULING', title: item.title, detail: item.detail, url: item.url, createdAt: item.createdAt });
   }
