@@ -3,6 +3,7 @@ import { PrintMenu } from '@/components/print/PrintMenu';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { IdempotencyKey } from '@/components/IdempotencyKey';
 
 type RefundRow = {
   id: string;
@@ -94,6 +95,7 @@ export function RefundsPanel({
 
       {remaining > 0 && canRefundNow && canRecord ? (
         <form action={recordRefundFormAction} className="mt-4 space-y-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4">
+                  <IdempotencyKey />
           <FormPendingOverlay />
           {isJobCard ? <input type="hidden" name="jobCardId" value={target.jobCardId} /> : <input type="hidden" name="vehicleServiceId" value={target.vehicleServiceId} />}
           <p className="text-xs text-[var(--ejo-text-muted)]">
