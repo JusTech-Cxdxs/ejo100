@@ -18,6 +18,8 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { SerialReleaseSelector } from '@/components/SerialReleaseSelector';
+import { SearchableSelect } from '@/components/SearchableSelect';
+import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_HOD_APPROVAL: 'Awaiting HOD approval',
@@ -52,6 +54,8 @@ export default async function PartRequestSlipDetailPage({
   const slip = await getPartRequestSlip(id);
   const warranties = slip ? await listWarrantiesFor({ slipId: id }) : [];
   if (!slip) notFound();
+  // Who usually collects: the job's assigned technician.
+  const receiver = (slip.jobCard?.assignedTechnician ?? slip.vehicleService?.assignedTechnician) ?? null;
 
   const [isMasterAdmin, viewerId, eligibleManagers, eligibleStoreManagers, eligibleStoreOfficers] = await Promise.all([
     currentUserIsMasterAdmin(),
@@ -343,13 +347,16 @@ export default async function PartRequestSlipDetailPage({
                 {serializedLines.map((line: (typeof slip.lines)[number]) => (
                   <input key={line.id} type="hidden" name="serializedLineId" value={line.id} />
                 ))}
-                <div>
-                  <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Received By (name)</label>
-                  <input
-                    name="receivedByName"
-                    placeholder="e.g. the technician, an intern, or whoever is physically collecting this"
-                    className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
-                  />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Received by — staff</label>
+                    <SearchableSelect name="receivedByUserId" search={searchStaffOptions} loadDefaultOptions={loadStaffOptions} defaultOptionsLabel="Staff" placeholder="Search staff by name or employee ID…" emptyMessage="No active staff match." minQueryLength={1} defaultValue={receiver?.id} defaultLabel={receiver?.fullName} />
+                    <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">{receiver ? 'Pre-filled with the assigned technician — change it if someone else collects.' : 'Choose who is collecting the parts.'}</p>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Not on staff? Type their name instead</label>
+                    <input name="receivedByName" placeholder="e.g. an intern or a driver" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                  </div>
                 </div>
                 {serializedLines.map((line: (typeof slip.lines)[number]) => (
                   <div key={line.id}>
