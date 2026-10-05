@@ -8,7 +8,6 @@ import { Topbar } from '@/components/Topbar';
 import { Marquee } from '@/components/Marquee';
 import { NavigationLoadingProvider } from '@/components/NavigationLoadingProvider';
 import { NotificationProvider } from '@/components/NotificationProvider';
-import { getNotificationSummary } from '@/lib/actions/notifications';
 
 /**
  * Fetches the logged-in user's real name/role server-side (via Prisma
@@ -43,12 +42,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   });
 
 
-  // Start fetching notifications NOW, alongside the page — not awaited, so the
-  // page never waits; the result is handed to the browser as soon as it is ready.
-  const initialNotifications = getNotificationSummary().catch(() => null);
-
   return (
-    <NotificationProvider initial={initialNotifications}>
+    <NotificationProvider userId={session?.user?.id ?? null}>
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
