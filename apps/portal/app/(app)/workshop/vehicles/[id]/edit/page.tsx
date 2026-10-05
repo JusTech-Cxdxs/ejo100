@@ -113,6 +113,12 @@ export default async function VehiclePage({
   });
   const isEditing = edit === 'true';
 
+  // Reminders belong to a service cycle (the due point they were sent for):
+  // show the current cycle on its own, earlier cycles tucked away.
+  const cycleKey = (r: (typeof reminderHistory)[number]) => `${r.estimatedDueOdometer ?? ''}|${r.estimatedDueDate ? new Date(r.estimatedDueDate).toISOString().slice(0, 10) : ''}`;
+  const latestKey = reminderHistory.length ? cycleKey(reminderHistory[0]!) : '';
+  const currentCycle = reminderHistory.filter((r: (typeof reminderHistory)[number]) => cycleKey(r) === latestKey);
+  const earlierCycles = reminderHistory.filter((r: (typeof reminderHistory)[number]) => cycleKey(r) !== latestKey);
   return (
     <div className="p-8">
       <LoadingLink href="/workshop/vehicles" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
@@ -647,7 +653,9 @@ export default async function VehiclePage({
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:col-span-2">
             <h3 className="text-xs font-semibold text-[var(--ejo-text-muted)]">REMINDER HISTORY</h3>
             {reminderHistory.length > 0 ? (
-              <table className="mt-4 w-full text-sm">
+              <>
+                <p className="mt-3 text-xs font-medium text-[var(--ejo-text)]">This service cycle{currentCycle.length && (currentCycle[0]!.estimatedDueOdometer || currentCycle[0]!.estimatedDueDate) ? ` — due ${currentCycle[0]!.estimatedDueOdometer ? `${currentCycle[0]!.estimatedDueOdometer.toLocaleString('en-NG')} km` : ''}${currentCycle[0]!.estimatedDueOdometer && currentCycle[0]!.estimatedDueDate ? ' / ' : ''}${currentCycle[0]!.estimatedDueDate ? formatDateOnly(currentCycle[0]!.estimatedDueDate) : ''}` : ''}</p>
+              <table className="mt-2 w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
                     <th className="pb-2">Sent</th>
@@ -658,7 +666,7 @@ export default async function VehiclePage({
                   </tr>
                 </thead>
                 <tbody>
-                  {reminderHistory.map((r: (typeof reminderHistory)[number]) => (
+                  {currentCycle.map((r: (typeof reminderHistory)[number]) => (
                     <tr key={r.id} className="border-b border-[var(--ejo-border)] last:border-0">
                       <td className="py-2 text-[var(--ejo-text)]">{formatDateTime(r.sentAt)}</td>
                       <td className="py-2 text-[var(--ejo-text)]">
@@ -677,6 +685,42 @@ export default async function VehiclePage({
                   ))}
                 </tbody>
               </table>
+                {earlierCycles.length ? (
+                  <details className="mt-3">
+                    <summary className="cursor-pointer text-xs font-medium text-[var(--ejo-primary)]">Earlier service cycles ({earlierCycles.length} {earlierCycles.length === 1 ? 'reminder' : 'reminders'})</summary>
+              <table className="mt-2 w-full text-sm opacity-80">
+                <thead>
+                  <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
+                    <th className="pb-2">Sent</th>
+                    <th className="pb-2">Reminder</th>
+                    <th className="pb-2">Sent by</th>
+                    <th className="pb-2">Estimated Due</th>
+                    <th className="pb-2">Odometer at Send</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {earlierCycles.map((r: (typeof reminderHistory)[number]) => (
+                    <tr key={r.id} className="border-b border-[var(--ejo-border)] last:border-0">
+                      <td className="py-2 text-[var(--ejo-text)]">{formatDateTime(r.sentAt)}</td>
+                      <td className="py-2 text-[var(--ejo-text)]">
+                        {REMINDER_STAGE_LABEL[r.reminderNumber] ?? `Stage ${r.reminderNumber}`}
+                      </td>
+                      <td className="py-2 text-[var(--ejo-text-muted)]">
+                        {reminderSender(r.sentAt, r.reminderNumber, auditTrail) ?? (r.trigger === 'MANUAL' ? 'Not recorded (sent before sender tracking)' : 'System (automatic, before reminders became manual)')}
+                      </td>
+                      <td className="py-2 text-[var(--ejo-text-muted)]">
+                        {r.estimatedDueOdometer ? `${r.estimatedDueOdometer.toLocaleString('en-NG')} km` : null}
+                        {r.estimatedDueOdometer && r.estimatedDueDate ? ' / ' : null}
+                        {r.estimatedDueDate ? formatDateOnly(r.estimatedDueDate) : null}
+                      </td>
+                      <td className="py-2 text-[var(--ejo-text-muted)]">{r.recordedOdometerAtSend ? `${r.recordedOdometerAtSend.toLocaleString('en-NG')} km` : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+                  </details>
+                ) : null}
+              </>
             ) : (
               <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">No reminders have been sent for this vehicle yet.</p>
             )}
