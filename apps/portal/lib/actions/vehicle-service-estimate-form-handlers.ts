@@ -1,5 +1,7 @@
 'use server';
 
+import { friendlyError } from '@/lib/errors';
+
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
@@ -36,7 +38,7 @@ export async function createServiceEstimateFormAction(formData: FormData) {
   try {
     await createServiceEstimate(vehicleServiceId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not start this estimate.';
+    const message = friendlyError(err, 'Could not start this estimate.', 'vehicle-service-estimate-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
@@ -48,7 +50,7 @@ export async function cancelServiceEstimateFormAction(formData: FormData) {
   try {
     await cancelServiceEstimate(vehicleServiceId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not cancel this estimate.';
+    const message = friendlyError(err, 'Could not cancel this estimate.', 'vehicle-service-estimate-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
@@ -71,7 +73,7 @@ export async function addServiceEstimateLineItemFormAction(formData: FormData) {
       unitOfMeasure: str(formData, 'unitOfMeasure') || undefined,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not add this line item.';
+    const message = friendlyError(err, 'Could not add this line item.', 'vehicle-service-estimate-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
@@ -88,7 +90,7 @@ export async function matchServiceEstimateStorePartLineFormAction(formData: Form
     }
     await matchServiceEstimateStorePartLine(lineItemId, partId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not match this line.';
+    const message = friendlyError(err, 'Could not match this line.', 'vehicle-service-estimate-form-handlers');
     redirect(`/inventory/service-estimate-matching/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/inventory/estimate-matching');
@@ -108,7 +110,7 @@ export async function removeServiceEstimateLineItemFormAction(formData: FormData
   try {
     await removeServiceEstimateLineItem(lineItemId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not remove this line item.';
+    const message = friendlyError(err, 'Could not remove this line item.', 'vehicle-service-estimate-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
@@ -125,7 +127,7 @@ export async function updateServiceEstimateLineItemFormAction(formData: FormData
       unitOfMeasure: str(formData, 'unitOfMeasure') || undefined,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update this line item.';
+    const message = friendlyError(err, 'Could not update this line item.', 'vehicle-service-estimate-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
@@ -143,7 +145,7 @@ export async function submitServiceEstimateFormAction(formData: FormData) {
   try {
     await submitServiceEstimate(estimateId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not submit this estimate.';
+    const message = friendlyError(err, 'Could not submit this estimate.', 'vehicle-service-estimate-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
@@ -156,7 +158,7 @@ export async function approveServiceEstimateFormAction(formData: FormData) {
   try {
     await approveServiceEstimate(estimateId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve this estimate.';
+    const message = friendlyError(err, 'Could not approve this estimate.', 'vehicle-service-estimate-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
@@ -169,7 +171,7 @@ export async function approveServiceEstimateAsManagerFormAction(formData: FormDa
   try {
     await approveServiceEstimateAsManager(estimateId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve estimate as manager.';
+    const message = friendlyError(err, 'Could not approve estimate as manager.', 'vehicle-service-estimate-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
@@ -182,7 +184,7 @@ export async function notifyCustomerOfApprovedServiceEstimateFormAction(formData
   try {
     await notifyCustomerOfApprovedServiceEstimate(estimateId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not notify the customer.';
+    const message = friendlyError(err, 'Could not notify the customer.', 'vehicle-service-estimate-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
@@ -194,7 +196,7 @@ export async function notifySupervisorAboutServiceEstimateFormAction(formData: F
   try {
     await notifySupervisorAboutServiceEstimate(vehicleServiceId, str(formData, 'note') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not notify supervisor.';
+    const message = friendlyError(err, 'Could not notify supervisor.', 'vehicle-service-estimate-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
@@ -206,7 +208,7 @@ export async function notifyTechnicianAboutServiceEstimateFormAction(formData: F
   try {
     await notifyTechnicianAboutServiceEstimate(vehicleServiceId, str(formData, 'note') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not notify technician.';
+    const message = friendlyError(err, 'Could not notify technician.', 'vehicle-service-estimate-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
@@ -218,7 +220,7 @@ export async function requestServiceEstimateStoreMatchingFormAction(formData: Fo
   try {
     await requestServiceEstimateStoreMatching(vehicleServiceId, str(formData, 'note') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not request Store matching.';
+    const message = friendlyError(err, 'Could not request Store matching.', 'vehicle-service-estimate-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);

@@ -1,5 +1,7 @@
 'use server';
 
+import { friendlyError } from '@/lib/errors';
+
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { recordServicePayment } from './vehicle-service-payment';
@@ -26,7 +28,7 @@ export async function recordServicePaymentFormAction(formData: FormData) {
       str(formData, 'notes') || undefined,
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not record payment.';
+    const message = friendlyError(err, 'Could not record payment.', 'vehicle-service-payment-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);

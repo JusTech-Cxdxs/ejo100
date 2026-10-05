@@ -1,5 +1,7 @@
 'use server';
 
+import { friendlyError } from '@/lib/errors';
+
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createAnnouncement, deactivateAnnouncement } from './dashboard';
@@ -15,7 +17,7 @@ export async function createAnnouncementFormAction(formData: FormData) {
   try {
     await createAnnouncement(message, expiresAtRaw ? new Date(expiresAtRaw) : null);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not post this announcement.';
+    const message = friendlyError(err, 'Could not post this announcement.', 'dashboard-form-handlers');
     redirect(`/dashboard?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/dashboard');
@@ -27,7 +29,7 @@ export async function deactivateAnnouncementFormAction(formData: FormData) {
   try {
     await deactivateAnnouncement(announcementId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not remove this announcement.';
+    const message = friendlyError(err, 'Could not remove this announcement.', 'dashboard-form-handlers');
     redirect(`/dashboard?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/dashboard');

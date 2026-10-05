@@ -1,5 +1,7 @@
 'use server';
 
+
+import { friendlyError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
@@ -67,7 +69,7 @@ function providerInput(formData: FormData): WarrantyProviderInput {
   };
 }
 function fail(path: string, err: unknown, fallback: string): never {
-  const message = err instanceof Error ? err.message : fallback;
+  const message = friendlyError(err, fallback, 'warranty-form-handlers');
   redirect(`${path}${path.includes('?') ? '&' : '?'}error=${encodeURIComponent(message)}`);
 }
 

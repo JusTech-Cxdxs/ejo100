@@ -1,5 +1,7 @@
 'use server';
 
+import { friendlyError } from '@/lib/errors';
+
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { updateBranch } from './branches';
@@ -31,7 +33,7 @@ export async function updateBranchFormAction(formData: FormData) {
       bankAccountNumber: String(formData.get('bankAccountNumber') ?? ''),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update branch details.';
+    const message = friendlyError(err, 'Could not update branch details.', 'branches-form-handlers');
     redirect(`/branches/${branchId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/branches/${branchId}`);

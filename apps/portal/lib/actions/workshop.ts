@@ -3137,6 +3137,11 @@ export async function recordPayment(
     throw new WorkshopActionError('Payments can be recorded from the moment the customer is notified until the vehicle is ready for collection.');
   }
   const user = await requireEligibleFinanceOfficer(jobCard.branchId);
+  // Duplicate guard: the same amount, method and record by the same person
+  // within 20 seconds is a double click or a resend after a dropped network.
+  if (await prisma.payment.findFirst({ where: { jobCardId, amount, method, recordedById: user.id, recordedAt: { gte: new Date(Date.now() - 20000) } }, select: { id: true } })) {
+    throw new WorkshopActionError('This payment was just recorded — check the payments list before recording it again.');
+  }
 
   const total = customerTotal(jobCard.estimate?.lineItems ?? []);
   const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;

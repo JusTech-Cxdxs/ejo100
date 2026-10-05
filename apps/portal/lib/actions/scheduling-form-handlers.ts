@@ -1,12 +1,14 @@
 'use server';
 
+
+import { friendlyError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createAppointment, updateAppointment, cancelAppointment, setAppointmentOutcome, saveRoom, setRoomActive, addDelegate, removeDelegate, addVisitorGroup, updateVisitorGroup, removeVisitorGroup, type AppointmentInput } from './scheduling';
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 function back(path: string, err: unknown, fallback: string): never {
-  redirect(`${path}${path.includes('?') ? '&' : '?'}error=${encodeURIComponent(err instanceof Error ? err.message : fallback)}`);
+  redirect(`${path}${path.includes('?') ? '&' : '?'}error=${encodeURIComponent(friendlyError(err, fallback, 'scheduling-form-handlers'))}`);
 }
 function ok(path: string, status: string): never {
   revalidatePath('/schedule');

@@ -1,5 +1,7 @@
 'use server';
 
+import { friendlyError } from '@/lib/errors';
+
 /**
  * Thin <form action={...}> wrappers around lib/actions/sourcing.ts — same
  * pattern as store-form-handlers.ts and workshop-form-handlers.ts.
@@ -41,7 +43,7 @@ export async function requestPartRequestSlipFormAction(formData: FormData) {
   try {
     await requestPartRequestSlip(jobCardId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not raise the parts request.';
+    const message = friendlyError(err, 'Could not raise the parts request.', 'sourcing-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}/request-parts?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -58,7 +60,7 @@ export async function requestServiceEstimatePartRequestSlipFormAction(formData: 
   try {
     await requestServiceEstimatePartRequestSlip(serviceEstimateId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not raise the parts request.';
+    const message = friendlyError(err, 'Could not raise the parts request.', 'sourcing-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}/request-parts?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
@@ -73,7 +75,7 @@ export async function approvePartRequestSlipByHodFormAction(formData: FormData) 
   try {
     await approvePartRequestSlipByHod(slipId, str(formData, 'notes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve this request.';
+    const message = friendlyError(err, 'Could not approve this request.', 'sourcing-form-handlers');
     redirect(`/workshop/parts-requests/${slipId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/parts-requests/${slipId}`);
@@ -90,7 +92,7 @@ export async function approvePartRequestSlipByStoreFormAction(formData: FormData
   try {
     await approvePartRequestSlipByStore(slipId, str(formData, 'notes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve this request.';
+    const message = friendlyError(err, 'Could not approve this request.', 'sourcing-form-handlers');
     redirect(`/workshop/parts-requests/${slipId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/parts-requests/${slipId}`);
@@ -117,7 +119,7 @@ export async function releasePartRequestSlipFormAction(formData: FormData) {
       Object.keys(lineSerials).length > 0 ? lineSerials : undefined,
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not release this request.';
+    const message = friendlyError(err, 'Could not release this request.', 'sourcing-form-handlers');
     redirect(`/workshop/parts-requests/${slipId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/parts-requests/${slipId}`);
@@ -135,7 +137,7 @@ export async function rejectPartRequestSlipFormAction(formData: FormData) {
   try {
     await rejectPartRequestSlip(slipId, str(formData, 'reason'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not reject this request.';
+    const message = friendlyError(err, 'Could not reject this request.', 'sourcing-form-handlers');
     redirect(`/workshop/parts-requests/${slipId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/parts-requests/${slipId}`);
@@ -150,7 +152,7 @@ export async function requestExternalProcurementFormAction(formData: FormData) {
   try {
     await requestExternalProcurementBatch(jobCardId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not raise the procurement request.';
+    const message = friendlyError(err, 'Could not raise the procurement request.', 'sourcing-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}/request-procurement?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -164,7 +166,7 @@ export async function approveExternalProcurementRequestFormAction(formData: Form
   try {
     await approveExternalProcurementRequest(requestId, str(formData, 'notes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve this request.';
+    const message = friendlyError(err, 'Could not approve this request.', 'sourcing-form-handlers');
     redirect(`/workshop/external-procurement/${requestId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/external-procurement/${requestId}`);
@@ -183,7 +185,7 @@ export async function disburseExternalProcurementRequestFormAction(formData: For
       disbursementNotes: str(formData, 'disbursementNotes') || undefined,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not disburse this request.';
+    const message = friendlyError(err, 'Could not disburse this request.', 'sourcing-form-handlers');
     redirect(`/workshop/external-procurement/${requestId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/external-procurement/${requestId}`);
@@ -197,7 +199,7 @@ export async function addExternalProcurementSupplementaryLineFormAction(formData
   try {
     await addExternalProcurementSupplementaryLine(requestId, str(formData, 'description'), num(formData, 'amount') ?? 0);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not add this line.';
+    const message = friendlyError(err, 'Could not add this line.', 'sourcing-form-handlers');
     redirect(`/workshop/external-procurement/${requestId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/external-procurement/${requestId}`);
@@ -210,7 +212,7 @@ export async function removeExternalProcurementSupplementaryLineFormAction(formD
   try {
     await removeExternalProcurementSupplementaryLine(lineId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not remove this line.';
+    const message = friendlyError(err, 'Could not remove this line.', 'sourcing-form-handlers');
     redirect(`/workshop/external-procurement/${requestId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/external-procurement/${requestId}`);
@@ -223,7 +225,7 @@ export async function editExternalProcurementSupplementaryLineFormAction(formDat
   try {
     await editExternalProcurementSupplementaryLine(lineId, str(formData, 'description'), num(formData, 'amount') ?? 0);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update this line.';
+    const message = friendlyError(err, 'Could not update this line.', 'sourcing-form-handlers');
     redirect(`/workshop/external-procurement/${requestId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/external-procurement/${requestId}`);
@@ -236,7 +238,7 @@ export async function sendExternalProcurementToManagerFormAction(formData: FormD
   try {
     await sendExternalProcurementToManager(requestId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not send this request to the Manager.';
+    const message = friendlyError(err, 'Could not send this request to the Manager.', 'sourcing-form-handlers');
     redirect(`/workshop/external-procurement/${requestId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/external-procurement/${requestId}`);
@@ -251,7 +253,7 @@ export async function rejectExternalProcurementRequestFormAction(formData: FormD
   try {
     await rejectExternalProcurementRequest(requestId, str(formData, 'reason'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not reject this request.';
+    const message = friendlyError(err, 'Could not reject this request.', 'sourcing-form-handlers');
     redirect(`/workshop/external-procurement/${requestId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/external-procurement/${requestId}`);

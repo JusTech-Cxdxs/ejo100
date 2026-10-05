@@ -183,6 +183,11 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
   const t = await loadTarget(input.target);
   if (!t) throw new RefundActionError('Record not found.');
   const user = await requireEligibleFinanceOfficer(t.branchId);
+  // Duplicate guard: the same amount, method and record by the same person
+  // within 20 seconds is a double click or a resend after a dropped network.
+  if (await prisma.refund.findFirst({ where: { amount: input.amount, recordedById: user.id, recordedAt: { gte: new Date(Date.now() - 20000) }, ...(t.kind === 'JOB_CARD' ? { jobCardId: t.id } : { vehicleServiceId: t.id }) }, select: { id: true } })) {
+    throw new RefundActionError('This refund was just recorded — check the refunds list before recording it again.');
+  }
 
   // An active Job Card can refund an OVERPAYMENT only (the customer paid
   // more than they now owe — e.g. lines moved to warranty after a deposit).

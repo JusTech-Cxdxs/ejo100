@@ -1,5 +1,7 @@
 'use server';
 
+import { friendlyError } from '@/lib/errors';
+
 /**
  * Thin <form action={...}> wrappers around lib/actions/workshop.ts.
  * Deliberately using native React 19 form actions (FormData in, redirect
@@ -89,7 +91,7 @@ export async function createCustomerFormAction(formData: FormData) {
       query = 'status=customer_created_no_email';
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not add customer.';
+    const message = friendlyError(err, 'Could not add customer.', 'workshop-form-handlers');
     redirect(`/workshop/customers?error=${encodeURIComponent(message)}`);
   }
   redirect(`/workshop/customers?${query}`);
@@ -111,7 +113,7 @@ export async function createVehicleFormAction(formData: FormData) {
       mileage: num(formData, 'mileage'),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not register vehicle.';
+    const message = friendlyError(err, 'Could not register vehicle.', 'workshop-form-handlers');
     redirect(`/workshop/vehicles?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/vehicles');
@@ -137,7 +139,7 @@ export async function updateVehicleFormAction(formData: FormData) {
       serviceIntervalDays: num(formData, 'serviceIntervalDays'),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update this vehicle.';
+    const message = friendlyError(err, 'Could not update this vehicle.', 'workshop-form-handlers');
     redirect(`/workshop/vehicles/${id}/edit?edit=true&error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/vehicles');
@@ -157,7 +159,7 @@ export async function createJobCardFormAction(formData: FormData) {
     });
     jobCardId = jobCard.id;
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not open Job Card.';
+    const message = friendlyError(err, 'Could not open Job Card.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/job-cards');
@@ -170,7 +172,7 @@ export async function updateJobCardStatusFormAction(formData: FormData) {
     const status = str(formData, 'status') as JobCardStatus;
     await updateJobCardStatus(id, status, str(formData, 'collectedByName'), str(formData, 'reworkReason'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update status.';
+    const message = friendlyError(err, 'Could not update status.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${id}`);
@@ -188,7 +190,7 @@ export async function approveJobCardFormAction(formData: FormData) {
   try {
     await approveJobCard(id, str(formData, 'notes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve Job Card.';
+    const message = friendlyError(err, 'Could not approve Job Card.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${id}`);
@@ -199,7 +201,7 @@ export async function rejectJobCardFormAction(formData: FormData) {
   try {
     await rejectJobCard(id, str(formData, 'reason'), str(formData, 'notes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not reject Job Card.';
+    const message = friendlyError(err, 'Could not reject Job Card.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${id}`);
@@ -210,7 +212,7 @@ export async function acceptTechnicianAssignmentFormAction(formData: FormData) {
   try {
     await acceptTechnicianAssignment(id);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not accept assignment.';
+    const message = friendlyError(err, 'Could not accept assignment.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${id}`);
@@ -221,7 +223,7 @@ export async function rejectTechnicianAssignmentFormAction(formData: FormData) {
   try {
     await rejectTechnicianAssignment(id, str(formData, 'reason'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not reject assignment.';
+    const message = friendlyError(err, 'Could not reject assignment.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${id}`);
@@ -232,7 +234,7 @@ export async function reassignSupervisorFormAction(formData: FormData) {
   try {
     await reassignSupervisor(id, str(formData, 'supervisorId'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not reassign supervisor.';
+    const message = friendlyError(err, 'Could not reassign supervisor.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${id}`);
@@ -254,7 +256,7 @@ export async function addEstimateLineItemFormAction(formData: FormData) {
       unitOfMeasure: str(formData, 'unitOfMeasure') || undefined,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not add estimate line item.';
+    const message = friendlyError(err, 'Could not add estimate line item.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -270,7 +272,7 @@ export async function updateEstimateLineItemFormAction(formData: FormData) {
       unitOfMeasure: str(formData, 'unitOfMeasure') || undefined,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update estimate line item.';
+    const message = friendlyError(err, 'Could not update estimate line item.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -289,7 +291,7 @@ export async function deleteEstimateLineItemFormAction(formData: FormData) {
   try {
     await deleteEstimateLineItem(str(formData, 'lineItemId'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not remove estimate line item.';
+    const message = friendlyError(err, 'Could not remove estimate line item.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -300,7 +302,7 @@ export async function notifySupervisorAboutEstimateFormAction(formData: FormData
   try {
     await notifySupervisorAboutEstimate(jobCardId, str(formData, 'note') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not notify supervisor.';
+    const message = friendlyError(err, 'Could not notify supervisor.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -311,7 +313,7 @@ export async function notifyTechnicianAboutEstimateFormAction(formData: FormData
   try {
     await notifyTechnicianAboutEstimate(jobCardId, str(formData, 'note') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not notify technician.';
+    const message = friendlyError(err, 'Could not notify technician.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -322,7 +324,7 @@ export async function submitEstimateForValidationFormAction(formData: FormData) 
   try {
     await submitEstimateForValidation(jobCardId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not submit estimate.';
+    const message = friendlyError(err, 'Could not submit estimate.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -333,7 +335,7 @@ export async function approveEstimateFormAction(formData: FormData) {
   try {
     await approveEstimate(jobCardId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve estimate.';
+    const message = friendlyError(err, 'Could not approve estimate.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -344,7 +346,7 @@ export async function approveEstimateAsManagerFormAction(formData: FormData) {
   try {
     await approveEstimateAsManager(jobCardId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve estimate as manager.';
+    const message = friendlyError(err, 'Could not approve estimate as manager.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -355,7 +357,7 @@ export async function notifyCustomerOfApprovedEstimateFormAction(formData: FormD
   try {
     await notifyCustomerOfApprovedEstimate(jobCardId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not notify the customer.';
+    const message = friendlyError(err, 'Could not notify the customer.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -371,7 +373,7 @@ export async function recordPaymentFormAction(formData: FormData) {
       str(formData, 'notes') || undefined,
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not record payment.';
+    const message = friendlyError(err, 'Could not record payment.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -391,7 +393,7 @@ export async function deleteVehicleFormAction(formData: FormData) {
   try {
     await deleteVehicle(vehicleId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not delete vehicle.';
+    const message = friendlyError(err, 'Could not delete vehicle.', 'workshop-form-handlers');
     redirect(`/workshop/vehicles?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/vehicles');
@@ -408,7 +410,7 @@ export async function deleteJobCardFormAction(formData: FormData) {
   try {
     await deleteJobCard(jobCardId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not delete Job Card.';
+    const message = friendlyError(err, 'Could not delete Job Card.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/job-cards');
@@ -420,7 +422,7 @@ export async function requestJobCardCancellationFormAction(formData: FormData) {
   try {
     await requestJobCardCancellation(jobCardId, str(formData, 'reason'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not request cancellation.';
+    const message = friendlyError(err, 'Could not request cancellation.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -432,7 +434,7 @@ export async function approveCancellationRequestFormAction(formData: FormData) {
   try {
     await approveCancellationRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve cancellation.';
+    const message = friendlyError(err, 'Could not approve cancellation.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -444,7 +446,7 @@ export async function declineCancellationRequestFormAction(formData: FormData) {
   try {
     await declineCancellationRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not decline cancellation.';
+    const message = friendlyError(err, 'Could not decline cancellation.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -456,7 +458,7 @@ export async function requestJobCardCloseFormAction(formData: FormData) {
   try {
     await requestJobCardClose(jobCardId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not request close.';
+    const message = friendlyError(err, 'Could not request close.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -468,7 +470,7 @@ export async function approveCloseRequestFormAction(formData: FormData) {
   try {
     await approveCloseRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve close.';
+    const message = friendlyError(err, 'Could not approve close.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -480,7 +482,7 @@ export async function declineCloseRequestFormAction(formData: FormData) {
   try {
     await declineCloseRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not decline close.';
+    const message = friendlyError(err, 'Could not decline close.', 'workshop-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -492,7 +494,7 @@ export async function sendApprovalReminderFormAction(formData: FormData) {
   try {
     await sendApprovalReminder(jobCardId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not send reminder.';
+    const message = friendlyError(err, 'Could not send reminder.', 'workshop-form-handlers');
     redirect(`/workshop/custody?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/custody');
@@ -507,7 +509,7 @@ export async function runApprovalDeadlineChecksFormAction() {
     remindersSent = result.remindersSent;
     overdueCount = result.overdueCount;
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not run deadline checks.';
+    const message = friendlyError(err, 'Could not run deadline checks.', 'workshop-form-handlers');
     redirect(`/workshop/custody?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/custody');
@@ -519,7 +521,7 @@ export async function notifyOverdueCancelledVehicleFormAction(formData: FormData
   try {
     await notifyOverdueCancelledVehicle(jobCardId, str(formData, 'notes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not send collection notice.';
+    const message = friendlyError(err, 'Could not send collection notice.', 'workshop-form-handlers');
     redirect(`/workshop/custody?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/custody');
@@ -530,7 +532,7 @@ export async function sendReadyForCollectionReminderFormAction(formData: FormDat
   try {
     await sendReadyForCollectionReminder(jobCardId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not send reminder.';
+    const message = friendlyError(err, 'Could not send reminder.', 'workshop-form-handlers');
     redirect(`/workshop/custody?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/custody');

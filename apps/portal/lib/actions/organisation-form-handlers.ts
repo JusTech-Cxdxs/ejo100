@@ -1,5 +1,7 @@
 'use server';
 
+import { friendlyError } from '@/lib/errors';
+
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { updateOrganisation } from './organisation';
@@ -31,7 +33,7 @@ export async function updateOrganisationFormAction(formData: FormData) {
       rcNumber: str(formData, 'rcNumber'),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update organisation details.';
+    const message = friendlyError(err, 'Could not update organisation details.', 'organisation-form-handlers');
     redirect(`/organisation?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/organisation');

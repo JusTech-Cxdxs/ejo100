@@ -1,5 +1,7 @@
 'use server';
 
+
+import { friendlyError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
@@ -53,7 +55,7 @@ function readInput(formData: FormData): WarrantyClaimInput {
   };
 }
 function fail(path: string, err: unknown, fallback: string): never {
-  const message = err instanceof Error ? err.message : fallback;
+  const message = friendlyError(err, fallback, 'warranty-claims-form-handlers');
   redirect(`${path}${path.includes('?') ? '&' : '?'}error=${encodeURIComponent(message)}`);
 }
 function done(claimId: string, status: string): never {

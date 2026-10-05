@@ -1,5 +1,7 @@
 'use server';
 
+import { friendlyError } from '@/lib/errors';
+
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { recordRefund } from './refunds';
@@ -26,7 +28,7 @@ export async function recordRefundFormAction(formData: FormData) {
     });
     referenceNumber = result.referenceNumber;
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not record the refund.';
+    const message = friendlyError(err, 'Could not record the refund.', 'refunds-form-handlers');
     redirect(`${page}?error=${encodeURIComponent(message)}#refunds`);
   }
   revalidatePath(page);

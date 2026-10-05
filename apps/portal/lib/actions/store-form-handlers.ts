@@ -1,5 +1,7 @@
 'use server';
 
+import { friendlyError } from '@/lib/errors';
+
 /**
  * Thin <form action={...}> wrappers around lib/actions/store.ts — same
  * pattern as workshop-form-handlers.ts: native React 19 form actions,
@@ -47,7 +49,7 @@ export async function createPartFormAction(formData: FormData) {
       warrantyPolicyId: warrantyPolicyId || null,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not create part.';
+    const message = friendlyError(err, 'Could not create part.', 'store-form-handlers');
     redirect(`/inventory/parts?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/inventory/parts');
@@ -81,7 +83,7 @@ export async function recordGoodsReceiptFormAction(formData: FormData) {
       ],
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not record goods receipt.';
+    const message = friendlyError(err, 'Could not record goods receipt.', 'store-form-handlers');
     redirect(`/inventory/goods-receipts/new?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/inventory/goods-receipts');
@@ -114,7 +116,7 @@ export async function updatePartFormAction(formData: FormData) {
       safetyStock: num(formData, 'safetyStock'),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update this part.';
+    const message = friendlyError(err, 'Could not update this part.', 'store-form-handlers');
     redirect(`/inventory/parts/${id}/edit?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/inventory/parts/${id}`);
@@ -127,7 +129,7 @@ export async function setPartSellingPriceFormAction(formData: FormData) {
   try {
     await setPartSellingPrice(id, num(formData, 'sellingPrice') ?? 0);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not set the selling price.';
+    const message = friendlyError(err, 'Could not set the selling price.', 'store-form-handlers');
     redirect(`/inventory/parts/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/inventory/parts/${id}`);
@@ -140,7 +142,7 @@ export async function setPartTargetMarginFormAction(formData: FormData) {
     const pricingMethod = str(formData, 'pricingMethod') === 'MARKUP' ? 'MARKUP' : 'MARGIN';
     await setPartTargetMargin(id, num(formData, 'targetValue') ?? 0, pricingMethod);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not set the target.';
+    const message = friendlyError(err, 'Could not set the target.', 'store-form-handlers');
     redirect(`/inventory/parts/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/inventory/parts/${id}`);
@@ -153,7 +155,7 @@ export async function dismissPricingAlertFormAction(formData: FormData) {
   try {
     await dismissPricingAlert(alertId, str(formData, 'notes'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not dismiss this pricing alert.';
+    const message = friendlyError(err, 'Could not dismiss this pricing alert.', 'store-form-handlers');
     redirect(`/inventory/pricing?branchId=${branchId}&error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/inventory/pricing');
@@ -166,7 +168,7 @@ export async function syncPartPriceToTargetMarginFormAction(formData: FormData) 
   try {
     await syncPartPriceToTargetMargin(alertId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not sync the selling price.';
+    const message = friendlyError(err, 'Could not sync the selling price.', 'store-form-handlers');
     redirect(`/inventory/pricing?branchId=${branchId}&error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/inventory/pricing');
@@ -185,7 +187,7 @@ export async function createPartFitmentFormAction(formData: FormData) {
       yearTo: num(formData, 'yearTo'),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not add this fitment.';
+    const message = friendlyError(err, 'Could not add this fitment.', 'store-form-handlers');
     redirect(`/inventory/parts/${partId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/inventory/parts/${partId}`);
@@ -204,7 +206,7 @@ export async function updatePartFitmentFormAction(formData: FormData) {
       yearTo: num(formData, 'yearTo'),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update this fitment.';
+    const message = friendlyError(err, 'Could not update this fitment.', 'store-form-handlers');
     redirect(`/inventory/parts/${partId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/inventory/parts/${partId}`);
@@ -217,7 +219,7 @@ export async function deletePartFitmentFormAction(formData: FormData) {
   try {
     await deletePartFitment(fitmentId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not remove this fitment.';
+    const message = friendlyError(err, 'Could not remove this fitment.', 'store-form-handlers');
     redirect(`/inventory/parts/${partId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/inventory/parts/${partId}`);
@@ -229,7 +231,7 @@ export async function createPartCategoryFormAction(formData: FormData) {
   try {
     await createPartCategory(branchId, str(formData, 'name'), str(formData, 'code'), str(formData, 'description') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not create this Part Category.';
+    const message = friendlyError(err, 'Could not create this Part Category.', 'store-form-handlers');
     redirect(`/inventory/part-types?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/inventory/part-types');
@@ -241,7 +243,7 @@ export async function createPartTypeFormAction(formData: FormData) {
   try {
     await createPartType(branchId, str(formData, 'categoryId'), str(formData, 'name'), str(formData, 'description') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not create this Part Type.';
+    const message = friendlyError(err, 'Could not create this Part Type.', 'store-form-handlers');
     redirect(`/inventory/part-types?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/inventory/part-types');
@@ -258,7 +260,7 @@ export async function matchEstimateStorePartLineFormAction(formData: FormData) {
     }
     await matchEstimateStorePartLine(lineItemId, partId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not match this line.';
+    const message = friendlyError(err, 'Could not match this line.', 'store-form-handlers');
     redirect(`/inventory/estimate-matching/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/inventory/estimate-matching');
@@ -277,7 +279,7 @@ export async function requestStoreMatchingFormAction(formData: FormData) {
   try {
     await requestStoreMatching(jobCardId, str(formData, 'note') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not request Store matching.';
+    const message = friendlyError(err, 'Could not request Store matching.', 'store-form-handlers');
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
@@ -292,7 +294,7 @@ export async function updateGoodsReceiptFormAction(formData: FormData) {
       notes: str(formData, 'notes') || undefined,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update this Goods Receipt.';
+    const message = friendlyError(err, 'Could not update this Goods Receipt.', 'store-form-handlers');
     redirect(`/inventory/goods-receipts/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/inventory/goods-receipts/${id}`);
@@ -306,7 +308,7 @@ export async function updateGoodsReceiptLineCostFormAction(formData: FormData) {
   try {
     await updateGoodsReceiptLineCost(lineId, num(formData, 'unitCost') ?? 0);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update this cost.';
+    const message = friendlyError(err, 'Could not update this cost.', 'store-form-handlers');
     redirect(`/inventory/goods-receipts/${goodsReceiptId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/inventory/goods-receipts/${goodsReceiptId}`);
@@ -323,7 +325,7 @@ export async function setPartStockLevelsFormAction(formData: FormData) {
   try {
     await setPartStockLevels(partId, read('reorderPoint'), read('safetyStock'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update the stock levels.';
+    const message = friendlyError(err, 'Could not update the stock levels.', 'store-form-handlers');
     redirect(`${back}${back.includes('?') ? '&' : '?'}error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/inventory/parts/${partId}`);

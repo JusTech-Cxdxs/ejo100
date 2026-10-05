@@ -1,5 +1,7 @@
 'use server';
 
+import { friendlyError } from '@/lib/errors';
+
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { startVehicleInspection, skipVehicleInspection, cancelVehicleInspection, updateInspectionItems, completeVehicleInspection } from './vehicle-inspection';
@@ -15,7 +17,7 @@ export async function startVehicleInspectionFormAction(formData: FormData) {
   try {
     await startVehicleInspection(vehicleServiceId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not start this inspection.';
+    const message = friendlyError(err, 'Could not start this inspection.', 'vehicle-inspection-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}/inspection?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}/inspection`);
@@ -27,7 +29,7 @@ export async function skipVehicleInspectionFormAction(formData: FormData) {
   try {
     await skipVehicleInspection(vehicleServiceId, str(formData, 'reason') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not skip this inspection.';
+    const message = friendlyError(err, 'Could not skip this inspection.', 'vehicle-inspection-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}/inspection?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}/inspection`);
@@ -45,7 +47,7 @@ export async function cancelVehicleInspectionFormAction(formData: FormData) {
   try {
     await cancelVehicleInspection(vehicleServiceId, str(formData, 'reason') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not cancel this inspection.';
+    const message = friendlyError(err, 'Could not cancel this inspection.', 'vehicle-inspection-form-handlers');
     redirect(`${redirectTo}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}/inspection`);
@@ -72,7 +74,7 @@ export async function saveInspectionFormAction(formData: FormData) {
   try {
     await updateInspectionItems(inspectionId, items);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not save these changes.';
+    const message = friendlyError(err, 'Could not save these changes.', 'vehicle-inspection-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}/inspection?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}/inspection`);
@@ -85,7 +87,7 @@ export async function completeVehicleInspectionFormAction(formData: FormData) {
   try {
     await completeVehicleInspection(inspectionId, str(formData, 'notes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not complete this inspection.';
+    const message = friendlyError(err, 'Could not complete this inspection.', 'vehicle-inspection-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}/inspection?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}/inspection`);
@@ -106,7 +108,7 @@ export async function completeVehicleInspectionFromServicePageFormAction(formDat
   try {
     await completeVehicleInspection(inspectionId, str(formData, 'notes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not complete this inspection.';
+    const message = friendlyError(err, 'Could not complete this inspection.', 'vehicle-inspection-form-handlers');
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}/inspection`);

@@ -1,5 +1,7 @@
 'use server';
 
+import { friendlyError } from '@/lib/errors';
+
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
@@ -54,7 +56,7 @@ export async function createVehicleServiceFormAction(formData: FormData) {
     });
     serviceId = result.id;
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not open this Vehicle Service.';
+    const message = friendlyError(err, 'Could not open this Vehicle Service.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/vehicle-service');
@@ -66,7 +68,7 @@ export async function approveVehicleServiceFormAction(formData: FormData) {
   try {
     await approveVehicleService(id, str(formData, 'notes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve this Vehicle Service.';
+    const message = friendlyError(err, 'Could not approve this Vehicle Service.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${id}`);
@@ -77,7 +79,7 @@ export async function rejectVehicleServiceFormAction(formData: FormData) {
   try {
     await rejectVehicleService(id, str(formData, 'reason'), str(formData, 'notes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not reject this Vehicle Service.';
+    const message = friendlyError(err, 'Could not reject this Vehicle Service.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${id}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${id}`);
@@ -97,7 +99,7 @@ export async function acceptVehicleServiceTechnicianAssignmentFormAction(formDat
   try {
     await acceptVehicleServiceTechnicianAssignment(serviceId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not accept assignment.';
+    const message = friendlyError(err, 'Could not accept assignment.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
@@ -109,7 +111,7 @@ export async function rejectVehicleServiceTechnicianAssignmentFormAction(formDat
   try {
     await rejectVehicleServiceTechnicianAssignment(serviceId, str(formData, 'reason'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not reject assignment.';
+    const message = friendlyError(err, 'Could not reject assignment.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
@@ -121,7 +123,7 @@ export async function deleteVehicleServiceFormAction(formData: FormData) {
   try {
     await deleteVehicleService(serviceId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not delete this Vehicle Service.';
+    const message = friendlyError(err, 'Could not delete this Vehicle Service.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/vehicle-service');
@@ -138,7 +140,7 @@ export async function updateVehicleServiceStatusFormAction(formData: FormData) {
       collectedByName: str(formData, 'collectedByName') || undefined,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update this Vehicle Service.';
+    const message = friendlyError(err, 'Could not update this Vehicle Service.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
@@ -151,7 +153,7 @@ export async function requestVehicleServiceCloseFormAction(formData: FormData) {
   try {
     await requestVehicleServiceClose(serviceId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not request a close for this Vehicle Service.';
+    const message = friendlyError(err, 'Could not request a close for this Vehicle Service.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
@@ -164,7 +166,7 @@ export async function approveVehicleServiceCloseRequestFormAction(formData: Form
   try {
     await approveVehicleServiceCloseRequest(requestId, str(formData, 'decisionNotes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve this close request.';
+    const message = friendlyError(err, 'Could not approve this close request.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
@@ -177,7 +179,7 @@ export async function declineVehicleServiceCloseRequestFormAction(formData: Form
   try {
     await declineVehicleServiceCloseRequest(requestId, str(formData, 'decisionNotes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not decline this close request.';
+    const message = friendlyError(err, 'Could not decline this close request.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
@@ -192,7 +194,7 @@ export async function escalateVehicleServiceFormAction(formData: FormData) {
     const result = await escalateVehicleServiceToJobCard(serviceId, supervisorId, str(formData, 'additionalComplaint') || undefined);
     jobCardId = result.jobCardId;
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not escalate this Vehicle Service.';
+    const message = friendlyError(err, 'Could not escalate this Vehicle Service.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
@@ -204,7 +206,7 @@ export async function updatePrimaryServiceIntervalFormAction(formData: FormData)
   try {
     await updatePrimaryServiceInterval(organisationId, num(formData, 'primaryServiceIntervalKm'), num(formData, 'primaryServiceIntervalDays'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update the Primary Service interval.';
+    const message = friendlyError(err, 'Could not update the Primary Service interval.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/vehicle-service');
@@ -216,7 +218,7 @@ export async function attendToOverdueVehicleFormAction(formData: FormData) {
   try {
     await attendToOverdueVehicle(serviceId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not attend to this vehicle.';
+    const message = friendlyError(err, 'Could not attend to this vehicle.', 'vehicle-service-form-handlers');
     redirect(`${safeWorkshopPath(str(formData, 'returnTo'), '/workshop/vehicle-service-custody')}?error=${encodeURIComponent(message)}`);
   }
   const returnTo = safeWorkshopPath(str(formData, 'returnTo'), '/workshop/vehicle-service-custody');
@@ -230,7 +232,7 @@ export async function sendVehicleServiceCollectionReminderFormAction(formData: F
   try {
     await sendVehicleServiceCollectionReminder(serviceId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not send the collection reminder.';
+    const message = friendlyError(err, 'Could not send the collection reminder.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service-custody?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/vehicle-service-custody');
@@ -249,7 +251,7 @@ export async function sendManualServiceReminderFormAction(formData: FormData) {
   try {
     await sendManualServiceReminder(vehicleId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not send the reminder.';
+    const message = friendlyError(err, 'Could not send the reminder.', 'vehicle-service-form-handlers');
     redirect(`${returnTo}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(returnTo);
@@ -262,7 +264,7 @@ export async function runServiceRemindersNowFormAction() {
   try {
     result = await runServiceRemindersNow();
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not run reminders.';
+    const message = friendlyError(err, 'Could not run reminders.', 'vehicle-service-form-handlers');
     redirect(`/workshop/service-tracker?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/service-tracker');
@@ -275,7 +277,7 @@ export async function stopTrackingVehicleFormAction(formData: FormData) {
   try {
     await stopTrackingVehicle(vehicleId, str(formData, 'reason'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not stop tracking this vehicle.';
+    const message = friendlyError(err, 'Could not stop tracking this vehicle.', 'vehicle-service-form-handlers');
     redirect(`${returnTo}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/service-tracker');
@@ -288,7 +290,7 @@ export async function requestVehicleServiceCancellationFormAction(formData: Form
   try {
     await requestVehicleServiceCancellation(serviceId, str(formData, 'reason'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not request a cancellation.';
+    const message = friendlyError(err, 'Could not request a cancellation.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
@@ -301,7 +303,7 @@ export async function approveVehicleServiceCancellationFormAction(formData: Form
   try {
     await approveVehicleServiceCancellationRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not approve this cancellation.';
+    const message = friendlyError(err, 'Could not approve this cancellation.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
@@ -314,7 +316,7 @@ export async function declineVehicleServiceCancellationFormAction(formData: Form
   try {
     await declineVehicleServiceCancellationRequest(str(formData, 'requestId'), str(formData, 'decisionNotes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not decline this cancellation.';
+    const message = friendlyError(err, 'Could not decline this cancellation.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
@@ -327,7 +329,7 @@ export async function handBackCancelledVehicleServiceFormAction(formData: FormDa
   try {
     await handBackCancelledVehicleService(serviceId, str(formData, 'collectedByName'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not hand the vehicle back.';
+    const message = friendlyError(err, 'Could not hand the vehicle back.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
@@ -340,7 +342,7 @@ export async function sendVehicleServiceCancelledCollectionNoticeFormAction(form
   try {
     await sendVehicleServiceCancelledCollectionNotice(serviceId, str(formData, 'notes') || undefined);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not send the collection notice.';
+    const message = friendlyError(err, 'Could not send the collection notice.', 'vehicle-service-form-handlers');
     redirect(`/workshop/vehicle-service-custody?error=${encodeURIComponent(message)}`);
   }
   revalidatePath('/workshop/vehicle-service-custody');

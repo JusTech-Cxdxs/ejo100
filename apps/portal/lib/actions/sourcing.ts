@@ -940,10 +940,13 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
     throw new SourcingActionError('This request is not awaiting HOD approval.');
   }
   const user = await requireEligibleManager(slip.branchId);
-  await prisma.partRequestSlip.update({
-    where: { id: slipId },
+  const claimed = await prisma.partRequestSlip.updateMany({
+    where: { id: slipId, status: 'PENDING_HOD_APPROVAL' },
     data: { status: 'PENDING_STORE_APPROVAL', hodApprovedById: user.id, hodApprovedAt: new Date(), hodNotes: notes?.trim() || undefined },
   });
+  // Compare-and-set: if someone else already moved it on (double click,
+  // two people at once), nothing changes and this request stops here.
+  if (claimed.count === 0) throw new Error('This was just done by someone else — refresh to see the latest.');
   await writeAuditLog({ userId: user.id, action: 'part_request_slip.hod_approved', entityType: 'PartRequestSlip', entityId: slipId });
 
   // Everything below this point is genuinely Job Card-specific (its own
@@ -1102,10 +1105,13 @@ export async function approvePartRequestSlipByStore(slipId: string, notes?: stri
     for (const line of slip.lines) {
       await tx.partStock.update({ where: { partId: line.partId }, data: { quantityReserved: { increment: line.quantityRequested } } });
     }
-    await tx.partRequestSlip.update({
-      where: { id: slipId },
+    const claimed = await tx.partRequestSlip.updateMany({
+      where: { id: slipId, status: 'PENDING_STORE_APPROVAL' },
       data: { status: 'APPROVED', storeApprovedById: user.id, storeApprovedAt: new Date(), storeNotes: notes?.trim() || undefined },
     });
+    // Compare-and-set: if someone else already moved it on (double click,
+    // two people at once), nothing changes and this request stops here.
+    if (claimed.count === 0) throw new Error('This was just done by someone else — refresh to see the latest.');
   });
 
   await writeAuditLog({ userId: user.id, action: 'part_request_slip.store_approved', entityType: 'PartRequestSlip', entityId: slipId });
@@ -1292,8 +1298,8 @@ export async function releasePartRequestSlip(
       await tx.partRequestSlipLine.update({ where: { id: line.id }, data: { quantityReleased: qty } });
     }
 
-    await tx.partRequestSlip.update({
-      where: { id: slipId },
+    const claimed = await tx.partRequestSlip.updateMany({
+      where: { id: slipId, status: 'APPROVED' },
       data: {
         status: 'RELEASED',
         releasedById: user.id,
@@ -1302,6 +1308,9 @@ export async function releasePartRequestSlip(
         receivedByName: receivedBy.receivedByName?.trim() || undefined,
       },
     });
+    // Compare-and-set: if someone else already moved it on (double click,
+    // two people at once), nothing changes and this request stops here.
+    if (claimed.count === 0) throw new Error('This was just done by someone else — refresh to see the latest.');
   });
 
   if (slip.jobCardId) {
@@ -1685,10 +1694,13 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
     throw new SourcingActionError('This request is not currently awaiting Finance review.');
   }
   const user = await requireEligibleFinance(request.branchId);
-  await prisma.externalProcurementRequest.update({
-    where: { id: requestId },
+  const claimed = await prisma.externalProcurementRequest.updateMany({
+    where: { id: requestId, status: 'PENDING_FINANCE_REVIEW' },
     data: { status: 'PENDING_MANAGER_APPROVAL', financeReviewedById: user.id, financeReviewedAt: new Date() },
   });
+  // Compare-and-set: if someone else already moved it on (double click,
+  // two people at once), nothing changes and this request stops here.
+  if (claimed.count === 0) throw new Error('This was just done by someone else — refresh to see the latest.');
   await writeAuditLog({
     userId: user.id,
     action: 'external_procurement.sent_to_manager',
@@ -1788,8 +1800,8 @@ export async function approveExternalProcurementRequest(requestId: string, notes
     0,
   );
   const approvedTotal = Math.round((Number(request.estimatedAmount) + supplementaryTotal) * 100) / 100;
-  await prisma.externalProcurementRequest.update({
-    where: { id: requestId },
+  const claimed = await prisma.externalProcurementRequest.updateMany({
+    where: { id: requestId, status: 'PENDING_MANAGER_APPROVAL' },
     data: {
       status: 'APPROVED',
       managerApprovedById: user.id,
@@ -1798,6 +1810,9 @@ export async function approveExternalProcurementRequest(requestId: string, notes
       approvedTotal,
     },
   });
+  // Compare-and-set: if someone else already moved it on (double click,
+  // two people at once), nothing changes and this request stops here.
+  if (claimed.count === 0) throw new Error('This was just done by someone else — refresh to see the latest.');
   await writeAuditLog({
     userId: user.id,
     action: 'external_procurement.approved',
@@ -1851,8 +1866,8 @@ export async function disburseExternalProcurementRequest(
   }
   const user = await requireEligibleFinance(request.branchId);
   const disbursedAmount = request.approvedTotal;
-  await prisma.externalProcurementRequest.update({
-    where: { id: requestId },
+  const claimed = await prisma.externalProcurementRequest.updateMany({
+    where: { id: requestId, status: 'APPROVED' },
     data: {
       status: 'DISBURSED',
       disbursedById: user.id,
@@ -1863,6 +1878,9 @@ export async function disburseExternalProcurementRequest(
       disbursementNotes: payment.disbursementNotes?.trim() || undefined,
     },
   });
+  // Compare-and-set: if someone else already moved it on (double click,
+  // two people at once), nothing changes and this request stops here.
+  if (claimed.count === 0) throw new Error('This was just done by someone else — refresh to see the latest.');
 
   await syncJobCardSourcingStatus(request.jobCardId);
   await writeAuditLog({

@@ -1,5 +1,7 @@
 'use server';
 
+
+import { friendlyError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
@@ -17,7 +19,7 @@ const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 /** datetime-local values are Lagos wall-clock time (UTC+1). */
 const lagosDate = (v: string): Date | undefined => (v ? new Date(`${v}:00+01:00`) : undefined);
 function back(path: string, err: unknown, fallback: string): never {
-  const message = err instanceof Error ? err.message : fallback;
+  const message = friendlyError(err, fallback, 'security-form-handlers');
   redirect(`${path}${path.includes('?') ? '&' : '?'}error=${encodeURIComponent(message)}`);
 }
 function ok(path: string, status: string): never {

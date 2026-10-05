@@ -1,5 +1,7 @@
 'use server';
 
+import { friendlyError } from '@/lib/errors';
+
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { setEstimateLineBillTo } from './estimate-billing';
@@ -11,7 +13,7 @@ export async function setEstimateLineBillToFormAction(formData: FormData) {
   try {
     await setEstimateLineBillTo(String(formData.get('lineId') ?? ''), String(formData.get('billTo') ?? '') as BillTo, String(formData.get('warrantyId') ?? '') || null, String(formData.get('note') ?? ''));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not update who pays for this line.';
+    const message = friendlyError(err, 'Could not update who pays for this line.', 'estimate-billing-form-handlers');
     redirect(`${back}?error=${encodeURIComponent(message)}#who-pays`);
   }
   revalidatePath(back);

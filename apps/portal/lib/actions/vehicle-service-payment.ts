@@ -75,6 +75,11 @@ export async function recordServicePayment(
     throw new ServicePaymentActionError('Payments can only be recorded while this Vehicle Service is checked in, in service, completed or ready for collection.');
   }
   const user = await requireEligibleFinanceOfficer(service.branchId);
+  // Duplicate guard: the same amount, method and record by the same person
+  // within 20 seconds is a double click or a resend after a dropped network.
+  if (await prisma.payment.findFirst({ where: { vehicleServiceId, amount, method, recordedById: user.id, recordedAt: { gte: new Date(Date.now() - 20000) } }, select: { id: true } })) {
+    throw new Error('This payment was just recorded — check the payments list before recording it again.');
+  }
 
   const total = service.serviceEstimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
