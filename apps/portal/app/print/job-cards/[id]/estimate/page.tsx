@@ -59,7 +59,7 @@ export default async function PrintJobCardEstimatePage({
       requestsTitle="Reported Complaints"
       requests={jobCard.complaints.map((c: (typeof jobCard.complaints)[number]) => c.description)}
       people={{
-        technician: jobCard.assignedTechnician?.fullName ?? null,
+        technician: ((jobCard as { technicianAcceptanceStatus?: string | null }).technicianAcceptanceStatus === 'ACCEPTED' ? jobCard.assignedTechnician?.fullName : null) ?? null,
         supervisor: jobCard.supervisor?.fullName ?? null,
         department: jobCard.department?.name ?? null,
         openedBy: jobCard.createdBy?.fullName ?? null,
