@@ -251,7 +251,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const title = 'title' in top ? String(top.title) : 'EJO 100';
     const url = 'url' in top ? String((top as { url: string }).url) : '/notifications?tab=broadcasts';
     try {
-      const n = new Notification(title, { body: summary.total > 1 ? `${summary.total} things need your attention` : 'Needs your attention', tag: 'ejo100', icon: '/favicon.ico' });
+      const n = new Notification(title, { body: summary.total > 1 ? `${summary.total} things need your attention` : 'Needs your attention', tag: 'ejo100', icon: '/images/logo/logo.png' });
       n.onclick = () => { window.focus(); router.push(url); n.close(); };
     } catch {
       // some browsers only allow this from a service worker — the tab count still shows
