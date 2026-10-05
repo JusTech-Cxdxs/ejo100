@@ -3,6 +3,8 @@
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { platformModules } from '@/lib/modules';
+import { getPrincipal } from '@/lib/authz/server';
+import { scopeFor } from '@/lib/authz/catalogue';
 
 export type SearchHit = { label: string; sub?: string; href: string };
 export type SearchGroup = { group: string; hits: SearchHit[] };
@@ -39,9 +41,13 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     ...MORE_PAGES.filter((x) => x.label.toLowerCase().includes(lower)),
   ].slice(0, 6);
   const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
+  // Reach rules: a branch-scoped person only finds their branch's Job Cards / services.
+  const principal = await getPrincipal();
+  const reach = scopeFor(principal, 'workshop.job_card.view');
+  const branchOnly = reach === 'BRANCH' && principal.branchId ? { branchId: principal.branchId } : {};
   const [jcs, svs, vehicles, customers, parts, prs, eprs, grns, warranties, claims, visits, passes, tests, incidents, deliveries, contractors, appts, broadcasts, exits, refunds, policies, providers, rooms, branches, departments, staff] = await Promise.all([
-    safe(prisma.jobCard.findMany({ where: { OR: [m('jobNumber'), { customer: m('fullName') }, { vehicle: m('plateNumber') }] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, jobNumber: true, status: true, customer: { select: { fullName: true } } } })),
-    safe(prisma.vehicleService.findMany({ where: { OR: [m('serviceNumber'), { customer: m('fullName') }, { vehicle: m('plateNumber') }] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, serviceNumber: true, status: true, customer: { select: { fullName: true } } } })),
+    safe(prisma.jobCard.findMany({ where: { ...branchOnly, OR: [m('jobNumber'), { customer: m('fullName') }, { vehicle: m('plateNumber') }] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, jobNumber: true, status: true, customer: { select: { fullName: true } } } })),
+    safe(prisma.vehicleService.findMany({ where: { ...branchOnly, OR: [m('serviceNumber'), { customer: m('fullName') }, { vehicle: m('plateNumber') }] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, serviceNumber: true, status: true, customer: { select: { fullName: true } } } })),
     safe(prisma.customerVehicle.findMany({ where: { OR: [m('make'), m('model'), m('plateNumber'), m('chassisNumber')] }, take, select: { id: true, make: true, model: true, plateNumber: true } })),
     safe(prisma.customer.findMany({ where: { OR: [m('fullName'), m('phone')] }, take, select: { id: true, fullName: true, phone: true } })),
     safe(prisma.part.findMany({ where: { OR: [m('partNumber'), m('name')] }, take, select: { id: true, partNumber: true, name: true } })),
