@@ -60,6 +60,7 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
           <Row k="Customer" val={rec?.customer} />
           <Row k="Plate / VIN" val={[r.vehicle.plateNumber, r.vehicle.chassisNumber].filter(Boolean).join(' · ') || null} />
           <Row k="Driver" val={`${r.driver.fullName}${r.driver.phone ? ` · ${r.driver.phone}` : ''}`} />
+          {r.people.length ? <Row k="Going along" val={r.people.map((x: { name: string; employeeId: string | null }) => `${x.name}${x.employeeId ? ` (${x.employeeId})` : ''}`).join(', ')} /> : null}
           <Row k="Checking" val={r.purpose} />
           <Row k="Route" val={r.route} />
           <Row k="Expected duration" val={durationText(r.expectedDurationMinutes)} />
@@ -87,11 +88,11 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
             </>
           ) : r.status === 'PENDING_MANAGER' ? <p className="text-sm text-[var(--ejo-text-muted)]">Waiting for the Manager to approve.</p> : null}
           {r.status === 'APPROVED' && roles.isGate ? (
-            <form action={roadTestActionFormAction} className="flex flex-wrap gap-2"><Hidden action="gate_out" /><input name="odometer" type="number" min={0} step={1} required placeholder="Odometer now (km)" defaultValue={r.vehicle.mileage ?? ''} className={`${input} min-w-0 flex-1`} /><SubmitButton label="Record time out" pendingLabel="Saving…" className={btn} /></form>
+            <form action={roadTestActionFormAction} className="flex flex-wrap gap-2"><Hidden action="gate_out" /><p className="w-full text-xs text-[var(--ejo-text-muted)]">Read the vehicle&apos;s <b>odometer</b> (total km, not the trip meter). Last recorded: {r.vehicle.mileage !== null ? `${r.vehicle.mileage.toLocaleString('en-NG')} km` : 'not recorded yet'}.</p><input aria-label="Odometer reading now (km)" placeholder="Odometer reading now (km)" name="odometer" type="number" min={0} step={1} required defaultValue={r.vehicle.mileage ?? ''} className={`${input} min-w-0 flex-1`} /><SubmitButton label="Record time out" pendingLabel="Saving…" className={btn} /></form>
           ) : null}
           {r.status === 'OUT' && roles.isGate ? (
             <>
-              <form action={roadTestActionFormAction} className="space-y-2"><Hidden action="gate_in" /><div className="flex flex-wrap gap-2"><input name="odometer" type="number" min={r.startOdometer ?? 0} step={1} required placeholder="Odometer now (km)" className={`${input} min-w-0 flex-1`} /><input name="notes" placeholder="Notes (optional)" className={`${input} min-w-0 flex-1`} /></div><SubmitButton label="Record time in" pendingLabel="Saving…" className={btn} /></form>
+              <form action={roadTestActionFormAction} className="space-y-2"><Hidden action="gate_in" /><p className="text-xs text-[var(--ejo-text-muted)]">Read the <b>odometer</b> now (total km). It went out at {r.startOdometer !== null ? `${r.startOdometer.toLocaleString('en-NG')} km` : '—'}.</p><div className="flex flex-wrap gap-2"><input aria-label="Odometer reading now (km)" placeholder="Odometer reading now (km)" name="odometer" type="number" min={r.startOdometer ?? 0} step={1} required className={`${input} min-w-0 flex-1`} /><input name="notes" placeholder="Notes (optional)" className={`${input} min-w-0 flex-1`} /></div><SubmitButton label="Record time in" pendingLabel="Saving…" className={btn} /></form>
               <form action={roadTestActionFormAction} className="flex flex-wrap gap-2 border-t border-[var(--ejo-border)] pt-3"><Hidden action="extend" />
                 <select name="extraMinutes" required defaultValue="" className={input}><option value="" disabled>Extend by…</option>{[15, 30, 45, 60, 90, 120].map((m) => <option key={m} value={m}>{durationText(m)}</option>)}</select>
                 <input name="reason" required placeholder="Reason" className={`${input} min-w-0 flex-1`} /><SubmitButton label="Extend" pendingLabel="Saving…" className={line} />
