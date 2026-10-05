@@ -66,29 +66,31 @@ export default async function DashboardPage() {
 
       {notifications.length > 0 ? (
         <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
-          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Needs Your Attention</h2>
-          <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-            Click any item to open it and take care of it.
-          </p>
-          <div className="mt-3 space-y-2">
-            {notifications.slice(0, 6).map((n) => (
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Needs your attention <span className="ml-1 rounded-full bg-[var(--ejo-warning)]/20 px-2 py-0.5 text-xs text-[var(--ejo-warning)]">{notifications.length} {notifications.length === 1 ? 'thing' : 'things'}</span></h2>
+            <LoadingLink href="/notifications" className="text-xs text-[var(--ejo-primary)] hover:underline">Open the Notification Center →</LoadingLink>
+          </div>
+          <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Each one stays here until it is done — open it to take care of it.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {notifications.slice(0, 12).map((n) => (
               <LoadingLink
                 key={n.id}
                 href={n.url}
-                className="flex items-center justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-surface)] px-3 py-2.5 text-sm hover:opacity-80"
+                className="group flex flex-col justify-between rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-surface)] px-3 py-2.5 text-sm hover:border-[var(--ejo-primary)]"
               >
-                <div>
-                  <p className="font-medium text-[var(--ejo-text)]">{n.title}</p>
-                  <p className="text-xs text-[var(--ejo-text-muted)]">{n.detail}</p>
-                </div>
+                <span>
+                  <span className="block font-medium text-[var(--ejo-text)]">{n.title}</span>
+                  <span className="mt-0.5 block text-xs text-[var(--ejo-text-muted)]">{n.detail}</span>
+                </span>
+                <span className="mt-2 text-[11px] font-medium text-[var(--ejo-primary)] group-hover:underline">Open →</span>
               </LoadingLink>
             ))}
-            {notifications.length > 6 ? (
-              <p className="text-xs text-[var(--ejo-text-muted)]">
-                +{notifications.length - 6} more — open the notification bell above to see the full list.
-              </p>
-            ) : null}
           </div>
+          {notifications.length > 12 ? (
+            <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
+              +{notifications.length - 12} more — <LoadingLink href="/notifications" className="text-[var(--ejo-primary)] hover:underline">see them all</LoadingLink>.
+            </p>
+          ) : null}
         </div>
       ) : (
         <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 p-5">
