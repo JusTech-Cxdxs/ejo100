@@ -982,6 +982,7 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
   await requireUser();
   const q = search?.trim();
   const services = await prisma.vehicleService.findMany({
+    take: 500, // newest 500 per status group; search reaches older records
     where: {
       branchId,
       status: { in: statuses as never[] },

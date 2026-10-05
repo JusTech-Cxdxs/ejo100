@@ -25,6 +25,7 @@ export async function recordRefundFormAction(formData: FormData) {
       paidToName: str(formData, 'paidToName'),
       reason: str(formData, 'reason') || undefined,
       notes: str(formData, 'notes') || undefined,
+      idempotencyKey: str(formData, 'idempotencyKey') || undefined,
     });
     referenceNumber = result.referenceNumber;
   } catch (err) {

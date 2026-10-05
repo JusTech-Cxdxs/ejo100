@@ -371,6 +371,7 @@ export async function recordPaymentFormAction(formData: FormData) {
       num(formData, 'amount') ?? NaN,
       str(formData, 'method') === 'CASH' ? 'CASH' : 'BANK_TRANSFER',
       str(formData, 'notes') || undefined,
+      str(formData, 'idempotencyKey') || undefined,
     );
   } catch (err) {
     const message = friendlyError(err, 'Could not record payment.', 'workshop-form-handlers');

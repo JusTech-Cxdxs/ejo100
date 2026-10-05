@@ -3095,6 +3095,7 @@ export async function recordPayment(
   amount: number,
   method: PaymentMethod,
   notes?: string,
+  idempotencyKey?: string,
 ): Promise<void> {
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new WorkshopActionError('Enter a valid payment amount.');
@@ -3137,6 +3138,8 @@ export async function recordPayment(
     throw new WorkshopActionError('Payments can be recorded from the moment the customer is notified until the vehicle is ready for collection.');
   }
   const user = await requireEligibleFinanceOfficer(jobCard.branchId);
+  // Same form submitted again (e.g. after a dropped connection): already done — nothing to record.
+  if (idempotencyKey && (await prisma.payment.findUnique({ where: { idempotencyKey }, select: { id: true } }))) return;
   // Duplicate guard: the same amount, method and record by the same person
   // within 20 seconds is a double click or a resend after a dropped network.
   if (await prisma.payment.findFirst({ where: { jobCardId, amount, method, recordedById: user.id, recordedAt: { gte: new Date(Date.now() - 20000) } }, select: { id: true } })) {
@@ -3170,6 +3173,7 @@ export async function recordPayment(
   await prisma.$transaction([
     prisma.payment.create({
       data: {
+        idempotencyKey: idempotencyKey || null,
         jobCardId,
         amount: roundedAmount,
         method,

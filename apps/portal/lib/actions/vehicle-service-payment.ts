@@ -37,6 +37,7 @@ export async function recordServicePayment(
   amount: number,
   method: PaymentMethod,
   notes?: string,
+  idempotencyKey?: string,
 ): Promise<void> {
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new ServicePaymentActionError('Enter a valid payment amount.');
@@ -75,6 +76,8 @@ export async function recordServicePayment(
     throw new ServicePaymentActionError('Payments can only be recorded while this Vehicle Service is checked in, in service, completed or ready for collection.');
   }
   const user = await requireEligibleFinanceOfficer(service.branchId);
+  // Same form submitted again (e.g. after a dropped connection): already done — nothing to record.
+  if (idempotencyKey && (await prisma.payment.findUnique({ where: { idempotencyKey }, select: { id: true } }))) return;
   // Duplicate guard: the same amount, method and record by the same person
   // within 20 seconds is a double click or a resend after a dropped network.
   if (await prisma.payment.findFirst({ where: { vehicleServiceId, amount, method, recordedById: user.id, recordedAt: { gte: new Date(Date.now() - 20000) } }, select: { id: true } })) {
@@ -108,6 +111,7 @@ export async function recordServicePayment(
   await prisma.$transaction([
     prisma.payment.create({
       data: {
+        idempotencyKey: idempotencyKey || null,
         vehicleServiceId,
         amount: roundedAmount,
         method,

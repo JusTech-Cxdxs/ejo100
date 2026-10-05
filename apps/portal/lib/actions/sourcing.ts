@@ -524,6 +524,7 @@ export async function listPartRequestSlips(branchId: string, search?: string) {
   await requireUser();
   const q = search?.trim();
   return prisma.partRequestSlip.findMany({
+    take: 500, // newest 500; search reaches older records
     where: {
       branchId,
       ...(q
@@ -578,6 +579,7 @@ export async function listExternalProcurementRequests(branchId: string, search?:
   await requireUser();
   const q = search?.trim();
   return prisma.externalProcurementRequest.findMany({
+    take: 500, // newest 500; search reaches older records
     where: {
       branchId,
       ...(q

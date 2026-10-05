@@ -164,6 +164,7 @@ async function generateRefundNumber(): Promise<string> {
 
 export type RecordRefundInput = {
   target: RefundTarget;
+  idempotencyKey?: string;
   amount: number;
   method: 'CASH' | 'BANK_TRANSFER';
   paidToName: string;
@@ -183,6 +184,11 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
   const t = await loadTarget(input.target);
   if (!t) throw new RefundActionError('Record not found.');
   const user = await requireEligibleFinanceOfficer(t.branchId);
+  // Same form submitted again (e.g. after a dropped connection): return the refund already recorded.
+  if (input.idempotencyKey) {
+    const done = await prisma.refund.findUnique({ where: { idempotencyKey: input.idempotencyKey }, select: { id: true, referenceNumber: true } });
+    if (done) return done;
+  }
   // Duplicate guard: the same amount, method and record by the same person
   // within 20 seconds is a double click or a resend after a dropped network.
   if (await prisma.refund.findFirst({ where: { amount: input.amount, recordedById: user.id, recordedAt: { gte: new Date(Date.now() - 20000) }, ...(t.kind === 'JOB_CARD' ? { jobCardId: t.id } : { vehicleServiceId: t.id }) }, select: { id: true } })) {
@@ -229,6 +235,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
   const referenceNumber = await generateRefundNumber();
   const refund = await prisma.refund.create({
     data: {
+      idempotencyKey: input.idempotencyKey || null,
       referenceNumber,
       jobCardId: t.kind === 'JOB_CARD' ? t.id : null,
       vehicleServiceId: t.kind === 'VEHICLE_SERVICE' ? t.id : null,

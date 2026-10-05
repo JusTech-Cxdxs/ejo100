@@ -2177,6 +2177,7 @@ export async function getOpenPricingAlertsForDigest(): Promise<PricingAlertDiges
 export async function listGoodsReceipts(branchId: string) {
   await requireUser();
   return prisma.goodsReceipt.findMany({
+    take: 500, // newest 500; search reaches older records
     where: { branchId },
     orderBy: { receivedAt: 'desc' },
     include: { receivedBy: { select: { fullName: true } }, lines: { select: { id: true, part: { select: { id: true, name: true } } } } },
