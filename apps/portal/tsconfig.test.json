@@ -8,7 +8,14 @@
     "skipLibCheck": true,
     "outDir": ".test-out",
     "rootDir": ".",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["tests/**/*.ts", "lib/authz/catalogue.ts", "lib/governance/data-inventory.ts"]
+  "include": [
+    "tests/**/*.ts",
+    "lib/authz/catalogue.ts",
+    "lib/governance/data-inventory.ts",
+    "lib/integrity-core.ts"
+  ]
 }

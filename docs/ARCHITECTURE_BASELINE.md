@@ -107,12 +107,37 @@ Every meaningful business change writes a named audit event (`job_card.approved`
 events. **Planned:** a typed event catalogue as the formal contract; no message broker until load requires one.
 
 ## 12. Transactions & concurrency
-- Workflow steps use **compare-and-set** (`updateMany` with the expected status; 0 rows = someone
-  else got there first → friendly message).
-- Money uses **idempotency keys** (unique in the database) so a double click records once.
-- Multi-row changes run in a **transaction**; stock movements are recorded as immutable consumptions.
-- **Planned (next integrity phase):** a systematic audit of every stock and money path for
-  races (row locks / conditional decrements), with tests.
+Two primitives, in `lib/integrity.ts` (pure half: `lib/integrity-core.ts`):
+- **Compare-and-set** — every workflow status change is `updateMany` with the expected state in its
+  `where`, checked with `claimed()`; 0 rows means someone else acted first, and the person sees
+  "Someone else changed this just now — refresh…" with nothing written. This covers Job Cards,
+  Vehicle Services, estimates (both kinds), close/cancel requests, parts and procurement requests,
+  warranty claims and warranties, policy/provider deletions, exit passes, road tests, visits,
+  deliveries, contractor passes, incidents, appointments and pricing alerts. Decisions that touch
+  several rows (approve a close and the Job Card; approve a cancellation) are one transaction in
+  which each step is compare-and-set.
+- **Row locks** (`lockRows` / `lockExisting`: `SELECT … FOR UPDATE`, ids sorted so two
+  transactions never deadlock) where a total is checked and then added to: payments and refunds
+  (the Job Card / Vehicle Service row), stock reservation and release (the `part_stock` rows),
+  room and host bookings (room first, then host), the last Administrator / Master Administrator
+  count, and one-per-record requests (cancellation, close, parts and outside-purchase requests are
+  worked out and created under the parent's lock).
+- Estimate lines (and Store matching) change only inside a transaction that first re-claims the
+  estimate in the status the editor saw, so an approved estimate can never change underneath.
+- Inside a transaction only the transaction client is used (a second connection could wait on
+  itself in a serverless pool of one).
+- **Idempotency keys** (unique in the database) on payments, refunds and goods receipts: a resent
+  form records once.
+- Human reference numbers (`RF-…`, `GRN-…`, `PRS-…`, `EPR-…`) are "latest + 1" protected by a
+  unique constraint; money and stock creations retry with the next number on a clash, everything
+  else tells the person to submit again. Nothing is ever duplicated.
+- Enforced in CI: `tests/integrity-coverage.test.ts` (no plain status write; the locks above are
+  present) and `tests/concurrency.db.test.ts` (real parallel transactions on PostgreSQL).
+- **Known limits:** a manager approves the estimate as it is when they click, not a version token
+  from their screen; opening a Job Card or Vehicle Service has no idempotency key (the submit
+  button blocks double clicks, a resend after a dropped connection could open a second one);
+  stock reserved for a request whose job is later cancelled stays reserved until Store and the
+  Manager unwind it by hand.
 
 ## 13. Financial integrity
 Totals are computed from immutable lines (estimate lines, payments, refunds); paid amounts are
@@ -135,9 +160,11 @@ only data whose inventory entry allows AI. A human approves every action; the wo
 fence and the database decide whether it commits. SECRET data is never available to AI.
 
 ## 17. Testing strategy
-Pure decision tests (allowed **and** denied) for the catalogue; guard-coverage and data-inventory
-tests read the source; TypeScript strict; lint; a full production build — all in CI on every push
-and pull request. **Planned:** database-backed cross-organisation tests on a staging copy.
+Pure decision tests (allowed **and** denied) for the catalogue; guard-coverage, data-inventory
+and integrity-coverage tests read the source; concurrency tests run real parallel transactions
+on a throwaway PostgreSQL service in CI; TypeScript strict; lint; a full production build — all in
+CI on every push and pull request. **Planned:** database-backed cross-organisation tests on a
+staging copy.
 
 ## 18. Deployment
 Pull request → CI → Vercel preview (never touches the database) → merge → production deploy

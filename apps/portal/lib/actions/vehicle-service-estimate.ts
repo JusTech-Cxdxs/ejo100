@@ -1,5 +1,6 @@
 'use server';
 
+import { claimed } from '@/lib/integrity';
 import { authorize, authorizeOnService, refuse, branchWithinReach } from '@/lib/authz/server';
 
 import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
@@ -31,6 +32,19 @@ class ServiceEstimateActionError extends Error {}
  * this one — the two are mutually exclusive by design), and a
  * harmless no-op if a draft already exists.
  */
+/** Same guarantee as the Job Card estimate's withEstimateUnchanged: a line
+ * change only lands if the estimate is still in the status the editor saw,
+ * serialised against any approval of it (see lib/integrity.ts). */
+async function withServiceEstimateUnchanged<T>(estimateId: string, seenStatus: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'MANAGER_APPROVED', work: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => Promise<T>): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    claimed(
+      await tx.serviceEstimate.updateMany({ where: { id: estimateId, status: seenStatus }, data: { status: seenStatus } }),
+      'This estimate was just submitted or approved by someone else — refresh the page to see it.',
+    );
+    return work(tx);
+  });
+}
+
 export async function createServiceEstimate(vehicleServiceId: string): Promise<{ id: string }> {
   await authorizeOnService('workshop.estimate.edit', vehicleServiceId, 'createServiceEstimate');
   await assertServiceNotEscalated({ vehicleServiceId });
@@ -96,7 +110,9 @@ export async function cancelServiceEstimate(vehicleServiceId: string): Promise<v
     entityId: vehicleServiceId,
     metadata: { serviceNumber: service?.serviceNumber, previousStatus: estimate.status },
   });
-  await prisma.serviceEstimate.delete({ where: { id: estimate.id } });
+  // Only if it is still in the status checked above — never delete an
+  // estimate a manager approved a moment ago.
+  claimed(await prisma.serviceEstimate.deleteMany({ where: { id: estimate.id, status: estimate.status } }), 'This estimate was just approved or changed by someone else — refresh the page.');
 }
 
 export type ServiceEstimateLineItemInput = {
@@ -174,7 +190,7 @@ export async function addServiceEstimateLineItem(estimateId: string, input: Serv
   if (!estimate) {
     throw new ServiceEstimateActionError('Estimate not found.');
   }
-  if (estimate.status === 'APPROVED') {
+  if (estimate.status === 'APPROVED' || estimate.status === 'MANAGER_APPROVED') {
     throw new ServiceEstimateActionError('This estimate is already approved — it can no longer be changed here.');
   }
   const contributor = await requireServiceEstimateContributor(estimate.vehicleService);
@@ -209,7 +225,7 @@ export async function addServiceEstimateLineItem(estimateId: string, input: Serv
 
   const amount = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
 
-  await prisma.serviceEstimateLineItem.create({
+  await withServiceEstimateUnchanged(estimateId, estimate.status, (tx) => tx.serviceEstimateLineItem.create({
     data: {
       estimateId,
       type: input.type,
@@ -221,7 +237,7 @@ export async function addServiceEstimateLineItem(estimateId: string, input: Serv
       unitOfMeasure: input.type === 'STORE_PART' ? null : input.unitOfMeasure?.trim() || null,
       enteredById: contributor.id,
     },
-  });
+  }));
   await writeAuditLog({
     userId: contributor.id,
     action: 'service_estimate.line_item_added',
@@ -346,10 +362,10 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
   }
   const unitPrice = Number(part.sellingPrice);
   const amount = Math.round(unitPrice * Number(lineItem.quantity) * 100) / 100;
-  await prisma.serviceEstimateLineItem.update({
+  await withServiceEstimateUnchanged(lineItem.estimate.id, lineItem.estimate.status, (tx) => tx.serviceEstimateLineItem.update({
     where: { id: lineItemId },
     data: { matchedPartId: partId, unitPrice, amount, unitOfMeasure: part.baseUnitOfMeasure },
-  });
+  }));
   await writeAuditLog({
     userId: user.id,
     action: 'service_estimate.line_store_matched',
@@ -394,7 +410,7 @@ export async function removeServiceEstimateLineItem(lineItemId: string): Promise
   if (!line) {
     throw new ServiceEstimateActionError('Line item not found.');
   }
-  if (line.estimate.status === 'APPROVED') {
+  if (line.estimate.status === 'APPROVED' || line.estimate.status === 'MANAGER_APPROVED') {
     throw new ServiceEstimateActionError('This estimate is already approved — it can no longer be changed here.');
   }
   // Same real "whoever entered it, the supervisor, or a Master
@@ -408,7 +424,7 @@ export async function removeServiceEstimateLineItem(lineItemId: string): Promise
   if (!isOwnEntry && !isSupervisor && !isMasterAdmin) {
     return refuse('workshop.estimate.edit', 'removeServiceEstimateLineItem', 'Only whoever entered this line or the assigned supervisor can remove it.');
   }
-  await prisma.serviceEstimateLineItem.delete({ where: { id: lineItemId } });
+  await withServiceEstimateUnchanged(line.estimate.id, line.estimate.status, (tx) => tx.serviceEstimateLineItem.delete({ where: { id: lineItemId } }));
   await writeAuditLog({
     userId: user.id,
     action: 'service_estimate.line_item_removed',
@@ -466,7 +482,7 @@ export async function updateServiceEstimateLineItem(lineItemId: string, input: S
   if (!lineItem) {
     throw new ServiceEstimateActionError('Line item not found.');
   }
-  if (lineItem.estimate.status === 'APPROVED') {
+  if (lineItem.estimate.status === 'APPROVED' || lineItem.estimate.status === 'MANAGER_APPROVED') {
     throw new ServiceEstimateActionError('This estimate is already approved — it can no longer be changed here.');
   }
   const editor = await requireServiceEstimateContributor(lineItem.estimate.vehicleService);
@@ -490,7 +506,7 @@ export async function updateServiceEstimateLineItem(lineItemId: string, input: S
     amount = Math.round(input.quantity * unitPrice * 100) / 100;
   }
 
-  await prisma.serviceEstimateLineItem.update({
+  await withServiceEstimateUnchanged(lineItem.estimate.id, lineItem.estimate.status, (tx) => tx.serviceEstimateLineItem.update({
     where: { id: lineItemId },
     data: {
       description,
@@ -499,7 +515,7 @@ export async function updateServiceEstimateLineItem(lineItemId: string, input: S
       amount,
       ...(lineItem.type !== 'STORE_PART' ? { unitOfMeasure: input.unitOfMeasure?.trim() || null } : {}),
     },
-  });
+  }));
   await writeAuditLog({
     userId: editor.id,
     action: 'service_estimate.line_item_updated',
@@ -574,7 +590,7 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
   }
   const user = await requireServiceEstimateContributor(estimate.vehicleService);
 
-  await prisma.serviceEstimate.update({ where: { id: estimateId }, data: { status: 'SUBMITTED', submittedAt: new Date() } });
+  claimed(await prisma.serviceEstimate.updateMany({ where: { id: estimateId, status: 'DRAFT' }, data: { status: 'SUBMITTED', submittedAt: new Date() } }), 'This estimate was just submitted by someone else — refresh the page.');
   await writeAuditLog({
     userId: user.id,
     action: 'service_estimate.submitted',
@@ -651,10 +667,9 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
   }
   const user = await requireJobCardApprover(estimate.vehicleService);
   await authorize('workshop.estimate.approve', { branchId: estimate.vehicleService.branchId, assigneeIds: [estimate.vehicleService.supervisorId] }, 'approveServiceEstimate');
-  await prisma.serviceEstimate.update({
-    where: { id: estimateId },
+  claimed(await prisma.serviceEstimate.updateMany({ where: { id: estimateId, status: 'SUBMITTED' },
     data: { status: 'APPROVED', approvedAt: new Date(), approvedById: user.id },
-  });
+  }), 'This estimate was just approved or changed by someone else — refresh the page.');
   await writeAuditLog({
     userId: user.id,
     action: 'service_estimate.approved',
@@ -733,10 +748,9 @@ export async function approveServiceEstimateAsManager(estimateId: string): Promi
   const user = await requireEligibleManager(estimate.vehicleService.branchId, 'workshop.estimate.final_approve');
   await authorize('workshop.estimate.final_approve', { branchId: estimate.vehicleService.branchId }, 'approveServiceEstimateAsManager');
 
-  await prisma.serviceEstimate.update({
-    where: { id: estimateId },
+  claimed(await prisma.serviceEstimate.updateMany({ where: { id: estimateId, status: 'APPROVED' },
     data: { status: 'MANAGER_APPROVED', managerApprovedAt: new Date(), managerApprovedById: user.id },
-  });
+  }), 'This estimate was just approved or changed by someone else — refresh the page.');
 
   await writeAuditLog({
     userId: user.id,
@@ -834,10 +848,9 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
     throw new ServiceEstimateActionError('The customer has already been notified about this estimate.');
   }
 
-  await prisma.serviceEstimate.update({
-    where: { id: estimateId },
+  claimed(await prisma.serviceEstimate.updateMany({ where: { id: estimateId, status: 'MANAGER_APPROVED', customerNotifiedAt: null },
     data: { customerNotifiedAt: new Date(), customerNotifiedById: user.id },
-  });
+  }), 'The customer was just notified about this estimate by someone else — refresh the page.');
   await writeAuditLog({
     userId: user.id,
     action: 'service_estimate.customer_notified',

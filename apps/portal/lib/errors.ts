@@ -48,6 +48,12 @@ export function friendlyError(err: unknown, fallback = 'That could not be comple
   if (e?.code === 'P2002' && JSON.stringify(e.meta?.target ?? '').includes('idempotencyKey')) {
     return 'This was already recorded — it went through. Refresh the page to see it.';
   }
+  // Two records saved at the same instant picked the same reference number:
+  // nothing was duplicated (the database refused the second) — just save again.
+  if (e?.code === 'P2002' && /Number/.test(JSON.stringify(e.meta?.target ?? ''))) {
+    logError(where, err);
+    return 'Someone else saved a record at exactly the same moment, so this one was not saved — please submit it again.';
+  }
   if (e?.code && PRISMA[e.code]) {
     logError(where, err);
     return PRISMA[e.code]!;

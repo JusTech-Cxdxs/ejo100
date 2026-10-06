@@ -2164,6 +2164,9 @@ model PartSerial {
 // across the whole platform.
 model GoodsReceipt {
   id              String   @id @default(cuid())
+  // One per submitted form (see components/IdempotencyKey.tsx): the same
+  // delivery resent after a dropped connection can never add stock twice.
+  idempotencyKey  String?  @unique
   branchId        String
   referenceNumber String   @unique
   supplierName    String

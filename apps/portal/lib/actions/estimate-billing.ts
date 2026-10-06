@@ -1,5 +1,6 @@
 'use server';
 
+import { claimed } from '@/lib/integrity';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
@@ -99,7 +100,7 @@ export async function setEstimateLineBillTo(lineId: string, billTo: BillTo, warr
   // Capture the previous value before saving, so the audit's "from" is
   // always the real prior state.
   const previous = BILL_TO_LABEL[(line.billTo ?? 'CUSTOMER') as BillTo];
-  await prisma.estimateLineItem.update({ where: { id: lineId }, data: { billTo, coveringWarrantyId, billToNote: why || null } });
+  claimed(await prisma.estimateLineItem.updateMany({ where: { id: lineId, billTo: line.billTo, coveringWarrantyId: line.coveringWarrantyId }, data: { billTo, coveringWarrantyId, billToNote: why || null } }), 'Who pays for this line was just changed by someone else — refresh the page.');
   const metadata = {
     line: line.description,
     amount: line.amount === null ? null : Number(line.amount),

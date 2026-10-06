@@ -19,7 +19,7 @@ const GUARDS = [
 ];
 /** Acting only on the person's OWN data (their read marks, their passes) — checked inside by user id. */
 const SELF_SCOPED = new Set(['markNotificationsRead', 'markNotificationsUnread', 'markAllRead', 'setNotificationsMuted', 'cancelExitPass', 'createExitPass', 'getJobCardSourcingNeeds']);
-const WRITE = /prisma\.\w+\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(/;
+const WRITE = /\b(?:prisma|tx)\.\w+\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(/;
 
 test('every data-changing server action is guarded', () => {
   const missing: string[] = [];

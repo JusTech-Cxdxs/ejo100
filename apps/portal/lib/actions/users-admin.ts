@@ -1,5 +1,7 @@
 'use server';
 
+import { lockRows } from '@/lib/integrity';
+import { isUniqueClashOn } from '@/lib/integrity-core';
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@ejo/database';
 import { writeAuditLog } from '@/lib/workshop-core';
@@ -74,14 +76,20 @@ export async function assignRole(userId: string, roleId: string): Promise<void> 
   const { p, user, role } = await checkPair(userId, roleId);
   const exists = await prisma.userRole.findUnique({ where: { userId_roleId: { userId, roleId } }, select: { id: true } });
   if (exists) return;
-  if (role.isSuperAdmin) {
-    // Verified platform team → set the database's platform-owner marker for this one transaction.
-    await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SET LOCAL ejo.platform_owner_grant = 'on'`;
-      await tx.userRole.create({ data: { userId, roleId } });
-    });
-  } else {
-    await prisma.userRole.create({ data: { userId, roleId } });
+  try {
+    if (role.isSuperAdmin) {
+      // Verified platform team → set the database's platform-owner marker for this one transaction.
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SET LOCAL ejo.platform_owner_grant = 'on'`;
+        await tx.userRole.create({ data: { userId, roleId } });
+      });
+    } else {
+      await prisma.userRole.create({ data: { userId, roleId } });
+    }
+  } catch (err) {
+    // Two administrators gave the same role at the same moment: it is given — done.
+    if (isUniqueClashOn(err, 'userId') || isUniqueClashOn(err, 'roleId')) return;
+    throw err;
   }
   await writeAuditLog({ userId: p.userId, action: 'user.role_assigned', entityType: 'User', entityId: userId, metadata: { person: user.fullName, role: role.name } });
   revalidatePath('/users');
@@ -91,8 +99,18 @@ export async function assignRole(userId: string, roleId: string): Promise<void> 
 export async function removeRole(userId: string, roleId: string): Promise<void> {
   await authorize('admin.users.manage', undefined, 'users.removeRole');
   const { p, user, role } = await checkPair(userId, roleId);
-  if (role.isSuperAdmin && (await prisma.userRole.count({ where: { roleId } })) <= 1) throw new Error('This is the last Master Administrator — the platform must always have one.');
-  await prisma.userRole.deleteMany({ where: { userId, roleId } });
+  // Counted and removed with the role locked: two administrators removing
+  // each other at the same moment can never leave the platform with no
+  // Master Administrator, or an organisation with no Administrator.
+  const removed = await prisma.$transaction(async (tx) => {
+    await lockRows(tx, 'role', [roleId]);
+    if (role.isSuperAdmin && (await tx.userRole.count({ where: { roleId } })) <= 1) throw new Error('This is the last Master Administrator — the platform must always have one.');
+    if (role.slug === 'administrator' && (await tx.userRole.count({ where: { roleId, user: { isActive: true } } })) <= 1) {
+      throw new Error('This is the organisation\'s last Administrator — give the role to someone else first.');
+    }
+    return (await tx.userRole.deleteMany({ where: { userId, roleId } })).count;
+  });
+  if (removed === 0) return;
   await writeAuditLog({ userId: p.userId, action: 'user.role_removed', entityType: 'User', entityId: userId, metadata: { person: user.fullName, role: role.name } });
   revalidatePath('/users');
 }

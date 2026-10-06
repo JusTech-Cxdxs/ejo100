@@ -1,5 +1,6 @@
 'use server';
 
+import { claimed } from '@/lib/integrity';
 import { prisma } from '@ejo/database';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
@@ -460,7 +461,7 @@ export async function verifyWarranty(warrantyId: string): Promise<void> {
   if (w.issuedById === user.id && !user.roles.isMaster) {
     throw new WarrantyActionError('A warranty must be verified by someone other than the person who registered it.');
   }
-  await prisma.warranty.update({ where: { id: warrantyId }, data: { status: 'ACTIVE', verifiedById: user.id, verifiedAt: new Date() } });
+  claimed(await prisma.warranty.updateMany({ where: { id: warrantyId, status: 'PENDING_VERIFICATION' }, data: { status: 'ACTIVE', verifiedById: user.id, verifiedAt: new Date() } }));
   await writeAuditLog({ userId: user.id, action: 'warranty.verified', entityType: 'Warranty', entityId: warrantyId, metadata: { warrantyNumber: w.warrantyNumber } });
 }
 
@@ -474,7 +475,7 @@ export async function setWarrantyStatus(warrantyId: string, status: 'ACTIVE' | '
   if (w.status === 'VOID' || w.status === 'TRANSFERRED') throw new WarrantyActionError(`This warranty is ${w.status.toLowerCase()} — it can no longer change.`);
   if (w.status === 'PENDING_VERIFICATION' && status === 'ACTIVE') throw new WarrantyActionError('Use Verify to activate a pending warranty.');
   if (w.status === status) throw new WarrantyActionError('The warranty already has that status.');
-  await prisma.warranty.update({ where: { id: warrantyId }, data: { status, statusReason: why } });
+  claimed(await prisma.warranty.updateMany({ where: { id: warrantyId, status: w.status }, data: { status, statusReason: why } }));
   await writeAuditLog({ userId: user.id, action: `warranty.${status === 'ACTIVE' ? 'reinstated' : status.toLowerCase()}`, entityType: 'Warranty', entityId: warrantyId, metadata: { warrantyNumber: w.warrantyNumber, from: w.status, to: status, reason: why } });
 }
 
@@ -826,7 +827,7 @@ export async function approveWarrantyPolicyDeletion(requestId: string): Promise<
   const now = new Date();
   if (req.status === 'PENDING_HOD') {
     if (!user.roles.isHod && !user.roles.isMaster) throw new WarrantyActionError('This request is waiting on the Warranty HOD.');
-    await prisma.warrantyPolicyDeletionRequest.update({ where: { id: requestId }, data: { status: 'PENDING_MANAGER', hodDecidedById: user.id, hodDecidedAt: now } });
+    claimed(await prisma.warrantyPolicyDeletionRequest.updateMany({ where: { id: requestId, status: 'PENDING_HOD' }, data: { status: 'PENDING_MANAGER', hodDecidedById: user.id, hodDecidedAt: now } }), 'This deletion request was just decided by someone else — refresh the page.');
     await writeAuditLog({ userId: user.id, action: 'warranty_policy.deletion_hod_approved', entityType: 'WarrantyPolicy', entityId: req.policyId ?? requestId, metadata: { code: req.policyCode } });
     // Raised by the Branch Manager: their own level is already satisfied.
     if (req.managerDecidedAt) {
@@ -845,7 +846,7 @@ export async function approveWarrantyPolicyDeletion(requestId: string): Promise<
   }
   if (req.status === 'PENDING_MANAGER') {
     if (!user.roles.isManager && !user.roles.isMaster) throw new WarrantyActionError('This request is waiting on the Branch Manager.');
-    await prisma.warrantyPolicyDeletionRequest.update({ where: { id: requestId }, data: { managerDecidedById: user.id, managerDecidedAt: now } });
+    claimed(await prisma.warrantyPolicyDeletionRequest.updateMany({ where: { id: requestId, status: 'PENDING_MANAGER', managerDecidedAt: req.managerDecidedAt }, data: { managerDecidedById: user.id, managerDecidedAt: now } }), 'This deletion request was just decided by someone else — refresh the page.');
     await completePolicyDeletion(requestId, user.id);
     return;
   }
@@ -860,15 +861,21 @@ async function completePolicyDeletion(requestId: string, actorId: string): Promi
   if (!req?.policyId) throw new WarrantyActionError('The policy no longer exists.');
   const issued = await prisma.warranty.count({ where: { policyId: req.policyId } });
   const outcome = issued > 0 ? 'ARCHIVED' : 'DELETED';
-  await prisma.warrantyPolicyDeletionRequest.update({ where: { id: requestId }, data: { status: 'APPROVED', outcome } });
-  await writeAuditLog({ userId: actorId, action: outcome === 'ARCHIVED' ? 'warranty_policy.archived' : 'warranty_policy.deleted', entityType: 'WarrantyPolicy', entityId: req.policyId, metadata: { code: req.policyCode, name: req.policyName, reason: req.reason, warrantiesIssued: issued } });
-  if (outcome === 'ARCHIVED') {
-    await prisma.warrantyPolicy.update({ where: { id: req.policyId }, data: { isActive: false, archivedAt: new Date(), archivedReason: req.reason } });
-    await prisma.part.updateMany({ where: { warrantyPolicyId: req.policyId }, data: { warrantyPolicyId: null } });
-  } else {
-    await prisma.part.updateMany({ where: { warrantyPolicyId: req.policyId }, data: { warrantyPolicyId: null } });
-    await prisma.warrantyPolicy.delete({ where: { id: req.policyId } });
-  }
+  const policyId = req.policyId;
+  // All-or-nothing, exactly once: the request is marked decided in the same
+  // transaction that archives or deletes the policy. If a warranty is issued
+  // under it at that very moment, the delete fails and nothing is marked done.
+  await prisma.$transaction(async (tx) => {
+    claimed(await tx.warrantyPolicyDeletionRequest.updateMany({ where: { id: requestId, status: 'PENDING_MANAGER' }, data: { status: 'APPROVED', outcome } }), 'This deletion request was just decided by someone else — refresh the page.');
+    if (outcome === 'ARCHIVED') {
+      await tx.warrantyPolicy.update({ where: { id: policyId }, data: { isActive: false, archivedAt: new Date(), archivedReason: req.reason } });
+      await tx.part.updateMany({ where: { warrantyPolicyId: policyId }, data: { warrantyPolicyId: null } });
+    } else {
+      await tx.part.updateMany({ where: { warrantyPolicyId: policyId }, data: { warrantyPolicyId: null } });
+      await tx.warrantyPolicy.delete({ where: { id: policyId } });
+    }
+  });
+  await writeAuditLog({ userId: actorId, action: outcome === 'ARCHIVED' ? 'warranty_policy.archived' : 'warranty_policy.deleted', entityType: 'WarrantyPolicy', entityId: policyId, metadata: { code: req.policyCode, name: req.policyName, reason: req.reason, warrantiesIssued: issued } });
   const requester = await prisma.user.findUnique({ where: { id: req.requestedById }, select: { fullName: true, email: true } });
   await notifyStaff(
     [...(await warrantyApproverRecipients()), ...(requester ? [{ id: req.requestedById, ...requester }] : [])].filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i),
@@ -894,10 +901,9 @@ export async function declineWarrantyPolicyDeletion(requestId: string, reason: s
   if (req.status === 'PENDING_MANAGER' && !user.roles.isManager && !user.roles.isMaster) throw new WarrantyActionError('This request is waiting on the Branch Manager.');
   if (req.status !== 'PENDING_HOD' && req.status !== 'PENDING_MANAGER') throw new WarrantyActionError('This deletion request has already been decided.');
   const now = new Date();
-  await prisma.warrantyPolicyDeletionRequest.update({
-    where: { id: requestId },
+  claimed(await prisma.warrantyPolicyDeletionRequest.updateMany({ where: { id: requestId, status: req.status },
     data: { status: 'DECLINED', declineReason: why, ...(req.status === 'PENDING_HOD' ? { hodDecidedById: user.id, hodDecidedAt: now } : { managerDecidedById: user.id, managerDecidedAt: now }) },
-  });
+  }), 'This deletion request was just decided by someone else — refresh the page.');
   await writeAuditLog({ userId: user.id, action: 'warranty_policy.deletion_declined', entityType: 'WarrantyPolicy', entityId: req.policyId ?? requestId, metadata: { code: req.policyCode, reason: why } });
   const requester = await prisma.user.findUnique({ where: { id: req.requestedById }, select: { fullName: true, email: true } });
   if (requester) {
@@ -1078,7 +1084,7 @@ export async function approveWarrantyProviderDeletion(requestId: string): Promis
   const now = new Date();
   if (req.status === 'PENDING_HOD') {
     if (!user.roles.isHod && !user.roles.isMaster) throw new WarrantyActionError('This request is waiting on the Warranty HOD.');
-    await prisma.warrantyProviderDeletionRequest.update({ where: { id: requestId }, data: { status: 'PENDING_MANAGER', hodDecidedById: user.id, hodDecidedAt: now } });
+    claimed(await prisma.warrantyProviderDeletionRequest.updateMany({ where: { id: requestId, status: 'PENDING_HOD' }, data: { status: 'PENDING_MANAGER', hodDecidedById: user.id, hodDecidedAt: now } }), 'This deletion request was just decided by someone else — refresh the page.');
     await writeAuditLog({ userId: user.id, action: 'warranty_provider.deletion_hod_approved', entityType: 'WarrantyProvider', entityId: req.providerId ?? requestId, metadata: { name: req.providerName } });
     if (req.managerDecidedAt) {
       await completeProviderDeletion(requestId, user.id);
@@ -1096,7 +1102,7 @@ export async function approveWarrantyProviderDeletion(requestId: string): Promis
   }
   if (req.status === 'PENDING_MANAGER') {
     if (!user.roles.isManager && !user.roles.isMaster) throw new WarrantyActionError('This request is waiting on the Branch Manager.');
-    await prisma.warrantyProviderDeletionRequest.update({ where: { id: requestId }, data: { managerDecidedById: user.id, managerDecidedAt: now } });
+    claimed(await prisma.warrantyProviderDeletionRequest.updateMany({ where: { id: requestId, status: 'PENDING_MANAGER', managerDecidedAt: req.managerDecidedAt }, data: { managerDecidedById: user.id, managerDecidedAt: now } }), 'This deletion request was just decided by someone else — refresh the page.');
     await completeProviderDeletion(requestId, user.id);
     return;
   }
@@ -1116,15 +1122,18 @@ async function completeProviderDeletion(requestId: string, actorId: string): Pro
   ]);
   const inUse = policies + warranties + claims > 0;
   const outcome = inUse ? 'ARCHIVED' : 'DELETED';
-  await prisma.warrantyProviderDeletionRequest.update({ where: { id: requestId }, data: { status: 'APPROVED', outcome } });
-  await writeAuditLog({ userId: actorId, action: inUse ? 'warranty_provider.archived' : 'warranty_provider.deleted', entityType: 'WarrantyProvider', entityId: req.providerId, metadata: { name: req.providerName, reason: req.reason, policies, warranties, claims } });
-  let deactivated = 0;
-  if (inUse) {
-    await prisma.warrantyProvider.update({ where: { id: req.providerId }, data: { isActive: false, archivedAt: new Date(), archivedReason: req.reason } });
-    deactivated = (await prisma.warrantyPolicy.updateMany({ where: { providerId: req.providerId, isActive: true }, data: { isActive: false } })).count;
-  } else {
-    await prisma.warrantyProvider.delete({ where: { id: req.providerId } });
-  }
+  const providerId = req.providerId;
+  // Same all-or-nothing, exactly-once shape as completePolicyDeletion.
+  const deactivated = await prisma.$transaction(async (tx) => {
+    claimed(await tx.warrantyProviderDeletionRequest.updateMany({ where: { id: requestId, status: 'PENDING_MANAGER' }, data: { status: 'APPROVED', outcome } }), 'This deletion request was just decided by someone else — refresh the page.');
+    if (inUse) {
+      await tx.warrantyProvider.update({ where: { id: providerId }, data: { isActive: false, archivedAt: new Date(), archivedReason: req.reason } });
+      return (await tx.warrantyPolicy.updateMany({ where: { providerId, isActive: true }, data: { isActive: false } })).count;
+    }
+    await tx.warrantyProvider.delete({ where: { id: providerId } });
+    return 0;
+  });
+  await writeAuditLog({ userId: actorId, action: inUse ? 'warranty_provider.archived' : 'warranty_provider.deleted', entityType: 'WarrantyProvider', entityId: providerId, metadata: { name: req.providerName, reason: req.reason, policies, warranties, claims } });
   const requester = await prisma.user.findUnique({ where: { id: req.requestedById }, select: { fullName: true, email: true } });
   await notifyStaff(
     [...(await warrantyApproverRecipients()), ...(requester ? [{ id: req.requestedById, ...requester }] : [])].filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i),
@@ -1150,10 +1159,9 @@ export async function declineWarrantyProviderDeletion(requestId: string, reason:
   if (req.status === 'PENDING_MANAGER' && !user.roles.isManager && !user.roles.isMaster) throw new WarrantyActionError('This request is waiting on the Branch Manager.');
   if (req.status !== 'PENDING_HOD' && req.status !== 'PENDING_MANAGER') throw new WarrantyActionError('This deletion request has already been decided.');
   const now = new Date();
-  await prisma.warrantyProviderDeletionRequest.update({
-    where: { id: requestId },
+  claimed(await prisma.warrantyProviderDeletionRequest.updateMany({ where: { id: requestId, status: req.status },
     data: { status: 'DECLINED', declineReason: why, ...(req.status === 'PENDING_HOD' ? { hodDecidedById: user.id, hodDecidedAt: now } : { managerDecidedById: user.id, managerDecidedAt: now }) },
-  });
+  }), 'This deletion request was just decided by someone else — refresh the page.');
   await writeAuditLog({ userId: user.id, action: 'warranty_provider.deletion_declined', entityType: 'WarrantyProvider', entityId: req.providerId ?? requestId, metadata: { name: req.providerName, reason: why } });
   const requester = await prisma.user.findUnique({ where: { id: req.requestedById }, select: { fullName: true, email: true } });
   if (requester) await notifyStaff([requester], `Deletion declined — warranty provider ${req.providerName}`, 'Your provider deletion request was declined', [req.providerName, `Reason: ${why}`], `/warranty/providers/${req.providerId ?? ''}`);
