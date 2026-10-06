@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize } from '@/lib/authz/server';
+import { authorize, authorizeOnService } from '@/lib/authz/server';
 
 import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
 import { prisma } from '@ejo/database';
@@ -32,6 +32,7 @@ class ServiceEstimateActionError extends Error {}
  * harmless no-op if a draft already exists.
  */
 export async function createServiceEstimate(vehicleServiceId: string): Promise<{ id: string }> {
+  await authorizeOnService('workshop.estimate.edit', vehicleServiceId, 'createServiceEstimate');
   await assertServiceNotEscalated({ vehicleServiceId });
   const user = await requireUser();
   const existing = await prisma.serviceEstimate.findUnique({ where: { vehicleServiceId }, select: { id: true } });

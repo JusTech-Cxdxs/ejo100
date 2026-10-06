@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize, canSeeRecord, reachWhere } from '@/lib/authz/server';
+import { authorize, canSeeRecord, reachWhere, authorizeOnJobCard } from '@/lib/authz/server';
 
 
 import { bankDetailsFor } from '@/lib/workshop-core';
@@ -692,6 +692,7 @@ export type UpdateVehicleInput = {
  * plate/chassis back unchanged never wrongly flags itself as a
  * duplicate. */
 export async function updateVehicle(input: UpdateVehicleInput): Promise<void> {
+  await authorize('workshop.customer.manage', undefined, 'updateVehicle');
   const currentUser = await requireUser();
   const existing = await prisma.customerVehicle.findUnique({ where: { id: input.id } });
   if (!existing) {
@@ -4268,6 +4269,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
  * for display. Callable directly by any Workshop staff, and also
  * called automatically by runApprovalDeadlineChecks() below. */
 export async function sendApprovalReminder(jobCardId: string): Promise<void> {
+  await authorizeOnJobCard('workshop.customer.notify', jobCardId, 'sendApprovalReminder');
   const user = await requireUser();
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },

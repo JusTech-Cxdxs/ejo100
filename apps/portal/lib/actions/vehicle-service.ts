@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize, canSeeRecord, reachWhere } from '@/lib/authz/server';
+import { authorize, canSeeRecord, reachWhere, authorizeOnService } from '@/lib/authz/server';
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal } from '@/lib/estimate-billing';
@@ -810,6 +810,7 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
  * prediction once it's actually serviced again.
  */
 export async function attendToOverdueVehicle(serviceId: string): Promise<void> {
+  await authorize('workshop.customer.manage', undefined, 'attendToOverdueVehicle');
   const user = await requireUser();
   const service = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { attendedAt: true, serviceNumber: true, vehicleId: true } });
   if (!service) {
@@ -1493,6 +1494,7 @@ export async function getServiceTracker(branchId: string) {
  * own, as a fresh cycle, the next time a service is completed for it.
  */
 export async function stopTrackingVehicle(vehicleId: string, reason: string): Promise<void> {
+  await authorize('workshop.customer.manage', undefined, 'stopTrackingVehicle');
   const user = await requireUser();
   const why = reason.trim();
   if (!why) throw new VehicleServiceActionError('A reason is required to stop tracking this vehicle.');
@@ -1745,6 +1747,7 @@ export async function declineVehicleServiceCancellationRequest(requestId: string
  * it and when; the status stays CANCELLED (no service was performed).
  * Refused until anything paid has been fully refunded. */
 export async function handBackCancelledVehicleService(serviceId: string, collectedByName: string): Promise<void> {
+  await authorize('workshop.job_card.create', undefined, 'handBackCancelledVehicleService');
   const user = await requireUser();
   const name = collectedByName.trim();
   if (!name) throw new VehicleServiceActionError('The name of whoever is collecting the vehicle is required.');
@@ -2068,6 +2071,7 @@ export async function escalateVehicleServiceToJobCard(
   supervisorId: string,
   additionalComplaint?: string,
 ): Promise<{ jobCardId: string }> {
+  await authorizeOnService('workshop.job.work', serviceId, 'escalateVehicleServiceToJobCard');
   const user = await requireUser();
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
