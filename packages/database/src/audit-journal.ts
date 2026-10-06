@@ -29,8 +29,10 @@ import type { Prisma, PrismaClient } from '@prisma/client';
  *   rolls back (a lost race, a check refused inside it), its entries are
  *   dropped — the journal records what happened, never what was tried.
  * - Compare-and-set writes (updateMany / deleteMany on one id) keep their
- *   before / after values like update / delete; one that changed nothing
- *   (count 0) is not journaled.
+ *   before / after values like update / delete — the "before" is read only
+ *   outside a transaction (inside one, the entry has the values written and
+ *   the where it matched, which names the expected state). A write that
+ *   changed nothing (count 0) is not journaled.
  * - A journal failure never breaks the real operation.
  */
 

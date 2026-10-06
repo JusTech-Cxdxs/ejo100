@@ -241,3 +241,11 @@ test('a resent payment or refund form is recognised under the lock, not refused 
   assert.match(body('recordServicePayment', read('vehicle-service-payment.ts')), /lockExisting\(tx, 'vehicleService'[\s\S]{0,300}tx\.payment\.findUnique\(\{ where: \{ idempotencyKey \}/);
   assert.match(body('recordRefund', read('refunds.ts')), /lockExisting\([\s\S]{0,400}tx\.refund\.findUnique\(\{ where: \{ idempotencyKey/);
 });
+
+test('a service being escalated is read-only until its Job Card is open', () => {
+  const cycle = readFileSync(join(LIB, 'vehicle-service-cycle.ts'), 'utf8');
+  assert.match(cycle, /if \(svc && escalationInFlight\(svc\)\)/, 'assertServiceNotEscalated refuses an in-flight escalation');
+  assert.match(body('approveVehicleServiceCancellationRequest', read('vehicle-service.ts')), /escalatedAt: \{ lt: new Date\(Date\.now\(\) - ESCALATION_CLAIM_MS\) \}/);
+  const esc = body('escalateVehicleServiceToJobCard', read('vehicle-service.ts'));
+  assert.ok(esc.indexOf('const [estimateNow, paymentsNow]') > esc.indexOf('data: { escalatedAt: claimedAt }'), 're-checked after the claim');
+});

@@ -8,7 +8,7 @@ import { customerTotal } from '@/lib/estimate-billing';
 import { prisma, type VehicleServiceStatus } from '@ejo/database';
 import { requireUser, createJobCard, currentUserIsMasterAdmin, requireJobCardApprover, listEligibleManagersForBranch, requireEligibleManager } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopDepartmentForVehicleType, isEligibleSupervisor, getWorkshopOrgContext } from '@/lib/workshop-core';
-import { computeServiceCycle, loadServiceTracking, assertServiceNotEscalated, type WorkshopVisit } from '@/lib/vehicle-service-cycle';
+import { computeServiceCycle, loadServiceTracking, assertServiceNotEscalated, ESCALATION_CLAIM_MS, type WorkshopVisit } from '@/lib/vehicle-service-cycle';
 import { custodyReminderState, notDueYetMessage } from '@/lib/custody-reminders';
 import { pluralize } from '@/lib/utils/pluralize';
 import { READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
@@ -1637,7 +1637,8 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
       data: { status: 'APPROVED', decidedById: user.id, decidedAt: now, decisionNotes: decisionNotes?.trim() || null },
     }), 'This cancellation request was just decided by someone else — refresh the page.');
     claimed(await tx.vehicleService.updateMany({
-      where: { id: request.vehicleServiceId, status: { in: CANCELLABLE_SERVICE_STATUSES as VehicleServiceStatus[] } },
+      // …and never while an escalation is opening its Job Card (escalatedAt claim).
+      where: { id: request.vehicleServiceId, status: { in: CANCELLABLE_SERVICE_STATUSES as VehicleServiceStatus[] }, escalatedToJobCardId: null, OR: [{ escalatedAt: null }, { escalatedAt: { lt: new Date(Date.now() - ESCALATION_CLAIM_MS) } }] },
       data: { status: 'CANCELLED', cancelledAt: now },
     }), 'This Vehicle Service was just closed, checked out or escalated — refresh the page.');
     await tx.vehicleServiceCloseRequest.updateMany({
@@ -2175,10 +2176,21 @@ export async function escalateVehicleServiceToJobCard(
       id: serviceId,
       status: service.status,
       escalatedToJobCardId: null,
-      OR: [{ escalatedAt: null }, { escalatedAt: { lt: new Date(claimedAt.getTime() - 10 * 60_000) } }],
+      OR: [{ escalatedAt: null }, { escalatedAt: { lt: new Date(claimedAt.getTime() - ESCALATION_CLAIM_MS) } }],
     },
     data: { escalatedAt: claimedAt },
   }), 'This Vehicle Service is already being escalated — refresh the page in a moment.');
+  // Re-checked now that the claim is held (estimates and payments refuse an
+  // in-flight escalation from here on): one added in the instant before the
+  // claim releases it and stops.
+  const [estimateNow, paymentsNow] = await Promise.all([
+    prisma.serviceEstimate.findUnique({ where: { vehicleServiceId: serviceId }, select: { id: true } }),
+    prisma.payment.count({ where: { vehicleServiceId: serviceId } }),
+  ]);
+  if (estimateNow || paymentsNow > 0) {
+    await prisma.vehicleService.updateMany({ where: { id: serviceId, escalatedToJobCardId: null, escalatedAt: claimedAt }, data: { escalatedAt: null } });
+    throw new VehicleServiceActionError('An estimate or payment was just added to this Vehicle Service, so it can no longer be escalated — refresh the page.');
+  }
   let jobCard: Awaited<ReturnType<typeof createJobCard>>;
   try {
     // The Job Card is created already linked to this service (one database

@@ -389,9 +389,16 @@ type EscalationRef = { vehicleServiceId?: string; estimateId?: string; lineItemI
  * status rules, so "Escalated" is genuinely read-only on the server,
  * not just hidden on the page.
  */
+/** An escalation claim (escalatedAt set, no link yet) younger than ten
+ * minutes: a Job Card is being opened for this service. */
+export const ESCALATION_CLAIM_MS = 10 * 60_000;
+export function escalationInFlight(s: { status: string; escalatedAt: Date | null; escalatedToJobCardId: string | null }): boolean {
+  return s.status !== 'ESCALATED' && !s.escalatedToJobCardId && Boolean(s.escalatedAt) && Date.now() - new Date(s.escalatedAt!).getTime() < ESCALATION_CLAIM_MS;
+}
+
 export async function assertServiceNotEscalated(ref: EscalationRef): Promise<void> {
-  const select = { status: true, escalatedToJobCardId: true, escalatedToJobCard: { select: { jobNumber: true } } } as const;
-  let svc: { status: string; escalatedToJobCardId: string | null; escalatedToJobCard: { jobNumber: string } | null } | null = null;
+  const select = { status: true, escalatedAt: true, escalatedToJobCardId: true, escalatedToJobCard: { select: { jobNumber: true } } } as const;
+  let svc: { status: string; escalatedAt: Date | null; escalatedToJobCardId: string | null; escalatedToJobCard: { jobNumber: string } | null } | null = null;
   if (ref.vehicleServiceId) {
     svc = await prisma.vehicleService.findUnique({ where: { id: ref.vehicleServiceId }, select });
   } else if (ref.estimateId) {
@@ -400,6 +407,10 @@ export async function assertServiceNotEscalated(ref: EscalationRef): Promise<voi
     svc = (await prisma.serviceEstimateLineItem.findUnique({ where: { id: ref.lineItemId }, select: { estimate: { select: { vehicleService: { select } } } } }))?.estimate.vehicleService ?? null;
   } else if (ref.inspectionId) {
     svc = (await prisma.vehicleInspection.findUnique({ where: { id: ref.inspectionId }, select: { vehicleService: { select } } }))?.vehicleService ?? null;
+  }
+  // Being escalated right now (claimed, Job Card still opening): already read-only.
+  if (svc && escalationInFlight(svc)) {
+    throw new Error('This Vehicle Service is being escalated to a Job Card right now — refresh the page in a moment.');
   }
   if (svc && (svc.status === 'ESCALATED' || svc.escalatedToJobCardId)) {
     throw new Error(`This Vehicle Service was escalated to ${svc.escalatedToJobCard?.jobNumber ?? 'a Job Card'} and is now read-only — continue on the Job Card.`);

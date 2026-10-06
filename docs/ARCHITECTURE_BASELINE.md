@@ -130,7 +130,8 @@ Two primitives, in `lib/integrity.ts` (pure half: `lib/integrity-core.ts`):
   estimate can never change underneath and nothing unpriced slips into a submission.
 - Escalating a Vehicle Service claims it first (on `escalatedAt`; a claim left by a request that
   died expires after ten minutes) and creates the Job Card already linked to it in one write, so a
-  second click cannot open a second Job Card and no Job Card exists without its link.
+  second click cannot open a second Job Card and no Job Card exists without its link. While the
+  claim is held the service is read-only (no estimate, inspection change or cancellation).
 - Inside a transaction only the transaction client is used (a second connection could wait on
   itself in a serverless pool of one).
 - **Idempotency keys** (unique in the database) on payments, refunds and goods receipts: a resent
@@ -139,8 +140,9 @@ Two primitives, in `lib/integrity.ts` (pure half: `lib/integrity-core.ts`):
   unique constraint; money and stock creations retry with the next number on a clash, everything
   else tells the person to submit again. Nothing is ever duplicated.
 - The data journal (`packages/database/src/audit-journal.ts`) keeps before/after values for
-  compare-and-set writes, skips writes that changed nothing, and drops the entries of a
-  transaction that rolled back — it records what happened, never what was tried.
+  compare-and-set writes made outside a transaction (inside one it records the values written and
+  the expected state from the `where`), skips writes that changed nothing, and drops the entries of
+  a transaction that rolled back — it records what happened, never what was tried.
 - Enforced in CI: `tests/integrity-coverage.test.ts` reads the source (no unlisted plain status
   write; every compare-and-set names an expected state; the locks above are present);
   `tests/concurrency.db.test.ts` runs real parallel transactions on a throwaway PostgreSQL using

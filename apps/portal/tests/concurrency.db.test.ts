@@ -134,7 +134,8 @@ test('stock: storekeepers approving requests at once can never reserve more than
 
 test('two requests for the same parts, listed in opposite orders, never deadlock (lockIds + ORDER BY)', { skip }, async () => {
   await pool.query(`INSERT INTO ${SCHEMA}.part_stock VALUES ('p-a', 1, 0), ('p-b', 1, 0)`);
-  // Exactly what lockRows does: lockIds(ids), then the lock statement.
+  // The order lockRows uses (lockIds), one row at a time with a pause between
+  // — the worst case for a deadlock — still completes.
   const lockOneByOne = (c: PoolClient, ids: string[]) => lockIds(ids).reduce(
     (p, id) => p.then(() => c.query(lockSql('partStockByPart'), [[id]])).then(() => c.query('SELECT pg_sleep(0.05)')).then(() => undefined),
     Promise.resolve(),
