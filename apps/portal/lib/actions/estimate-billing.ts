@@ -1,6 +1,6 @@
 'use server';
 
-import { claimed } from '@/lib/integrity';
+import { claimed, lockExisting } from '@/lib/integrity';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
@@ -100,7 +100,12 @@ export async function setEstimateLineBillTo(lineId: string, billTo: BillTo, warr
   // Capture the previous value before saving, so the audit's "from" is
   // always the real prior state.
   const previous = BILL_TO_LABEL[(line.billTo ?? 'CUSTOMER') as BillTo];
-  claimed(await prisma.estimateLineItem.updateMany({ where: { id: lineId, billTo: line.billTo, coveringWarrantyId: line.coveringWarrantyId }, data: { billTo, coveringWarrantyId, billToNote: why || null } }), 'Who pays for this line was just changed by someone else — refresh the page.');
+  // Who pays changes what the customer owes, so it takes the same Job Card
+  // lock as recording a payment: the two are decided one after the other.
+  await prisma.$transaction(async (tx) => {
+    await lockExisting(tx, 'jobCard', [jc.id]);
+    claimed(await tx.estimateLineItem.updateMany({ where: { id: lineId, billTo: line.billTo, coveringWarrantyId: line.coveringWarrantyId }, data: { billTo, coveringWarrantyId, billToNote: why || null } }), 'Who pays for this line was just changed by someone else — refresh the page.');
+  });
   const metadata = {
     line: line.description,
     amount: line.amount === null ? null : Number(line.amount),

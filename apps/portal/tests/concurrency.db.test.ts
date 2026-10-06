@@ -14,7 +14,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { Pool, type PoolClient } from 'pg';
-import { lockStatement, LOCKABLE } from '../lib/integrity-core';
+import { lockStatement, lockIds, LOCKABLE } from '../lib/integrity-core';
 
 const URL = process.env.TEST_DATABASE_URL;
 const skip = !URL;
@@ -132,13 +132,30 @@ test('stock: storekeepers approving requests at once can never reserve more than
   assert.equal(ok.filter(Boolean).length, 2);
 });
 
-test('locks taken in opposite orders never deadlock (the lock statement sorts its ids)', { skip }, async () => {
+test('two requests for the same parts, listed in opposite orders, never deadlock (lockIds + ORDER BY)', { skip }, async () => {
   await pool.query(`INSERT INTO ${SCHEMA}.part_stock VALUES ('p-a', 1, 0), ('p-b', 1, 0)`);
-  const sorted = (ids: string[]) => [...ids].sort();
+  // Exactly what lockRows does: lockIds(ids), then the lock statement.
+  const lockOneByOne = (c: PoolClient, ids: string[]) => lockIds(ids).reduce(
+    (p, id) => p.then(() => c.query(lockSql('partStockByPart'), [[id]])).then(() => c.query('SELECT pg_sleep(0.05)')).then(() => undefined),
+    Promise.resolve(),
+  );
   await Promise.all([
-    asUser(async (c) => { await c.query(lockSql('partStockByPart'), [sorted(['p-a', 'p-b'])]); await c.query('SELECT pg_sleep(0.05)'); }),
-    asUser(async (c) => { await c.query(lockSql('partStockByPart'), [sorted(['p-b', 'p-a'])]); await c.query('SELECT pg_sleep(0.05)'); }),
+    asUser((c) => lockOneByOne(c, ['p-a', 'p-b'])),
+    asUser((c) => lockOneByOne(c, ['p-b', 'p-a'])),
   ]);
+});
+
+test('control: the same two requests locking in the order they were listed DO deadlock', { skip }, async () => {
+  await pool.query(`INSERT INTO ${SCHEMA}.part_stock VALUES ('q-a', 1, 0), ('q-b', 1, 0)`);
+  const lockAsListed = (c: PoolClient, ids: string[]) => ids.reduce(
+    (p, id) => p.then(() => c.query(lockSql('partStockByPart'), [[id]])).then(() => c.query('SELECT pg_sleep(0.2)')).then(() => undefined),
+    Promise.resolve(),
+  );
+  const outcomes = await Promise.allSettled([
+    asUser((c) => lockAsListed(c, ['q-a', 'q-b'])),
+    asUser((c) => lockAsListed(c, ['q-b', 'q-a'])),
+  ]);
+  assert.ok(outcomes.some((o) => o.status === 'rejected' && /deadlock/i.test(String((o as PromiseRejectedResult).reason))), 'expected Postgres to report a deadlock');
 });
 
 test('bookings: two people booking the same room for overlapping times — exactly one booking', { skip }, async () => {

@@ -123,6 +123,8 @@ export async function recordServicePayment(
   const PAYABLE = ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'];
   const settled = await prisma.$transaction(async (tx) => {
     await lockExisting(tx, 'vehicleService', [vehicleServiceId], 'This Vehicle Service no longer exists — refresh the page.');
+    // The same form, resent while the first was still being saved: done.
+    if (idempotencyKey && (await tx.payment.findUnique({ where: { idempotencyKey }, select: { id: true } }))) return null;
     const now = await tx.vehicleService.findUnique({
       where: { id: vehicleServiceId },
       select: { status: true, workStartedAt: true, serviceEstimate: { select: { lineItems: { select: { amount: true } } } }, payments: { select: { amount: true } } },
@@ -161,6 +163,7 @@ export async function recordServicePayment(
     }
     return { newTotal: afterNow, autoApprove, justMetDeposit: metDeposit, justCompletedFull: completedFull };
   });
+  if (!settled) return;
   const newTotal = settled.newTotal;
   const shouldAutoApprove = settled.autoApprove;
   const { justMetDeposit, justCompletedFull } = settled;

@@ -105,8 +105,14 @@ export async function removeRole(userId: string, roleId: string): Promise<void> 
   const removed = await prisma.$transaction(async (tx) => {
     await lockRows(tx, 'role', [roleId]);
     if (role.isSuperAdmin && (await tx.userRole.count({ where: { roleId } })) <= 1) throw new Error('This is the last Master Administrator — the platform must always have one.');
-    if (role.slug === 'administrator' && (await tx.userRole.count({ where: { roleId, user: { isActive: true } } })) <= 1) {
-      throw new Error('This is the organisation\'s last Administrator — give the role to someone else first.');
+    // Only when it would leave no ACTIVE Administrator: taking the role from a
+    // deactivated former administrator is always fine.
+    if (role.slug === 'administrator') {
+      const target = await tx.user.findUnique({ where: { id: userId }, select: { isActive: true } });
+      const othersActive = await tx.userRole.count({ where: { roleId, userId: { not: userId }, user: { isActive: true } } });
+      if (target?.isActive && othersActive === 0) {
+        throw new Error('This is the organisation\'s last active Administrator — give the role to someone else first.');
+      }
     }
     return (await tx.userRole.deleteMany({ where: { userId, roleId } })).count;
   });

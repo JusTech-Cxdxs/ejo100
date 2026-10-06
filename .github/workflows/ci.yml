@@ -53,6 +53,8 @@ jobs:
       # server action is guarded, integrity under concurrency (source checks
       # plus real parallel transactions against the Postgres service above).
       - run: npm run test --workspace=apps/portal
+      # The data journal: before/after values kept, rolled-back work never recorded.
+      - run: npm run test --workspace=packages/database
       - run: npm run build
       # Known vulnerabilities in production dependencies — reported on every push
       # (report-only so a new advisory never blocks an urgent fix; review the log).

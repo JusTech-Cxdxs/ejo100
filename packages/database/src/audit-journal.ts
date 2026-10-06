@@ -25,8 +25,12 @@ import type { Prisma, PrismaClient } from '@prisma/client';
  *   is redacted.
  * - Inside a database transaction no extra query is ever made (a
  *   single-connection pool would otherwise wait on itself forever): the
- *   entry is held for this request and written by the request's next
- *   ordinary query — normally the business audit entry that follows.
+ *   entry is held and written right after the transaction COMMITS. If it
+ *   rolls back (a lost race, a check refused inside it), its entries are
+ *   dropped — the journal records what happened, never what was tried.
+ * - Compare-and-set writes (updateMany / deleteMany on one id) keep their
+ *   before / after values like update / delete; one that changed nothing
+ *   (count 0) is not journaled.
  * - A journal failure never breaks the real operation.
  */
 
@@ -34,7 +38,11 @@ import type { Prisma, PrismaClient } from '@prisma/client';
  * with it, so each organisation only ever sees its own history. */
 type AuditActor = { userId: string | null; source: string; organisationId?: string | null };
 type PendingEntry = Prisma.AuditLogCreateManyInput;
-type AuditContext = AuditActor & { pending: PendingEntry[] };
+/** An entry written inside a transaction carries that transaction's token
+ * until it commits; a rolled-back transaction's entries are dropped, so the
+ * journal never records a change that did not happen. */
+type Held = { entry: PendingEntry; tx: symbol | null };
+type AuditContext = AuditActor & { pending: Held[]; tx?: symbol | null };
 
 const context = new AsyncLocalStorage<AuditContext>();
 
@@ -46,7 +54,7 @@ const context = new AsyncLocalStorage<AuditContext>();
 export function setAuditActor(userId: string | null, source: string, organisationId: string | null = null): void {
   const existing = context.getStore();
   if (existing && existing.userId === userId && existing.source === source && (existing.organisationId ?? null) === organisationId) return;
-  context.enterWith({ userId, source, organisationId, pending: existing?.pending ?? [] });
+  context.enterWith({ userId, source, organisationId, pending: existing?.pending ?? [], tx: existing?.tx ?? null });
 }
 
 /** The actor recorded for the current request, if any. */
@@ -156,14 +164,54 @@ export function installAuditJournal(client: PrismaClient): void {
   if (flag.__auditJournalInstalled) return;
   flag.__auditJournalInstalled = true;
 
+  // Every transaction runs with its own token: its journal entries are kept
+  // only if it commits, and dropped if it rolls back (a lost race, a refused
+  // check inside it) — the journal records what happened, never what was tried.
+  const original = client.$transaction.bind(client) as (arg: unknown, options?: unknown) => Promise<unknown>;
+  (client as unknown as { $transaction: (arg: unknown, options?: unknown) => Promise<unknown> }).$transaction = (arg: unknown, options?: unknown) => {
+    const outer = context.getStore();
+    const token = Symbol('tx');
+    const inner: AuditContext = outer
+      ? { ...outer, tx: token }
+      : { userId: null, source: 'unattributed', organisationId: null, pending: [], tx: token };
+    const settle = async (committed: boolean) => {
+      const list = inner.pending;
+      const done: PendingEntry[] = [];
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i]!.tx !== token) continue;
+        if (!committed) list.splice(i, 1);
+        else if (outer?.tx) list[i]!.tx = outer.tx; // nested: belongs to the outer transaction now
+        else done.unshift(list.splice(i, 1)[0]!.entry);
+      }
+      // Committed and no longer inside any transaction: write them now (an
+      // ordinary query — the transaction and its connection are finished).
+      if (done.length > 0) {
+        try {
+          await client.auditLog.createMany({ data: done });
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error('Audit journal: failed to write committed entries', err);
+        }
+      }
+    };
+    return context.run(inner, () => original(arg, options)).then(
+      async (value) => { await settle(true); return value; },
+      async (err) => { await settle(false); throw err; },
+    );
+  };
+
   client.$use(async (params, next) => {
     const store = context.getStore();
 
     // Write any entries held from an earlier transaction, now that we're
     // outside one (never adds a query inside a transaction).
     if (store && store.pending.length > 0 && !params.runInTransaction) {
-      const batch = store.pending.splice(0, store.pending.length);
-      try {
+      // Only entries whose transaction has committed (tx === null).
+      const batch: PendingEntry[] = [];
+      for (let i = store.pending.length - 1; i >= 0; i--) {
+        if (store.pending[i]!.tx === null) batch.unshift(store.pending.splice(i, 1)[0]!.entry);
+      }
+      if (batch.length > 0) try {
         await client.auditLog.createMany({ data: batch });
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -184,13 +232,19 @@ export function installAuditJournal(client: PrismaClient): void {
     }
 
     const args = (params.args ?? {}) as { where?: unknown; data?: unknown; create?: unknown; update?: unknown };
-    const single = params.action === 'update' || params.action === 'delete' || params.action === 'upsert';
+    // updateMany / deleteMany on ONE record (where: { id, …expected state }) —
+    // the compare-and-set shape every workflow step uses — keeps its "before"
+    // values exactly like update / delete.
+    const oneRecord = (params.action === 'updateMany' || params.action === 'deleteMany')
+      && Boolean(args.where && typeof args.where === 'object' && typeof (args.where as { id?: unknown }).id === 'string');
+    const single = params.action === 'update' || params.action === 'delete' || params.action === 'upsert' || oneRecord;
 
     let before: Record<string, unknown> | null = null;
     if (single && args.where && !params.runInTransaction) {
       try {
         const delegate = modelDelegate(client, params.model);
-        before = ((await delegate?.findUnique?.({ where: args.where })) as Record<string, unknown> | null) ?? null;
+        const where = oneRecord ? { id: (args.where as { id: string }).id } : args.where;
+        before = ((await delegate?.findUnique?.({ where })) as Record<string, unknown> | null) ?? null;
       } catch {
         before = null;
       }
@@ -212,11 +266,14 @@ export function installAuditJournal(client: PrismaClient): void {
       } else if (params.action === 'create') {
         metadata = { after: args.data };
       } else {
-        metadata = {
-          where: args.where,
-          data: args.data,
-          count: result && typeof result === 'object' && 'count' in (result as Record<string, unknown>) ? (result as { count: number }).count : undefined,
-        };
+        const count = result && typeof result === 'object' && 'count' in (result as Record<string, unknown>) ? (result as { count: number }).count : undefined;
+        // Nothing changed (a compare-and-set that lost, a no-op): nothing to journal.
+        if (count === 0) return result;
+        metadata = oneRecord && params.action === 'updateMany'
+          ? { ...changedFields(before, args.data as Record<string, unknown> | undefined), where: args.where, count }
+          : oneRecord && params.action === 'deleteMany'
+            ? { before, where: args.where, count }
+            : { where: args.where, data: args.data, count };
       }
       const entry: PendingEntry = {
         userId: store?.userId ?? null,
@@ -231,9 +288,9 @@ export function installAuditJournal(client: PrismaClient): void {
         // no actor context at all, one is opened so the entry is kept
         // (as unattributed) rather than dropped.
         if (store) {
-          store.pending.push(entry);
+          store.pending.push({ entry, tx: store.tx ?? null });
         } else {
-          context.enterWith({ userId: null, source: 'unattributed', organisationId: null, pending: [entry] });
+          context.enterWith({ userId: null, source: 'unattributed', organisationId: null, pending: [{ entry, tx: null }], tx: null });
         }
       } else {
         await client.auditLog.create({ data: entry });

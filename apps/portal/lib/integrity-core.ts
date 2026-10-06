@@ -32,6 +32,12 @@ export type LockTarget = keyof typeof LOCKABLE;
 
 const IDENT = /^[a-z_][a-zA-Z0-9_]*$/;
 
+/** The ids a lock statement is given: unique, non-empty, in one fixed order —
+ * two transactions locking the same rows always queue, never deadlock. */
+export function lockIds(ids: string[]): string[] {
+  return Array.from(new Set(ids.filter(Boolean))).sort();
+}
+
 /** SELECT … FOR UPDATE text around a single array parameter (ids). Identifiers
  * are validated even though they only ever come from LOCKABLE. */
 export function lockStatement(table: string, column: string): { before: string; after: string } {

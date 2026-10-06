@@ -1630,6 +1630,8 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
   // All-or-nothing, each step only from the state it was decided on — a
   // close approved at the same moment, or a second click, changes nothing.
   await prisma.$transaction(async (tx) => {
+    // The service first, so a close and a cancellation queue rather than deadlock.
+    await lockExisting(tx, 'vehicleService', [request.vehicleServiceId]);
     claimed(await tx.vehicleServiceCancellationRequest.updateMany({
       where: { id: requestId, status: 'PENDING' },
       data: { status: 'APPROVED', decidedById: user.id, decidedAt: now, decisionNotes: decisionNotes?.trim() || null },
@@ -1962,6 +1964,8 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
   const user = await requireEligibleManager(service.branchId, 'workshop.close.approve');
   const now = new Date();
   await prisma.$transaction(async (tx) => {
+    // The service first, so a close and a cancellation queue rather than deadlock.
+    await lockExisting(tx, 'vehicleService', [request.vehicleServiceId]);
     claimed(await tx.vehicleServiceCloseRequest.updateMany({
       where: { id: requestId, status: 'PENDING' },
       data: { status: 'APPROVED', decidedById: user.id, decidedAt: now, decisionNotes: decisionNotes?.trim() || null },
@@ -2124,7 +2128,7 @@ export async function escalateVehicleServiceToJobCard(
   }
   // Once the work is done (completed, ready, closed, collected) or the
   // service is cancelled, there is nothing left to escalate.
-  if (['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED', 'COLLECTED', 'CANCELLED'].includes(service.status)) {
+  if (['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED', 'COLLECTED', 'CANCELLED', 'ESCALATED'].includes(service.status)) {
     throw new VehicleServiceActionError(`A Vehicle Service that's already ${service.status.toLowerCase().replace(/_/g, ' ')} cannot be escalated.`);
   }
   // Escalation hands the visit over before any money or pricing is
@@ -2160,34 +2164,49 @@ export async function escalateVehicleServiceToJobCard(
     ...findingLines,
     additionalComplaint?.trim(),
   ].filter((c): c is string => Boolean(c));
-  // Claim the hand-over first (compare-and-set): a second, simultaneous
-  // escalation stops here instead of opening a second Job Card. If opening
-  // the Job Card then fails, the claim is undone so the service carries on.
+  // Claim the hand-over first (compare-and-set on escalatedAt): a second
+  // escalation — a double click while the first is still opening its Job
+  // Card, or a second person — stops here instead of opening a second Job
+  // Card. The service keeps its status meanwhile. A claim left behind by a
+  // request that died part-way expires after ten minutes.
+  const claimedAt = new Date();
   claimed(await prisma.vehicleService.updateMany({
-    where: { id: serviceId, status: service.status, escalatedToJobCardId: null },
-    data: { status: 'ESCALATED', escalatedAt: new Date() },
-  }), 'This Vehicle Service was just escalated or changed by someone else — refresh the page.');
+    where: {
+      id: serviceId,
+      status: service.status,
+      escalatedToJobCardId: null,
+      OR: [{ escalatedAt: null }, { escalatedAt: { lt: new Date(claimedAt.getTime() - 10 * 60_000) } }],
+    },
+    data: { escalatedAt: claimedAt },
+  }), 'This Vehicle Service is already being escalated — refresh the page in a moment.');
   let jobCard: Awaited<ReturnType<typeof createJobCard>>;
   try {
+    // The Job Card is created already linked to this service (one database
+    // write), so a Job Card can never exist without the link back to it.
     jobCard = await createJobCard({
-    customerId: service.customerId,
-    vehicleId: service.vehicleId,
-    complaints: complaints.length > 0 ? complaints : ['Escalated from Vehicle Service — see linked record for the original real request.'],
-    supervisorId,
-    mileageAtCheckIn: service.odometerAtService ?? undefined,
-    escalatedFromServiceNumber: service.serviceNumber,
-  });
+      customerId: service.customerId,
+      vehicleId: service.vehicleId,
+      complaints: complaints.length > 0 ? complaints : ['Escalated from Vehicle Service — see linked record for the original real request.'],
+      supervisorId,
+      mileageAtCheckIn: service.odometerAtService ?? undefined,
+      escalatedFromServiceNumber: service.serviceNumber,
+    });
   } catch (err) {
+    // Nothing was opened: release the claim so the service carries on.
     await prisma.vehicleService.updateMany({
-      where: { id: serviceId, status: 'ESCALATED', escalatedToJobCardId: null },
-      data: { status: service.status, escalatedAt: null },
+      where: { id: serviceId, escalatedToJobCardId: null, escalatedAt: claimedAt },
+      data: { escalatedAt: null },
     });
     throw err;
   }
 
   // Handed over: the Vehicle Service becomes ESCALATED — terminal and
-  // read-only; everything continues on the Job Card.
-  await prisma.vehicleService.update({ where: { id: serviceId }, data: { escalatedToJobCardId: jobCard.id } });
+  // read-only; everything continues on the Job Card. (If this request died
+  // right here, normaliseEscalatedServices completes it: linked → ESCALATED.)
+  claimed(await prisma.vehicleService.updateMany({
+    where: { id: serviceId, escalatedToJobCardId: jobCard.id },
+    data: { status: 'ESCALATED', escalatedAt: claimedAt },
+  }));
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.escalated_to_job_card',

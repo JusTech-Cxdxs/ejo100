@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  claimed, StaleStateError, STALE_MESSAGE, lockStatement, LOCKABLE, exceedsBalance, toMinor, isUniqueClashOn, retryOnNumberClash,
+  claimed, StaleStateError, STALE_MESSAGE, lockStatement, lockIds, LOCKABLE, exceedsBalance, toMinor, isUniqueClashOn, retryOnNumberClash,
 } from '../lib/integrity-core';
 
 test('claimed: exactly one row moved passes; none (lost the race) refuses with a plain message', () => {
@@ -26,6 +26,12 @@ test('the stale message is plain words (it is shown to people as-is)', () => {
 test('lockStatement: SELECT … FOR UPDATE, ordered, one array parameter', () => {
   const s = lockStatement('job_cards', 'id');
   assert.equal(s.before + '$1' + s.after, 'SELECT "id" FROM "job_cards" WHERE "id" = ANY($1::text[]) ORDER BY "id" FOR UPDATE');
+});
+
+test('lockIds: unique, no blanks, one fixed order whatever order they were given in', () => {
+  assert.deepEqual(lockIds(['p-b', 'p-a', 'p-b', '']), ['p-a', 'p-b']);
+  assert.deepEqual(lockIds(['p-a', 'p-b']), lockIds(['p-b', 'p-a']));
+  assert.deepEqual(lockIds([]), []);
 });
 
 test('lockStatement refuses anything that is not a plain identifier', () => {

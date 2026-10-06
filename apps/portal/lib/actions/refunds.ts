@@ -248,6 +248,11 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
   // instant — so two refunds can never both fit into the same balance.
   const recorded = await retryOnNumberClash('referenceNumber', () => prisma.$transaction(async (tx) => {
     await lockExisting(tx, t.kind === 'JOB_CARD' ? 'jobCard' : 'vehicleService', [t.id], 'This record no longer exists — refresh the page.');
+    // The same form, resent while the first was still being saved: hand back that refund.
+    if (input.idempotencyKey) {
+      const same = await tx.refund.findUnique({ where: { idempotencyKey: input.idempotencyKey }, select: { id: true, referenceNumber: true } });
+      if (same) return { created: same, after: null, duplicate: true as const };
+    }
     const fresh = t.kind === 'JOB_CARD'
       ? await tx.jobCard.findUnique({ where: { id: t.id }, select: { status: true, payments: { select: { amount: true } }, refunds: { select: { amount: true } }, estimate: { select: { lineItems: { select: { amount: true, billTo: true } } } } } })
       : await tx.vehicleService.findUnique({ where: { id: t.id }, select: { status: true, payments: { select: { amount: true } }, refunds: { select: { amount: true } } } });
@@ -278,8 +283,9 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
         recordedById: user.id,
       },
     });
-    return { created, after: position(fresh.payments, [...fresh.refunds, { amount }], owesNow) };
+    return { created, after: position(fresh.payments, [...fresh.refunds, { amount }], owesNow), duplicate: false as const };
   }));
+  if (recorded.duplicate) return { id: recorded.created.id, referenceNumber: recorded.created.referenceNumber };
   const refund = recorded.created;
   const referenceNumber = refund.referenceNumber;
 

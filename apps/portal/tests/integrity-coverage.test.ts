@@ -46,6 +46,25 @@ function closeParen(s: string, open: number): number {
   return -1;
 }
 
+/** Top-level keys of the object literal starting at `open` ('{'). */
+function topLevelKeys(s: string, open: number): string[] {
+  if (open < 0) return [];
+  const keys: string[] = [];
+  let depth = 0;
+  let token = '';
+  for (let i = open; i < s.length; i++) {
+    const c = s[i]!;
+    if (c === '{' || c === '[' || c === '(') { depth++; if (depth === 1) { token = ''; continue; } }
+    if (c === '}' || c === ']' || c === ')') { depth--; if (depth === 0) break; }
+    if (depth !== 1) continue;
+    if (c === ',') { token = ''; continue; }
+    if (c === ':' && token.trim() && !keys.includes(token.trim())) keys.push(token.trim());
+    else if (/[\w$]/.test(c)) token += c;
+    else if (!/\s/.test(c)) token = '';
+  }
+  return keys;
+}
+
 /** Writes of `status` that are deliberately not compare-and-set, with why. */
 const ALLOWED_PLAIN_STATUS_WRITES: Record<string, string> = {
   // "Done for now" is re-callable by design; completing never races a decision.
@@ -79,6 +98,15 @@ test('no workflow status is written with a plain update (compare-and-set only)',
     }
   }
   assert.deepEqual(offenders, [], `Status written without compare-and-set:\n${offenders.join('\n')}`);
+});
+
+test('topLevelKeys reads nested where clauses correctly', () => {
+  const src = "({ where: { id: x, status: s.status, OR: [{ a: null }, { b: { lt: 1 } }] }, data: { y: 1 } })";
+  assert.deepEqual(topLevelKeys(src, src.indexOf('{', src.indexOf('where:'))), ['id', 'status', 'OR']);
+  const idOnly = '({ where: { id: x }, data: { status: 1 } })';
+  assert.deepEqual(topLevelKeys(idOnly, idOnly.indexOf('{', idOnly.indexOf('where:'))), ['id']);
+  const shorthand = '({ where: { id }, data: {} })';
+  assert.deepEqual(topLevelKeys(shorthand, shorthand.indexOf('{', shorthand.indexOf('where:'))), []);
 });
 
 test('the allow-list only names writes that still exist (no stale exceptions)', () => {
@@ -145,7 +173,8 @@ test('administration: the last Administrator / Master Administrator is counted u
   const remove = body('removeRole', read('users-admin.ts'));
   assert.match(remove, /lockRows\(tx, 'role'/);
   assert.match(remove, /last Master Administrator/);
-  assert.match(remove, /last Administrator/);
+  assert.match(remove, /last active Administrator/);
+  assert.match(remove, /userId: \{ not: userId \}/, 'count the OTHER active administrators');
 });
 
 test('inside a transaction, only the transaction client is used (no second connection)', () => {
@@ -164,4 +193,51 @@ test('inside a transaction, only the transaction client is used (no second conne
     }
   }
   assert.deepEqual(offenders, [], `Global client used inside a transaction:\n${offenders.join('\n')}`);
+});
+
+test('every compare-and-set actually compares something besides the id', () => {
+  // claimed(await X.updateMany({ where: { id } … })) would "win" every time —
+  // the where must also name the state the person saw (status, assignee …).
+  const weak: string[] = [];
+  for (const file of files(LIB)) {
+    const src = readFileSync(file, 'utf8');
+    for (const m of src.matchAll(/\b(?:claimed|claimedOrStale|stillAsSeen)\(\s*await \w+\.(\w+)\.(updateMany|deleteMany)\(/g)) {
+      const open = src.indexOf('(', m.index! + m[0].length - 1);
+      const call = src.slice(open, closeParen(src, open) + 1);
+      const keys = topLevelKeys(call, call.indexOf('{', call.indexOf('where:')));
+      if (keys.filter((k) => k !== 'id').length === 0) weak.push(`${relative(ROOT, file)}:${src.slice(0, m.index).split('\n').length} ${m[1]}.${m[2]}`);
+    }
+  }
+  assert.deepEqual(weak, [], `Compare-and-set without an expected state:\n${weak.join('\n')}`);
+});
+
+test('escalation can never open two Job Cards, nor a Job Card without its link', () => {
+  const esc = body('escalateVehicleServiceToJobCard', read('vehicle-service.ts'));
+  assert.match(esc, /'CANCELLED', 'ESCALATED'\]\.includes\(service\.status\)/, 'an escalated service is refused up front');
+  assert.match(esc, /escalatedToJobCardId: null,\s*OR: \[\{ escalatedAt: null \}/, 'claimed on escalatedAt before the Job Card is opened');
+  assert.ok(esc.indexOf('escalatedAt: claimedAt }') < esc.indexOf('await createJobCard('), 'claim first');
+  const create = body('createJobCard', read('workshop.ts'));
+  assert.match(create, /escalatedFromVehicleService: \{ connect: \{ id: escalatedServiceId \} \}/, 'Job Card created already linked');
+});
+
+test('close and cancellation approvals lock the parent first (no deadlock between them)', () => {
+  for (const fn of ['approveCancellationRequest', 'approveCloseRequest']) {
+    const b = body(fn, read('workshop.ts'));
+    assert.ok(b.indexOf("lockExisting(tx, 'jobCard'") > -1 && b.indexOf("lockExisting(tx, 'jobCard'") < b.indexOf('claimed('), fn);
+  }
+  for (const fn of ['approveVehicleServiceCancellationRequest', 'approveVehicleServiceCloseRequest']) {
+    const b = body(fn, read('vehicle-service.ts'));
+    assert.ok(b.indexOf("lockExisting(tx, 'vehicleService'") > -1 && b.indexOf("lockExisting(tx, 'vehicleService'") < b.indexOf('claimed('), fn);
+  }
+});
+
+test('estimates are submitted as one locked step (read, reprice, check, submit)', () => {
+  assert.match(body('submitEstimateForValidation', read('workshop.ts')), /withEstimateUnchanged\(estimate\.id, 'DRAFT', async \(tx\) => \{\s*const lines = await tx\.estimateLineItem\.findMany/);
+  assert.match(body('submitServiceEstimate', read('vehicle-service-estimate.ts')), /withServiceEstimateUnchanged\(estimateId, 'DRAFT', async \(tx\) => \{\s*const lines = await tx\.serviceEstimateLineItem\.findMany/);
+});
+
+test('a resent payment or refund form is recognised under the lock, not refused as "over the balance"', () => {
+  assert.match(body('recordPayment', read('workshop.ts')), /lockExisting\(tx, 'jobCard'[\s\S]{0,300}tx\.payment\.findUnique\(\{ where: \{ idempotencyKey \}/);
+  assert.match(body('recordServicePayment', read('vehicle-service-payment.ts')), /lockExisting\(tx, 'vehicleService'[\s\S]{0,300}tx\.payment\.findUnique\(\{ where: \{ idempotencyKey \}/);
+  assert.match(body('recordRefund', read('refunds.ts')), /lockExisting\([\s\S]{0,400}tx\.refund\.findUnique\(\{ where: \{ idempotencyKey/);
 });

@@ -17,7 +17,7 @@
  * Pure helpers live in ./integrity-core (unit-tested without a database).
  */
 import { Prisma } from '@ejo/database';
-import { LOCKABLE, lockStatement, StaleStateError, type LockTarget } from './integrity-core';
+import { LOCKABLE, lockIds, lockStatement, StaleStateError, type LockTarget } from './integrity-core';
 
 export { claimed, StaleStateError, STALE_MESSAGE } from './integrity-core';
 
@@ -27,7 +27,7 @@ type RawTx = { $queryRaw: (query: Prisma.Sql) => Promise<unknown> };
  * until the surrounding interactive transaction ends. Only whitelisted
  * table/column pairs can be named — nothing user-supplied reaches the SQL text. */
 export async function lockRows(tx: RawTx, target: LockTarget, ids: string[]): Promise<void> {
-  const unique = Array.from(new Set(ids.filter(Boolean))).sort();
+  const unique = lockIds(ids);
   if (unique.length === 0) return;
   const { table, column } = LOCKABLE[target];
   const sql = lockStatement(table, column);
@@ -36,7 +36,7 @@ export async function lockRows(tx: RawTx, target: LockTarget, ids: string[]): Pr
 
 /** Locks rows that must exist (a parent record): refuses if any are gone. */
 export async function lockExisting(tx: RawTx, target: LockTarget, ids: string[], message?: string): Promise<void> {
-  const unique = Array.from(new Set(ids.filter(Boolean))).sort();
+  const unique = lockIds(ids);
   if (unique.length === 0) return;
   const { table, column } = LOCKABLE[target];
   const sql = lockStatement(table, column);

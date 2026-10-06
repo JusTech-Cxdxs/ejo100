@@ -108,36 +108,50 @@ events. **Planned:** a typed event catalogue as the formal contract; no message 
 
 ## 12. Transactions & concurrency
 Two primitives, in `lib/integrity.ts` (pure half: `lib/integrity-core.ts`):
-- **Compare-and-set** — every workflow status change is `updateMany` with the expected state in its
+- **Compare-and-set** — workflow status changes are `updateMany` with the expected state in its
   `where`, checked with `claimed()`; 0 rows means someone else acted first, and the person sees
   "Someone else changed this just now — refresh…" with nothing written. This covers Job Cards,
   Vehicle Services, estimates (both kinds), close/cancel requests, parts and procurement requests,
   warranty claims and warranties, policy/provider deletions, exit passes, road tests, visits,
-  deliveries, contractor passes, incidents, appointments and pricing alerts. Decisions that touch
-  several rows (approve a close and the Job Card; approve a cancellation) are one transaction in
-  which each step is compare-and-set.
-- **Row locks** (`lockRows` / `lockExisting`: `SELECT … FOR UPDATE`, ids sorted so two
-  transactions never deadlock) where a total is checked and then added to: payments and refunds
-  (the Job Card / Vehicle Service row), stock reservation and release (the `part_stock` rows),
-  room and host bookings (room first, then host), the last Administrator / Master Administrator
-  count, and one-per-record requests (cancellation, close, parts and outside-purchase requests are
-  worked out and created under the parent's lock).
-- Estimate lines (and Store matching) change only inside a transaction that first re-claims the
-  estimate in the status the editor saw, so an approved estimate can never change underneath.
+  deliveries, contractor passes, incidents, appointments and pricing alerts. Three plain status
+  writes remain, each named with its reason in `tests/integrity-coverage.test.ts` (inspection
+  completion, creating a draft estimate, a legacy-data repair). Decisions that touch several rows
+  (approving a close or a cancellation) are one transaction that locks the Job Card / Vehicle
+  Service first, then compare-and-sets each step.
+- **Row locks** (`lockRows` / `lockExisting`: `SELECT … FOR UPDATE`, ids de-duplicated and sorted
+  by `lockIds` so two transactions queue instead of deadlocking) where a total is checked and then
+  changed: payments, refunds and who-pays decisions (the Job Card / Vehicle Service row), stock
+  reservation and release (the `part_stock` rows), room and host bookings (room first, then host),
+  the last active Administrator / Master Administrator count, and one-per-record requests
+  (cancellation, close, parts and outside-purchase requests are worked out and created under the
+  parent's lock).
+- Estimate lines, Store matching and estimate submission (read, reprice, check, submit) run inside
+  a transaction that first re-claims the estimate in the status the editor saw, so an approved
+  estimate can never change underneath and nothing unpriced slips into a submission.
+- Escalating a Vehicle Service claims it first (on `escalatedAt`; a claim left by a request that
+  died expires after ten minutes) and creates the Job Card already linked to it in one write, so a
+  second click cannot open a second Job Card and no Job Card exists without its link.
 - Inside a transaction only the transaction client is used (a second connection could wait on
   itself in a serverless pool of one).
 - **Idempotency keys** (unique in the database) on payments, refunds and goods receipts: a resent
-  form records once.
-- Human reference numbers (`RF-…`, `GRN-…`, `PRS-…`, `EPR-…`) are "latest + 1" protected by a
+  form records once — checked again under the lock, so a resend is recognised, not refused.
+- Human reference numbers (`RF-…`, `GRN-…`, `PRS-…`, `EPR-…`, …) are "latest + 1" protected by a
   unique constraint; money and stock creations retry with the next number on a clash, everything
   else tells the person to submit again. Nothing is ever duplicated.
-- Enforced in CI: `tests/integrity-coverage.test.ts` (no plain status write; the locks above are
-  present) and `tests/concurrency.db.test.ts` (real parallel transactions on PostgreSQL).
-- **Known limits:** a manager approves the estimate as it is when they click, not a version token
-  from their screen; opening a Job Card or Vehicle Service has no idempotency key (the submit
-  button blocks double clicks, a resend after a dropped connection could open a second one);
-  stock reserved for a request whose job is later cancelled stays reserved until Store and the
-  Manager unwind it by hand.
+- The data journal (`packages/database/src/audit-journal.ts`) keeps before/after values for
+  compare-and-set writes, skips writes that changed nothing, and drops the entries of a
+  transaction that rolled back — it records what happened, never what was tried.
+- Enforced in CI: `tests/integrity-coverage.test.ts` reads the source (no unlisted plain status
+  write; every compare-and-set names an expected state; the locks above are present);
+  `tests/concurrency.db.test.ts` runs real parallel transactions on a throwaway PostgreSQL using
+  the same lock SQL (with control tests showing the race and the deadlock it prevents);
+  `packages/database/tests/audit-journal.test.ts` covers the journal rules.
+- **Known limits:** the database tests exercise the SQL patterns, not the server actions through
+  the Prisma client; a manager approves the estimate as it is when they click, not a version
+  token from their screen; opening a Job Card or Vehicle Service has no idempotency key (the
+  submit button blocks double clicks, a resend after a dropped connection could open a second
+  one); stock reserved for a request whose job is later cancelled stays reserved until Store and
+  the Manager unwind it by hand.
 
 ## 13. Financial integrity
 Totals are computed from immutable lines (estimate lines, payments, refunds); paid amounts are

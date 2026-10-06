@@ -1033,6 +1033,7 @@ export type CreateJobCardInput = {
 
 
 export async function createJobCard(input: CreateJobCardInput) {
+  let escalatedServiceId: string | null = null;
   if (input.escalatedFromServiceNumber) {
     // Escalating a Vehicle Service: done by the people working on it (its
     // supervisor or technician) — checked on the real service record, never on
@@ -1043,6 +1044,7 @@ export async function createJobCard(input: CreateJobCardInput) {
     });
     if (!sv) throw new WorkshopActionError('That Vehicle Service cannot be escalated — refresh the page.');
     await authorizeOnService('workshop.job.work', sv.id, 'createJobCard.escalation');
+    escalatedServiceId = sv.id;
   } else {
     await authorize('workshop.job_card.create', undefined, 'createJobCard');
   }
@@ -1106,6 +1108,8 @@ export async function createJobCard(input: CreateJobCardInput) {
         mileageAtCheckIn: input.mileageAtCheckIn ?? null,
         createdById: user.id,
         status: JobCardStatus.CHECKED_IN,
+        // Escalation: linked to its Vehicle Service in the same write.
+        ...(escalatedServiceId ? { escalatedFromVehicleService: { connect: { id: escalatedServiceId } } } : {}),
         complaints: {
           create: complaints.map((description, i) => ({
             sequenceNumber: i + 1,
@@ -2593,38 +2597,46 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
   if (estimate.lineItems.length === 0) {
     throw new WorkshopActionError('Add at least one line item before submitting the estimate.');
   }
-  // The real transition from "live" to "locked" — a matched Store
-  // Part line's price has tracked Store's own current selling price
-  // the whole time it's been Draft; this is the one moment that
-  // number gets written down as the estimate's own permanent record,
-  // rather than the possibly-stale figure sitting in the database
-  // from whenever the line's quantity last happened to change.
-  for (const li of estimate.lineItems as (typeof estimate.lineItems)[number][]) {
-    if (li.type === 'STORE_PART' && li.matchedPartId && li.matchedPart?.sellingPrice !== null && li.matchedPart?.sellingPrice !== undefined) {
-      const liveUnitPrice = Number(li.matchedPart.sellingPrice);
-      const liveAmount = Math.round(li.quantity * liveUnitPrice * 100) / 100;
-      if (Number(li.unitPrice ?? -1) !== liveUnitPrice || Number(li.amount ?? -1) !== liveAmount) {
-        await prisma.estimateLineItem.update({ where: { id: li.id }, data: { unitPrice: liveUnitPrice, amount: liveAmount } });
-      }
-      // Also updated in memory, not just in the database — the
-      // "missing prices" check right below reads from this same
-      // in-memory array, and needs to see the just-corrected value,
-      // not the stale one this whole loop was fetched with.
-      (li as { unitPrice: unknown }).unitPrice = liveUnitPrice;
-    }
-  }
-  const missingPricesOn = estimate.lineItems.filter((li: { unitPrice: unknown }) => li.unitPrice === null);
-  if (missingPricesOn.length > 0) {
-    throw new WorkshopActionError(
-      `Every line needs a price before submitting — missing on: ${missingPricesOn.map((li: { description: string }) => li.description).join(', ')}.`,
-    );
-  }
+  // Who may submit is checked before anything is written.
   const user = await requireEstimateContributor(estimate.jobCard);
 
-  claimed(await prisma.estimate.updateMany({
-    where: { id: estimate.id, status: 'DRAFT' },
-    data: { status: 'SUBMITTED', submittedAt: new Date() },
-  }), 'This estimate was just submitted by someone else — refresh the page.');
+  // Read, reprice, check and submit as ONE step with the estimate locked: a
+  // line added (or changed) at the same moment either lands before — and is
+  // checked here — or is refused because the estimate is no longer a draft.
+  await withEstimateUnchanged(estimate.id, 'DRAFT', async (tx) => {
+    const lines = await tx.estimateLineItem.findMany({
+      where: { estimateId: estimate.id },
+      select: { id: true, type: true, matchedPartId: true, quantity: true, unitPrice: true, amount: true, description: true, matchedPart: { select: { sellingPrice: true } } },
+    });
+    if (lines.length === 0) {
+      throw new WorkshopActionError('Add at least one line item before submitting the estimate.');
+    }
+    // The real transition from "live" to "locked" — a matched Store Part
+    // line's price has tracked Store's current selling price the whole time
+    // it's been Draft; this is the one moment that number is written down as
+    // the estimate's own permanent record.
+    for (const li of lines as (typeof lines)[number][]) {
+      if (li.type === 'STORE_PART' && li.matchedPartId && li.matchedPart?.sellingPrice !== null && li.matchedPart?.sellingPrice !== undefined) {
+        const liveUnitPrice = Number(li.matchedPart.sellingPrice);
+        const liveAmount = Math.round(li.quantity * liveUnitPrice * 100) / 100;
+        if (Number(li.unitPrice ?? -1) !== liveUnitPrice || Number(li.amount ?? -1) !== liveAmount) {
+          await tx.estimateLineItem.update({ where: { id: li.id }, data: { unitPrice: liveUnitPrice, amount: liveAmount } });
+        }
+        // Also corrected in memory for the "missing prices" check below.
+        (li as { unitPrice: unknown }).unitPrice = liveUnitPrice;
+      }
+    }
+    const missingPricesOn = lines.filter((li: { unitPrice: unknown }) => li.unitPrice === null);
+    if (missingPricesOn.length > 0) {
+      throw new WorkshopActionError(
+        `Every line needs a price before submitting — missing on: ${missingPricesOn.map((li: { description: string }) => li.description).join(', ')}.`,
+      );
+    }
+    claimed(await tx.estimate.updateMany({
+      where: { id: estimate.id, status: 'DRAFT' },
+      data: { status: 'SUBMITTED', submittedAt: new Date() },
+    }), 'This estimate was just submitted by someone else — refresh the page.');
+  });
 
   await writeAuditLog({
     userId: user.id,
@@ -3257,6 +3269,9 @@ export async function recordPayment(
   // fit into the same remaining balance.
   const settled = await prisma.$transaction(async (tx) => {
     await lockExisting(tx, 'jobCard', [jobCardId], 'This Job Card no longer exists — refresh the page.');
+    // The same form, resent while the first was still being saved: it is
+    // recorded now — nothing more to do.
+    if (idempotencyKey && (await tx.payment.findUnique({ where: { idempotencyKey }, select: { id: true } }))) return null;
     const now = await tx.jobCard.findUnique({
       where: { id: jobCardId },
       select: { status: true, workStartedAt: true, estimate: { select: { lineItems: { select: { amount: true, billTo: true } } } }, payments: { select: { amount: true } } },
@@ -3306,6 +3321,7 @@ export async function recordPayment(
       justCompletedFull: paidNow < totalNow && afterNow >= totalNow,
     };
   });
+  if (!settled) return;
   const newTotal = settled.newTotal;
   const shouldAutoApprove = settled.autoApprove;
   const { justMetDeposit, justCompletedFull } = settled;
@@ -3630,6 +3646,9 @@ export async function approveCancellationRequest(requestId: string, decisionNote
   // with nothing changed — a Job Card can never end up both closed and
   // cancelled.
   await prisma.$transaction(async (tx) => {
+    // The Job Card first: a close and a cancellation decided at the same
+    // moment queue on it instead of deadlocking on each other's requests.
+    await lockExisting(tx, 'jobCard', [request.jobCardId]);
     claimed(await tx.cancellationRequest.updateMany({
       where: { id: requestId, status: 'PENDING' },
       data: {
@@ -3947,6 +3966,9 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
 
   // Same all-or-nothing, compare-and-set shape as approving a cancellation.
   await prisma.$transaction(async (tx) => {
+    // The Job Card first: a close and a cancellation decided at the same
+    // moment queue on it instead of deadlocking on each other's requests.
+    await lockExisting(tx, 'jobCard', [request.jobCardId]);
     claimed(await tx.closeRequest.updateMany({
       where: { id: requestId, status: 'PENDING' },
       data: {

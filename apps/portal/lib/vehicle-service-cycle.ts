@@ -98,12 +98,8 @@ const CYCLE_SOURCE_SELECT = {
 export async function normaliseEscalatedServices(): Promise<void> {
   // An "Escalated" service whose Job Card no longer exists (deleted) has
   // nothing to hand over to — it is cancelled rather than left stuck.
-  // Never one whose escalation is still being opened: escalation claims the
-  // service (ESCALATED, no link yet) a moment BEFORE its Job Card exists —
-  // see escalateVehicleServiceToJobCard — so only orphans older than a few
-  // minutes are treated as abandoned.
   await prisma.vehicleService.updateMany({
-    where: { status: 'ESCALATED', escalatedToJobCardId: null, OR: [{ escalatedAt: null }, { escalatedAt: { lt: new Date(Date.now() - 10 * 60_000) } }] },
+    where: { status: 'ESCALATED', escalatedToJobCardId: null },
     data: { status: 'CANCELLED', cancelledAt: new Date() },
   });
   const legacy = await prisma.vehicleService.findMany({

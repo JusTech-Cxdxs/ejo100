@@ -12,7 +12,8 @@
     "studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "test": "tsc -p tsconfig.test.json && node --test .test-out/tests/*.test.js"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
