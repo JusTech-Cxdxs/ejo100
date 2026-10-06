@@ -3,6 +3,7 @@
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
+import { authorize, getPrincipal } from '@/lib/authz/server';
 
 // Deliberately NOT exported — a 'use server' file may only export
 // async functions or types, per the standing rule this project
@@ -17,11 +18,16 @@ class OrganisationActionError extends Error {}
  * there's deliberately only ever one, so this fetches it directly
  * rather than requiring an id, the same way a single-tenant settings
  * page should. */
+/** The signed-in person's OWN organisation (its name and contacts head every
+ * page and document). The platform team, who belong to none, see the first. */
 export async function getOrganisation() {
-  await requireUser();
-  return prisma.organisation.findFirst({
-    orderBy: { createdAt: 'asc' },
-  });
+  const user = await requireUser();
+  const me = await prisma.user.findUnique({ where: { id: user.id }, select: { organisationId: true } });
+  if (me?.organisationId) {
+    const own = await prisma.organisation.findUnique({ where: { id: me.organisationId } });
+    if (own) return own;
+  }
+  return prisma.organisation.findFirst({ orderBy: { createdAt: 'asc' } });
 }
 
 export type UpdateOrganisationInput = {
@@ -40,12 +46,12 @@ export type UpdateOrganisationInput = {
  * whole system carries, not a per-branch setting. */
 export async function updateOrganisation(organisationId: string, input: UpdateOrganisationInput): Promise<void> {
   const user = await requireUser();
-  const isMasterAdmin = await prisma.user.findFirst({
-    where: { id: user.id, roles: { some: { role: { isSuperAdmin: true } } } },
-    select: { id: true },
-  });
-  if (!isMasterAdmin) {
-    throw new OrganisationActionError('You do not have permission to edit organisation details.');
+  // The organisation's own administrators keep its profile (catalogue:
+  // admin.organisation.manage) — only ever their OWN organisation.
+  await authorize('admin.organisation.manage', undefined, 'organisation.update', 'You do not have permission to edit organisation details.');
+  const [me, principal] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { organisationId: true } }), getPrincipal()]);
+  if (!principal.isSuperAdmin && me?.organisationId !== organisationId) {
+    throw new OrganisationActionError('Organisation not found.');
   }
   const trimmedName = input.name?.trim();
   if (!trimmedName) {

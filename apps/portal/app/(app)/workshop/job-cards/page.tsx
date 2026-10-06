@@ -1,3 +1,4 @@
+import { OrgTrail } from '@/components/OrgTrail';
 import { LoadingLink } from '@/components/LoadingLink';
 import { getJobCardOutcomes } from '@/lib/actions/visit-outcomes';
 import { OutcomeFilterTabs } from '@/components/OutcomeFilterTabs';
@@ -74,7 +75,7 @@ export default async function WorkshopJobCardsPage({
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Job Cards</h1>
         <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
-          Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Workshop
+          <OrgTrail area="Workshop" />
         </p>
       </div>
 

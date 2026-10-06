@@ -1,3 +1,4 @@
+import { canRequestRoadTestOn } from '@/lib/actions/security';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
 import { listRoadTestsFor } from '@/lib/actions/security';
 import { securityActionDetail } from '@/lib/security-labels';
@@ -480,6 +481,7 @@ export default async function JobCardDetailPage({
         isEligibleManager,
       }).filter((s) => s !== 'CHECKED_OUT' || isPaidInFull);
 
+  const canRoadTest = await canRequestRoadTestOn('JOB_CARD', jobCard.id);
   return (
     <div className="p-8">
       <LoadingLink href="/workshop/job-cards" className="text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
@@ -1156,7 +1158,7 @@ export default async function JobCardDetailPage({
 
           {billing ? <JobCardBillingPanel jobCardId={jobCard.id} billing={billing} /> : null}
 
-          <RoadTestsPanel rows={roadTests} ready={jobCard.status === 'QUALITY_CHECK'} requestHref={['CHECKED_IN', 'IN_PROGRESS', 'AWAITING_PARTS', 'QUALITY_CHECK', 'AWAITING_CUSTOMER_APPROVAL', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'].includes(jobCard.status) ? `/security/road-tests/new?jobCardId=${jobCard.id}` : null} />
+          <RoadTestsPanel rows={roadTests} ready={jobCard.status === 'QUALITY_CHECK'} requestHref={['CHECKED_IN', 'IN_PROGRESS', 'AWAITING_PARTS', 'QUALITY_CHECK', 'AWAITING_CUSTOMER_APPROVAL', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'].includes(jobCard.status) && canRoadTest ? `/security/road-tests/new?jobCardId=${jobCard.id}` : null} />
 
           <WarrantyList warranties={warranties} title="Warranties issued" />
 
@@ -1633,7 +1635,7 @@ export default async function JobCardDetailPage({
             ) : null}
           </div>
 
-          {!isCancelled && !isCheckedOut ? (
+          {!isCancelled && !isCheckedOut && (isMasterAdmin || jobCard.supervisorId === viewerId) ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Assign technician</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">

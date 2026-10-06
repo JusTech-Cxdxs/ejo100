@@ -2,15 +2,16 @@
 
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
+import { allows, getPrincipal } from '@/lib/authz/server';
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
 import { recordUrl, describeApiEntry, areaOf, AREA_LABEL } from '@/lib/notification-rules';
 import { resolveRecords, resolveReferenceNumbers, REFERENCE_PATTERN } from '@/lib/record-resolver';
 
-/** The full audit trail is for the Master Admin and Administrators. */
+/** The full audit trail — catalogue permission audit.view (Administrators;
+ * Master Admin always; plus any grant added on the Roles page). */
 export async function canSeeAuditLogs(): Promise<boolean> {
-  const user = await requireUser();
-  const roles = await prisma.userRole.findMany({ where: { userId: user.id }, select: { role: { select: { slug: true, isSuperAdmin: true } } } });
-  return roles.some((r: { role: { slug: string; isSuperAdmin: boolean } }) => r.role.isSuperAdmin || r.role.slug === 'administrator');
+  await requireUser();
+  return allows('audit.view');
 }
 
 export type AuditKind = 'all' | 'business' | 'data' | 'api';
@@ -125,5 +126,7 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
 
 export async function listAuditUsers() {
   if (!(await canSeeAuditLogs())) return [];
-  return prisma.user.findMany({ orderBy: { fullName: 'asc' }, select: { id: true, fullName: true } });
+  // The platform team is never listed to organisations (their entries show as "Platform support").
+  const p = await getPrincipal();
+  return prisma.user.findMany({ where: p.isSuperAdmin ? {} : { roles: { none: { role: { isSuperAdmin: true } } } }, orderBy: { fullName: 'asc' }, select: { id: true, fullName: true } });
 }

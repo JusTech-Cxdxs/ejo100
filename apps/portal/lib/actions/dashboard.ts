@@ -1,6 +1,8 @@
 'use server';
 
 import { prisma } from '@ejo/database';
+import { jobCardActive, serviceInside } from '@/lib/custody';
+import { allows, reachWhere } from '@/lib/authz/server';
 import { getWarrantyDashboardItems } from './warranty';
 import { getSecurityDashboardItems } from './security';
 import { getWorkflowActionItems } from './workflow-actions';
@@ -276,6 +278,18 @@ export async function createAnnouncement(message: string, expiresAt: Date | null
 
 export async function deactivateAnnouncement(announcementId: string): Promise<void> {
   const user = await requireUser();
+  // Same people who may post one: a Manager of their branch (or Master Admin),
+  // and only within their own organisation — or whoever posted it.
+  const [a, me, isMasterAdmin] = await Promise.all([
+    prisma.announcement.findUnique({ where: { id: announcementId }, select: { organisationId: true, createdById: true } }),
+    prisma.user.findUnique({ where: { id: user.id }, select: { organisationId: true, branchId: true } }),
+    currentUserIsMasterAdmin(),
+  ]);
+  if (!a || (!isMasterAdmin && a.organisationId !== me?.organisationId)) throw new Error('Announcement not found.');
+  if (!isMasterAdmin && a.createdById !== user.id) {
+    const managers = me?.branchId ? await listEligibleManagersForBranch(me.branchId).catch(() => ({ supervisors: [] as { id: string }[] })) : { supervisors: [] as { id: string }[] };
+    if (!managers.supervisors.some((m) => m.id === user.id)) throw new Error('Only a Manager can take an announcement down.');
+  }
   await prisma.announcement.update({ where: { id: announcementId }, data: { isActive: false } });
   await writeAuditLog({ userId: user.id, action: 'announcement.deactivated', entityType: 'Announcement', entityId: announcementId, metadata: {} });
 }
@@ -306,11 +320,17 @@ export async function getDashboardTrend(): Promise<DashboardTrendPoint[]> {
     d.setUTCDate(d.getUTCDate() - 1);
   }
   const start = new Date(`${days[0]}T00:00:00+01:00`);
+  // Same reach as the lists (a branch-scoped person sees their branch), and
+  // money only for people allowed to see the business figures — the amounts
+  // are never even sent to anyone else's browser.
+  const [reach, money] = await Promise.all([reachWhere('workshop.job_card.view'), allows('analytics.business.view')]);
+  const viaJob = reach.branchId ? { OR: [{ jobCard: reach }, { vehicleService: reach }] } : {};
+  const none = Promise.resolve([] as { recordedAt: Date; amount: unknown }[]);
   const [jobCards, services, payments, refunds] = await Promise.all([
-    prisma.jobCard.findMany({ where: { createdAt: { gte: start } }, select: { createdAt: true } }),
-    prisma.vehicleService.findMany({ where: { createdAt: { gte: start } }, select: { createdAt: true } }),
-    prisma.payment.findMany({ where: { recordedAt: { gte: start } }, select: { recordedAt: true, amount: true } }),
-    prisma.refund.findMany({ where: { recordedAt: { gte: start } }, select: { recordedAt: true, amount: true } }),
+    prisma.jobCard.findMany({ where: { ...reach, createdAt: { gte: start } }, select: { createdAt: true } }),
+    prisma.vehicleService.findMany({ where: { ...reach, createdAt: { gte: start } }, select: { createdAt: true } }),
+    money ? prisma.payment.findMany({ where: { ...viaJob, recordedAt: { gte: start } }, select: { recordedAt: true, amount: true } }) : none,
+    money ? prisma.refund.findMany({ where: { ...viaJob, recordedAt: { gte: start } }, select: { recordedAt: true, amount: true } }) : none,
   ]);
   const onDay = (t: Date, ymd: string) => lagosYmd(t) === ymd;
   return days.map((ymd) => {
@@ -355,22 +375,30 @@ export async function getPlatformGlance(): Promise<GlanceTile[]> {
   const dayStart = new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T00:00:00+01:00`);
   const dayEnd = new Date(dayStart.getTime() + 86400000);
   const n = (p: Promise<number>) => p.catch(() => 0);
+  // Each tile counts what its list would show this person (same reach rules).
+  const [work, store, gate, me] = await Promise.all([
+    reachWhere('workshop.job_card.view'),
+    reachWhere('store.view'),
+    reachWhere('security.view'),
+    requireUser().then((u) => prisma.user.findUnique({ where: { id: u.id }, select: { organisationId: true } })),
+  ]);
+  const claimReach = work.branchId ? { OR: [{ jobCard: work }, { vehicleService: work }] } : {};
   const [jcActive, svActive, prsOpen, eprOpen, claimsOpen, visitors, incidents, apptsToday, broadcasts, grnsToday] = await Promise.all([
-    n(prisma.jobCard.count({ where: { status: { notIn: ['CHECKED_OUT', 'CANCELLED'] } } })),
-    n(prisma.vehicleService.count({ where: { status: { in: ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'] } } })),
-    n(prisma.partRequestSlip.count({ where: { status: { in: ['PENDING_HOD_APPROVAL', 'PENDING_STORE_APPROVAL', 'APPROVED'] } } })),
-    n(prisma.externalProcurementRequest.count({ where: { status: { in: ['PENDING_FINANCE_REVIEW', 'PENDING_MANAGER_APPROVAL', 'APPROVED'] } } })),
-    n(prisma.warrantyClaim.count({ where: { status: { in: ['DRAFT', 'PENDING_HOD', 'PENDING_MANAGER', 'APPROVED_TO_SUBMIT', 'SUBMITTED'] } } })),
-    n(prisma.visit.count({ where: { status: 'CHECKED_IN' } })),
-    n(prisma.securityIncident.count({ where: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } })),
-    n(prisma.appointment.count({ where: { status: 'SCHEDULED', startsAt: { gte: dayStart, lt: dayEnd } } })),
-    n(prisma.broadcast.count({ where: { isActive: true, startsAt: { lte: new Date() }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] } })),
-    n(prisma.goodsReceipt.count({ where: { receivedAt: { gte: dayStart, lt: dayEnd } } })),
+    n(prisma.jobCard.count({ where: { ...work, ...jobCardActive() } })),
+    n(prisma.vehicleService.count({ where: { ...work, ...serviceInside() } })),
+    n(prisma.partRequestSlip.count({ where: { ...store, status: { in: ['PENDING_HOD_APPROVAL', 'PENDING_STORE_APPROVAL', 'APPROVED'] } } })),
+    n(prisma.externalProcurementRequest.count({ where: { ...store, status: { in: ['PENDING_FINANCE_REVIEW', 'PENDING_MANAGER_APPROVAL', 'APPROVED'] } } })),
+    n(prisma.warrantyClaim.count({ where: { ...claimReach, status: { in: ['DRAFT', 'PENDING_HOD', 'PENDING_MANAGER', 'APPROVED_TO_SUBMIT', 'SUBMITTED'] } } })),
+    n(prisma.visit.count({ where: { ...gate, status: 'CHECKED_IN' } })),
+    n(prisma.securityIncident.count({ where: { ...gate, status: { in: ['OPEN', 'UNDER_REVIEW'] } } })),
+    n(prisma.appointment.count({ where: { ...gate, status: 'SCHEDULED', startsAt: { gte: dayStart, lt: dayEnd } } })),
+    n(prisma.broadcast.count({ where: { organisationId: me?.organisationId ?? '__none__', isActive: true, startsAt: { lte: new Date() }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] } })),
+    n(prisma.goodsReceipt.count({ where: { ...store, receivedAt: { gte: dayStart, lt: dayEnd } } })),
   ]);
   const p = (v: number, one: string, many: string) => `${v} ${v === 1 ? one : many}`;
   return [
     { label: 'Job Cards in progress', value: jcActive, hint: 'Open, not yet checked out', href: '/workshop/custody', tone: 'primary' },
-    { label: 'Vehicle Services in progress', value: svActive, hint: 'In the workshop now', href: '/workshop/vehicle-service', tone: 'info' },
+    { label: 'Vehicle Services in custody', value: svActive, hint: 'Still in the workshop (cancelled ones awaiting hand-back included)', href: '/workshop/vehicle-service-custody', tone: 'info' },
     { label: 'Parts requests open', value: prsOpen, hint: 'Awaiting approval or release', href: '/workshop/parts-requests', tone: prsOpen ? 'warning' : 'muted' },
     { label: 'Outside purchases (EPR) open', value: eprOpen, hint: 'Awaiting review, approval or cash', href: '/workshop/external-procurement', tone: eprOpen ? 'warning' : 'muted' },
     { label: 'Goods received today', value: grnsToday, hint: p(grnsToday, 'goods receipt', 'goods receipts'), href: '/inventory/goods-receipts', tone: 'success' },

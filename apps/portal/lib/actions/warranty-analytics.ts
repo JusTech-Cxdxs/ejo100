@@ -2,6 +2,7 @@
 
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
+import { authorize } from '@/lib/authz/server';
 import { listWarrantyIdsWithReminderDue } from './warranty';
 import { computeWarrantyAnalytics } from '@/lib/warranty-analytics';
 
@@ -10,6 +11,7 @@ const label = (v: { make: string | null; model: string | null } | null) => (v ? 
 /** Gathers plain rows and hands them to the pure analytics engine. */
 export async function getWarrantyAnalytics() {
   await requireUser();
+  await authorize('analytics.warranty.view', undefined, 'getWarrantyAnalytics', 'Warranty Analytics is for the Warranty HOD, the Workshop Manager and administrators.');
   const since = new Date(Date.now() - 180 * 86400000);
   const [warranties, claims, jobCards, reminderDue] = await Promise.all([
     prisma.warranty.findMany({

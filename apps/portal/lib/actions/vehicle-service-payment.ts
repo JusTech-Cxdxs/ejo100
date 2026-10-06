@@ -80,7 +80,7 @@ export async function recordServicePayment(
   if (!['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'].includes(service.status)) {
     throw new ServicePaymentActionError('Payments can only be recorded while this Vehicle Service is checked in, in service, completed or ready for collection.');
   }
-  const user = await requireEligibleFinanceOfficer(service.branchId);
+  const user = await requireEligibleFinanceOfficer(service.branchId, 'workshop.payment.record');
   // Same form submitted again (e.g. after a dropped connection): already done — nothing to record.
   // Same form submitted again (e.g. after a dropped connection): if it is the SAME
   // payment, it is already done; if the id was reused for anything different, refuse.

@@ -33,6 +33,9 @@ jobs:
       - run: npm run build --workspace=packages/database
       - run: npm run lint
       - run: npm run typecheck
+      # Authorization catalogue (allowed AND denied cases) + every data-changing
+      # server action is guarded — pure, no database needed.
+      - run: npm run test --workspace=apps/portal
       - run: npm run build
       # Known vulnerabilities in production dependencies — reported on every push
       # (report-only so a new advisory never blocks an urgent fix; review the log).

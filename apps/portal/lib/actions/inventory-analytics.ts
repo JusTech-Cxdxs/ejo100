@@ -1,6 +1,7 @@
 'use server';
 
 import { prisma } from '@ejo/database';
+import { authorize, branchWithinReach } from '@/lib/authz/server';
 import { requireUser } from './workshop';
 import { computeInventoryAnalytics, type Settings, type IIssue } from '@/lib/inventory-analytics';
 
@@ -18,6 +19,8 @@ const SLIP_PRICE = { select: { estimateLineItem: { select: { unitPrice: true } }
  * lines; prices actually charged) and hands them to the pure engine. */
 export async function getInventoryAnalytics(branchId: string, settings?: Partial<Settings>) {
   await requireUser();
+  await authorize('analytics.inventory.view', undefined, 'getInventoryAnalytics', 'Inventory Analytics is for the Store Manager, the Workshop Manager and administrators.');
+  branchId = await branchWithinReach('analytics.inventory.view', branchId);
   const [parts, receipts, qtyUses, batchUses, serials, openPricingAlerts] = await Promise.all([
     prisma.part.findMany({
       where: { branchId },

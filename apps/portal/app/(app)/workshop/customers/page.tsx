@@ -1,3 +1,4 @@
+import { OrgTrail } from '@/components/OrgTrail';
 import { LoadingLink } from '@/components/LoadingLink';
 import { listCustomers } from '@/lib/actions/workshop';
 import { createCustomerFormAction } from '@/lib/actions/workshop-form-handlers';
@@ -34,7 +35,7 @@ export default async function WorkshopCustomersPage({
         <div>
           <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Customers</h1>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
-            Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Workshop
+            <OrgTrail area="Workshop" />
           </p>
         </div>
       </div>

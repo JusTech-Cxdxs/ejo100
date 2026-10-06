@@ -1,3 +1,4 @@
+import { OrgTrail } from '@/components/OrgTrail';
 import { listParts, getStoreBranchId } from '@/lib/actions/store';
 import { recordGoodsReceiptFormAction } from '@/lib/actions/store-form-handlers';
 import { GoodsReceiptForm } from '@/components/GoodsReceiptForm';
@@ -37,7 +38,7 @@ export default async function NewGoodsReceiptPage({
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Record Goods Receipt</h1>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Store
+        <OrgTrail area="Store" />
       </p>
 
       {error ? (

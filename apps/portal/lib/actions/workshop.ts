@@ -1,6 +1,7 @@
 'use server';
 
-import { authorize, canSeeRecord, reachWhere, authorizeOnJobCard } from '@/lib/authz/server';
+import { authorize, canSeeRecord, reachWhere, authorizeOnJobCard, refuse } from '@/lib/authz/server';
+import { jobCardActive, jobCardInside, serviceInside } from '@/lib/custody';
 
 
 import { bankDetailsFor } from '@/lib/workshop-core';
@@ -158,7 +159,7 @@ export async function requireJobCardApprover(jobCard: { supervisorId: string | n
   if (await currentUserIsMasterAdmin()) {
     return user;
   }
-  throw new WorkshopActionError('Only the assigned supervisor can approve or reject this Job Card.');
+  return refuse('workshop.job.supervise', 'requireJobCardApprover', 'Only the assigned supervisor can approve or reject this Job Card.');
 }
 
 /** Notifies whoever created a Job Card the moment it's approved or
@@ -1644,7 +1645,7 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
     throw new WorkshopActionError('Job Card not found.');
   }
   if (jobCard.createdById !== user.id && !(await currentUserIsMasterAdmin())) {
-    throw new WorkshopActionError('Only this Job Card\'s creator can reassign the supervisor.');
+    return refuse('workshop.job_card.create', 'reassignSupervisor', 'Only this Job Card\'s creator can reassign the supervisor.');
   }
   if (!jobCard.departmentId) {
     throw new WorkshopActionError('This Job Card has no Workshop department set — cannot validate supervisor eligibility.');
@@ -1733,6 +1734,18 @@ export async function deleteJobCard(jobCardId: string): Promise<void> {
  * notification in this file. */
 export async function assignTechnician(jobCardId: string, technicianId: string) {
   const actor = await requireUser();
+  // Only this job's supervisor (Master Admin always) assigns its technician —
+  // checked on the record itself, never on the browser's word.
+  await authorizeOnJobCard('workshop.technician.assign', jobCardId, 'assignTechnician');
+  const current = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { status: true, supervisorId: true } });
+  if (!current) throw new WorkshopActionError('Job Card not found.');
+  if (current.supervisorId !== actor.id && !(await currentUserIsMasterAdmin())) {
+    return refuse('workshop.technician.assign', 'assignTechnician', 'Only the assigned supervisor can assign the technician on this Job Card.');
+  }
+  if (['CLOSED', 'CHECKED_OUT', 'CANCELLED'].includes(current.status)) throw new WorkshopActionError('This Job Card is finished — the technician can no longer change.');
+  const org = (await prisma.user.findUnique({ where: { id: actor.id }, select: { organisationId: true } }))?.organisationId;
+  const tech = await prisma.user.findFirst({ where: { id: technicianId, isActive: true, ...(org ? { organisationId: org } : {}) }, select: { id: true } });
+  if (!tech) throw new WorkshopActionError('That technician could not be found or is no longer active.');
   const jobCard = await prisma.jobCard.update({
     where: { id: jobCardId },
     data: {
@@ -1805,7 +1818,7 @@ async function requireAssignedTechnician(jobCard: { assignedTechnicianId: string
   if (await currentUserIsMasterAdmin()) {
     return user;
   }
-  throw new WorkshopActionError('Only the assigned technician can respond to this assignment.');
+  return refuse('workshop.job.work', 'requireAssignedTechnician', 'Only the assigned technician can respond to this assignment.');
 }
 
 /** Notifies the supervisor of a technician's response — shared by
@@ -1969,25 +1982,18 @@ export async function listTechnicianCandidates() {
 
 export async function getWorkshopDashboardCounts() {
   await requireUser();
-  // Same definitions as getWorkshopCustodySummary() below, so the two
-  // pages never quietly disagree about what "active" or "in the
-  // workshop" actually means. "Active" — the user's own framing,
-  // confirmed directly — is every Job Card that isn't dead
-  // (CANCELLED) and hasn't physically left (CHECKED_OUT). "In
-  // workshop" is broader: every vehicle still physically present,
-  // CANCELLED included, since an uncollected cancelled vehicle is
-  // still sitting right there taking up space.
-  const [activeJobCards, totalCustomers, totalVehicles, inWorkshop] = await Promise.all([
-    prisma.jobCard.count({
-      where: { status: { notIn: [JobCardStatus.CANCELLED, JobCardStatus.CHECKED_OUT] } },
-    }),
+  // Shared definitions (lib/custody.ts) — the same "active" and "still
+  // inside" the custody pages and the Security dashboard use — and the same
+  // reach (a branch-scoped person counts their branch).
+  const reach = await reachWhere('workshop.job_card.view');
+  const [activeJobCards, totalCustomers, totalVehicles, inWorkshop, servicesInWorkshop] = await Promise.all([
+    prisma.jobCard.count({ where: { ...reach, ...jobCardActive() } }),
     prisma.customer.count(),
     prisma.customerVehicle.count(),
-    prisma.jobCard.count({
-      where: { status: { not: JobCardStatus.CHECKED_OUT } },
-    }),
+    prisma.jobCard.count({ where: { ...reach, ...jobCardInside() } }),
+    prisma.vehicleService.count({ where: { ...reach, ...serviceInside() } }),
   ]);
-  return { activeJobCards, totalCustomers, totalVehicles, inWorkshop };
+  return { activeJobCards, totalCustomers, totalVehicles, inWorkshop, servicesInWorkshop };
 }
 
 // ---------------------------------------------------------------------------
@@ -2063,7 +2069,7 @@ async function requireEstimateContributor(jobCard: {
   if (await currentUserIsMasterAdmin()) {
     return user;
   }
-  throw new WorkshopActionError(
+  return refuse('workshop.estimate.edit', 'requireEstimateContributor', 
     'Only the assigned supervisor or the assigned technician can work on this estimate.',
   );
 }
@@ -2088,7 +2094,7 @@ async function requirePricingAuthority(
   if (userId === jobCard.supervisorId) return;
   const technicianPriceableTypes: EstimateLineItemType[] = ['EXTERNAL_PART', 'EXTERNAL_JOB'];
   if (userId === jobCard.assignedTechnicianId && technicianPriceableTypes.includes(type)) return;
-  throw new WorkshopActionError(
+  return refuse('workshop.estimate.edit', 'requirePricingAuthority', 
     type === 'EXTERNAL_PART' || type === 'EXTERNAL_JOB'
       ? 'Only the assigned technician or supervisor can set a price for an external part or job.'
       : 'Only the assigned supervisor can set a price for this line — the technician can add the description and quantity, but not the price.',
@@ -2358,7 +2364,7 @@ export async function deleteEstimateLineItem(lineItemId: string): Promise<void> 
   const isSupervisor = lineItem.estimate.jobCard.supervisorId === user.id;
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (!isOwnEntry && !isSupervisor && !isMasterAdmin) {
-    throw new WorkshopActionError('Only whoever entered this line or the assigned supervisor can remove it.');
+    return refuse('workshop.estimate.edit', 'deleteEstimateLineItem', 'Only whoever entered this line or the assigned supervisor can remove it.');
   }
 
   await prisma.estimateLineItem.delete({ where: { id: lineItemId } });
@@ -2457,7 +2463,7 @@ export async function notifySupervisorAboutEstimate(jobCardId: string, note?: st
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (user.id !== jobCard.assignedTechnicianId && !isMasterAdmin) {
-    throw new WorkshopActionError('Only the assigned technician can notify the supervisor about this estimate.');
+    return refuse('workshop.estimate.edit', 'notifySupervisorAboutEstimate', 'Only the assigned technician can notify the supervisor about this estimate.');
   }
   if (!jobCard.supervisorId) {
     throw new WorkshopActionError('This Job Card has no supervisor assigned yet.');
@@ -2639,16 +2645,14 @@ const managersForBranchShared = unstable_cache(async (branchId: string): Promise
  * a Job Card the way there is a supervisor or technician, since a
  * Manager's oversight spans the whole branch; whichever eligible
  * manager acts first completes the review. */
-export async function requireEligibleManager(branchId: string): Promise<{ id: string }> {
+type ManagerPermission = 'workshop.close.approve' | 'workshop.estimate.final_approve' | 'store.prs.approve_hod' | 'procurement.epr.approve';
+
+export async function requireEligibleManager(branchId: string, key: ManagerPermission = 'workshop.close.approve'): Promise<{ id: string }> {
   const user = await requireUser();
-  if (await currentUserIsMasterAdmin()) return user;
-  const match = await prisma.user.findFirst({
-    where: { id: user.id, branchId, roles: { some: { role: { slug: 'workshop-manager' } } } },
-    select: { id: true },
-  });
-  if (!match) {
-    throw new WorkshopActionError('Only a Workshop Manager for this branch can approve this.');
-  }
+  // The Authorization Catalogue (Workshop Manager by default, plus any grant
+  // added on the Roles page; Master Admin always), checked against the
+  // branch that owns the record — each caller names the step's permission.
+  await authorize(key, { branchId, homeBranch: true }, `manager:${key}`, 'Only a Workshop Manager for this branch can approve this.');
   return user;
 }
 
@@ -2773,7 +2777,7 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
   if (estimate.status !== 'APPROVED') {
     throw new WorkshopActionError('This estimate has not been approved by its supervisor yet.');
   }
-  const user = await requireEligibleManager(estimate.jobCard.branchId);
+  const user = await requireEligibleManager(estimate.jobCard.branchId, 'workshop.estimate.final_approve');
   await authorize('workshop.estimate.final_approve', { branchId: estimate.jobCard.branchId }, 'approveEstimateAsManager');
 
   await prisma.estimate.update({
@@ -2853,7 +2857,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (user.id !== estimate.jobCard.createdById && !isMasterAdmin) {
-    throw new WorkshopActionError('Only whoever created this Job Card can notify the customer.');
+    return refuse('workshop.customer.notify', 'notifyCustomerOfApprovedEstimate', 'Only whoever created this Job Card can notify the customer.');
   }
   if (estimate.customerNotifiedAt) {
     throw new WorkshopActionError('The customer has already been notified about this estimate.');
@@ -3050,16 +3054,9 @@ export async function listEligibleFinanceOfficersForBranch(branchId: string): Pr
   return { supervisors: masterAdmins, usingFallback: true };
 }
 
-export async function requireEligibleFinanceOfficer(branchId: string): Promise<{ id: string }> {
+export async function requireEligibleFinanceOfficer(branchId: string, key: 'workshop.payment.record' | 'workshop.refund.record' = 'workshop.payment.record'): Promise<{ id: string }> {
   const user = await requireUser();
-  if (await currentUserIsMasterAdmin()) return user;
-  const match = await prisma.user.findFirst({
-    where: { id: user.id, branchId, roles: { some: { role: { slug: 'finance-officer' } } } },
-    select: { id: true },
-  });
-  if (!match) {
-    throw new WorkshopActionError('Only a Finance Officer for this branch can do this.');
-  }
+  await authorize(key, { branchId, homeBranch: true }, `finance:${key}`, 'Only a Finance Officer for this branch can do this.');
   return user;
 }
 
@@ -3151,7 +3148,7 @@ export async function recordPayment(
   if (!PAYABLE_STATUSES.includes(jobCard.status)) {
     throw new WorkshopActionError('Payments can be recorded from the moment the customer is notified until the vehicle is ready for collection.');
   }
-  const user = await requireEligibleFinanceOfficer(jobCard.branchId);
+  const user = await requireEligibleFinanceOfficer(jobCard.branchId, 'workshop.payment.record');
   // Same form submitted again (e.g. after a dropped connection): already done — nothing to record.
   // Same form submitted again (e.g. after a dropped connection): if it is the SAME
   // payment, it is already done; if the id was reused for anything different, refuse.
@@ -3400,7 +3397,7 @@ async function requireJobCardCreatorOrSupervisor(jobCard: {
   if (await currentUserIsMasterAdmin()) {
     return user;
   }
-  throw new WorkshopActionError(
+  return refuse('workshop.close.request', 'requireJobCardCreatorOrSupervisor', 
     "Only this Job Card's creator or its assigned supervisor can request cancellation.",
   );
 }
@@ -3530,7 +3527,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
   if (current?.status === JobCardStatus.CLOSED || current?.status === JobCardStatus.CHECKED_OUT) {
     throw new WorkshopActionError('This Job Card has since been closed or checked out, so it can no longer be cancelled — decline this request.');
   }
-  const user = await requireEligibleManager(request.jobCard.branchId);
+  const user = await requireEligibleManager(request.jobCard.branchId, 'workshop.close.approve');
 
   await prisma.$transaction([
     // A close requested earlier can never happen now — resolve it here
@@ -3651,7 +3648,7 @@ export async function declineCancellationRequest(requestId: string, decisionNote
   if (request.status !== 'PENDING') {
     throw new WorkshopActionError('This cancellation request has already been decided.');
   }
-  const user = await requireEligibleManager(request.jobCard.branchId);
+  const user = await requireEligibleManager(request.jobCard.branchId, 'workshop.close.approve');
 
   await prisma.cancellationRequest.update({
     where: { id: requestId },
@@ -3843,7 +3840,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
   if (request.jobCard.status !== JobCardStatus.READY_FOR_COLLECTION) {
     throw new WorkshopActionError('This Job Card is no longer Ready for Collection, so it cannot be closed — decline this request.');
   }
-  const user = await requireEligibleManager(request.jobCard.branchId);
+  const user = await requireEligibleManager(request.jobCard.branchId, 'workshop.close.approve');
 
   await prisma.$transaction([
     // A cancellation requested earlier can never happen now — the work
@@ -3958,7 +3955,7 @@ export async function declineCloseRequest(requestId: string, decisionNotes?: str
   if (request.status !== 'PENDING') {
     throw new WorkshopActionError('This close request has already been decided.');
   }
-  const user = await requireEligibleManager(request.jobCard.branchId);
+  const user = await requireEligibleManager(request.jobCard.branchId, 'workshop.close.approve');
 
   await prisma.closeRequest.update({
     where: { id: requestId },
@@ -4425,7 +4422,7 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
   if (!anchor) {
     throw new WorkshopActionError('No cancellation record found for this Job Card.');
   }
-  const user = await requireEligibleManager(jobCard.branchId);
+  const user = await requireEligibleManager(jobCard.branchId, 'workshop.close.approve');
   // Staged, semi-automatic (lib/custody-reminders): refused until due.
   const priorSends = await prisma.auditLog.findMany({ where: { entityId: jobCardId, action: 'collection.overdue_notice_sent' }, select: { createdAt: true } });
   const reminderState = custodyReminderState('CANCELLED_COLLECTION', anchor, priorSends.map((r: { createdAt: Date }) => r.createdAt));

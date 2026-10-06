@@ -1,3 +1,4 @@
+import { OrgTrail } from '@/components/OrgTrail';
 import { getWorkshopCustodySummary, type WorkshopCustodyEntry, currentUserIsMasterAdmin, listEligibleManagersForBranch, currentUserId } from '@/lib/actions/workshop';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { sendApprovalReminderFormAction, notifyOverdueCancelledVehicleFormAction, sendReadyForCollectionReminderFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
@@ -196,7 +197,7 @@ export default async function WorkshopCustodyPage({
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Vehicles In Custody</h1>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Workshop
+        <OrgTrail area="Workshop" />
       </p>
 
       <form className="mb-8 flex gap-2" action="/workshop/custody">

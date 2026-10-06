@@ -5,6 +5,8 @@ import { cache } from 'react';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
+import { authorize, allows, getPrincipal } from '@/lib/authz/server';
+import { scopeFor } from '@/lib/authz/catalogue';
 import { getDashboardNotifications, type DashboardNotification } from './dashboard';
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
 import {
@@ -81,7 +83,15 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
   const resolved = await resolveRecords(rows.filter((r: { entityId: string | null; entityType: string }) => r.entityId && !r.entityType.startsWith('api:')).map((r: { entityType: string; entityId: string | null }) => ({ type: r.entityType, id: r.entityId! })));
   // The platform team is shown to organisations as "Platform support".
   const name = new Map(actors.map((a: { id: string; fullName: string; roles: { role: { isSuperAdmin: boolean } }[] }) => [a.id, !m.isMaster && a.roles.some((r) => r.role.isSuperAdmin) ? 'Platform support' : a.fullName]));
+  // Reach: a branch-scoped person is never told about another branch's records
+  // (the same rule as the pages the links open).
+  const principal = await getPrincipal();
+  const myBranch = !principal.isSuperAdmin && scopeFor(principal, 'workshop.job_card.view') !== 'ALL' ? principal.branchId : null;
   const items = rows.flatMap((r: (typeof rows)[number]) => {
+    if (myBranch && r.entityId) {
+      const b = resolved.get(`${r.entityType}:${r.entityId}`)?.branchId;
+      if (b && b !== myBranch) return [];
+    }
     // API request records (users, roles, branches…) read as plain events.
     if (r.entityType.startsWith('api:')) {
       const d = describeApiEntry(r.action, r.entityType);
@@ -210,15 +220,30 @@ export async function setNotificationsMuted(muted: boolean): Promise<void> {
 
 // ── Broadcast management ──────────────────────────────────────────────
 
+/** Broadcasting is a catalogue permission (Broadcaster / Administrator by
+ * default, plus any grant added on the Roles page). */
 async function requireBroadcaster(): Promise<Me> {
   const m = await me();
-  if (!m.isMaster && !m.roleSlugs.includes('administrator') && !m.roleSlugs.includes('broadcaster')) throw new NotificationError('Only a Broadcaster or an administrator can manage broadcasts.');
+  await authorize('notifications.broadcast.send', undefined, 'broadcast.manage', 'Only a Broadcaster or an administrator can manage broadcasts.');
   if (!m.organisationId) throw new NotificationError('No organisation.');
   return m;
 }
 
+/** A broadcast is only ever managed inside the organisation that sent it —
+ * another organisation's broadcast behaves as "not found". */
+async function ownBroadcast<T extends object>(m: Me, id: string, select: T) {
+  const b = await prisma.broadcast.findFirst({ where: { id, organisationId: m.organisationId ?? '__none__' }, select: select as never });
+  if (!b) throw new NotificationError('Broadcast not found.');
+  return b as Record<string, unknown>;
+}
+
 export async function canBroadcast(): Promise<boolean> {
-  try { await requireBroadcaster(); return true; } catch { return false; }
+  try {
+    const m = await me();
+    return !!m.organisationId && (await allows('notifications.broadcast.send'));
+  } catch {
+    return false;
+  }
 }
 
 async function nextBroadcastNumber(): Promise<string> {
@@ -250,8 +275,7 @@ export async function createBroadcast(input: BroadcastInput): Promise<{ id: stri
 
 export async function stopBroadcast(id: string): Promise<void> {
   const m = await requireBroadcaster();
-  const b = await prisma.broadcast.findUnique({ where: { id }, select: { broadcastNumber: true, isActive: true } });
-  if (!b) throw new NotificationError('Broadcast not found.');
+  const b = (await ownBroadcast(m, id, { broadcastNumber: true, isActive: true })) as { broadcastNumber: string; isActive: boolean };
   if (!b.isActive) throw new NotificationError('It is already off.');
   await prisma.broadcast.update({ where: { id }, data: { isActive: false, stoppedAt: new Date(), stoppedById: m.id } });
   await writeAuditLog({ userId: m.id, action: 'broadcast.stopped', entityType: 'Broadcast', entityId: id, metadata: { broadcastNumber: b.broadcastNumber } });
@@ -261,8 +285,7 @@ export async function stopBroadcast(id: string): Promise<void> {
 export async function reactivateBroadcast(id: string, duration: string, resendEmail: boolean): Promise<void> {
   const m = await requireBroadcaster();
   if (!DURATIONS.some((d) => d.value === duration)) throw new NotificationError('Choose how long it runs.');
-  const b = await prisma.broadcast.findUnique({ where: { id }, select: { broadcastNumber: true, isActive: true, startsAt: true, endsAt: true, stoppedAt: true } });
-  if (!b) throw new NotificationError('Broadcast not found.');
+  const b = (await ownBroadcast(m, id, { broadcastNumber: true, isActive: true, startsAt: true, endsAt: true, stoppedAt: true })) as { broadcastNumber: string; isActive: boolean; startsAt: Date; endsAt: Date | null; stoppedAt: Date | null };
   if (broadcastState(b) === 'LIVE' || broadcastState(b) === 'SCHEDULED') throw new NotificationError('It is still running.');
   const now = new Date();
   await prisma.broadcast.update({ where: { id }, data: { isActive: true, startsAt: now, endsAt: broadcastEnd(now, duration), durationLabel: durationLabel(duration), stoppedAt: null, stoppedById: null, ...(resendEmail ? { sendEmail: true, emailedAt: null } : {}) } });
@@ -274,8 +297,7 @@ export async function reactivateBroadcast(id: string, duration: string, resendEm
 
 export async function deleteBroadcast(id: string): Promise<void> {
   const m = await requireBroadcaster();
-  const b = await prisma.broadcast.findUnique({ where: { id }, select: { broadcastNumber: true, title: true } });
-  if (!b) throw new NotificationError('Broadcast not found.');
+  const b = (await ownBroadcast(m, id, { broadcastNumber: true, title: true })) as { broadcastNumber: string; title: string };
   await writeAuditLog({ userId: m.id, action: 'broadcast.deleted', entityType: 'Broadcast', entityId: id, metadata: { broadcastNumber: b.broadcastNumber, title: b.title } });
   await prisma.notificationRead.deleteMany({ where: { key: `bc:${id}` } });
   await prisma.broadcast.delete({ where: { id } });

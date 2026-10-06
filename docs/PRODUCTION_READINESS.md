@@ -44,15 +44,15 @@ records what is verified, what was fixed, what is deliberately deferred, and wha
 - **Targets to agree with the business**: RPO (data you can afford to lose) and RTO (time to recover).
 
 ## 4. Remaining risks (owned, not hidden)
-1. **The GitHub repository is public.** No secrets are in it, but the full source is visible. Make it
-   private before go-live.
+1. ~~The GitHub repository is public.~~ **Done (6 Oct 2026):** the repository is private.
 2. **Rate limits are per instance** (portal and API); a distributed attack needs the edge WAF above.
 3. **Regions are split** (Vercel US, Render US, Supabase EU) — latency, not correctness; align on paid plans.
 4. **Free-tier services** (Render sleeps; Supabase limits) — upgrade before real production load.
-5. **Authorization (Phase B, in progress):** the catalogue, decision engine, page guards (16 areas), branch
-   scope on Job Cards / Vehicle Services and the Permissions matrix are live. Remaining: migrate each
-   workflow action's own role checks to `authorize()`, apply scope to lists / search / exports /
-   notifications / realtime, and the role editor (database grants).
+5. **Authorization (Phase B):** enforcement on every data-changing action, lists, search, analytics,
+   dashboards and the notification feed is live (see §6). Remaining: **multi-organisation isolation**
+   for organisation-wide (ALL-scope) roles — today one organisation is live, so "ALL" means "everything
+   in the database"; before a second organisation joins, ALL must become "everything in MY organisation"
+   (customers, vehicles, warranties and Job Cards gain an organisation filter).
 6. **No load test against staging yet** — run one (e.g. k6) against a staging copy before go-live.
 7. **No staging environment yet** — create a Vercel Preview + a second Supabase project for staging.
 
@@ -64,13 +64,17 @@ exports, documents, notifications, realtime and analytics — with allowed AND d
 ## 6. Phase B — Authorization (status)
 | Piece | State |
 |---|---|
-| Catalogue (`lib/authz/catalogue.ts`) | 45 permissions (count derived from the catalogue and locked by a test), 16 roles, 5 scopes; pure `decide()` |
-| Enforcement (`lib/authz/server.ts`) | `guardPage` (pages), `authorize` (actions), `canSeeRecord` (records); every refusal audited |
-| Pages | 16 protected areas refuse on the server (pasted links included) → Access denied |
-| Records | Job Cards / Vehicle Services outside scope behave as "not found" |
-| Permissions page | Live matrix generated from the same code |
-| Tests | 19 allowed / denied cases on the real code |
-| Next | Workflow actions → `authorize()`; scope on lists, search, exports, notifications, realtime; role editor |
+| Catalogue (`lib/authz/catalogue.ts`) | 46 permissions, 16 roles, 5 scopes; pure `decide()`; `homeBranch` for approvals and money (the person must belong to the branch) |
+| Enforcement (`lib/authz/server.ts`) | `guardPage` (pages), `authorize` / `authorizeOn…` (actions), `allows` (buttons — same rule), `refuse` (workflow refusals), `canSeeRecord` / `seeOrNull` (records), `reachWhere` / `branchWithinReach` (lists); every refusal audited as `access.denied` |
+| Actions | Every data-changing server action passes the catalogue or an audited workflow check — **locked by a CI test** (`tests/guard-coverage.test.ts`) |
+| Module checks on the catalogue | Store, Finance, Manager approvals, Warranty, Security gate, Scheduling, Broadcasts, Audit, Analytics, Organisation / Branch editing — a grant added on the Roles page now really works |
+| Pages | 18 protected areas (now incl. Inventory and Warranty Analytics) refuse on the server |
+| Records | Job Cards, Vehicle Services, every Security record and its history: out of reach = "not found" |
+| Lists / search / dashboards | Branch reach on Security lists, Store lists, master search (+ organisation / platform-team filters), dashboard tiles and trend, Security dashboard, notification feed |
+| Analytics | Business (branch-aware: jobs, purchases, receipts, claims), Inventory and Warranty — catalogue-gated; money never sent to people without `analytics.business.view` |
+| Exports / realtime | No CSV exports exist; print documents use the scoped getters. Realtime carries only "something changed" — the data is re-read through the same rules |
+| Tests | 20 allowed / denied catalogue cases + guard coverage, run in CI on every push |
+| Next | Multi-organisation isolation for ALL scope (§4.5) |
 
 ## 7. Permanent architectural principles (binding on every change)
 1. **No subsystem on another's critical path without a compelling reason.** Prefer independent

@@ -1,3 +1,4 @@
+import { canRequestRoadTestOn } from '@/lib/actions/security';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
 import { listRoadTestsFor } from '@/lib/actions/security';
 import { securityActionDetail } from '@/lib/security-labels';
@@ -413,6 +414,7 @@ export default async function VehicleServiceDetailPage({
   // any payment at all has been recorded.
   const showPayments = payments.length > 0 || Boolean(serviceEstimate?.customerNotifiedAt);
 
+  const canRoadTest = await canRequestRoadTestOn('VEHICLE_SERVICE', service.id);
   return (
     <div className="p-8">
       <LoadingLink
@@ -1242,7 +1244,7 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          <RoadTestsPanel rows={roadTests} ready={service.status === 'COMPLETED'} requestHref={['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'].includes(service.status) ? `/security/road-tests/new?vehicleServiceId=${service.id}` : null} />
+          <RoadTestsPanel rows={roadTests} ready={service.status === 'COMPLETED'} requestHref={['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'].includes(service.status) && canRoadTest ? `/security/road-tests/new?vehicleServiceId=${service.id}` : null} />
 
           <WarrantyList warranties={warranties} title="Warranties issued" />
 
@@ -1639,7 +1641,7 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {service.approvalStatus === 'APPROVED' && isActiveVisit ? (
+          {service.approvalStatus === 'APPROVED' && isActiveVisit && (isMasterAdmin || service.supervisorId === viewerId) ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Assign technician</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">

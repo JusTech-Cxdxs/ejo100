@@ -2,16 +2,18 @@
 
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
+import { allows, reachWhere } from '@/lib/authz/server';
 import { computeMasterAnalytics, type Job } from '@/lib/master-analytics';
 import { lagosYmd } from '@/lib/nigeria-calendar';
 
-const ALLOWED = ['administrator', 'workshop-manager', 'finance-officer'];
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 
 export async function canSeeMasterAnalytics(): Promise<boolean> {
-  const user = await requireUser();
-  const roles = await prisma.userRole.findMany({ where: { userId: user.id }, select: { role: { select: { slug: true, isSuperAdmin: true } } } });
-  return roles.some((r: { role: { slug: string; isSuperAdmin: boolean } }) => r.role.isSuperAdmin || ALLOWED.includes(r.role.slug));
+  await requireUser();
+  // The Authorization Catalogue: Administrator (organisation-wide), Workshop
+  // Manager and Finance Officer (their branch), Master Admin — plus any grant
+  // added on the Roles page.
+  return allows('analytics.business.view');
 }
 
 const PERIODS = ['today', 'this_month', 'last_month', 'last_30', 'this_quarter', 'this_year', 'custom'] as const;
@@ -44,22 +46,25 @@ export async function getMasterAnalytics(periodKey?: string, custom?: { from?: s
   const key = ((PERIODS as readonly string[]).includes(periodKey ?? '') ? periodKey : 'this_month') as PeriodKey;
   const { from, to, label } = periodRange(key, now, custom);
   const since = new Date(Math.min(+from - (+to - +from), +now - 100 * 86400000) - 86400000);
+  // Branch-aware: a branch-scoped viewer sees exactly their branch's business.
+  const reach = await reachWhere('analytics.business.view');
+  const viaJob = reach.branchId ? { OR: [{ jobCard: reach }, { vehicleService: reach }] } : {};
 
   const [jcs, svs, qty, batch, serial, eprs, grn, claims] = await Promise.all([
     prisma.jobCard.findMany({
-      where: { OR: [{ createdAt: { gte: since } }, { status: { notIn: ['CHECKED_OUT', 'CANCELLED', 'CLOSED'] } }, { checkedOutAt: { gte: since } }] },
+      where: { ...reach, OR: [{ createdAt: { gte: since } }, { status: { notIn: ['CHECKED_OUT', 'CANCELLED', 'CLOSED'] } }, { checkedOutAt: { gte: since } }] },
       select: { id: true, jobNumber: true, status: true, createdAt: true, completedAt: true, checkedOutAt: true, closedAt: true, cancellationRequests: { where: { status: 'APPROVED' }, orderBy: { decidedAt: 'desc' }, take: 1, select: { decidedAt: true } }, customer: { select: { fullName: true } }, estimate: { select: { lineItems: { select: { type: true, amount: true, billTo: true } } } }, payments: { select: { amount: true, recordedAt: true } }, refunds: { select: { amount: true, recordedAt: true } } },
     }),
     prisma.vehicleService.findMany({
-      where: { OR: [{ createdAt: { gte: since } }, { status: { notIn: ['COLLECTED', 'CANCELLED', 'ESCALATED'] } }, { collectedAt: { gte: since } }] },
+      where: { ...reach, OR: [{ createdAt: { gte: since } }, { status: { notIn: ['COLLECTED', 'CANCELLED', 'ESCALATED'] } }, { collectedAt: { gte: since } }] },
       select: { id: true, serviceNumber: true, status: true, createdAt: true, completedAt: true, collectedAt: true, closedAt: true, cancelledAt: true, customer: { select: { fullName: true } }, serviceEstimate: { select: { lineItems: { select: { type: true, amount: true } } } }, payments: { select: { amount: true, recordedAt: true } }, refunds: { select: { amount: true, recordedAt: true } } },
     }),
     prisma.partQuantityConsumption.findMany({ where: { consumedAt: { gte: since } }, select: { quantityTaken: true, goodsReceiptLine: { select: { unitCost: true } }, ...SLIP_JOB } }),
     prisma.partBatchConsumption.findMany({ where: { consumedAt: { gte: since } }, select: { quantityTaken: true, batch: { select: { goodsReceiptLine: { select: { unitCost: true } } } }, ...SLIP_JOB } }),
     prisma.partSerial.findMany({ where: { issuedToSlipLineId: { not: null } }, select: { goodsReceiptLine: { select: { unitCost: true } }, issuedToSlipLine: { select: { slip: { select: { jobCardId: true, vehicleServiceId: true } } } } } }),
-    prisma.externalProcurementRequest.findMany({ where: { disbursedAmount: { not: null } }, select: { jobCardId: true, disbursedAmount: true } }),
-    prisma.goodsReceiptLine.findMany({ where: { goodsReceipt: { receivedAt: { gte: since } } }, select: { totalCost: true, goodsReceipt: { select: { receivedAt: true } } } }),
-    prisma.warrantyClaim.findMany({ where: { settledAt: { gte: since } }, select: { settledAt: true, settledAmount: true } }),
+    prisma.externalProcurementRequest.findMany({ where: { ...reach, disbursedAmount: { not: null } }, select: { jobCardId: true, disbursedAmount: true } }),
+    prisma.goodsReceiptLine.findMany({ where: { goodsReceipt: { ...reach, receivedAt: { gte: since } } }, select: { totalCost: true, goodsReceipt: { select: { receivedAt: true } } } }),
+    prisma.warrantyClaim.findMany({ where: { ...viaJob, settledAt: { gte: since } }, select: { settledAt: true, settledAmount: true } }),
   ]);
 
   // Parts cost per job (actual goods-receipt cost), and issues with no cost.

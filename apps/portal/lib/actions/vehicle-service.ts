@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize, canSeeRecord, reachWhere, authorizeOnService } from '@/lib/authz/server';
+import { authorize, canSeeRecord, reachWhere, authorizeOnService, refuse, branchWithinReach } from '@/lib/authz/server';
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal } from '@/lib/estimate-billing';
@@ -322,10 +322,13 @@ async function notifyVehicleServiceCreatorOfDecision(params: {
 export async function assignTechnicianToVehicleService(serviceId: string, technicianId: string): Promise<void> {
   await assertServiceNotEscalated({ vehicleServiceId: serviceId });
   const user = await requireUser();
+  await authorizeOnService('workshop.technician.assign', serviceId, 'assignTechnicianToVehicleService');
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
     select: {
       serviceNumber: true,
+      status: true,
+      supervisorId: true,
       customer: { select: { fullName: true } },
       vehicle: { select: { make: true, model: true } },
       supervisor: { select: { fullName: true } },
@@ -335,7 +338,12 @@ export async function assignTechnicianToVehicleService(serviceId: string, techni
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
   }
-  const technician = await prisma.user.findUnique({ where: { id: technicianId }, select: { fullName: true, email: true } });
+  if (service.supervisorId !== user.id && !(await currentUserIsMasterAdmin())) {
+    return refuse('workshop.technician.assign', 'assignTechnicianToVehicleService', 'Only the assigned supervisor can assign the technician on this Vehicle Service.');
+  }
+  if (['COLLECTED', 'CANCELLED'].includes(service.status)) throw new VehicleServiceActionError('This Vehicle Service is finished — the technician can no longer change.');
+  const org = (await prisma.user.findUnique({ where: { id: user.id }, select: { organisationId: true } }))?.organisationId;
+  const technician = await prisma.user.findFirst({ where: { id: technicianId, isActive: true, ...(org ? { organisationId: org } : {}) }, select: { fullName: true, email: true } });
   if (!technician) {
     throw new VehicleServiceActionError('That technician could not be found.');
   }
@@ -392,7 +400,7 @@ async function requireAssignedVehicleServiceTechnician(service: { assignedTechni
   if (await currentUserIsMasterAdmin()) {
     return user;
   }
-  throw new VehicleServiceActionError('Only the assigned technician can respond to this assignment.');
+  return refuse('workshop.job.work', 'requireAssignedVehicleServiceTechnician', 'Only the assigned technician can respond to this assignment.');
 }
 
 /** Notifies the supervisor of a technician's response — shared by
@@ -773,6 +781,7 @@ export type VehicleDueForService = {
  */
 export async function listVehiclesDueForService(branchId: string): Promise<VehicleDueForService[]> {
   await requireUser();
+  branchId = await branchWithinReach('workshop.job_card.view', branchId);
   // Built on the one shared calculation (see lib/vehicle-service-cycle).
   // A vehicle back in the workshop is still listed — tagged with the
   // visit it's in on — rather than silently hidden; only a prediction
@@ -867,6 +876,7 @@ export type VehicleServiceCustodyEntry = {
  * one real place a future reminder job would read from.
  */
 export async function getVehicleServiceCustodySummary(branchId: string, search?: string) {
+  branchId = await branchWithinReach('workshop.job_card.view', branchId);
   const [checkedIn, inService, completed, dueForService, cancelledAwaitingHandBack] = await Promise.all([
     listVehicleServicesByStatuses(branchId, ['CHECKED_IN'], search),
     listVehicleServicesByStatuses(branchId, ['IN_SERVICE'], search),
@@ -1071,6 +1081,7 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
 
 export async function listVehicleServices(branchId: string, search?: string, vehicleType?: 'PASSENGER' | 'COMMERCIAL', status?: string) {
   await requireUser();
+  branchId = await branchWithinReach('workshop.job_card.view', branchId);
   const q = search?.trim();
   const reach = await reachWhere('workshop.job_card.view');
   return prisma.vehicleService.findMany({
@@ -1166,7 +1177,7 @@ async function requireVehicleServiceStepRole(
       step === 'SIGN_OFF'
         ? "this Vehicle Service's supervisor or a Workshop Manager"
         : "this Vehicle Service's supervisor, its assigned technician, or a Workshop Manager";
-    throw new VehicleServiceActionError(`Only ${who} can take this step.`);
+    return refuse('workshop.job.work', 'requireVehicleServiceStepRole', `Only ${who} can take this step.`);
   }
 }
 
@@ -1463,6 +1474,7 @@ export async function sendVehicleServiceCollectionReminder(serviceId: string): P
  */
 export async function getServiceTracker(branchId: string) {
   await requireUser();
+  branchId = await branchWithinReach('workshop.job_card.view', branchId);
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const [vehicles, remindersLast30Days, isMasterAdmin, managers] = await Promise.all([
     loadServiceTracking({ branchId }),
@@ -1540,7 +1552,7 @@ export async function requestVehicleServiceCancellation(serviceId: string, reaso
   }
   const user = await requireUser();
   if (user.id !== service.createdById && user.id !== service.supervisorId && !(await currentUserIsMasterAdmin())) {
-    throw new VehicleServiceActionError("Only this Vehicle Service's creator or its assigned supervisor can request a cancellation.");
+    return refuse('workshop.close.request', 'requestVehicleServiceCancellation', "Only this Vehicle Service's creator or its assigned supervisor can request a cancellation.");
   }
   const existingPending = await prisma.vehicleServiceCancellationRequest.findFirst({ where: { vehicleServiceId: serviceId, status: 'PENDING' }, select: { id: true } });
   if (existingPending) throw new VehicleServiceActionError('A cancellation request is already pending for this Vehicle Service.');
@@ -1610,7 +1622,7 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
   if (!CANCELLABLE_SERVICE_STATUSES.includes(service.status)) {
     throw new VehicleServiceActionError('This Vehicle Service has since been closed, checked out or escalated, so it can no longer be cancelled — decline this request.');
   }
-  const user = await requireEligibleManager(service.branchId);
+  const user = await requireEligibleManager(service.branchId, 'workshop.close.approve');
   const now = new Date();
   const paid = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
   await prisma.$transaction([
@@ -1707,7 +1719,7 @@ export async function declineVehicleServiceCancellationRequest(requestId: string
   });
   if (!request) throw new VehicleServiceActionError('Cancellation request not found.');
   if (request.status !== 'PENDING') throw new VehicleServiceActionError('This cancellation request has already been decided.');
-  const user = await requireEligibleManager(request.vehicleService.branchId);
+  const user = await requireEligibleManager(request.vehicleService.branchId, 'workshop.close.approve');
   await prisma.vehicleServiceCancellationRequest.update({
     where: { id: requestId },
     data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: decisionNotes?.trim() || null },
@@ -1782,7 +1794,7 @@ export async function sendVehicleServiceCancelledCollectionNotice(serviceId: str
     throw new VehicleServiceActionError('This Vehicle Service is not currently cancelled.');
   }
   if (service.collectedAt) throw new VehicleServiceActionError('This vehicle has already been handed back.');
-  const user = await requireEligibleManager(service.branchId);
+  const user = await requireEligibleManager(service.branchId, 'workshop.close.approve');
   const priorSends = await prisma.auditLog.findMany({ where: { entityId: serviceId, action: 'vehicle_service.cancelled_collection_notice_sent' }, select: { createdAt: true } });
   const reminderState = custodyReminderState('CANCELLED_COLLECTION', service.cancelledAt, priorSends.map((r: { createdAt: Date }) => r.createdAt));
   if (!reminderState.dueNow) {
@@ -1856,7 +1868,7 @@ export async function requestVehicleServiceClose(serviceId: string): Promise<voi
   }
   const user = await requireUser();
   if (user.id !== service.createdById && user.id !== service.supervisorId && !(await currentUserIsMasterAdmin())) {
-    throw new VehicleServiceActionError("Only this Vehicle Service's creator or its assigned supervisor can request a close.");
+    return refuse('workshop.close.request', 'requestVehicleServiceClose', "Only this Vehicle Service's creator or its assigned supervisor can request a close.");
   }
   const existingPending = await prisma.vehicleServiceCloseRequest.findFirst({ where: { vehicleServiceId: serviceId, status: 'PENDING' }, select: { id: true } });
   if (existingPending) {
@@ -1938,7 +1950,7 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
   if (!servicePaymentPosition(service).isPaidInFull) {
     throw new VehicleServiceActionError('Payment is no longer complete in full, so this close cannot be approved.');
   }
-  const user = await requireEligibleManager(service.branchId);
+  const user = await requireEligibleManager(service.branchId, 'workshop.close.approve');
   const now = new Date();
   await prisma.$transaction([
     // A cancellation requested earlier can never happen now — resolve it.
@@ -2021,7 +2033,7 @@ export async function declineVehicleServiceCloseRequest(requestId: string, decis
   if (request.status !== 'PENDING') {
     throw new VehicleServiceActionError('This close request has already been decided.');
   }
-  const user = await requireEligibleManager(request.vehicleService.branchId);
+  const user = await requireEligibleManager(request.vehicleService.branchId, 'workshop.close.approve');
   await prisma.vehicleServiceCloseRequest.update({
     where: { id: requestId },
     data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: decisionNotes?.trim() || null },

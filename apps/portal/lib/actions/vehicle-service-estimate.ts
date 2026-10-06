@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize, authorizeOnService } from '@/lib/authz/server';
+import { authorize, authorizeOnService, refuse, branchWithinReach } from '@/lib/authz/server';
 
 import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
 import { prisma } from '@ejo/database';
@@ -85,7 +85,10 @@ export async function cancelServiceEstimate(vehicleServiceId: string): Promise<v
   if (estimate.status === 'MANAGER_APPROVED') {
     throw new ServiceEstimateActionError('This estimate is already approved — it can no longer be cancelled here.');
   }
-  const service = await prisma.vehicleService.findUnique({ where: { id: vehicleServiceId }, select: { serviceNumber: true } });
+  const service = await prisma.vehicleService.findUnique({ where: { id: vehicleServiceId }, select: { serviceNumber: true, supervisorId: true, assignedTechnicianId: true } });
+  if (!service) throw new ServiceEstimateActionError('Vehicle Service record not found.');
+  // Only the people working on the estimate (assigned supervisor / technician, or Master Admin).
+  await requireServiceEstimateContributor(service);
   await writeAuditLog({
     userId: user.id,
     action: 'service_estimate.cancelled',
@@ -126,7 +129,7 @@ async function requireServiceEstimateContributor(service: {
   if (await currentUserIsMasterAdmin()) {
     return user;
   }
-  throw new ServiceEstimateActionError(
+  return refuse('workshop.estimate.edit', 'requireServiceEstimateContributor', 
     'Only the assigned supervisor or the assigned technician can work on this estimate.',
   );
 }
@@ -141,7 +144,7 @@ async function requireServiceEstimateContributor(service: {
 async function requireServicePricingAuthority(service: { supervisorId: string | null }, userId: string): Promise<void> {
   if (await currentUserIsMasterAdmin()) return;
   if (userId === service.supervisorId) return;
-  throw new ServiceEstimateActionError('Only the assigned supervisor can set a price for this line — the technician can add the description and quantity, but not the price.');
+  return refuse('workshop.estimate.edit', 'requireServicePricingAuthority', 'Only the assigned supervisor can set a price for this line — the technician can add the description and quantity, but not the price.');
 }
 
 export async function addServiceEstimateLineItem(estimateId: string, input: ServiceEstimateLineItemInput): Promise<void> {
@@ -288,7 +291,7 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
   if (lineItem.estimate.status !== 'DRAFT' && lineItem.estimate.status !== 'SUBMITTED') {
     throw new ServiceEstimateActionError('This estimate is not currently awaiting Store matching.');
   }
-  const user = await requireStoreStaff(lineItem.estimate.vehicleService.branchId);
+  const user = await requireStoreStaff(lineItem.estimate.vehicleService.branchId, 'store.matching');
 
   const part = await prisma.part.findUnique({
     where: { id: partId },
@@ -403,7 +406,7 @@ export async function removeServiceEstimateLineItem(lineItemId: string): Promise
   const isSupervisor = line.estimate.vehicleService.supervisorId === user.id;
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (!isOwnEntry && !isSupervisor && !isMasterAdmin) {
-    throw new ServiceEstimateActionError('Only whoever entered this line or the assigned supervisor can remove it.');
+    return refuse('workshop.estimate.edit', 'removeServiceEstimateLineItem', 'Only whoever entered this line or the assigned supervisor can remove it.');
   }
   await prisma.serviceEstimateLineItem.delete({ where: { id: lineItemId } });
   await writeAuditLog({
@@ -727,7 +730,7 @@ export async function approveServiceEstimateAsManager(estimateId: string): Promi
   if (estimate.status !== 'APPROVED') {
     throw new ServiceEstimateActionError('This estimate has not been approved by its supervisor yet.');
   }
-  const user = await requireEligibleManager(estimate.vehicleService.branchId);
+  const user = await requireEligibleManager(estimate.vehicleService.branchId, 'workshop.estimate.final_approve');
   await authorize('workshop.estimate.final_approve', { branchId: estimate.vehicleService.branchId }, 'approveServiceEstimateAsManager');
 
   await prisma.serviceEstimate.update({
@@ -825,7 +828,7 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (user.id !== estimate.vehicleService.createdById && !isMasterAdmin) {
-    throw new ServiceEstimateActionError('Only whoever created this Vehicle Service can notify the customer.');
+    return refuse('workshop.customer.notify', 'notifyCustomerOfApprovedServiceEstimate', 'Only whoever created this Vehicle Service can notify the customer.');
   }
   if (estimate.customerNotifiedAt) {
     throw new ServiceEstimateActionError('The customer has already been notified about this estimate.');
@@ -1100,7 +1103,7 @@ export async function notifySupervisorAboutServiceEstimate(vehicleServiceId: str
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (user.id !== service.assignedTechnicianId && !isMasterAdmin) {
-    throw new ServiceEstimateActionError('Only the assigned technician can notify the supervisor about this estimate.');
+    return refuse('workshop.estimate.edit', 'notifySupervisorAboutServiceEstimate', 'Only the assigned technician can notify the supervisor about this estimate.');
   }
   if (!service.supervisorId) {
     throw new ServiceEstimateActionError('This Vehicle Service has no supervisor assigned yet.');
@@ -1211,7 +1214,7 @@ export async function requestServiceEstimateStoreMatching(vehicleServiceId: stri
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (service.supervisorId !== user.id && service.assignedTechnicianId !== user.id && !isMasterAdmin) {
-    throw new ServiceEstimateActionError('Only the assigned supervisor or the assigned technician can request Store matching.');
+    return refuse('workshop.estimate.edit', 'requestServiceEstimateStoreMatching', 'Only the assigned supervisor or the assigned technician can request Store matching.');
   }
 
   await prisma.serviceEstimate.update({
@@ -1299,6 +1302,7 @@ export async function requestServiceEstimateStoreMatching(vehicleServiceId: stri
  */
 export async function listUnmatchedServiceEstimateStorePartLines(branchId: string) {
   await requireUser();
+  branchId = await branchWithinReach('store.view', branchId);
   return prisma.serviceEstimateLineItem.findMany({
     where: {
       type: 'STORE_PART',

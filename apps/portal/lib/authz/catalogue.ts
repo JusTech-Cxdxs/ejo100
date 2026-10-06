@@ -35,10 +35,11 @@ export const PERMISSIONS = {
   'workshop.job_card.view': { module: 'Workshop', label: 'View Job Cards and Vehicle Services' },
   'workshop.job_card.create': { module: 'Workshop', label: 'Open Job Cards and Vehicle Services (front desk)' },
   'workshop.customer.manage': { module: 'Workshop', label: 'Register customers and vehicles (front desk)' },
+  'workshop.job.supervise': { module: 'Workshop', label: 'Accept or turn down supervising a job — as its assigned supervisor' },
   'workshop.estimate.approve': { module: 'Workshop', label: 'Approve estimates — as the assigned supervisor of the job' },
   'workshop.estimate.final_approve': { module: 'Workshop', label: 'Give final approval to estimates (Manager)' },
   'workshop.close.approve': { module: 'Workshop', label: 'Approve closing and cancelling jobs (Manager)' },
-  'workshop.customer.notify': { module: 'Workshop', label: 'Notify customers of approved estimates and send reminders' },
+  'workshop.customer.notify': { module: 'Workshop', label: 'Notify customers of approved estimates (on jobs they opened) and send reminders' },
   'workshop.technician.assign': { module: 'Workshop', label: 'Assign technicians — on jobs they supervise' },
   'workshop.inspection.perform': { module: 'Workshop', label: 'Carry out vehicle inspections — on jobs assigned to them' },
   'workshop.estimate.edit': { module: 'Workshop', label: 'Prepare and submit estimates — on jobs assigned to them' },
@@ -60,16 +61,16 @@ export const PERMISSIONS = {
   // Warranty
   'warranty.view': { module: 'Warranty', label: 'View warranties and claims' },
   'warranty.manage': { module: 'Warranty', label: 'Register warranties and prepare claims' },
-  'warranty.claim.approve': { module: 'Warranty', label: 'Approve warranty claims' },
+  'warranty.claim.approve': { module: 'Warranty', label: 'Approve warranty claims, decide who pays for estimate lines, and manage providers and policies' },
   // Security
   'security.view': { module: 'Security', label: 'Open Security and book visitors' },
   'security.gate.operate': { module: 'Security', label: 'Operate the gate — visitors, vehicles and passes in and out' },
   'security.reception.operate': { module: 'Security', label: 'Receive visitors at reception' },
-  'security.pass.approve': { module: 'Security', label: 'Approve exit passes, road tests and contractors (Head / Manager)' },
+  'security.pass.approve': { module: 'Security', label: 'Approve exit passes, road tests and contractors — when the request is waiting on them (reporting manager, head or branch manager)' },
   'security.incident.manage': { module: 'Security', label: 'Assign, close and reopen incidents' },
   // Scheduling & notifications
-  'schedule.view': { module: 'Scheduling', label: 'Use calendars and appointments' },
-  'schedule.manage': { module: 'Scheduling', label: 'Manage meeting rooms and aides' },
+  'schedule.view': { module: 'Scheduling', label: 'Keep a calendar and book appointments (own calendar, or as an aide)' },
+  'schedule.manage': { module: 'Scheduling', label: 'Manage meeting rooms and aides, and book on any calendar' },
   'notifications.broadcast.send': { module: 'Notifications', label: 'Send broadcasts' },
 } as const;
 export type PermissionKey = keyof typeof PERMISSIONS;
@@ -81,7 +82,9 @@ const BASELINE: Partial<Record<PermissionKey, Scope>> = {
   // Assignment-based — on jobs where THEY are the assigned supervisor / technician
   // (or, for requests to close, the person who opened it), whatever their role.
   'workshop.estimate.approve': 'ASSIGNED', 'workshop.estimate.edit': 'ASSIGNED', 'workshop.job.work': 'ASSIGNED',
-  'workshop.inspection.perform': 'ASSIGNED', 'workshop.technician.assign': 'ASSIGNED', 'workshop.close.request': 'ASSIGNED',
+  'workshop.inspection.perform': 'ASSIGNED', 'workshop.technician.assign': 'ASSIGNED', 'workshop.close.request': 'ASSIGNED', 'workshop.job.supervise': 'ASSIGNED',
+  // Pass approvals go to the requester's reporting manager / head / branch manager — whoever it waits on.
+  'security.pass.approve': 'ASSIGNED',
 };
 
 /** Default grants per role slug (database grants may add to these later). */
@@ -90,7 +93,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'workshop.job_card.create': 'ALL', 'workshop.customer.manage': 'ALL', 'workshop.customer.notify': 'ALL', 'security.reception.operate': 'ALL',
     'admin.organisation.manage': 'ALL', 'admin.structure.manage': 'ALL', 'admin.users.manage': 'ALL', 'admin.roles.manage': 'ALL', 'admin.settings.manage': 'ALL',
     'audit.view': 'ALL', 'analytics.business.view': 'ALL', 'analytics.inventory.view': 'ALL', 'analytics.warranty.view': 'ALL',
-    'workshop.view': 'ALL', 'workshop.job_card.view': 'ALL', 'store.view': 'ALL', 'warranty.view': 'ALL', 'security.view': 'ALL', 'schedule.view': 'ALL', 'notifications.broadcast.send': 'ALL',
+    'workshop.view': 'ALL', 'workshop.job_card.view': 'ALL', 'store.view': 'ALL', 'warranty.view': 'ALL', 'security.view': 'ALL', 'schedule.view': 'OWN', 'notifications.broadcast.send': 'ALL',
   },
   'workshop-manager': {
     'workshop.job_card.create': 'BRANCH', 'workshop.customer.manage': 'BRANCH', 'workshop.customer.notify': 'BRANCH', 'workshop.estimate.final_approve': 'BRANCH',
@@ -101,12 +104,12 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   // Supervisors approve the estimates of jobs assigned to them (everyone's assigned scope) — they do not open jobs.
   'workshop-supervisor': {},
   technician: {},
-  'finance-officer': { 'workshop.payment.record': 'BRANCH', 'workshop.refund.record': 'BRANCH', 'procurement.epr.review': 'BRANCH', 'procurement.epr.disburse': 'BRANCH', 'analytics.business.view': 'BRANCH' },
-  'store-manager': { 'store.matching': 'BRANCH', 'store.parts.manage': 'BRANCH', 'store.grn.record': 'BRANCH', 'store.prs.release': 'BRANCH', 'analytics.inventory.view': 'BRANCH' },
+  'finance-officer': { 'workshop.payment.record': 'BRANCH', 'workshop.refund.record': 'BRANCH', 'procurement.epr.review': 'BRANCH', 'procurement.epr.disburse': 'BRANCH', 'analytics.business.view': 'BRANCH', 'analytics.inventory.view': 'BRANCH' },
+  'store-manager': { 'security.pass.approve': 'DEPARTMENT', 'store.matching': 'BRANCH', 'store.parts.manage': 'BRANCH', 'store.grn.record': 'BRANCH', 'store.prs.release': 'BRANCH', 'analytics.inventory.view': 'BRANCH' },
   // Store officers also manage parts (requireStoreStaff accepts them).
-  'store-officer': { 'store.matching': 'BRANCH', 'store.parts.manage': 'BRANCH', 'store.grn.record': 'BRANCH', 'store.prs.release': 'BRANCH' },
-  'warranty-hod': { 'warranty.manage': 'BRANCH', 'warranty.claim.approve': 'BRANCH', 'analytics.warranty.view': 'BRANCH' },
-  'warranty-officer': { 'warranty.manage': 'BRANCH' },
+  'store-officer': { 'analytics.inventory.view': 'BRANCH', 'store.matching': 'BRANCH', 'store.parts.manage': 'BRANCH', 'store.grn.record': 'BRANCH', 'store.prs.release': 'BRANCH' },
+  'warranty-hod': { 'security.pass.approve': 'DEPARTMENT', 'warranty.manage': 'BRANCH', 'warranty.claim.approve': 'BRANCH', 'analytics.warranty.view': 'BRANCH' },
+  'warranty-officer': { 'warranty.manage': 'BRANCH', 'analytics.warranty.view': 'BRANCH' },
   'department-head': { 'security.pass.approve': 'DEPARTMENT' },
   'chief-security-officer': { 'security.gate.operate': 'BRANCH', 'security.reception.operate': 'BRANCH', 'security.incident.manage': 'BRANCH' },
   'security-officer': { 'security.gate.operate': 'BRANCH', 'security.reception.operate': 'BRANCH' },
@@ -126,7 +129,10 @@ export const PLATFORM_ONLY: string[] = [
 ];
 
 export type Principal = { userId: string; isSuperAdmin: boolean; roleSlugs: string[]; branchId: string | null; departmentId: string | null; extraGrants?: Partial<Record<PermissionKey, Scope>> };
-export type RecordContext = { branchId?: string | null; departmentId?: string | null; ownerIds?: (string | null | undefined)[]; assigneeIds?: (string | null | undefined)[] };
+/** homeBranch: for approvals and money — a branch-scoped person must BELONG to
+ * the record's branch (someone with no branch on their profile is refused,
+ * not treated as organisation-wide). */
+export type RecordContext = { branchId?: string | null; departmentId?: string | null; ownerIds?: (string | null | undefined)[]; assigneeIds?: (string | null | undefined)[]; homeBranch?: boolean };
 export type Decision = { allowed: boolean; scope: Scope | null; reason: string };
 
 /** The widest scope this person holds for a permission (null = none). */
@@ -149,7 +155,7 @@ export function decide(p: Principal, key: PermissionKey, record?: RecordContext)
   const owns = (record.ownerIds ?? []).includes(me);
   const assigned = owns || (record.assigneeIds ?? []).includes(me);
   // A person with no branch on their profile is not limited to one branch (organisation-wide staff).
-  const inBranch = !p.branchId || !record.branchId || record.branchId === p.branchId;
+  const inBranch = record.homeBranch ? Boolean(p.branchId) && (!record.branchId || record.branchId === p.branchId) : !p.branchId || !record.branchId || record.branchId === p.branchId;
   const inDept = !p.departmentId || !record.departmentId ? inBranch : record.departmentId === p.departmentId;
   const ok = scope === 'BRANCH' ? inBranch : scope === 'DEPARTMENT' ? inDept : scope === 'ASSIGNED' ? assigned : owns;
   return ok ? { allowed: true, scope, reason: `Within ${scope.toLowerCase()} scope` } : { allowed: false, scope, reason: `Outside ${scope.toLowerCase()} scope` };

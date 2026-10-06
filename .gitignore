@@ -8,3 +8,6 @@ build/
 .DS_Store
 coverage/
 .turbo/
+
+# Compiled unit tests (apps/portal: npm run test)
+.test-out/

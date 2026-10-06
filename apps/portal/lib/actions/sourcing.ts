@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize } from '@/lib/authz/server';
+import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach } from '@/lib/authz/server';
 
 /**
  * Sourcing — the two paths a Job Card's estimate can genuinely need once
@@ -273,13 +273,9 @@ async function generateExternalProcurementRequestNumber(): Promise<string> {
 /** Finance Officer for the branch, or a Master Admin — same fallback
  * pattern as requireEligibleManager()/requireStoreStaff(), reusing the
  * already-exported list function rather than re-querying roles directly. */
-async function requireEligibleFinance(branchId: string): Promise<{ id: string }> {
+async function requireEligibleFinance(branchId: string, key: 'procurement.epr.review' | 'procurement.epr.disburse' = 'procurement.epr.review'): Promise<{ id: string }> {
   const user = await requireUser();
-  const officers = await listEligibleFinanceOfficersForBranch(branchId);
-  const isEligible = officers.supervisors.some((s) => s.id === user.id);
-  if (!isEligible) {
-    throw new SourcingActionError('Only a Finance Officer for this branch can disburse this.');
-  }
+  await authorize(key, { branchId, homeBranch: true }, `finance:${key}`, key === 'procurement.epr.disburse' ? 'Only a Finance Officer for this branch can disburse this.' : 'Only a Finance Officer for this branch can review this.');
   return user;
 }
 
@@ -524,6 +520,7 @@ export async function getPartRequestSlip(id: string) {
 
 export async function listPartRequestSlips(branchId: string, search?: string) {
   await requireUser();
+  branchId = await branchWithinReach('store.view', branchId);
   const q = search?.trim();
   return prisma.partRequestSlip.findMany({
     take: 500, // newest 500; search reaches older records
@@ -579,6 +576,7 @@ export async function getExternalProcurementRequest(id: string) {
 
 export async function listExternalProcurementRequests(branchId: string, search?: string) {
   await requireUser();
+  branchId = await branchWithinReach('store.view', branchId);
   const q = search?.trim();
   return prisma.externalProcurementRequest.findMany({
     take: 500, // newest 500; search reaches older records
@@ -647,6 +645,7 @@ export async function getRequestablePartRequestLines(jobCardId: string) {
  * second-guess it here. */
 export async function requestPartRequestSlip(jobCardId: string): Promise<{ id: string; referenceNumber: string }> {
   const user = await requireUser();
+  await authorizeOnJobCard('sourcing.request', jobCardId, 'requestPartRequestSlip');
   const jobCard = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { status: true, branchId: true } });
   if (!jobCard) {
     throw new SourcingActionError('Job Card not found.');
@@ -844,6 +843,7 @@ export async function requestServiceEstimatePartRequestSlip(serviceEstimateId: s
     where: { id: serviceEstimateId },
     select: { status: true, vehicleServiceId: true, vehicleService: { select: { status: true, branchId: true } } },
   });
+  if (estimate) await authorizeOnService('sourcing.request', estimate.vehicleServiceId, 'requestServiceEstimatePartRequestSlip');
   if (!estimate) {
     throw new SourcingActionError('Service Estimate not found.');
   }
@@ -946,7 +946,7 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
   if (slip.status !== 'PENDING_HOD_APPROVAL') {
     throw new SourcingActionError('This request is not awaiting HOD approval.');
   }
-  const user = await requireEligibleManager(slip.branchId);
+  const user = await requireEligibleManager(slip.branchId, 'store.prs.approve_hod');
   const claimed = await prisma.partRequestSlip.updateMany({
     where: { id: slipId, status: 'PENDING_HOD_APPROVAL' },
     data: { status: 'PENDING_STORE_APPROVAL', hodApprovedById: user.id, hodApprovedAt: new Date(), hodNotes: notes?.trim() || undefined },
@@ -1099,7 +1099,7 @@ export async function approvePartRequestSlipByStore(slipId: string, notes?: stri
   if (slip.status !== 'PENDING_STORE_APPROVAL') {
     throw new SourcingActionError('This request is not awaiting Store approval.');
   }
-  const user = await requireStoreStaff(slip.branchId);
+  const user = await requireStoreStaff(slip.branchId, 'store.prs.release');
 
   for (const line of slip.lines) {
     const stock = await prisma.partStock.findUnique({ where: { partId: line.partId } });
@@ -1192,7 +1192,7 @@ export async function releasePartRequestSlip(
   if (!receivedBy.receivedByUserId && !receivedBy.receivedByName?.trim()) {
     throw new SourcingActionError('Who is collecting this must be recorded — either a real user or a name.');
   }
-  const user = await requireStoreStaff(slip.branchId);
+  const user = await requireStoreStaff(slip.branchId, 'store.prs.release');
 
   // Validated up front, before any writes: a SERIALIZED line's provided
   // serials must match its requested quantity exactly, and every one of
@@ -1385,7 +1385,7 @@ export async function rejectPartRequestSlip(slipId: string, reason: string): Pro
     throw new SourcingActionError('A reason is required.');
   }
   const stage = slip.status === 'PENDING_HOD_APPROVAL' ? 'HOD' : 'STORE';
-  const user = stage === 'HOD' ? await requireEligibleManager(slip.branchId) : await requireStoreStaff(slip.branchId);
+  const user = stage === 'HOD' ? await requireEligibleManager(slip.branchId, 'store.prs.approve_hod') : await requireStoreStaff(slip.branchId, 'store.prs.release');
 
   await prisma.partRequestSlip.update({
     where: { id: slipId },
@@ -1480,6 +1480,7 @@ export async function getRequestableExternalProcurementLines(jobCardId: string) 
  * records underneath. */
 export async function requestExternalProcurementBatch(jobCardId: string): Promise<{ id: string; referenceNumber: string }> {
   const user = await requireUser();
+  await authorizeOnJobCard('sourcing.request', jobCardId, 'requestExternalProcurementBatch');
   const jobCard = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { status: true, branchId: true } });
   if (!jobCard) {
     throw new SourcingActionError('Job Card not found.');
@@ -1595,7 +1596,7 @@ export async function addExternalProcurementSupplementaryLine(requestId: string,
   if (!(amount > 0)) {
     throw new SourcingActionError('Amount must be greater than zero.');
   }
-  const user = await requireEligibleFinance(request.branchId);
+  const user = await requireEligibleFinance(request.branchId, 'procurement.epr.review');
   const line = await prisma.externalProcurementSupplementaryLine.create({
     data: { requestId, description: trimmedDescription, amount, addedById: user.id },
   });
@@ -1619,7 +1620,7 @@ export async function removeExternalProcurementSupplementaryLine(lineId: string)
   if (line.request.status !== 'PENDING_FINANCE_REVIEW') {
     throw new SourcingActionError('This request is not currently open for Finance to edit.');
   }
-  const user = await requireEligibleFinance(line.request.branchId);
+  const user = await requireEligibleFinance(line.request.branchId, 'procurement.epr.review');
   await prisma.externalProcurementSupplementaryLine.delete({ where: { id: lineId } });
   await writeAuditLog({
     userId: user.id,
@@ -1653,7 +1654,7 @@ export async function editExternalProcurementSupplementaryLine(lineId: string, d
   if (!(amount > 0)) {
     throw new SourcingActionError('Amount must be greater than zero.');
   }
-  const user = await requireEligibleFinance(line.request.branchId);
+  const user = await requireEligibleFinance(line.request.branchId, 'procurement.epr.review');
   await prisma.externalProcurementSupplementaryLine.update({ where: { id: lineId }, data: { description: trimmedDescription, amount } });
   await writeAuditLog({
     userId: user.id,
@@ -1709,7 +1710,7 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
   if (request.status !== 'PENDING_FINANCE_REVIEW') {
     throw new SourcingActionError('This request is not currently awaiting Finance review.');
   }
-  const user = await requireEligibleFinance(request.branchId);
+  const user = await requireEligibleFinance(request.branchId, 'procurement.epr.review');
   const claimed = await prisma.externalProcurementRequest.updateMany({
     where: { id: requestId, status: 'PENDING_FINANCE_REVIEW' },
     data: { status: 'PENDING_MANAGER_APPROVAL', financeReviewedById: user.id, financeReviewedAt: new Date() },
@@ -1810,7 +1811,7 @@ export async function approveExternalProcurementRequest(requestId: string, notes
   if (request.status !== 'PENDING_MANAGER_APPROVAL') {
     throw new SourcingActionError('This request is not awaiting approval.');
   }
-  const user = await requireEligibleManager(request.branchId);
+  const user = await requireEligibleManager(request.branchId, 'procurement.epr.approve');
   // Locked in right here, at the exact moment of approval — never
   // recomputed later, so nothing that happens afterward could ever
   // silently change what the Manager actually approved.
@@ -1886,7 +1887,7 @@ export async function disburseExternalProcurementRequest(
   if (!paymentMethod) {
     throw new SourcingActionError('Payment method is required.');
   }
-  const user = await requireEligibleFinance(request.branchId);
+  const user = await requireEligibleFinance(request.branchId, 'procurement.epr.disburse');
   const disbursedAmount = request.approvedTotal;
   const claimed = await prisma.externalProcurementRequest.updateMany({
     where: { id: requestId, status: 'APPROVED' },
@@ -1942,7 +1943,7 @@ export async function rejectExternalProcurementRequest(requestId: string, reason
     throw new SourcingActionError('A reason is required.');
   }
   const stage = request.status === 'PENDING_FINANCE_REVIEW' ? 'FINANCE_REVIEW' : 'MANAGER_APPROVAL';
-  const user = stage === 'FINANCE_REVIEW' ? await requireEligibleFinance(request.branchId) : await requireEligibleManager(request.branchId);
+  const user = stage === 'FINANCE_REVIEW' ? await requireEligibleFinance(request.branchId, 'procurement.epr.review') : await requireEligibleManager(request.branchId, 'procurement.epr.approve');
   await prisma.externalProcurementRequest.update({
     where: { id: requestId },
     data: { status: 'REJECTED', rejectedById: user.id, rejectedAt: new Date(), rejectionStage: stage, rejectionReason: reason.trim() },

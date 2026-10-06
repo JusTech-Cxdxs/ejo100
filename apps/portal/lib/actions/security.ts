@@ -4,6 +4,9 @@ import { cache } from 'react';
 
 import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
+import { getPrincipal, authorize, allows, refuse, canSeeRecord, reachWhere } from '@/lib/authz/server';
+import { decide } from '@/lib/authz/catalogue';
+import { jobCardInside, serviceInside } from '@/lib/custody';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { listEligibleStoreManagersForBranch, listEligibleStoreOfficersForBranch } from './store';
 import { sendEmail } from '@/lib/email';
@@ -26,27 +29,34 @@ async function slugsOf(userId: string): Promise<{ slugs: string[]; isMaster: boo
 
 export type SecurityRoles = { userId: string; isMaster: boolean; isCso: boolean; isOfficer: boolean; isReceptionist: boolean; isManager: boolean; isGate: boolean; isFrontDesk: boolean };
 
-/** The viewer's place at the gate: security (CSO / officer) run the gate;
- * reception can also register and check visitors in; HR approves passes. */
+/** The viewer's place at the gate — from the Authorization Catalogue (role
+ * defaults plus any grant added on the Roles page), checked against this
+ * branch, so the buttons shown and the actions allowed follow ONE rule:
+ *  • isGate      — security.gate.operate (Chief Security Officer, Security Officer)
+ *  • isFrontDesk — the gate, or security.reception.operate (Reception)
+ *  • isCso       — security.incident.manage (assigns, closes, reopens incidents)
+ * isManager stays tied to the branch's approval chain (a workflow step). */
 async function getSecurityRolesUncached(): Promise<SecurityRoles> {
   const user = await requireUser();
-  const { slugs, isMaster } = await slugsOf(user.id);
-  const isCso = slugs.includes('chief-security-officer');
+  const [{ slugs, isMaster }, principal] = await Promise.all([slugsOf(user.id), getPrincipal()]);
+  // Gate roles are role-based (as before) — whichever branch the officer is on.
+  const here = undefined;
+  const isCso = decide(principal, 'security.incident.manage', here).allowed;
   const isOfficer = slugs.includes('security-officer');
   const isReceptionist = slugs.includes('receptionist');
-  const isGate = isMaster || isCso || isOfficer;
+  const isGate = decide(principal, 'security.gate.operate', here).allowed;
   const isManager = (await managerApprovers(null)).some((m) => m.id === user.id);
-  return { userId: user.id, isMaster, isCso, isOfficer, isReceptionist, isManager, isGate, isFrontDesk: isGate || isReceptionist };
+  return { userId: user.id, isMaster, isCso, isOfficer, isReceptionist, isManager, isGate, isFrontDesk: isGate || decide(principal, 'security.reception.operate', here).allowed };
 }
 
 async function requireGate(): Promise<SecurityRoles> {
   const r = await getSecurityRoles();
-  if (!r.isGate) throw new SecurityError('Only Security can do this at the gate.');
+  if (!r.isGate) await authorize('security.gate.operate', undefined, 'security.gate', 'Only Security can do this at the gate.');
   return r;
 }
 async function requireFrontDesk(): Promise<SecurityRoles> {
   const r = await getSecurityRoles();
-  if (!r.isFrontDesk) throw new SecurityError('Only Security or Reception can do this.');
+  if (!r.isFrontDesk) await authorize('security.reception.operate', undefined, 'security.front_desk', 'Only Security or Reception can do this.');
   return r;
 }
 
@@ -61,6 +71,13 @@ async function masterAdmins(): Promise<Person[]> {
 }
 async function gateStaff(): Promise<Person[]> {
   return usersWithSlugs(['chief-security-officer', 'security-officer']);
+}
+
+/** Security records are visible within the viewer's reach (their branch,
+ * unless organisation-wide) — out of reach behaves exactly like "not found". */
+async function visibleOrNull<T extends { branchId?: string | null }>(rec: T | null, where: string): Promise<T | null> {
+  if (!rec) return null;
+  return (await canSeeRecord('security.view', { branchId: rec.branchId ?? null }, where)) ? rec : null;
 }
 
 // ── Numbering & logged emails ─────────────────────────────────────────
@@ -478,15 +495,16 @@ export async function exitPassGateIn(passId: string): Promise<void> {
  * Service collected / handed back) that security has not yet seen out. */
 export async function listVehiclesClearedToLeave() {
   await requireUser();
+  const reach = await reachWhere('security.view');
   const since = new Date(Date.now() - 30 * 86400000);
   const [jcs, vss] = await Promise.all([
     prisma.jobCard.findMany({
-      where: { status: 'CHECKED_OUT', checkedOutAt: { gte: since }, gateExit: null },
+      where: { ...reach, status: 'CHECKED_OUT', checkedOutAt: { gte: since }, gateExit: null },
       orderBy: { checkedOutAt: 'desc' },
       select: { id: true, jobNumber: true, checkedOutAt: true, collectedByName: true, vehicle: { select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true } }, customer: { select: { fullName: true } } },
     }),
     prisma.vehicleService.findMany({
-      where: { collectedAt: { gte: since }, status: { in: ['COLLECTED', 'CANCELLED'] }, escalatedToJobCardId: null, gateExit: null },
+      where: { ...reach, collectedAt: { gte: since }, status: { in: ['COLLECTED', 'CANCELLED'] }, escalatedToJobCardId: null, gateExit: null },
       orderBy: { collectedAt: 'desc' },
       select: { id: true, serviceNumber: true, collectedAt: true, collectedByName: true, status: true, vehicle: { select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true } }, customer: { select: { fullName: true } } },
     }),
@@ -522,29 +540,32 @@ export async function confirmVehicleExit(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', r
 
 export async function getSecurityDashboard() {
   const me = await requireUser();
+  const reach = await reachWhere('security.view');
   await purgeStaleBookings(me.id);
   const startOfDay = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }) + 'T00:00:00+01:00');
   const endOfDay = new Date(startOfDay.getTime() + 86400000);
   const visitSelect = { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, memberNames: true, company: true, purpose: true, vehicleType: true, vehiclePlate: true, expectedAt: true, expectedDurationMinutes: true, checkedInAt: true, receivedAt: true, isWalkIn: true, host: { select: { fullName: true } } } as const;
   const passSelect = { id: true, passNumber: true, status: true, reason: true, returning: true, expectedOutAt: true, expectedReturnAt: true, gateOutAt: true, people: { select: { name: true } } } as const;
   const [onPremises, expectedToday, passesReady, passesOut, vehicles, jobCardsIn, servicesIn, roadTestsOut, roadTestsReady] = await Promise.all([
-    prisma.visit.findMany({ where: { status: 'CHECKED_IN' }, orderBy: { checkedInAt: 'asc' }, select: visitSelect }),
-    prisma.visit.findMany({ where: { status: 'EXPECTED', expectedAt: { gte: startOfDay, lt: endOfDay } }, orderBy: { expectedAt: 'asc' }, select: visitSelect }),
-    prisma.exitPass.findMany({ where: { status: 'APPROVED' }, orderBy: { managerApprovedAt: 'asc' }, select: passSelect }),
-    prisma.exitPass.findMany({ where: { status: 'OUT' }, orderBy: { expectedReturnAt: 'asc' }, select: passSelect }),
+    prisma.visit.findMany({ where: { ...reach, status: 'CHECKED_IN' }, orderBy: { checkedInAt: 'asc' }, select: visitSelect }),
+    prisma.visit.findMany({ where: { ...reach, status: 'EXPECTED', expectedAt: { gte: startOfDay, lt: endOfDay } }, orderBy: { expectedAt: 'asc' }, select: visitSelect }),
+    prisma.exitPass.findMany({ where: { ...reach, status: 'APPROVED' }, orderBy: { managerApprovedAt: 'asc' }, select: passSelect }),
+    prisma.exitPass.findMany({ where: { ...reach, status: 'OUT' }, orderBy: { expectedReturnAt: 'asc' }, select: passSelect }),
     listVehiclesClearedToLeave(),
     // Workshop vehicles physically inside: work not yet released.
-    prisma.jobCard.count({ where: { status: { notIn: ['CHECKED_OUT', 'CANCELLED'] } } }),
-    prisma.vehicleService.count({ where: { status: { in: ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'] } } }),
-    prisma.roadTestPermit.findMany({ where: { status: 'OUT' }, orderBy: { gateOutAt: 'asc' }, select: RT_ROW }),
-    prisma.roadTestPermit.findMany({ where: { status: 'APPROVED' }, orderBy: { managerApprovedAt: 'asc' }, select: RT_ROW }),
+    // Same "still inside" as the main dashboard and custody pages (lib/custody.ts):
+    // a cancelled job whose vehicle has not been collected is still on the premises.
+    prisma.jobCard.count({ where: { ...reach, ...jobCardInside() } }),
+    prisma.vehicleService.count({ where: { ...reach, ...serviceInside() } }),
+    prisma.roadTestPermit.findMany({ where: { ...reach, status: 'OUT' }, orderBy: { gateOutAt: 'asc' }, select: RT_ROW }),
+    prisma.roadTestPermit.findMany({ where: { ...reach, status: 'APPROVED' }, orderBy: { managerApprovedAt: 'asc' }, select: RT_ROW }),
   ]);
   const [openIncidents, deliveriesOnSite] = await Promise.all([
-    prisma.securityIncident.count({ where: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } }),
-    prisma.gateDelivery.findMany({ where: { status: { in: ['AT_GATE', 'RECEIVED'] } }, select: { vehiclePlate: true } }),
+    prisma.securityIncident.count({ where: { ...reach, status: { in: ['OPEN', 'UNDER_REVIEW'] } } }),
+    prisma.gateDelivery.findMany({ where: { ...reach, status: { in: ['AT_GATE', 'RECEIVED'] } }, select: { vehiclePlate: true } }),
   ]);
   const deliveryVehicles = deliveriesOnSite.filter((d: { vehiclePlate: string | null }) => d.vehiclePlate).length;
-  const contractorsIn = await prisma.contractorAttendance.findMany({ where: { signedOutAt: null }, select: { workersPresent: true, signedInAt: true } });
+  const contractorsIn = await prisma.contractorAttendance.findMany({ where: { signedOutAt: null, pass: reach }, select: { workersPresent: true, signedInAt: true } });
   const contractorPeopleOnSite = contractorsIn.reduce((n: number, a: { workersPresent: number }) => n + a.workersPresent, 0);
   const contractorsAfterHours = contractorsIn.filter((a: { signedInAt: Date }) => contractorAfterHoursMinutes(a.signedInAt) > 0).length;
   // A workshop vehicle out on a road test is not inside the compound.
@@ -586,10 +607,11 @@ export async function getSecurityDashboard() {
 
 export async function listVisits(q?: string) {
   const me = await requireUser();
+  const reach = await reachWhere('security.view');
   await purgeStaleBookings(me.id);
   const t = q?.trim();
   return prisma.visit.findMany({
-    where: t ? { OR: [{ visitNumber: { contains: t, mode: 'insensitive' } }, { passNumber: { contains: t, mode: 'insensitive' } }, { visitorName: { contains: t, mode: 'insensitive' } }, { company: { contains: t, mode: 'insensitive' } }, { vehiclePlate: { contains: t, mode: 'insensitive' } }] } : undefined,
+    where: { ...reach, ...(t ? { OR: [{ visitNumber: { contains: t, mode: 'insensitive' } }, { passNumber: { contains: t, mode: 'insensitive' } }, { visitorName: { contains: t, mode: 'insensitive' } }, { company: { contains: t, mode: 'insensitive' } }, { vehiclePlate: { contains: t, mode: 'insensitive' } }] } : {}) },
     orderBy: { createdAt: 'desc' },
     take: 300,
     select: { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, memberNames: true, company: true, purpose: true, vehicleType: true, vehiclePlate: true, expectedAt: true, expectedDurationMinutes: true, checkedInAt: true, checkedOutAt: true, receivedAt: true, isWalkIn: true, host: { select: { fullName: true } } },
@@ -598,18 +620,19 @@ export async function listVisits(q?: string) {
 
 export async function getVisit(id: string) {
   await requireUser();
-  return prisma.visit.findUnique({
+  return visibleOrNull(await prisma.visit.findUnique({
     where: { id },
     include: { host: { select: { id: true, fullName: true } }, registeredBy: { select: { fullName: true } }, checkedInBy: { select: { fullName: true } }, checkedOutBy: { select: { fullName: true } }, receivedBy: { select: { fullName: true } }, branch: true },
-  });
+  }), `Visit:${id}`);
 }
 
 export async function listExitPasses(scope: 'mine' | 'to_decide' | 'all', q?: string) {
   const user = await requireUser();
+  const reach = await reachWhere('security.view');
   const roles = await getSecurityRoles();
   const t = q?.trim();
   const rows = await prisma.exitPass.findMany({
-    where: {
+    where: { ...reach,
       ...(scope === 'mine' ? { OR: [{ requestedById: user.id }, { people: { some: { userId: user.id } } }] } : {}),
       ...(scope === 'to_decide' ? { status: { in: ['PENDING_HEAD', 'PENDING_MANAGER'] }, NOT: { requestedById: user.id } } : {}),
       ...(t ? { OR: [{ passNumber: { contains: t, mode: 'insensitive' } }, { reason: { contains: t, mode: 'insensitive' } }, { people: { some: { name: { contains: t, mode: 'insensitive' } } } }] } : {}),
@@ -630,7 +653,7 @@ export async function listExitPasses(scope: 'mine' | 'to_decide' | 'all', q?: st
 
 export async function getExitPass(id: string) {
   await requireUser();
-  return prisma.exitPass.findUnique({
+  return visibleOrNull(await prisma.exitPass.findUnique({
     where: { id },
     include: {
       people: { include: { user: { select: { id: true } } } },
@@ -642,7 +665,7 @@ export async function getExitPass(id: string) {
       gateInBy: { select: { fullName: true } },
       branch: true,
     },
-  });
+  }), `ExitPass:${id}`);
 }
 
 /** Can this viewer decide this pass right now? (for the pass page) */
@@ -656,12 +679,33 @@ export async function canDecideExitPass(passId: string): Promise<boolean> {
   return false;
 }
 
+async function historyVisible(entityType: string, id: string, userId: string): Promise<boolean> {
+  const sel = { select: { branchId: true } } as const;
+  if (entityType === 'Broadcast') {
+    const [b, u] = await Promise.all([prisma.broadcast.findUnique({ where: { id }, select: { organisationId: true } }), prisma.user.findUnique({ where: { id: userId }, select: { organisationId: true } })]);
+    return Boolean(b && b.organisationId === u?.organisationId);
+  }
+  const rec: { branchId: string | null } | null =
+    entityType === 'Visit' ? await prisma.visit.findUnique({ where: { id }, ...sel })
+    : entityType === 'ExitPass' ? await prisma.exitPass.findUnique({ where: { id }, ...sel })
+    : entityType === 'VehicleGateExit' ? await prisma.vehicleGateExit.findUnique({ where: { id }, ...sel })
+    : entityType === 'RoadTestPermit' ? await prisma.roadTestPermit.findUnique({ where: { id }, ...sel })
+    : entityType === 'SecurityIncident' ? await prisma.securityIncident.findUnique({ where: { id }, ...sel })
+    : entityType === 'GateDelivery' ? await prisma.gateDelivery.findUnique({ where: { id }, ...sel })
+    : entityType === 'ContractorPass' ? await prisma.contractorPass.findUnique({ where: { id }, ...sel })
+    : null;
+  return Boolean(await visibleOrNull(rec, `${entityType}:${id}`));
+}
+
 /** Trail + every email for one Visit / Exit Pass. */
 export async function getSecurityHistory(entityType: 'Visit' | 'ExitPass' | 'VehicleGateExit' | 'RoadTestPermit' | 'SecurityIncident' | 'GateDelivery' | 'ContractorPass' | 'Broadcast', entityId: string) {
-  await requireUser();
+  const user = await requireUser();
+  // The history is only as visible as the record itself (no reading by id).
+  const visible = await historyVisible(entityType, entityId, user.id);
+  const key = visible ? entityId : '__no_access__';
   const [entries, emails] = await Promise.all([
-    prisma.auditLog.findMany({ where: { entityType, entityId }, orderBy: { createdAt: 'desc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } }),
-    prisma.securityEmailLog.findMany({ where: { entityType, entityId }, orderBy: { createdAt: 'desc' } }),
+    prisma.auditLog.findMany({ where: { entityType, entityId: key }, orderBy: { createdAt: 'desc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } }),
+    prisma.securityEmailLog.findMany({ where: { entityType, entityId: key }, orderBy: { createdAt: 'desc' } }),
   ]);
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
@@ -683,16 +727,17 @@ export async function listActiveStaff() {
  * passes waiting at this viewer's step. */
 export async function getSecurityDashboardItems(): Promise<{ id: string; title: string; detail: string; url: string; createdAt: Date }[]> {
   const user = await requireUser();
+  const reach = await reachWhere('security.view');
   const roles = await getSecurityRoles();
   const dayStart = new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T00:00:00+01:00`);
   // Everything below is independent — one parallel round instead of five.
   const [store, ctr, newIncidents, atGateAll, expectedDeliveries, atReception, passes, tests] = await Promise.all([
     isStore(user.id, roles.isMaster),
     roles.isManager || roles.isMaster || roles.isGate ? listContractorPasses(undefined, 'all') : Promise.resolve({ rows: [] as Awaited<ReturnType<typeof listContractorPasses>>['rows'] }),
-    roles.isCso || roles.isMaster ? prisma.securityIncident.findMany({ where: { status: 'OPEN' }, select: { id: true, incidentNumber: true, type: true, severity: true, createdAt: true } }) : Promise.resolve([]),
-    prisma.gateDelivery.findMany({ where: { status: 'AT_GATE' }, select: { id: true, deliveryNumber: true, supplierName: true, arrivedAt: true } }),
-    roles.isGate ? prisma.gateDelivery.findMany({ where: { status: 'EXPECTED', expectedAt: { gte: dayStart, lt: new Date(dayStart.getTime() + 86400000) } }, select: { id: true, deliveryNumber: true, supplierName: true, expectedAt: true } }) : Promise.resolve([]),
-    prisma.visit.findMany({ where: { status: 'CHECKED_IN', hostUserId: user.id, receivedAt: { not: null } }, select: { id: true, visitorName: true, purpose: true, receivedAt: true } }),
+    roles.isCso || roles.isMaster ? prisma.securityIncident.findMany({ where: { ...reach, status: 'OPEN' }, select: { id: true, incidentNumber: true, type: true, severity: true, createdAt: true } }) : Promise.resolve([]),
+    prisma.gateDelivery.findMany({ where: { ...reach, status: 'AT_GATE' }, select: { id: true, deliveryNumber: true, supplierName: true, arrivedAt: true } }),
+    roles.isGate ? prisma.gateDelivery.findMany({ where: { ...reach, status: 'EXPECTED', expectedAt: { gte: dayStart, lt: new Date(dayStart.getTime() + 86400000) } }, select: { id: true, deliveryNumber: true, supplierName: true, expectedAt: true } }) : Promise.resolve([]),
+    prisma.visit.findMany({ where: { ...reach, status: 'CHECKED_IN', hostUserId: user.id, receivedAt: { not: null } }, select: { id: true, visitorName: true, purpose: true, receivedAt: true } }),
     listExitPasses('to_decide'),
     listRoadTests('to_decide'),
   ]);
@@ -741,7 +786,8 @@ export async function getMe(): Promise<{ id: string; fullName: string }> {
 /** The latest vehicles recorded leaving through the gate. */
 export async function listRecentVehicleExits() {
   await requireUser();
-  return prisma.vehicleGateExit.findMany({
+  const reach = await reachWhere('security.view');
+  return prisma.vehicleGateExit.findMany({ where: reach,
     orderBy: { exitedAt: 'desc' },
     take: 50,
     select: {
@@ -757,7 +803,7 @@ export async function listRecentVehicleExits() {
 /** One vehicle gate exit, for its printed slip. */
 export async function getVehicleGateExit(id: string) {
   await requireUser();
-  return prisma.vehicleGateExit.findUnique({
+  return visibleOrNull(await prisma.vehicleGateExit.findUnique({
     where: { id },
     include: {
       branch: true,
@@ -766,7 +812,7 @@ export async function getVehicleGateExit(id: string) {
       jobCard: { select: { jobNumber: true, checkedOutAt: true, collectedByName: true, customer: { select: { fullName: true } } } },
       vehicleService: { select: { serviceNumber: true, collectedAt: true, collectedByName: true, customer: { select: { fullName: true } } } },
     },
-  });
+  }), `VehicleGateExit:${id}`);
 }
 
 // ── Individual pages behind each dashboard number ─────────────────────
@@ -777,24 +823,27 @@ const PASS_ROW = { id: true, passNumber: true, status: true, reason: true, retur
 /** Visitors on the premises now. */
 export async function listOnPremises() {
   await requireUser();
-  return prisma.visit.findMany({ where: { status: 'CHECKED_IN' }, orderBy: { checkedInAt: 'asc' }, select: VISIT_ROW });
+  const reach = await reachWhere('security.view');
+  return prisma.visit.findMany({ where: { ...reach, status: 'CHECKED_IN' }, orderBy: { checkedInAt: 'asc' }, select: VISIT_ROW });
 }
 
 /** Everyone out on an exit pass now. */
 export async function listPeopleOut() {
   await requireUser();
-  return prisma.exitPass.findMany({ where: { status: 'OUT' }, orderBy: { expectedReturnAt: 'asc' }, select: PASS_ROW });
+  const reach = await reachWhere('security.view');
+  return prisma.exitPass.findMany({ where: { ...reach, status: 'OUT' }, orderBy: { expectedReturnAt: 'asc' }, select: PASS_ROW });
 }
 
 /** Overdue now — visitors past their stay, people past their return time.
  * Managed on the Overdue page (follow up, extend); no automatic emails. */
 export async function listOverdue() {
   await requireUser();
+  const reach = await reachWhere('security.view');
   const now = new Date();
   const [visits, passes, tests] = await Promise.all([
-    prisma.visit.findMany({ where: { status: 'CHECKED_IN' }, select: VISIT_ROW }),
-    prisma.exitPass.findMany({ where: { status: 'OUT', returning: true }, select: PASS_ROW }),
-    prisma.roadTestPermit.findMany({ where: { status: 'OUT' }, select: RT_ROW }),
+    prisma.visit.findMany({ where: { ...reach, status: 'CHECKED_IN' }, select: VISIT_ROW }),
+    prisma.exitPass.findMany({ where: { ...reach, status: 'OUT', returning: true }, select: PASS_ROW }),
+    prisma.roadTestPermit.findMany({ where: { ...reach, status: 'OUT' }, select: RT_ROW }),
   ]);
   return {
     contractors: (await listContractorPasses(undefined, 'on_site')).rows.filter((c) => c.afterHours > 0).map((c) => ({ ...c, overdueMinutes: c.afterHours })),
@@ -810,14 +859,15 @@ export type InsideVehicle = { kind: 'VISITOR' | 'JOB_CARD' | 'VEHICLE_SERVICE' |
  * vehicles still being worked on, and released vehicles not yet out. */
 export async function listVehiclesInside(): Promise<InsideVehicle[]> {
   await requireUser();
-  const outOnTest = new Set((await prisma.roadTestPermit.findMany({ where: { status: 'OUT' }, select: { vehicleId: true } })).map((r: { vehicleId: string }) => r.vehicleId));
+  const reach = await reachWhere('security.view');
+  const outOnTest = new Set((await prisma.roadTestPermit.findMany({ where: { ...reach, status: 'OUT' }, select: { vehicleId: true } })).map((r: { vehicleId: string }) => r.vehicleId));
   const [visits, jcs, vss, cleared] = await Promise.all([
-    prisma.visit.findMany({ where: { status: 'CHECKED_IN', vehicleType: { not: 'ON_FOOT' } }, select: { id: true, passNumber: true, visitorName: true, vehicleType: true, vehiclePlate: true, checkedInAt: true } }),
-    prisma.jobCard.findMany({ where: { status: { notIn: ['CHECKED_OUT', 'CANCELLED'] } }, select: { id: true, jobNumber: true, createdAt: true, vehicleId: true, vehicle: { select: { make: true, model: true, plateNumber: true } }, customer: { select: { fullName: true } } } }).then((r) => r.filter((x) => !outOnTest.has(x.vehicleId))),
-    prisma.vehicleService.findMany({ where: { status: { in: ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'] } }, select: { id: true, serviceNumber: true, createdAt: true, vehicleId: true, vehicle: { select: { make: true, model: true, plateNumber: true } }, customer: { select: { fullName: true } } } }).then((r) => r.filter((x) => !outOnTest.has(x.vehicleId))),
+    prisma.visit.findMany({ where: { ...reach, status: 'CHECKED_IN', vehicleType: { not: 'ON_FOOT' } }, select: { id: true, passNumber: true, visitorName: true, vehicleType: true, vehiclePlate: true, checkedInAt: true } }),
+    prisma.jobCard.findMany({ where: { ...reach, ...jobCardInside() }, select: { id: true, jobNumber: true, createdAt: true, vehicleId: true, vehicle: { select: { make: true, model: true, plateNumber: true } }, customer: { select: { fullName: true } } } }).then((r) => r.filter((x) => !outOnTest.has(x.vehicleId))),
+    prisma.vehicleService.findMany({ where: { ...reach, ...serviceInside() }, select: { id: true, serviceNumber: true, createdAt: true, vehicleId: true, vehicle: { select: { make: true, model: true, plateNumber: true } }, customer: { select: { fullName: true } } } }).then((r) => r.filter((x) => !outOnTest.has(x.vehicleId))),
     listVehiclesClearedToLeave(),
   ]);
-  const deliveries = await prisma.gateDelivery.findMany({ where: { status: { in: ['AT_GATE', 'RECEIVED'] }, vehiclePlate: { not: null } }, select: { id: true, deliveryNumber: true, supplierName: true, vehicleType: true, vehiclePlate: true, arrivedAt: true } });
+  const deliveries = await prisma.gateDelivery.findMany({ where: { ...reach, status: { in: ['AT_GATE', 'RECEIVED'] }, vehiclePlate: { not: null } }, select: { id: true, deliveryNumber: true, supplierName: true, vehicleType: true, vehiclePlate: true, arrivedAt: true } });
   const car = (v: { make: string | null; model: string | null }) => [v.make, v.model].filter(Boolean).join(' ') || 'Vehicle';
   return [
     ...visits.flatMap((v: (typeof visits)[number]) =>
@@ -831,31 +881,39 @@ export async function listVehiclesInside(): Promise<InsideVehicle[]> {
 }
 
 /** One released vehicle, for its own release (confirm exit) page. */
+function netPaid(payments: { amount: unknown }[], refunds: { amount: unknown }[]): number {
+  const sum = (xs: { amount: unknown }[]) => xs.reduce((n, x) => n + Number(x.amount), 0);
+  return Math.round((sum(payments) - sum(refunds)) * 100) / 100;
+}
+
 export async function getClearedVehicle(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', id: string) {
   await requireUser();
+  const reach = await reachWhere('security.view');
   if (kind === 'JOB_CARD') {
-    const j = await prisma.jobCard.findUnique({
-      where: { id },
-      select: { id: true, jobNumber: true, status: true, checkedOutAt: true, collectedByName: true, gateExit: { select: { id: true, exitNumber: true } }, vehicle: { select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, mileage: true } }, customer: { select: { fullName: true, phone: true } }, payments: { select: { amount: true } }, estimate: { select: { lineItems: { select: { amount: true, billTo: true } } } } },
+    const j = await prisma.jobCard.findFirst({
+      where: { id, ...reach },
+      select: { id: true, jobNumber: true, status: true, checkedOutAt: true, collectedByName: true, gateExit: { select: { id: true, exitNumber: true } }, vehicle: { select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, mileage: true } }, customer: { select: { fullName: true, phone: true } }, payments: { select: { amount: true } }, refunds: { select: { amount: true } }, estimate: { select: { lineItems: { select: { amount: true, billTo: true } } } } },
     });
     if (!j) return null;
-    const paid = j.payments.reduce((s: number, p: { amount: unknown }) => s + Number(p.amount), 0);
+    // Net of refunds — a fully refunded job shows ₦0 paid, not the original payment.
+    const paid = netPaid(j.payments, j.refunds);
     return { kind, id: j.id, number: j.jobNumber, released: j.status === 'CHECKED_OUT', releasedAt: j.checkedOutAt, collectedBy: j.collectedByName, exit: j.gateExit, vehicle: j.vehicle, customer: j.customer, cancelled: false, total: customerTotal(j.estimate?.lineItems ?? []), paid };
   }
-  const v = await prisma.vehicleService.findUnique({
-    where: { id },
-    select: { id: true, serviceNumber: true, status: true, collectedAt: true, collectedByName: true, gateExit: { select: { id: true, exitNumber: true } }, vehicle: { select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, mileage: true } }, customer: { select: { fullName: true, phone: true } }, payments: { select: { amount: true } } },
+  const v = await prisma.vehicleService.findFirst({
+    where: { id, ...reach },
+    select: { id: true, serviceNumber: true, status: true, collectedAt: true, collectedByName: true, gateExit: { select: { id: true, exitNumber: true } }, vehicle: { select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, mileage: true } }, customer: { select: { fullName: true, phone: true } }, payments: { select: { amount: true } }, refunds: { select: { amount: true } } },
   });
   if (!v) return null;
-  return { kind, id: v.id, number: v.serviceNumber, released: Boolean(v.collectedAt) && ['COLLECTED', 'CANCELLED'].includes(v.status), releasedAt: v.collectedAt, collectedBy: v.collectedByName, exit: v.gateExit, vehicle: v.vehicle, customer: v.customer, cancelled: v.status === 'CANCELLED', total: null, paid: v.payments.reduce((s: number, p: { amount: unknown }) => s + Number(p.amount), 0) };
+  return { kind, id: v.id, number: v.serviceNumber, released: Boolean(v.collectedAt) && ['COLLECTED', 'CANCELLED'].includes(v.status), releasedAt: v.collectedAt, collectedBy: v.collectedByName, exit: v.gateExit, vehicle: v.vehicle, customer: v.customer, cancelled: v.status === 'CANCELLED', total: null, paid: netPaid(v.payments, v.refunds) };
 }
 
 /** Vehicle exit history, newest first, searchable. */
 export async function listVehicleExits(q?: string) {
   await requireUser();
+  const reach = await reachWhere('security.view');
   const t = q?.trim();
   return prisma.vehicleGateExit.findMany({
-    where: t ? { OR: [{ exitNumber: { contains: t, mode: 'insensitive' } }, { driverName: { contains: t, mode: 'insensitive' } }, { vehicle: { plateNumber: { contains: t, mode: 'insensitive' } } }, { jobCard: { jobNumber: { contains: t, mode: 'insensitive' } } }, { vehicleService: { serviceNumber: { contains: t, mode: 'insensitive' } } }] } : undefined,
+    where: { ...reach, ...(t ? { OR: [{ exitNumber: { contains: t, mode: 'insensitive' } }, { driverName: { contains: t, mode: 'insensitive' } }, { vehicle: { plateNumber: { contains: t, mode: 'insensitive' } } }, { jobCard: { jobNumber: { contains: t, mode: 'insensitive' } } }, { vehicleService: { serviceNumber: { contains: t, mode: 'insensitive' } } }] } : {}) },
     orderBy: { exitedAt: 'desc' },
     take: 300,
     select: {
@@ -942,6 +1000,18 @@ const RT_OPEN: ('PENDING_MANAGER' | 'APPROVED' | 'OUT')[] = ['PENDING_MANAGER', 
 
 export type RoadTestInput = { jobCardId?: string; vehicleServiceId?: string; driverId: string; purpose: string; route?: string; expectedDurationMinutes: number; companionIds?: string[]; otherCompanions?: string[] };
 
+/** Road tests are requested by the people working on the job (its supervisor,
+ * technician or whoever opened it) or the branch's Workshop Manager — the
+ * same rule decides whether the page offers the button. */
+export async function canRequestRoadTestOn(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', id: string): Promise<boolean> {
+  await requireUser();
+  const sel = { select: { branchId: true, supervisorId: true, assignedTechnicianId: true, createdById: true } } as const;
+  const job = kind === 'JOB_CARD' ? await prisma.jobCard.findUnique({ where: { id }, ...sel }) : await prisma.vehicleService.findUnique({ where: { id }, ...sel });
+  if (!job) return false;
+  if (await allows('workshop.job.work', { branchId: job.branchId, assigneeIds: [job.supervisorId, job.assignedTechnicianId], ownerIds: [job.createdById] })) return true;
+  return allows('workshop.close.approve', { branchId: job.branchId, homeBranch: true });
+}
+
 export async function requestRoadTest(input: RoadTestInput): Promise<{ id: string; permitNumber: string }> {
   const user = await requireUser();
   if (!input.jobCardId === !input.vehicleServiceId) throw new SecurityError('A road test belongs to one Job Card or one Vehicle Service.');
@@ -952,6 +1022,9 @@ export async function requestRoadTest(input: RoadTestInput): Promise<{ id: strin
     ? await prisma.jobCard.findUnique({ where: { id: input.jobCardId }, select: { status: true, jobNumber: true, vehicleId: true } }).then((j: { status: string; jobNumber: string; vehicleId: string } | null) => j && { active: JC_ACTIVE.includes(j.status), number: j.jobNumber, vehicleId: j.vehicleId })
     : await prisma.vehicleService.findUnique({ where: { id: input.vehicleServiceId! }, select: { status: true, serviceNumber: true, vehicleId: true } }).then((v: { status: string; serviceNumber: string; vehicleId: string } | null) => v && { active: VS_ACTIVE.includes(v.status), number: v.serviceNumber, vehicleId: v.vehicleId });
   if (!rec) throw new SecurityError('Record not found.');
+  if (!(await canRequestRoadTestOn(input.jobCardId ? 'JOB_CARD' : 'VEHICLE_SERVICE', (input.jobCardId ?? input.vehicleServiceId)!))) {
+    return refuse('workshop.job.work', 'requestRoadTest', 'Only the people working on this job or a Workshop Manager can request a road test.');
+  }
   if (!rec.active) throw new SecurityError('This vehicle is not in the workshop — a road test can only be requested while it is being worked on.');
   const open = await prisma.roadTestPermit.findFirst({ where: { vehicleId: rec.vehicleId, status: { in: RT_OPEN } }, select: { permitNumber: true } });
   if (open) throw new SecurityError(`This vehicle already has an open road test (${open.permitNumber}).`);
@@ -1074,11 +1147,12 @@ const RT_ROW = {
 
 export async function listRoadTests(scope: 'to_decide' | 'approved' | 'out' | 'all', q?: string) {
   const user = await requireUser();
+  const reach = await reachWhere('security.view');
   const roles = await getSecurityRoles();
   const t = q?.trim();
   const status = scope === 'to_decide' ? 'PENDING_MANAGER' : scope === 'approved' ? 'APPROVED' : scope === 'out' ? 'OUT' : undefined;
   const rows = await prisma.roadTestPermit.findMany({
-    where: {
+    where: { ...reach,
       ...(status ? { status } : {}),
       ...(scope === 'to_decide' ? { NOT: { requestedById: user.id } } : {}),
       ...(t ? { OR: [{ permitNumber: { contains: t, mode: 'insensitive' } }, { purpose: { contains: t, mode: 'insensitive' } }, { vehicle: { plateNumber: { contains: t, mode: 'insensitive' } } }, { jobCard: { jobNumber: { contains: t, mode: 'insensitive' } } }, { vehicleService: { serviceNumber: { contains: t, mode: 'insensitive' } } }, { driver: { fullName: { contains: t, mode: 'insensitive' } } }] } : {}),
@@ -1092,12 +1166,13 @@ export async function listRoadTests(scope: 'to_decide' | 'approved' | 'out' | 'a
 
 export async function listRoadTestsFor(opts: { jobCardId?: string; vehicleServiceId?: string }) {
   await requireUser();
-  return prisma.roadTestPermit.findMany({ where: opts.jobCardId ? { jobCardId: opts.jobCardId } : { vehicleServiceId: opts.vehicleServiceId }, orderBy: { createdAt: 'desc' }, select: RT_ROW });
+  const reach = await reachWhere('security.view');
+  return prisma.roadTestPermit.findMany({ where: { ...reach, ...(opts.jobCardId ? { jobCardId: opts.jobCardId } : { vehicleServiceId: opts.vehicleServiceId }) }, orderBy: { createdAt: 'desc' }, select: RT_ROW });
 }
 
 export async function getRoadTest(id: string) {
   await requireUser();
-  return prisma.roadTestPermit.findUnique({
+  return visibleOrNull(await prisma.roadTestPermit.findUnique({
     where: { id },
     include: {
       branch: true,
@@ -1107,7 +1182,7 @@ export async function getRoadTest(id: string) {
       requestedBy: { select: { id: true, fullName: true } }, driver: { select: { fullName: true, phone: true } }, people: { select: { id: true, name: true, employeeId: true, userId: true } },
       managerApprovedBy: { select: { fullName: true } }, declinedBy: { select: { fullName: true } }, gateOutBy: { select: { fullName: true } }, gateInBy: { select: { fullName: true } },
     },
-  });
+  }), `RoadTest:${id}`);
 }
 
 export async function canDecideRoadTest(id: string): Promise<boolean> {
@@ -1124,7 +1199,7 @@ export async function canDecideRoadTest(id: string): Promise<boolean> {
  * entries (older exits were only recorded there). */
 export async function getVehicleExitHistory(exitId: string) {
   await requireUser();
-  const x = await prisma.vehicleGateExit.findUnique({ where: { id: exitId }, select: { jobCardId: true, vehicleServiceId: true } });
+  const x = await visibleOrNull(await prisma.vehicleGateExit.findUnique({ where: { id: exitId }, select: { jobCardId: true, vehicleServiceId: true, branchId: true } }), `VehicleGateExit:${exitId}`);
   if (!x) return { entries: [], emails: [] };
   const recType = x.jobCardId ? 'JobCard' : 'VehicleService';
   const recId = (x.jobCardId ?? x.vehicleServiceId)!;
@@ -1200,7 +1275,7 @@ export async function reportIncident(input: IncidentInput): Promise<{ id: string
 
 async function requireChief(): Promise<SecurityRoles> {
   const r = await getSecurityRoles();
-  if (!r.isCso && !r.isMaster) throw new SecurityError('Only the Chief Security Officer can do this.');
+  if (!r.isCso) await authorize('security.incident.manage', undefined, 'security.incidents', 'Only the Chief Security Officer can do this.');
   return r;
 }
 
@@ -1242,9 +1317,10 @@ export async function reopenIncident(id: string, reason: string): Promise<void> 
 const INCIDENT_TABS = ['open', 'under_review', 'closed', 'all'] as const;
 export async function listIncidents(q?: string, tab?: string, severity?: string) {
   await requireUser();
+  const reach = await reachWhere('security.view');
   const t2 = q?.trim();
   const rows = await prisma.securityIncident.findMany({
-    where: {
+    where: { ...reach,
       ...(severity && (SEVERITIES as readonly string[]).includes(severity) ? { severity: severity as (typeof SEVERITIES)[number] } : {}),
       ...(t2 ? { OR: [{ incidentNumber: { contains: t2, mode: 'insensitive' } }, { type: { contains: t2, mode: 'insensitive' } }, { location: { contains: t2, mode: 'insensitive' } }, { description: { contains: t2, mode: 'insensitive' } }, { peopleInvolved: { contains: t2, mode: 'insensitive' } }, { vehiclePlate: { contains: t2, mode: 'insensitive' } }, { relatedNumber: { contains: t2, mode: 'insensitive' } }] } : {}),
     },
@@ -1259,7 +1335,7 @@ export async function listIncidents(q?: string, tab?: string, severity?: string)
 
 export async function getIncident(id: string) {
   await requireUser();
-  return prisma.securityIncident.findUnique({ where: { id }, include: { branch: true, reportedBy: { select: { fullName: true } }, assignedTo: { select: { id: true, fullName: true } }, closedBy: { select: { fullName: true } } } });
+  return visibleOrNull(await prisma.securityIncident.findUnique({ where: { id }, include: { branch: true, reportedBy: { select: { fullName: true } }, assignedTo: { select: { id: true, fullName: true } }, closedBy: { select: { fullName: true } } } }), `Incident:${id}`);
 }
 
 export async function listGateStaffOptions() {
@@ -1275,8 +1351,10 @@ async function storeStaff(): Promise<Person[]> {
   const all = [...m.staff, ...o.staff] as Person[];
   return all.filter((p, i) => all.findIndex((x) => x.id === p.id) === i);
 }
-async function isStore(userId: string, isMaster: boolean) {
-  return isMaster || (await storeStaff()).some((s) => s.id === userId);
+/** Acting for the Store at the gate = receiving goods (store.grn.record in this branch). */
+async function isStore(_userId: string, isMaster: boolean) {
+  if (isMaster) return true;
+  return decide(await getPrincipal(), 'store.grn.record', { branchId: await getWorkshopBranchId(), homeBranch: true }).allowed;
 }
 
 export type DeliveryInput = { supplierName: string; reference?: string; items: string; expectedAt?: Date; driverName?: string; driverPhone?: string; vehicleType?: string; vehiclePlate?: string; notes?: string };
@@ -1372,9 +1450,10 @@ export async function cancelDelivery(id: string, reason: string): Promise<void> 
 const DELIVERY_TABS = ['expected', 'at_gate', 'received', 'left', 'cancelled', 'all'] as const;
 export async function listDeliveries(q?: string, tab?: string) {
   await requireUser();
+  const reach = await reachWhere('security.view');
   const t2 = q?.trim();
   const rows = await prisma.gateDelivery.findMany({
-    where: t2 ? { OR: [{ deliveryNumber: { contains: t2, mode: 'insensitive' } }, { supplierName: { contains: t2, mode: 'insensitive' } }, { reference: { contains: t2, mode: 'insensitive' } }, { items: { contains: t2, mode: 'insensitive' } }, { vehiclePlate: { contains: t2, mode: 'insensitive' } }, { driverName: { contains: t2, mode: 'insensitive' } }] } : undefined,
+    where: { ...reach, ...(t2 ? { OR: [{ deliveryNumber: { contains: t2, mode: 'insensitive' } }, { supplierName: { contains: t2, mode: 'insensitive' } }, { reference: { contains: t2, mode: 'insensitive' } }, { items: { contains: t2, mode: 'insensitive' } }, { vehiclePlate: { contains: t2, mode: 'insensitive' } }, { driverName: { contains: t2, mode: 'insensitive' } }] } : {}) },
     orderBy: { createdAt: 'desc' },
     take: 500,
     select: { id: true, deliveryNumber: true, status: true, supplierName: true, reference: true, items: true, expectedAt: true, arrivedAt: true, receivedAt: true, leftAt: true, vehiclePlate: true, driverName: true, goodsReceipt: { select: { id: true, referenceNumber: true } } },
@@ -1386,7 +1465,7 @@ export async function listDeliveries(q?: string, tab?: string) {
 
 export async function getDelivery(id: string) {
   await requireUser();
-  return prisma.gateDelivery.findUnique({ where: { id }, include: { registeredBy: { select: { fullName: true } }, arrivedBy: { select: { fullName: true } }, receivedBy: { select: { fullName: true } }, leftBy: { select: { fullName: true } }, goodsReceipt: { select: { id: true, referenceNumber: true, supplierName: true, receivedAt: true } } } });
+  return visibleOrNull(await prisma.gateDelivery.findUnique({ where: { id }, include: { registeredBy: { select: { fullName: true } }, arrivedBy: { select: { fullName: true } }, receivedBy: { select: { fullName: true } }, leftBy: { select: { fullName: true } }, goodsReceipt: { select: { id: true, referenceNumber: true, supplierName: true, receivedAt: true } } } }), `Delivery:${id}`);
 }
 
 /** Can this person act for the Store? (for the delivery page) */
@@ -1522,10 +1601,11 @@ const CTR_TABS = ['on_site', 'active', 'to_decide', 'upcoming', 'ended', 'all'] 
 
 export async function listContractorPasses(q?: string, tab?: string) {
   const user = await requireUser();
+  const reach = await reachWhere('security.view');
   const roles = await getSecurityRoles();
   const t2 = q?.trim();
   const raw = await prisma.contractorPass.findMany({
-    where: t2 ? { OR: [{ passNumber: { contains: t2, mode: 'insensitive' } }, { company: { contains: t2, mode: 'insensitive' } }, { work: { contains: t2, mode: 'insensitive' } }, { workArea: { contains: t2, mode: 'insensitive' } }, { leadName: { contains: t2, mode: 'insensitive' } }, { memberNames: { has: t2 } }] } : undefined,
+    where: { ...reach, ...(t2 ? { OR: [{ passNumber: { contains: t2, mode: 'insensitive' } }, { company: { contains: t2, mode: 'insensitive' } }, { work: { contains: t2, mode: 'insensitive' } }, { workArea: { contains: t2, mode: 'insensitive' } }, { leadName: { contains: t2, mode: 'insensitive' } }, { memberNames: { has: t2 } }] } : {}) },
     orderBy: { createdAt: 'desc' },
     take: 500,
     select: CTR_ROW,
@@ -1557,7 +1637,7 @@ export async function getContractorPass(id: string) {
       attendance: { orderBy: { signedInAt: 'desc' }, include: { signedInBy: { select: { fullName: true } }, signedOutBy: { select: { fullName: true } } } },
     },
   });
-  if (!p) return null;
+  if (!p || !(await visibleOrNull(p, `ContractorPass:${id}`))) return null;
   const open = p.attendance.find((a: { signedOutAt: Date | null }) => !a.signedOutAt) ?? null;
   return { ...p, onSite: open, state: contractorState(p, Boolean(open)), afterHours: open ? contractorAfterHoursMinutes(open.signedInAt) : 0 };
 }
