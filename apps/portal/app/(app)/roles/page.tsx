@@ -1,18 +1,25 @@
 import { listRolesForEditor } from '@/lib/actions/roles';
 import { grantRolePermissionFormAction, revokeRolePermissionFormAction } from '@/lib/actions/roles-form-handlers';
-import { PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
+import { PERMISSIONS, ROLE_INFO, type PermissionKey } from '@/lib/authz/catalogue';
+import { ComboBox } from '@/components/ComboBox';
+import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { SubmitButton } from '@/components/SubmitButton';
 
 const chip = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium';
 
-export default async function RolesPage({ searchParams }: { searchParams: Promise<{ error?: string; status?: string }> }) {
-  const { error, status } = await searchParams;
-  const roles = await listRolesForEditor();
+export default async function RolesPage({ searchParams }: { searchParams: Promise<{ error?: string; status?: string; q?: string }> }) {
+  const { error, status, q } = await searchParams;
+  const term = (q ?? '').trim().toLowerCase();
+  const roles = (await listRolesForEditor()).filter((r) => !term || [r.name, ROLE_INFO[r.slug]?.summary ?? '', ...(ROLE_INFO[r.slug]?.does ?? []), ...[...r.defaults, ...r.added].map((k) => PERMISSIONS[k].label)].some((t) => t.toLowerCase().includes(term)));
   const all = Object.keys(PERMISSIONS) as PermissionKey[];
   return (
     <div className="w-full p-4 sm:p-8">
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Roles</h1>
       <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">Each role&apos;s permissions. <b>Included by default</b> comes from the platform catalogue; you can <b>add</b> more for your organisation (and remove what you added). Every change is recorded in the audit trail. The full picture is on the Permissions page.</p>
+      <form className="mt-4 max-w-md">
+        <LiveSearchInput name="q" defaultValue={q ?? ''} placeholder="Search a role or a permission it holds — e.g. “payment”…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+      </form>
+      {roles.length === 0 ? <p className="mt-4 text-sm text-[var(--ejo-text-muted)]">No role matches “{q}”.</p> : null}
       {error ? <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/40 bg-[var(--ejo-error)]/5 p-3 text-sm text-[var(--ejo-error)]">{error}</p> : null}
       {status === 'saved' ? <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-success)]/40 bg-[var(--ejo-success)]/5 p-3 text-sm text-[var(--ejo-text)]">Saved.</p> : null}
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
@@ -22,6 +29,7 @@ export default async function RolesPage({ searchParams }: { searchParams: Promis
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{r.name}</h2>
               <span className="text-xs text-[var(--ejo-text-muted)]">{r.users} {r.users === 1 ? 'person' : 'people'}</span>
             </div>
+            {ROLE_INFO[r.slug] ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">{ROLE_INFO[r.slug]!.summary} {ROLE_INFO[r.slug]!.does.slice(0, 3).join(' · ')}</p> : null}
             {r.isPlatform ? (
               <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Platform team (the platform owner and their support staff). Holds every permission. Organisations cannot grant or change this role.</p>
             ) : (
@@ -42,10 +50,7 @@ export default async function RolesPage({ searchParams }: { searchParams: Promis
                 </div>
                 <form action={grantRolePermissionFormAction} className="mt-3 flex flex-wrap items-center gap-2">
                   <input type="hidden" name="roleId" value={r.id} />
-                  <select name="key" required defaultValue="" aria-label={`Add a permission to ${r.name}`} className="min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]">
-                    <option value="" disabled>Add a permission…</option>
-                    {all.filter((k) => !r.defaults.includes(k) && !r.added.includes(k)).map((k) => <option key={k} value={k}>{PERMISSIONS[k].module} — {PERMISSIONS[k].label}</option>)}
-                  </select>
+                  <ComboBox name="key" required ariaLabel={`Add a permission to ${r.name}`} placeholder="Type to find a permission…" className="flex-1" options={all.filter((k) => !r.defaults.includes(k) && !r.added.includes(k)).map((k) => ({ value: k, label: PERMISSIONS[k].label, group: PERMISSIONS[k].module }))} />
                   <SubmitButton label="Add" pendingLabel="Adding…" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90" />
                 </form>
               </>
