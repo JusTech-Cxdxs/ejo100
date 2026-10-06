@@ -36,17 +36,22 @@ export const PERMISSIONS = {
   'workshop.job_card.create': { module: 'Workshop', label: 'Open Job Cards and Vehicle Services (front desk)' },
   'workshop.customer.manage': { module: 'Workshop', label: 'Register customers and vehicles (front desk)' },
   'workshop.estimate.approve': { module: 'Workshop', label: 'Approve estimates — as the assigned supervisor of the job' },
-  'workshop.estimate.edit': { module: 'Workshop', label: 'Write estimates on jobs assigned to them' },
-  'workshop.job.work': { module: 'Workshop', label: 'Accept and carry out work on jobs assigned to them' },
-  'workshop.inspection.record': { module: 'Workshop', label: 'Record vehicle inspections on jobs assigned to them' },
   'workshop.estimate.final_approve': { module: 'Workshop', label: 'Give final approval to estimates (Manager)' },
   'workshop.close.approve': { module: 'Workshop', label: 'Approve closing and cancelling jobs (Manager)' },
+  'workshop.customer.notify': { module: 'Workshop', label: 'Notify customers of approved estimates and send reminders' },
+  'workshop.technician.assign': { module: 'Workshop', label: 'Assign technicians — on jobs they supervise' },
+  'workshop.inspection.perform': { module: 'Workshop', label: 'Carry out vehicle inspections — on jobs assigned to them' },
+  'workshop.estimate.edit': { module: 'Workshop', label: 'Prepare and submit estimates — on jobs assigned to them' },
+  'workshop.job.work': { module: 'Workshop', label: 'Accept and carry out work — on jobs assigned to them' },
+  'workshop.close.request': { module: 'Workshop', label: 'Request closing or cancellation — of jobs they opened or supervise' },
+  'store.prs.approve_hod': { module: 'Workshop', label: 'Parts requests — first approval, before the Store (Manager)' },
   'workshop.payment.record': { module: 'Finance', label: 'Record payments' },
   'workshop.refund.record': { module: 'Finance', label: 'Record refunds' },
-  'store.prs.approve_hod': { module: 'Workshop', label: 'Approve parts requests — first approval, before the Store' },
   // Store & procurement
   'store.view': { module: 'Store', label: 'Open the Store' },
-  'store.parts.manage': { module: 'Store', label: 'Manage parts, pricing and stock levels' },
+  'store.parts.manage': { module: 'Store', label: 'Manage parts, prices, stock levels and pricing alerts' },
+  'store.matching': { module: 'Store', label: 'Match estimate parts to items in stock' },
+  'sourcing.request': { module: 'Store', label: 'Raise parts requests and outside purchases for jobs' },
   'store.grn.record': { module: 'Store', label: 'Record goods receipts' },
   'store.prs.release': { module: 'Store', label: 'Parts requests — approve, reserve and release (Store)' },
   'procurement.epr.review': { module: 'Procurement', label: 'Outside purchases — review (Finance)' },
@@ -72,43 +77,53 @@ export type PermissionKey = keyof typeof PERMISSIONS;
 /** Everyone signed in (every role) — the everyday working baseline. */
 const BASELINE: Partial<Record<PermissionKey, Scope>> = {
   'workshop.view': 'BRANCH', 'workshop.job_card.view': 'BRANCH', 'store.view': 'BRANCH', 'warranty.view': 'BRANCH',
-  'security.view': 'BRANCH',
-  // Assignment-based (whatever their role): on a job where THEY are the assigned
-  // supervisor / technician — approve its estimate (supervisor), write it, inspect, do the work.
-  'workshop.estimate.approve': 'ASSIGNED', 'workshop.estimate.edit': 'ASSIGNED', 'workshop.job.work': 'ASSIGNED', 'workshop.inspection.record': 'ASSIGNED',
+  'security.view': 'BRANCH', 'sourcing.request': 'BRANCH',
+  // Assignment-based — on jobs where THEY are the assigned supervisor / technician
+  // (or, for requests to close, the person who opened it), whatever their role.
+  'workshop.estimate.approve': 'ASSIGNED', 'workshop.estimate.edit': 'ASSIGNED', 'workshop.job.work': 'ASSIGNED',
+  'workshop.inspection.perform': 'ASSIGNED', 'workshop.technician.assign': 'ASSIGNED', 'workshop.close.request': 'ASSIGNED',
 };
 
 /** Default grants per role slug (database grants may add to these later). */
 export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> = {
   administrator: {
-    'workshop.job_card.create': 'ALL', 'workshop.customer.manage': 'ALL', 'security.reception.operate': 'ALL',
+    'workshop.job_card.create': 'ALL', 'workshop.customer.manage': 'ALL', 'workshop.customer.notify': 'ALL', 'security.reception.operate': 'ALL',
     'admin.organisation.manage': 'ALL', 'admin.structure.manage': 'ALL', 'admin.users.manage': 'ALL', 'admin.roles.manage': 'ALL', 'admin.settings.manage': 'ALL',
     'audit.view': 'ALL', 'analytics.business.view': 'ALL', 'analytics.inventory.view': 'ALL', 'analytics.warranty.view': 'ALL',
     'workshop.view': 'ALL', 'workshop.job_card.view': 'ALL', 'store.view': 'ALL', 'warranty.view': 'ALL', 'security.view': 'ALL', 'schedule.view': 'ALL', 'notifications.broadcast.send': 'ALL',
   },
   'workshop-manager': {
-    'workshop.job_card.create': 'BRANCH', 'workshop.customer.manage': 'BRANCH', 'workshop.estimate.final_approve': 'BRANCH', 'workshop.close.approve': 'BRANCH', 'analytics.business.view': 'BRANCH',
+    'workshop.job_card.create': 'BRANCH', 'workshop.customer.manage': 'BRANCH', 'workshop.customer.notify': 'BRANCH', 'workshop.estimate.final_approve': 'BRANCH',
+    // The branch manager also manages warranty and approves claims (the code allows it).
+    'warranty.manage': 'BRANCH', 'warranty.claim.approve': 'BRANCH', 'workshop.close.approve': 'BRANCH', 'analytics.business.view': 'BRANCH',
     'store.prs.approve_hod': 'BRANCH', 'procurement.epr.approve': 'BRANCH', 'security.pass.approve': 'BRANCH', 'analytics.inventory.view': 'BRANCH', 'analytics.warranty.view': 'BRANCH',
-    // The branch manager also manages warranty and approves claims (as the code allows).
-    'warranty.manage': 'BRANCH', 'warranty.claim.approve': 'BRANCH',
   },
   // Supervisors approve the estimates of jobs assigned to them (everyone's assigned scope) — they do not open jobs.
   'workshop-supervisor': {},
   technician: {},
   'finance-officer': { 'workshop.payment.record': 'BRANCH', 'workshop.refund.record': 'BRANCH', 'procurement.epr.review': 'BRANCH', 'procurement.epr.disburse': 'BRANCH', 'analytics.business.view': 'BRANCH' },
-  'store-manager': { 'store.parts.manage': 'BRANCH', 'store.grn.record': 'BRANCH', 'store.prs.release': 'BRANCH', 'analytics.inventory.view': 'BRANCH' },
-  'store-officer': { 'store.parts.manage': 'BRANCH', 'store.grn.record': 'BRANCH', 'store.prs.release': 'BRANCH' },
+  'store-manager': { 'store.matching': 'BRANCH', 'store.parts.manage': 'BRANCH', 'store.grn.record': 'BRANCH', 'store.prs.release': 'BRANCH', 'analytics.inventory.view': 'BRANCH' },
+  // Store officers also manage parts (requireStoreStaff accepts them).
+  'store-officer': { 'store.matching': 'BRANCH', 'store.parts.manage': 'BRANCH', 'store.grn.record': 'BRANCH', 'store.prs.release': 'BRANCH' },
   'warranty-hod': { 'warranty.manage': 'BRANCH', 'warranty.claim.approve': 'BRANCH', 'analytics.warranty.view': 'BRANCH' },
   'warranty-officer': { 'warranty.manage': 'BRANCH' },
   'department-head': { 'security.pass.approve': 'DEPARTMENT' },
   'chief-security-officer': { 'security.gate.operate': 'BRANCH', 'security.reception.operate': 'BRANCH', 'security.incident.manage': 'BRANCH' },
   'security-officer': { 'security.gate.operate': 'BRANCH', 'security.reception.operate': 'BRANCH' },
   // Front desk: receives visitors, registers customers and vehicles, opens jobs.
-  receptionist: { 'security.reception.operate': 'BRANCH', 'workshop.job_card.create': 'BRANCH', 'workshop.customer.manage': 'BRANCH' },
+  receptionist: { 'security.reception.operate': 'BRANCH', 'workshop.job_card.create': 'BRANCH', 'workshop.customer.manage': 'BRANCH', 'workshop.customer.notify': 'BRANCH' },
   'calendar-user': { 'schedule.view': 'OWN' },
   'scheduling-admin': { 'schedule.view': 'ALL', 'schedule.manage': 'ALL' },
   broadcaster: { 'notifications.broadcast.send': 'ALL' },
 };
+
+/** Steps only the platform team may take — never grantable to organisation roles. */
+export const PLATFORM_ONLY: string[] = [
+  'Permanently delete Job Cards, Vehicle Services and vehicles',
+  "Change a job's supervisor after it has been set",
+  'Override a Job Card status directly',
+  'Change the organisation-wide service interval',
+];
 
 export type Principal = { userId: string; isSuperAdmin: boolean; roleSlugs: string[]; branchId: string | null; departmentId: string | null; extraGrants?: Partial<Record<PermissionKey, Scope>> };
 export type RecordContext = { branchId?: string | null; departmentId?: string | null; ownerIds?: (string | null | undefined)[]; assigneeIds?: (string | null | undefined)[] };
@@ -155,39 +170,3 @@ export const ROLE_LABELS: Record<string, string> = {
   'warranty-officer': 'Warranty Officer', 'department-head': 'Department Head', 'chief-security-officer': 'Chief Security Officer',
   'security-officer': 'Security Officer', receptionist: 'Receptionist', 'calendar-user': 'Calendar User', 'scheduling-admin': 'Scheduling Admin', broadcaster: 'Broadcaster',
 };
-
-/**
- * What each role does in the business — derived from what the code enforces,
- * in plain words. Shown on the Permissions and Roles pages.
- */
-export const ROLE_INFO: Record<string, { summary: string; does: string[] }> = {
-  administrator: { summary: "Runs the organisation's set-up and oversight.", does: ['Manages users, roles, branches, departments and settings', 'Sees the full audit trail and all analytics', 'Opens Job Cards and Vehicle Services; registers customers and vehicles; receives visitors', 'Sends broadcasts'] },
-  'workshop-manager': { summary: 'Heads the workshop branch — the final approver.', does: ['Final (2nd) approval of every estimate', 'Approves closing and cancelling jobs', 'First approval of parts requests, before the Store', 'Approves outside purchases after Finance', 'Approves exit passes (after the department head), road tests and contractors', 'Manages warranty and approves warranty claims', 'Opens jobs; sees business, inventory and warranty analytics'] },
-  'workshop-supervisor': { summary: 'Runs the jobs assigned to them.', does: ['Assigns the technician on their jobs', 'Records the inspection and writes the estimate', 'First approval of the estimate (on jobs where they are the supervisor)', 'Marks work ready for collection and requests the close', 'Does not open jobs — the front desk does'] },
-  technician: { summary: 'Carries out the work on jobs assigned to them.', does: ['Accepts or declines the assignment', 'Records the inspection and adds estimate lines on their job', 'Requests parts and outside purchases for their job', 'Does the work and reports it complete'] },
-  'finance-officer': { summary: 'Handles the money.', does: ['Records customer payments and refunds', 'Reviews outside purchases (1st step) and pays out the cash', 'Is told of every payment and every customer notification', 'Sees business analytics'] },
-  'store-manager': { summary: 'Runs the store.', does: ['Matches estimate parts to stock', 'Approves and reserves parts requests, then releases the parts', 'Records goods receipts; manages parts and prices', 'Sees inventory analytics'] },
-  'store-officer': { summary: 'Works the store counter.', does: ['Matches estimate parts to stock', 'Approves and reserves parts requests, then releases the parts', 'Records goods receipts; manages parts'] },
-  'warranty-hod': { summary: 'Heads warranty.', does: ['Registers warranties and prepares claims', 'Approves warranty claims and decisions', 'Sees warranty analytics'] },
-  'warranty-officer': { summary: 'Works warranty.', does: ['Registers warranties and prepares claims'] },
-  'department-head': { summary: 'Heads a department.', does: ['First approval of exit passes for their own department'] },
-  'chief-security-officer': { summary: 'Heads security.', does: ['Operates the gate and the reception desk', 'Assigns, closes and reopens incidents'] },
-  'security-officer': { summary: 'Works the gate.', does: ['Lets people and vehicles in and out; records passes out and back', 'Receives visitors at reception'] },
-  receptionist: { summary: 'The front desk.', does: ['Receives visitors', 'Registers customers and vehicles', 'Opens Job Cards and Vehicle Services'] },
-  'calendar-user': { summary: 'Has their own calendar.', does: ['Books and manages their own appointments (aides can book for them)'] },
-  'scheduling-admin': { summary: 'Runs scheduling.', does: ['Manages meeting rooms and aides', 'Books for anyone'] },
-  broadcaster: { summary: 'Publishes announcements.', does: ['Sends broadcasts to everyone, a branch, a department or a role'] },
-};
-
-/** Every approval chain, in order — the "refresh my memory" view. */
-export const APPROVAL_CHAINS: { name: string; steps: string[] }[] = [
-  { name: 'Estimate (Job Card / Vehicle Service)', steps: ['Supervisor or technician writes it', 'Supervisor approves (1st)', 'Workshop Manager approves (2nd)', 'Front desk notifies the customer', 'Finance records the deposit'] },
-  { name: 'Parts request (PRS)', steps: ['Technician or supervisor requests', 'Workshop Manager approves (1st)', 'Store approves and reserves (2nd)', 'Store releases the parts'] },
-  { name: 'Outside purchase (EPR)', steps: ['Technician or supervisor requests', 'Finance reviews (1st)', 'Workshop Manager approves (2nd)', 'Finance pays out the cash'] },
-  { name: 'Closing a job', steps: ['Supervisor marks ready and requests the close', 'Workshop Manager approves', 'Front desk checks the vehicle out', 'Security confirms it left'] },
-  { name: 'Cancelling a job', steps: ['Front desk or supervisor requests', 'Workshop Manager approves'] },
-  { name: 'Exit pass', steps: ['Employee requests', 'Department head approves (1st)', 'Workshop Manager approves (2nd)', 'Security records out and back'] },
-  { name: 'Road test', steps: ['Supervisor or technician requests', 'Workshop Manager approves', 'Security records out and back'] },
-  { name: 'Contractor pass', steps: ['Staff member requests', 'Workshop Manager approves', 'Security signs the team in and out each day'] },
-  { name: 'Warranty claim', steps: ['Warranty staff prepare it', 'Warranty HOD or Workshop Manager approves', 'Submitted to the provider and settled'] },
-];

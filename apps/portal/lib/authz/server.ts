@@ -79,3 +79,17 @@ export async function reachWhere(key: PermissionKey): Promise<{ branchId?: strin
   if (!d.allowed) return { branchId: '__no_access__' };
   return d.scope === 'BRANCH' && p.branchId ? { branchId: p.branchId } : {};
 }
+
+/** Assignment-aware check on a Vehicle Service, using the record itself (never the browser's word). */
+export async function authorizeOnService(key: PermissionKey, serviceId: string, where: string): Promise<void> {
+  const v = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { branchId: true, supervisorId: true, assignedTechnicianId: true, createdById: true } });
+  if (!v) throw new Error('This record no longer exists — refresh the page.');
+  await authorize(key, { branchId: v.branchId, assigneeIds: [v.supervisorId, v.assignedTechnicianId], ownerIds: [v.createdById] }, where);
+}
+
+/** Assignment-aware check on a Job Card, using the record itself. */
+export async function authorizeOnJobCard(key: PermissionKey, jobCardId: string, where: string): Promise<void> {
+  const j = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { branchId: true, supervisorId: true, assignedTechnicianId: true, createdById: true } });
+  if (!j) throw new Error('This record no longer exists — refresh the page.');
+  await authorize(key, { branchId: j.branchId, assigneeIds: [j.supervisorId, j.assignedTechnicianId], ownerIds: [j.createdById] }, where);
+}
