@@ -10,5 +10,5 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["tests/**/*.ts", "lib/authz/catalogue.ts"]
+  "include": ["tests/**/*.ts", "lib/authz/catalogue.ts", "lib/governance/data-inventory.ts"]
 }

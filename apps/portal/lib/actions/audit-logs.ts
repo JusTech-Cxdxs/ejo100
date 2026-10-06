@@ -3,6 +3,7 @@
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { allows, getPrincipal, orgWhere } from '@/lib/authz/server';
+import { JOBS } from '@/lib/job-runs';
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
 import { recordUrl, describeApiEntry, areaOf, AREA_LABEL } from '@/lib/notification-rules';
 import { resolveRecords, resolveReferenceNumbers, REFERENCE_PATTERN } from '@/lib/record-resolver';
@@ -14,8 +15,8 @@ export async function canSeeAuditLogs(): Promise<boolean> {
   return allows('audit.view');
 }
 
-export type AuditKind = 'all' | 'business' | 'data' | 'api';
-export type AuditRow = { id: string; at: Date; who: string; kind: 'Business' | 'Data change' | 'API'; title: string; detail: string | null; area: string; records: { label: string; url: string }[]; changes: { field: string; before: string; after: string }[]; ip: string | null };
+export type AuditKind = 'all' | 'business' | 'data' | 'api' | 'system';
+export type AuditRow = { id: string; at: Date; who: string; kind: 'Business' | 'Data change' | 'API' | 'System job'; title: string; detail: string | null; area: string; records: { label: string; url: string }[]; changes: { field: string; before: string; after: string }[]; ip: string | null };
 
 const PAGE = 50;
 const show = (v: unknown): string => (v === null || v === undefined ? '—' : typeof v === 'object' ? JSON.stringify(v).slice(0, 200) : String(v).slice(0, 200));
@@ -26,7 +27,7 @@ const words = (model: string) => model.replace(/([a-z])([A-Z])/g, '$1 $2').repla
  * fast however large the trail grows. Append-only: nothing here changes it. */
 export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: string; from?: string; to?: string; cursor?: string }) {
   if (!(await canSeeAuditLogs())) throw new Error('The audit trail is for the Master Admin and Administrators.');
-  const kind = (['business', 'data', 'api'].includes(f.kind ?? '') ? f.kind : 'all') as AuditKind;
+  const kind = (['business', 'data', 'api', 'system'].includes(f.kind ?? '') ? f.kind : 'all') as AuditKind;
   const q = f.q?.trim();
   const createdAt: { gte?: Date; lt?: Date } = {};
   if (f.from && /^\d{4}-\d{2}-\d{2}$/.test(f.from)) createdAt.gte = new Date(`${f.from}T00:00:00+01:00`);
@@ -38,7 +39,14 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
     const url = (await resolveReferenceNumbers([q.toUpperCase()])).get(q.toUpperCase());
     refId = url?.split('/').filter(Boolean).pop() ?? null;
   }
-  const kindWhere = kind === 'data' ? { entityType: { startsWith: 'db:' } } : kind === 'api' ? { entityType: { startsWith: 'api:' } } : kind === 'business' ? { NOT: [{ entityType: { startsWith: 'db:' } }, { entityType: { startsWith: 'api:' } }] } : {};
+  // Scheduled-job runs (every 10 minutes) have their own tab, so they never bury people's work.
+  const notJob = { action: { not: 'system.job_run' } };
+  const kindWhere =
+    kind === 'system' ? { action: 'system.job_run' }
+    : kind === 'data' ? { entityType: { startsWith: 'db:' } }
+    : kind === 'api' ? { entityType: { startsWith: 'api:' } }
+    : kind === 'business' ? { ...notJob, NOT: [{ entityType: { startsWith: 'db:' } }, { entityType: { startsWith: 'api:' } }] }
+    : notJob;
   const rows = await prisma.auditLog.findMany({
     where: {
       // Each organisation sees only its own history; the platform team sees all.
@@ -78,6 +86,11 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
       const d = describeApiEntry(r.action.replace(/\.failed$/, ''), r.entityType);
       const failed = r.action.endsWith('.failed');
       return { id: r.id, at: r.createdAt, who, kind: 'API', title: `${failed ? 'Failed: ' : ''}${d?.title ?? 'Request'}`, detail: typeof meta.status === 'number' ? `Status ${meta.status}${typeof meta.durationMs === 'number' ? ` · ${meta.durationMs} ms` : ''}${failed && typeof meta.error === 'string' ? ` · ${meta.error}` : ''}` : null, area: 'System', records: d ? [{ label: d.title.replace(/ (created|updated|deleted)$/, ''), url: d.url }] : [], changes: [], ip: r.ipAddress };
+    }
+    if (r.action === 'system.job_run') {
+      const job = JOBS.find((j) => j.key === r.entityId);
+      const LABEL: Record<string, string> = { remindersSent: 'reminders', broadcastEmailsSent: 'broadcast emails', digestsSent: 'digests', branchesWithOpenAlerts: 'branches with open alerts', emailsSent: 'emails sent', emailsFailed: 'emails failed' };
+      return { id: r.id, at: r.createdAt, who: 'Scheduler', kind: 'System job', title: `Scheduled job ran — ${job?.name ?? r.entityId ?? 'job'}`, detail: Object.entries(meta).map(([k, v]) => `${String(v)} ${LABEL[k] ?? k}`).join(' · ') || null, area: 'System', records: [{ label: 'Scheduled jobs', url: '/settings' }], changes: [], ip: null };
     }
     return { id: r.id, at: r.createdAt, who, kind: 'Business', title: securityActionLabel(r.action), detail: securityActionDetail(r.action, meta), area: AREA_LABEL[areaOf(r.entityType)] ?? 'System', records: rec(r.entityType, r.entityId), changes: [], ip: r.ipAddress };
   });

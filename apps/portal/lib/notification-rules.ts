@@ -26,7 +26,8 @@ export const ROLE_AREAS: Record<string, string[]> = {
 export const ALL_ACTIVITY_ROLES = ['administrator'];
 
 /** Bookkeeping entries that are never shown as activity. */
-export const HIDDEN_ACTIONS = ['security.email_sent', 'security.email_failed', 'appointment.reminder_sent'];
+/** Routine machinery — recorded for audit and health, never shown as people's activity. */
+export const HIDDEN_ACTIONS = ['security.email_sent', 'security.email_failed', 'appointment.reminder_sent', 'system.job_run'];
 
 export function entityTypesForRoles(slugs: string[]): string[] | 'ALL' {
   if (slugs.some((s) => ALL_ACTIVITY_ROLES.includes(s))) return 'ALL';

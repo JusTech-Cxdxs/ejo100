@@ -6,7 +6,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 
-const KINDS: [string, string][] = [['all', 'Everything'], ['business', 'Business events'], ['data', 'Data changes'], ['api', 'API requests']];
+const KINDS: [string, string][] = [['all', 'Everything'], ['business', 'Business events'], ['data', 'Data changes'], ['api', 'API requests'], ['system', 'Scheduled jobs']];
 const AREA_DOT: Record<string, string> = { Workshop: 'bg-[var(--ejo-primary)]', Store: 'bg-[var(--ejo-info)]', Warranty: 'bg-[var(--ejo-warning)]', Security: 'bg-[var(--ejo-error)]', Scheduling: 'bg-purple-500', System: 'bg-[var(--ejo-text-muted)]' };
 const timeOf = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' });
 function groupByDay<T extends { at: Date }>(rows: T[]): [string, T[]][] {
@@ -22,7 +22,7 @@ function groupByDay<T extends { at: Date }>(rows: T[]): [string, T[]][] {
   }
   return [...groups.entries()];
 }
-const KIND_CHIP: Record<string, string> = { Business: 'bg-[var(--ejo-primary)]/15 text-[var(--ejo-primary)]', 'Data change': 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]', API: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]' };
+const KIND_CHIP: Record<string, string> = { Business: 'bg-[var(--ejo-primary)]/15 text-[var(--ejo-primary)]', 'Data change': 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]', API: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]', 'System job': 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]' };
 
 export default async function AuditLogsPage({ searchParams }: { searchParams: Promise<{ kind?: string; q?: string; userId?: string; from?: string; to?: string; cursor?: string }> }) {
   const sp = await searchParams;

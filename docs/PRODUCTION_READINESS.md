@@ -4,6 +4,8 @@ The standard: defence in depth, graceful failure, bounded resource use, monitori
 least privilege, and a clear path to scale. No system can promise "nothing can ever break"; this
 records what is verified, what was fixed, what is deliberately deferred, and what risk remains.
 
+> The binding rules every change must keep are in **[ARCHITECTURE_BASELINE.md](ARCHITECTURE_BASELINE.md)**; every table's owner, sensitivity, lifecycle, retention and AI access is declared in `apps/portal/lib/governance/data-inventory.ts` (enforced in CI).
+
 ## 1. Verified and in place
 | Area | State |
 |---|---|
