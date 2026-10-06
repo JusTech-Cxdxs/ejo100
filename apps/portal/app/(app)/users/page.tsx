@@ -2,7 +2,7 @@ import { listUsersForAdmin } from '@/lib/actions/users-admin';
 import { assignRoleFormAction, removeRoleFormAction } from '@/lib/actions/users-admin-form-handlers';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { SubmitButton } from '@/components/SubmitButton';
-import { ComboBox } from '@/components/ComboBox';
+import { FilterSelect } from '@/components/FilterSelect';
 
 const chip = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium';
 
@@ -43,7 +43,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
               {u.id !== me ? (
                 <form action={assignRoleFormAction} className="flex items-center gap-1.5">
                   <input type="hidden" name="userId" value={u.id} /><input type="hidden" name="q" value={q ?? ''} />
-                  <ComboBox name="roleId" required ariaLabel={`Give ${u.fullName} a role`} placeholder="Type a role…" className="w-44" options={roles.filter((r) => !u.roles.some((x) => x.id === r.id)).map((r) => ({ value: r.id, label: r.isPlatform ? `${r.name} (platform team)` : r.name }))} />
+                  <FilterSelect name="roleId" required ariaLabel={`Give ${u.fullName} a role`} placeholder="Type a role…" className="w-48" options={roles.filter((r) => !u.roles.some((x) => x.id === r.id)).map((r) => ({ value: r.id, label: r.isPlatform ? `${r.name} (platform team)` : r.name }))} />
                   <SubmitButton label="Give" pendingLabel="…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-2 py-1 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]" />
                 </form>
               ) : <span className="text-[11px] text-[var(--ejo-text-muted)]">Your own roles are changed by another administrator.</span>}
