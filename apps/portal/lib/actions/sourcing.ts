@@ -21,6 +21,8 @@ import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach } 
  */
 
 import { prisma, getAuditActor } from '@ejo/database';
+import { claimed as claimedOrStale, lockExisting, lockRows, StaleStateError } from '@/lib/integrity';
+import { retryOnNumberClash } from '@/lib/integrity-core';
 import { issuePartWarrantiesForSlip } from './warranty';
 import { pluralize } from '@/lib/utils/pluralize';
 import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
@@ -245,10 +247,10 @@ const SOURCEABLE_STATUSES = ['IN_PROGRESS', 'AWAITING_PARTS', 'QUALITY_CHECK', '
 
 /** PRS-2026-000001 — same year-prefixed, zero-padded sequence as
  * JC-/GRN- numbering elsewhere in this project. */
-async function generatePartRequestSlipNumber(): Promise<string> {
+async function generatePartRequestSlipNumber(db: Pick<typeof prisma, 'partRequestSlip'> = prisma): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `PRS-${year}-`;
-  const latest = await prisma.partRequestSlip.findFirst({
+  const latest = await db.partRequestSlip.findFirst({
     where: { referenceNumber: { startsWith: prefix } },
     orderBy: { referenceNumber: 'desc' },
     select: { referenceNumber: true },
@@ -258,10 +260,10 @@ async function generatePartRequestSlipNumber(): Promise<string> {
 }
 
 /** EPR-2026-000001 */
-async function generateExternalProcurementRequestNumber(): Promise<string> {
+async function generateExternalProcurementRequestNumber(db: Pick<typeof prisma, 'externalProcurementRequest'> = prisma): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `EPR-${year}-`;
-  const latest = await prisma.externalProcurementRequest.findFirst({
+  const latest = await db.externalProcurementRequest.findFirst({
     where: { referenceNumber: { startsWith: prefix } },
     orderBy: { referenceNumber: 'desc' },
     select: { referenceNumber: true },
@@ -370,7 +372,10 @@ async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
 
   const to = hasOutstanding && jobCard.status !== 'AWAITING_PARTS' ? 'AWAITING_PARTS' : !hasOutstanding && jobCard.status === 'AWAITING_PARTS' ? 'IN_PROGRESS' : null;
   if (!to) return;
-  await prisma.jobCard.update({ where: { id: jobCardId }, data: { status: to } });
+  // Only if the Job Card is still where we read it — never clobber a status
+  // someone moved on in the meantime (that change wins; nothing to sync).
+  const moved = await prisma.jobCard.updateMany({ where: { id: jobCardId, status: jobCard.status }, data: { status: to } });
+  if (moved.count === 0) return;
   // An automatic status change is still a status change — on the Job
   // Card's own trail, attributed to whoever's action caused it.
   await writeAuditLog({
@@ -605,8 +610,12 @@ export async function listExternalProcurementRequests(branchId: string, search?:
  * just finds what's real and waiting. */
 export async function getRequestablePartRequestLines(jobCardId: string) {
   await requireUser();
+  return requestablePartRequestLines(prisma, jobCardId);
+}
+
+async function requestablePartRequestLines(db: Pick<typeof prisma, 'estimate' | 'partRequestSlip'>, jobCardId: string) {
   const [estimate, existingSlips] = await Promise.all([
-    prisma.estimate.findUnique({
+    db.estimate.findUnique({
       where: { jobCardId },
       select: {
         lineItems: {
@@ -624,7 +633,7 @@ export async function getRequestablePartRequestLines(jobCardId: string) {
         },
       },
     }),
-    prisma.partRequestSlip.findMany({
+    db.partRequestSlip.findMany({
       where: { jobCardId, status: { not: 'REJECTED' } },
       select: { lines: { select: { estimateLineItemId: true } } },
     }),
@@ -653,27 +662,34 @@ export async function requestPartRequestSlip(jobCardId: string): Promise<{ id: s
   if (!SOURCEABLE_STATUSES.includes(jobCard.status as (typeof SOURCEABLE_STATUSES)[number])) {
     throw new SourcingActionError("This Job Card isn't far enough along to request parts yet — it needs to be at least In Progress (70% paid).");
   }
-  const requestableLines = await getRequestablePartRequestLines(jobCardId);
-  if (requestableLines.length === 0) {
-    throw new SourcingActionError('There are no matched Store Part lines ready to request — everything has already been requested, or nothing has been matched yet.');
-  }
+  // Worked out and created with the Job Card locked: a double click (or two
+  // people) can't raise two requests for the same lines — which would ask
+  // Store to reserve the same parts twice.
+  const { slip, requestableLines, referenceNumber } = await retryOnNumberClash('referenceNumber', () => prisma.$transaction(async (tx) => {
+    await lockExisting(tx, 'jobCard', [jobCardId]);
+    const requestableLines = await requestablePartRequestLines(tx, jobCardId);
+    if (requestableLines.length === 0) {
+      throw new SourcingActionError('There are no matched Store Part lines ready to request — everything has already been requested, or nothing has been matched yet.');
+    }
 
-  const referenceNumber = await generatePartRequestSlipNumber();
-  const slip = await prisma.partRequestSlip.create({
-    data: {
-      referenceNumber,
-      jobCardId,
-      branchId: jobCard.branchId,
-      requestedById: user.id,
-      lines: {
-        create: requestableLines.map((l: (typeof requestableLines)[number]) => ({
-          partId: l.matchedPartId as string,
-          estimateLineItemId: l.id,
-          quantityRequested: l.quantity,
-        })),
+    const referenceNumber = await generatePartRequestSlipNumber(tx);
+    const slip = await tx.partRequestSlip.create({
+      data: {
+        referenceNumber,
+        jobCardId,
+        branchId: jobCard.branchId,
+        requestedById: user.id,
+        lines: {
+          create: requestableLines.map((l: (typeof requestableLines)[number]) => ({
+            partId: l.matchedPartId as string,
+            estimateLineItemId: l.id,
+            quantityRequested: l.quantity,
+          })),
+        },
       },
-    },
-  });
+    });
+    return { slip, requestableLines, referenceNumber };
+  }));
 
   await syncJobCardSourcingStatus(jobCardId);
   await writeAuditLog({
@@ -800,7 +816,11 @@ export async function getVehicleServiceSourcingNeeds(vehicleServiceId: string) {
 
 export async function getRequestableServiceEstimatePartRequestLines(serviceEstimateId: string) {
   await requireUser();
-  const estimate = await prisma.serviceEstimate.findUnique({
+  return requestableServiceEstimateLines(prisma, serviceEstimateId);
+}
+
+async function requestableServiceEstimateLines(db: Pick<typeof prisma, 'serviceEstimate' | 'partRequestSlip'>, serviceEstimateId: string) {
+  const estimate = await db.serviceEstimate.findUnique({
     where: { id: serviceEstimateId },
     select: {
       vehicleServiceId: true,
@@ -820,7 +840,7 @@ export async function getRequestableServiceEstimatePartRequestLines(serviceEstim
     },
   });
   if (!estimate) return [];
-  const existingSlips = await prisma.partRequestSlip.findMany({
+  const existingSlips = await db.partRequestSlip.findMany({
     where: { vehicleServiceId: estimate.vehicleServiceId, status: { not: 'REJECTED' } },
     select: { lines: { select: { serviceEstimateLineItemId: true } } },
   });
@@ -854,27 +874,32 @@ export async function requestServiceEstimatePartRequestSlip(serviceEstimateId: s
   if (!(await isVehicleServiceEligibleToSource(estimate.vehicleServiceId))) {
     throw new SourcingActionError('Parts can only be requested once the customer has been notified and the 70% deposit recorded — the moment real work begins.');
   }
-  const requestableLines = await getRequestableServiceEstimatePartRequestLines(serviceEstimateId);
-  if (requestableLines.length === 0) {
-    throw new SourcingActionError('There are no matched Store Part lines ready to request — everything has already been requested, or nothing has been matched yet.');
-  }
+  // Same as requestPartRequestSlip: never two requests for the same lines.
+  const { slip, requestableLines, referenceNumber } = await retryOnNumberClash('referenceNumber', () => prisma.$transaction(async (tx) => {
+    await lockExisting(tx, 'vehicleService', [estimate.vehicleServiceId]);
+    const requestableLines = await requestableServiceEstimateLines(tx, serviceEstimateId);
+    if (requestableLines.length === 0) {
+      throw new SourcingActionError('There are no matched Store Part lines ready to request — everything has already been requested, or nothing has been matched yet.');
+    }
 
-  const referenceNumber = await generatePartRequestSlipNumber();
-  const slip = await prisma.partRequestSlip.create({
-    data: {
-      referenceNumber,
-      vehicleServiceId: estimate.vehicleServiceId,
-      branchId: estimate.vehicleService.branchId,
-      requestedById: user.id,
-      lines: {
-        create: requestableLines.map((l: (typeof requestableLines)[number]) => ({
-          partId: l.matchedPartId as string,
-          serviceEstimateLineItemId: l.id,
-          quantityRequested: l.quantity,
-        })),
+    const referenceNumber = await generatePartRequestSlipNumber(tx);
+    const slip = await tx.partRequestSlip.create({
+      data: {
+        referenceNumber,
+        vehicleServiceId: estimate.vehicleServiceId,
+        branchId: estimate.vehicleService.branchId,
+        requestedById: user.id,
+        lines: {
+          create: requestableLines.map((l: (typeof requestableLines)[number]) => ({
+            partId: l.matchedPartId as string,
+            serviceEstimateLineItemId: l.id,
+            quantityRequested: l.quantity,
+          })),
+        },
       },
-    },
-  });
+    });
+    return { slip, requestableLines, referenceNumber };
+  }));
 
   await writeAuditLog({
     userId: user.id,
@@ -1112,6 +1137,21 @@ export async function approvePartRequestSlipByStore(slipId: string, notes?: stri
   }
 
   await prisma.$transaction(async (tx) => {
+    // Two storekeepers approving different requests for the same part at
+    // once: the check above is only a fast answer. Lock the stock rows and
+    // decide again against what is on hand and reserved at this instant.
+    await lockRows(tx, 'partStockByPart', slip.lines.map((l: (typeof slip.lines)[number]) => l.partId));
+    const needed = new Map<string, number>();
+    for (const line of slip.lines) needed.set(line.partId, (needed.get(line.partId) ?? 0) + Number(line.quantityRequested));
+    const stockNow = await tx.partStock.findMany({ where: { partId: { in: Array.from(needed.keys()) } }, select: { partId: true, quantityOnHand: true, quantityReserved: true } });
+    for (const [partId, qty] of needed) {
+      const row = stockNow.find((r: (typeof stockNow)[number]) => r.partId === partId);
+      const available = Number(row?.quantityOnHand ?? 0) - Number(row?.quantityReserved ?? 0);
+      if (available < qty) {
+        const name = slip.lines.find((l: (typeof slip.lines)[number]) => l.partId === partId)?.part.name ?? 'A part';
+        throw new SourcingActionError(`${name} was just reserved for another request — ${Math.max(0, available)} available now, ${qty} requested.`);
+      }
+    }
     for (const line of slip.lines) {
       await tx.partStock.update({ where: { partId: line.partId }, data: { quantityReserved: { increment: line.quantityRequested } } });
     }
@@ -1216,6 +1256,21 @@ export async function releasePartRequestSlip(
   }
 
   await prisma.$transaction(async (tx) => {
+    // Claim the slip first (compare-and-set) so a second, simultaneous
+    // release stops before touching stock, then lock this slip's stock rows
+    // in a fixed order so two releases of the same parts queue rather than
+    // deadlock or both draw down the same batches.
+    claimedOrStale(await tx.partRequestSlip.updateMany({
+      where: { id: slipId, status: 'APPROVED' },
+      data: {
+        status: 'RELEASED',
+        releasedById: user.id,
+        releasedAt: new Date(),
+        receivedByUserId: receivedBy.receivedByUserId,
+        receivedByName: receivedBy.receivedByName?.trim() || undefined,
+      },
+    }), 'This was just released by someone else — refresh to see the latest.');
+    await lockRows(tx, 'partStockByPart', slip.lines.map((l: (typeof slip.lines)[number]) => l.partId));
     for (const line of slip.lines) {
       const qty = Number(line.quantityRequested);
       await tx.partStock.update({
@@ -1252,7 +1307,7 @@ export async function releasePartRequestSlip(
       } else if (line.part.trackingType === 'SERIALIZED') {
         const serials = (lineSerials?.[line.id] ?? []).map((s) => s.trim()).filter(Boolean);
         for (const serialNumber of serials) {
-          await tx.partSerial.updateMany({
+          const issued = await tx.partSerial.updateMany({
             where: { partId: line.partId, serialNumber, status: 'IN_STOCK' },
             // The real, permanent record of exactly which release this
             // one physical unit was issued out against — the direct
@@ -1260,6 +1315,9 @@ export async function releasePartRequestSlip(
             // trace.
             data: { status: 'ISSUED', issuedToSlipLineId: line.id },
           });
+          // Checked before the transaction, but another release may have
+          // issued this exact unit since — never release a unit twice.
+          if (issued.count !== 1) throw new StaleStateError(`${line.part.name}: serial ${serialNumber} was just issued on another request — refresh and choose another unit.`);
         }
       } else {
         // QUANTITY-tracked — each Goods Receipt line for this Part is a
@@ -1310,20 +1368,6 @@ export async function releasePartRequestSlip(
 
       await tx.partRequestSlipLine.update({ where: { id: line.id }, data: { quantityReleased: qty } });
     }
-
-    const claimed = await tx.partRequestSlip.updateMany({
-      where: { id: slipId, status: 'APPROVED' },
-      data: {
-        status: 'RELEASED',
-        releasedById: user.id,
-        releasedAt: new Date(),
-        receivedByUserId: receivedBy.receivedByUserId,
-        receivedByName: receivedBy.receivedByName?.trim() || undefined,
-      },
-    });
-    // Compare-and-set: if someone else already moved it on (double click,
-    // two people at once), nothing changes and this request stops here.
-    if (claimed.count === 0) throw new Error('This was just done by someone else — refresh to see the latest.');
   });
 
   if (slip.jobCardId) {
@@ -1387,10 +1431,13 @@ export async function rejectPartRequestSlip(slipId: string, reason: string): Pro
   const stage = slip.status === 'PENDING_HOD_APPROVAL' ? 'HOD' : 'STORE';
   const user = stage === 'HOD' ? await requireEligibleManager(slip.branchId, 'store.prs.approve_hod') : await requireStoreStaff(slip.branchId, 'store.prs.release');
 
-  await prisma.partRequestSlip.update({
-    where: { id: slipId },
+  // Compare-and-set: only from the stage the rejecter actually saw. If Store
+  // approved it meanwhile, stock is now reserved — a stale reject must not
+  // overwrite APPROVED and strand that reservation.
+  claimedOrStale(await prisma.partRequestSlip.updateMany({
+    where: { id: slipId, status: slip.status },
     data: { status: 'REJECTED', rejectedById: user.id, rejectedAt: new Date(), rejectionStage: stage, rejectionReason: reason.trim() },
-  });
+  }));
 
   if (slip.jobCardId) {
     await syncJobCardSourcingStatus(slip.jobCardId);
@@ -1437,8 +1484,12 @@ export async function rejectPartRequestSlip(slipId: string, reason: string): Pro
  * re-enter it, it's a real fact the estimate already holds. */
 export async function getRequestableExternalProcurementLines(jobCardId: string) {
   await requireUser();
+  return requestableExternalLines(prisma, jobCardId);
+}
+
+async function requestableExternalLines(db: Pick<typeof prisma, 'estimate' | 'externalProcurementRequest'>, jobCardId: string) {
   const [estimate, existingRequests] = await Promise.all([
-    prisma.estimate.findUnique({
+    db.estimate.findUnique({
       where: { jobCardId },
       select: {
         lineItems: {
@@ -1447,7 +1498,7 @@ export async function getRequestableExternalProcurementLines(jobCardId: string) 
         },
       },
     }),
-    prisma.externalProcurementRequest.findMany({
+    db.externalProcurementRequest.findMany({
       where: { jobCardId, status: { not: 'REJECTED' } },
       select: {
         estimateLineItemId: true,
@@ -1488,37 +1539,43 @@ export async function requestExternalProcurementBatch(jobCardId: string): Promis
   if (!SOURCEABLE_STATUSES.includes(jobCard.status as (typeof SOURCEABLE_STATUSES)[number])) {
     throw new SourcingActionError("This Job Card isn't far enough along to request procurement yet — it needs to be at least In Progress (70% paid).");
   }
-  const requestableLines = await getRequestableExternalProcurementLines(jobCardId);
-  if (requestableLines.length === 0) {
-    throw new SourcingActionError('There is nothing ready to request — either every line has already been requested, or nothing is priced yet.');
-  }
-  // The one real total for the whole request — the sum of every real
-  // line's own already-approved amount, locked in right here and
-  // never recomputed later, the same "locked the moment it's
-  // submitted" reasoning the single-line version always had.
-  const estimatedAmount = requestableLines.reduce((sum: number, l: (typeof requestableLines)[number]) => sum + Number(l.amount), 0);
-  const description = requestableLines.map((l: (typeof requestableLines)[number]) => l.description).join(', ');
+  // Worked out and created with the Job Card locked: a double click can never
+  // raise two requests for the same lines (which Finance would pay twice).
+  const { request, requestableLines, referenceNumber, estimatedAmount } = await retryOnNumberClash('referenceNumber', () => prisma.$transaction(async (tx) => {
+    await lockExisting(tx, 'jobCard', [jobCardId]);
+    const requestableLines = await requestableExternalLines(tx, jobCardId);
+    if (requestableLines.length === 0) {
+      throw new SourcingActionError('There is nothing ready to request — either every line has already been requested, or nothing is priced yet.');
+    }
+    // The one real total for the whole request — the sum of every real
+    // line's own already-approved amount, locked in right here and
+    // never recomputed later, the same "locked the moment it's
+    // submitted" reasoning the single-line version always had.
+    const estimatedAmount = requestableLines.reduce((sum: number, l: (typeof requestableLines)[number]) => sum + Number(l.amount), 0);
+    const description = requestableLines.map((l: (typeof requestableLines)[number]) => l.description).join(', ');
 
-  const referenceNumber = await generateExternalProcurementRequestNumber();
-  const request = await prisma.externalProcurementRequest.create({
-    data: {
-      referenceNumber,
-      jobCardId,
-      branchId: jobCard.branchId,
-      requestedById: user.id,
-      description,
-      estimatedAmount,
-      lines: {
-        create: requestableLines.map((l: (typeof requestableLines)[number]) => ({
-          estimateLineItemId: l.id,
-          description: l.description,
-          quantity: l.quantity,
-          unitOfMeasure: l.unitOfMeasure,
-          amount: Number(l.amount),
-        })),
+    const referenceNumber = await generateExternalProcurementRequestNumber(tx);
+    const request = await tx.externalProcurementRequest.create({
+      data: {
+        referenceNumber,
+        jobCardId,
+        branchId: jobCard.branchId,
+        requestedById: user.id,
+        description,
+        estimatedAmount,
+        lines: {
+          create: requestableLines.map((l: (typeof requestableLines)[number]) => ({
+            estimateLineItemId: l.id,
+            description: l.description,
+            quantity: l.quantity,
+            unitOfMeasure: l.unitOfMeasure,
+            amount: Number(l.amount),
+          })),
+        },
       },
-    },
-  });
+    });
+    return { request, requestableLines, referenceNumber, estimatedAmount };
+  }));
 
   await syncJobCardSourcingStatus(jobCardId);
   await writeAuditLog({
@@ -1944,10 +2001,12 @@ export async function rejectExternalProcurementRequest(requestId: string, reason
   }
   const stage = request.status === 'PENDING_FINANCE_REVIEW' ? 'FINANCE_REVIEW' : 'MANAGER_APPROVAL';
   const user = stage === 'FINANCE_REVIEW' ? await requireEligibleFinance(request.branchId, 'procurement.epr.review') : await requireEligibleManager(request.branchId, 'procurement.epr.approve');
-  await prisma.externalProcurementRequest.update({
-    where: { id: requestId },
+  // Compare-and-set: a stale reject must never overwrite an approval made
+  // a moment earlier (which Finance may already be disbursing against).
+  claimedOrStale(await prisma.externalProcurementRequest.updateMany({
+    where: { id: requestId, status: request.status },
     data: { status: 'REJECTED', rejectedById: user.id, rejectedAt: new Date(), rejectionStage: stage, rejectionReason: reason.trim() },
-  });
+  }));
 
   await syncJobCardSourcingStatus(request.jobCardId);
   await writeAuditLog({

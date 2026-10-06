@@ -170,19 +170,22 @@ export async function updateInspectionItems(inspectionId: string, items: Inspect
   if (inspection.status === 'SKIPPED') {
     throw new VehicleInspectionActionError('This inspection was skipped — cancel the skip first to start a real inspection.');
   }
-  await prisma.$transaction(
-    items.map((item) =>
-      prisma.vehicleInspectionItem.update({
-        where: { id: item.itemId },
+  // Every item must belong to THIS inspection (the one just authorised) —
+  // an item id from another vehicle's inspection is refused, all-or-nothing.
+  await prisma.$transaction(async (tx) => {
+    for (const item of items) {
+      const saved = await tx.vehicleInspectionItem.updateMany({
+        where: { id: item.itemId, inspectionId },
         data: {
           condition: item.condition?.trim() || null,
           severity: item.severity ?? null,
           action: item.action?.trim() || null,
           notes: item.notes?.trim() || null,
         },
-      }),
-    ),
-  );
+      });
+      if (saved.count !== 1) throw new VehicleInspectionActionError('An item on this form is not part of this inspection — refresh the page.');
+    }
+  });
   await logInspectionEvent({
     userId: user.id,
     action: 'vehicle_inspection.items_updated',

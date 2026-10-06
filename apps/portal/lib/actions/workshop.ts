@@ -35,6 +35,8 @@ import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal, isCustomerLine, coveredLabel } from '@/lib/estimate-billing';
 import { headers } from 'next/headers';
 import { prisma, JobCardStatus, setAuditActor } from '@ejo/database';
+import { claimed, lockExisting } from '@/lib/integrity';
+import { exceedsBalance } from '@/lib/integrity-core';
 import { MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
 import { workingDaysBetween, addWorkingDays } from '@/lib/utils/working-days';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
@@ -160,6 +162,21 @@ export async function requireJobCardApprover(jobCard: { supervisorId: string | n
     return user;
   }
   return refuse('workshop.job.supervise', 'requireJobCardApprover', 'Only the assigned supervisor can approve or reject this Job Card.');
+}
+
+/** Every change to an estimate's lines happens inside one transaction that
+ * first re-claims the estimate in the status the editor saw (a no-op write
+ * that takes the estimate's row lock). An approval landing at the same moment
+ * is therefore either fully before the edit — and the edit is refused — or
+ * fully after it; an approved estimate can never be changed underneath. */
+async function withEstimateUnchanged<T>(estimateId: string, seenStatus: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'MANAGER_APPROVED', work: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => Promise<T>): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    claimed(
+      await tx.estimate.updateMany({ where: { id: estimateId, status: seenStatus }, data: { status: seenStatus } }),
+      'This estimate was just submitted or approved by someone else — refresh the page to see it.',
+    );
+    return work(tx);
+  });
 }
 
 /** Notifies whoever created a Job Card the moment it's approved or
@@ -1016,6 +1033,7 @@ export type CreateJobCardInput = {
 
 
 export async function createJobCard(input: CreateJobCardInput) {
+  let escalatedServiceId: string | null = null;
   if (input.escalatedFromServiceNumber) {
     // Escalating a Vehicle Service: done by the people working on it (its
     // supervisor or technician) — checked on the real service record, never on
@@ -1026,6 +1044,7 @@ export async function createJobCard(input: CreateJobCardInput) {
     });
     if (!sv) throw new WorkshopActionError('That Vehicle Service cannot be escalated — refresh the page.');
     await authorizeOnService('workshop.job.work', sv.id, 'createJobCard.escalation');
+    escalatedServiceId = sv.id;
   } else {
     await authorize('workshop.job_card.create', undefined, 'createJobCard');
   }
@@ -1089,6 +1108,8 @@ export async function createJobCard(input: CreateJobCardInput) {
         mileageAtCheckIn: input.mileageAtCheckIn ?? null,
         createdById: user.id,
         status: JobCardStatus.CHECKED_IN,
+        // Escalation: linked to its Vehicle Service in the same write.
+        ...(escalatedServiceId ? { escalatedFromVehicleService: { connect: { id: escalatedServiceId } } } : {}),
         complaints: {
           create: complaints.map((description, i) => ({
             sequenceNumber: i + 1,
@@ -1329,8 +1350,11 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       throw new WorkshopActionError('A close request is pending for this Job Card — decline it first, then send the vehicle back for rework.');
     }
   }
-  const result = await prisma.jobCard.update({
-    where: { id },
+  // Compare-and-set: the move only happens if the Job Card is still in the
+  // status this person saw — two people moving it at once can't both win,
+  // and a cancellation approved meanwhile can't be overwritten.
+  claimed(await prisma.jobCard.updateMany({
+    where: { id, status: priorStatus },
     data: {
       status,
       readyForCollectionAt: isReworkTransition && priorStatus === JobCardStatus.READY_FOR_COLLECTION ? null : status === JobCardStatus.READY_FOR_COLLECTION ? new Date() : undefined,
@@ -1346,7 +1370,8 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       checkedOutAt: status === JobCardStatus.CHECKED_OUT && !jobCard.checkedOutAt ? new Date() : undefined,
       collectedByName: status === JobCardStatus.CHECKED_OUT ? collectedByName?.trim() : undefined,
     },
-  });
+  }));
+  const result = (await prisma.jobCard.findUnique({ where: { id } }))!;
 
   // Security expects the vehicle at the gate — checkout or hand-back.
   if (status === JobCardStatus.CHECKED_OUT && priorStatus !== JobCardStatus.CHECKED_OUT) {
@@ -1548,15 +1573,17 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
 export async function approveJobCard(jobCardId: string, notes?: string): Promise<void> {
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
-    select: { supervisorId: true, jobNumber: true },
+    select: { supervisorId: true, jobNumber: true, approvalStatus: true },
   });
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
   }
   const approver = await requireJobCardApprover(jobCard);
 
-  await prisma.jobCard.update({
-    where: { id: jobCardId },
+  // Compare-and-set on the decision this person saw (and on who supervises
+  // it): an approve and a reject — or a reassignment — racing can't both land.
+  claimed(await prisma.jobCard.updateMany({
+    where: { id: jobCardId, approvalStatus: jobCard.approvalStatus, supervisorId: jobCard.supervisorId },
     data: {
       approvalStatus: 'APPROVED',
       approvedById: approver.id,
@@ -1564,7 +1591,7 @@ export async function approveJobCard(jobCardId: string, notes?: string): Promise
       rejectionReason: null,
       approvalNotes: notes?.trim() || null,
     },
-  });
+  }));
 
   await writeAuditLog({
     userId: approver.id,
@@ -1594,15 +1621,15 @@ export async function rejectJobCard(jobCardId: string, reason: string, notes?: s
   }
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
-    select: { supervisorId: true, jobNumber: true },
+    select: { supervisorId: true, jobNumber: true, approvalStatus: true },
   });
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
   }
   const approver = await requireJobCardApprover(jobCard);
 
-  await prisma.jobCard.update({
-    where: { id: jobCardId },
+  claimed(await prisma.jobCard.updateMany({
+    where: { id: jobCardId, approvalStatus: jobCard.approvalStatus, supervisorId: jobCard.supervisorId },
     data: {
       approvalStatus: 'REJECTED',
       approvedById: approver.id,
@@ -1619,7 +1646,7 @@ export async function rejectJobCard(jobCardId: string, reason: string, notes?: s
       // record of what happened.
       supervisorId: null,
     },
-  });
+  }));
 
   await writeAuditLog({
     userId: approver.id,
@@ -1660,6 +1687,7 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
       createdById: true,
       departmentId: true,
       jobNumber: true,
+      supervisorId: true,
       customer: { select: { fullName: true } },
       vehicle: { select: { make: true, model: true } },
       complaints: { orderBy: { sequenceNumber: 'asc' } },
@@ -1678,8 +1706,10 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
     throw new WorkshopActionError('The selected supervisor is not eligible for this Job Card\'s Workshop department.');
   }
 
-  await prisma.jobCard.update({
-    where: { id: jobCardId },
+  // Only if the supervisor is still the one this person saw — a decision
+  // or another reassignment in the meantime wins, and this one stops.
+  claimed(await prisma.jobCard.updateMany({
+    where: { id: jobCardId, supervisorId: jobCard.supervisorId },
     data: {
       supervisorId: newSupervisorId,
       approvalStatus: 'PENDING',
@@ -1688,7 +1718,7 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
       rejectionReason: null,
       approvalNotes: null,
     },
-  });
+  }));
 
   await writeAuditLog({
     userId: user.id,
@@ -1770,14 +1800,18 @@ export async function assignTechnician(jobCardId: string, technicianId: string) 
   const org = (await prisma.user.findUnique({ where: { id: actor.id }, select: { organisationId: true } }))?.organisationId;
   const tech = await prisma.user.findFirst({ where: { id: technicianId, isActive: true, ...(org ? { organisationId: org } : {}), roles: { some: { role: { OR: [{ slug: { in: [...WORKSHOP_HANDS] } }, { isSuperAdmin: true }] } } } }, select: { id: true } });
   if (!tech) throw new WorkshopActionError('Choose an active technician (or supervisor) — only workshop staff can be assigned to a job.');
-  const jobCard = await prisma.jobCard.update({
-    where: { id: jobCardId },
+  // Compare-and-set: still the same supervisor, and not finished meanwhile.
+  claimed(await prisma.jobCard.updateMany({
+    where: { id: jobCardId, status: current.status, supervisorId: current.supervisorId },
     data: {
       assignedTechnicianId: technicianId,
       technicianAcceptanceStatus: 'PENDING',
       technicianRespondedAt: null,
       technicianRejectionReason: null,
     },
+  }));
+  const jobCard = await prisma.jobCard.findUniqueOrThrow({
+    where: { id: jobCardId },
     select: {
       id: true,
       jobNumber: true,
@@ -1901,21 +1935,24 @@ async function notifySupervisorOfTechnicianResponse(params: {
 export async function acceptTechnicianAssignment(jobCardId: string): Promise<void> {
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
-    select: { assignedTechnicianId: true, jobNumber: true },
+    select: { assignedTechnicianId: true, jobNumber: true, technicianAcceptanceStatus: true },
   });
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
   }
   const technician = await requireAssignedTechnician(jobCard);
 
-  await prisma.jobCard.update({
-    where: { id: jobCardId },
+  // Only if this person is STILL the assigned technician: if the supervisor
+  // reassigned the job meanwhile, this accept must not mark the NEW
+  // technician as having accepted something they never saw.
+  claimed(await prisma.jobCard.updateMany({
+    where: { id: jobCardId, assignedTechnicianId: technician.id, technicianAcceptanceStatus: jobCard.technicianAcceptanceStatus },
     data: {
       technicianAcceptanceStatus: 'ACCEPTED',
       technicianRespondedAt: new Date(),
       technicianRejectionReason: null,
     },
-  });
+  }), 'This assignment changed just now — refresh the page to see who it is assigned to.');
 
   await writeAuditLog({
     userId: technician.id,
@@ -1939,15 +1976,17 @@ export async function rejectTechnicianAssignment(jobCardId: string, reason: stri
   }
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
-    select: { assignedTechnicianId: true, jobNumber: true },
+    select: { assignedTechnicianId: true, jobNumber: true, technicianAcceptanceStatus: true },
   });
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
   }
   const technician = await requireAssignedTechnician(jobCard);
 
-  await prisma.jobCard.update({
-    where: { id: jobCardId },
+  // Only if this person is still the assigned technician — never unassign
+  // someone the supervisor assigned a moment ago.
+  claimed(await prisma.jobCard.updateMany({
+    where: { id: jobCardId, assignedTechnicianId: technician.id, technicianAcceptanceStatus: jobCard.technicianAcceptanceStatus },
     data: {
       // Fully reset back to the "never assigned" state, not left
       // pointing at the rejecting technician — they said no, so they
@@ -1961,7 +2000,7 @@ export async function rejectTechnicianAssignment(jobCardId: string, reason: stri
       technicianRespondedAt: null,
       technicianRejectionReason: null,
     },
-  });
+  }), 'This assignment changed just now — refresh the page to see who it is assigned to.');
 
   await writeAuditLog({
     userId: technician.id,
@@ -2244,7 +2283,7 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
 
   const amount = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
 
-  await prisma.estimateLineItem.create({
+  await withEstimateUnchanged(estimate.id, 'DRAFT', (tx) => tx.estimateLineItem.create({
     data: {
       estimateId: estimate.id,
       type: input.type,
@@ -2256,7 +2295,7 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
       partTypeId: input.type === 'STORE_PART' ? input.partTypeId : null,
       unitOfMeasure: input.type === 'STORE_PART' ? null : input.unitOfMeasure?.trim() || null,
     },
-  });
+  }));
 
   await writeAuditLog({
     userId: contributor.id,
@@ -2297,6 +2336,7 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
     where: { id: lineItemId },
     select: {
       type: true,
+      estimateId: true,
       matchedPartId: true,
       matchedPart: { select: { sellingPrice: true, name: true } },
       estimate: {
@@ -2342,7 +2382,7 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
     amount = Math.round(input.quantity * unitPrice * 100) / 100;
   }
 
-  await prisma.estimateLineItem.update({
+  await withEstimateUnchanged(lineItem.estimateId, lineItem.estimate.status, (tx) => tx.estimateLineItem.update({
     where: { id: lineItemId },
     data: {
       description,
@@ -2351,7 +2391,7 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
       amount,
       ...(lineItem.type !== 'STORE_PART' ? { unitOfMeasure: input.unitOfMeasure?.trim() || null } : {}),
     },
-  });
+  }));
 
   await writeAuditLog({
     userId: editor.id,
@@ -2372,6 +2412,7 @@ export async function deleteEstimateLineItem(lineItemId: string): Promise<void> 
     select: {
       enteredById: true,
       description: true,
+      estimateId: true,
       estimate: {
         select: {
           jobCardId: true,
@@ -2395,7 +2436,7 @@ export async function deleteEstimateLineItem(lineItemId: string): Promise<void> 
     return refuse('workshop.estimate.edit', 'deleteEstimateLineItem', 'Only whoever entered this line or the assigned supervisor can remove it.');
   }
 
-  await prisma.estimateLineItem.delete({ where: { id: lineItemId } });
+  await withEstimateUnchanged(lineItem.estimateId, lineItem.estimate.status, (tx) => tx.estimateLineItem.delete({ where: { id: lineItemId } }));
 
   await writeAuditLog({
     userId: user.id,
@@ -2556,37 +2597,45 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
   if (estimate.lineItems.length === 0) {
     throw new WorkshopActionError('Add at least one line item before submitting the estimate.');
   }
-  // The real transition from "live" to "locked" — a matched Store
-  // Part line's price has tracked Store's own current selling price
-  // the whole time it's been Draft; this is the one moment that
-  // number gets written down as the estimate's own permanent record,
-  // rather than the possibly-stale figure sitting in the database
-  // from whenever the line's quantity last happened to change.
-  for (const li of estimate.lineItems as (typeof estimate.lineItems)[number][]) {
-    if (li.type === 'STORE_PART' && li.matchedPartId && li.matchedPart?.sellingPrice !== null && li.matchedPart?.sellingPrice !== undefined) {
-      const liveUnitPrice = Number(li.matchedPart.sellingPrice);
-      const liveAmount = Math.round(li.quantity * liveUnitPrice * 100) / 100;
-      if (Number(li.unitPrice ?? -1) !== liveUnitPrice || Number(li.amount ?? -1) !== liveAmount) {
-        await prisma.estimateLineItem.update({ where: { id: li.id }, data: { unitPrice: liveUnitPrice, amount: liveAmount } });
-      }
-      // Also updated in memory, not just in the database — the
-      // "missing prices" check right below reads from this same
-      // in-memory array, and needs to see the just-corrected value,
-      // not the stale one this whole loop was fetched with.
-      (li as { unitPrice: unknown }).unitPrice = liveUnitPrice;
-    }
-  }
-  const missingPricesOn = estimate.lineItems.filter((li: { unitPrice: unknown }) => li.unitPrice === null);
-  if (missingPricesOn.length > 0) {
-    throw new WorkshopActionError(
-      `Every line needs a price before submitting — missing on: ${missingPricesOn.map((li: { description: string }) => li.description).join(', ')}.`,
-    );
-  }
+  // Who may submit is checked before anything is written.
   const user = await requireEstimateContributor(estimate.jobCard);
 
-  await prisma.estimate.update({
-    where: { id: estimate.id },
-    data: { status: 'SUBMITTED', submittedAt: new Date() },
+  // Read, reprice, check and submit as ONE step with the estimate locked: a
+  // line added (or changed) at the same moment either lands before — and is
+  // checked here — or is refused because the estimate is no longer a draft.
+  await withEstimateUnchanged(estimate.id, 'DRAFT', async (tx) => {
+    const lines = await tx.estimateLineItem.findMany({
+      where: { estimateId: estimate.id },
+      select: { id: true, type: true, matchedPartId: true, quantity: true, unitPrice: true, amount: true, description: true, matchedPart: { select: { sellingPrice: true } } },
+    });
+    if (lines.length === 0) {
+      throw new WorkshopActionError('Add at least one line item before submitting the estimate.');
+    }
+    // The real transition from "live" to "locked" — a matched Store Part
+    // line's price has tracked Store's current selling price the whole time
+    // it's been Draft; this is the one moment that number is written down as
+    // the estimate's own permanent record.
+    for (const li of lines as (typeof lines)[number][]) {
+      if (li.type === 'STORE_PART' && li.matchedPartId && li.matchedPart?.sellingPrice !== null && li.matchedPart?.sellingPrice !== undefined) {
+        const liveUnitPrice = Number(li.matchedPart.sellingPrice);
+        const liveAmount = Math.round(li.quantity * liveUnitPrice * 100) / 100;
+        if (Number(li.unitPrice ?? -1) !== liveUnitPrice || Number(li.amount ?? -1) !== liveAmount) {
+          await tx.estimateLineItem.update({ where: { id: li.id }, data: { unitPrice: liveUnitPrice, amount: liveAmount } });
+        }
+        // Also corrected in memory for the "missing prices" check below.
+        (li as { unitPrice: unknown }).unitPrice = liveUnitPrice;
+      }
+    }
+    const missingPricesOn = lines.filter((li: { unitPrice: unknown }) => li.unitPrice === null);
+    if (missingPricesOn.length > 0) {
+      throw new WorkshopActionError(
+        `Every line needs a price before submitting — missing on: ${missingPricesOn.map((li: { description: string }) => li.description).join(', ')}.`,
+      );
+    }
+    claimed(await tx.estimate.updateMany({
+      where: { id: estimate.id, status: 'DRAFT' },
+      data: { status: 'SUBMITTED', submittedAt: new Date() },
+    }), 'This estimate was just submitted by someone else — refresh the page.');
   });
 
   await writeAuditLog({
@@ -2724,10 +2773,10 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
   const user = await requireJobCardApprover(estimate.jobCard);
   await authorize('workshop.estimate.approve', { branchId: estimate.jobCard.branchId, assigneeIds: [estimate.jobCard.supervisorId] }, 'approveEstimate');
 
-  await prisma.estimate.update({
-    where: { id: estimate.id },
+  claimed(await prisma.estimate.updateMany({
+    where: { id: estimate.id, status: 'SUBMITTED' },
     data: { status: 'APPROVED', approvedAt: new Date(), approvedById: user.id },
-  });
+  }), 'This estimate was just approved or changed by someone else — refresh the page.');
 
   await writeAuditLog({
     userId: user.id,
@@ -2808,10 +2857,10 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
   const user = await requireEligibleManager(estimate.jobCard.branchId, 'workshop.estimate.final_approve');
   await authorize('workshop.estimate.final_approve', { branchId: estimate.jobCard.branchId }, 'approveEstimateAsManager');
 
-  await prisma.estimate.update({
-    where: { id: estimate.id },
+  claimed(await prisma.estimate.updateMany({
+    where: { id: estimate.id, status: 'APPROVED' },
     data: { status: 'MANAGER_APPROVED', managerApprovedAt: new Date(), managerApprovedById: user.id },
-  });
+  }), 'This estimate was just approved or changed by someone else — refresh the page.');
 
   await writeAuditLog({
     userId: user.id,
@@ -2891,19 +2940,21 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
     throw new WorkshopActionError('The customer has already been notified about this estimate.');
   }
 
-  await prisma.$transaction([
-    prisma.estimate.update({
-      where: { id: estimate.id },
+  await prisma.$transaction(async (tx) => {
+    // Exactly once: a second click (or a second person) finds it already
+    // notified and stops — the customer never gets the estimate twice.
+    claimed(await tx.estimate.updateMany({
+      where: { id: estimate.id, status: 'MANAGER_APPROVED', customerNotifiedAt: null },
       data: { customerNotifiedAt: new Date(), customerNotifiedById: user.id },
-    }),
+    }), 'The customer was just notified about this estimate by someone else — refresh the page.');
     // The workshop's own process is done the moment the customer is
     // told — this transition happens right here, not as a separate
-    // manual step, matching exactly when it's meant to occur.
-    prisma.jobCard.update({
-      where: { id: jobCardId },
+    // manual step. Never on a Job Card cancelled or finished meanwhile.
+    claimed(await tx.jobCard.updateMany({
+      where: { id: jobCardId, status: { notIn: [JobCardStatus.CANCELLED, JobCardStatus.CLOSED, JobCardStatus.CHECKED_OUT] } },
       data: { status: JobCardStatus.AWAITING_CUSTOMER_APPROVAL },
-    }),
-  ]);
+    }), 'This Job Card was just cancelled or closed — refresh the page.');
+  });
 
   await writeAuditLog({
     userId: user.id,
@@ -3212,13 +3263,35 @@ export async function recordPayment(
     );
   }
 
-  const newTotal = prospectiveTotal;
-  const justMetDeposit = alreadyPaid < minimumDeposit && newTotal >= minimumDeposit;
-  const justCompletedFull = alreadyPaid < roundedTotal && newTotal >= roundedTotal;
-  const shouldAutoApprove = jobCard.status === JobCardStatus.AWAITING_CUSTOMER_APPROVAL && (justMetDeposit || justCompletedFull);
-
-  await prisma.$transaction([
-    prisma.payment.create({
+  // Two cashiers at once: the checks above are only a fast answer. The real
+  // decision is made again below with the Job Card row locked, against the
+  // payments as they are at that instant — so two payments can never both
+  // fit into the same remaining balance.
+  const settled = await prisma.$transaction(async (tx) => {
+    await lockExisting(tx, 'jobCard', [jobCardId], 'This Job Card no longer exists — refresh the page.');
+    // The same form, resent while the first was still being saved: it is
+    // recorded now — nothing more to do.
+    if (idempotencyKey && (await tx.payment.findUnique({ where: { idempotencyKey }, select: { id: true } }))) return null;
+    const now = await tx.jobCard.findUnique({
+      where: { id: jobCardId },
+      select: { status: true, workStartedAt: true, estimate: { select: { lineItems: { select: { amount: true, billTo: true } } } }, payments: { select: { amount: true } } },
+    });
+    if (!now || !PAYABLE_STATUSES.includes(now.status)) {
+      throw new WorkshopActionError('This Job Card changed while you were recording the payment — refresh the page.');
+    }
+    const totalNow = Math.round(customerTotal(now.estimate?.lineItems ?? []) * 100) / 100;
+    const paidNow = now.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount ?? 0), 0);
+    if (exceedsBalance(paidNow, roundedAmount, totalNow)) {
+      const remaining = Math.max(0, Math.round((totalNow - paidNow) * 100) / 100);
+      throw new WorkshopActionError(
+        `Another payment was recorded on this Job Card just now. Up to ${formatNaira(remaining)} can still be recorded — refresh to see it.`,
+      );
+    }
+    const minimumNow = Math.round(totalNow * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+    const afterNow = Math.round((paidNow + roundedAmount) * 100) / 100;
+    const autoApprove = now.status === JobCardStatus.AWAITING_CUSTOMER_APPROVAL
+      && ((paidNow < minimumNow && afterNow >= minimumNow) || (paidNow < totalNow && afterNow >= totalNow));
+    await tx.payment.create({
       data: {
         idempotencyKey: idempotencyKey || null,
         jobCardId,
@@ -3227,25 +3300,32 @@ export async function recordPayment(
         notes: notes?.trim() || null,
         recordedById: user.id,
       },
-    }),
-    ...(shouldAutoApprove
-      ? [prisma.jobCard.update({
-          where: { id: jobCardId },
-          data: {
-            status: JobCardStatus.IN_PROGRESS,
-            // The exact same real bug this closes: this auto-transition
-            // (payment crossing the deposit/full threshold) previously
-            // never set this at all, so a Job Card that reached
-            // IN_PROGRESS this way — the most common real path, not the
-            // exception — silently never started its own "In Service"
-            // clock. Only set once, the first real time work genuinely
-            // starts, matching updateJobCardStatus's own identical
-            // "first time only" guard for the manual path.
-            workStartedAt: jobCard.workStartedAt ? undefined : new Date(),
-          },
-        })]
-      : []),
-  ]);
+    });
+    if (autoApprove) {
+      // Compare-and-set as well as the lock: only from AWAITING_CUSTOMER_APPROVAL.
+      claimed(await tx.jobCard.updateMany({
+        where: { id: jobCardId, status: JobCardStatus.AWAITING_CUSTOMER_APPROVAL },
+        data: {
+          status: JobCardStatus.IN_PROGRESS,
+          // Only set once, the first real time work genuinely starts — the
+          // payment-crossing-the-deposit path is the most common way a Job
+          // Card reaches IN_PROGRESS, so it must start the "In Service" clock.
+          workStartedAt: now.workStartedAt ?? new Date(),
+        },
+      }));
+    }
+    return {
+      newTotal: afterNow,
+      autoApprove,
+      justMetDeposit: paidNow < minimumNow && afterNow >= minimumNow,
+      justCompletedFull: paidNow < totalNow && afterNow >= totalNow,
+    };
+  });
+  if (!settled) return;
+  const newTotal = settled.newTotal;
+  const shouldAutoApprove = settled.autoApprove;
+  const { justMetDeposit, justCompletedFull } = settled;
+  void minimumDeposit;
 
   await writeAuditLog({
     userId: user.id,
@@ -3469,16 +3549,20 @@ export async function requestJobCardCancellation(jobCardId: string, reason: stri
   }
   const user = await requireJobCardCreatorOrSupervisor(jobCard);
 
-  const existingPending = await prisma.cancellationRequest.findFirst({
-    where: { jobCardId, status: 'PENDING' },
-    select: { id: true },
-  });
-  if (existingPending) {
-    throw new WorkshopActionError('A cancellation request is already pending for this Job Card.');
-  }
-
-  await prisma.cancellationRequest.create({
-    data: { jobCardId, reason: trimmedReason, requestedById: user.id },
+  // Checked and created with the Job Card locked, so two people asking at
+  // the same moment can't open two pending requests.
+  await prisma.$transaction(async (tx) => {
+    await lockExisting(tx, 'jobCard', [jobCardId]);
+    const existingPending = await tx.cancellationRequest.findFirst({
+      where: { jobCardId, status: 'PENDING' },
+      select: { id: true },
+    });
+    if (existingPending) {
+      throw new WorkshopActionError('A cancellation request is already pending for this Job Card.');
+    }
+    await tx.cancellationRequest.create({
+      data: { jobCardId, reason: trimmedReason, requestedById: user.id },
+    });
   });
 
   await writeAuditLog({
@@ -3557,27 +3641,34 @@ export async function approveCancellationRequest(requestId: string, decisionNote
   }
   const user = await requireEligibleManager(request.jobCard.branchId, 'workshop.close.approve');
 
-  await prisma.$transaction([
-    // A close requested earlier can never happen now — resolve it here
-    // so it doesn't sit pending (and in Managers' notifications) forever.
-    prisma.closeRequest.updateMany({
-      where: { jobCardId: request.jobCardId, status: 'PENDING' },
-      data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: 'Superseded — the Job Card was cancelled.' },
-    }),
-    prisma.cancellationRequest.update({
-      where: { id: requestId },
+  // All-or-nothing, and each step only from the state it was decided on: a
+  // close approved at the same moment, or a second click, makes this stop
+  // with nothing changed — a Job Card can never end up both closed and
+  // cancelled.
+  await prisma.$transaction(async (tx) => {
+    // The Job Card first: a close and a cancellation decided at the same
+    // moment queue on it instead of deadlocking on each other's requests.
+    await lockExisting(tx, 'jobCard', [request.jobCardId]);
+    claimed(await tx.cancellationRequest.updateMany({
+      where: { id: requestId, status: 'PENDING' },
       data: {
         status: 'APPROVED',
         decidedById: user.id,
         decidedAt: new Date(),
         decisionNotes: decisionNotes?.trim() || null,
       },
-    }),
-    prisma.jobCard.update({
-      where: { id: request.jobCardId },
+    }), 'This cancellation request was just decided by someone else — refresh the page.');
+    claimed(await tx.jobCard.updateMany({
+      where: { id: request.jobCardId, status: { notIn: [JobCardStatus.CANCELLED, JobCardStatus.CLOSED, JobCardStatus.CHECKED_OUT] } },
       data: { status: JobCardStatus.CANCELLED },
-    }),
-  ]);
+    }), 'This Job Card was just closed or checked out, so it can no longer be cancelled — refresh the page.');
+    // A close requested earlier can never happen now — resolve it here
+    // so it doesn't sit pending (and in Managers' notifications) forever.
+    await tx.closeRequest.updateMany({
+      where: { jobCardId: request.jobCardId, status: 'PENDING' },
+      data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: 'Superseded — the Job Card was cancelled.' },
+    });
+  });
 
   await writeAuditLog({
     userId: user.id,
@@ -3678,15 +3769,15 @@ export async function declineCancellationRequest(requestId: string, decisionNote
   }
   const user = await requireEligibleManager(request.jobCard.branchId, 'workshop.close.approve');
 
-  await prisma.cancellationRequest.update({
-    where: { id: requestId },
+  claimed(await prisma.cancellationRequest.updateMany({
+    where: { id: requestId, status: 'PENDING' },
     data: {
       status: 'DECLINED',
       decidedById: user.id,
       decidedAt: new Date(),
       decisionNotes: decisionNotes?.trim() || null,
     },
-  });
+  }), 'This cancellation request was just decided by someone else — refresh the page.');
 
   await writeAuditLog({
     userId: user.id,
@@ -3780,16 +3871,19 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
   }
   const user = await requireJobCardCreatorOrSupervisor(jobCard);
 
-  const existingPending = await prisma.closeRequest.findFirst({
-    where: { jobCardId, status: 'PENDING' },
-    select: { id: true },
-  });
-  if (existingPending) {
-    throw new WorkshopActionError('A close request is already pending for this Job Card.');
-  }
-
-  await prisma.closeRequest.create({
-    data: { jobCardId, requestedById: user.id },
+  // Checked and created with the Job Card locked — never two pending closes.
+  await prisma.$transaction(async (tx) => {
+    await lockExisting(tx, 'jobCard', [jobCardId]);
+    const existingPending = await tx.closeRequest.findFirst({
+      where: { jobCardId, status: 'PENDING' },
+      select: { id: true },
+    });
+    if (existingPending) {
+      throw new WorkshopActionError('A close request is already pending for this Job Card.');
+    }
+    await tx.closeRequest.create({
+      data: { jobCardId, requestedById: user.id },
+    });
   });
 
   await writeAuditLog({
@@ -3870,27 +3964,30 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
   }
   const user = await requireEligibleManager(request.jobCard.branchId, 'workshop.close.approve');
 
-  await prisma.$transaction([
-    // A cancellation requested earlier can never happen now — the work
-    // is finished and closed; resolve it so nothing is left pending.
-    prisma.cancellationRequest.updateMany({
-      where: { jobCardId: request.jobCardId, status: 'PENDING' },
-      data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: 'Superseded — the Job Card was closed.' },
-    }),
-    prisma.closeRequest.update({
-      where: { id: requestId },
+  // Same all-or-nothing, compare-and-set shape as approving a cancellation.
+  await prisma.$transaction(async (tx) => {
+    // The Job Card first: a close and a cancellation decided at the same
+    // moment queue on it instead of deadlocking on each other's requests.
+    await lockExisting(tx, 'jobCard', [request.jobCardId]);
+    claimed(await tx.closeRequest.updateMany({
+      where: { id: requestId, status: 'PENDING' },
       data: {
         status: 'APPROVED',
         decidedById: user.id,
         decidedAt: new Date(),
         decisionNotes: decisionNotes?.trim() || null,
       },
-    }),
-    prisma.jobCard.update({
-      where: { id: request.jobCardId },
+    }), 'This close request was just decided by someone else — refresh the page.');
+    claimed(await tx.jobCard.updateMany({
+      where: { id: request.jobCardId, status: JobCardStatus.READY_FOR_COLLECTION },
       data: { status: JobCardStatus.CLOSED, closedAt: new Date() },
-    }),
-  ]);
+    }), 'This Job Card is no longer Ready for Collection (it was just changed) — refresh the page.');
+    // A pending cancellation can never happen now — resolve it.
+    await tx.cancellationRequest.updateMany({
+      where: { jobCardId: request.jobCardId, status: 'PENDING' },
+      data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: 'Superseded — the Job Card was closed.' },
+    });
+  });
 
   await writeAuditLog({
     userId: user.id,
@@ -3985,15 +4082,15 @@ export async function declineCloseRequest(requestId: string, decisionNotes?: str
   }
   const user = await requireEligibleManager(request.jobCard.branchId, 'workshop.close.approve');
 
-  await prisma.closeRequest.update({
-    where: { id: requestId },
+  claimed(await prisma.closeRequest.updateMany({
+    where: { id: requestId, status: 'PENDING' },
     data: {
       status: 'DECLINED',
       decidedById: user.id,
       decidedAt: new Date(),
       decisionNotes: decisionNotes?.trim() || null,
     },
-  });
+  }), 'This close request was just decided by someone else — refresh the page.');
 
   await writeAuditLog({
     userId: user.id,

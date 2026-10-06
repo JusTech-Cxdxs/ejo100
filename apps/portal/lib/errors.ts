@@ -16,6 +16,8 @@ const PRISMA: Record<string, string> = {
   P1008: 'The database took too long to answer — please try again.',
   P2024: 'The system is very busy right now — please try again in a moment.',
 };
+/** Server-generated, "latest + 1" reference columns (RF-…, JC-…, VIS-…). */
+const GENERATED_NUMBER = /(?<![A-Za-z])(referenceNumber|jobNumber|serviceNumber|appointmentNumber|visitNumber|passNumber|claimNumber|warrantyNumber|exitNumber|permitNumber|incidentNumber|deliveryNumber|broadcastNumber)(?![A-Za-z])/;
 const TECHNICAL = /prisma|invocation|Invalid `|Cannot read properties|undefined is not|is not a function|ECONN|ETIMEDOUT|fetch failed|socket|stack|SyntaxError|TypeError|ReferenceError|\bat [\w.]+ \(/i;
 
 /** Remove anything secret-looking before it reaches a log. */
@@ -47,6 +49,14 @@ export function friendlyError(err: unknown, fallback = 'That could not be comple
   // Two identical submissions raced: the database kept exactly one — it went through.
   if (e?.code === 'P2002' && JSON.stringify(e.meta?.target ?? '').includes('idempotencyKey')) {
     return 'This was already recorded — it went through. Refresh the page to see it.';
+  }
+  // Two records saved at the same instant picked the same GENERATED reference
+  // number: nothing was duplicated (the database refused the second) — just
+  // save again. Only the system's own sequence columns — a batch, serial,
+  // plate or chassis number the person typed is a real duplicate (below).
+  if (e?.code === 'P2002' && GENERATED_NUMBER.test(JSON.stringify(e.meta?.target ?? ''))) {
+    logError(where, err);
+    return 'Someone else saved a record at exactly the same moment, so this one was not saved — please submit it again.';
   }
   if (e?.code && PRISMA[e.code]) {
     logError(where, err);

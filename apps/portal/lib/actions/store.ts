@@ -14,6 +14,8 @@
  * copies a future fix could miss one of.
  */
 
+import { claimed } from '@/lib/integrity';
+import { retryOnNumberClash } from '@/lib/integrity-core';
 import { prisma, PartTrackingType } from '@ejo/database';
 import { notifyWarrantyDepartmentOfPartWarranty } from '@/lib/warranty-department-notify';
 import { loadQuantityTraces } from '@/lib/inventory/quantity-trace';
@@ -1268,13 +1270,18 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
   const unitPrice = Number(part.sellingPrice);
   const amount = Math.round(unitPrice * lineItem.quantity * 100) / 100;
 
-  await prisma.estimateLineItem.update({
-    where: { id: lineItemId },
-    // The real unit, auto-synced from the matched Part's own
-    // baseUnitOfMeasure — this is the entire point of the request:
-    // the technician never enters it, it always matches exactly
-    // what's actually registered for the real part.
-    data: { matchedPartId: partId, unitPrice, amount, unitOfMeasure: part.baseUnitOfMeasure },
+  await prisma.$transaction(async (tx) => {
+    // Only while the estimate is still in the status checked above (row
+    // lock + compare-and-set): an approval at the same moment wins and this
+    // match stops, so an approved price can never change underneath.
+    claimed(await tx.estimate.updateMany({ where: { id: lineItem.estimate.id, status: lineItem.estimate.status }, data: { status: lineItem.estimate.status } }),
+      'This estimate was just approved or changed by someone else — refresh the page.');
+    await tx.estimateLineItem.update({
+      where: { id: lineItemId },
+      // The real unit, auto-synced from the matched Part's own
+      // baseUnitOfMeasure — the technician never enters it.
+      data: { matchedPartId: partId, unitPrice, amount, unitOfMeasure: part.baseUnitOfMeasure },
+    });
   });
 
   await writeAuditLog({
@@ -1466,6 +1473,7 @@ export type GoodsReceiptLineInput = {
 };
 
 export type RecordGoodsReceiptInput = {
+  idempotencyKey?: string;
   branchId: string;
   supplierName: string;
   notes?: string;
@@ -1496,6 +1504,15 @@ export async function checkSerialNumberExists(serialNumber: string): Promise<boo
  * disagreeing with each other. */
 export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promise<{ id: string; referenceNumber: string }> {
   const user = await requireStoreStaff(input.branchId, 'store.grn.record');
+  // Same form submitted again (dropped connection, double click): the stock
+  // was already added — hand back that receipt instead of adding it twice.
+  if (input.idempotencyKey) {
+    const done = await prisma.goodsReceipt.findUnique({ where: { idempotencyKey: input.idempotencyKey }, select: { id: true, referenceNumber: true, branchId: true } });
+    if (done) {
+      if (done.branchId === input.branchId) return { id: done.id, referenceNumber: done.referenceNumber };
+      throw new StoreActionError('This form was already used for a different delivery — refresh the page and enter it again.');
+    }
+  }
   const supplierName = input.supplierName.trim();
   if (!supplierName) {
     throw new StoreActionError('Supplier name is required.');
@@ -1612,7 +1629,7 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
     }
   }
 
-  const referenceNumber = await generateGoodsReceiptNumber();
+  let referenceNumber = '';
 
   // The real, most recent prior cost on record for each real Part in
   // this receipt — fetched once, up front, purely for the Pricing
@@ -1648,9 +1665,15 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
     targetMarginPercent: number;
   }[] = [];
 
-  const receipt = await prisma.$transaction(async (tx) => {
+  // Two receipts saved at the same instant can pick the same GRN number —
+  // re-run the whole attempt with the next number (lib/integrity-core).
+  const receipt = await retryOnNumberClash('referenceNumber', async () => {
+    newAlertsForEmail.length = 0;
+    referenceNumber = await generateGoodsReceiptNumber();
+    return prisma.$transaction(async (tx) => {
     const created = await tx.goodsReceipt.create({
       data: {
+        idempotencyKey: input.idempotencyKey || null,
         branchId: input.branchId,
         referenceNumber,
         supplierName,
@@ -1745,6 +1768,7 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
     }
 
     return created;
+    });
   });
 
   await writeAuditLog({
@@ -1970,10 +1994,9 @@ export async function dismissPricingAlert(alertId: string, notes: string): Promi
     throw new StoreActionError('A real reason is required to dismiss a pricing alert.');
   }
   const user = await requireStoreStaff(alert.part.branchId, 'store.parts.manage');
-  await prisma.pricingAlert.update({
-    where: { id: alertId },
+  claimed(await prisma.pricingAlert.updateMany({ where: { id: alertId, status: 'OPEN' },
     data: { status: 'DISMISSED', resolvedById: user.id, resolvedAt: new Date(), resolutionNotes: trimmedNotes },
-  });
+  }), 'This alert was just decided by someone else — refresh the page.');
   await writeAuditLog({ userId: user.id, action: 'pricing_alert.dismissed', entityType: 'PricingAlert', entityId: alertId, metadata: { partName: alert.part.name, notes: trimmedNotes } });
 }
 
@@ -2006,13 +2029,15 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
   const newSellingPrice = roundedPriceForTargetMargin(newUnitCost, targetMargin) ?? 0;
   const previousSellingPrice = alert.part.sellingPrice !== null ? Number(alert.part.sellingPrice) : null;
 
-  await prisma.$transaction([
-    prisma.part.update({ where: { id: alert.part.id }, data: { sellingPrice: newSellingPrice } }),
-    prisma.pricingAlert.update({
-      where: { id: alertId },
+  // The alert is claimed first (compare-and-set), so a dismiss and a sync —
+  // or two syncs — at the same moment can't both happen.
+  await prisma.$transaction(async (tx) => {
+    claimed(await tx.pricingAlert.updateMany({
+      where: { id: alertId, status: 'OPEN' },
       data: { status: 'RESOLVED', resolvedById: user.id, resolvedAt: new Date(), resolutionNotes: `Price synced to ${newSellingPrice} to hold ${targetMargin}% margin.` },
-    }),
-  ]);
+    }), 'This alert was just decided by someone else — refresh the page.');
+    await tx.part.update({ where: { id: alert.part.id }, data: { sellingPrice: newSellingPrice } });
+  });
   await writeAuditLog({
     userId: user.id,
     action: 'part.selling_price_set',

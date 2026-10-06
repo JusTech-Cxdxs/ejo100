@@ -9,14 +9,30 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # A throwaway PostgreSQL for the "two users at once" tests
+    # (apps/portal/tests/concurrency.db.test.ts). Never a real database.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci-test-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       # Dummy values — CI never talks to a real database (db-push-if-vercel.js
       # only runs when VERCEL is set), but Prisma reads these at schema-parse
-      # time even for `generate`, so they must exist and be well-formed.
-      DATABASE_URL: 'postgresql://user:password@localhost:5432/ejo100'
-      DIRECT_URL: 'postgresql://user:password@localhost:5432/ejo100'
+      # time even for `generate`, so they must exist and be well-formed. Port
+      # 5999 has nothing listening (the test Postgres service is on 5432), so the
+      # build behaves exactly as before: no database reachable.
+      DATABASE_URL: 'postgresql://user:password@localhost:5999/ejo100'
+      DIRECT_URL: 'postgresql://user:password@localhost:5999/ejo100'
       BETTER_AUTH_SECRET: 'ci-placeholder-secret-do-not-use-in-production'
       BETTER_AUTH_URL: 'http://localhost:3001'
+      TEST_DATABASE_URL: 'postgresql://postgres:ci-test-only@localhost:5432/postgres'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,9 +49,12 @@ jobs:
       - run: npm run build --workspace=packages/database
       - run: npm run lint
       - run: npm run typecheck
-      # Authorization catalogue (allowed AND denied cases) + every data-changing
-      # server action is guarded — pure, no database needed.
+      # Authorization catalogue (allowed AND denied cases), every data-changing
+      # server action is guarded, integrity under concurrency (source checks
+      # plus real parallel transactions against the Postgres service above).
       - run: npm run test --workspace=apps/portal
+      # The data journal: before/after values kept, rolled-back work never recorded.
+      - run: npm run test --workspace=packages/database
       - run: npm run build
       # Known vulnerabilities in production dependencies — reported on every push
       # (report-only so a new advisory never blocks an urgent fix; review the log).

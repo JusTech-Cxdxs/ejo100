@@ -3,6 +3,8 @@
 import { authorize } from '@/lib/authz/server';
 
 import { prisma } from '@ejo/database';
+import { lockExisting } from '@/lib/integrity';
+import { retryOnNumberClash, toMinor } from '@/lib/integrity-core';
 import { requireUser, requireEligibleFinanceOfficer } from './workshop';
 import { writeAuditLog, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { sendEmail } from '@/lib/email';
@@ -153,9 +155,9 @@ export async function getRefund(id: string) {
 }
 
 /** RF-2026-000001 */
-async function generateRefundNumber(): Promise<string> {
+async function generateRefundNumber(db: Pick<typeof prisma, 'refund'> = prisma): Promise<string> {
   const prefix = `RF-${new Date().getFullYear()}-`;
-  const latest = await prisma.refund.findFirst({
+  const latest = await db.refund.findFirst({
     where: { referenceNumber: { startsWith: prefix } },
     orderBy: { referenceNumber: 'desc' },
     select: { referenceNumber: true },
@@ -241,23 +243,53 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
     throw new RefundActionError('Enter the reason for this refund.');
   }
 
-  const referenceNumber = await generateRefundNumber();
-  const refund = await prisma.refund.create({
-    data: {
-      idempotencyKey: input.idempotencyKey || null,
-      referenceNumber,
-      jobCardId: t.kind === 'JOB_CARD' ? t.id : null,
-      vehicleServiceId: t.kind === 'VEHICLE_SERVICE' ? t.id : null,
-      amount,
-      method: input.method,
-      paidToName,
-      reason,
-      notes: input.notes?.trim() || null,
-      recordedById: user.id,
-    },
-  });
+  // Two Finance officers at once: re-decide with the Job Card / Vehicle
+  // Service row locked, against payments and refunds as they are at that
+  // instant — so two refunds can never both fit into the same balance.
+  const recorded = await retryOnNumberClash('referenceNumber', () => prisma.$transaction(async (tx) => {
+    await lockExisting(tx, t.kind === 'JOB_CARD' ? 'jobCard' : 'vehicleService', [t.id], 'This record no longer exists — refresh the page.');
+    // The same form, resent while the first was still being saved: hand back that refund.
+    if (input.idempotencyKey) {
+      const same = await tx.refund.findUnique({ where: { idempotencyKey: input.idempotencyKey }, select: { id: true, referenceNumber: true } });
+      if (same) return { created: same, after: null, duplicate: true as const };
+    }
+    const fresh = t.kind === 'JOB_CARD'
+      ? await tx.jobCard.findUnique({ where: { id: t.id }, select: { status: true, payments: { select: { amount: true } }, refunds: { select: { amount: true } }, estimate: { select: { lineItems: { select: { amount: true, billTo: true } } } } } })
+      : await tx.vehicleService.findUnique({ where: { id: t.id }, select: { status: true, payments: { select: { amount: true } }, refunds: { select: { amount: true } } } });
+    if (!fresh || fresh.status !== t.status) {
+      throw new RefundActionError('This record changed while you were recording the refund — refresh the page.');
+    }
+    const owesNow = fresh.status === 'CANCELLED' ? 0 : ('estimate' in fresh ? customerTotal(fresh.estimate?.lineItems ?? []) : 0);
+    const now = position(fresh.payments, fresh.refunds, owesNow);
+    if (toMinor(amount) > toMinor(now.remaining)) {
+      throw new RefundActionError(
+        now.remaining <= 0
+          ? 'Another refund was recorded just now — everything owed back has been refunded. Refresh to see it.'
+          : `Another refund was recorded just now — only ₦${now.remaining.toLocaleString('en-NG', { minimumFractionDigits: 2 })} remains to be refunded.`,
+      );
+    }
+    const referenceNumber = await generateRefundNumber(tx);
+    const created = await tx.refund.create({
+      data: {
+        idempotencyKey: input.idempotencyKey || null,
+        referenceNumber,
+        jobCardId: t.kind === 'JOB_CARD' ? t.id : null,
+        vehicleServiceId: t.kind === 'VEHICLE_SERVICE' ? t.id : null,
+        amount,
+        method: input.method,
+        paidToName,
+        reason,
+        notes: input.notes?.trim() || null,
+        recordedById: user.id,
+      },
+    });
+    return { created, after: position(fresh.payments, [...fresh.refunds, { amount }], owesNow), duplicate: false as const };
+  }));
+  if (recorded.duplicate) return { id: recorded.created.id, referenceNumber: recorded.created.referenceNumber };
+  const refund = recorded.created;
+  const referenceNumber = refund.referenceNumber;
 
-  const after = position(t.payments, [...t.refunds, { amount }], t.status === 'CANCELLED' ? 0 : owes);
+  const after = recorded.after;
   await writeAuditLog({
     userId: user.id,
     action: 'refund.recorded',

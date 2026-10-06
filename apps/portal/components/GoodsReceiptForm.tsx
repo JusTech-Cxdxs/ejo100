@@ -5,6 +5,7 @@ import { SubmitButton } from './SubmitButton';
 import { FormPendingOverlay } from './FormPendingOverlay';
 import { SearchableSelect, type SearchableOption } from './SearchableSelect';
 import { SerialNumberInput } from './SerialNumberInput';
+import { IdempotencyKey } from './IdempotencyKey';
 import { pluralizeWord } from '@/lib/utils/pluralize';
 
 type PartOption = {
@@ -131,6 +132,7 @@ export function GoodsReceiptForm({
   return (
     <form action={action} className="max-w-xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
       <FormPendingOverlay />
+      <IdempotencyKey />
       <input type="hidden" name="branchId" value={branchId} />
 
       <div>

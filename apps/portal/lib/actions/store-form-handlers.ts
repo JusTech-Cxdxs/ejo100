@@ -68,6 +68,7 @@ export async function recordGoodsReceiptFormAction(formData: FormData) {
       .map((s) => (typeof s === 'string' ? s.trim() : ''))
       .filter(Boolean);
     await recordGoodsReceipt({
+      idempotencyKey: str(formData, 'idempotencyKey') || undefined,
       branchId,
       supplierName: str(formData, 'supplierName'),
       notes: str(formData, 'notes') || undefined,

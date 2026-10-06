@@ -1,5 +1,6 @@
 'use server';
 
+import { claimed as stillAsSeen } from '@/lib/integrity';
 import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
@@ -156,7 +157,7 @@ export async function updateWarrantyClaim(claimId: string, input: WarrantyClaimI
   const data = cleanInput(input);
   const deadlineAt = claim.provider.claimSubmissionDays ? new Date(data.failureDate.getTime() + claim.provider.claimSubmissionDays * 86400000) : null;
   const returnStatus = data.partReturnRequired === undefined ? undefined : data.partReturnRequired ? claim.partReturnStatus ?? 'AWAITING' : null;
-  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { ...data, deadlineAt, ...(returnStatus !== undefined ? { partReturnStatus: returnStatus } : {}) } });
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status }, data: { ...data, deadlineAt, ...(returnStatus !== undefined ? { partReturnStatus: returnStatus } : {}) } }));
   await audit(user.id, claimId, 'updated', { claimedAmount: data.claimedAmount });
 }
 
@@ -190,8 +191,7 @@ export async function submitWarrantyClaimForApproval(claimId: string): Promise<v
   const hodDone = r.isHod && !r.isMaster;
   const managerDone = r.isManager && !r.isMaster;
   const status = hodDone && managerDone ? 'APPROVED_TO_SUBMIT' : hodDone ? 'PENDING_MANAGER' : 'PENDING_HOD';
-  await prisma.warrantyClaim.update({
-    where: { id: claimId },
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status },
     data: {
       status,
       reviewRequestedAt: now,
@@ -201,7 +201,7 @@ export async function submitWarrantyClaimForApproval(claimId: string): Promise<v
       managerApprovedById: managerDone ? user.id : null,
       managerApprovedAt: managerDone ? now : null,
     },
-  });
+  }));
   await audit(user.id, claimId, 'sent_for_approval', { claimNumber: claim.claimNumber, readinessScore: readiness.score, warnings: readiness.warnings });
   if (status !== 'APPROVED_TO_SUBMIT') {
     await notify(
@@ -223,7 +223,7 @@ export async function approveWarrantyClaim(claimId: string): Promise<void> {
   if (claim.status === 'PENDING_HOD') {
     if (!user.roles.isHod && !user.roles.isMaster) throw new WarrantyClaimError('This claim is waiting on the Warranty HOD.');
     const done = Boolean(claim.managerApprovedAt);
-    await prisma.warrantyClaim.update({ where: { id: claimId }, data: { status: done ? 'APPROVED_TO_SUBMIT' : 'PENDING_MANAGER', hodApprovedById: user.id, hodApprovedAt: now } });
+    stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status }, data: { status: done ? 'APPROVED_TO_SUBMIT' : 'PENDING_MANAGER', hodApprovedById: user.id, hodApprovedAt: now } }));
     await audit(user.id, claimId, 'hod_approved', { claimNumber: claim.claimNumber });
     if (!done) {
       const managers = await listEligibleManagersForBranch(await getWorkshopBranchId());
@@ -232,7 +232,7 @@ export async function approveWarrantyClaim(claimId: string): Promise<void> {
     }
   } else if (claim.status === 'PENDING_MANAGER') {
     if (!user.roles.isManager && !user.roles.isMaster) throw new WarrantyClaimError('This claim is waiting on the Branch Manager.');
-    await prisma.warrantyClaim.update({ where: { id: claimId }, data: { status: 'APPROVED_TO_SUBMIT', managerApprovedById: user.id, managerApprovedAt: now } });
+    stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status }, data: { status: 'APPROVED_TO_SUBMIT', managerApprovedById: user.id, managerApprovedAt: now } }));
     await audit(user.id, claimId, 'manager_approved', { claimNumber: claim.claimNumber });
   } else {
     throw new WarrantyClaimError('This claim is not waiting for approval.');
@@ -251,7 +251,7 @@ export async function sendBackWarrantyClaim(claimId: string, reason: string): Pr
   if (claim.status === 'PENDING_HOD' && !user.roles.isHod && !user.roles.isMaster) throw new WarrantyClaimError('This claim is waiting on the Warranty HOD.');
   if (claim.status === 'PENDING_MANAGER' && !user.roles.isManager && !user.roles.isMaster) throw new WarrantyClaimError('This claim is waiting on the Branch Manager.');
   if (claim.status !== 'PENDING_HOD' && claim.status !== 'PENDING_MANAGER' && claim.status !== 'APPROVED_TO_SUBMIT') throw new WarrantyClaimError('Only a claim in the approval chain can be sent back.');
-  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { status: 'DRAFT', returnReason: why, hodApprovedById: null, hodApprovedAt: null, managerApprovedById: null, managerApprovedAt: null } });
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status }, data: { status: 'DRAFT', returnReason: why, hodApprovedById: null, hodApprovedAt: null, managerApprovedById: null, managerApprovedAt: null } }));
   await audit(user.id, claimId, 'sent_back', { claimNumber: claim.claimNumber, reason: why });
   const creator = await prisma.user.findUnique({ where: { id: claim.createdById }, select: { fullName: true, email: true } });
   if (creator) await notify([creator], `Warranty claim ${claim.claimNumber} sent back`, 'Your warranty claim was sent back', [claim.claimNumber, `What needs fixing: ${why}`], claimId);
@@ -268,7 +268,7 @@ export async function markWarrantyClaimSubmitted(claimId: string, providerRefere
   if (claim.status !== 'APPROVED_TO_SUBMIT') throw new WarrantyClaimError('Only an approved claim can be marked as submitted to the provider.');
   const now = new Date();
   const late = claim.deadlineAt ? now.getTime() > new Date(claim.deadlineAt).getTime() : false;
-  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { status: 'SUBMITTED', providerReference: ref, submittedById: user.id, submittedAt: now } });
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status }, data: { status: 'SUBMITTED', providerReference: ref, submittedById: user.id, submittedAt: now } }));
   await audit(user.id, claimId, 'submitted', { claimNumber: claim.claimNumber, providerReference: ref, late });
 }
 
@@ -292,7 +292,7 @@ export async function recordWarrantyClaimDecision(claimId: string, decision: 'AC
     }
     if (!notes.trim()) throw new WarrantyClaimError('Record what the provider did not accept, and why.');
   }
-  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { status: decision, approvedAmount: approved, decisionNotes: notes.trim() || null, decidedById: user.id, decidedAt: new Date() } });
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status }, data: { status: decision, approvedAmount: approved, decisionNotes: notes.trim() || null, decidedById: user.id, decidedAt: new Date() } }));
   await audit(user.id, claimId, 'decision_recorded', { claimNumber: claim.claimNumber, decision, claimedAmount: claimed, approvedAmount: approved, notes: notes.trim() || undefined });
   const creator = await prisma.user.findUnique({ where: { id: claim.createdById }, select: { fullName: true, email: true } });
   if (creator) {
@@ -312,7 +312,7 @@ export async function recordWarrantyClaimSettlement(claimId: string, amount: num
   const received = round2(Number(amount));
   if (!Number.isFinite(received) || received <= 0) throw new WarrantyClaimError('Enter the amount received.');
   if (received > approved) throw new WarrantyClaimError(`That is more than the provider approved (${naira(approved)}).`);
-  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { status: 'SETTLED', settledAmount: received, settlementReference: reference.trim() || null, settledById: user.id, settledAt: new Date() } });
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status }, data: { status: 'SETTLED', settledAmount: received, settlementReference: reference.trim() || null, settledById: user.id, settledAt: new Date() } }));
   await audit(user.id, claimId, 'settled', { claimNumber: claim.claimNumber, approvedAmount: approved, settledAmount: received, shortfall: round2(approved - received), reference: reference.trim() || undefined });
 }
 
@@ -335,7 +335,7 @@ export async function recordFailedPartSent(claimId: string, reference: string): 
   if (!claim.partReturnRequired) throw new WarrantyClaimError('This claim does not need the failed part returned.');
   if (!['APPROVED_TO_SUBMIT', 'SUBMITTED', 'ACCEPTED', 'PARTIALLY_ACCEPTED'].includes(claim.status)) throw new WarrantyClaimError('Send the failed part once the claim has been approved.');
   if (claim.partReturnStatus !== 'AWAITING') throw new WarrantyClaimError('The failed part has already been sent.');
-  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { partReturnStatus: 'SENT', partSentAt: new Date(), partSentReference: ref } });
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, partReturnStatus: claim.partReturnStatus, status: claim.status }, data: { partReturnStatus: 'SENT', partSentAt: new Date(), partSentReference: ref } }));
   await audit(user.id, claimId, 'part_sent', { claimNumber: claim.claimNumber, reference: ref });
 }
 
@@ -344,7 +344,7 @@ export async function recordFailedPartReceived(claimId: string): Promise<void> {
   const claim = await prisma.warrantyClaim.findFirst({ where: { customer: await orgWhere(), id: claimId }, select: { claimNumber: true, partReturnStatus: true } });
   if (!claim) throw new WarrantyClaimError('Claim not found.');
   if (claim.partReturnStatus !== 'SENT') throw new WarrantyClaimError('Record the failed part as sent first.');
-  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { partReturnStatus: 'RECEIVED_BY_PROVIDER', partReceivedAt: new Date() } });
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, partReturnStatus: 'SENT' }, data: { partReturnStatus: 'RECEIVED_BY_PROVIDER', partReceivedAt: new Date() } }));
   await audit(user.id, claimId, 'part_received_by_provider', { claimNumber: claim.claimNumber });
 }
 
@@ -359,10 +359,9 @@ export async function recordReplacementReceived(claimId: string, replacementSeri
   if (claim.remedy !== 'REPLACEMENT') throw new WarrantyClaimError('This claim is not settled by a replacement part.');
   if (claim.status !== 'ACCEPTED' && claim.status !== 'PARTIALLY_ACCEPTED') throw new WarrantyClaimError('Record the provider accepting the claim first.');
   assertPartSent(claim);
-  await prisma.warrantyClaim.update({
-    where: { id: claimId },
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status },
     data: { status: 'SETTLED', settledAmount: claim.approvedAmount, replacementSerial: replacementSerial.trim() || null, remedyNotes: notes.trim() || null, settledById: user.id, settledAt: new Date() },
-  });
+  }));
   await audit(user.id, claimId, 'replacement_received', { claimNumber: claim.claimNumber, replacementSerial: replacementSerial.trim() || undefined, notes: notes.trim() || undefined });
 }
 
@@ -375,7 +374,7 @@ export async function recordRepairedPartReturned(claimId: string, notes: string)
   if (claim.remedy !== 'REPAIR') throw new WarrantyClaimError('This claim is not settled by a repair.');
   if (claim.status !== 'ACCEPTED' && claim.status !== 'PARTIALLY_ACCEPTED') throw new WarrantyClaimError('Record the provider accepting the claim first.');
   assertPartSent(claim);
-  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { status: 'SETTLED', settledAmount: claim.approvedAmount, remedyNotes: notes.trim() || null, settledById: user.id, settledAt: new Date() } });
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status }, data: { status: 'SETTLED', settledAmount: claim.approvedAmount, remedyNotes: notes.trim() || null, settledById: user.id, settledAt: new Date() } }));
   await audit(user.id, claimId, 'repaired_part_returned', { claimNumber: claim.claimNumber, notes: notes.trim() || undefined });
 }
 
@@ -387,10 +386,9 @@ export async function reopenRejectedWarrantyClaim(claimId: string, reason: strin
   const claim = await prisma.warrantyClaim.findFirst({ where: { customer: await orgWhere(), id: claimId }, select: { status: true, claimNumber: true, resubmissionCount: true } });
   if (!claim) throw new WarrantyClaimError('Claim not found.');
   if (claim.status !== 'REJECTED') throw new WarrantyClaimError('Only a rejected claim can be reopened for resubmission.');
-  await prisma.warrantyClaim.update({
-    where: { id: claimId },
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status },
     data: { status: 'DRAFT', resubmissionCount: claim.resubmissionCount + 1, returnReason: why, providerReference: null, replacementSerial: null, remedyNotes: null, submittedById: null, submittedAt: null, decidedById: null, decidedAt: null, approvedAmount: null, hodApprovedById: null, hodApprovedAt: null, managerApprovedById: null, managerApprovedAt: null },
-  });
+  }));
   await audit(user.id, claimId, 'reopened', { claimNumber: claim.claimNumber, reason: why, resubmission: claim.resubmissionCount + 1 });
 }
 
@@ -403,7 +401,7 @@ export async function cancelWarrantyClaim(claimId: string, reason: string): Prom
   if (!['DRAFT', 'PENDING_HOD', 'PENDING_MANAGER', 'APPROVED_TO_SUBMIT'].includes(claim.status)) {
     throw new WarrantyClaimError('A claim already with the provider (or decided) cannot be cancelled.');
   }
-  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { status: 'CANCELLED', cancelReason: why } });
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status }, data: { status: 'CANCELLED', cancelReason: why } }));
   await audit(user.id, claimId, 'cancelled', { claimNumber: claim.claimNumber, reason: why });
 }
 
@@ -550,6 +548,6 @@ export async function recordCustomerResolution(claimId: string, resolution: Cust
   if (!claim) throw new WarrantyClaimError('Claim not found.');
   if (claim.status === 'CANCELLED') throw new WarrantyClaimError('This claim was cancelled.');
   if (claim.customerResolution === resolution && (claim.customerResolutionNotes ?? '') === why) throw new WarrantyClaimError('That is already recorded.');
-  await prisma.warrantyClaim.update({ where: { id: claimId }, data: { customerResolution: resolution, customerResolutionNotes: why || null } });
+  stillAsSeen(await prisma.warrantyClaim.updateMany({ where: { id: claimId, status: claim.status }, data: { customerResolution: resolution, customerResolutionNotes: why || null } }));
   await audit(user.id, claimId, 'customer_resolution_set', { claimNumber: claim.claimNumber, from: claim.customerResolution, to: resolution, notes: why || undefined });
 }

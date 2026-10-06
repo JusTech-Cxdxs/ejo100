@@ -1,13 +1,14 @@
 'use server';
 
+import { claimed, lockExisting } from '@/lib/integrity';
 import { authorize, canSeeRecord, reachWhere, authorizeOnService, refuse, branchWithinReach, orgWhere } from '@/lib/authz/server';
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal } from '@/lib/estimate-billing';
-import { prisma } from '@ejo/database';
+import { prisma, type VehicleServiceStatus } from '@ejo/database';
 import { requireUser, createJobCard, currentUserIsMasterAdmin, requireJobCardApprover, listEligibleManagersForBranch, requireEligibleManager } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopDepartmentForVehicleType, isEligibleSupervisor, getWorkshopOrgContext } from '@/lib/workshop-core';
-import { computeServiceCycle, loadServiceTracking, assertServiceNotEscalated, type WorkshopVisit } from '@/lib/vehicle-service-cycle';
+import { computeServiceCycle, loadServiceTracking, assertServiceNotEscalated, ESCALATION_CLAIM_MS, type WorkshopVisit } from '@/lib/vehicle-service-cycle';
 import { custodyReminderState, notDueYetMessage } from '@/lib/custody-reminders';
 import { pluralize } from '@/lib/utils/pluralize';
 import { READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
@@ -184,6 +185,7 @@ export async function approveVehicleService(serviceId: string, notes?: string): 
     where: { id: serviceId },
     select: {
       supervisorId: true,
+      approvalStatus: true,
       serviceNumber: true,
       createdById: true,
       customer: { select: { fullName: true } },
@@ -194,10 +196,9 @@ export async function approveVehicleService(serviceId: string, notes?: string): 
     throw new VehicleServiceActionError('Vehicle Service record not found.');
   }
   const approver = await requireJobCardApprover(service);
-  await prisma.vehicleService.update({
-    where: { id: serviceId },
+  claimed(await prisma.vehicleService.updateMany({ where: { id: serviceId, approvalStatus: service.approvalStatus, supervisorId: service.supervisorId },
     data: { approvalStatus: 'APPROVED', approvedById: approver.id, approvedAt: new Date(), rejectionReason: null, approvalNotes: notes?.trim() || null },
-  });
+  }));
   await writeAuditLog({
     userId: approver.id,
     action: 'vehicle_service.approved',
@@ -231,6 +232,7 @@ export async function rejectVehicleService(serviceId: string, reason: string, no
     where: { id: serviceId },
     select: {
       supervisorId: true,
+      approvalStatus: true,
       serviceNumber: true,
       createdById: true,
       customer: { select: { fullName: true } },
@@ -241,10 +243,9 @@ export async function rejectVehicleService(serviceId: string, reason: string, no
     throw new VehicleServiceActionError('Vehicle Service record not found.');
   }
   const approver = await requireJobCardApprover(service);
-  await prisma.vehicleService.update({
-    where: { id: serviceId },
+  claimed(await prisma.vehicleService.updateMany({ where: { id: serviceId, approvalStatus: service.approvalStatus, supervisorId: service.supervisorId },
     data: { approvalStatus: 'REJECTED', approvedById: approver.id, approvedAt: new Date(), rejectionReason: trimmedReason, approvalNotes: notes?.trim() || null },
-  });
+  }));
   await writeAuditLog({
     userId: approver.id,
     action: 'vehicle_service.rejected',
@@ -347,15 +348,14 @@ export async function assignTechnicianToVehicleService(serviceId: string, techni
   if (!technician) {
     throw new VehicleServiceActionError('Choose an active technician (or supervisor) — only workshop staff can be assigned to a job.');
   }
-  await prisma.vehicleService.update({
-    where: { id: serviceId },
+  claimed(await prisma.vehicleService.updateMany({ where: { id: serviceId, status: service.status, supervisorId: service.supervisorId },
     data: {
       assignedTechnicianId: technicianId,
       technicianAcceptanceStatus: 'PENDING',
       technicianRespondedAt: null,
       technicianRejectionReason: null,
     },
-  });
+  }));
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.technician_assigned',
@@ -456,17 +456,16 @@ export async function acceptVehicleServiceTechnicianAssignment(serviceId: string
   await assertServiceNotEscalated({ vehicleServiceId: serviceId });
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
-    select: { assignedTechnicianId: true, serviceNumber: true },
+    select: { assignedTechnicianId: true, serviceNumber: true, technicianAcceptanceStatus: true },
   });
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
   }
   const technician = await requireAssignedVehicleServiceTechnician(service);
 
-  await prisma.vehicleService.update({
-    where: { id: serviceId },
+  claimed(await prisma.vehicleService.updateMany({ where: { id: serviceId, assignedTechnicianId: technician.id, technicianAcceptanceStatus: service.technicianAcceptanceStatus },
     data: { technicianAcceptanceStatus: 'ACCEPTED', technicianRespondedAt: new Date(), technicianRejectionReason: null },
-  });
+  }), 'This assignment changed just now — refresh the page to see who it is assigned to.');
 
   await writeAuditLog({ userId: technician.id, action: 'assignment.accepted', entityType: 'VehicleService', entityId: serviceId });
 
@@ -486,21 +485,20 @@ export async function rejectVehicleServiceTechnicianAssignment(serviceId: string
   }
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
-    select: { assignedTechnicianId: true, serviceNumber: true },
+    select: { assignedTechnicianId: true, serviceNumber: true, technicianAcceptanceStatus: true },
   });
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
   }
   const technician = await requireAssignedVehicleServiceTechnician(service);
 
-  await prisma.vehicleService.update({
-    where: { id: serviceId },
+  claimed(await prisma.vehicleService.updateMany({ where: { id: serviceId, assignedTechnicianId: technician.id, technicianAcceptanceStatus: service.technicianAcceptanceStatus },
     // Fully reset back to "never assigned" — same reasoning as Job
     // Card's own reject: the rejecting technician shouldn't still show
     // as assigned while the supervisor picks someone else. The full
     // record (who, when, why) lives in the audit log regardless.
     data: { assignedTechnicianId: null, technicianAcceptanceStatus: null, technicianRespondedAt: null, technicianRejectionReason: null },
-  });
+  }), 'This assignment changed just now — refresh the page to see who it is assigned to.');
 
   await writeAuditLog({
     userId: technician.id,
@@ -1281,7 +1279,7 @@ export async function updateVehicleServiceStatus(
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.vehicleService.update({ where: { id: serviceId }, data });
+    claimed(await tx.vehicleService.updateMany({ where: { id: serviceId, status: service.status }, data }));
     // The one real, shared "last known odometer" — the same field Job
     // Card check-in writes to, never a second competing value.
     if (newStatus === 'CHECKED_IN' && input?.odometerAtService !== undefined) {
@@ -1554,9 +1552,13 @@ export async function requestVehicleServiceCancellation(serviceId: string, reaso
   if (user.id !== service.createdById && user.id !== service.supervisorId && !(await currentUserIsMasterAdmin())) {
     return refuse('workshop.close.request', 'requestVehicleServiceCancellation', "Only this Vehicle Service's creator or its assigned supervisor can request a cancellation.");
   }
-  const existingPending = await prisma.vehicleServiceCancellationRequest.findFirst({ where: { vehicleServiceId: serviceId, status: 'PENDING' }, select: { id: true } });
-  if (existingPending) throw new VehicleServiceActionError('A cancellation request is already pending for this Vehicle Service.');
-  await prisma.vehicleServiceCancellationRequest.create({ data: { vehicleServiceId: serviceId, reason: trimmedReason, requestedById: user.id } });
+  // Checked and created with the service locked — never two pending requests.
+  await prisma.$transaction(async (tx) => {
+    await lockExisting(tx, 'vehicleService', [serviceId]);
+    const existingPending = await tx.vehicleServiceCancellationRequest.findFirst({ where: { vehicleServiceId: serviceId, status: 'PENDING' }, select: { id: true } });
+    if (existingPending) throw new VehicleServiceActionError('A cancellation request is already pending for this Vehicle Service.');
+    await tx.vehicleServiceCancellationRequest.create({ data: { vehicleServiceId: serviceId, reason: trimmedReason, requestedById: user.id } });
+  });
   await writeAuditLog({ userId: user.id, action: 'vehicle_service.cancellation_requested', entityType: 'VehicleService', entityId: serviceId, metadata: { reason: trimmedReason } });
   try {
     // Independent lookups for the email — run together.
@@ -1625,17 +1627,25 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
   const user = await requireEligibleManager(service.branchId, 'workshop.close.approve');
   const now = new Date();
   const paid = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
-  await prisma.$transaction([
-    prisma.vehicleServiceCloseRequest.updateMany({
+  // All-or-nothing, each step only from the state it was decided on — a
+  // close approved at the same moment, or a second click, changes nothing.
+  await prisma.$transaction(async (tx) => {
+    // The service first, so a close and a cancellation queue rather than deadlock.
+    await lockExisting(tx, 'vehicleService', [request.vehicleServiceId]);
+    claimed(await tx.vehicleServiceCancellationRequest.updateMany({
+      where: { id: requestId, status: 'PENDING' },
+      data: { status: 'APPROVED', decidedById: user.id, decidedAt: now, decisionNotes: decisionNotes?.trim() || null },
+    }), 'This cancellation request was just decided by someone else — refresh the page.');
+    claimed(await tx.vehicleService.updateMany({
+      // …and never while an escalation is opening its Job Card (escalatedAt claim).
+      where: { id: request.vehicleServiceId, status: { in: CANCELLABLE_SERVICE_STATUSES as VehicleServiceStatus[] }, escalatedToJobCardId: null, OR: [{ escalatedAt: null }, { escalatedAt: { lt: new Date(Date.now() - ESCALATION_CLAIM_MS) } }] },
+      data: { status: 'CANCELLED', cancelledAt: now },
+    }), 'This Vehicle Service was just closed, checked out or escalated — refresh the page.');
+    await tx.vehicleServiceCloseRequest.updateMany({
       where: { vehicleServiceId: request.vehicleServiceId, status: 'PENDING' },
       data: { status: 'DECLINED', decidedById: user.id, decidedAt: now, decisionNotes: 'Superseded — the Vehicle Service was cancelled.' },
-    }),
-    prisma.vehicleServiceCancellationRequest.update({
-      where: { id: requestId },
-      data: { status: 'APPROVED', decidedById: user.id, decidedAt: now, decisionNotes: decisionNotes?.trim() || null },
-    }),
-    prisma.vehicleService.update({ where: { id: request.vehicleServiceId }, data: { status: 'CANCELLED', cancelledAt: now } }),
-  ]);
+    });
+  });
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.cancellation_approved',
@@ -1720,10 +1730,9 @@ export async function declineVehicleServiceCancellationRequest(requestId: string
   if (!request) throw new VehicleServiceActionError('Cancellation request not found.');
   if (request.status !== 'PENDING') throw new VehicleServiceActionError('This cancellation request has already been decided.');
   const user = await requireEligibleManager(request.vehicleService.branchId, 'workshop.close.approve');
-  await prisma.vehicleServiceCancellationRequest.update({
-    where: { id: requestId },
+  claimed(await prisma.vehicleServiceCancellationRequest.updateMany({ where: { id: requestId, status: 'PENDING' },
     data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: decisionNotes?.trim() || null },
-  });
+  }), 'This cancellation request was just decided by someone else — refresh the page.');
   await writeAuditLog({ userId: user.id, action: 'vehicle_service.cancellation_declined', entityType: 'VehicleService', entityId: request.vehicleServiceId, metadata: { notes: decisionNotes?.trim() || undefined } });
   try {
     const [decliner, requester] = await Promise.all([
@@ -1775,7 +1784,7 @@ export async function handBackCancelledVehicleService(serviceId: string, collect
   if (owed > 0) {
     throw new VehicleServiceActionError(`₦${owed.toLocaleString('en-NG', { minimumFractionDigits: 2 })} paid on this Vehicle Service must be refunded (recorded under Refunds) before the vehicle can be handed back.`);
   }
-  await prisma.vehicleService.update({ where: { id: serviceId }, data: { collectedAt: new Date(), collectedByName: name } });
+  claimed(await prisma.vehicleService.updateMany({ where: { id: serviceId, status: 'CANCELLED', collectedAt: null }, data: { collectedAt: new Date(), collectedByName: name } }), 'This vehicle was just handed back by someone else — refresh the page.');
   await notifyGateOfRelease('VEHICLE_SERVICE', serviceId, user.id);
   await writeAuditLog({ userId: user.id, action: 'vehicle_service.handed_back', entityType: 'VehicleService', entityId: serviceId, metadata: { serviceNumber: service.serviceNumber, collectedByName: name } });
 }
@@ -1870,11 +1879,14 @@ export async function requestVehicleServiceClose(serviceId: string): Promise<voi
   if (user.id !== service.createdById && user.id !== service.supervisorId && !(await currentUserIsMasterAdmin())) {
     return refuse('workshop.close.request', 'requestVehicleServiceClose', "Only this Vehicle Service's creator or its assigned supervisor can request a close.");
   }
-  const existingPending = await prisma.vehicleServiceCloseRequest.findFirst({ where: { vehicleServiceId: serviceId, status: 'PENDING' }, select: { id: true } });
-  if (existingPending) {
-    throw new VehicleServiceActionError('A close request is already pending for this Vehicle Service.');
-  }
-  await prisma.vehicleServiceCloseRequest.create({ data: { vehicleServiceId: serviceId, requestedById: user.id } });
+  await prisma.$transaction(async (tx) => {
+    await lockExisting(tx, 'vehicleService', [serviceId]);
+    const existingPending = await tx.vehicleServiceCloseRequest.findFirst({ where: { vehicleServiceId: serviceId, status: 'PENDING' }, select: { id: true } });
+    if (existingPending) {
+      throw new VehicleServiceActionError('A close request is already pending for this Vehicle Service.');
+    }
+    await tx.vehicleServiceCloseRequest.create({ data: { vehicleServiceId: serviceId, requestedById: user.id } });
+  });
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.close_requested',
@@ -1952,18 +1964,23 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
   }
   const user = await requireEligibleManager(service.branchId, 'workshop.close.approve');
   const now = new Date();
-  await prisma.$transaction([
+  await prisma.$transaction(async (tx) => {
+    // The service first, so a close and a cancellation queue rather than deadlock.
+    await lockExisting(tx, 'vehicleService', [request.vehicleServiceId]);
+    claimed(await tx.vehicleServiceCloseRequest.updateMany({
+      where: { id: requestId, status: 'PENDING' },
+      data: { status: 'APPROVED', decidedById: user.id, decidedAt: now, decisionNotes: decisionNotes?.trim() || null },
+    }), 'This close request was just decided by someone else — refresh the page.');
+    claimed(await tx.vehicleService.updateMany({
+      where: { id: request.vehicleServiceId, status: 'READY_FOR_COLLECTION' },
+      data: { status: 'CLOSED', closedAt: now },
+    }), 'This Vehicle Service is no longer Ready for Collection (it was just changed) — refresh the page.');
     // A cancellation requested earlier can never happen now — resolve it.
-    prisma.vehicleServiceCancellationRequest.updateMany({
+    await tx.vehicleServiceCancellationRequest.updateMany({
       where: { vehicleServiceId: request.vehicleServiceId, status: 'PENDING' },
       data: { status: 'DECLINED', decidedById: user.id, decidedAt: now, decisionNotes: 'Superseded — the Vehicle Service was closed.' },
-    }),
-    prisma.vehicleServiceCloseRequest.update({
-      where: { id: requestId },
-      data: { status: 'APPROVED', decidedById: user.id, decidedAt: now, decisionNotes: decisionNotes?.trim() || null },
-    }),
-    prisma.vehicleService.update({ where: { id: request.vehicleServiceId }, data: { status: 'CLOSED', closedAt: now } }),
-  ]);
+    });
+  });
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.status_updated',
@@ -2034,10 +2051,9 @@ export async function declineVehicleServiceCloseRequest(requestId: string, decis
     throw new VehicleServiceActionError('This close request has already been decided.');
   }
   const user = await requireEligibleManager(request.vehicleService.branchId, 'workshop.close.approve');
-  await prisma.vehicleServiceCloseRequest.update({
-    where: { id: requestId },
+  claimed(await prisma.vehicleServiceCloseRequest.updateMany({ where: { id: requestId, status: 'PENDING' },
     data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: decisionNotes?.trim() || null },
-  });
+  }), 'This close request was just decided by someone else — refresh the page.');
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.close_declined',
@@ -2113,7 +2129,7 @@ export async function escalateVehicleServiceToJobCard(
   }
   // Once the work is done (completed, ready, closed, collected) or the
   // service is cancelled, there is nothing left to escalate.
-  if (['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED', 'COLLECTED', 'CANCELLED'].includes(service.status)) {
+  if (['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED', 'COLLECTED', 'CANCELLED', 'ESCALATED'].includes(service.status)) {
     throw new VehicleServiceActionError(`A Vehicle Service that's already ${service.status.toLowerCase().replace(/_/g, ' ')} cannot be escalated.`);
   }
   // Escalation hands the visit over before any money or pricing is
@@ -2149,18 +2165,60 @@ export async function escalateVehicleServiceToJobCard(
     ...findingLines,
     additionalComplaint?.trim(),
   ].filter((c): c is string => Boolean(c));
-  const jobCard = await createJobCard({
-    customerId: service.customerId,
-    vehicleId: service.vehicleId,
-    complaints: complaints.length > 0 ? complaints : ['Escalated from Vehicle Service — see linked record for the original real request.'],
-    supervisorId,
-    mileageAtCheckIn: service.odometerAtService ?? undefined,
-    escalatedFromServiceNumber: service.serviceNumber,
-  });
+  // Claim the hand-over first (compare-and-set on escalatedAt): a second
+  // escalation — a double click while the first is still opening its Job
+  // Card, or a second person — stops here instead of opening a second Job
+  // Card. The service keeps its status meanwhile. A claim left behind by a
+  // request that died part-way expires after ten minutes.
+  const claimedAt = new Date();
+  claimed(await prisma.vehicleService.updateMany({
+    where: {
+      id: serviceId,
+      status: service.status,
+      escalatedToJobCardId: null,
+      OR: [{ escalatedAt: null }, { escalatedAt: { lt: new Date(claimedAt.getTime() - ESCALATION_CLAIM_MS) } }],
+    },
+    data: { escalatedAt: claimedAt },
+  }), 'This Vehicle Service is already being escalated — refresh the page in a moment.');
+  // Re-checked now that the claim is held (estimates and payments refuse an
+  // in-flight escalation from here on): one added in the instant before the
+  // claim releases it and stops.
+  const [estimateNow, paymentsNow] = await Promise.all([
+    prisma.serviceEstimate.findUnique({ where: { vehicleServiceId: serviceId }, select: { id: true } }),
+    prisma.payment.count({ where: { vehicleServiceId: serviceId } }),
+  ]);
+  if (estimateNow || paymentsNow > 0) {
+    await prisma.vehicleService.updateMany({ where: { id: serviceId, escalatedToJobCardId: null, escalatedAt: claimedAt }, data: { escalatedAt: null } });
+    throw new VehicleServiceActionError('An estimate or payment was just added to this Vehicle Service, so it can no longer be escalated — refresh the page.');
+  }
+  let jobCard: Awaited<ReturnType<typeof createJobCard>>;
+  try {
+    // The Job Card is created already linked to this service (one database
+    // write), so a Job Card can never exist without the link back to it.
+    jobCard = await createJobCard({
+      customerId: service.customerId,
+      vehicleId: service.vehicleId,
+      complaints: complaints.length > 0 ? complaints : ['Escalated from Vehicle Service — see linked record for the original real request.'],
+      supervisorId,
+      mileageAtCheckIn: service.odometerAtService ?? undefined,
+      escalatedFromServiceNumber: service.serviceNumber,
+    });
+  } catch (err) {
+    // Nothing was opened: release the claim so the service carries on.
+    await prisma.vehicleService.updateMany({
+      where: { id: serviceId, escalatedToJobCardId: null, escalatedAt: claimedAt },
+      data: { escalatedAt: null },
+    });
+    throw err;
+  }
 
   // Handed over: the Vehicle Service becomes ESCALATED — terminal and
-  // read-only; everything continues on the Job Card.
-  await prisma.vehicleService.update({ where: { id: serviceId }, data: { escalatedToJobCardId: jobCard.id, status: 'ESCALATED', escalatedAt: new Date() } });
+  // read-only; everything continues on the Job Card. (If this request died
+  // right here, normaliseEscalatedServices completes it: linked → ESCALATED.)
+  claimed(await prisma.vehicleService.updateMany({
+    where: { id: serviceId, escalatedToJobCardId: jobCard.id },
+    data: { status: 'ESCALATED', escalatedAt: claimedAt },
+  }));
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.escalated_to_job_card',

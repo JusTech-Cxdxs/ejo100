@@ -3,6 +3,8 @@
 import { authorize } from '@/lib/authz/server';
 
 import { prisma } from '@ejo/database';
+import { claimed, lockExisting } from '@/lib/integrity';
+import { exceedsBalance } from '@/lib/integrity-core';
 import { requireUser, requireEligibleFinanceOfficer, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopOrgContext } from '@/lib/workshop-core';
 import type { PaymentMethod } from './workshop';
@@ -116,13 +118,34 @@ export async function recordServicePayment(
     );
   }
 
-  const newTotal = prospectiveTotal;
-  const justMetDeposit = alreadyPaid < minimumDeposit && newTotal >= minimumDeposit;
-  const justCompletedFull = alreadyPaid < roundedTotal && newTotal >= roundedTotal;
-  const shouldAutoApprove = service.status === 'CHECKED_IN' && (justMetDeposit || justCompletedFull);
-
-  await prisma.$transaction([
-    prisma.payment.create({
+  // Two cashiers at once: re-decide with the Vehicle Service row locked,
+  // against the payments as they are at that instant (see lib/integrity.ts).
+  const PAYABLE = ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'];
+  const settled = await prisma.$transaction(async (tx) => {
+    await lockExisting(tx, 'vehicleService', [vehicleServiceId], 'This Vehicle Service no longer exists — refresh the page.');
+    // The same form, resent while the first was still being saved: done.
+    if (idempotencyKey && (await tx.payment.findUnique({ where: { idempotencyKey }, select: { id: true } }))) return null;
+    const now = await tx.vehicleService.findUnique({
+      where: { id: vehicleServiceId },
+      select: { status: true, workStartedAt: true, serviceEstimate: { select: { lineItems: { select: { amount: true } } } }, payments: { select: { amount: true } } },
+    });
+    if (!now || !PAYABLE.includes(now.status)) {
+      throw new ServicePaymentActionError('This Vehicle Service changed while you were recording the payment — refresh the page.');
+    }
+    const totalNow = Math.round((now.serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0) * 100) / 100;
+    const paidNow = now.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount ?? 0), 0);
+    if (exceedsBalance(paidNow, roundedAmount, totalNow)) {
+      const remaining = Math.max(0, Math.round((totalNow - paidNow) * 100) / 100);
+      throw new ServicePaymentActionError(
+        `Another payment was recorded on this Vehicle Service just now. Up to ${formatNaira(remaining)} can still be recorded — refresh to see it.`,
+      );
+    }
+    const minimumNow = Math.round(totalNow * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+    const afterNow = Math.round((paidNow + roundedAmount) * 100) / 100;
+    const metDeposit = paidNow < minimumNow && afterNow >= minimumNow;
+    const completedFull = paidNow < totalNow && afterNow >= totalNow;
+    const autoApprove = now.status === 'CHECKED_IN' && (metDeposit || completedFull);
+    await tx.payment.create({
       data: {
         idempotencyKey: idempotencyKey || null,
         vehicleServiceId,
@@ -131,17 +154,20 @@ export async function recordServicePayment(
         notes: notes?.trim() || null,
         recordedById: user.id,
       },
-    }),
-    ...(shouldAutoApprove
-      ? [prisma.vehicleService.update({
-          where: { id: vehicleServiceId },
-          data: {
-            status: 'IN_SERVICE',
-            workStartedAt: service.workStartedAt ? undefined : new Date(),
-          },
-        })]
-      : []),
-  ]);
+    });
+    if (autoApprove) {
+      claimed(await tx.vehicleService.updateMany({
+        where: { id: vehicleServiceId, status: 'CHECKED_IN' },
+        data: { status: 'IN_SERVICE', workStartedAt: now.workStartedAt ?? new Date() },
+      }));
+    }
+    return { newTotal: afterNow, autoApprove, justMetDeposit: metDeposit, justCompletedFull: completedFull };
+  });
+  if (!settled) return;
+  const newTotal = settled.newTotal;
+  const shouldAutoApprove = settled.autoApprove;
+  const { justMetDeposit, justCompletedFull } = settled;
+  void minimumDeposit;
 
   await writeAuditLog({
     userId: user.id,

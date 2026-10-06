@@ -1,5 +1,6 @@
 'use server';
 
+import { claimed } from '@/lib/integrity';
 import { cache } from 'react';
 
 import { prisma } from '@ejo/database';
@@ -227,7 +228,7 @@ export async function updateBooking(visitId: string, input: VisitInput): Promise
   if (data.hostUserId !== user.id && !roles.isFrontDesk && data.hostUserId !== v.hostUserId) throw new SecurityError('You can only book your own visitors.');
   if (!input.expectedAt || Number.isNaN(new Date(input.expectedAt).getTime())) throw new SecurityError('Enter when the visitor is expected.');
   await activeHost(data.hostUserId);
-  await prisma.visit.update({ where: { id: visitId }, data: { ...data, expectedAt: input.expectedAt } });
+  claimed(await prisma.visit.updateMany({ where: { id: visitId, status: 'EXPECTED' }, data: { ...data, expectedAt: input.expectedAt } }));
   await writeAuditLog({ userId: user.id, action: 'visit.booking_changed', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, visitor: data.visitorName, people: data.partySize, expectedAt: input.expectedAt } });
   await emailGateAboutBooking('changed', visitId, user.id);
 }
@@ -257,7 +258,7 @@ export async function checkInVisit(visitId: string, arrivalInput: { vehicleType?
   if (v.status !== 'EXPECTED') throw new SecurityError('Only an expected visitor can be checked in.');
   const arrival = cleanArrival(arrivalInput);
   const passNumber = await nextNumber('VP');
-  await prisma.visit.update({ where: { id: visitId }, data: { ...arrival, status: 'CHECKED_IN', passNumber, checkedInAt: new Date(), checkedInById: r.userId } });
+  claimed(await prisma.visit.updateMany({ where: { id: visitId, status: 'EXPECTED' }, data: { ...arrival, status: 'CHECKED_IN', passNumber, checkedInAt: new Date(), checkedInById: r.userId } }));
   await writeAuditLog({ userId: r.userId, action: 'visit.checked_in', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, passNumber, vehicle: arrival.vehiclePlate ?? 'On foot' } });
   await followUpEmail('visit.checked_in', visitId, r.userId);
   return { passNumber };
@@ -279,8 +280,10 @@ async function purgeStaleBookings(actorId: string | null) {
   const startOfToday = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }) + 'T00:00:00+01:00');
   const stale = await prisma.visit.findMany({ where: { status: 'EXPECTED', expectedAt: { lt: startOfToday } }, select: { id: true, visitNumber: true, visitorName: true, expectedAt: true } });
   for (const v of stale) {
+    // Only if still just a booking — a visitor checked in at this moment stays.
+    const gone = await prisma.visit.deleteMany({ where: { id: v.id, status: 'EXPECTED' } });
+    if (gone.count === 0) continue;
     await writeAuditLog({ userId: actorId, action: 'visit.booking_expired', entityType: 'Visit', entityId: v.id, metadata: { visitNumber: v.visitNumber, visitor: v.visitorName, expectedAt: v.expectedAt } });
-    await prisma.visit.delete({ where: { id: v.id } });
   }
 }
 
@@ -291,7 +294,7 @@ export async function receiveVisit(visitId: string): Promise<void> {
   if (!v) throw new SecurityError('Visit not found.');
   if (v.status !== 'CHECKED_IN') throw new SecurityError('The visitor must be checked in at the gate first.');
   if (v.receivedAt) throw new SecurityError('This visitor has already been received at reception.');
-  await prisma.visit.update({ where: { id: visitId }, data: { receivedAt: new Date(), receivedById: r.userId } });
+  claimed(await prisma.visit.updateMany({ where: { id: visitId, status: 'CHECKED_IN' }, data: { receivedAt: new Date(), receivedById: r.userId } }));
   await writeAuditLog({ userId: r.userId, action: 'visit.received', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber } });
   await sendLogged('Visit', visitId, [v.host], `Your visitor is at reception — ${v.visitorName}`, 'Your visitor is at reception', [`${v.visitorName}${v.company ? ` (${v.company})` : ''}`, `Purpose: ${v.purpose}`, `Visitor pass: ${v.passNumber ?? ''}`], `/security/visitors/${visitId}`, r.userId);
 }
@@ -305,7 +308,7 @@ export async function extendVisit(visitId: string, extraMinutes: number, reason:
   const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true, expectedDurationMinutes: true, extendedMinutes: true } });
   if (!v) throw new SecurityError('Visit not found.');
   if (v.status !== 'CHECKED_IN') throw new SecurityError('Only a visitor on the premises can be given more time.');
-  await prisma.visit.update({ where: { id: visitId }, data: { expectedDurationMinutes: v.expectedDurationMinutes + extraMinutes, extendedMinutes: v.extendedMinutes + extraMinutes, overdueNotifiedAt: null } });
+  claimed(await prisma.visit.updateMany({ where: { id: visitId, status: 'CHECKED_IN', expectedDurationMinutes: v.expectedDurationMinutes }, data: { expectedDurationMinutes: v.expectedDurationMinutes + extraMinutes, extendedMinutes: v.extendedMinutes + extraMinutes, overdueNotifiedAt: null } }));
   await writeAuditLog({ userId: r.userId, action: 'visit.extended', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, extra: durationText(extraMinutes), newStay: durationText(v.expectedDurationMinutes + extraMinutes), reason: reason.trim() } });
 }
 
@@ -315,7 +318,7 @@ export async function checkOutVisit(visitId: string): Promise<void> {
   if (!v) throw new SecurityError('Visit not found.');
   if (v.status !== 'CHECKED_IN') throw new SecurityError('Only a visitor on the premises can be checked out.');
   const out = new Date();
-  await prisma.visit.update({ where: { id: visitId }, data: { status: 'CHECKED_OUT', checkedOutAt: out, checkedOutById: r.userId } });
+  claimed(await prisma.visit.updateMany({ where: { id: visitId, status: 'CHECKED_IN' }, data: { status: 'CHECKED_OUT', checkedOutAt: out, checkedOutById: r.userId } }));
   await writeAuditLog({ userId: r.userId, action: 'visit.checked_out', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, passNumber: v.passNumber, duration: v.checkedInAt ? durationText((out.getTime() - new Date(v.checkedInAt).getTime()) / 60000) : undefined } });
   // The visitors of an appointment have left — the appointment happened.
   // The appointment is done when its LAST visitor group has left (none still
@@ -324,8 +327,8 @@ export async function checkOutVisit(visitId: string): Promise<void> {
   const appt = await prisma.appointment.findFirst({ where: { status: 'SCHEDULED', OR: [{ visitId }, ...(own?.appointmentId ? [{ id: own.appointmentId }] : [])] }, select: { id: true, appointmentNumber: true } });
   const stillComing = appt ? await prisma.visit.count({ where: { appointmentId: appt.id, status: { in: ['EXPECTED', 'CHECKED_IN'] } } }) : 0;
   if (appt && stillComing === 0) {
-    await prisma.appointment.update({ where: { id: appt.id }, data: { status: 'COMPLETED', completedAt: out } });
-    await writeAuditLog({ userId: r.userId, action: 'appointment.completed', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber: appt.appointmentNumber, by: 'Visitors checked out at the gate' } });
+    const done = await prisma.appointment.updateMany({ where: { id: appt.id, status: 'SCHEDULED' }, data: { status: 'COMPLETED', completedAt: out } });
+    if (done.count === 1) await writeAuditLog({ userId: r.userId, action: 'appointment.completed', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber: appt.appointmentNumber, by: 'Visitors checked out at the gate' } });
   }
 }
 
@@ -339,6 +342,9 @@ export async function cancelVisit(visitId: string, reason: string): Promise<void
   if (!roles.isFrontDesk && v.hostUserId !== user.id && v.registeredById !== user.id) throw new SecurityError('Only the host, whoever booked it, Reception or Security can cancel.');
   if (v.status !== 'EXPECTED') throw new SecurityError('Only a booking that has not arrived can be cancelled.');
   if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
+  // Claim the cancellation first: a visitor checked in at this very moment
+  // is never cancelled (and the gate is never told to stop expecting them).
+  claimed(await prisma.visit.updateMany({ where: { id: visitId, status: 'EXPECTED' }, data: { status: 'CANCELLED' } }), 'This visitor was just checked in or the booking changed — refresh the page.');
   await writeAuditLog({ userId: user.id, action: 'visit.cancelled', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, visitor: v.visitorName, reason: reason.trim() } });
   await emailGateAboutBooking('cancelled', visitId, user.id, reason.trim());
   await prisma.visit.delete({ where: { id: visitId } });
@@ -444,7 +450,7 @@ export async function decideExitPass(passId: string, approve: boolean, reason: s
   const now = new Date();
   const atHead = p.status === 'PENDING_HEAD';
   if (!approve) {
-    await prisma.exitPass.update({ where: { id: passId }, data: { status: 'DECLINED', declinedById: user.id, declinedAt: now, declineReason: reason.trim() } });
+    claimed(await prisma.exitPass.updateMany({ where: { id: passId, status: p.status }, data: { status: 'DECLINED', declinedById: user.id, declinedAt: now, declineReason: reason.trim() } }));
     await writeAuditLog({ userId: user.id, action: 'exit_pass.declined', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber, step: atHead ? 'Department Head' : 'Manager', reason: reason.trim() } });
     await sendLogged('ExitPass', passId, [p.requestedBy], `Exit pass ${p.passNumber} declined`, 'Your exit pass was declined', [p.passNumber, `Reason: ${reason.trim()}`], `/security/exit-passes/${passId}`, user.id);
     return;
@@ -453,12 +459,12 @@ export async function decideExitPass(passId: string, approve: boolean, reason: s
   // A Department Head who is also a Manager approves both steps at once.
   const alsoManager = atHead && managers.some((m) => m.id === user.id);
   if (atHead && !alsoManager) {
-    await prisma.exitPass.update({ where: { id: passId }, data: { status: 'PENDING_MANAGER', headApprovedById: user.id, headApprovedAt: now } });
+    claimed(await prisma.exitPass.updateMany({ where: { id: passId, status: 'PENDING_HEAD' }, data: { status: 'PENDING_MANAGER', headApprovedById: user.id, headApprovedAt: now } }));
     await writeAuditLog({ userId: user.id, action: 'exit_pass.head_authorised', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber } });
     await sendLogged('ExitPass', passId, managers, `Exit pass ${p.passNumber} needs your approval`, 'An exit pass needs the Manager\'s approval', [p.passNumber, `Reason: ${p.reason}`, 'Authorised by the Department Head.'], `/security/exit-passes/${passId}`, user.id);
     return;
   }
-  await prisma.exitPass.update({ where: { id: passId }, data: { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: now, ...(alsoManager ? { headApprovedById: user.id, headApprovedAt: now } : {}) } });
+  claimed(await prisma.exitPass.updateMany({ where: { id: passId, status: p.status }, data: { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: now, ...(alsoManager ? { headApprovedById: user.id, headApprovedAt: now } : {}) } }));
   if (alsoManager) await writeAuditLog({ userId: user.id, action: 'exit_pass.head_authorised', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber } });
   await writeAuditLog({ userId: user.id, action: 'exit_pass.manager_approved', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber } });
   await sendLogged('ExitPass', passId, [p.requestedBy, ...(await gateStaff())], `Exit pass ${p.passNumber} approved`, 'Exit pass approved', [p.passNumber, 'Approved — Security will record the time out at the gate.'], `/security/exit-passes/${passId}`, user.id);
@@ -471,7 +477,7 @@ export async function cancelExitPass(passId: string, reason: string): Promise<vo
   if (p.requestedById !== user.id) throw new SecurityError('Only the person who requested it can cancel it.');
   if (!['PENDING_HEAD', 'PENDING_MANAGER', 'APPROVED'].includes(p.status)) throw new SecurityError('A pass already used at the gate cannot be cancelled.');
   if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
-  await prisma.exitPass.update({ where: { id: passId }, data: { status: 'CANCELLED', cancelReason: reason.trim() } });
+  claimed(await prisma.exitPass.updateMany({ where: { id: passId, status: p.status }, data: { status: 'CANCELLED', cancelReason: reason.trim() } }));
   await writeAuditLog({ userId: user.id, action: 'exit_pass.cancelled', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber, reason: reason.trim() } });
   await followUpEmail('exit_pass.cancelled', passId, user.id);
 }
@@ -486,7 +492,7 @@ export async function exitPassGateOut(passId: string): Promise<void> {
   const now = new Date();
   // Expected back = actual time out + how long they said they'd be.
   const expectedReturnAt = p.returning && p.expectedDurationMinutes ? new Date(now.getTime() + p.expectedDurationMinutes * 60000) : undefined;
-  await prisma.exitPass.update({ where: { id: passId }, data: { status: p.returning ? 'OUT' : 'CLOSED', gateOutAt: now, gateOutById: r.userId, ...(expectedReturnAt ? { expectedReturnAt } : {}) } });
+  claimed(await prisma.exitPass.updateMany({ where: { id: passId, status: 'APPROVED' }, data: { status: p.returning ? 'OUT' : 'CLOSED', gateOutAt: now, gateOutById: r.userId, ...(expectedReturnAt ? { expectedReturnAt } : {}) } }));
   await writeAuditLog({ userId: r.userId, action: 'exit_pass.gate_out', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber, returning: p.returning } });
   await followUpEmail('exit_pass.gate_out', passId, r.userId);
 }
@@ -497,7 +503,7 @@ export async function exitPassGateIn(passId: string): Promise<void> {
   if (!p) throw new SecurityError('Exit pass not found.');
   if (p.status !== 'OUT') throw new SecurityError('Only someone who went out on a returning pass can be recorded back in.');
   const now = new Date();
-  await prisma.exitPass.update({ where: { id: passId }, data: { status: 'RETURNED', gateInAt: now, gateInById: r.userId } });
+  claimed(await prisma.exitPass.updateMany({ where: { id: passId, status: 'OUT' }, data: { status: 'RETURNED', gateInAt: now, gateInById: r.userId } }));
   const late = p.expectedReturnAt && now.getTime() > new Date(p.expectedReturnAt).getTime() ? durationText((now.getTime() - new Date(p.expectedReturnAt).getTime()) / 60000) : null;
   await writeAuditLog({ userId: r.userId, action: 'exit_pass.gate_in', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber, away: p.gateOutAt ? durationText((now.getTime() - new Date(p.gateOutAt).getTime()) / 60000) : undefined, late: late ?? undefined } });
   await followUpEmail('exit_pass.gate_in', passId, r.userId);
@@ -965,7 +971,7 @@ export async function extendExitPassReturn(passId: string, extraMinutes: number,
   if (!p) throw new SecurityError('Exit pass not found.');
   if (p.status !== 'OUT' || !p.returning || !p.expectedReturnAt) throw new SecurityError('Only someone out on a returning pass can be given more time.');
   const next = new Date(new Date(p.expectedReturnAt).getTime() + extraMinutes * 60000);
-  await prisma.exitPass.update({ where: { id: passId }, data: { expectedReturnAt: next } });
+  claimed(await prisma.exitPass.updateMany({ where: { id: passId, status: 'OUT', expectedReturnAt: p.expectedReturnAt }, data: { expectedReturnAt: next } }));
   await writeAuditLog({ userId: r.userId, action: 'exit_pass.extended', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber, extra: durationText(extraMinutes), newReturn: next.toISOString(), reason: reason.trim() } });
   await followUpEmail('exit_pass.extended', passId, r.userId);
 }
@@ -1098,7 +1104,7 @@ export async function decideRoadTest(id: string, approve: boolean, reason: strin
   if (!roles.isMaster && !(await managerApprovers(p.requestedById)).some((m) => m.id === user.id)) throw new SecurityError('Only the Manager can decide a road test.');
   if (!approve && !reason.trim()) throw new SecurityError('Give a reason for declining.');
   const now = new Date();
-  await prisma.roadTestPermit.update({ where: { id }, data: approve ? { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: now } : { status: 'DECLINED', declinedById: user.id, declinedAt: now, declineReason: reason.trim() } });
+  claimed(await prisma.roadTestPermit.updateMany({ where: { id, status: 'PENDING_MANAGER' }, data: approve ? { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: now } : { status: 'DECLINED', declinedById: user.id, declinedAt: now, declineReason: reason.trim() } }));
   const action = approve ? 'road_test.approved' : 'road_test.declined';
   const meta = { permitNumber: p.permitNumber, reason: reason.trim() || undefined };
   await writeAuditLog({ userId: user.id, action, entityType: 'RoadTestPermit', entityId: id, metadata: meta });
@@ -1114,7 +1120,7 @@ export async function cancelRoadTest(id: string, reason: string): Promise<void> 
   if (p.requestedById !== user.id && !roles.isManager && !roles.isMaster) throw new SecurityError('Only the requester or the Manager can cancel.');
   if (!['PENDING_MANAGER', 'APPROVED'].includes(p.status)) throw new SecurityError('A road test already out cannot be cancelled — record its return.');
   if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
-  await prisma.roadTestPermit.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason.trim() } });
+  claimed(await prisma.roadTestPermit.updateMany({ where: { id, status: p.status }, data: { status: 'CANCELLED', cancelReason: reason.trim() } }));
   const meta = { permitNumber: p.permitNumber, reason: reason.trim() };
   await writeAuditLog({ userId: user.id, action: 'road_test.cancelled', entityType: 'RoadTestPermit', entityId: id, metadata: meta });
   await followUpEmail('road_test.cancelled', id, user.id);
@@ -1130,7 +1136,7 @@ export async function roadTestGateOut(id: string, startOdometer: number): Promis
   if (!Number.isInteger(startOdometer) || startOdometer < 0) throw new SecurityError('Enter the odometer reading (km) as a whole number.');
   if (p.vehicle.mileage !== null && startOdometer < p.vehicle.mileage) throw new SecurityError(`That is below the vehicle's last recorded reading (${p.vehicle.mileage.toLocaleString('en-NG')} km) — check the odometer.`);
   if (p.vehicle.mileage !== null && startOdometer > p.vehicle.mileage + 2000) throw new SecurityError(`That is ${(startOdometer - p.vehicle.mileage).toLocaleString('en-NG')} km more than the vehicle's last recorded reading (${p.vehicle.mileage.toLocaleString('en-NG')} km) — check you read the odometer, not the trip meter.`);
-  await prisma.roadTestPermit.update({ where: { id }, data: { status: 'OUT', gateOutAt: new Date(), gateOutById: r.userId, startOdometer } });
+  claimed(await prisma.roadTestPermit.updateMany({ where: { id, status: 'APPROVED' }, data: { status: 'OUT', gateOutAt: new Date(), gateOutById: r.userId, startOdometer } }));
   const meta = { permitNumber: p.permitNumber, odometer: startOdometer };
   await writeAuditLog({ userId: r.userId, action: 'road_test.gate_out', entityType: 'RoadTestPermit', entityId: id, metadata: meta });
   await roadTestRecordAudit(p, r.userId, 'road_test.gate_out', meta);
@@ -1149,8 +1155,10 @@ export async function roadTestGateIn(id: string, endOdometer: number, notes: str
   if (p.startOdometer !== null && endOdometer < p.startOdometer) throw new SecurityError(`The reading can't be lower than when it went out (${p.startOdometer.toLocaleString('en-NG')} km).`);
   if (p.startOdometer !== null && endOdometer - p.startOdometer > 500) throw new SecurityError(`That is ${(endOdometer - p.startOdometer).toLocaleString('en-NG')} km for one road test (it went out at ${p.startOdometer.toLocaleString('en-NG')} km) — check the reading.`);
   const now = new Date();
-  await prisma.roadTestPermit.update({ where: { id }, data: { status: 'RETURNED', gateInAt: now, gateInById: r.userId, endOdometer, returnNotes: notes.trim() || null } });
-  if (p.vehicle.mileage === null || endOdometer > p.vehicle.mileage) await prisma.customerVehicle.update({ where: { id: p.vehicleId }, data: { mileage: endOdometer } });
+  claimed(await prisma.roadTestPermit.updateMany({ where: { id, status: 'OUT' }, data: { status: 'RETURNED', gateInAt: now, gateInById: r.userId, endOdometer, returnNotes: notes.trim() || null } }));
+  // Only ever raises the recorded mileage (atomic — a higher reading saved
+  // at the same moment by another desk is never lowered).
+  await prisma.customerVehicle.updateMany({ where: { id: p.vehicleId, OR: [{ mileage: null }, { mileage: { lt: endOdometer } }] }, data: { mileage: endOdometer } });
   const meta = { permitNumber: p.permitNumber, odometer: endOdometer, distance: p.startOdometer !== null ? endOdometer - p.startOdometer : undefined, away: p.gateOutAt ? durationText((now.getTime() - new Date(p.gateOutAt).getTime()) / 60000) : undefined, notes: notes.trim() || undefined };
   await writeAuditLog({ userId: r.userId, action: 'road_test.gate_in', entityType: 'RoadTestPermit', entityId: id, metadata: meta });
   await roadTestRecordAudit(p, r.userId, 'road_test.gate_in', meta);
@@ -1165,7 +1173,7 @@ export async function extendRoadTest(id: string, extraMinutes: number, reason: s
   const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, expectedDurationMinutes: true } });
   if (!p) throw new SecurityError('Road test not found.');
   if (p.status !== 'OUT') throw new SecurityError('Only a vehicle out on a road test can be given more time.');
-  await prisma.roadTestPermit.update({ where: { id }, data: { expectedDurationMinutes: p.expectedDurationMinutes + extraMinutes } });
+  claimed(await prisma.roadTestPermit.updateMany({ where: { id, status: 'OUT', expectedDurationMinutes: p.expectedDurationMinutes }, data: { expectedDurationMinutes: p.expectedDurationMinutes + extraMinutes } }));
   await writeAuditLog({ userId: r.userId, action: 'road_test.extended', entityType: 'RoadTestPermit', entityId: id, metadata: { permitNumber: p.permitNumber, extra: durationText(extraMinutes), reason: reason.trim() } });
   await followUpEmail('road_test.extended', id, r.userId);
 }
@@ -1318,7 +1326,7 @@ export async function assignIncident(id: string, assigneeId: string): Promise<vo
   const staff = await gateStaff();
   const who = staff.find((s) => s.id === assigneeId);
   if (!who) throw new SecurityError('Assign it to a Security Officer or the Chief Security Officer.');
-  await prisma.securityIncident.update({ where: { id }, data: { assignedToId: assigneeId, status: 'UNDER_REVIEW' } });
+  claimed(await prisma.securityIncident.updateMany({ where: { id, status: inc.status }, data: { assignedToId: assigneeId, status: 'UNDER_REVIEW' } }));
   await writeAuditLog({ userId: r.userId, action: 'incident.assigned', entityType: 'SecurityIncident', entityId: id, metadata: { incidentNumber: inc.incidentNumber, to: who.fullName } });
   await sendLogged('SecurityIncident', id, [who], `Incident ${inc.incidentNumber} assigned to you`, 'An incident has been assigned to you', [`${inc.incidentNumber} — ${inc.type}`, 'Please follow it up and record your notes on the incident.'], `/security/incidents/${id}`, r.userId);
 }
@@ -1329,7 +1337,7 @@ export async function closeIncident(id: string, resolution: string): Promise<voi
   const inc = await prisma.securityIncident.findUnique({ where: { id }, select: { status: true, incidentNumber: true } });
   if (!inc) throw new SecurityError('Incident not found.');
   if (inc.status === 'CLOSED') throw new SecurityError('This incident is already closed.');
-  await prisma.securityIncident.update({ where: { id }, data: { status: 'CLOSED', resolution: resolution.trim(), closedAt: new Date(), closedById: r.userId } });
+  claimed(await prisma.securityIncident.updateMany({ where: { id, status: inc.status }, data: { status: 'CLOSED', resolution: resolution.trim(), closedAt: new Date(), closedById: r.userId } }));
   await writeAuditLog({ userId: r.userId, action: 'incident.closed', entityType: 'SecurityIncident', entityId: id, metadata: { incidentNumber: inc.incidentNumber, resolution: resolution.trim() } });
   await followUpEmail('incident.closed', id, r.userId);
 }
@@ -1340,7 +1348,7 @@ export async function reopenIncident(id: string, reason: string): Promise<void> 
   const inc = await prisma.securityIncident.findUnique({ where: { id }, select: { status: true, incidentNumber: true } });
   if (!inc) throw new SecurityError('Incident not found.');
   if (inc.status !== 'CLOSED') throw new SecurityError('Only a closed incident can be reopened.');
-  await prisma.securityIncident.update({ where: { id }, data: { status: 'UNDER_REVIEW', closedAt: null, closedById: null } });
+  claimed(await prisma.securityIncident.updateMany({ where: { id, status: 'CLOSED' }, data: { status: 'UNDER_REVIEW', closedAt: null, closedById: null } }));
   await writeAuditLog({ userId: r.userId, action: 'incident.reopened', entityType: 'SecurityIncident', entityId: id, metadata: { incidentNumber: inc.incidentNumber, reason: reason.trim() } });
   await followUpEmail('incident.reopened', id, r.userId);
 }
@@ -1422,7 +1430,7 @@ export async function recordDeliveryArrival(input: DeliveryInput, deliveryId?: s
     const d = await prisma.gateDelivery.findUnique({ where: { id: deliveryId }, select: { status: true, deliveryNumber: true, supplierName: true, items: true, reference: true } });
     if (!d) throw new SecurityError('Delivery not found.');
     if (d.status !== 'EXPECTED') throw new SecurityError('Only an expected delivery can be recorded as arriving.');
-    await prisma.gateDelivery.update({ where: { id: deliveryId }, data: { ...arrival, status: 'AT_GATE', arrivedAt: new Date(), arrivedById: r.userId } });
+    claimed(await prisma.gateDelivery.updateMany({ where: { id: deliveryId, status: 'EXPECTED' }, data: { ...arrival, status: 'AT_GATE', arrivedAt: new Date(), arrivedById: r.userId } }));
     id = deliveryId; deliveryNumber = d.deliveryNumber; supplier = d.supplierName; items = d.items; reference = d.reference;
   } else {
     if (!input.supplierName.trim()) throw new SecurityError('Enter the supplier.');
@@ -1449,7 +1457,7 @@ export async function confirmDeliveryReceived(id: string, note: string, goodsRec
     grn = await prisma.goodsReceipt.findUnique({ where: { id: goodsReceiptId }, select: { id: true, referenceNumber: true } });
     if (!grn) throw new SecurityError('That goods receipt was not found.');
   }
-  await prisma.gateDelivery.update({ where: { id }, data: { status: 'RECEIVED', receivedAt: new Date(), receivedById: user.id, receiptNote: note.trim() || null, goodsReceiptId: grn?.id ?? null } });
+  claimed(await prisma.gateDelivery.updateMany({ where: { id, status: 'AT_GATE' }, data: { status: 'RECEIVED', receivedAt: new Date(), receivedById: user.id, receiptNote: note.trim() || null, goodsReceiptId: grn?.id ?? null } }));
   await writeAuditLog({ userId: user.id, action: 'delivery.received', entityType: 'GateDelivery', entityId: id, metadata: { deliveryNumber: d.deliveryNumber, grn: grn?.referenceNumber, note: note.trim() || undefined } });
   await followUpEmail('delivery.received', id, user.id);
 }
@@ -1461,7 +1469,7 @@ export async function recordDeliveryLeft(id: string, reason: string): Promise<vo
   if (!d) throw new SecurityError('Delivery not found.');
   if (d.status !== 'AT_GATE' && d.status !== 'RECEIVED') throw new SecurityError('Only a delivery on site can leave.');
   if (d.status === 'AT_GATE' && !reason.trim()) throw new SecurityError('The Store has not received it — give the reason it is leaving (e.g. turned away, wrong items).');
-  await prisma.gateDelivery.update({ where: { id }, data: { status: 'LEFT', leftAt: new Date(), leftById: r.userId, ...(reason.trim() ? { notes: reason.trim() } : {}) } });
+  claimed(await prisma.gateDelivery.updateMany({ where: { id, status: d.status }, data: { status: 'LEFT', leftAt: new Date(), leftById: r.userId, ...(reason.trim() ? { notes: reason.trim() } : {}) } }));
   await writeAuditLog({ userId: r.userId, action: 'delivery.left', entityType: 'GateDelivery', entityId: id, metadata: { deliveryNumber: d.deliveryNumber, received: d.status === 'RECEIVED', reason: reason.trim() || undefined } });
 }
 
@@ -1473,7 +1481,7 @@ export async function cancelDelivery(id: string, reason: string): Promise<void> 
   const d = await prisma.gateDelivery.findUnique({ where: { id }, select: { status: true, deliveryNumber: true, supplierName: true } });
   if (!d) throw new SecurityError('Delivery not found.');
   if (d.status !== 'EXPECTED') throw new SecurityError('Only an expected delivery can be cancelled.');
-  await prisma.gateDelivery.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason.trim() } });
+  claimed(await prisma.gateDelivery.updateMany({ where: { id, status: 'EXPECTED' }, data: { status: 'CANCELLED', cancelReason: reason.trim() } }));
   await writeAuditLog({ userId: user.id, action: 'delivery.cancelled', entityType: 'GateDelivery', entityId: id, metadata: { deliveryNumber: d.deliveryNumber, reason: reason.trim() } });
   await sendLogged('GateDelivery', id, await gateStaff(), `Delivery cancelled — ${d.supplierName}`, 'An expected delivery was cancelled', [`${d.deliveryNumber} — ${d.supplierName}`, `Reason: ${reason.trim()}`], `/security/deliveries/${id}`, user.id);
 }
@@ -1559,7 +1567,7 @@ export async function decideContractorPass(id: string, approve: boolean, reason:
   if (p.requestedById === user.id && !roles.isMaster) throw new SecurityError('You cannot approve your own request.');
   if (!roles.isMaster && !(await managerApprovers(p.requestedById)).some((m) => m.id === user.id)) throw new SecurityError('Only the Manager can decide a contractor pass.');
   if (!approve && !reason.trim()) throw new SecurityError('Give a reason for declining.');
-  await prisma.contractorPass.update({ where: { id }, data: approve ? { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: new Date() } : { status: 'DECLINED', declineReason: reason.trim() } });
+  claimed(await prisma.contractorPass.updateMany({ where: { id, status: 'PENDING_MANAGER' }, data: approve ? { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: new Date() } : { status: 'DECLINED', declineReason: reason.trim() } }));
   await writeAuditLog({ userId: user.id, action: approve ? 'contractor.approved' : 'contractor.declined', entityType: 'ContractorPass', entityId: id, metadata: { passNumber: p.passNumber, reason: reason.trim() || undefined } });
   const people = [p.host, p.requestedBy, ...(approve ? await gateStaff() : [])];
   await sendLogged('ContractorPass', id, people, `Contractor pass ${p.passNumber} ${approve ? 'approved' : 'declined'} — ${p.company}`, approve ? 'Contractor pass approved' : 'Contractor pass declined', approve ? [`${p.passNumber} — ${p.company}`, `Valid ${lagosDay(p.validFrom)} to ${lagosDay(p.validUntil)}`, 'Security signs the team in and out at the gate each day.'] : [`${p.passNumber} — ${p.company}`, `Reason: ${reason.trim()}`], `/security/contractors/${id}`, user.id);
@@ -1578,7 +1586,7 @@ export async function cancelContractorPass(id: string, reason: string): Promise<
   if (!['PENDING_MANAGER', 'APPROVED'].includes(p.status)) throw new SecurityError('This pass is already closed.');
   if (await openAttendance(id)) throw new SecurityError('The team is on site — sign them out first.');
   if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
-  await prisma.contractorPass.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason.trim() } });
+  claimed(await prisma.contractorPass.updateMany({ where: { id, status: p.status }, data: { status: 'CANCELLED', cancelReason: reason.trim() } }));
   await writeAuditLog({ userId: user.id, action: 'contractor.cancelled', entityType: 'ContractorPass', entityId: id, metadata: { passNumber: p.passNumber, reason: reason.trim() } });
   if (p.status === 'APPROVED') await sendLogged('ContractorPass', id, [p.host, ...(await gateStaff())], `Contractor pass ${p.passNumber} cancelled — ${p.company}`, 'A contractor pass was cancelled', [`${p.passNumber} — ${p.company}`, `Reason: ${reason.trim()}`, 'Do not admit this team on this pass.'], `/security/contractors/${id}`, user.id);
 }
@@ -1593,7 +1601,7 @@ export async function revokeContractorPass(id: string, reason: string): Promise<
   if (p.status !== 'APPROVED') throw new SecurityError('Only an approved pass can be revoked.');
   if (await openAttendance(id)) throw new SecurityError('The team is on site — sign them out first.');
   if (!reason.trim()) throw new SecurityError('Give the reason for revoking it.');
-  await prisma.contractorPass.update({ where: { id }, data: { status: 'REVOKED', revokedById: user.id, revokedAt: new Date(), revokeReason: reason.trim() } });
+  claimed(await prisma.contractorPass.updateMany({ where: { id, status: 'APPROVED' }, data: { status: 'REVOKED', revokedById: user.id, revokedAt: new Date(), revokeReason: reason.trim() } }));
   await writeAuditLog({ userId: user.id, action: 'contractor.revoked', entityType: 'ContractorPass', entityId: id, metadata: { passNumber: p.passNumber, reason: reason.trim() } });
   await sendLogged('ContractorPass', id, [p.host, p.requestedBy, ...(await gateStaff())], `Contractor pass ${p.passNumber} REVOKED — ${p.company}`, 'A contractor pass has been revoked', [`${p.passNumber} — ${p.company}`, `Reason: ${reason.trim()}`, 'Do not admit this team on this pass.'], `/security/contractors/${id}`, user.id);
 }
@@ -1621,7 +1629,7 @@ export async function contractorSignOut(id: string, note: string): Promise<void>
   const open = await openAttendance(id);
   if (!open) throw new SecurityError('The team is not signed in.');
   const now = new Date();
-  await prisma.contractorAttendance.update({ where: { id: open.id }, data: { signedOutAt: now, signedOutById: r.userId, note: note.trim() || null } });
+  claimed(await prisma.contractorAttendance.updateMany({ where: { id: open.id, signedOutAt: null }, data: { signedOutAt: now, signedOutById: r.userId, note: note.trim() || null } }));
   await writeAuditLog({ userId: r.userId, action: 'contractor.signed_out', entityType: 'ContractorPass', entityId: id, metadata: { passNumber: p.passNumber, people: open.workersPresent, onSite: durationText((now.getTime() - new Date(open.signedInAt).getTime()) / 60000), note: note.trim() || undefined } });
 }
 

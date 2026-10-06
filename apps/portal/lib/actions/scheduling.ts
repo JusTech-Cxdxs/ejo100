@@ -1,5 +1,6 @@
 'use server';
 
+import { claimed, lockRows } from '@/lib/integrity';
 import { cache } from 'react';
 import { after } from 'next/server';
 
@@ -112,17 +113,33 @@ function clean(i: AppointmentInput) {
   };
 }
 
-/** No double-booking: the room, and the official's own time. */
-async function assertNoClash(ownerId: string, roomId: string | null, s: Date, e: Date, excludeId?: string) {
+type Db = Pick<typeof prisma, 'meetingRoom' | 'appointment'>;
+
+/** No double-booking: the room, and the official's own time. Called once as
+ * a quick check and again inside bookExclusively, under locks. */
+async function assertNoClash(ownerId: string, roomId: string | null, s: Date, e: Date, excludeId?: string, db: Db = prisma) {
   const overlap = { status: 'SCHEDULED' as const, startsAt: { lt: e }, endsAt: { gt: s }, ...(excludeId ? { NOT: { id: excludeId } } : {}) };
   if (roomId) {
-    const room = await prisma.meetingRoom.findUnique({ where: { id: roomId }, select: { name: true, isActive: true } });
+    const room = await db.meetingRoom.findUnique({ where: { id: roomId }, select: { name: true, isActive: true } });
     if (!room?.isActive) throw new SchedulingError('That meeting room is not available.');
-    const clash = await prisma.appointment.findFirst({ where: { ...overlap, roomId }, select: { appointmentNumber: true, startsAt: true, endsAt: true, title: true } });
+    const clash = await db.appointment.findFirst({ where: { ...overlap, roomId }, select: { appointmentNumber: true, startsAt: true, endsAt: true, title: true } });
     if (clash) throw new SchedulingError(`${room.name} is already booked ${fmt(clash.startsAt)} – ${new Date(clash.endsAt).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' })} (${clash.appointmentNumber}: ${clash.title}).`);
   }
-  const busy = await prisma.appointment.findFirst({ where: { ...overlap, ownerId }, select: { appointmentNumber: true, startsAt: true, title: true } });
+  const busy = await db.appointment.findFirst({ where: { ...overlap, ownerId }, select: { appointmentNumber: true, startsAt: true, title: true } });
   if (busy) throw new SchedulingError(`The host already has ${busy.appointmentNumber} (${busy.title}) at ${fmt(busy.startsAt)}.`);
+}
+
+/** Two people booking the same room (or the same official) at the same
+ * moment: lock the room and the host — always in that order, so two
+ * bookings never deadlock — re-check for a clash under the lock, then write.
+ * The second booking sees the first and is refused with the usual message. */
+async function bookExclusively<T>(ownerIds: string[], roomIds: (string | null)[], check: (db: Db) => Promise<void>, write: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => Promise<T>): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    await lockRows(tx, 'meetingRoom', roomIds.filter((r): r is string => Boolean(r)));
+    await lockRows(tx, 'user', ownerIds);
+    await check(tx);
+    return write(tx);
+  });
 }
 
 async function gateStaff(): Promise<Recipient[]> {
@@ -192,10 +209,11 @@ export async function createAppointment(input: AppointmentInput): Promise<{ id: 
   if (d.startsAt.getTime() < Date.now() - 5 * 60000) throw new SchedulingError('That time has already passed.');
   await assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt);
   const appointmentNumber = await nextNumber('APT');
-  const appt = await prisma.appointment.create({
-    data: { appointmentNumber, branchId: await getWorkshopBranchId(), title: d.title, agenda: d.agenda, ownerId: input.ownerId, createdById: a.userId, startsAt: d.startsAt, endsAt: d.endsAt, roomId: d.roomId, location: d.location, participants: { create: d.participantIds.map((userId) => ({ userId })) } },
+  const branchId = await getWorkshopBranchId();
+  const appt = await bookExclusively([input.ownerId], [d.roomId], (db) => assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt, undefined, db), (tx) => tx.appointment.create({
+    data: { appointmentNumber, branchId, title: d.title, agenda: d.agenda, ownerId: input.ownerId, createdById: a.userId, startsAt: d.startsAt, endsAt: d.endsAt, roomId: d.roomId, location: d.location, participants: { create: d.participantIds.map((userId) => ({ userId })) } },
     select: { id: true, owner: { select: { fullName: true } }, room: { select: { name: true } } },
-  });
+  }));
   if (d.visitors) await createGroupBooking({ id: appt.id, title: d.title, startsAt: d.startsAt, endsAt: d.endsAt, ownerId: input.ownerId }, d.visitors, a.userId);
   await writeAuditLog({ userId: a.userId, action: 'appointment.created', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber, title: d.title, startsAt: d.startsAt, onBehalfOf: input.ownerId !== a.userId ? appt.owner.fullName : undefined } });
   await sendLoggedEmail({ entityType: 'Appointment', entityId: appt.id, recipients: await recipientsFor(appt.id, a.userId), subject: `New appointment: ${d.title} — ${fmt(d.startsAt)}`, heading: 'You have a new appointment', lines: describe(d, appt.room?.name ?? null, appt.owner.fullName, d.visitors?.names ?? null), path: `/schedule/${appt.id}`, actorId: a.userId });
@@ -218,16 +236,21 @@ export async function updateAppointment(id: string, input: AppointmentInput): Pr
   if (!access.owners.some((o) => o.id === input.ownerId) && input.ownerId !== appt.ownerId) throw new SchedulingError('You cannot move it onto that calendar.');
   const d = clean(input);
   await assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt, id);
-  await prisma.$transaction([
-    prisma.appointmentParticipant.deleteMany({ where: { appointmentId: id } }),
-    prisma.appointment.update({ where: { id }, data: { title: d.title, agenda: d.agenda, ownerId: input.ownerId, startsAt: d.startsAt, endsAt: d.endsAt, roomId: d.roomId, location: d.location, participants: { create: d.participantIds.map((userId) => ({ userId })) }, ...(+new Date(appt.startsAt) !== +d.startsAt ? { reminderSentAt: null } : {}) } }),
-  ]);
+  await bookExclusively([input.ownerId], [d.roomId], (db) => assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt, id, db), async (tx) => {
+    // Only while still SCHEDULED — not cancelled or closed by someone else meanwhile.
+    claimed(await tx.appointment.updateMany({ where: { id, status: 'SCHEDULED' }, data: { title: d.title, agenda: d.agenda, ownerId: input.ownerId, startsAt: d.startsAt, endsAt: d.endsAt, roomId: d.roomId, location: d.location, ...(+new Date(appt.startsAt) !== +d.startsAt ? { reminderSentAt: null } : {}) } }),
+      'This appointment was just cancelled or closed by someone else — refresh the page.');
+    await tx.appointmentParticipant.deleteMany({ where: { appointmentId: id } });
+    if (d.participantIds.length) await tx.appointmentParticipant.createMany({ data: d.participantIds.map((userId) => ({ appointmentId: id, userId })) });
+  });
   // Every group still expected moves with the meeting (time, length, host).
   const moved = +new Date(appt.startsAt) !== +d.startsAt || +new Date(appt.endsAt) !== +d.endsAt || appt.ownerId !== input.ownerId;
   if (moved) {
     const host = (await prisma.user.findUnique({ where: { id: input.ownerId }, select: { fullName: true } }))?.fullName ?? '';
     for (const g of (await groupsOf(id)).filter((x) => x.status === 'EXPECTED')) {
-      await prisma.visit.update({ where: { id: g.id }, data: { expectedAt: d.startsAt, expectedDurationMinutes: Math.max(5, mins(d.startsAt, d.endsAt)), hostUserId: input.ownerId } });
+      // Only a group still expected moves; one checked in at this moment stays as it is.
+      const movedNow = await prisma.visit.updateMany({ where: { id: g.id, status: 'EXPECTED' }, data: { expectedAt: d.startsAt, expectedDurationMinutes: Math.max(5, mins(d.startsAt, d.endsAt)), hostUserId: input.ownerId } });
+      if (movedNow.count === 0) continue;
       await writeAuditLog({ userId: user.id, action: 'visit.booking_changed', entityType: 'Visit', entityId: g.id, metadata: { visitNumber: g.visitNumber, visitor: g.visitorName, people: g.partySize, expectedAt: d.startsAt, reason: `Appointment ${appt.appointmentNumber} rescheduled` } });
       await emailGate('changed', g.id, d, { names: [g.visitorName, ...g.memberNames], organisation: g.company }, host, user.id);
     }
@@ -242,10 +265,13 @@ export async function cancelAppointment(id: string, reason: string): Promise<voi
   if (appt.status !== 'SCHEDULED') throw new SchedulingError('Only a scheduled appointment can be cancelled.');
   if (!reason.trim()) throw new SchedulingError('Give a reason for cancelling.');
   const recipients = await recipientsFor(id, user.id);
-  await prisma.appointment.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason.trim(), cancelledAt: new Date() } });
+  claimed(await prisma.appointment.updateMany({ where: { id, status: 'SCHEDULED' }, data: { status: 'CANCELLED', cancelReason: reason.trim(), cancelledAt: new Date() } }), 'This appointment was just changed by someone else — refresh the page.');
   // None of the visitor groups are expected any more — remove their bookings.
   const host = (await prisma.user.findUnique({ where: { id: appt.ownerId }, select: { fullName: true } }))?.fullName ?? '';
   for (const g of (await groupsOf(id)).filter((x) => x.status === 'EXPECTED')) {
+    // Claimed first, like cancelVisit: a group checked in at this moment is kept.
+    const stillExpected = await prisma.visit.updateMany({ where: { id: g.id, status: 'EXPECTED' }, data: { status: 'CANCELLED' } });
+    if (stillExpected.count === 0) continue;
     await writeAuditLog({ userId: user.id, action: 'visit.cancelled', entityType: 'Visit', entityId: g.id, metadata: { visitNumber: g.visitNumber, visitor: g.visitorName, reason: `Appointment ${appt.appointmentNumber} cancelled` } });
     await emailGate('cancelled', g.id, { title: appt.title, startsAt: appt.startsAt, endsAt: appt.endsAt }, { names: [g.visitorName, ...g.memberNames], organisation: g.company }, host, user.id);
     await prisma.visit.delete({ where: { id: g.id } });
@@ -258,7 +284,7 @@ export async function setAppointmentOutcome(id: string, outcome: 'COMPLETED' | '
   const { user, appt } = await loadForChange(id);
   if (appt.status !== 'SCHEDULED') throw new SchedulingError('This appointment is already closed.');
   if (new Date(appt.startsAt).getTime() > Date.now()) throw new SchedulingError('It has not started yet.');
-  await prisma.appointment.update({ where: { id }, data: { status: outcome, completedAt: outcome === 'COMPLETED' ? new Date() : null } });
+  claimed(await prisma.appointment.updateMany({ where: { id, status: 'SCHEDULED' }, data: { status: outcome, completedAt: outcome === 'COMPLETED' ? new Date() : null } }), 'This appointment was just changed by someone else — refresh the page.');
   await writeAuditLog({ userId: user.id, action: outcome === 'COMPLETED' ? 'appointment.completed' : 'appointment.no_show', entityType: 'Appointment', entityId: id, metadata: { appointmentNumber: appt.appointmentNumber } });
 }
 
@@ -486,7 +512,7 @@ export async function updateVisitorGroup(visitId: string, input: VisitorGroupInp
   const { user, appt } = await loadForGroups(v.appointmentId);
   const g = cleanGroup(input);
   const [lead, ...members] = g.names;
-  await prisma.visit.update({ where: { id: visitId }, data: { visitorName: lead!, partySize: g.names.length, memberNames: members, company: g.organisation, phone: g.phone, purpose: g.purpose } });
+  claimed(await prisma.visit.updateMany({ where: { id: visitId, status: 'EXPECTED' }, data: { visitorName: lead!, partySize: g.names.length, memberNames: members, company: g.organisation, phone: g.phone, purpose: g.purpose } }), 'They were just checked in at the gate — refresh the page.');
   const host = (await prisma.user.findUnique({ where: { id: appt.ownerId }, select: { fullName: true } }))?.fullName ?? '';
   await writeAuditLog({ userId: user.id, action: 'visit.booking_changed', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, visitor: lead, people: g.names.length } });
   await writeAuditLog({ userId: user.id, action: 'appointment.visitors_changed', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber: appt.appointmentNumber, visitNumber: v.visitNumber, visitors: g.names.join(', ') } });
@@ -499,6 +525,7 @@ export async function removeVisitorGroup(visitId: string, reason: string): Promi
   if (v.status !== 'EXPECTED') throw new SchedulingError('They have already arrived — check them out at the gate instead.');
   if (!reason.trim()) throw new SchedulingError('Give a reason for removing them.');
   const { user, appt } = await loadForGroups(v.appointmentId);
+  claimed(await prisma.visit.updateMany({ where: { id: visitId, status: 'EXPECTED' }, data: { status: 'CANCELLED' } }), 'They were just checked in at the gate — refresh the page.');
   const host = (await prisma.user.findUnique({ where: { id: appt.ownerId }, select: { fullName: true } }))?.fullName ?? '';
   await writeAuditLog({ userId: user.id, action: 'visit.cancelled', entityType: 'Visit', entityId: visitId, metadata: { visitNumber: v.visitNumber, visitor: v.visitorName, reason: reason.trim() } });
   await writeAuditLog({ userId: user.id, action: 'appointment.visitors_removed', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber: appt.appointmentNumber, visitNumber: v.visitNumber, visitors: [v.visitorName, ...v.memberNames].join(', '), reason: reason.trim() } });
