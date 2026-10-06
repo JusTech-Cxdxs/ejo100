@@ -128,7 +128,11 @@ export const PLATFORM_ONLY: string[] = [
   'Change the organisation-wide service interval',
 ];
 
-export type Principal = { userId: string; isSuperAdmin: boolean; roleSlugs: string[]; branchId: string | null; departmentId: string | null; extraGrants?: Partial<Record<PermissionKey, Scope>> };
+/** orgBranchIds: the branches of the person's OWN organisation — the tenant
+ * fence. No scope (not even ALL) reaches a record in another organisation's
+ * branch. Absent for the platform team (and for an account not yet placed
+ * in an organisation, which sees nothing of substance anyway). */
+export type Principal = { userId: string; isSuperAdmin: boolean; roleSlugs: string[]; branchId: string | null; departmentId: string | null; organisationId?: string | null; orgBranchIds?: string[]; extraGrants?: Partial<Record<PermissionKey, Scope>> };
 /** homeBranch: for approvals and money — a branch-scoped person must BELONG to
  * the record's branch (someone with no branch on their profile is refused,
  * not treated as organisation-wide). */
@@ -150,6 +154,10 @@ export function decide(p: Principal, key: PermissionKey, record?: RecordContext)
   if (!(key in PERMISSIONS)) return { allowed: false, scope: null, reason: `Unknown permission ${key}` };
   const scope = scopeFor(p, key);
   if (!scope) return { allowed: false, scope: null, reason: 'No role grants this permission' };
+  // Tenant fence — before any scope, ALL included.
+  if (record?.branchId && !p.isSuperAdmin && p.orgBranchIds && !p.orgBranchIds.includes(record.branchId)) {
+    return { allowed: false, scope, reason: 'Outside your organisation' };
+  }
   if (!record || scope === 'ALL') return { allowed: true, scope, reason: scope === 'ALL' ? 'Granted for everything' : 'Granted' };
   const me = p.userId;
   const owns = (record.ownerIds ?? []).includes(me);

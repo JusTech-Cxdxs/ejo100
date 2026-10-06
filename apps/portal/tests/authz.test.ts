@@ -169,3 +169,19 @@ test('Analytics: each module’s own people see its analytics; others do not', (
   no(who(['receptionist']), 'analytics.warranty.view', { branchId: A });
   no(who(['store-officer']), 'analytics.business.view', { branchId: A });
 });
+
+test('Tenant fence: no scope — not even ALL — reaches another organisation', () => {
+  const mine = ['branch-a', 'branch-a2'];
+  const admin = who(['administrator'], { organisationId: 'org-1', orgBranchIds: mine });
+  // Organisation-wide inside their own organisation …
+  yes(admin, 'audit.view', { branchId: 'branch-a2' });
+  yes(admin, 'workshop.job_card.view', { branchId: 'branch-a2' });
+  // … never across into another organisation.
+  no(admin, 'workshop.job_card.view', { branchId: 'org-2-branch' });
+  no(admin, 'analytics.business.view', { branchId: 'org-2-branch' });
+  const tech = who(['technician'], { organisationId: 'org-1', orgBranchIds: mine });
+  no(tech, 'workshop.job.work', { branchId: 'org-2-branch', assigneeIds: ['me'] });
+  assert.equal(decide(admin, 'workshop.job_card.view', { branchId: 'org-2-branch' }).reason, 'Outside your organisation');
+  // The platform team is not fenced.
+  yes(who([], { isSuperAdmin: true, orgBranchIds: mine }), 'workshop.job_card.view', { branchId: 'org-2-branch' });
+});

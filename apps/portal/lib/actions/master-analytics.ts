@@ -2,7 +2,7 @@
 
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
-import { allows, reachWhere } from '@/lib/authz/server';
+import { allows, orgWhere, reachWhere } from '@/lib/authz/server';
 import { computeMasterAnalytics, type Job } from '@/lib/master-analytics';
 import { lagosYmd } from '@/lib/nigeria-calendar';
 
@@ -49,6 +49,8 @@ export async function getMasterAnalytics(periodKey?: string, custom?: { from?: s
   // Branch-aware: a branch-scoped viewer sees exactly their branch's business.
   const reach = await reachWhere('analytics.business.view');
   const viaJob = reach.branchId ? { OR: [{ jobCard: reach }, { vehicleService: reach }] } : {};
+  // Claims belong to the organisation through their customer (a claim need not have a job).
+  const claimsMine = reach.branchId && typeof reach.branchId === 'string' ? viaJob : { customer: await orgWhere() };
 
   const [jcs, svs, qty, batch, serial, eprs, grn, claims] = await Promise.all([
     prisma.jobCard.findMany({
@@ -64,7 +66,7 @@ export async function getMasterAnalytics(periodKey?: string, custom?: { from?: s
     prisma.partSerial.findMany({ where: { issuedToSlipLineId: { not: null } }, select: { goodsReceiptLine: { select: { unitCost: true } }, issuedToSlipLine: { select: { slip: { select: { jobCardId: true, vehicleServiceId: true } } } } } }),
     prisma.externalProcurementRequest.findMany({ where: { ...reach, disbursedAmount: { not: null } }, select: { jobCardId: true, disbursedAmount: true } }),
     prisma.goodsReceiptLine.findMany({ where: { goodsReceipt: { ...reach, receivedAt: { gte: since } } }, select: { totalCost: true, goodsReceipt: { select: { receivedAt: true } } } }),
-    prisma.warrantyClaim.findMany({ where: { ...viaJob, settledAt: { gte: since } }, select: { settledAt: true, settledAmount: true } }),
+    prisma.warrantyClaim.findMany({ where: { ...claimsMine, settledAt: { gte: since } }, select: { settledAt: true, settledAmount: true } }),
   ]);
 
   // Parts cost per job (actual goods-receipt cost), and issues with no cost.

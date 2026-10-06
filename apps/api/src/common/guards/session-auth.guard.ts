@@ -48,7 +48,7 @@ export class SessionAuthGuard implements CanActivate {
     // Attach the authenticated user to the request for downstream handlers.
     (request as Request & { user?: typeof session.user }).user = session.user;
     // Attribute every database write in this request to this user.
-    setAuditActor(session.user.id, 'api');
+    setAuditActor(session.user.id, 'api', (session.user as { organisationId?: string | null }).organisationId ?? null);
     return true;
   }
 

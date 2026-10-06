@@ -48,11 +48,12 @@ records what is verified, what was fixed, what is deliberately deferred, and wha
 2. **Rate limits are per instance** (portal and API); a distributed attack needs the edge WAF above.
 3. **Regions are split** (Vercel US, Render US, Supabase EU) — latency, not correctness; align on paid plans.
 4. **Free-tier services** (Render sleeps; Supabase limits) — upgrade before real production load.
-5. **Authorization (Phase B):** enforcement on every data-changing action, lists, search, analytics,
-   dashboards and the notification feed is live (see §6). Remaining: **multi-organisation isolation**
-   for organisation-wide (ALL-scope) roles — today one organisation is live, so "ALL" means "everything
-   in the database"; before a second organisation joins, ALL must become "everything in MY organisation"
-   (customers, vehicles, warranties and Job Cards gain an organisation filter).
+5. **Organisation isolation (done, v23):** every organisation sees only its own records, people,
+   history and analytics (see §6). Known limits before a SECOND organisation is onboarded:
+   customer e-mail, vehicle plate / chassis, warranty provider name and policy code are unique across
+   the whole platform (a duplicate is refused with a plain message, never shared); the API's
+   organisation-data routes are platform-team only until they are filtered per organisation; a new
+   branch is recognised within 5 minutes (cache).
 6. **No load test against staging yet** — run one (e.g. k6) against a staging copy before go-live.
 7. **No staging environment yet** — create a Vercel Preview + a second Supabase project for staging.
 
@@ -74,7 +75,10 @@ exports, documents, notifications, realtime and analytics — with allowed AND d
 | Analytics | Business (branch-aware: jobs, purchases, receipts, claims), Inventory and Warranty — catalogue-gated; money never sent to people without `analytics.business.view` |
 | Exports / realtime | No CSV exports exist; print documents use the scoped getters. Realtime carries only "something changed" — the data is re-read through the same rules |
 | Tests | 20 allowed / denied catalogue cases + guard coverage, run in CI on every push |
-| Next | Multi-organisation isolation for ALL scope (§4.5) |
+| Organisation fence | `decide()` refuses any record outside the person's organisation — no scope, not even ALL, crosses it; `reachWhere` = the organisation's branches; `orgWhere` / `orgOwned` on customers, vehicles, warranties, claims, providers, policies, staff, roles, search, analytics; every audit row stamped with its organisation (database layer) |
+| Operating branch | Resolved per person: own Workshop branch → their organisation's → (platform team / jobs) the first |
+| Deploys | Only production changes the database, and never with `--accept-data-loss` |
+| Next | Per-organisation uniqueness (customer e-mail, plates, provider names) and per-organisation API routes — before a second organisation joins |
 
 ## 7. Permanent architectural principles (binding on every change)
 1. **No subsystem on another's critical path without a compelling reason.** Prefer independent

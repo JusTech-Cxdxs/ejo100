@@ -3,6 +3,8 @@ import { unstable_cache } from 'next/cache';
 import { after } from 'next/server';
 import { prisma, type Prisma } from '@ejo/database';
 import { announceChange } from '@/lib/realtime-ping';
+import { headers } from 'next/headers';
+import { auth } from '@/lib/auth';
 
 /**
  * Server-only Workshop core — the audit writer and the organisation /
@@ -15,13 +17,46 @@ import { announceChange } from '@/lib/realtime-ping';
  */
 class WorkshopActionError extends Error {}
 
-/** Which branch holds the Workshop department — shared across requests for
- * five minutes (it practically never changes). */
+/**
+ * The OPERATING branch — where a person's Workshop / Store / Security work
+ * happens. Resolved for the signed-in person, so every organisation on the
+ * platform works in its own branch (never another organisation's):
+ *   1. their own branch, when it runs a Workshop;
+ *   2. otherwise the Workshop branch of their organisation;
+ *   3. otherwise (the platform team, background jobs) the first Workshop branch.
+ * The lookup is shared across requests for five minutes per (branch, organisation).
+ */
 const workshopDepartmentShared = unstable_cache(
-  async () => prisma.department.findFirst({ where: { slug: 'workshop' }, select: { branchId: true } }),
-  ['workshop-branch-v1'],
+  async (branchId: string | null, organisationId: string | null) => {
+    const sel = { branchId: true } as const;
+    if (branchId) {
+      const own = await prisma.department.findFirst({ where: { slug: 'workshop', branchId }, select: sel });
+      if (own) return own;
+    }
+    if (organisationId) {
+      const inOrg = await prisma.department.findFirst({ where: { slug: 'workshop', branch: { businessUnit: { organisationId } } }, orderBy: { createdAt: 'asc' }, select: sel });
+      if (inOrg) return inOrg;
+      // A person who belongs to an organisation never falls through to another organisation's branch.
+      return null;
+    }
+    return prisma.department.findFirst({ where: { slug: 'workshop' }, orderBy: { createdAt: 'asc' }, select: sel });
+  },
+  ['workshop-branch-v2'],
   { revalidate: 300, tags: ['org-structure'] },
 );
+
+/** The signed-in person's branch and organisation (null outside a request, e.g. cron). */
+const whereIWork = cache(async (): Promise<{ branchId: string | null; organisationId: string | null }> => {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    const id = session?.user?.id;
+    if (!id) return { branchId: null, organisationId: null };
+    const u = await prisma.user.findUnique({ where: { id }, select: { branchId: true, organisationId: true } });
+    return { branchId: u?.branchId ?? null, organisationId: u?.organisationId ?? null };
+  } catch {
+    return { branchId: null, organisationId: null };
+  }
+});
 
 /** Writes to the existing AuditLog model — reused exactly as it already
  * is (its own example action string is literally "job_card.approved"),
@@ -86,8 +121,9 @@ export async function getWorkshopOrgContext(departmentNameOverride?: string): Pr
   branchName: string;
   departmentName: string;
 }> {
+  // The operating branch's Workshop — this organisation's own names on its emails.
   const department = await prisma.department.findFirstOrThrow({
-    where: { slug: 'workshop' },
+    where: { slug: 'workshop', branchId: await getWorkshopBranchId() },
     select: {
       name: true,
       branch: {
@@ -150,7 +186,8 @@ export async function isEligibleSupervisor(userId: string, departmentId: string)
 }
 
 async function getWorkshopBranchIdUncached(): Promise<string> {
-  const department = await workshopDepartmentShared();
+  const me = await whereIWork();
+  const department = await workshopDepartmentShared(me.branchId, me.organisationId);
   if (!department) {
     throw new WorkshopActionError(
       'No branch has a Workshop department yet — run the seed script, or create one under Branches.',

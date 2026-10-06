@@ -1,4 +1,5 @@
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { prisma } from '@ejo/database';
 import { requireUser } from '@/lib/actions/workshop';
@@ -10,20 +11,46 @@ import { decide, type Decision, type PermissionKey, type Principal, type RecordC
  * 'use server' file — nothing here is callable from outside the server).
  */
 
+/** An organisation's branches — shared across requests for five minutes
+ * (branches are rarely added; a new one is reachable within minutes). */
+const branchesOfOrganisation = unstable_cache(
+  async (organisationId: string): Promise<string[]> =>
+    (await prisma.branch.findMany({ where: { businessUnit: { organisationId } }, select: { id: true } })).map((b: { id: string }) => b.id),
+  ['org-branches-v1'],
+  { revalidate: 300, tags: ['org-structure'] },
+);
+
+const soleOrganisationId = unstable_cache(
+  async (): Promise<string | null> => {
+    const orgs = await prisma.organisation.findMany({ select: { id: true }, take: 2 });
+    return orgs.length === 1 ? orgs[0]!.id : null;
+  },
+  ['sole-organisation-v1'],
+  { revalidate: 300, tags: ['org-structure'] },
+);
+
 /** The signed-in person, loaded once per request. */
 export const getPrincipal = cache(async (): Promise<Principal> => {
   const user = await requireUser();
   const u = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { id: true, branchId: true, departmentId: true, roles: { select: { role: { select: { slug: true, isSuperAdmin: true, permissions: { select: { permission: { select: { key: true } } } } } } } } },
+    select: { id: true, branchId: true, departmentId: true, organisationId: true, roles: { select: { role: { select: { slug: true, isSuperAdmin: true, permissions: { select: { permission: { select: { key: true } } } } } } } } },
   });
+  const isSuperAdmin = (u?.roles ?? []).some((r: { role: { isSuperAdmin: boolean } }) => r.role.isSuperAdmin);
+  // The tenant fence: every branch of this person's organisation.
+  // A staff account not yet placed in an organisation, while the platform has
+  // exactly one: it belongs to that one (the v23 SQL makes this permanent).
+  const organisationId = u?.organisationId ?? (isSuperAdmin ? null : await soleOrganisationId());
+  const orgBranchIds = !isSuperAdmin && organisationId ? await branchesOfOrganisation(organisationId) : undefined;
   const roles = u?.roles ?? [];
   // Database grants can ADD permissions the catalogue defines (scope: branch).
   const extra: Partial<Record<PermissionKey, 'BRANCH'>> = {};
   for (const r of roles) for (const rp of r.role.permissions) if (rp.permission.key in PERMISSIONS) extra[rp.permission.key as PermissionKey] = 'BRANCH';
   return {
     userId: user.id,
-    isSuperAdmin: roles.some((r: { role: { isSuperAdmin: boolean } }) => r.role.isSuperAdmin),
+    isSuperAdmin,
+    organisationId,
+    orgBranchIds,
     roleSlugs: roles.map((r: { role: { slug: string } }) => r.role.slug),
     branchId: u?.branchId ?? null,
     departmentId: u?.departmentId ?? null,
@@ -92,11 +119,58 @@ export async function canSeeRecord(key: PermissionKey, record: RecordContext, wh
  * so a list can never show more than the record pages would. Branch-scoped
  * people get their branch; organisation-wide people get no extra filter.
  */
-export async function reachWhere(key: PermissionKey): Promise<{ branchId?: string }> {
+export async function reachWhere(key: PermissionKey): Promise<{ branchId?: string | { in: string[] } }> {
   const p = await getPrincipal();
   const d = decide(p, key);
   if (!d.allowed) return { branchId: '__no_access__' };
-  return d.scope === 'BRANCH' && p.branchId ? { branchId: p.branchId } : {};
+  if (d.scope === 'BRANCH' && p.branchId) return { branchId: p.branchId };
+  // Organisation-wide (or a person with no branch): every branch of THEIR
+  // organisation — never another organisation's. The platform team: all.
+  return p.orgBranchIds ? { branchId: { in: p.orgBranchIds } } : {};
+}
+
+/** Records owned by an organisation directly (customers, staff, roles,
+ * broadcasts, warranty providers and policies): the person's own
+ * organisation; the platform team sees all. */
+export async function orgWhere(): Promise<{ organisationId?: string }> {
+  const p = await getPrincipal();
+  if (p.isSuperAdmin) return {};
+  return { organisationId: p.organisationId ?? '__no_organisation__' };
+}
+
+/** Organisation-owned reference data that existed before multi-organisation
+ * support (warranty providers and policies): the person's organisation, or
+ * not yet assigned (filled in by the v23 SQL — no row stays unassigned once a
+ * second organisation exists). Wrapped in AND so it never clashes with a
+ * query's own OR. */
+export async function orgOwned(): Promise<{ AND?: { OR: ({ organisationId: string } | { organisationId: null })[] }[] }> {
+  const p = await getPrincipal();
+  if (p.isSuperAdmin) return {};
+  return { AND: [{ OR: [{ organisationId: p.organisationId ?? '__no_organisation__' }, { organisationId: null }] }] };
+}
+
+/** The organisation a new record belongs to: the person's own (for the
+ * platform team, the organisation of the branch they are working in). */
+export async function myOrganisationId(): Promise<string | null> {
+  const p = await getPrincipal();
+  if (p.organisationId) return p.organisationId;
+  const { getWorkshopBranchId } = await import('@/lib/workshop-core');
+  const b = await prisma.branch.findUnique({ where: { id: await getWorkshopBranchId() }, select: { businessUnit: { select: { organisationId: true } } } }).catch(() => null);
+  return b?.businessUnit.organisationId ?? null;
+}
+
+/** People of the organisation this person is ACTING for — their own; for
+ * the platform team, the organisation of the branch they are working in.
+ * Used for "who gets told" (gate staff, heads), never to widen what is seen. */
+export async function actingOrgWhere(): Promise<{ organisationId?: string }> {
+  const org = await myOrganisationId();
+  return org ? { organisationId: org } : {};
+}
+
+/** Whether a directly-owned record belongs to the person's organisation. */
+export async function inMyOrganisation(organisationId: string | null | undefined): Promise<boolean> {
+  const p = await getPrincipal();
+  return p.isSuperAdmin || (Boolean(organisationId) && organisationId === p.organisationId);
 }
 
 /** A record (with its branch) — or null when it is outside this person's reach. */

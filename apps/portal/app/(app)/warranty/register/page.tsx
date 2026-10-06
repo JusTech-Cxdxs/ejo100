@@ -1,3 +1,4 @@
+import { orgWhere } from '@/lib/authz/server';
 import { prisma } from '@ejo/database';
 import { durationLabel } from '@/lib/warranty-state';
 import { requireUser } from '@/lib/actions/workshop';
@@ -20,11 +21,14 @@ import { LiveSearchInput } from '@/components/LiveSearchInput';
 export default async function RegisterWarrantyPage({ searchParams }: { searchParams: Promise<{ vehicleId?: string; q?: string; error?: string }> }) {
   const { vehicleId, q, error } = await searchParams;
   await requireUser();
+  // Only this organisation's vehicles.
+  const mine = await orgWhere();
   const [policies, matches, vehicle] = await Promise.all([
     listWarrantyPolicies('ASSET'),
     !vehicleId && q?.trim()
       ? prisma.customerVehicle.findMany({
           where: {
+            customer: mine,
             OR: [
               { chassisNumber: { contains: q.trim(), mode: 'insensitive' } },
               { plateNumber: { contains: q.trim(), mode: 'insensitive' } },
@@ -36,8 +40,8 @@ export default async function RegisterWarrantyPage({ searchParams }: { searchPar
         })
       : Promise.resolve([]),
     vehicleId
-      ? prisma.customerVehicle.findUnique({
-          where: { id: vehicleId },
+      ? prisma.customerVehicle.findFirst({
+          where: { id: vehicleId, customer: mine },
           select: { id: true, make: true, model: true, year: true, plateNumber: true, chassisNumber: true, mileage: true, customer: { select: { fullName: true } } },
         })
       : Promise.resolve(null),

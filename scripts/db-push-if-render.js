@@ -11,10 +11,8 @@
  * - Uses `prisma db push` (not `migrate deploy`) — no pre-existing
  *   migration history required, so the whole pipeline
  *   (generate -> push -> build) runs unattended on every deploy.
- * - `--accept-data-loss` so it never blocks on an interactive prompt in
- *   a non-interactive build. Same trade-off as the Vercel script: no
- *   migration history, appropriate for a solo project managed entirely
- *   from web dashboards.
+ * - NO `--accept-data-loss`: anything destructive stops the deploy instead
+ *   of deleting data; pull-request previews never touch the database.
  *
  * Render sets the `RENDER` environment variable to "true" automatically
  * on every Render service — this script is a no-op anywhere that
@@ -32,6 +30,12 @@ if (!process.env.RENDER) {
   process.exit(0);
 }
 
+if (process.env.IS_PULL_REQUEST === 'true') {
+  // Render pull-request previews must NEVER change the live database.
+  console.log('[db-push] Skipping — pull-request preview; only the main service changes the database.');
+  process.exit(0);
+}
+
 if (!process.env.DATABASE_URL) {
   console.log('[db-push] Skipping — DATABASE_URL is not set for this deployment yet.');
   process.exit(0);
@@ -40,7 +44,10 @@ if (!process.env.DATABASE_URL) {
 const schemaPath = path.resolve(__dirname, '..', 'packages/database/prisma/schema.prisma');
 
 console.log('[db-push] Pushing Prisma schema to the database...');
-execSync(`npx prisma db push --schema="${schemaPath}" --accept-data-loss --skip-generate`, {
+// No --accept-data-loss: a change that would drop a column or table (or
+// any data) now STOPS the deploy instead of silently deleting data. Such
+// changes are made deliberately, with a reviewed SQL script and a backup.
+execSync(`npx prisma db push --schema="${schemaPath}" --skip-generate`, {
   stdio: 'inherit',
 });
 console.log('[db-push] Done.');

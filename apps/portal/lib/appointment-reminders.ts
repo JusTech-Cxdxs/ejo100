@@ -14,7 +14,7 @@ export async function sendDueAppointmentReminders(now: Date = new Date()): Promi
   const due = await prisma.appointment.findMany({
     where: { status: 'SCHEDULED', reminderSentAt: null, startsAt: { gt: now, lte: new Date(now.getTime() + 65 * 60000) } },
     select: {
-      id: true, title: true, startsAt: true, endsAt: true, location: true,
+      id: true, branchId: true, title: true, startsAt: true, endsAt: true, location: true,
       room: { select: { name: true } }, owner: { select: { fullName: true, email: true } },
       participants: { select: { user: { select: { fullName: true, email: true } } } },
       visits: { where: { status: { in: ['EXPECTED', 'CHECKED_IN'] } }, select: { visitorName: true, partySize: true, company: true } },
@@ -32,7 +32,7 @@ export async function sendDueAppointmentReminders(now: Date = new Date()): Promi
       subject: `Reminder: ${a.title} at ${time(a.startsAt)}`,
       heading: `Your appointment starts in about ${mins} ${mins === 1 ? 'minute' : 'minutes'}`,
       lines: [a.title, `${time(a.startsAt)} – ${time(a.endsAt)}`, `Where: ${a.room?.name ?? a.location ?? '—'}`, `Host: ${a.owner.fullName}`, ...a.visits.map((v: { visitorName: string; partySize: number; company: string | null }) => `Visitors: ${v.visitorName}${v.partySize > 1 ? ` + ${v.partySize - 1}` : ''}${v.company ? ` (${v.company})` : ''}`)],
-      path: `/schedule/${a.id}`, actorId: null,
+      path: `/schedule/${a.id}`, actorId: null, branchId: a.branchId,
     });
     await prisma.auditLog.create({ data: { userId: null, action: 'appointment.reminder_sent', entityType: 'Appointment', entityId: a.id, metadata: { minutesBefore: mins } } });
     sent += 1;

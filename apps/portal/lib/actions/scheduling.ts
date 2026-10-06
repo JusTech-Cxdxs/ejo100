@@ -6,7 +6,7 @@ import { after } from 'next/server';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog, getWorkshopBranchId } from '@/lib/workshop-core';
-import { getPrincipal, authorize, refuse } from '@/lib/authz/server';
+import { actingOrgWhere, authorize, getPrincipal, orgWhere, refuse } from '@/lib/authz/server';
 import { decide, ROLE_GRANTS } from '@/lib/authz/catalogue';
 import { sendLoggedEmail, type Recipient } from '@/lib/logged-email';
 import { sendDueAppointmentReminders } from '@/lib/appointment-reminders';
@@ -51,7 +51,7 @@ async function getSchedulingAccessUncached(): Promise<SchedulingAccess> {
   const me = await prisma.user.findUnique({ where: { id: user.id }, select: { id: true, fullName: true } });
   let owners: { id: string; fullName: string; mine: boolean }[] = [];
   if (isAdmin) {
-    const all = await prisma.user.findMany({ where: { isActive: true, ...calendarHolders() }, orderBy: { fullName: 'asc' }, select: { id: true, fullName: true } });
+    const all = await prisma.user.findMany({ where: { isActive: true, ...(await orgWhere()), ...calendarHolders() }, orderBy: { fullName: 'asc' }, select: { id: true, fullName: true } });
     owners = all.map((u: { id: string; fullName: string }) => ({ ...u, mine: u.id === user.id }));
   } else {
     const delegated = await prisma.calendarDelegate.findMany({ where: { delegateId: user.id, owner: { isActive: true } }, select: { owner: { select: { id: true, fullName: true } } } });
@@ -126,7 +126,7 @@ async function assertNoClash(ownerId: string, roomId: string | null, s: Date, e:
 }
 
 async function gateStaff(): Promise<Recipient[]> {
-  return prisma.user.findMany({ where: { isActive: true, roles: { some: { role: { slug: { in: ['security-officer', 'chief-security-officer', 'receptionist'] } } } } }, select: { fullName: true, email: true } });
+  return prisma.user.findMany({ where: { isActive: true, ...(await actingOrgWhere()), roles: { some: { role: { slug: { in: ['security-officer', 'chief-security-officer', 'receptionist'] } } } } }, select: { fullName: true, email: true } });
 }
 
 /** Tell Security (and Reception) about an appointment's visitors. */
@@ -352,9 +352,9 @@ export async function addDelegate(ownerId: string, delegateId: string): Promise<
   if (!ownerId || !delegateId) throw new SchedulingError('Choose the official and the aide.');
   if (ownerId === delegateId) throw new SchedulingError('Someone cannot be their own aide.');
   if (!a.isAdmin && !(a.isCalendarUser && ownerId === a.userId)) return refuse('schedule.manage', 'addDelegate', 'Only the official or a Scheduling Admin can add aides.');
-  const owner = await prisma.user.findFirst({ where: { id: ownerId, isActive: true, ...calendarHolders() }, select: { fullName: true, isActive: true } });
+  const owner = await prisma.user.findFirst({ where: { id: ownerId, isActive: true, ...(await orgWhere()), ...calendarHolders() }, select: { fullName: true, isActive: true } });
   if (!owner?.isActive) throw new SchedulingError('The official must be an active member of staff who keeps a calendar.');
-  const aide = await prisma.user.findUnique({ where: { id: delegateId }, select: { fullName: true, email: true, isActive: true } });
+  const aide = await prisma.user.findFirst({ where: { id: delegateId, ...(await orgWhere()) }, select: { fullName: true, email: true, isActive: true } });
   if (!aide?.isActive) throw new SchedulingError('The aide must be an active member of staff.');
   const exists = await prisma.calendarDelegate.findUnique({ where: { ownerId_delegateId: { ownerId, delegateId } }, select: { id: true } });
   if (exists) throw new SchedulingError(`${aide.fullName} can already book for ${owner.fullName}.`);

@@ -13,12 +13,13 @@ export async function notifyGateOfRelease(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', 
   try {
     const rec =
       kind === 'JOB_CARD'
-        ? await prisma.jobCard.findUnique({ where: { id: recordId }, select: { jobNumber: true, status: true, collectedByName: true, vehicle: { select: { make: true, model: true, plateNumber: true, chassisNumber: true } }, customer: { select: { fullName: true } }, branch: { select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } } } } })
+        ? await prisma.jobCard.findUnique({ where: { id: recordId }, select: { jobNumber: true, status: true, collectedByName: true, vehicle: { select: { make: true, model: true, plateNumber: true, chassisNumber: true } }, customer: { select: { fullName: true } }, branch: { select: { name: true, businessUnit: { select: { organisationId: true, organisation: { select: { name: true } } } } } } } })
             .then((j) => j && { number: j.jobNumber, handBack: false, collector: j.collectedByName, vehicle: j.vehicle, customer: j.customer.fullName, branch: j.branch })
-        : await prisma.vehicleService.findUnique({ where: { id: recordId }, select: { serviceNumber: true, status: true, collectedByName: true, vehicle: { select: { make: true, model: true, plateNumber: true, chassisNumber: true } }, customer: { select: { fullName: true } }, branch: { select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } } } } })
+        : await prisma.vehicleService.findUnique({ where: { id: recordId }, select: { serviceNumber: true, status: true, collectedByName: true, vehicle: { select: { make: true, model: true, plateNumber: true, chassisNumber: true } }, customer: { select: { fullName: true } }, branch: { select: { name: true, businessUnit: { select: { organisationId: true, organisation: { select: { name: true } } } } } } } })
             .then((v) => v && { number: v.serviceNumber, handBack: v.status === 'CANCELLED', collector: v.collectedByName, vehicle: v.vehicle, customer: v.customer.fullName, branch: v.branch });
     if (!rec) return;
-    const gate = await prisma.user.findMany({ where: { isActive: true, roles: { some: { role: { slug: { in: ['security-officer', 'chief-security-officer'] } } } } }, select: { fullName: true, email: true } });
+    // The gate of THIS record's organisation only.
+    const gate = await prisma.user.findMany({ where: { isActive: true, organisationId: rec.branch.businessUnit.organisationId, roles: { some: { role: { slug: { in: ['security-officer', 'chief-security-officer'] } } } } }, select: { fullName: true, email: true } });
     if (gate.length === 0) return;
     const car = [rec.vehicle.make, rec.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     const portal = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';

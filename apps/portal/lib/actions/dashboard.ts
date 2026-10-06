@@ -2,7 +2,7 @@
 
 import { prisma } from '@ejo/database';
 import { jobCardActive, serviceInside } from '@/lib/custody';
-import { allows, reachWhere } from '@/lib/authz/server';
+import { allows, orgWhere, reachWhere } from '@/lib/authz/server';
 import { getWarrantyDashboardItems } from './warranty';
 import { getSecurityDashboardItems } from './security';
 import { getWorkflowActionItems } from './workflow-actions';
@@ -382,7 +382,7 @@ export async function getPlatformGlance(): Promise<GlanceTile[]> {
     reachWhere('security.view'),
     requireUser().then((u) => prisma.user.findUnique({ where: { id: u.id }, select: { organisationId: true } })),
   ]);
-  const claimReach = work.branchId ? { OR: [{ jobCard: work }, { vehicleService: work }] } : {};
+  const claimReach = typeof work.branchId === 'string' ? { OR: [{ jobCard: work }, { vehicleService: work }] } : { customer: await orgWhere() };
   const [jcActive, svActive, prsOpen, eprOpen, claimsOpen, visitors, incidents, apptsToday, broadcasts, grnsToday] = await Promise.all([
     n(prisma.jobCard.count({ where: { ...work, ...jobCardActive() } })),
     n(prisma.vehicleService.count({ where: { ...work, ...serviceInside() } })),

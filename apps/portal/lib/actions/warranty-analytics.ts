@@ -2,7 +2,7 @@
 
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
-import { authorize } from '@/lib/authz/server';
+import { authorize, orgWhere, reachWhere } from '@/lib/authz/server';
 import { listWarrantyIdsWithReminderDue } from './warranty';
 import { computeWarrantyAnalytics } from '@/lib/warranty-analytics';
 
@@ -13,8 +13,10 @@ export async function getWarrantyAnalytics() {
   await requireUser();
   await authorize('analytics.warranty.view', undefined, 'getWarrantyAnalytics', 'Warranty Analytics is for the Warranty HOD, the Workshop Manager and administrators.');
   const since = new Date(Date.now() - 180 * 86400000);
+  const mine = { customer: await orgWhere() };
   const [warranties, claims, jobCards, reminderDue] = await Promise.all([
     prisma.warranty.findMany({
+      where: mine,
       select: {
         id: true, warrantyNumber: true, kind: true, status: true, startsAt: true, endsAt: true, startReading: true, distanceLimit: true, statusReason: true, issuedAt: true, vehicleId: true,
         vehicle: { select: { make: true, model: true, mileage: true } },
@@ -22,6 +24,7 @@ export async function getWarrantyAnalytics() {
       },
     }),
     prisma.warrantyClaim.findMany({
+      where: mine,
       select: {
         id: true, claimNumber: true, status: true, remedy: true, providerId: true, causalPart: true, causalPartNumber: true, claimedAmount: true, approvedAmount: true, settledAmount: true,
         decisionNotes: true, deadlineAt: true, createdAt: true, reviewRequestedAt: true, submittedAt: true, decidedAt: true, settledAt: true, failureDate: true, resubmissionCount: true,
@@ -31,7 +34,7 @@ export async function getWarrantyAnalytics() {
       },
     }),
     prisma.jobCard.findMany({
-      where: { createdAt: { gte: since }, status: { not: 'CANCELLED' } },
+      where: { ...(await reachWhere('workshop.job_card.view')), createdAt: { gte: since }, status: { not: 'CANCELLED' } },
       select: { id: true, jobNumber: true, createdAt: true, vehicleId: true, vehicle: { select: { make: true, model: true } } },
     }),
     listWarrantyIdsWithReminderDue(),

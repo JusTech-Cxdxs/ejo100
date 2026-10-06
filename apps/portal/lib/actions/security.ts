@@ -4,7 +4,7 @@ import { cache } from 'react';
 
 import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
-import { getPrincipal, authorize, allows, refuse, canSeeRecord, reachWhere } from '@/lib/authz/server';
+import { actingOrgWhere, allows, authorize, canSeeRecord, getPrincipal, orgWhere, reachWhere, refuse } from '@/lib/authz/server';
 import { decide } from '@/lib/authz/catalogue';
 import { jobCardInside, serviceInside } from '@/lib/custody';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
@@ -62,7 +62,7 @@ async function requireFrontDesk(): Promise<SecurityRoles> {
 
 async function usersWithSlugs(slugList: string[], where: Record<string, unknown> = {}): Promise<Person[]> {
   return prisma.user.findMany({
-    where: { isActive: true, ...where, roles: { some: { role: { slug: { in: slugList } } } } },
+    where: { isActive: true, ...(await actingOrgWhere()), ...where, roles: { some: { role: { slug: { in: slugList } } } } },
     select: { id: true, fullName: true, email: true },
   });
 }
@@ -717,7 +717,7 @@ export async function getSecurityHistory(entityType: 'Visit' | 'ExitPass' | 'Veh
 export async function listActiveStaff() {
   await requireUser();
   return prisma.user.findMany({
-    where: { isActive: true },
+    where: { isActive: true, ...(await orgWhere()) },
     orderBy: { fullName: 'asc' },
     select: { id: true, fullName: true, employeeId: true, department: { select: { name: true } }, employeeProfile: { select: { jobTitle: true } } },
   });
@@ -764,7 +764,7 @@ export async function searchStaffOptions(query: string): Promise<{ value: string
   await requireUser();
   const q = query.trim();
   const rows = await prisma.user.findMany({
-    where: { isActive: true, ...((await viewerIsPlatform()) ? {} : { NOT: { roles: { some: { role: { isSuperAdmin: true } } } } }), ...(q ? { OR: [{ fullName: { contains: q, mode: 'insensitive' } }, { employeeId: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] } : {}) },
+    where: { isActive: true, ...(await orgWhere()), ...((await viewerIsPlatform()) ? {} : { NOT: { roles: { some: { role: { isSuperAdmin: true } } } } }), ...(q ? { OR: [{ fullName: { contains: q, mode: 'insensitive' } }, { employeeId: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] } : {}) },
     orderBy: { fullName: 'asc' },
     take: 25,
     select: { id: true, fullName: true, employeeId: true, department: { select: { name: true } }, employeeProfile: { select: { jobTitle: true } } },

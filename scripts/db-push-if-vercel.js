@@ -13,10 +13,10 @@
  * it, with no pre-existing migration history required, so the whole
  * pipeline (generate -> push -> build) can run unattended on every deploy.
  *
- * Trade-off (by design, not an oversight): this does not keep a migration
- * history and uses --accept-data-loss so it never blocks on an interactive
- * prompt in a non-interactive build. For a solo project managed entirely
- * from the browser, that trade-off is the right one; if migration history
+ * Trade-off: this does not keep a migration history. It does NOT use
+ * --accept-data-loss: anything destructive fails the deploy (safe by
+ * default), and only PRODUCTION deploys run it — previews never touch the
+ * database. If migration history
  * ever becomes necessary, a terminal-based `prisma migrate dev` session
  * is unavoidable at that point.
  *
@@ -31,6 +31,13 @@ if (!process.env.VERCEL) {
   process.exit(0);
 }
 
+if (process.env.VERCEL_ENV !== 'production') {
+  // Preview builds (every pull request) share the same DATABASE_URL — they
+  // must NEVER change the live database before the change is merged.
+  console.log(`[db-push] Skipping — ${process.env.VERCEL_ENV || 'unknown'} deployment; only production changes the database.`);
+  process.exit(0);
+}
+
 if (!process.env.DATABASE_URL) {
   console.log('[db-push] Skipping — DATABASE_URL is not set for this deployment yet.');
   process.exit(0);
@@ -39,7 +46,10 @@ if (!process.env.DATABASE_URL) {
 const schemaPath = path.resolve(__dirname, '..', 'packages/database/prisma/schema.prisma');
 
 console.log('[db-push] Pushing Prisma schema to the database...');
-execSync(`npx prisma db push --schema="${schemaPath}" --accept-data-loss --skip-generate`, {
+// No --accept-data-loss: a change that would drop a column or table (or
+// any data) now STOPS the deploy instead of silently deleting data. Such
+// changes are made deliberately, with a reviewed SQL script and a backup.
+execSync(`npx prisma db push --schema="${schemaPath}" --skip-generate`, {
   stdio: 'inherit',
 });
 console.log('[db-push] Done.');

@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize, canSeeRecord, reachWhere, authorizeOnJobCard, refuse } from '@/lib/authz/server';
+import { authorize, canSeeRecord, reachWhere, authorizeOnJobCard, refuse, orgWhere, inMyOrganisation } from '@/lib/authz/server';
 import { jobCardActive, jobCardInside, serviceInside } from '@/lib/custody';
 
 
@@ -105,7 +105,7 @@ export async function requireUser(): Promise<{ id: string }> {
   }
   // Every database write for the rest of this request is attributed to
   // this user in the audit journal (see @ejo/database audit-journal).
-  setAuditActor(session.user.id, 'portal');
+  setAuditActor(session.user.id, 'portal', (session.user as { organisationId?: string | null }).organisationId ?? null);
   return { id: session.user.id };
 }
 
@@ -318,13 +318,14 @@ export async function listCustomers(search?: string) {
   return prisma.customer.findMany({
     where: search
       ? {
+          ...(await orgWhere()),
           OR: [
             { fullName: { contains: search, mode: 'insensitive' } },
             { email: { contains: search, mode: 'insensitive' } },
             { phone: { contains: search, mode: 'insensitive' } },
           ],
         }
-      : undefined,
+      : await orgWhere(),
     orderBy: { createdAt: 'desc' },
     take: 100,
     include: {
@@ -363,6 +364,7 @@ export async function searchCustomers(query: string): Promise<CustomerSearchResu
   if (!q) return [];
   return prisma.customer.findMany({
     where: {
+      ...(await orgWhere()),
       OR: [
         { fullName: { contains: q, mode: 'insensitive' } },
         { email: { contains: q, mode: 'insensitive' } },
@@ -386,6 +388,7 @@ export async function searchCustomers(query: string): Promise<CustomerSearchResu
 export async function listRecentCustomers(): Promise<CustomerSearchResult[]> {
   await requireUser();
   return prisma.customer.findMany({
+    where: await orgWhere(),
     orderBy: { createdAt: 'desc' },
     take: 8,
     select: { id: true, fullName: true, email: true, phone: true },
@@ -419,6 +422,10 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
 
   const existing = await prisma.customer.findUnique({ where: { email } });
   if (existing) {
+    // Never hand back (or attach work to) another organisation's customer.
+    if (!(await inMyOrganisation(existing.organisationId))) {
+      throw new WorkshopActionError('That email address is already registered on the platform — use a different email for this customer.');
+    }
     return { customer: existing, wasExisting: true, welcomeEmailSent: false };
   }
 
@@ -531,7 +538,7 @@ export async function listVehiclesForCustomer(customerId: string): Promise<Vehic
   await requireUser();
   if (!customerId) return [];
   return prisma.customerVehicle.findMany({
-    where: { customerId },
+    where: { customerId, customer: await orgWhere() },
     orderBy: { createdAt: 'desc' },
     take: 50,
     select: { id: true, plateNumber: true, chassisNumber: true, make: true, model: true, year: true, vehicleType: true },
@@ -543,6 +550,7 @@ export async function listAllVehicles(search?: string, vehicleType?: 'PASSENGER'
   const q = search?.trim();
   return prisma.customerVehicle.findMany({
     where: {
+      customer: await orgWhere(),
       ...(vehicleType ? { vehicleType } : {}),
       ...(q
         ? {
@@ -566,8 +574,9 @@ export async function listAllVehicles(search?: string, vehicleType?: 'PASSENGER'
 
 export async function getVehicle(id: string) {
   await requireUser();
-  return prisma.customerVehicle.findUnique({
-    where: { id },
+  // Another organisation's vehicle behaves as "not found".
+  return prisma.customerVehicle.findFirst({
+    where: { id, customer: await orgWhere() },
     include: {
       customer: { select: { fullName: true } },
       createdBy: { select: { fullName: true } },
@@ -609,6 +618,8 @@ export async function createVehicle(input: CreateVehicleInput) {
   if (!input.customerId) {
     throw new WorkshopActionError('A vehicle must belong to a customer.');
   }
+  const owner = await prisma.customer.findFirst({ where: { id: input.customerId, ...(await orgWhere()) }, select: { id: true } });
+  if (!owner) throw new WorkshopActionError('That customer could not be found.');
 
   // Required at the server, not just via the form's `required` attribute
   // — a form's client-side validation can always be bypassed, so this is
@@ -695,7 +706,7 @@ export type UpdateVehicleInput = {
 export async function updateVehicle(input: UpdateVehicleInput): Promise<void> {
   await authorize('workshop.customer.manage', undefined, 'updateVehicle');
   const currentUser = await requireUser();
-  const existing = await prisma.customerVehicle.findUnique({ where: { id: input.id } });
+  const existing = await prisma.customerVehicle.findFirst({ where: { id: input.id, customer: await orgWhere() } });
   if (!existing) {
     throw new WorkshopActionError('Vehicle not found.');
   }
@@ -1019,8 +1030,9 @@ export async function createJobCard(input: CreateJobCardInput) {
   // type — never taken from client input — so it's structurally
   // impossible for a Job Card to be routed to the wrong department by a
   // client-side mistake or tampering.
-  const vehicle = await prisma.customerVehicle.findUnique({
-    where: { id: input.vehicleId },
+  // The vehicle must belong to this organisation (never another's).
+  const vehicle = await prisma.customerVehicle.findFirst({
+    where: { id: input.vehicleId, customer: await orgWhere() },
     select: { vehicleType: true, make: true, model: true, plateNumber: true },
   });
   if (!vehicle) {
@@ -1966,7 +1978,7 @@ export async function rejectTechnicianAssignment(jobCardId: string, reason: stri
 export async function listTechnicianCandidates() {
   await requireUser();
   return prisma.user.findMany({
-    where: { isActive: true },
+    where: { isActive: true, ...(await orgWhere()) },
     orderBy: { fullName: 'asc' },
     select: {
       id: true,
@@ -1988,8 +2000,8 @@ export async function getWorkshopDashboardCounts() {
   const reach = await reachWhere('workshop.job_card.view');
   const [activeJobCards, totalCustomers, totalVehicles, inWorkshop, servicesInWorkshop] = await Promise.all([
     prisma.jobCard.count({ where: { ...reach, ...jobCardActive() } }),
-    prisma.customer.count(),
-    prisma.customerVehicle.count(),
+    prisma.customer.count({ where: await orgWhere() }),
+    prisma.customerVehicle.count({ where: { customer: await orgWhere() } }),
     prisma.jobCard.count({ where: { ...reach, ...jobCardInside() } }),
     prisma.vehicleService.count({ where: { ...reach, ...serviceInside() } }),
   ]);
