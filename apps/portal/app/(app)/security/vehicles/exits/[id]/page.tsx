@@ -1,3 +1,4 @@
+import { allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getVehicleGateExit, getVehicleExitHistory } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -37,7 +38,7 @@ export default async function VehicleExitPage({ params, searchParams }: { params
         <Row k="Confirmed at the gate by" val={x.exitedBy.fullName} />
         <Row k="Notes" val={x.notes} />
         <p className="mt-2 flex flex-wrap gap-4 text-xs">
-          {rec ? <LoadingLink href={rec.href} className="text-[var(--ejo-primary)] hover:underline">Open {rec.number} →</LoadingLink> : null}
+          {rec && (await allows('workshop.job_card.view')) ? <LoadingLink href={rec.href} className="text-[var(--ejo-primary)] hover:underline">Open {rec.number} →</LoadingLink> : null}
           <LoadingLink href={`/workshop/vehicles/${x.vehicleId}/edit`} className="text-[var(--ejo-primary)] hover:underline">Open the vehicle →</LoadingLink>
         </p>
       </dl>

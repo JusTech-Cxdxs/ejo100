@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getSchedulingAccess, getAppointment, listRooms } from '@/lib/actions/scheduling';
 import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
@@ -8,6 +9,8 @@ import { AppointmentForm } from '@/components/AppointmentForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 
 export default async function EditAppointmentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
+  // Calendars are for people who keep one (an appointment itself stays open to the people in it).
+  await guardAnyPage(['schedule.view', 'schedule.manage'], '/schedule');
   const { id } = await params;
   const { error } = await searchParams;
   const [access, a, rooms] = await Promise.all([getSchedulingAccess(), getAppointment(id), listRooms()]);

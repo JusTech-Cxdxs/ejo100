@@ -1,3 +1,4 @@
+import { JobRef } from '@/components/JobRef';
 import { listVehiclesClearedToLeave } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -37,7 +38,7 @@ export default async function ClearedToLeavePage({ searchParams }: { searchParam
       <SecurityTable headers={['Record', 'Vehicle', 'Plate / VIN', 'Customer', 'Released', 'Collected by', '']} widths={['13%', '17%', '17%', '17%', '13%', '12%', '11%']} empty={rows.length ? null : term || k ? 'No vehicles match.' : 'No vehicles waiting to leave.'}>
         {rows.map((v) => (
           <tr key={`${v.kind}-${v.id}`}>
-            <td><LoadingLink href={v.kind === 'JOB_CARD' ? `/workshop/job-cards/${v.id}` : `/workshop/vehicle-service/${v.id}`} className={`font-medium ${link}`}>{v.number}</LoadingLink>{v.cancelled ? <span className="block text-xs text-[var(--ejo-text-muted)]">handed back</span> : null}</td>
+            <td><JobRef kind={v.kind} id={v.id} number={v.number} className={`font-medium ${link}`} />{v.cancelled ? <span className="block text-xs text-[var(--ejo-text-muted)]">handed back</span> : null}</td>
             <td>{[v.vehicle.make, v.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}</td>
             <td><span className="font-medium">{v.vehicle.plateNumber ?? '—'}</span>{v.vehicle.chassisNumber ? <span className="block text-xs text-[var(--ejo-text-muted)]">{v.vehicle.chassisNumber}</span> : null}</td>
             <td>{v.customer}</td>

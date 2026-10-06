@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@ejo/database';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { authorize, getPrincipal } from '@/lib/authz/server';
+import { scopeFor } from '@/lib/authz/catalogue';
 
 export type AdminUserRow = { id: string; fullName: string; email: string; employeeId: string | null; isActive: boolean; branch: string | null; department: string | null; roles: { id: string; name: string; isPlatform: boolean }[] };
 export type AssignableRole = { id: string; name: string; isPlatform: boolean };
@@ -11,23 +12,29 @@ export type AssignableRole = { id: string; name: string; isPlatform: boolean };
 async function actorOrg() {
   const p = await getPrincipal();
   const me = await prisma.user.findUnique({ where: { id: p.userId }, select: { organisationId: true } });
-  return { p, organisationId: me?.organisationId ?? null };
+  // Headquarters administrators manage the whole organisation; a Branch
+  // Administrator only the people of their own branch.
+  const branchOnly = !p.isSuperAdmin && p.roleSlugs.includes('branch-administrator') && scopeFor(p, 'admin.users.manage') === 'BRANCH' ? (p.branchId ?? '__no_branch__') : null;
+  return { p, organisationId: me?.organisationId ?? null, branchOnly };
 }
+
+/** Roles only headquarters (or the platform team) may hand out — no one can make themselves or a colleague an administrator from a branch. */
+const ADMIN_ROLE_SLUGS = ['administrator', 'branch-administrator'];
 
 /** Users of the person's organisation (search by name, email or employee ID). */
 export async function listUsersForAdmin(q?: string): Promise<{ users: AdminUserRow[]; roles: AssignableRole[]; isPlatformTeam: boolean; me: string }> {
   await authorize('admin.users.manage', undefined, 'users.list');
-  const { p, organisationId } = await actorOrg();
+  const { p, organisationId, branchOnly } = await actorOrg();
   const term = q?.trim().slice(0, 80);
   const [users, roles] = await Promise.all([
     prisma.user.findMany({
       // The platform team is invisible to organisations.
-      where: { ...(organisationId ? { organisationId } : {}), ...(p.isSuperAdmin ? {} : { NOT: { roles: { some: { role: { isSuperAdmin: true } } } } }), ...(term ? { OR: [{ fullName: { contains: term, mode: 'insensitive' } }, { email: { contains: term, mode: 'insensitive' } }, { employeeId: { contains: term, mode: 'insensitive' } }] } : {}) },
+      where: { ...(organisationId ? { organisationId } : {}), ...(branchOnly ? { branchId: branchOnly } : {}), ...(p.isSuperAdmin ? {} : { NOT: { roles: { some: { role: { isSuperAdmin: true } } } } }), ...(term ? { OR: [{ fullName: { contains: term, mode: 'insensitive' } }, { email: { contains: term, mode: 'insensitive' } }, { employeeId: { contains: term, mode: 'insensitive' } }] } : {}) },
       orderBy: { fullName: 'asc' },
       take: 300,
       select: { id: true, fullName: true, email: true, employeeId: true, isActive: true, branch: { select: { name: true } }, department: { select: { name: true } }, roles: { select: { role: { select: { id: true, name: true, isSuperAdmin: true } } } } },
     }),
-    prisma.role.findMany({ where: organisationId ? { organisationId } : {}, orderBy: { name: 'asc' }, select: { id: true, name: true, isSuperAdmin: true } }),
+    prisma.role.findMany({ where: { ...(organisationId ? { organisationId } : {}), ...(branchOnly ? { slug: { notIn: ADMIN_ROLE_SLUGS } } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true, isSuperAdmin: true } }),
   ]);
   return {
     me: p.userId,
@@ -39,14 +46,16 @@ export async function listUsersForAdmin(q?: string): Promise<{ users: AdminUserR
 }
 
 async function checkPair(userId: string, roleId: string) {
-  const { p, organisationId } = await actorOrg();
+  const { p, organisationId, branchOnly } = await actorOrg();
   const [user, role] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { id: true, fullName: true, email: true, organisationId: true, roles: { select: { role: { select: { isSuperAdmin: true } } } } } }),
-    prisma.role.findUnique({ where: { id: roleId }, select: { id: true, name: true, isSuperAdmin: true, organisationId: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { id: true, fullName: true, email: true, organisationId: true, branchId: true, roles: { select: { role: { select: { isSuperAdmin: true } } } } } }),
+    prisma.role.findUnique({ where: { id: roleId }, select: { id: true, name: true, slug: true, isSuperAdmin: true, organisationId: true } }),
   ]);
   if (!user || !role) throw new Error('That person or role no longer exists — refresh the page.');
   if (!p.isSuperAdmin && (user.organisationId !== organisationId || role.organisationId !== organisationId)) throw new Error('You can only manage people and roles in your own organisation.');
   if (role.isSuperAdmin && !p.isSuperAdmin) throw new Error('Only the platform team can grant or remove the Master Administrator role.');
+  if (branchOnly && user.branchId !== branchOnly) throw new Error('You can only manage the people of your own branch.');
+  if (branchOnly && ADMIN_ROLE_SLUGS.includes(role.slug)) throw new Error('Administrator roles are given by headquarters.');
   if (userId === p.userId) throw new Error('You cannot change your own roles — ask another administrator.');
   const targetIsPlatform = user.roles.some((r: { role: { isSuperAdmin: boolean } }) => r.role.isSuperAdmin);
   if (targetIsPlatform && !p.isSuperAdmin) throw new Error('That person no longer exists — refresh the page.');

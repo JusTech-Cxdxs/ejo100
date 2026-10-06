@@ -1,3 +1,4 @@
+import { allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getRoadTest, getSecurityRoles, getSecurityHistory, canDecideRoadTest } from '@/lib/actions/security';
 import { roadTestActionFormAction, securityFollowUpFormAction } from '@/lib/actions/security-form-handlers';
@@ -75,7 +76,7 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
           <Row k="Time out of the compound" val={away !== null ? durationText(away) : null} />
           <Row k="Return notes" val={r.returnNotes} />
           <p className="mt-2 flex flex-wrap gap-4 text-xs">
-            {rec ? <LoadingLink href={rec.href} className="text-[var(--ejo-primary)] hover:underline">Open {rec.number} →</LoadingLink> : null}
+            {rec && (await allows('workshop.job_card.view')) ? <LoadingLink href={rec.href} className="text-[var(--ejo-primary)] hover:underline">Open {rec.number} →</LoadingLink> : null}
             <LoadingLink href={`/workshop/vehicles/${r.vehicle.id}/edit`} className="text-[var(--ejo-primary)] hover:underline">Open the vehicle →</LoadingLink>
           </p>
         </dl>

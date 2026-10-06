@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { getSecurityRoles, listVisits, searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { registerVisitFormAction } from '@/lib/actions/security-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -11,6 +12,7 @@ import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 
 export default async function VisitorsPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; status?: string }> }) {
+  await guardAnyPage(['security.view'], '/security/visitors');
   const { q, error, status } = await searchParams;
   const [roles, visits] = await Promise.all([getSecurityRoles(), listVisits(q)]);
   const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';

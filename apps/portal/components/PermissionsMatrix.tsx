@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 
 export type MatrixRow = { key: string; module: string; label: string; cells: (string | null)[] };
-const SCOPE_LABEL: Record<string, string> = { ALL: 'Everything', BRANCH: 'Their branch', DEPARTMENT: 'Their department', ASSIGNED: 'Jobs assigned to them', OWN: 'What they created' };
+const SCOPE_LABEL: Record<string, string> = { ALL: 'All branches', BRANCH: 'Their branch', DEPARTMENT: 'Their department', ASSIGNED: 'Jobs assigned to them', OWN: 'Their own' };
 const SCOPE_TONE: Record<string, string> = {
   ALL: 'bg-[var(--ejo-primary)]/15 text-[var(--ejo-primary)]', BRANCH: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
   DEPARTMENT: 'bg-purple-500/15 text-purple-600', ASSIGNED: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]', OWN: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
@@ -65,7 +65,7 @@ export function PermissionsMatrix({ roles, rows }: { roles: string[]; rows: Matr
           <section className="min-w-0 space-y-4">
             <div className={`${card} p-4`}>
               <h2 className="text-base font-semibold text-[var(--ejo-text)]">{roles[current]}</h2>
-              <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Can do {counts[current]} of {rows.length} things{q ? ` — showing those matching “${raw.trim()}”` : ''}. Everyday access (opening modules, assigned work) applies to every role.</p>
+              <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Can do {counts[current]} of {rows.length} things{q ? ` — showing those matching “${raw.trim()}”` : ''}. Every employee can also request their own exit pass.</p>
               {has.length === 0 ? <p className="mt-3 text-sm text-[var(--ejo-text-muted)]">Nothing here matches.</p> : null}
               <div className="mt-3 space-y-4">
                 {byModule(has).map(([m, xs]) => (

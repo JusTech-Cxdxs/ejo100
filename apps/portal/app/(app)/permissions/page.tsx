@@ -20,8 +20,10 @@ export default async function PermissionsPage() {
     <div className="w-full p-4 sm:p-8">
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Permissions</h1>
       <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-        Who can do what, and on which records — checked on the server for every page, action, list and search (hiding a button is never the protection).
-        A person with several roles — for example Receptionist and Broadcaster — gets everything those roles allow together. Add permissions to a role on the Roles page.
+        Who can do what, and on which records. Each department does its own work and sees only what that work needs — Front Desk opens jobs, supervisors and
+        technicians do the work, the Manager approves and closes, Finance handles money, the Store handles stock, Security runs the gate. Every rule is checked on
+        the server for every page, action, list and search. A person with several roles (for example Front Desk and Broadcaster) gets what those roles allow together.
+        Headquarters can add a permission to a role on the Roles page.
       </p>
       <PermissionsMatrix roles={slugs.map((s) => ROLE_LABELS[s] ?? s)} rows={rows} />
       <p className="mt-4 text-xs text-[var(--ejo-text-muted)]">{keys.length} permissions across {new Set(keys.map((k) => PERMISSIONS[k].module)).size} areas and {slugs.length} roles.</p>

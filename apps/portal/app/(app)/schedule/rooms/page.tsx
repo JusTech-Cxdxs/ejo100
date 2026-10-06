@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listRooms, getSchedulingAccess } from '@/lib/actions/scheduling';
 import { saveRoomFormAction, roomActiveFormAction } from '@/lib/actions/scheduling-form-handlers';
 import { ScheduleNav } from '@/components/ScheduleNav';
@@ -7,6 +8,8 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 
 export default async function RoomsPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string; edit?: string }> }) {
+  // Calendars are for people who keep one (an appointment itself stays open to the people in it).
+  await guardAnyPage(['schedule.view', 'schedule.manage'], '/schedule');
   const { status, error, edit } = await searchParams;
   const [rooms, access] = await Promise.all([listRooms(true), getSchedulingAccess()]);
   const editing = rooms.find((r) => r.id === edit) ?? null;

@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { getSchedulingOverview } from '@/lib/actions/scheduling';
 import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
@@ -11,6 +12,8 @@ const dd = (d: Date) => new Date(d).toLocaleDateString('en-NG', { timeZone: 'Afr
 const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 
 export default async function SchedulingDashboard() {
+  // Calendars are for people who keep one (an appointment itself stays open to the people in it).
+  await guardAnyPage(['schedule.view', 'schedule.manage'], '/schedule');
   const o = await getSchedulingOverview();
   if (!o.access.canUse) {
     return (

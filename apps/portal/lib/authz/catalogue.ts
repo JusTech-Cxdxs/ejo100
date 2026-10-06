@@ -22,7 +22,7 @@ export const PERMISSIONS = {
   // Administration
   'admin.organisation.manage': { module: 'Administration', label: 'Manage the organisation profile' },
   'admin.structure.manage': { module: 'Administration', label: 'Manage business units, locations, branches, departments and teams' },
-  'admin.users.manage': { module: 'Administration', label: 'Manage users' },
+  'admin.users.manage': { module: 'Administration', label: 'Manage people and give them roles' },
   'admin.roles.manage': { module: 'Administration', label: 'Manage roles and permissions' },
   'admin.settings.manage': { module: 'Administration', label: 'Manage settings, branding and modules' },
   'audit.view': { module: 'Administration', label: 'View the full audit trail' },
@@ -39,20 +39,20 @@ export const PERMISSIONS = {
   'workshop.estimate.approve': { module: 'Workshop', label: 'Approve estimates — as the assigned supervisor of the job' },
   'workshop.estimate.final_approve': { module: 'Workshop', label: 'Give final approval to estimates (Manager)' },
   'workshop.close.approve': { module: 'Workshop', label: 'Approve closing and cancelling jobs (Manager)' },
-  'workshop.customer.notify': { module: 'Workshop', label: 'Notify customers of approved estimates (on jobs they opened) and send reminders' },
+  'workshop.customer.notify': { module: 'Workshop', label: 'Notify customers of approved estimates and send reminders (front desk)' },
   'workshop.technician.assign': { module: 'Workshop', label: 'Assign technicians — on jobs they supervise' },
   'workshop.inspection.perform': { module: 'Workshop', label: 'Carry out vehicle inspections — on jobs assigned to them' },
   'workshop.estimate.edit': { module: 'Workshop', label: 'Prepare and submit estimates — on jobs assigned to them' },
   'workshop.job.work': { module: 'Workshop', label: 'Accept and carry out work — on jobs assigned to them' },
-  'workshop.close.request': { module: 'Workshop', label: 'Request closing or cancellation — of jobs they opened or supervise' },
+  'workshop.close.request': { module: 'Workshop', label: 'Request closing or cancellation — of jobs they opened (front desk) or supervise' },
   'store.prs.approve_hod': { module: 'Workshop', label: 'Parts requests — first approval, before the Store (Manager)' },
   'workshop.payment.record': { module: 'Finance', label: 'Record payments' },
   'workshop.refund.record': { module: 'Finance', label: 'Record refunds' },
   // Store & procurement
-  'store.view': { module: 'Store', label: 'Open the Store' },
+  'store.view': { module: 'Store', label: 'Open the Store — parts, stock, parts requests and outside purchases' },
   'store.parts.manage': { module: 'Store', label: 'Manage parts, prices, stock levels and pricing alerts' },
   'store.matching': { module: 'Store', label: 'Match estimate parts to items in stock' },
-  'sourcing.request': { module: 'Store', label: 'Raise parts requests and outside purchases for jobs' },
+  'sourcing.request': { module: 'Store', label: 'Raise parts requests and outside purchases — on jobs assigned to them' },
   'store.grn.record': { module: 'Store', label: 'Record goods receipts' },
   'store.prs.release': { module: 'Store', label: 'Parts requests — approve, reserve and release (Store)' },
   'procurement.epr.review': { module: 'Procurement', label: 'Outside purchases — review (Finance)' },
@@ -63,10 +63,11 @@ export const PERMISSIONS = {
   'warranty.manage': { module: 'Warranty', label: 'Register warranties and prepare claims' },
   'warranty.claim.approve': { module: 'Warranty', label: 'Approve warranty claims, decide who pays for estimate lines, and manage providers and policies' },
   // Security
-  'security.view': { module: 'Security', label: 'Open Security and book visitors' },
+  'security.exit_pass.request': { module: 'Security', label: 'Request an exit pass for themselves (every employee)' },
+  'security.view': { module: 'Security', label: 'Open the Security desk — visitors, vehicles, passes and the gate log' },
   'security.gate.operate': { module: 'Security', label: 'Operate the gate — visitors, vehicles and passes in and out' },
   'security.reception.operate': { module: 'Security', label: 'Receive visitors at reception' },
-  'security.pass.approve': { module: 'Security', label: 'Approve exit passes, road tests and contractors — when the request is waiting on them (reporting manager, head or branch manager)' },
+  'security.pass.approve': { module: 'Security', label: 'Approve exit passes, road tests and contractor passes (heads of department and the branch manager)' },
   'security.incident.manage': { module: 'Security', label: 'Assign, close and reopen incidents' },
   // Scheduling & notifications
   'schedule.view': { module: 'Scheduling', label: 'Keep a calendar and book appointments (own calendar, or as an aide)' },
@@ -75,49 +76,95 @@ export const PERMISSIONS = {
 } as const;
 export type PermissionKey = keyof typeof PERMISSIONS;
 
-/** Everyone signed in (every role) — the everyday working baseline. */
+/**
+ * Everyone signed in — ONLY what every employee genuinely does: request
+ * their own exit pass. Everything else comes from the role a person holds
+ * (a person may hold several — the widest grant wins). Approvals routed to
+ * a person by the workflow (e.g. the requester's reporting manager on an
+ * exit pass) are decided by that workflow, not by this list.
+ */
 const BASELINE: Partial<Record<PermissionKey, Scope>> = {
-  'workshop.view': 'BRANCH', 'workshop.job_card.view': 'BRANCH', 'store.view': 'BRANCH', 'warranty.view': 'BRANCH',
-  'security.view': 'BRANCH', 'sourcing.request': 'BRANCH',
-  // Assignment-based — on jobs where THEY are the assigned supervisor / technician
-  // (or, for requests to close, the person who opened it), whatever their role.
-  'workshop.estimate.approve': 'ASSIGNED', 'workshop.estimate.edit': 'ASSIGNED', 'workshop.job.work': 'ASSIGNED',
-  'workshop.inspection.perform': 'ASSIGNED', 'workshop.technician.assign': 'ASSIGNED', 'workshop.close.request': 'ASSIGNED', 'workshop.job.supervise': 'ASSIGNED',
-  // Pass approvals go to the requester's reporting manager / head / branch manager — whoever it waits on.
-  'security.pass.approve': 'ASSIGNED',
+  'security.exit_pass.request': 'OWN',
 };
 
-/** Default grants per role slug (database grants may add to these later). */
+const B = 'BRANCH' as const;
+const A = 'ALL' as const;
+/** Assignment-based: only on the job where they are the assigned supervisor / technician (or, for front desk, the job they opened). */
+const MINE = 'ASSIGNED' as const;
+/** Read-only view of a module, in their branch. */
+const VIEW_WORKSHOP = { 'workshop.view': B, 'workshop.job_card.view': B } as const;
+
+/**
+ * Default grants per role — modelled on how a dealership workshop actually
+ * runs (segregation of duties, as in SAP): each department does its own
+ * work and sees what that work needs, nothing else. Organisations can ADD
+ * grants on the Roles page; these defaults are reviewed code.
+ */
 export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> = {
+  // ── Administration ───────────────────────────────────────────────
+  // Headquarters: runs the organisation's set-up across every branch and
+  // oversees everything (read-only) — but does not do the departments'
+  // transactions (no opening jobs, approving money or recording payments).
   administrator: {
-    'workshop.job_card.create': 'ALL', 'workshop.customer.manage': 'ALL', 'workshop.customer.notify': 'ALL', 'security.reception.operate': 'ALL',
-    'admin.organisation.manage': 'ALL', 'admin.structure.manage': 'ALL', 'admin.users.manage': 'ALL', 'admin.roles.manage': 'ALL', 'admin.settings.manage': 'ALL',
-    'audit.view': 'ALL', 'analytics.business.view': 'ALL', 'analytics.inventory.view': 'ALL', 'analytics.warranty.view': 'ALL',
-    'workshop.view': 'ALL', 'workshop.job_card.view': 'ALL', 'store.view': 'ALL', 'warranty.view': 'ALL', 'security.view': 'ALL', 'schedule.view': 'OWN', 'notifications.broadcast.send': 'ALL',
+    'admin.organisation.manage': A, 'admin.structure.manage': A, 'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A,
+    'audit.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A, 'notifications.broadcast.send': A,
+    'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'schedule.view': 'OWN',
   },
+  // One branch: its people and their roles, and oversight of that branch.
+  'branch-administrator': {
+    'admin.users.manage': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B,
+    'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
+  },
+  // ── Workshop ─────────────────────────────────────────────────────
+  // Front desk: the customer relationship — customers, vehicles, opening
+  // Job Cards and Vehicle Services, telling customers, receiving visitors.
+  receptionist: {
+    ...VIEW_WORKSHOP, 'workshop.job_card.create': B, 'workshop.customer.manage': B, 'workshop.customer.notify': B, 'workshop.close.request': MINE,
+    'security.view': B, 'security.reception.operate': B, 'schedule.view': 'OWN',
+  },
+  // Accepts the job, assigns the technician, prepares and APPROVES the estimate.
+  'workshop-supervisor': {
+    ...VIEW_WORKSHOP, 'store.view': B,
+    'workshop.job.supervise': MINE, 'workshop.technician.assign': MINE, 'workshop.estimate.edit': MINE, 'workshop.estimate.approve': MINE,
+    'workshop.inspection.perform': MINE, 'workshop.job.work': MINE, 'workshop.close.request': MINE, 'sourcing.request': MINE,
+  },
+  // Accepts or turns down the job, inspects, works, writes the estimate — cannot approve it.
+  technician: {
+    ...VIEW_WORKSHOP, 'store.view': B,
+    'workshop.job.work': MINE, 'workshop.estimate.edit': MINE, 'workshop.inspection.perform': MINE, 'sourcing.request': MINE,
+  },
+  // Approves and closes — never opens jobs.
   'workshop-manager': {
-    'workshop.job_card.create': 'BRANCH', 'workshop.customer.manage': 'BRANCH', 'workshop.customer.notify': 'BRANCH', 'workshop.estimate.final_approve': 'BRANCH',
-    // The branch manager also manages warranty and approves claims (the code allows it).
-    'warranty.manage': 'BRANCH', 'warranty.claim.approve': 'BRANCH', 'workshop.close.approve': 'BRANCH', 'analytics.business.view': 'BRANCH',
-    'store.prs.approve_hod': 'BRANCH', 'procurement.epr.approve': 'BRANCH', 'security.pass.approve': 'BRANCH', 'analytics.inventory.view': 'BRANCH', 'analytics.warranty.view': 'BRANCH',
+    ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B,
+    'workshop.estimate.final_approve': B, 'workshop.close.approve': B, 'store.prs.approve_hod': B, 'procurement.epr.approve': B,
+    'warranty.manage': B, 'warranty.claim.approve': B, 'security.pass.approve': B,
+    'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
   },
-  // Supervisors approve the estimates of jobs assigned to them (everyone's assigned scope) — they do not open jobs.
-  'workshop-supervisor': {},
-  technician: {},
-  'finance-officer': { 'workshop.payment.record': 'BRANCH', 'workshop.refund.record': 'BRANCH', 'procurement.epr.review': 'BRANCH', 'procurement.epr.disburse': 'BRANCH', 'analytics.business.view': 'BRANCH', 'analytics.inventory.view': 'BRANCH' },
-  'store-manager': { 'security.pass.approve': 'DEPARTMENT', 'store.matching': 'BRANCH', 'store.parts.manage': 'BRANCH', 'store.grn.record': 'BRANCH', 'store.prs.release': 'BRANCH', 'analytics.inventory.view': 'BRANCH' },
-  // Store officers also manage parts (requireStoreStaff accepts them).
-  'store-officer': { 'analytics.inventory.view': 'BRANCH', 'store.matching': 'BRANCH', 'store.parts.manage': 'BRANCH', 'store.grn.record': 'BRANCH', 'store.prs.release': 'BRANCH' },
-  'warranty-hod': { 'security.pass.approve': 'DEPARTMENT', 'warranty.manage': 'BRANCH', 'warranty.claim.approve': 'BRANCH', 'analytics.warranty.view': 'BRANCH' },
-  'warranty-officer': { 'warranty.manage': 'BRANCH', 'analytics.warranty.view': 'BRANCH' },
-  'department-head': { 'security.pass.approve': 'DEPARTMENT' },
-  'chief-security-officer': { 'security.gate.operate': 'BRANCH', 'security.reception.operate': 'BRANCH', 'security.incident.manage': 'BRANCH' },
-  'security-officer': { 'security.gate.operate': 'BRANCH', 'security.reception.operate': 'BRANCH' },
-  // Front desk: receives visitors, registers customers and vehicles, opens jobs.
-  receptionist: { 'security.reception.operate': 'BRANCH', 'workshop.job_card.create': 'BRANCH', 'workshop.customer.manage': 'BRANCH', 'workshop.customer.notify': 'BRANCH' },
+  // ── Finance ──────────────────────────────────────────────────────
+  // Money only: payments, refunds, outside-purchase review and cash.
+  'finance-officer': {
+    ...VIEW_WORKSHOP, 'store.view': B,
+    'workshop.payment.record': B, 'workshop.refund.record': B, 'procurement.epr.review': B, 'procurement.epr.disburse': B,
+    'analytics.business.view': B, 'analytics.inventory.view': B,
+  },
+  // ── Store ────────────────────────────────────────────────────────
+  'store-manager': {
+    'store.view': B, ...VIEW_WORKSHOP, 'store.matching': B, 'store.parts.manage': B, 'store.grn.record': B, 'store.prs.release': B,
+    'analytics.inventory.view': B, 'security.pass.approve': 'DEPARTMENT',
+  },
+  'store-officer': { 'store.view': B, ...VIEW_WORKSHOP, 'store.matching': B, 'store.parts.manage': B, 'store.grn.record': B, 'store.prs.release': B, 'analytics.inventory.view': B },
+  // ── Warranty ─────────────────────────────────────────────────────
+  // Warranty sets part warranties and follows parts back to their receipts — read-only Store.
+  'warranty-hod': { 'warranty.view': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.manage': B, 'warranty.claim.approve': B, 'analytics.warranty.view': B, 'security.pass.approve': 'DEPARTMENT' },
+  'warranty-officer': { 'warranty.view': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.manage': B, 'analytics.warranty.view': B },
+  // ── People & security ────────────────────────────────────────────
+  'department-head': { 'security.pass.approve': 'DEPARTMENT', 'schedule.view': 'OWN' },
+  'chief-security-officer': { 'security.view': B, 'security.gate.operate': B, 'security.reception.operate': B, 'security.incident.manage': B, 'security.pass.approve': 'DEPARTMENT' },
+  'security-officer': { 'security.view': B, 'security.gate.operate': B, 'security.reception.operate': B },
+  // ── Scheduling & communication ───────────────────────────────────
   'calendar-user': { 'schedule.view': 'OWN' },
-  'scheduling-admin': { 'schedule.view': 'ALL', 'schedule.manage': 'ALL' },
-  broadcaster: { 'notifications.broadcast.send': 'ALL' },
+  'scheduling-admin': { 'schedule.view': A, 'schedule.manage': A },
+  broadcaster: { 'notifications.broadcast.send': A },
 };
 
 /** Steps only the platform team may take — never grantable to organisation roles. */
@@ -179,8 +226,8 @@ export const PAGE_PERMISSIONS: Record<string, PermissionKey> = {
 
 /** How each role is named to people. */
 export const ROLE_LABELS: Record<string, string> = {
-  administrator: 'Administrator', 'workshop-manager': 'Workshop Manager', 'workshop-supervisor': 'Workshop Supervisor', technician: 'Technician',
+  administrator: 'Organisation Administrator (headquarters)', 'branch-administrator': 'Branch Administrator', 'workshop-manager': 'Workshop Manager', 'workshop-supervisor': 'Workshop Supervisor', technician: 'Technician',
   'finance-officer': 'Finance Officer', 'store-manager': 'Store Manager', 'store-officer': 'Store Officer', 'warranty-hod': 'Warranty HOD',
   'warranty-officer': 'Warranty Officer', 'department-head': 'Department Head', 'chief-security-officer': 'Chief Security Officer',
-  'security-officer': 'Security Officer', receptionist: 'Receptionist', 'calendar-user': 'Calendar User', 'scheduling-admin': 'Scheduling Admin', broadcaster: 'Broadcaster',
+  'security-officer': 'Security Officer', receptionist: 'Front Desk (Receptionist)', 'calendar-user': 'Calendar User', 'scheduling-admin': 'Scheduling Admin', broadcaster: 'Broadcaster',
 };

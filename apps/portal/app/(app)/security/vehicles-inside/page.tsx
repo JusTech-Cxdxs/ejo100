@@ -34,7 +34,7 @@ export default async function VehiclesInsidePage({ searchParams }: { searchParam
             <td className="font-medium">{r.plate ?? '—'}</td>
             <td>{r.who}</td>
             <td className="text-xs">{r.since ? formatDateTimeCompact(r.since) : '—'}</td>
-            <td><LoadingLink href={r.href} className="text-xs text-[var(--ejo-primary)] hover:underline">{r.stage === 'CLEARED' ? 'Release' : 'Open'}</LoadingLink></td>
+            <td>{r.href ? <LoadingLink href={r.href} className="text-xs text-[var(--ejo-primary)] hover:underline">{r.stage === 'CLEARED' ? 'Release' : 'Open'}</LoadingLink> : <span className="text-xs text-[var(--ejo-text-muted)]">In the workshop</span>}</td>
           </tr>
         ))}
       </SecurityTable>

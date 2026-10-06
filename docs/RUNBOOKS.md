@@ -83,3 +83,14 @@ Now: one JSON log line per server error (reference, route, time; secrets redacte
 with sent / failed; audit trail for every business action. Next (cheap, high value): connect a log
 drain (Vercel → Log Drains → e.g. Better Stack) with alerts on `"level":"error"` spikes and on
 `security.email_failed`; enable Vercel Speed Insights for real-user page timings.
+
+
+## Scheduled jobs — "am I getting the emails?"
+1. Open **Settings** in the portal: each job shows its last run, what it sent, and whether it is on time.
+   A job that sends nothing has found nothing to send (no appointments today / no open price alerts).
+2. **Email delivery** (platform team): sent / failed in the last 7 days and the last error. Failures
+   almost always mean SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_FROM are missing or wrong in Vercel.
+3. **Appointment reminders "Not running on time"**: run `scripts/v25-supabase-scheduler.sql` (with your
+   CRON_SECRET pasted in) in Supabase. Check: `SELECT status_code, created FROM net._http_response ORDER BY created DESC LIMIT 5;`
+   — 200 = working, 401 = the secret in Supabase does not match the one in Vercel.
+4. Vercel's own crons (digest, pricing) need `CRON_SECRET` set in Vercel; Vercel sends it automatically.

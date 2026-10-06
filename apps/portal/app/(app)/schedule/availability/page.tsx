@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { getSchedulingOverview } from '@/lib/actions/scheduling';
 import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
@@ -5,6 +6,8 @@ import { RoomGrid } from '@/components/RoomGrid';
 import { dayKind } from '@/lib/nigeria-calendar';
 
 export default async function AvailabilityPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
+  // Calendars are for people who keep one (an appointment itself stays open to the people in it).
+  await guardAnyPage(['schedule.view', 'schedule.manage'], '/schedule');
   const { date } = await searchParams;
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' });
   const day = /^\d{4}-\d{2}-\d{2}$/.test(date ?? '') ? date! : today;

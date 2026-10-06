@@ -1,3 +1,4 @@
+import { allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getClearedVehicle, getSecurityRoles } from '@/lib/actions/security';
 import { confirmVehicleExitFormAction } from '@/lib/actions/security-form-handlers';
@@ -37,7 +38,7 @@ export default async function ReleaseVehiclePage({ params, searchParams }: { par
           <Row k="Released by the Workshop" val={v.releasedAt ? formatDateTime(v.releasedAt) : null} />
           <Row k="Collected by (at checkout)" val={v.collectedBy} />
           {v.total !== null ? <Row k="Customer total / paid" val={`${naira(v.total)} / ${naira(v.paid)}`} /> : <Row k="Paid" val={naira(v.paid)} />}
-          <p className="mt-2 text-xs"><LoadingLink href={kind === 'JOB_CARD' ? `/workshop/job-cards/${v.id}` : `/workshop/vehicle-service/${v.id}`} className="text-[var(--ejo-primary)] hover:underline">Open {v.number} →</LoadingLink></p>
+          {(await allows('workshop.job_card.view')) ? <p className="mt-2 text-xs"><LoadingLink href={kind === 'JOB_CARD' ? `/workshop/job-cards/${v.id}` : `/workshop/vehicle-service/${v.id}`} className="text-[var(--ejo-primary)] hover:underline">Open {v.number} →</LoadingLink></p> : null}
         </dl>
         <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
           {v.exit ? (

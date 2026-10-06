@@ -1,3 +1,4 @@
+import { JobRef } from '@/components/JobRef';
 import { listVehicleExits } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -32,7 +33,7 @@ export default async function VehicleExitsPage({ searchParams }: { searchParams:
             <td className="text-xs">{formatDateTimeCompact(x.exitedAt)}</td>
             <td><LoadingLink href={`/workshop/vehicles/${x.vehicle.id}/edit`} className={link}>{[x.vehicle.make, x.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}</LoadingLink></td>
             <td className="font-medium">{x.vehicle.plateNumber ?? '—'}</td>
-            <td>{x.jobCard ? <LoadingLink href={`/workshop/job-cards/${x.jobCard.id}`} className={link}>{x.jobCard.jobNumber}</LoadingLink> : x.vehicleService ? <LoadingLink href={`/workshop/vehicle-service/${x.vehicleService.id}`} className={link}>{x.vehicleService.serviceNumber}</LoadingLink> : '—'}</td>
+            <td>{x.jobCard ? <JobRef kind="JOB_CARD" id={x.jobCard.id} number={x.jobCard.jobNumber} className={link} /> : x.vehicleService ? <JobRef kind="VEHICLE_SERVICE" id={x.vehicleService.id} number={x.vehicleService.serviceNumber} className={link} /> : '—'}</td>
             <td>{x.jobCard?.customer.fullName ?? x.vehicleService?.customer.fullName ?? '—'}</td>
             <td className="text-xs">{x.driverName ?? '—'}</td>
             <td><LoadingLink href={`/security/vehicles/exits/${x.id}`} className={`text-xs ${link}`}>Open</LoadingLink></td>

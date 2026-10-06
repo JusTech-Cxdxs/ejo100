@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@ejo/database';
 import { auth } from '@/lib/auth';
 import { Sidebar } from '@/components/Sidebar';
+import { getPrincipal } from '@/lib/authz/server';
+import { navigationFor } from '@/lib/authz/navigation';
 import { Topbar } from '@/components/Topbar';
 import { Marquee } from '@/components/Marquee';
 import { NavigationLoadingProvider } from '@/components/NavigationLoadingProvider';
@@ -45,7 +47,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <NotificationProvider userId={session?.user?.id ?? null}>
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
+      <Sidebar items={navigationFor(await getPrincipal())} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar
           userName={user?.fullName ?? 'Unknown user'}
