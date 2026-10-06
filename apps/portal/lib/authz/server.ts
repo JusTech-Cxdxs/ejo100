@@ -50,14 +50,33 @@ export async function guardPage(key: PermissionKey, where: string): Promise<void
   }
 }
 
-/** Server actions: throw a plain message when not allowed. */
-export async function authorize(key: PermissionKey, record?: RecordContext, where = 'action'): Promise<void> {
+/** Server actions: throw a plain message when not allowed. A module may pass
+ * its own wording (e.g. "Only Store staff can record a goods receipt."). */
+export async function authorize(key: PermissionKey, record?: RecordContext, where = 'action', message = 'You do not have permission to do this.'): Promise<void> {
   const p = await getPrincipal();
   const d = decide(p, key, record);
   if (!d.allowed) {
     await logDenied(p.userId, key, where, d.reason);
-    throw new Error('You do not have permission to do this.');
+    throw new Error(message);
   }
+}
+
+/**
+ * Workflow helpers that check ASSIGNMENT (the job's own supervisor, the
+ * branch's manager for this step…) call this when they refuse, so every
+ * refusal — catalogue or workflow — lands in the audit trail as
+ * access.denied with the permission it was about. Always throws.
+ */
+export async function refuse(key: PermissionKey, where: string, message: string): Promise<never> {
+  const p = await getPrincipal().catch(() => null);
+  if (p) await logDenied(p.userId, key, where, 'Not the person this step is waiting on');
+  throw new Error(message);
+}
+
+/** Quiet yes/no for showing or hiding a button — the SAME rule the action
+ * enforces, so the screen never offers what the server would refuse. */
+export async function allows(key: PermissionKey, record?: RecordContext): Promise<boolean> {
+  return decide(await getPrincipal(), key, record).allowed;
 }
 
 /** Records: out of scope behaves exactly like "not found" (no existence leak). */
@@ -78,6 +97,18 @@ export async function reachWhere(key: PermissionKey): Promise<{ branchId?: strin
   const d = decide(p, key);
   if (!d.allowed) return { branchId: '__no_access__' };
   return d.scope === 'BRANCH' && p.branchId ? { branchId: p.branchId } : {};
+}
+
+/** A record (with its branch) — or null when it is outside this person's reach. */
+export async function seeOrNull<T extends { branchId?: string | null }>(key: PermissionKey, rec: T | null, where: string): Promise<T | null> {
+  if (!rec) return null;
+  return (await canSeeRecord(key, { branchId: rec.branchId ?? null }, where)) ? rec : null;
+}
+
+/** A list asked for one branch: honoured only when that branch is within
+ * reach — a branch-scoped person asking for another branch gets nothing. */
+export async function branchWithinReach(key: PermissionKey, branchId: string): Promise<string> {
+  return decide(await getPrincipal(), key, { branchId }).allowed ? branchId : '__no_access__';
 }
 
 /** Assignment-aware check on a Vehicle Service, using the record itself (never the browser's word). */

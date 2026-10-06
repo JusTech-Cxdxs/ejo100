@@ -62,7 +62,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
         {([
           ['Visitors on premises', d.compound.visitors, d.compound.visits === d.compound.visitors ? 'Checked in, not yet out' : `People on ${d.compound.visits} ${d.compound.visits === 1 ? 'pass' : 'passes'} (groups counted in full)`, '/security/on-premises'],
           ['Visitor vehicles', d.compound.visitorVehicles, 'Cars, motorcycles… of visitors inside', '/security/vehicles-inside?type=visitor'],
-          ['Workshop vehicles', d.compound.workshopVehicles, 'Job Cards and Vehicle Services in progress', '/security/vehicles-inside?type=workshop'],
+          ['Workshop vehicles', d.compound.workshopVehicles, 'Job Cards and Vehicle Services not yet released (cancelled ones awaiting collection included)', '/security/vehicles-inside?type=workshop'],
           ['Cleared, not yet out', d.compound.awaitingExit, 'Released — waiting at the gate', '/security/vehicles'],
           ['Vehicles inside (total)', d.compound.vehiclesInside, 'Visitor, workshop, cleared and delivery vehicles', '/security/vehicles-inside'],
           ['People out on passes', d.compound.peopleOut, 'Employees and others on exit passes', '/security/people-out'],

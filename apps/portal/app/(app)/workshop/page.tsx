@@ -1,3 +1,4 @@
+import { OrgTrail } from '@/components/OrgTrail';
 import { LoadingLink } from '@/components/LoadingLink';
 
 const sections = [
@@ -30,7 +31,7 @@ export default function WorkshopPage() {
         </span>
       </div>
       <p className="mb-8 text-sm text-[var(--ejo-text-muted)]">
-        Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch
+        <OrgTrail />
       </p>
 
       <div className="grid gap-6 md:grid-cols-3">

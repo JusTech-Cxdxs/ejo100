@@ -1,3 +1,4 @@
+import { allows } from '@/lib/authz/server';
 import { listWarranties, listWarrantyIdsWithReminderDue } from '@/lib/actions/warranty';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
@@ -24,7 +25,7 @@ const FILTER_STATES: Record<Exclude<Filter, 'all' | 'asset' | 'part' | 'reminder
 export default async function WarrantyRegisterPage({ searchParams }: { searchParams: Promise<{ q?: string; filter?: string }> }) {
   const { q, filter: rawFilter } = await searchParams;
   const filter: Filter = (['covered', 'expiring', 'pending', 'expired', 'inactive', 'asset', 'part', 'reminder'] as const).includes(rawFilter as never) ? (rawFilter as Filter) : 'all';
-  const [warranties, reminderDueIds] = await Promise.all([listWarranties(q), listWarrantyIdsWithReminderDue()]);
+  const [warranties, reminderDueIds, canAnalytics] = await Promise.all([listWarranties(q), listWarrantyIdsWithReminderDue(), allows('analytics.warranty.view')]);
   const reminderDue = new Set(reminderDueIds);
   const rows = warranties.map((w: (typeof warranties)[number]) => ({ w, cov: warrantyCoverage(w, w.vehicle?.mileage ?? null) }));
   const count = (states: WarrantyCoverageState[]) => rows.filter((r) => states.includes(r.cov.state)).length;
@@ -58,9 +59,11 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
           <LoadingLink href="/warranty/claims" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
             Claims
           </LoadingLink>
-          <LoadingLink href="/warranty/analytics" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
-            Analytics
-          </LoadingLink>
+          {canAnalytics ? (
+            <LoadingLink href="/warranty/analytics" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
+              Analytics
+            </LoadingLink>
+          ) : null}
           <LoadingLink href="/warranty/policies" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
             Policies
           </LoadingLink>

@@ -6,6 +6,8 @@ import { after } from 'next/server';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog, getWorkshopBranchId } from '@/lib/workshop-core';
+import { getPrincipal, authorize, refuse } from '@/lib/authz/server';
+import { decide, ROLE_GRANTS } from '@/lib/authz/catalogue';
 import { sendLoggedEmail, type Recipient } from '@/lib/logged-email';
 import { sendDueAppointmentReminders } from '@/lib/appointment-reminders';
 import { computeSchedulingAnalytics } from '@/lib/scheduling-analytics';
@@ -27,20 +29,29 @@ export type SchedulingAccess = {
   canUse: boolean;
 };
 
+/** Who keeps a calendar — anyone whose roles hold schedule.view in the
+ * Authorization Catalogue (role defaults or a grant added on the Roles page). */
+const CALENDAR_SLUGS = Object.entries(ROLE_GRANTS).filter(([, g]) => g['schedule.view']).map(([slug]) => slug);
+function calendarHolders() {
+  return { roles: { some: { role: { OR: [{ slug: { in: CALENDAR_SLUGS } }, { permissions: { some: { permission: { key: 'schedule.view' } } } }] } } } };
+}
+
 /** Who may use Scheduling is the organisation's choice: "Calendar User"
  * keeps their own calendar; an official can let aides book for them;
  * "Scheduling Admin" manages rooms and aides and can book for anyone. */
 async function getSchedulingAccessUncached(): Promise<SchedulingAccess> {
   const user = await requireUser();
-  const roles = await prisma.userRole.findMany({ where: { userId: user.id }, select: { role: { select: { slug: true, isSuperAdmin: true } } } });
-  const slugs = roles.map((r: { role: { slug: string } }) => r.role.slug);
-  const isMaster = roles.some((r: { role: { isSuperAdmin: boolean } }) => r.role.isSuperAdmin);
-  const isAdmin = isMaster || slugs.includes('scheduling-admin');
-  const isCalendarUser = slugs.includes('calendar-user');
+  // From the Authorization Catalogue (role defaults + grants added on the Roles page):
+  //  schedule.manage → Scheduling Admin (rooms, aides, any calendar);
+  //  schedule.view   → keeps their own calendar.
+  const principal = await getPrincipal();
+  const isMaster = principal.isSuperAdmin;
+  const isAdmin = decide(principal, 'schedule.manage').allowed;
+  const isCalendarUser = decide(principal, 'schedule.view').allowed;
   const me = await prisma.user.findUnique({ where: { id: user.id }, select: { id: true, fullName: true } });
   let owners: { id: string; fullName: string; mine: boolean }[] = [];
   if (isAdmin) {
-    const all = await prisma.user.findMany({ where: { isActive: true, roles: { some: { role: { slug: 'calendar-user' } } } }, orderBy: { fullName: 'asc' }, select: { id: true, fullName: true } });
+    const all = await prisma.user.findMany({ where: { isActive: true, ...calendarHolders() }, orderBy: { fullName: 'asc' }, select: { id: true, fullName: true } });
     owners = all.map((u: { id: string; fullName: string }) => ({ ...u, mine: u.id === user.id }));
   } else {
     const delegated = await prisma.calendarDelegate.findMany({ where: { delegateId: user.id, owner: { isActive: true } }, select: { owner: { select: { id: true, fullName: true } } } });
@@ -283,9 +294,11 @@ export async function getAppointment(id: string) {
 
 export async function getAppointmentHistory(id: string) {
   await requireUser();
+  // Same visibility as the appointment itself — no reading another person's meeting history by id.
+  const visible = await getAppointment(id);
   const [entries, emails] = await Promise.all([
-    prisma.auditLog.findMany({ where: { entityType: 'Appointment', entityId: id }, orderBy: { createdAt: 'desc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } }),
-    prisma.securityEmailLog.findMany({ where: { entityType: 'Appointment', entityId: id }, orderBy: { createdAt: 'desc' } }),
+    prisma.auditLog.findMany({ where: { entityType: 'Appointment', entityId: visible ? id : '__no_access__' }, orderBy: { createdAt: 'desc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } }),
+    prisma.securityEmailLog.findMany({ where: { entityType: 'Appointment', entityId: visible ? id : '__no_access__' }, orderBy: { createdAt: 'desc' } }),
   ]);
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((v: string | null): v is string => Boolean(v)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
@@ -302,7 +315,7 @@ export async function listRooms(includeInactive = false) {
 
 export async function saveRoom(input: { id?: string; name: string; location?: string; capacity?: number | null }): Promise<void> {
   const a = await getSchedulingAccess();
-  if (!a.isAdmin) throw new SchedulingError('Only a Scheduling Admin can manage meeting rooms.');
+  if (!a.isAdmin) await authorize('schedule.manage', undefined, 'schedule.rooms', 'Only a Scheduling Admin can manage meeting rooms.');
   const name = input.name.trim();
   if (!name) throw new SchedulingError('Give the room a name.');
   if (input.capacity !== undefined && input.capacity !== null && (!Number.isInteger(input.capacity) || input.capacity < 1)) throw new SchedulingError('Capacity must be a whole number of people.');
@@ -316,7 +329,7 @@ export async function saveRoom(input: { id?: string; name: string; location?: st
 
 export async function setRoomActive(id: string, active: boolean): Promise<void> {
   const a = await getSchedulingAccess();
-  if (!a.isAdmin) throw new SchedulingError('Only a Scheduling Admin can manage meeting rooms.');
+  if (!a.isAdmin) await authorize('schedule.manage', undefined, 'schedule.rooms', 'Only a Scheduling Admin can manage meeting rooms.');
   const room = await prisma.meetingRoom.update({ where: { id }, data: { isActive: active } });
   await writeAuditLog({ userId: a.userId, action: active ? 'meeting_room.reopened' : 'meeting_room.closed', entityType: 'MeetingRoom', entityId: id, metadata: { name: room.name } });
 }
@@ -338,9 +351,9 @@ export async function addDelegate(ownerId: string, delegateId: string): Promise<
   const a = await getSchedulingAccess();
   if (!ownerId || !delegateId) throw new SchedulingError('Choose the official and the aide.');
   if (ownerId === delegateId) throw new SchedulingError('Someone cannot be their own aide.');
-  if (!a.isAdmin && !(a.isCalendarUser && ownerId === a.userId)) throw new SchedulingError('Only the official or a Scheduling Admin can add aides.');
-  const owner = await prisma.user.findUnique({ where: { id: ownerId }, select: { fullName: true, isActive: true, roles: { select: { role: { select: { slug: true } } } } } });
-  if (!owner?.isActive || !owner.roles.some((r: { role: { slug: string } }) => r.role.slug === 'calendar-user')) throw new SchedulingError('The official must be an active Calendar User.');
+  if (!a.isAdmin && !(a.isCalendarUser && ownerId === a.userId)) return refuse('schedule.manage', 'addDelegate', 'Only the official or a Scheduling Admin can add aides.');
+  const owner = await prisma.user.findFirst({ where: { id: ownerId, isActive: true, ...calendarHolders() }, select: { fullName: true, isActive: true } });
+  if (!owner?.isActive) throw new SchedulingError('The official must be an active member of staff who keeps a calendar.');
   const aide = await prisma.user.findUnique({ where: { id: delegateId }, select: { fullName: true, email: true, isActive: true } });
   if (!aide?.isActive) throw new SchedulingError('The aide must be an active member of staff.');
   const exists = await prisma.calendarDelegate.findUnique({ where: { ownerId_delegateId: { ownerId, delegateId } }, select: { id: true } });
@@ -354,7 +367,7 @@ export async function removeDelegate(id: string): Promise<void> {
   const a = await getSchedulingAccess();
   const d = await prisma.calendarDelegate.findUnique({ where: { id }, select: { ownerId: true, owner: { select: { fullName: true } }, delegate: { select: { fullName: true } } } });
   if (!d) throw new SchedulingError('Not found.');
-  if (!a.isAdmin && d.ownerId !== a.userId) throw new SchedulingError('Only the official or a Scheduling Admin can remove aides.');
+  if (!a.isAdmin && d.ownerId !== a.userId) return refuse('schedule.manage', 'removeDelegate', 'Only the official or a Scheduling Admin can remove aides.');
   await prisma.calendarDelegate.delete({ where: { id } });
   await writeAuditLog({ userId: a.userId, action: 'calendar_delegate.removed', entityType: 'CalendarDelegate', entityId: id, metadata: { owner: d.owner.fullName, aide: d.delegate.fullName } });
 }

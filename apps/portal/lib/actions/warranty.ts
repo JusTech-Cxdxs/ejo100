@@ -3,6 +3,8 @@
 import { prisma } from '@ejo/database';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
+import { getPrincipal, authorize } from '@/lib/authz/server';
+import { decide } from '@/lib/authz/catalogue';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { warrantyCoverage, splitLines, warrantyEndDate, durationLabel, durationShort, DURATION_LIMITS, type DurationUnit } from '@/lib/warranty-state';
@@ -33,28 +35,36 @@ async function usersWithRole(branchId: string, slug: string) {
 
 export type WarrantyRoles = { isMaster: boolean; isManager: boolean; isHod: boolean; isOfficer: boolean; canApprove: boolean; isStaff: boolean };
 
-/** The viewer's place in the branch's warranty chain. */
+/** The viewer's place in the branch's warranty chain.
+ *  • canApprove / isStaff come from the Authorization Catalogue (one rule
+ *    everywhere — role defaults plus any grant added on the Roles page),
+ *    checked against THIS branch.
+ *  • isHod / isManager say which approval STEP is theirs — a workflow rule,
+ *    so it stays tied to the actual role. */
 export async function getWarrantyRoles(): Promise<WarrantyRoles> {
   const user = await requireUser();
   const branchId = await getWorkshopBranchId();
-  const [isMaster, managers, hods, officers] = await Promise.all([
+  const [isMaster, managers, hods, officers, principal] = await Promise.all([
     currentUserIsMasterAdmin(),
     listEligibleManagersForBranch(branchId),
     usersWithRole(branchId, 'warranty-hod'),
     usersWithRole(branchId, 'warranty-officer'),
+    getPrincipal(),
   ]);
   const isManager = !managers.usingFallback && managers.supervisors.some((m: { id: string }) => m.id === user.id);
   const isHod = hods.some((u: { id: string }) => u.id === user.id);
   const isOfficer = officers.some((u: { id: string }) => u.id === user.id);
-  const canApprove = isMaster || isManager || isHod;
-  return { isMaster, isManager, isHod, isOfficer, canApprove, isStaff: canApprove || isOfficer };
+  const here = { branchId, homeBranch: true };
+  const canApprove = decide(principal, 'warranty.claim.approve', here).allowed;
+  const canManage = decide(principal, 'warranty.manage', here).allowed;
+  return { isMaster, isManager, isHod, isOfficer, canApprove, isStaff: canApprove || canManage };
 }
 
 /** Register warranties, request policy deletions (and draft claims). */
 async function requireWarrantyStaff(): Promise<{ id: string; roles: WarrantyRoles }> {
   const user = await requireUser();
   const roles = await getWarrantyRoles();
-  if (!roles.isStaff) throw new WarrantyActionError('Only Warranty staff, the Warranty HOD or a Branch Manager can do this.');
+  if (!roles.isStaff) await authorize('warranty.manage', { branchId: await getWorkshopBranchId(), homeBranch: true }, 'warranty.staff', 'Only Warranty staff, the Warranty HOD or a Branch Manager can do this.');
   return { id: user.id, roles };
 }
 
@@ -63,7 +73,7 @@ async function requireWarrantyStaff(): Promise<{ id: string; roles: WarrantyRole
 async function requireWarrantyApprover(): Promise<{ id: string; roles: WarrantyRoles }> {
   const user = await requireUser();
   const roles = await getWarrantyRoles();
-  if (!roles.canApprove) throw new WarrantyActionError('Only the Warranty HOD or a Branch Manager can do this.');
+  if (!roles.canApprove) await authorize('warranty.claim.approve', { branchId: await getWorkshopBranchId(), homeBranch: true }, 'warranty.approver', 'Only the Warranty HOD or a Branch Manager can do this.');
   return { id: user.id, roles };
 }
 
@@ -477,6 +487,7 @@ export async function issuePartWarrantiesForSlip(slipId: string): Promise<{ issu
   const slip = await prisma.partRequestSlip.findUnique({
     where: { id: slipId },
     select: {
+      branchId: true,
       status: true,
       referenceNumber: true,
       releasedAt: true,
@@ -502,6 +513,8 @@ export async function issuePartWarrantiesForSlip(slipId: string): Promise<{ issu
     },
   });
   if (!slip || slip.status !== 'RELEASED') return { issued: [] };
+  // Issued as part of the Store's release step — same permission, same branch.
+  await authorize('store.prs.release', { branchId: slip.branchId }, 'issuePartWarrantiesForSlip');
   const owner = slip.jobCard ?? slip.vehicleService;
   if (!owner) return { issued: [] };
   const reading = slip.jobCard?.mileageAtCheckIn ?? slip.vehicleService?.odometerAtService ?? null;

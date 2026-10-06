@@ -1,3 +1,4 @@
+import { OrgTrail } from '@/components/OrgTrail';
 import { listParts, getStoreBranchId, listAllPartTypesForSelect, searchPartTypesForSelect } from '@/lib/actions/store';
 import { durationLabel, durationShort } from '@/lib/warranty-state';
 import { StockLevelDot, stockLevel } from '@/components/StockLevelDot';
@@ -48,7 +49,7 @@ export default async function InventoryPartsPage({
         <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Parts Catalog</h1>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Store
+        <OrgTrail area="Store" />
       </p>
 
       {error ? (

@@ -4,6 +4,7 @@ import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { getWarrantyRoles } from './warranty';
+import { authorizeOnJobCard } from '@/lib/authz/server';
 import { warrantyCoverage } from '@/lib/warranty-state';
 import { BILL_TO_LABEL, billingSplit, type BillTo } from '@/lib/estimate-billing';
 
@@ -80,6 +81,8 @@ export async function setEstimateLineBillTo(lineId: string, billTo: BillTo, warr
   if (!line) throw new BillingError('Estimate line not found.');
   const jc = line.estimate.jobCard;
   if (CLOSED.includes(jc.status)) throw new BillingError('This Job Card is closed — who pays can no longer change.');
+  // The Job Card must also be within this person's reach (its branch).
+  await authorizeOnJobCard('warranty.claim.approve', jc.id, 'setEstimateLineBillTo');
   let coveringWarrantyId: string | null = null;
   let warrantyNumber: string | null = null;
   if (billTo === 'WARRANTY') {
@@ -114,6 +117,7 @@ export async function setEstimateLineBillTo(lineId: string, billTo: BillTo, warr
  * split into parts / labour / other for the claim form. */
 export async function getCoveredAmountsForClaim(jobCardId: string, warrantyId: string): Promise<{ parts: number; labour: number; other: number; lines: string[] } | null> {
   await requireUser();
+  await authorizeOnJobCard('warranty.manage', jobCardId, 'getCoveredAmountsForClaim');
   const lines = await prisma.estimateLineItem.findMany({
     where: { estimate: { jobCardId }, billTo: 'WARRANTY', coveringWarrantyId: warrantyId },
     select: { type: true, description: true, amount: true },

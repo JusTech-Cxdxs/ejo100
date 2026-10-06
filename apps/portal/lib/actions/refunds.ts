@@ -188,7 +188,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
   await authorize('workshop.refund.record', undefined, 'recordRefund');
   const t = await loadTarget(input.target);
   if (!t) throw new RefundActionError('Record not found.');
-  const user = await requireEligibleFinanceOfficer(t.branchId);
+  const user = await requireEligibleFinanceOfficer(t.branchId, 'workshop.refund.record');
   // Same form submitted again (e.g. after a dropped connection): return the refund already recorded.
   if (input.idempotencyKey) {
     const done = await prisma.refund.findUnique({ where: { idempotencyKey: input.idempotencyKey }, select: { id: true, referenceNumber: true, amount: true, jobCardId: true, vehicleServiceId: true } });

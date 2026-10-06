@@ -89,7 +89,12 @@ export async function assignTechnicianToVehicleServiceFormAction(formData: FormD
   const serviceId = str(formData, 'serviceId');
   const technicianId = str(formData, 'technicianId');
   if (!technicianId) return; // "Unassigned" placeholder selected — nothing to do
-  await assignTechnicianToVehicleService(serviceId, technicianId);
+  try {
+    await assignTechnicianToVehicleService(serviceId, technicianId);
+  } catch (err) {
+    const message = friendlyError(err, 'Could not assign the technician.', 'vehicle-service-form-handlers');
+    redirect(`/workshop/vehicle-service/${serviceId}?error=${encodeURIComponent(message)}`);
+  }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
   revalidatePath('/workshop/vehicle-service');
 }

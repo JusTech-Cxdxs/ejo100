@@ -21,6 +21,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { markupToMargin, marginToMarkup, actualMargin, actualMarkup, MARGIN_TOLERANCE_PP, roundedPriceForTargetMargin } from '@/lib/pricing-math';
 import { requireUser, currentUserIsMasterAdmin } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
+import { authorize, refuse, branchWithinReach } from '@/lib/authz/server';
 import { sendEmail } from '@/lib/email';
 import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
 import { renderPricingAlertRaisedEmail } from '@/lib/email-templates/pricing-alert-raised';
@@ -30,6 +31,14 @@ import { renderGoodsReceiptEditedEmail } from '@/lib/email-templates/goods-recei
 import { renderPartSellingPriceSetEmail } from '@/lib/email-templates/part-selling-price-set';
 
 class StoreActionError extends Error {}
+
+type StorePermission = 'store.parts.manage' | 'store.matching' | 'store.grn.record' | 'store.prs.release';
+const STORE_DENIED: Record<StorePermission, string> = {
+  'store.parts.manage': 'Only Store staff can change parts, prices or stock levels.',
+  'store.matching': 'Only Store staff can match estimate parts to stock.',
+  'store.grn.record': 'Only Store staff can record a goods receipt.',
+  'store.prs.release': 'Only Store staff can approve, reserve or release a parts request.',
+};
 
 /** Mirrors getWorkshopOrgContext() in workshop.ts exactly, scoped to
  * the 'store' department slug instead — kept as its own small
@@ -103,21 +112,14 @@ export async function listEligibleStoreOfficersForBranch(branchId: string): Prom
   return listEligibleStoreStaffForBranch(branchId, 'store-officer');
 }
 
-/** Only Store Manager, Store Officer, or Master Admin may record what
- * arrives into the Store's own stock — a real, financial-impact action
- * (it adds real stock value), gated the same way Closed requires a
- * Workshop Manager elsewhere in this project. */
-export async function requireStoreStaff(branchId: string): Promise<{ id: string }> {
+/** Store work is gated by the Authorization Catalogue — Store Manager and
+ * Store Officer by default (plus any grant added on the Roles page; Master
+ * Admin always) — checked against the branch that owns the record, so one
+ * branch's Store cannot change another's stock, prices or receipts. Each
+ * caller names the exact permission its step needs. */
+export async function requireStoreStaff(branchId: string, key: StorePermission = 'store.grn.record'): Promise<{ id: string }> {
   const user = await requireUser();
-  if (await currentUserIsMasterAdmin()) return user;
-  const [managers, officers] = await Promise.all([
-    listEligibleStoreManagersForBranch(branchId),
-    listEligibleStoreOfficersForBranch(branchId),
-  ]);
-  const isEligible = [...managers.staff, ...officers.staff].some((s) => s.id === user.id);
-  if (!isEligible) {
-    throw new StoreActionError('Only Store staff can record a goods receipt.');
-  }
+  await authorize(key, { branchId, homeBranch: true }, `store:${key}`, STORE_DENIED[key]);
   return user;
 }
 
@@ -184,7 +186,7 @@ async function generatePartNumber(branchId: string, categoryCode: string): Promi
  * exists, so goods-receipt logic never has to branch on whether one is
  * there yet. */
 export async function createPart(input: CreatePartInput): Promise<{ id: string }> {
-  const user = await requireStoreStaff(input.branchId);
+  const user = await requireStoreStaff(input.branchId, 'store.parts.manage');
   const name = input.name.trim();
   if (!name) {
     throw new StoreActionError('Part name is required.');
@@ -289,7 +291,7 @@ export async function updatePart(input: UpdatePartInput): Promise<void> {
   if (!part) {
     throw new StoreActionError('Part not found.');
   }
-  const user = await requireStoreStaff(part.branchId);
+  const user = await requireStoreStaff(part.branchId, 'store.parts.manage');
   const name = input.name.trim();
   if (!name) {
     throw new StoreActionError('Part name is required.');
@@ -337,7 +339,7 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
   if (!part) {
     throw new StoreActionError('Part not found.');
   }
-  const user = await requireStoreStaff(part.branchId);
+  const user = await requireStoreStaff(part.branchId, 'store.parts.manage');
   if (!(sellingPrice > 0)) {
     throw new StoreActionError('Selling price must be greater than zero.');
   }
@@ -427,7 +429,7 @@ export async function setPartTargetMargin(partId: string, targetValue: number, p
   if (!part) {
     throw new StoreActionError('Part not found.');
   }
-  const user = await requireStoreStaff(part.branchId);
+  const user = await requireStoreStaff(part.branchId, 'store.parts.manage');
   if (!(targetValue > 0) || targetValue > (pricingMethod === 'MARGIN' ? 100 : 100000)) {
     throw new StoreActionError(
       pricingMethod === 'MARGIN'
@@ -512,7 +514,7 @@ export async function setPartAlternativeUnits(
   if (!part) {
     throw new StoreActionError('Part not found.');
   }
-  const user = await requireStoreStaff(part.branchId);
+  const user = await requireStoreStaff(part.branchId, 'store.parts.manage');
   const cleaned = units
     .map((u) => ({ unitName: u.unitName.trim(), conversionFactor: u.conversionFactor }))
     .filter((u) => u.unitName && u.conversionFactor > 0);
@@ -554,7 +556,7 @@ export async function createPartFitment(input: CreatePartFitmentInput): Promise<
   if (!part) {
     throw new StoreActionError('Part not found.');
   }
-  const user = await requireStoreStaff(part.branchId);
+  const user = await requireStoreStaff(part.branchId, 'store.parts.manage');
   const make = input.make.trim();
   const model = input.model?.trim() || null;
   const engineType = input.engineType?.trim() || null;
@@ -605,7 +607,7 @@ export async function updatePartFitment(fitmentId: string, input: UpdatePartFitm
   if (!fitment) {
     throw new StoreActionError('Fitment record not found.');
   }
-  const user = await requireStoreStaff(fitment.part.branchId);
+  const user = await requireStoreStaff(fitment.part.branchId, 'store.parts.manage');
   const make = input.make.trim();
   const model = input.model?.trim() || null;
   const engineType = input.engineType?.trim() || null;
@@ -640,7 +642,7 @@ export async function deletePartFitment(fitmentId: string): Promise<void> {
   if (!fitment) {
     throw new StoreActionError('Fitment record not found.');
   }
-  const user = await requireStoreStaff(fitment.part.branchId);
+  const user = await requireStoreStaff(fitment.part.branchId, 'store.parts.manage');
   await prisma.partFitment.delete({ where: { id: fitmentId } });
   await writeAuditLog({ userId: user.id, action: 'part.fitment_removed', entityType: 'Part', entityId: fitment.partId, metadata: { make: fitment.make, model: fitment.model } });
 }
@@ -703,7 +705,7 @@ export async function getFittingPartsForVehicle(
 }
 
 export async function createPartCategory(branchId: string, name: string, code: string, description?: string): Promise<{ id: string }> {
-  const user = await requireStoreStaff(branchId);
+  const user = await requireStoreStaff(branchId, 'store.parts.manage');
   const trimmedName = name.trim();
   if (!trimmedName) {
     throw new StoreActionError('Part Category name is required.');
@@ -725,6 +727,7 @@ export async function createPartCategory(branchId: string, name: string, code: s
 
 export async function listPartCategories(branchId: string) {
   await requireUser();
+  branchId = await branchWithinReach('store.view', branchId);
   return prisma.partCategory.findMany({ where: { branchId }, orderBy: { name: 'asc' } });
 }
 
@@ -734,7 +737,7 @@ export async function listPartCategories(branchId: string) {
  * not a single flat list: "Filter" containing "Oil Filter"/"Fuel
  * Filter", "Fluid" containing "Coolant"/"Engine Oil"/"Brake Fluid". */
 export async function createPartType(branchId: string, categoryId: string, name: string, description?: string): Promise<{ id: string }> {
-  const user = await requireStoreStaff(branchId);
+  const user = await requireStoreStaff(branchId, 'store.parts.manage');
   const category = await prisma.partCategory.findUnique({ where: { id: categoryId }, select: { branchId: true } });
   if (!category) {
     throw new StoreActionError('Part Category not found.');
@@ -763,6 +766,7 @@ export async function createPartType(branchId: string, categoryId: string, name:
  * Oil/Brake Fluid) is genuinely browsable, not flattened away. */
 export async function listPartTypes(branchId: string, search?: string) {
   await requireUser();
+  branchId = await branchWithinReach('store.view', branchId);
   const q = search?.trim();
   const types = await prisma.partType.findMany({
     where: {
@@ -809,6 +813,7 @@ export async function listPartTypes(branchId: string, search?: string) {
  * searchable list of {value, label, sublabel} for SearchableSelect,
  * not the nested category→type tree the management page renders. */
 export async function searchPartTypesForSelect(branchId: string, query: string): Promise<{ value: string; label: string; sublabel?: string }[]> {
+  branchId = await branchWithinReach('store.view', branchId);
   const types = await listPartTypes(branchId, query);
   return types.map((t: (typeof types)[number]) => ({ value: t.id, label: t.name, sublabel: t.category.name }));
 }
@@ -818,10 +823,12 @@ export async function searchPartTypesForSelect(branchId: string, query: string):
  * typing, same reasoning as loadDefaultOptions everywhere else this
  * component is used. */
 export async function listAllPartTypesForSelect(branchId: string): Promise<{ value: string; label: string; sublabel?: string }[]> {
+  branchId = await branchWithinReach('store.view', branchId);
   return searchPartTypesForSelect(branchId, '');
 }
 
 export async function searchPartCategoriesForSelect(branchId: string, query: string): Promise<{ value: string; label: string }[]> {
+  branchId = await branchWithinReach('store.view', branchId);
   const categories = await listPartCategories(branchId);
   const q = query.trim().toLowerCase();
   const filtered = q ? categories.filter((c: (typeof categories)[number]) => c.name.toLowerCase().includes(q)) : categories;
@@ -829,6 +836,7 @@ export async function searchPartCategoriesForSelect(branchId: string, query: str
 }
 
 export async function listAllPartCategoriesForSelect(branchId: string): Promise<{ value: string; label: string }[]> {
+  branchId = await branchWithinReach('store.view', branchId);
   return searchPartCategoriesForSelect(branchId, '');
 }
 
@@ -869,6 +877,7 @@ export async function getLastKnownUnitCostForPart(partId: string): Promise<numbe
  * lookup. */
 export async function listUnmatchedStorePartLines(branchId: string) {
   await requireUser();
+  branchId = await branchWithinReach('store.view', branchId);
   return prisma.estimateLineItem.findMany({
     where: {
       type: 'STORE_PART',
@@ -970,7 +979,7 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
   const user = await requireUser();
   const isMasterAdmin = await currentUserIsMasterAdmin();
   if (jobCard.supervisorId !== user.id && jobCard.assignedTechnicianId !== user.id && !isMasterAdmin) {
-    throw new StoreActionError('Only the assigned supervisor or the assigned technician can request Store matching.');
+    return refuse('workshop.estimate.edit', 'requestStoreMatching', 'Only the assigned supervisor or the assigned technician can request Store matching.');
   }
 
   await prisma.estimate.update({
@@ -1174,7 +1183,7 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
   if (lineItem.estimate.status !== 'DRAFT' && lineItem.estimate.status !== 'SUBMITTED') {
     throw new StoreActionError('This estimate is not currently awaiting Store matching.');
   }
-  const user = await requireStoreStaff(lineItem.estimate.jobCard.branchId);
+  const user = await requireStoreStaff(lineItem.estimate.jobCard.branchId, 'store.matching');
 
   const part = await prisma.part.findUnique({
     where: { id: partId },
@@ -1306,6 +1315,7 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
 
 export async function listParts(branchId: string, search?: string) {
   await requireUser();
+  branchId = await branchWithinReach('store.view', branchId);
   const q = search?.trim();
   return prisma.part.findMany({
     where: {
@@ -1485,7 +1495,7 @@ export async function checkSerialNumberExists(serialNumber: string): Promise<boo
  * partial failure can never leave stock and the receipt record
  * disagreeing with each other. */
 export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promise<{ id: string; referenceNumber: string }> {
-  const user = await requireStoreStaff(input.branchId);
+  const user = await requireStoreStaff(input.branchId, 'store.grn.record');
   const supplierName = input.supplierName.trim();
   if (!supplierName) {
     throw new StoreActionError('Supplier name is required.');
@@ -1874,6 +1884,7 @@ export type PricingAlertSummary = {
  * now, never a stored, potentially-stale snapshot. */
 export async function getPricingAlertSummary(branchId: string): Promise<PricingAlertSummary> {
   await requireUser();
+  branchId = await branchWithinReach('store.view', branchId);
   const openAlerts = await prisma.pricingAlert.findMany({
     where: { status: 'OPEN', part: { branchId } },
     select: {
@@ -1925,6 +1936,7 @@ export async function getPricingAlertSummary(branchId: string): Promise<PricingA
 
 export async function listPricingAlerts(branchId: string, filter?: { severity?: string; status?: string }) {
   await requireUser();
+  branchId = await branchWithinReach('store.view', branchId);
   return prisma.pricingAlert.findMany({
     where: {
       part: { branchId },
@@ -1957,7 +1969,7 @@ export async function dismissPricingAlert(alertId: string, notes: string): Promi
   if (!trimmedNotes) {
     throw new StoreActionError('A real reason is required to dismiss a pricing alert.');
   }
-  const user = await requireStoreStaff(alert.part.branchId);
+  const user = await requireStoreStaff(alert.part.branchId, 'store.parts.manage');
   await prisma.pricingAlert.update({
     where: { id: alertId },
     data: { status: 'DISMISSED', resolvedById: user.id, resolvedAt: new Date(), resolutionNotes: trimmedNotes },
@@ -1987,7 +1999,7 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
   if (alert.status !== 'OPEN') {
     throw new StoreActionError('This alert has already been decided.');
   }
-  const user = await requireStoreStaff(alert.part.branchId);
+  const user = await requireStoreStaff(alert.part.branchId, 'store.parts.manage');
   const targetMargin = Number(alert.targetMarginPercentAtAlert);
   const newUnitCost = Number(alert.newUnitCost);
   // Rounded UP to the kobo, so the target margin is always met.
@@ -2176,6 +2188,7 @@ export async function getOpenPricingAlertsForDigest(): Promise<PricingAlertDiges
 
 export async function listGoodsReceipts(branchId: string) {
   await requireUser();
+  branchId = await branchWithinReach('store.view', branchId);
   return prisma.goodsReceipt.findMany({
     take: 500, // newest 500; search reaches older records
     where: { branchId },
@@ -2317,7 +2330,7 @@ export async function updateGoodsReceipt(id: string, input: { supplierName: stri
   if (!receipt) {
     throw new StoreActionError('Goods Receipt not found.');
   }
-  const user = await requireStoreStaff(receipt.branchId);
+  const user = await requireStoreStaff(receipt.branchId, 'store.grn.record');
   const supplierName = input.supplierName.trim();
   if (!supplierName) {
     throw new StoreActionError('Supplier name is required.');
@@ -2359,7 +2372,7 @@ export async function updateGoodsReceiptLineCost(lineId: string, newUnitCostAsEn
   if (!line) {
     throw new StoreActionError('Line not found.');
   }
-  const user = await requireStoreStaff(line.part.branchId);
+  const user = await requireStoreStaff(line.part.branchId, 'store.grn.record');
   if (!(newUnitCostAsEntered > 0)) {
     throw new StoreActionError('Unit cost must be greater than zero.');
   }
@@ -2411,7 +2424,7 @@ export async function updateGoodsReceiptLineCost(lineId: string, newUnitCostAsEn
 export async function setPartStockLevels(partId: string, reorderPoint: number | null, safetyStock: number | null): Promise<void> {
   const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, name: true, reorderPoint: true, safetyStock: true } });
   if (!part) throw new StoreActionError('Part not found.');
-  const user = await requireStoreStaff(part.branchId);
+  const user = await requireStoreStaff(part.branchId, 'store.parts.manage');
   for (const [label, v] of [['Reorder point', reorderPoint], ['Safety stock', safetyStock]] as const) {
     if (v !== null && (!Number.isFinite(v) || v < 0)) throw new StoreActionError(`${label} must be zero or more.`);
   }

@@ -4,6 +4,7 @@ import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { getWarrantyRoles, type WarrantyRoles } from './warranty';
+import { authorize } from '@/lib/authz/server';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { claimReadiness } from '@/lib/warranty-claim-readiness';
@@ -20,13 +21,13 @@ function naira(n: number): string {
 async function requireStaff(): Promise<{ id: string; roles: WarrantyRoles }> {
   const user = await requireUser();
   const roles = await getWarrantyRoles();
-  if (!roles.isStaff) throw new WarrantyClaimError('Only Warranty staff, the Warranty HOD or a Branch Manager can do this.');
+  if (!roles.isStaff) await authorize('warranty.manage', { branchId: await getWorkshopBranchId(), homeBranch: true }, 'warranty_claim.staff', 'Only Warranty staff, the Warranty HOD or a Branch Manager can do this.');
   return { id: user.id, roles };
 }
 async function requireApprover(): Promise<{ id: string; roles: WarrantyRoles }> {
   const user = await requireUser();
   const roles = await getWarrantyRoles();
-  if (!roles.canApprove) throw new WarrantyClaimError('Only the Warranty HOD or a Branch Manager can do this.');
+  if (!roles.canApprove) await authorize('warranty.claim.approve', { branchId: await getWorkshopBranchId(), homeBranch: true }, 'warranty_claim.approver', 'Only the Warranty HOD or a Branch Manager can do this.');
   return { id: user.id, roles };
 }
 

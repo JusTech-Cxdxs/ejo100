@@ -1,3 +1,4 @@
+import { OrgTrail } from '@/components/OrgTrail';
 import { getWorkshopDashboardCounts, currentUserIsMasterAdmin, currentUserId, listEligibleManagersForBranch } from '@/lib/actions/workshop';
 import { getDashboardTrend, getDashboardNotifications, getPlatformGlance } from '@/lib/actions/dashboard';
 import { getMyBroadcasts, canBroadcast } from '@/lib/actions/notifications';
@@ -39,7 +40,8 @@ export default async function DashboardPage() {
 
   const stats = [
     { label: 'Active Job Cards', value: counts.activeJobCards, href: '/workshop/custody' },
-    { label: 'Total In Custody', value: counts.inWorkshop, href: '/workshop/custody' },
+    { label: 'Job Cards in custody', value: counts.inWorkshop, href: '/workshop/custody' },
+    { label: 'Vehicle Services in custody', value: counts.servicesInWorkshop, href: '/workshop/vehicle-service-custody' },
     { label: 'Total Customers', value: counts.totalCustomers, href: '/workshop/customers' },
     { label: 'Total Vehicles Registered', value: counts.totalVehicles, href: '/workshop/vehicles' },
   ];
@@ -48,10 +50,10 @@ export default async function DashboardPage() {
     <div className="p-8">
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Dashboard</h1>
       <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
-        Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Workshop
+        <OrgTrail area="Workshop" />
       </p>
 
-      <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
         {stats.map((s) => (
           <LoadingLink
             key={s.label}
@@ -144,7 +146,7 @@ export default async function DashboardPage() {
       <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
         <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Modules</h2>
         <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
-          Workshop is live for Kewalram Nigeria — Automobile Division. Additional business units
+          Workshop is live for <OrgTrail upTo="unit" />. Additional business units
           activate here as they&apos;re approved, with no change to this dashboard&apos;s structure.
         </p>
       </div>

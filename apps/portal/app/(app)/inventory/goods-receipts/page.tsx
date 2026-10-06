@@ -1,3 +1,4 @@
+import { OrgTrail } from '@/components/OrgTrail';
 import { listGoodsReceipts, getStoreBranchId } from '@/lib/actions/store';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -37,7 +38,7 @@ export default async function GoodsReceiptsPage({
         </LoadingLink>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Store
+        <OrgTrail area="Store" />
       </p>
 
       {error ? (

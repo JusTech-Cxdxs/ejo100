@@ -384,7 +384,12 @@ export async function assignTechnicianFormAction(formData: FormData) {
   const jobCardId = str(formData, 'jobCardId');
   const technicianId = str(formData, 'technicianId');
   if (!technicianId) return; // "Unassigned" placeholder selected — nothing to do
-  await assignTechnician(jobCardId, technicianId);
+  try {
+    await assignTechnician(jobCardId, technicianId);
+  } catch (err) {
+    const message = friendlyError(err, 'Could not assign the technician.', 'workshop-form-handlers');
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
   revalidatePath('/workshop/job-cards');
 }

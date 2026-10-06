@@ -1,3 +1,4 @@
+import { OrgTrail } from '@/components/OrgTrail';
 import { getVehicleServiceCustodySummary, type VehicleDueForService } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { attendToOverdueVehicleFormAction, sendVehicleServiceCollectionReminderFormAction, sendManualServiceReminderFormAction, sendVehicleServiceCancelledCollectionNoticeFormAction } from '@/lib/actions/vehicle-service-form-handlers';
@@ -139,7 +140,7 @@ export default async function VehicleServiceCustodyPage({
       </LoadingLink>
       <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Vehicles In Custody — Vehicle Service</h1>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Workshop
+        <OrgTrail area="Workshop" />
       </p>
       <p className="-mt-3 mb-6 text-xs text-[var(--ejo-text-muted)]">
         Vehicles already collected are tracked for their next service in the{' '}

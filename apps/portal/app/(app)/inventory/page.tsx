@@ -1,3 +1,5 @@
+import { allows } from '@/lib/authz/server';
+import { OrgTrail } from '@/components/OrgTrail';
 import { LoadingLink } from '@/components/LoadingLink';
 
 const sections = [
@@ -15,7 +17,10 @@ const sections = [
  * releasing stock to a Job Card) and External Procurement (cash-advance
  * sourcing) are their own later phases, not yet built.
  */
-export default function InventoryPage() {
+export default async function InventoryPage() {
+  // Show only what this person may open (the same rule the pages enforce).
+  const canAnalytics = await allows('analytics.inventory.view');
+  const visible = sections.filter((s) => s.href !== '/inventory/analytics' || canAnalytics);
   return (
     <div className="p-8">
       <div className="mb-2 flex items-center gap-2">
@@ -25,11 +30,11 @@ export default function InventoryPage() {
         </span>
       </div>
       <p className="mb-8 text-sm text-[var(--ejo-text-muted)]">
-        Kewalram Nigeria — Automobile Division — Lagos State — Isolo Branch — Store
+        <OrgTrail area="Store" />
       </p>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {sections.map((s) => (
+        {visible.map((s) => (
           <LoadingLink
             key={s.href}
             href={s.href}
