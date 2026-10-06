@@ -19,17 +19,19 @@ export async function notifyWarrantyDepartmentOfPartWarranty(opts: { partId: str
       },
     });
     if (!part) return;
+    // Only the warranty staff of the organisation that owns this part.
+    const owner = await prisma.branch.findUnique({ where: { id: part.branchId }, select: { name: true, businessUnit: { select: { organisationId: true, organisation: { select: { name: true } } } } } });
     const [previous, actor, recipients] = await Promise.all([
       opts.previousPolicyId ? prisma.warrantyPolicy.findUnique({ where: { id: opts.previousPolicyId }, select: { code: true, name: true } }) : Promise.resolve(null),
       prisma.user.findUnique({ where: { id: opts.actorId }, select: { fullName: true } }),
       prisma.user.findMany({
-        where: { isActive: true, roles: { some: { role: { slug: { in: ['warranty-hod', 'warranty-officer'] } } } } },
+        where: { isActive: true, organisationId: owner?.businessUnit.organisationId ?? '__none__', roles: { some: { role: { slug: { in: ['warranty-hod', 'warranty-officer'] } } } } },
         select: { fullName: true, email: true },
       }),
     ]);
     if (recipients.length === 0) return;
-    const org = await prisma.organisation.findFirst({ select: { name: true } });
-    const branch = await prisma.branch.findUnique({ where: { id: part.branchId }, select: { name: true } });
+    const org = owner?.businessUnit.organisation ?? null;
+    const branch = owner ? { name: owner.name } : null;
     const p = part.warrantyPolicy;
     const pays = p ? [p.coversParts ? 'parts' : null, p.coversLabour ? 'labour' : null, p.coversLogistics ? 'logistics' : null].filter(Boolean).join(', ') : '';
     const remedy = p ? { REIMBURSEMENT: 'reimbursement (payment or credit)', REPLACEMENT: 'replacement part', REPAIR: 'repair by the provider' }[p.defaultRemedy] : '';

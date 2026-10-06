@@ -36,3 +36,26 @@ test('every data-changing server action is guarded', () => {
   }
   assert.deepEqual(missing, [], `Unguarded actions:\n${missing.join('\n')}`);
 });
+
+/** Reads of organisation-owned data must be fenced to the organisation. */
+test('organisation-owned lists and lookups carry the organisation fence', () => {
+  const must: Record<string, string[]> = {
+    'workshop.ts': ['listCustomers', 'searchCustomers', 'listRecentCustomers', 'listVehiclesForCustomer', 'listAllVehicles', 'getVehicle', 'listTechnicianCandidates'],
+    'warranty.ts': ['listWarrantyProviders', 'getWarrantyProvider', 'searchWarrantyProviderOptions', 'listWarrantyPolicies', 'getWarrantyPolicy', 'searchPartWarrantyPolicyOptions', 'listWarranties', 'listWarrantiesFor', 'getWarranty', 'getWarrantyDashboardItems', 'listWarrantyIdsWithReminderDue'],
+    'warranty-claims.ts': ['listWarrantyClaims', 'getWarrantyClaim', 'getWarrantyClaimDashboardItems'],
+    'audit-logs.ts': ['getAuditLogPage', 'listAuditUsers'],
+    'security.ts': ['listActiveStaff', 'searchStaffOptions'],
+  };
+  const missing: string[] = [];
+  for (const [f, fns] of Object.entries(must)) {
+    const src = readFileSync(join(DIR, f), 'utf8');
+    for (const fn of fns) {
+      const i = src.indexOf(`export async function ${fn}(`);
+      if (i === -1) { missing.push(`${f}: ${fn} (not found)`); continue; }
+      const end = src.indexOf('\nexport ', i + 10);
+      const body = src.slice(i, end === -1 ? undefined : end);
+      if (!/orgWhere\(|orgOwned\(/.test(body)) missing.push(`${f}: ${fn}`);
+    }
+  }
+  assert.deepEqual(missing, [], `Not fenced to the organisation:\n${missing.join('\n')}`);
+});

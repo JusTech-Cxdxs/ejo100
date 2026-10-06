@@ -21,7 +21,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { markupToMargin, marginToMarkup, actualMargin, actualMarkup, MARGIN_TOLERANCE_PP, roundedPriceForTargetMargin } from '@/lib/pricing-math';
 import { requireUser, currentUserIsMasterAdmin } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
-import { authorize, refuse, branchWithinReach } from '@/lib/authz/server';
+import { authorize, branchWithinReach, orgOwned, refuse } from '@/lib/authz/server';
 import { sendEmail } from '@/lib/email';
 import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
 import { renderPricingAlertRaisedEmail } from '@/lib/email-templates/pricing-alert-raised';
@@ -214,7 +214,7 @@ export async function createPart(input: CreatePartInput): Promise<{ id: string }
 
   let warrantyPolicyName: string | null = null;
   if (input.warrantyPolicyId) {
-    const policy = await prisma.warrantyPolicy.findUnique({ where: { id: input.warrantyPolicyId }, select: { name: true, kind: true, isActive: true, archivedAt: true } });
+    const policy = await prisma.warrantyPolicy.findFirst({ where: { ...(await orgOwned()), id: input.warrantyPolicyId }, select: { name: true, kind: true, isActive: true, archivedAt: true } });
     if (!policy || policy.kind !== 'PART' || !policy.isActive || policy.archivedAt) {
       throw new StoreActionError('Choose an active part warranty policy (or "No warranty").');
     }

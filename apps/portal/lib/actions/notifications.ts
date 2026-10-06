@@ -64,6 +64,8 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
   const financeWatch = m.roleSlugs.includes('finance-officer') ? [{ action: { contains: 'payment' } }, { action: { contains: 'refund' } }, { action: { contains: 'customer_notified' } }, { entityType: 'ExternalProcurementRequest' }] : [];
   const involved = [...byType.entries()].map(([entityType, ids]) => ({ entityType, entityId: { in: ids } }));
   const where = {
+    // Only this organisation's events (the platform team sees every organisation).
+    ...(m.isMaster ? {} : { organisationId: m.organisationId ?? '__no_organisation__' }),
     createdAt: { gte: since },
     action: { notIn: HIDDEN_ACTIONS },
     // Not the low-level data journal, and not failed API attempts.
@@ -332,8 +334,8 @@ export async function getBroadcast(id: string) {
 export async function listAudienceOptions() {
   const m = await me();
   const [branches, departments, roles] = await Promise.all([
-    prisma.branch.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
-    prisma.department.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+    prisma.branch.findMany({ where: m.isMaster ? {} : { businessUnit: { organisationId: m.organisationId ?? '__none__' } }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+    prisma.department.findMany({ where: m.isMaster ? {} : { branch: { businessUnit: { organisationId: m.organisationId ?? '__none__' } } }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
     prisma.role.findMany({ where: { organisationId: m.organisationId ?? '' }, orderBy: { name: 'asc' }, select: { slug: true, name: true } }),
   ]);
   return { branches, departments, roles: roles.filter((r: { slug: string }, i: number, a: { slug: string }[]) => a.findIndex((x) => x.slug === r.slug) === i) };

@@ -30,7 +30,9 @@ import type { Prisma, PrismaClient } from '@prisma/client';
  * - A journal failure never breaks the real operation.
  */
 
-type AuditActor = { userId: string | null; source: string };
+/** organisationId: the actor's organisation — every audit row is stamped
+ * with it, so each organisation only ever sees its own history. */
+type AuditActor = { userId: string | null; source: string; organisationId?: string | null };
 type PendingEntry = Prisma.AuditLogCreateManyInput;
 type AuditContext = AuditActor & { pending: PendingEntry[] };
 
@@ -41,16 +43,59 @@ const context = new AsyncLocalStorage<AuditContext>();
  * user is authenticated (portal requireUser, API session guard) or by a
  * scheduled job with a null user and its own source name.
  */
-export function setAuditActor(userId: string | null, source: string): void {
+export function setAuditActor(userId: string | null, source: string, organisationId: string | null = null): void {
   const existing = context.getStore();
-  if (existing && existing.userId === userId && existing.source === source) return;
-  context.enterWith({ userId, source, pending: existing?.pending ?? [] });
+  if (existing && existing.userId === userId && existing.source === source && (existing.organisationId ?? null) === organisationId) return;
+  context.enterWith({ userId, source, organisationId, pending: existing?.pending ?? [] });
 }
 
 /** The actor recorded for the current request, if any. */
 export function getAuditActor(): AuditActor | null {
   const store = context.getStore();
-  return store ? { userId: store.userId, source: store.source } : null;
+  return store ? { userId: store.userId, source: store.source, organisationId: store.organisationId ?? null } : null;
+}
+
+/** userId → organisationId, remembered for five minutes (people rarely move). */
+const orgOfUser = new Map<string, { org: string | null; at: number }>();
+async function organisationOf(client: PrismaClient, userId: string): Promise<string | null> {
+  const hit = orgOfUser.get(userId);
+  if (hit && Date.now() - hit.at < 300_000) return hit.org;
+  const u = await client.user.findUnique({ where: { id: userId }, select: { organisationId: true } });
+  const org = u?.organisationId ?? null;
+  if (orgOfUser.size > 5000) orgOfUser.clear();
+  orgOfUser.set(userId, { org, at: Date.now() });
+  return org;
+}
+
+/** Stamp an audit row with its organisation when the writer did not: the
+ * request's actor, else the row's own user. Never inside a transaction
+ * (no extra query there) and never throws. */
+async function stampOrganisation(client: PrismaClient, row: Record<string, unknown>, store: AuditContext | undefined, inTx: boolean): Promise<void> {
+  if (row.organisationId) return;
+  if (store?.organisationId) {
+    row.organisationId = store.organisationId;
+    return;
+  }
+  if (inTx) return;
+  const userId = typeof row.userId === 'string' ? row.userId : null;
+  try {
+    if (userId) row.organisationId = await organisationOf(client, userId);
+    // The platform team, scheduled jobs and unattributed writes: while the
+    // platform has exactly ONE organisation, every row is that
+    // organisation's history. With several, such rows stay with the
+    // platform team (null) unless the writer names the organisation.
+    if (!row.organisationId) row.organisationId = await soleOrganisation(client);
+  } catch {
+    /* unstamped rows are visible to the platform team only */
+  }
+}
+
+let sole: { id: string | null; at: number } | null = null;
+async function soleOrganisation(client: PrismaClient): Promise<string | null> {
+  if (sole && Date.now() - sole.at < 300_000) return sole.id;
+  const orgs = await client.organisation.findMany({ select: { id: true }, take: 2 });
+  sole = { id: orgs.length === 1 ? orgs[0]!.id : null, at: Date.now() };
+  return sole.id;
 }
 
 const WRITE_ACTIONS = new Set(['create', 'createMany', 'update', 'updateMany', 'upsert', 'delete', 'deleteMany']);
@@ -126,6 +171,14 @@ export function installAuditJournal(client: PrismaClient): void {
       }
     }
 
+    // Every audit row, however it was written, carries its organisation.
+    if (params.model === 'AuditLog' && (params.action === 'create' || params.action === 'createMany')) {
+      const data = (params.args as { data?: unknown } | undefined)?.data;
+      for (const row of Array.isArray(data) ? data : data ? [data] : []) {
+        if (row && typeof row === 'object') await stampOrganisation(client, row as Record<string, unknown>, store, Boolean(params.runInTransaction));
+      }
+    }
+
     if (!params.model || SKIP_MODELS.has(params.model) || !WRITE_ACTIONS.has(params.action)) {
       return next(params);
     }
@@ -167,6 +220,7 @@ export function installAuditJournal(client: PrismaClient): void {
       }
       const entry: PendingEntry = {
         userId: store?.userId ?? null,
+        organisationId: store?.organisationId ?? null,
         action: `data.${params.action}`,
         entityType: `db:${params.model}`,
         entityId: resultId ?? whereId,
@@ -179,7 +233,7 @@ export function installAuditJournal(client: PrismaClient): void {
         if (store) {
           store.pending.push(entry);
         } else {
-          context.enterWith({ userId: null, source: 'unattributed', pending: [entry] });
+          context.enterWith({ userId: null, source: 'unattributed', organisationId: null, pending: [entry] });
         }
       } else {
         await client.auditLog.create({ data: entry });

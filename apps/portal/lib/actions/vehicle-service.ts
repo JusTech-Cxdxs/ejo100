@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize, canSeeRecord, reachWhere, authorizeOnService, refuse, branchWithinReach } from '@/lib/authz/server';
+import { authorize, canSeeRecord, reachWhere, authorizeOnService, refuse, branchWithinReach, orgWhere } from '@/lib/authz/server';
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal } from '@/lib/estimate-billing';
@@ -60,8 +60,8 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
   if (!input.supervisorId) {
     throw new VehicleServiceActionError('A supervisor must be assigned to open a Vehicle Service.');
   }
-  const vehicle = await prisma.customerVehicle.findUnique({
-    where: { id: input.vehicleId },
+  const vehicle = await prisma.customerVehicle.findFirst({
+    where: { id: input.vehicleId, customer: await orgWhere() },
     select: { customerId: true, vehicleType: true },
   });
   if (!vehicle || vehicle.customerId !== input.customerId) {
@@ -1086,8 +1086,8 @@ export async function listVehicleServices(branchId: string, search?: string, veh
   const reach = await reachWhere('workshop.job_card.view');
   return prisma.vehicleService.findMany({
     where: {
-      branchId,
-      ...reach,
+      // Both must hold: the branch asked for, within this person's reach.
+      AND: [reach, { branchId }],
       ...(status ? { status: status as never } : {}),
       ...(vehicleType ? { vehicle: { vehicleType } } : {}),
       ...(q

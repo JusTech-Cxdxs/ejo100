@@ -1,5 +1,6 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
 import { SessionAuthGuard } from '../../common/guards/session-auth.guard';
+import { PlatformTeamGuard } from '../../common/guards/platform-team.guard';
 import { BusinessUnitsService } from './business-units.service';
 
 /**
@@ -9,7 +10,7 @@ import { BusinessUnitsService } from './business-units.service';
  * requires a valid Better Auth session (SessionAuthGuard), shared with
  * the portal via the same database.
  */
-@UseGuards(SessionAuthGuard)
+@UseGuards(SessionAuthGuard, PlatformTeamGuard)
 @Controller('business-units')
 export class BusinessUnitsController {
   constructor(private readonly businessunitsService: BusinessUnitsService) {}

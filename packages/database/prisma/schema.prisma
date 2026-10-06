@@ -1805,6 +1805,10 @@ model Verification {
 // ----------------------------------------------------------------------------
 model AuditLog {
   id         String   @id @default(cuid())
+  // Which organisation's history this row belongs to (stamped on every
+  // write — see audit-journal.ts). Null only for the platform team's own
+  // or unattributed system rows, which only the platform team sees.
+  organisationId String?
   userId     String?
   action     String   // e.g. "user.created", "job_card.approved"
   entityType String   // e.g. "JobCard"
@@ -1822,6 +1826,8 @@ model AuditLog {
   // person's actions, newest first".
   @@index([entityType, createdAt])
   @@index([userId, createdAt])
+  // Each organisation's audit trail and activity feed, newest first.
+  @@index([organisationId, createdAt])
   @@map("audit_logs")
 }
 
@@ -2768,6 +2774,9 @@ model WarrantyProvider {
   claimSubmissionDays Int?
   partRetentionDays   Int?
   notes               String?
+  // The organisation that keeps this record (each organisation has its own
+  // providers and policies). Null only on rows created before multi-org.
+  organisationId String?
   isActive            Boolean              @default(true)
   // Deletion approved while in use (policies, warranties or claims) →
   // archived, never erased: history stays valid and traceable.
@@ -2782,8 +2791,10 @@ model WarrantyProvider {
   policies   WarrantyPolicy[]
   warranties Warranty[]
 
-  @@map("warranty_providers")
   claims WarrantyClaim[]
+
+  @@index([organisationId])
+  @@map("warranty_providers")
 }
 
 // What a provider promises: duration, distance ("whichever comes first"),
@@ -2816,6 +2827,9 @@ model WarrantyPolicy {
   // Sample terms loaded for demonstration — clearly flagged everywhere
   // until real terms replace them.
   isSample         Boolean      @default(false)
+  // The organisation that keeps this record (each organisation has its own
+  // providers and policies). Null only on rows created before multi-org.
+  organisationId String?
   isActive         Boolean      @default(true)
   // A policy whose deletion was approved but that already issued
   // warranties is ARCHIVED, never erased — its certificates and history
@@ -2832,6 +2846,7 @@ model WarrantyPolicy {
   parts      Part[]
   deletionRequests WarrantyPolicyDeletionRequest[]
 
+  @@index([organisationId])
   @@map("warranty_policies")
 }
 

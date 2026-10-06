@@ -2,7 +2,7 @@
 
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
-import { allows, getPrincipal } from '@/lib/authz/server';
+import { allows, getPrincipal, orgWhere } from '@/lib/authz/server';
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
 import { recordUrl, describeApiEntry, areaOf, AREA_LABEL } from '@/lib/notification-rules';
 import { resolveRecords, resolveReferenceNumbers, REFERENCE_PATTERN } from '@/lib/record-resolver';
@@ -41,6 +41,8 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
   const kindWhere = kind === 'data' ? { entityType: { startsWith: 'db:' } } : kind === 'api' ? { entityType: { startsWith: 'api:' } } : kind === 'business' ? { NOT: [{ entityType: { startsWith: 'db:' } }, { entityType: { startsWith: 'api:' } }] } : {};
   const rows = await prisma.auditLog.findMany({
     where: {
+      // Each organisation sees only its own history; the platform team sees all.
+      ...(await orgWhere()),
       ...kindWhere,
       // Personal screen state (read markers, mute) is not business history.
       entityType: { notIn: ['db:NotificationRead', 'db:NotificationPreference'] },
@@ -128,5 +130,5 @@ export async function listAuditUsers() {
   if (!(await canSeeAuditLogs())) return [];
   // The platform team is never listed to organisations (their entries show as "Platform support").
   const p = await getPrincipal();
-  return prisma.user.findMany({ where: p.isSuperAdmin ? {} : { roles: { none: { role: { isSuperAdmin: true } } } }, orderBy: { fullName: 'asc' }, select: { id: true, fullName: true } });
+  return prisma.user.findMany({ where: p.isSuperAdmin ? {} : { ...(await orgWhere()), roles: { none: { role: { isSuperAdmin: true } } } }, orderBy: { fullName: 'asc' }, select: { id: true, fullName: true } });
 }

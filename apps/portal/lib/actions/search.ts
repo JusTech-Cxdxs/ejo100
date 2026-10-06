@@ -3,7 +3,7 @@
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { platformModules } from '@/lib/modules';
-import { getPrincipal, reachWhere } from '@/lib/authz/server';
+import { getPrincipal, orgOwned, orgWhere, reachWhere } from '@/lib/authz/server';
 import { decide, PAGE_PERMISSIONS } from '@/lib/authz/catalogue';
 import { getSchedulingAccess } from './scheduling';
 
@@ -54,20 +54,22 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   // Appointments: only calendars this person may use, or meetings they are in.
   const sched = await getSchedulingAccess().catch(() => null);
   const apptReach = sched?.isAdmin ? {} : { OR: [{ ownerId: { in: (sched?.owners ?? []).map((o) => o.id) } }, { createdById: user.id }, { participants: { some: { userId: user.id } } }] };
+  // Organisation-owned records: this organisation only (the platform team: all).
+  const [mineOrg, owned] = await Promise.all([orgWhere(), orgOwned()]);
   // Staff: same organisation; the platform team is never listed to organisations.
   const me = await prisma.user.findUnique({ where: { id: user.id }, select: { organisationId: true } });
   const staffReach = { ...(me?.organisationId ? { organisationId: me.organisationId } : {}), ...(principal.isSuperAdmin ? {} : { roles: { none: { role: { isSuperAdmin: true } } } }) };
   const [jcs, svs, vehicles, customers, parts, prs, eprs, grns, warranties, claims, visits, passes, tests, incidents, deliveries, contractors, appts, broadcasts, exits, refunds, policies, providers, rooms, branches, departments, staff] = await Promise.all([
     safe(prisma.jobCard.findMany({ where: { ...branchOnly, OR: [m('jobNumber'), { customer: m('fullName') }, { vehicle: m('plateNumber') }] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, jobNumber: true, status: true, customer: { select: { fullName: true } } } })),
     safe(prisma.vehicleService.findMany({ where: { ...branchOnly, OR: [m('serviceNumber'), { customer: m('fullName') }, { vehicle: m('plateNumber') }] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, serviceNumber: true, status: true, customer: { select: { fullName: true } } } })),
-    safe(prisma.customerVehicle.findMany({ where: { OR: [m('make'), m('model'), m('plateNumber'), m('chassisNumber')] }, take, select: { id: true, make: true, model: true, plateNumber: true } })),
-    safe(prisma.customer.findMany({ where: { OR: [m('fullName'), m('phone')] }, take, select: { id: true, fullName: true, phone: true } })),
+    safe(prisma.customerVehicle.findMany({ where: { customer: mineOrg, OR: [m('make'), m('model'), m('plateNumber'), m('chassisNumber')] }, take, select: { id: true, make: true, model: true, plateNumber: true } })),
+    safe(prisma.customer.findMany({ where: { ...mineOrg, OR: [m('fullName'), m('phone')] }, take, select: { id: true, fullName: true, phone: true } })),
     safe(prisma.part.findMany({ where: { ...storeReach, OR: [m('partNumber'), m('name')] }, take, select: { id: true, partNumber: true, name: true } })),
     safe(prisma.partRequestSlip.findMany({ where: { ...storeReach, ...m('referenceNumber') }, take, orderBy: { createdAt: 'desc' }, select: { id: true, referenceNumber: true, status: true } })),
     safe(prisma.externalProcurementRequest.findMany({ where: { ...storeReach, ...m('referenceNumber') }, take, orderBy: { createdAt: 'desc' }, select: { id: true, referenceNumber: true, status: true } })),
     safe(prisma.goodsReceipt.findMany({ where: { ...storeReach, OR: [m('referenceNumber'), m('supplierName')] }, take, orderBy: { receivedAt: 'desc' }, select: { id: true, referenceNumber: true, supplierName: true } })),
-    safe(prisma.warranty.findMany({ where: m('warrantyNumber'), take, select: { id: true, warrantyNumber: true } })),
-    safe(prisma.warrantyClaim.findMany({ where: m('claimNumber'), take, select: { id: true, claimNumber: true, status: true } })),
+    safe(prisma.warranty.findMany({ where: { customer: mineOrg, ...m('warrantyNumber') }, take, select: { id: true, warrantyNumber: true } })),
+    safe(prisma.warrantyClaim.findMany({ where: { customer: mineOrg, ...m('claimNumber') }, take, select: { id: true, claimNumber: true, status: true } })),
     safe(prisma.visit.findMany({ where: { ...securityReach, OR: [m('visitNumber'), m('visitorName'), m('company')] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, visitNumber: true, visitorName: true } })),
     safe(prisma.exitPass.findMany({ where: { ...securityReach, ...m('passNumber') }, take, orderBy: { createdAt: 'desc' }, select: { id: true, passNumber: true } })),
     safe(prisma.roadTestPermit.findMany({ where: { ...securityReach, ...m('permitNumber') }, take, orderBy: { createdAt: 'desc' }, select: { id: true, permitNumber: true } })),
@@ -78,11 +80,11 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     safe(prisma.broadcast.findMany({ where: { organisationId: me?.organisationId ?? '__none__', OR: [m('broadcastNumber'), m('title')] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, broadcastNumber: true, title: true } })),
     safe(prisma.vehicleGateExit.findMany({ where: { ...securityReach, ...m('exitNumber') }, take, orderBy: { createdAt: 'desc' }, select: { id: true, exitNumber: true } })),
     safe(prisma.refund.findMany({ where: { ...refundReach, ...m('referenceNumber') }, take, orderBy: { recordedAt: 'desc' }, select: { referenceNumber: true, jobCardId: true, vehicleServiceId: true } })),
-    safe(prisma.warrantyPolicy.findMany({ where: m('name'), take, select: { id: true, name: true } })),
-    safe(prisma.warrantyProvider.findMany({ where: m('name'), take, select: { id: true, name: true } })),
-    safe(prisma.meetingRoom.findMany({ where: m('name'), take, select: { id: true, name: true } })),
-    canStructure ? safe(prisma.branch.findMany({ where: m('name'), take, select: { id: true, name: true } })) : Promise.resolve([]),
-    canStructure ? safe(prisma.department.findMany({ where: m('name'), take, select: { id: true, name: true } })) : Promise.resolve([]),
+    safe(prisma.warrantyPolicy.findMany({ where: { ...owned, ...m('name') }, take, select: { id: true, name: true } })),
+    safe(prisma.warrantyProvider.findMany({ where: { ...owned, ...m('name') }, take, select: { id: true, name: true } })),
+    safe(prisma.meetingRoom.findMany({ where: { ...(principal.orgBranchIds ? { branchId: { in: principal.orgBranchIds } } : {}), ...m('name') }, take, select: { id: true, name: true } })),
+    canStructure ? safe(prisma.branch.findMany({ where: { ...(mineOrg.organisationId ? { businessUnit: mineOrg } : {}), ...m('name') }, take, select: { id: true, name: true } })) : Promise.resolve([]),
+    canStructure ? safe(prisma.department.findMany({ where: { ...(mineOrg.organisationId ? { branch: { businessUnit: mineOrg } } : {}), ...m('name') }, take, select: { id: true, name: true } })) : Promise.resolve([]),
     canStaff ? safe(prisma.user.findMany({ where: { ...staffReach, OR: [m('fullName'), m('email'), m('employeeId')] }, take, select: { id: true, fullName: true, email: true } })) : Promise.resolve([]),
   ]);
   const words = (s: string) => s.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());

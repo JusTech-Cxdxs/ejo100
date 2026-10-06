@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AuditLogsService, type AuditLogQuery } from './audit-logs.service';
 import { SessionAuthGuard } from '../../common/guards/session-auth.guard';
+import { PlatformTeamGuard } from '../../common/guards/platform-team.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 
@@ -10,7 +11,7 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
  * users with the "audit-logs.read" permission only (Master Admin always).
  */
 @Controller('audit-logs')
-@UseGuards(SessionAuthGuard, PermissionsGuard)
+@UseGuards(SessionAuthGuard, PermissionsGuard, PlatformTeamGuard)
 export class AuditLogsController {
   constructor(private readonly auditlogsService: AuditLogsService) {}
 
