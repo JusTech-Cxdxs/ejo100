@@ -1,3 +1,5 @@
+import { redirect } from 'next/navigation';
+import { allows } from '@/lib/authz/server';
 import type { ReactNode } from 'react';
 import { getSecurityDashboard, getSecurityRoles } from '@/lib/actions/security';
 import { visitActionFormAction, exitPassActionFormAction } from '@/lib/actions/security-form-handlers';
@@ -33,6 +35,8 @@ function Act({ action, idName, id, label, form }: { action: string; idName: stri
 }
 
 export default async function SecurityDashboardPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  // Employees who are not on the Security desk use Security only for their own exit passes.
+  if (!(await allows('security.view'))) redirect('/security/exit-passes');
   const { error } = await searchParams;
   const [d, roles] = await Promise.all([getSecurityDashboard(), getSecurityRoles()]);
   const now = new Date();

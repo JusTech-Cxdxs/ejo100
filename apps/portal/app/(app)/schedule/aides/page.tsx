@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listDelegations, getSchedulingAccess } from '@/lib/actions/scheduling';
 import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { addDelegateFormAction, removeDelegateFormAction } from '@/lib/actions/scheduling-form-handlers';
@@ -12,6 +13,8 @@ import { formatDateOnly } from '@/lib/utils/format-date';
 const DONE: Record<string, string> = { aide_added: 'Aide added — they have been emailed.', aide_removed: 'Aide removed.' };
 
 export default async function AidesPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string }> }) {
+  // Calendars are for people who keep one (an appointment itself stays open to the people in it).
+  await guardAnyPage(['schedule.view', 'schedule.manage'], '/schedule');
   const { status, error } = await searchParams;
   const [rows, access] = await Promise.all([listDelegations(), getSchedulingAccess()]);
   const canAdd = access.isAdmin || access.isCalendarUser;

@@ -4,8 +4,8 @@ import { cache } from 'react';
 
 import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
-import { actingOrgWhere, allows, authorize, canSeeRecord, getPrincipal, orgWhere, reachWhere, refuse } from '@/lib/authz/server';
-import { decide } from '@/lib/authz/catalogue';
+import { actingOrgWhere, allows, authorize, canSeeRecord, firstReach, getPrincipal, orgWhere, reachWhere, refuse } from '@/lib/authz/server';
+import { decide, type PermissionKey } from '@/lib/authz/catalogue';
 import { jobCardInside, serviceInside } from '@/lib/custody';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { listEligibleStoreManagersForBranch, listEligibleStoreOfficersForBranch } from './store';
@@ -75,9 +75,21 @@ async function gateStaff(): Promise<Person[]> {
 
 /** Security records are visible within the viewer's reach (their branch,
  * unless organisation-wide) — out of reach behaves exactly like "not found". */
-async function visibleOrNull<T extends { branchId?: string | null }>(rec: T | null, where: string): Promise<T | null> {
+async function visibleOrNull<T extends { branchId?: string | null }>(rec: T | null, where: string, also: { keys?: PermissionKey[]; people?: (string | null | undefined)[] } = {}): Promise<T | null> {
   if (!rec) return null;
-  return (await canSeeRecord('security.view', { branchId: rec.branchId ?? null }, where)) ? rec : null;
+  const record = { branchId: rec.branchId ?? null };
+  // The people a record is about (its requester, host, the people on a pass)
+  // always see it — within their own organisation.
+  const people = (also.people ?? []).filter(Boolean) as string[];
+  if (people.length) {
+    const p = await getPrincipal();
+    if (people.includes(p.userId) && decide(p, 'security.exit_pass.request', { ...record, ownerIds: [p.userId] }).allowed) return rec;
+  }
+  for (const key of also.keys ?? ['security.view']) {
+    if (decide(await getPrincipal(), key, record).allowed) return rec;
+  }
+  await canSeeRecord((also.keys ?? ['security.view'])[0]!, record, where);
+  return null;
 }
 
 // ── Numbering & logged emails ─────────────────────────────────────────
@@ -191,7 +203,9 @@ export async function preRegisterVisit(input: VisitInput): Promise<{ id: string;
   const user = await requireUser();
   const roles = await getSecurityRoles();
   const data = cleanParty(input);
-  if (data.hostUserId !== user.id && !roles.isFrontDesk) throw new SecurityError('You can only book your own visitors.');
+  // Visitors are booked at the Security desk or Reception; staff ask them (or add
+  // expected visitors to an appointment in their calendar, which tells the gate).
+  if (!roles.isFrontDesk) return refuse('security.reception.operate', 'preRegisterVisit', 'Visitors are booked by Security or Reception — ask them, or add the visitor to your appointment.');
   if (!input.expectedAt || Number.isNaN(new Date(input.expectedAt).getTime())) throw new SecurityError('Enter when the visitor is expected.');
   await activeHost(data.hostUserId);
   const visitNumber = await nextNumber('VIS');
@@ -620,15 +634,18 @@ export async function listVisits(q?: string) {
 
 export async function getVisit(id: string) {
   await requireUser();
-  return visibleOrNull(await prisma.visit.findUnique({
+  const v = await prisma.visit.findUnique({
     where: { id },
     include: { host: { select: { id: true, fullName: true } }, registeredBy: { select: { fullName: true } }, checkedInBy: { select: { fullName: true } }, checkedOutBy: { select: { fullName: true } }, receivedBy: { select: { fullName: true } }, branch: true },
-  }), `Visit:${id}`);
+  });
+  // The Security desk, or the member of staff the visitor came to see.
+  return visibleOrNull(v, `Visit:${id}`, { people: [v?.host?.id] });
 }
 
 export async function listExitPasses(scope: 'mine' | 'to_decide' | 'all', q?: string) {
   const user = await requireUser();
-  const reach = await reachWhere('security.view');
+  // Own passes and the ones waiting on me: anywhere in my organisation; the whole list: the Security desk.
+  const reach = scope === 'all' ? await reachWhere('security.view') : await reachWhere('security.exit_pass.request');
   const roles = await getSecurityRoles();
   const t = q?.trim();
   const rows = await prisma.exitPass.findMany({
@@ -653,7 +670,7 @@ export async function listExitPasses(scope: 'mine' | 'to_decide' | 'all', q?: st
 
 export async function getExitPass(id: string) {
   await requireUser();
-  return visibleOrNull(await prisma.exitPass.findUnique({
+  const pass = await prisma.exitPass.findUnique({
     where: { id },
     include: {
       people: { include: { user: { select: { id: true } } } },
@@ -665,7 +682,13 @@ export async function getExitPass(id: string) {
       gateInBy: { select: { fullName: true } },
       branch: true,
     },
-  }), `ExitPass:${id}`);
+  });
+  if (!pass) return null;
+  // The Security desk, whoever asked for it, anyone on it, or whoever must decide it now.
+  const people = [pass.requestedBy?.id, ...pass.people.map((x: { user: { id: string } | null }) => x.user?.id), pass.headApprovedById, pass.managerApprovedById, pass.declinedById];
+  const p = await getPrincipal();
+  if (!people.includes(p.userId) && (await canDecideExitPass(id))) people.push(p.userId);
+  return visibleOrNull(pass, `ExitPass:${id}`, { people });
 }
 
 /** Can this viewer decide this pass right now? (for the pass page) */
@@ -685,14 +708,15 @@ async function historyVisible(entityType: string, id: string, userId: string): P
     const [b, u] = await Promise.all([prisma.broadcast.findUnique({ where: { id }, select: { organisationId: true } }), prisma.user.findUnique({ where: { id: userId }, select: { organisationId: true } })]);
     return Boolean(b && b.organisationId === u?.organisationId);
   }
+  // Same rule as the record page itself (people on it, the desk, the departments involved).
+  if (entityType === 'Visit') return Boolean(await getVisit(id));
+  if (entityType === 'ExitPass') return Boolean(await getExitPass(id));
+  if (entityType === 'RoadTestPermit') return Boolean(await getRoadTest(id));
+  if (entityType === 'GateDelivery') return Boolean(await getDelivery(id));
+  if (entityType === 'ContractorPass') return Boolean(await getContractorPass(id));
   const rec: { branchId: string | null } | null =
-    entityType === 'Visit' ? await prisma.visit.findUnique({ where: { id }, ...sel })
-    : entityType === 'ExitPass' ? await prisma.exitPass.findUnique({ where: { id }, ...sel })
-    : entityType === 'VehicleGateExit' ? await prisma.vehicleGateExit.findUnique({ where: { id }, ...sel })
-    : entityType === 'RoadTestPermit' ? await prisma.roadTestPermit.findUnique({ where: { id }, ...sel })
+    entityType === 'VehicleGateExit' ? await prisma.vehicleGateExit.findUnique({ where: { id }, ...sel })
     : entityType === 'SecurityIncident' ? await prisma.securityIncident.findUnique({ where: { id }, ...sel })
-    : entityType === 'GateDelivery' ? await prisma.gateDelivery.findUnique({ where: { id }, ...sel })
-    : entityType === 'ContractorPass' ? await prisma.contractorPass.findUnique({ where: { id }, ...sel })
     : null;
   return Boolean(await visibleOrNull(rec, `${entityType}:${id}`));
 }
@@ -728,6 +752,9 @@ export async function listActiveStaff() {
 export async function getSecurityDashboardItems(): Promise<{ id: string; title: string; detail: string; url: string; createdAt: Date }[]> {
   const user = await requireUser();
   const reach = await reachWhere('security.view');
+  // Personal items (my visitor, deliveries for my Store) — anywhere in my organisation.
+  const mine = await reachWhere('security.exit_pass.request');
+  const storeReach = await firstReach(['store.grn.record']);
   const roles = await getSecurityRoles();
   const dayStart = new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T00:00:00+01:00`);
   // Everything below is independent — one parallel round instead of five.
@@ -735,9 +762,9 @@ export async function getSecurityDashboardItems(): Promise<{ id: string; title: 
     isStore(user.id, roles.isMaster),
     roles.isManager || roles.isMaster || roles.isGate ? listContractorPasses(undefined, 'all') : Promise.resolve({ rows: [] as Awaited<ReturnType<typeof listContractorPasses>>['rows'] }),
     roles.isCso || roles.isMaster ? prisma.securityIncident.findMany({ where: { ...reach, status: 'OPEN' }, select: { id: true, incidentNumber: true, type: true, severity: true, createdAt: true } }) : Promise.resolve([]),
-    prisma.gateDelivery.findMany({ where: { ...reach, status: 'AT_GATE' }, select: { id: true, deliveryNumber: true, supplierName: true, arrivedAt: true } }),
+    prisma.gateDelivery.findMany({ where: { ...storeReach, status: 'AT_GATE' }, select: { id: true, deliveryNumber: true, supplierName: true, arrivedAt: true } }),
     roles.isGate ? prisma.gateDelivery.findMany({ where: { ...reach, status: 'EXPECTED', expectedAt: { gte: dayStart, lt: new Date(dayStart.getTime() + 86400000) } }, select: { id: true, deliveryNumber: true, supplierName: true, expectedAt: true } }) : Promise.resolve([]),
-    prisma.visit.findMany({ where: { ...reach, status: 'CHECKED_IN', hostUserId: user.id, receivedAt: { not: null } }, select: { id: true, visitorName: true, purpose: true, receivedAt: true } }),
+    prisma.visit.findMany({ where: { ...mine, status: 'CHECKED_IN', hostUserId: user.id, receivedAt: { not: null } }, select: { id: true, visitorName: true, purpose: true, receivedAt: true } }),
     listExitPasses('to_decide'),
     listRoadTests('to_decide'),
   ]);
@@ -868,13 +895,15 @@ export async function listVehiclesInside(): Promise<InsideVehicle[]> {
     listVehiclesClearedToLeave(),
   ]);
   const deliveries = await prisma.gateDelivery.findMany({ where: { ...reach, status: { in: ['AT_GATE', 'RECEIVED'] }, vehiclePlate: { not: null } }, select: { id: true, deliveryNumber: true, supplierName: true, vehicleType: true, vehiclePlate: true, arrivedAt: true } });
+  // The Security desk sees which job a vehicle is on, but opens the job only if allowed.
+  const jobs = await allows('workshop.job_card.view');
   const car = (v: { make: string | null; model: string | null }) => [v.make, v.model].filter(Boolean).join(' ') || 'Vehicle';
   return [
     ...visits.flatMap((v: (typeof visits)[number]) =>
       (v.vehiclePlate ?? '').split(',').map((x: string) => x.trim()).filter(Boolean).map((plate: string) => ({ kind: 'VISITOR' as const, stage: 'VISITOR' as const, id: v.id, number: v.passNumber ?? '', plate, description: v.vehicleType, who: v.visitorName, since: v.checkedInAt, href: `/security/visitors/${v.id}` })),
     ),
-    ...jcs.map((j: (typeof jcs)[number]) => ({ kind: 'JOB_CARD' as const, stage: 'WORKSHOP' as const, id: j.id, number: j.jobNumber, plate: j.vehicle.plateNumber, description: car(j.vehicle), who: j.customer.fullName, since: j.createdAt, href: `/workshop/job-cards/${j.id}` })),
-    ...vss.map((v: (typeof vss)[number]) => ({ kind: 'VEHICLE_SERVICE' as const, stage: 'WORKSHOP' as const, id: v.id, number: v.serviceNumber, plate: v.vehicle.plateNumber, description: car(v.vehicle), who: v.customer.fullName, since: v.createdAt, href: `/workshop/vehicle-service/${v.id}` })),
+    ...jcs.map((j: (typeof jcs)[number]) => ({ kind: 'JOB_CARD' as const, stage: 'WORKSHOP' as const, id: j.id, number: j.jobNumber, plate: j.vehicle.plateNumber, description: car(j.vehicle), who: j.customer.fullName, since: j.createdAt, href: jobs ? `/workshop/job-cards/${j.id}` : '' })),
+    ...vss.map((v: (typeof vss)[number]) => ({ kind: 'VEHICLE_SERVICE' as const, stage: 'WORKSHOP' as const, id: v.id, number: v.serviceNumber, plate: v.vehicle.plateNumber, description: car(v.vehicle), who: v.customer.fullName, since: v.createdAt, href: jobs ? `/workshop/vehicle-service/${v.id}` : '' })),
     ...deliveries.map((d: (typeof deliveries)[number]) => ({ kind: 'DELIVERY' as const, stage: 'DELIVERY' as const, id: d.id, number: d.deliveryNumber, plate: d.vehiclePlate, description: d.vehicleType ?? 'OTHER', who: d.supplierName, since: d.arrivedAt, href: `/security/deliveries/${d.id}` })),
     ...cleared.map((c) => ({ kind: c.kind, stage: 'CLEARED' as const, id: c.id, number: c.number, plate: c.vehicle.plateNumber, description: car(c.vehicle), who: c.customer, since: c.releasedAt, href: `/security/vehicles/release/${c.kind === 'JOB_CARD' ? 'job-card' : 'vehicle-service'}/${c.id}` })),
   ].sort((a, b) => (b.since?.getTime() ?? 0) - (a.since?.getTime() ?? 0));
@@ -1008,7 +1037,9 @@ export async function canRequestRoadTestOn(kind: 'JOB_CARD' | 'VEHICLE_SERVICE',
   const sel = { select: { branchId: true, supervisorId: true, assignedTechnicianId: true, createdById: true } } as const;
   const job = kind === 'JOB_CARD' ? await prisma.jobCard.findUnique({ where: { id }, ...sel }) : await prisma.vehicleService.findUnique({ where: { id }, ...sel });
   if (!job) return false;
-  if (await allows('workshop.job.work', { branchId: job.branchId, assigneeIds: [job.supervisorId, job.assignedTechnicianId], ownerIds: [job.createdById] })) return true;
+  const onJob = { branchId: job.branchId, assigneeIds: [job.supervisorId, job.assignedTechnicianId], ownerIds: [job.createdById] };
+  // The supervisor / technician working on it, or the front desk that opened it.
+  if ((await allows('workshop.job.work', onJob)) || (await allows('workshop.close.request', onJob))) return true;
   return allows('workshop.close.approve', { branchId: job.branchId, homeBranch: true });
 }
 
@@ -1147,7 +1178,7 @@ const RT_ROW = {
 
 export async function listRoadTests(scope: 'to_decide' | 'approved' | 'out' | 'all', q?: string) {
   const user = await requireUser();
-  const reach = await reachWhere('security.view');
+  const reach = await firstReach(['security.view', 'workshop.job_card.view']);
   const roles = await getSecurityRoles();
   const t = q?.trim();
   const status = scope === 'to_decide' ? 'PENDING_MANAGER' : scope === 'approved' ? 'APPROVED' : scope === 'out' ? 'OUT' : undefined;
@@ -1166,7 +1197,7 @@ export async function listRoadTests(scope: 'to_decide' | 'approved' | 'out' | 'a
 
 export async function listRoadTestsFor(opts: { jobCardId?: string; vehicleServiceId?: string }) {
   await requireUser();
-  const reach = await reachWhere('security.view');
+  const reach = await firstReach(['workshop.job_card.view', 'security.view']);
   return prisma.roadTestPermit.findMany({ where: { ...reach, ...(opts.jobCardId ? { jobCardId: opts.jobCardId } : { vehicleServiceId: opts.vehicleServiceId }) }, orderBy: { createdAt: 'desc' }, select: RT_ROW });
 }
 
@@ -1182,7 +1213,7 @@ export async function getRoadTest(id: string) {
       requestedBy: { select: { id: true, fullName: true } }, driver: { select: { fullName: true, phone: true } }, people: { select: { id: true, name: true, employeeId: true, userId: true } },
       managerApprovedBy: { select: { fullName: true } }, declinedBy: { select: { fullName: true } }, gateOutBy: { select: { fullName: true } }, gateInBy: { select: { fullName: true } },
     },
-  }), `RoadTest:${id}`);
+  }), `RoadTest:${id}`, { keys: ['security.view', 'workshop.job_card.view'] });
 }
 
 export async function canDecideRoadTest(id: string): Promise<boolean> {
@@ -1450,7 +1481,7 @@ export async function cancelDelivery(id: string, reason: string): Promise<void> 
 const DELIVERY_TABS = ['expected', 'at_gate', 'received', 'left', 'cancelled', 'all'] as const;
 export async function listDeliveries(q?: string, tab?: string) {
   await requireUser();
-  const reach = await reachWhere('security.view');
+  const reach = await firstReach(['security.view', 'store.grn.record']);
   const t2 = q?.trim();
   const rows = await prisma.gateDelivery.findMany({
     where: { ...reach, ...(t2 ? { OR: [{ deliveryNumber: { contains: t2, mode: 'insensitive' } }, { supplierName: { contains: t2, mode: 'insensitive' } }, { reference: { contains: t2, mode: 'insensitive' } }, { items: { contains: t2, mode: 'insensitive' } }, { vehiclePlate: { contains: t2, mode: 'insensitive' } }, { driverName: { contains: t2, mode: 'insensitive' } }] } : {}) },
@@ -1465,7 +1496,7 @@ export async function listDeliveries(q?: string, tab?: string) {
 
 export async function getDelivery(id: string) {
   await requireUser();
-  return visibleOrNull(await prisma.gateDelivery.findUnique({ where: { id }, include: { registeredBy: { select: { fullName: true } }, arrivedBy: { select: { fullName: true } }, receivedBy: { select: { fullName: true } }, leftBy: { select: { fullName: true } }, goodsReceipt: { select: { id: true, referenceNumber: true, supplierName: true, receivedAt: true } } } }), `Delivery:${id}`);
+  return visibleOrNull(await prisma.gateDelivery.findUnique({ where: { id }, include: { registeredBy: { select: { fullName: true } }, arrivedBy: { select: { fullName: true } }, receivedBy: { select: { fullName: true } }, leftBy: { select: { fullName: true } }, goodsReceipt: { select: { id: true, referenceNumber: true, supplierName: true, receivedAt: true } } } }), `Delivery:${id}`, { keys: ['security.view', 'store.grn.record'] });
 }
 
 /** Can this person act for the Store? (for the delivery page) */
@@ -1490,6 +1521,7 @@ export async function requestContractorPass(input: ContractorInput): Promise<{ i
   const user = await requireUser();
   const roles = await getSecurityRoles();
   const hostUserId = roles.isFrontDesk && input.hostUserId ? input.hostUserId : user.id;
+  if (!roles.isFrontDesk && !(await allows('security.pass.approve'))) return refuse('security.pass.approve', 'requestContractorPass', 'Contractor passes are requested by a head of department, the manager, Security or Reception.');
   if (!input.company.trim()) throw new SecurityError('Enter the contractor company.');
   if (!input.work.trim()) throw new SecurityError('Describe the work to be done.');
   if (!input.workArea.trim()) throw new SecurityError('Say where on site they will work.');
@@ -1601,7 +1633,7 @@ const CTR_TABS = ['on_site', 'active', 'to_decide', 'upcoming', 'ended', 'all'] 
 
 export async function listContractorPasses(q?: string, tab?: string) {
   const user = await requireUser();
-  const reach = await reachWhere('security.view');
+  const reach = await firstReach(['security.view', 'security.pass.approve']);
   const roles = await getSecurityRoles();
   const t2 = q?.trim();
   const raw = await prisma.contractorPass.findMany({
@@ -1637,7 +1669,7 @@ export async function getContractorPass(id: string) {
       attendance: { orderBy: { signedInAt: 'desc' }, include: { signedInBy: { select: { fullName: true } }, signedOutBy: { select: { fullName: true } } } },
     },
   });
-  if (!p || !(await visibleOrNull(p, `ContractorPass:${id}`))) return null;
+  if (!p || !(await visibleOrNull(p, `ContractorPass:${id}`, { keys: ['security.view', 'security.pass.approve'], people: [p.host?.id, p.requestedBy?.id] }))) return null;
   const open = p.attendance.find((a: { signedOutAt: Date | null }) => !a.signedOutAt) ?? null;
   return { ...p, onSite: open, state: contractorState(p, Boolean(open)), afterHours: open ? contractorAfterHoursMinutes(open.signedInAt) : 0 };
 }

@@ -3,17 +3,15 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ModuleStatusBadge } from '@ejo/ui';
-import { platformModules } from '@/lib/modules';
+import type { NavItem } from '@/lib/authz/navigation';
 import { portalConfig } from '@/lib/site-config';
 import { BrandLogo } from './BrandLogo';
 
 /**
- * Renders EVERY module in the registry, live or not — clicking a
- * COMING_SOON module still navigates to its (placeholder) page rather
- * than being hidden or disabled, per the "every route already exists"
- * rule. The badge is the only visual difference.
+ * Renders the modules THIS person may open (worked out on the server from
+ * their roles — lib/authz/navigation.ts); every page still checks again.
  */
-export function Sidebar() {
+export function Sidebar({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
 
   return (
@@ -27,7 +25,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {platformModules.map((mod) => {
+        {items.map((mod) => {
           const active = pathname === mod.href || pathname.startsWith(`${mod.href}/`);
           return (
             <Link
@@ -40,7 +38,7 @@ export function Sidebar() {
               }`}
             >
               <span>{mod.name}</span>
-              {mod.status !== 'LIVE' && <ModuleStatusBadge status={mod.status} />}
+              {mod.status !== 'LIVE' && <ModuleStatusBadge status={mod.status as never} />}
             </Link>
           );
         })}

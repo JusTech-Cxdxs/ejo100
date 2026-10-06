@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getAppointment } from '@/lib/actions/scheduling';
 import { addVisitorGroupFormAction } from '@/lib/actions/scheduling-form-handlers';
@@ -10,6 +11,8 @@ import { SubmitButton } from '@/components/SubmitButton';
 
 /** Add a visitor group to an appointment — one per company / person. */
 export default async function AddVisitorsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
+  // Calendars are for people who keep one (an appointment itself stays open to the people in it).
+  await guardAnyPage(['schedule.view', 'schedule.manage'], '/schedule');
   const { id } = await params;
   const { error } = await searchParams;
   const a = await getAppointment(id);

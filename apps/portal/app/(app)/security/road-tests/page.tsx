@@ -1,3 +1,4 @@
+import { JobRef } from '@/components/JobRef';
 import { listRoadTests, getSecurityRoles } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -36,7 +37,7 @@ export default async function RoadTestsPage({ searchParams }: { searchParams: Pr
           return (
             <tr key={r.id}>
               <td><LoadingLink href={`/security/road-tests/${r.id}`} className={`font-medium ${link}`}>{r.permitNumber}</LoadingLink></td>
-              <td>{r.jobCard ? <LoadingLink href={`/workshop/job-cards/${r.jobCard.id}`} className={link}>{r.jobCard.jobNumber}</LoadingLink> : r.vehicleService ? <LoadingLink href={`/workshop/vehicle-service/${r.vehicleService.id}`} className={link}>{r.vehicleService.serviceNumber}</LoadingLink> : '—'}</td>
+              <td>{r.jobCard ? <JobRef kind="JOB_CARD" id={r.jobCard.id} number={r.jobCard.jobNumber} className={link} /> : r.vehicleService ? <JobRef kind="VEHICLE_SERVICE" id={r.vehicleService.id} number={r.vehicleService.serviceNumber} className={link} /> : '—'}</td>
               <td>{[r.vehicle.make, r.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}<span className="block text-xs font-medium">{r.vehicle.plateNumber}</span></td>
               <td>{r.driver.fullName}</td>
               <td className="text-xs">{r.purpose}{r.route ? <span className="block text-[var(--ejo-text-muted)]">{r.route}</span> : null}</td>

@@ -102,12 +102,12 @@ test('Security: gate staff operate the gate; the Chief manages incidents', () =>
   no(who(['chief-security-officer']), 'security.gate.operate', { branchId: B });
 });
 
-test('Pass approvals: department heads for their department; anyone the request waits on', () => {
+test('Pass approvals: heads of department for their department; the branch manager for the branch', () => {
   const h = who(['department-head']);
   yes(h, 'security.pass.approve', { departmentId: 'dept-1' });
   no(h, 'security.pass.approve', { departmentId: 'dept-2', branchId: A });
-  yes(who([]), 'security.pass.approve', { assigneeIds: ['me'] });
-  no(who([]), 'security.pass.approve', { assigneeIds: ['x'] });
+  yes(who(['workshop-manager']), 'security.pass.approve', { branchId: A });
+  for (const slug of ['technician', 'finance-officer', 'workshop-supervisor', 'receptionist', 'security-officer']) no(who([slug]), 'security.pass.approve', { branchId: A });
 });
 
 test('Several roles: the widest scope wins', () => {
@@ -128,14 +128,54 @@ test('Organisation-wide staff (no branch on their profile) are not limited to on
   yes(who(['finance-officer'], { branchId: null }), 'workshop.payment.record', { branchId: B });
 });
 
-test('Everyone signed in can see their branch and raise parts requests', () => {
+test('Everyone signed in may only request their own exit pass — nothing else by default', () => {
   const p = who([]);
-  for (const k of ['workshop.view', 'workshop.job_card.view', 'store.view', 'security.view', 'warranty.view', 'sourcing.request'] as PermissionKey[]) {
-    yes(p, k, { branchId: A });
-    no(p, k, { branchId: B });
-  }
-  no(p, 'schedule.view');
-  no(p, 'analytics.business.view');
+  yes(p, 'security.exit_pass.request', { ownerIds: ['me'] });
+  no(p, 'security.exit_pass.request', { ownerIds: ['someone-else'] });
+  for (const k of ['workshop.view', 'workshop.job_card.view', 'store.view', 'security.view', 'warranty.view', 'sourcing.request', 'schedule.view', 'analytics.business.view', 'workshop.job.work', 'workshop.estimate.approve'] as PermissionKey[]) no(p, k, { branchId: A, assigneeIds: ['me'] });
+});
+
+test('Realistic duties: each department does its own work only', () => {
+  // Finance: money — never supervises, works on jobs, opens jobs or books visitors.
+  const f = who(['finance-officer']);
+  for (const k of ['workshop.job.supervise', 'workshop.estimate.approve', 'workshop.technician.assign', 'workshop.job.work', 'workshop.estimate.edit', 'workshop.job_card.create', 'security.view', 'workshop.close.request'] as PermissionKey[]) no(f, k, { branchId: A, assigneeIds: ['me'] });
+  yes(f, 'workshop.job_card.view', { branchId: A });
+  // Security: the gate — no workshop, no money.
+  const s = who(['security-officer']);
+  for (const k of ['workshop.job_card.view', 'workshop.payment.record', 'workshop.job_card.create', 'store.view'] as PermissionKey[]) no(s, k, { branchId: A });
+  yes(s, 'security.gate.operate', { branchId: A });
+  // Manager approves and closes — never opens jobs.
+  const m = who(['workshop-manager']);
+  no(m, 'workshop.job_card.create', { branchId: A });
+  no(m, 'workshop.customer.manage', { branchId: A });
+  yes(m, 'workshop.close.approve', { branchId: A });
+  // Front desk opens jobs and talks to customers — never approves or works on them.
+  const r = who(['receptionist']);
+  yes(r, 'workshop.job_card.create', { branchId: A });
+  yes(r, 'workshop.customer.notify', { branchId: A });
+  for (const k of ['workshop.estimate.approve', 'workshop.job.work', 'workshop.technician.assign', 'workshop.estimate.final_approve', 'workshop.payment.record'] as PermissionKey[]) no(r, k, { branchId: A, assigneeIds: ['me'] });
+  // Technician writes the estimate but cannot approve it, cannot assign technicians, cannot supervise.
+  const t = who(['technician']);
+  yes(t, 'workshop.estimate.edit', { assigneeIds: ['me'] });
+  for (const k of ['workshop.estimate.approve', 'workshop.technician.assign', 'workshop.job.supervise', 'workshop.job_card.create'] as PermissionKey[]) no(t, k, { branchId: A, assigneeIds: ['me'] });
+  // Supervisor can do what the technician does, plus approve and assign.
+  const sup = who(['workshop-supervisor']);
+  for (const k of ['workshop.estimate.edit', 'workshop.job.work', 'workshop.inspection.perform', 'workshop.estimate.approve', 'workshop.technician.assign'] as PermissionKey[]) yes(sup, k, { assigneeIds: ['me'] });
+  no(sup, 'workshop.job_card.create', { branchId: A });
+});
+
+test('Two levels of administration: headquarters (all branches) and branch', () => {
+  const hq = who(['administrator'], { orgBranchIds: [A, B] });
+  yes(hq, 'admin.users.manage', { branchId: B });
+  yes(hq, 'admin.structure.manage', { branchId: B });
+  const ba = who(['branch-administrator']);
+  yes(ba, 'admin.users.manage', { branchId: A });
+  no(ba, 'admin.users.manage', { branchId: B });
+  no(ba, 'admin.roles.manage');
+  no(ba, 'admin.structure.manage');
+  no(ba, 'admin.organisation.manage');
+  // Neither administrator does the departments' transactions.
+  for (const a of [hq, ba]) for (const k of ['workshop.job_card.create', 'workshop.payment.record', 'workshop.close.approve'] as PermissionKey[]) no(a, k, { branchId: A });
 });
 
 test('The catalogue is internally consistent', () => {

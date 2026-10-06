@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listAppointments } from '@/lib/actions/scheduling';
 import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
@@ -15,6 +16,8 @@ const STATUS: Record<string, [string, string]> = {
 const when = (a: Date, b: Date) => `${new Date(a).toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}, ${new Date(a).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' })} – ${new Date(b).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' })}`;
 
 export default async function AppointmentsRegisterPage({ searchParams }: { searchParams: Promise<{ q?: string; show?: string }> }) {
+  // Calendars are for people who keep one (an appointment itself stays open to the people in it).
+  await guardAnyPage(['schedule.view', 'schedule.manage'], '/schedule');
   const { q, show } = await searchParams;
   const { tab, counts, rows } = await listAppointments(q, show);
   return (

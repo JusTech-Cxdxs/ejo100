@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { setAuditActor } from '@ejo/database';
+import { recordJobRun } from '@/lib/job-runs';
 import { getOpenPricingAlertsForDigest } from '@/lib/actions/store';
 import { sendEmail } from '@/lib/email';
 import { renderPricingAlertsDigestEmail } from '@/lib/email-templates/pricing-alerts-digest';
@@ -78,6 +79,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  await recordJobRun('pricing-alerts', { branchesWithOpenAlerts: groups.length, emailsSent, emailsFailed });
   return NextResponse.json({
     branchesWithOpenAlerts: groups.length,
     emailsSent,

@@ -80,7 +80,7 @@ export default async function DeliveryPage({ params, searchParams }: { params: P
             <form action={securityFollowUpFormAction} className="flex flex-wrap gap-2 border-t border-[var(--ejo-border)] pt-3"><FormPendingOverlay /><input type="hidden" name="entityType" value="GateDelivery" /><input type="hidden" name="entityId" value={d.id} /><input name="note" required placeholder="Follow-up note" className={`${input} min-w-0 flex-1`} /><SubmitButton label="Add note" pendingLabel="Saving…" className={line} /></form>
           ) : null}
           {['LEFT', 'CANCELLED'].includes(d.status) ? <p className="text-sm text-[var(--ejo-text-muted)]">This delivery is closed.</p> : null}
-          <LoadingLink href={`/security/incidents/new?related=${d.deliveryNumber}`} className="block text-xs text-[var(--ejo-primary)] hover:underline">Report an incident about this delivery →</LoadingLink>
+          {roles.isFrontDesk ? <LoadingLink href={`/security/incidents/new?related=${d.deliveryNumber}`} className="block text-xs text-[var(--ejo-primary)] hover:underline">Report an incident about this delivery →</LoadingLink> : null}
         </div>
       </div>
       <SecurityHistory history={history} />

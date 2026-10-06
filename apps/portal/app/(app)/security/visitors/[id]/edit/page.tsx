@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getVisit, getSecurityRoles, searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { updateBookingFormAction } from '@/lib/actions/security-form-handlers';
@@ -8,6 +9,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 
 /** Change a booking before the visitor arrives. */
 export default async function EditBookingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
+  await guardAnyPage(['security.view'], '/security/visitors/edit');
   const { id } = await params;
   const { error } = await searchParams;
   const [v, roles] = await Promise.all([getVisit(id), getSecurityRoles()]);

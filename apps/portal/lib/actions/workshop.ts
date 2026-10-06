@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize, canSeeRecord, reachWhere, authorizeOnJobCard, refuse, orgWhere, inMyOrganisation } from '@/lib/authz/server';
+import { authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse } from '@/lib/authz/server';
 import { jobCardActive, jobCardInside, serviceInside } from '@/lib/custody';
 
 
@@ -1016,7 +1016,19 @@ export type CreateJobCardInput = {
 
 
 export async function createJobCard(input: CreateJobCardInput) {
-  await authorize('workshop.job_card.create', undefined, 'createJobCard');
+  if (input.escalatedFromServiceNumber) {
+    // Escalating a Vehicle Service: done by the people working on it (its
+    // supervisor or technician) — checked on the real service record, never on
+    // the caller's word: same customer, same vehicle, not already escalated.
+    const sv = await prisma.vehicleService.findFirst({
+      where: { serviceNumber: input.escalatedFromServiceNumber, customerId: input.customerId, vehicleId: input.vehicleId, escalatedToJobCardId: null },
+      select: { id: true },
+    });
+    if (!sv) throw new WorkshopActionError('That Vehicle Service cannot be escalated — refresh the page.');
+    await authorizeOnService('workshop.job.work', sv.id, 'createJobCard.escalation');
+  } else {
+    await authorize('workshop.job_card.create', undefined, 'createJobCard');
+  }
   const user = await requireUser();
   const complaints = input.complaints.map((c) => c.trim()).filter((c) => c.length > 0);
   if (!input.customerId || !input.vehicleId || complaints.length === 0) {
@@ -1756,8 +1768,8 @@ export async function assignTechnician(jobCardId: string, technicianId: string) 
   }
   if (['CLOSED', 'CHECKED_OUT', 'CANCELLED'].includes(current.status)) throw new WorkshopActionError('This Job Card is finished — the technician can no longer change.');
   const org = (await prisma.user.findUnique({ where: { id: actor.id }, select: { organisationId: true } }))?.organisationId;
-  const tech = await prisma.user.findFirst({ where: { id: technicianId, isActive: true, ...(org ? { organisationId: org } : {}) }, select: { id: true } });
-  if (!tech) throw new WorkshopActionError('That technician could not be found or is no longer active.');
+  const tech = await prisma.user.findFirst({ where: { id: technicianId, isActive: true, ...(org ? { organisationId: org } : {}), roles: { some: { role: { OR: [{ slug: { in: [...WORKSHOP_HANDS] } }, { isSuperAdmin: true }] } } } }, select: { id: true } });
+  if (!tech) throw new WorkshopActionError('Choose an active technician (or supervisor) — only workshop staff can be assigned to a job.');
   const jobCard = await prisma.jobCard.update({
     where: { id: jobCardId },
     data: {
@@ -1975,10 +1987,14 @@ export async function rejectTechnicianAssignment(jobCardId: string, reason: stri
  * user's role name(s) alongside their name lets staff pick correctly in
  * the meantime; narrowing this to a real role filter is a small, natural
  * follow-up once role assignment exists, not a redesign. */
+const WORKSHOP_HANDS = ['technician', 'workshop-supervisor'] as const;
+
 export async function listTechnicianCandidates() {
   await requireUser();
   return prisma.user.findMany({
-    where: { isActive: true, ...(await orgWhere()) },
+    // Only people who actually do workshop work: technicians, and supervisors
+    // (a supervisor can do anything a technician can).
+    where: { isActive: true, ...(await orgWhere()), roles: { some: { role: { slug: { in: [...WORKSHOP_HANDS] } } } } },
     orderBy: { fullName: 'asc' },
     select: {
       id: true,

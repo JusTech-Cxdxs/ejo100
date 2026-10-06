@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listContractorPasses } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -8,6 +9,9 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 export default async function ContractorsPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string }> }) {
+  // The list and new passes: the Security desk and the heads / manager who approve them.
+  // A single pass stays open to its host and requester (see getContractorPass).
+  await guardAnyPage(['security.view', 'security.pass.approve'], '/security/contractors');
   const { q, tab } = await searchParams;
   const { tab: current, counts, rows, canDecide } = await listContractorPasses(q, tab);
   const tabs: [string, string][] = [['on_site', 'On site'], ['active', 'Active'], ...(canDecide ? [['to_decide', 'To approve'] as [string, string]] : []), ['upcoming', 'Upcoming'], ['ended', 'Ended'], ['all', 'All']];

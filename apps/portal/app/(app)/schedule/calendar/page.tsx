@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { getSchedulingAccess, listCalendar } from '@/lib/actions/scheduling';
 import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
@@ -16,6 +17,8 @@ const ymdOf = (d: Date) => new Date(d.getTime() + 3600000).toISOString().slice(0
 const time = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' });
 
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ date?: string; view?: string; owner?: string }> }) {
+  // Calendars are for people who keep one (an appointment itself stays open to the people in it).
+  await guardAnyPage(['schedule.view', 'schedule.manage'], '/schedule');
   const { date, view, owner } = await searchParams;
   const access = await getSchedulingAccess();
   if (!access.canUse) {

@@ -2,9 +2,9 @@
 
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
-import { platformModules } from '@/lib/modules';
+import { navigationFor } from '@/lib/authz/navigation';
 import { getPrincipal, orgOwned, orgWhere, reachWhere } from '@/lib/authz/server';
-import { decide, PAGE_PERMISSIONS } from '@/lib/authz/catalogue';
+import { decide } from '@/lib/authz/catalogue';
 import { getSchedulingAccess } from './scheduling';
 
 export type SearchHit = { label: string; sub?: string; href: string };
@@ -41,10 +41,14 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const m = (field: string) => (q.length < 2 ? { [field]: { startsWith: q, mode: 'insensitive' as const } } : { [field]: { contains: q, mode: 'insensitive' as const } });
   const take = 5;
   const lower = q.toLowerCase();
-  const pageOk = (key: string) => !(key in PAGE_PERMISSIONS) || allowed(PAGE_PERMISSIONS[key]!);
-  const PAGE_NEEDS: Record<string, Parameters<typeof decide>[1]> = { '/inventory/analytics': 'analytics.inventory.view' };
+  const PAGE_NEEDS: Record<string, Parameters<typeof decide>[1]> = {
+    '/workshop/job-cards': 'workshop.view', '/workshop/vehicle-service': 'workshop.view', '/workshop/vehicles': 'workshop.view', '/workshop/customers': 'workshop.view', '/workshop/custody': 'workshop.view',
+    '/inventory/parts': 'store.view', '/inventory/goods-receipts': 'store.view', '/inventory/analytics': 'analytics.inventory.view', '/workshop/parts-requests': 'store.view', '/workshop/external-procurement': 'store.view',
+    '/warranty/claims': 'warranty.view', '/security/visitors': 'security.view', '/security/road-tests': 'security.view', '/security/incidents': 'security.view', '/security/deliveries': 'security.view', '/security/contractors': 'security.view',
+    '/schedule/calendar': 'schedule.view', '/schedule/appointments': 'schedule.view', '/notifications/broadcasts': 'notifications.broadcast.send',
+  };
   const pages: SearchHit[] = [
-    ...platformModules.filter((x) => x.status === 'LIVE' && pageOk(x.key) && x.name.toLowerCase().includes(lower)).map((x) => ({ label: x.name, sub: 'Module', href: x.href })),
+    ...navigationFor(principal).filter((x) => x.status === 'LIVE' && x.name.toLowerCase().includes(lower)).map((x) => ({ label: x.name, sub: 'Module', href: x.href })),
     ...MORE_PAGES.filter((x) => x.label.toLowerCase().includes(lower) && (!PAGE_NEEDS[x.href] || allowed(PAGE_NEEDS[x.href]!))),
   ].slice(0, 6);
   const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);

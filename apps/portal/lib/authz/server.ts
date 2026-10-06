@@ -77,6 +77,23 @@ export async function guardPage(key: PermissionKey, where: string): Promise<void
   }
 }
 
+/** Pages open to people with ANY of several permissions (e.g. Deliveries:
+ * the gate or the Store). Refuses on the server like guardPage. */
+export async function guardAnyPage(keys: PermissionKey[], where: string): Promise<void> {
+  const p = await getPrincipal();
+  if (keys.some((k) => decide(p, k).allowed)) return;
+  await logDenied(p.userId, keys[0]!, where, 'No role grants any of the permissions this page needs');
+  redirect(`/access-denied?area=${encodeURIComponent(PERMISSIONS[keys[0]!].label)}`);
+}
+
+/** The reach of the FIRST permission this person holds — for lists shared by
+ * two departments (Deliveries: the gate and the Store). */
+export async function firstReach(keys: PermissionKey[]): Promise<{ branchId?: string | { in: string[] } }> {
+  const p = await getPrincipal();
+  const k = keys.find((x) => decide(p, x).allowed);
+  return k ? reachWhere(k) : { branchId: '__no_access__' };
+}
+
 /** Server actions: throw a plain message when not allowed. A module may pass
  * its own wording (e.g. "Only Store staff can record a goods receipt."). */
 export async function authorize(key: PermissionKey, record?: RecordContext, where = 'action', message = 'You do not have permission to do this.'): Promise<void> {

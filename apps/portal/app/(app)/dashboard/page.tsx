@@ -1,11 +1,11 @@
+import { allows } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
-import { getWorkshopDashboardCounts, currentUserIsMasterAdmin, currentUserId, listEligibleManagersForBranch } from '@/lib/actions/workshop';
+import { getWorkshopDashboardCounts } from '@/lib/actions/workshop';
 import { getDashboardTrend, getDashboardNotifications, getPlatformGlance } from '@/lib/actions/dashboard';
 import { getMyBroadcasts, canBroadcast } from '@/lib/actions/notifications';
 import { BROADCAST_CATEGORY } from '@/lib/notification-rules';
 import { DashboardTrendChart } from '@/components/DashboardTrendChart';
 import { LoadingLink } from '@/components/LoadingLink';
-import { prisma } from '@ejo/database';
 
 /**
  * Real counts, real trend, and a real "needs your attention" summary
@@ -17,18 +17,8 @@ import { prisma } from '@ejo/database';
  * those are genuinely everyone's business, not just management's.
  */
 export default async function DashboardPage() {
-  const userId = await currentUserId();
-  const [isMasterAdmin, user] = await Promise.all([
-    currentUserIsMasterAdmin(),
-    prisma.user.findUnique({ where: { id: userId }, select: { branchId: true, organisationId: true } }),
-  ]);
-
-  let isManager = isMasterAdmin;
-  if (!isMasterAdmin && user?.branchId) {
-    const managers = await listEligibleManagersForBranch(user.branchId).catch(() => ({ supervisors: [] as { id: string }[] }));
-    isManager = managers.supervisors.some((m) => m.id === userId);
-  }
-
+  // What this person works with — the dashboard shows only their areas.
+  const [seesWorkshop, seesMoney] = await Promise.all([allows('workshop.view'), allows('analytics.business.view')]);
   const [counts, trend, notifications, myBroadcasts, broadcaster, glance] = await Promise.all([
     getWorkshopDashboardCounts(),
     getDashboardTrend(),
@@ -50,10 +40,10 @@ export default async function DashboardPage() {
     <div className="p-8">
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Dashboard</h1>
       <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
-        <OrgTrail area="Workshop" />
+        <OrgTrail />
       </p>
 
-      <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+      {seesWorkshop ? <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
         {stats.map((s) => (
           <LoadingLink
             key={s.label}
@@ -64,7 +54,7 @@ export default async function DashboardPage() {
             <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{s.label}</p>
           </LoadingLink>
         ))}
-      </div>
+      </div> : null}
 
       {notifications.length > 0 ? (
         <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
@@ -100,8 +90,8 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      <div className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">The whole business at a glance</h2>
+      {glance.length > 0 ? <div className="mt-6">
+        <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">{seesWorkshop ? 'The whole business at a glance' : 'Your areas at a glance'}</h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
           {glance.map((t) => (
             <LoadingLink key={t.label} href={t.href} className="group rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 hover:border-[var(--ejo-primary)]">
@@ -112,16 +102,16 @@ export default async function DashboardPage() {
             </LoadingLink>
           ))}
         </div>
-      </div>
+      </div> : null}
 
-      <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+      {seesWorkshop ? <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
         <h2 className="text-sm font-semibold text-[var(--ejo-text)]">
-          {isManager ? 'Work opened and money collected' : 'Work opened'} — last 14 working days
+          {seesMoney ? 'Work opened and money collected' : 'Work opened'} — last 14 working days
         </h2>
         <div className="mt-3">
-          <DashboardTrendChart data={trend} showRevenue={isManager} />
+          <DashboardTrendChart data={trend} showRevenue={seesMoney} />
         </div>
-      </div>
+      </div> : null}
 
       <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">

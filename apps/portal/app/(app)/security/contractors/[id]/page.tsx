@@ -89,7 +89,7 @@ export default async function ContractorPassPage({ params, searchParams }: { par
           {canCancel ? (
             <form action={contractorActionFormAction} className="flex flex-wrap gap-2 border-t border-[var(--ejo-border)] pt-3"><Hidden action="cancel" /><input name="reason" required placeholder="Reason for cancelling" className={`${input} min-w-0 flex-1`} /><SubmitButton label="Cancel pass" pendingLabel="Saving…" className="text-sm font-medium text-[var(--ejo-error)] hover:underline" /></form>
           ) : null}
-          <LoadingLink href={`/security/incidents/new?related=${p.passNumber}`} className="block text-xs text-[var(--ejo-primary)] hover:underline">Report an incident about this team →</LoadingLink>
+          {roles.isFrontDesk ? <LoadingLink href={`/security/incidents/new?related=${p.passNumber}`} className="block text-xs text-[var(--ejo-primary)] hover:underline">Report an incident about this team →</LoadingLink> : null}
         </div>
       </div>
       <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">Attendance ({pluralize(p.attendance.length, 'day')})</h2>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendDueAppointmentReminders, sendMorningDigest } from '@/lib/appointment-reminders';
 import { deliverDueBroadcastEmails } from '@/lib/broadcast-delivery';
+import { recordJobRun } from '@/lib/job-runs';
+import { setAuditActor } from '@ejo/database';
 
 /**
  * Appointment reminders. Protected by CRON_SECRET (same as the other cron
@@ -15,9 +17,13 @@ export async function GET(request: NextRequest) {
   if (!secret || (auth !== `Bearer ${secret}` && key !== secret)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  setAuditActor(null, 'cron:appointment-reminders');
   const reminders = await sendDueAppointmentReminders();
   // Scheduled broadcasts go out by email at their start time.
   const broadcastEmails = await deliverDueBroadcastEmails();
-  const digests = request.nextUrl.searchParams.get('digest') === '1' ? await sendMorningDigest() : 0;
+  const digest = request.nextUrl.searchParams.get('digest') === '1';
+  const digests = digest ? await sendMorningDigest() : 0;
+  await recordJobRun('appointment-reminders', { remindersSent: reminders, broadcastEmailsSent: broadcastEmails });
+  if (digest) await recordJobRun('morning-digest', { digestsSent: digests });
   return NextResponse.json({ ok: true, remindersSent: reminders, digestsSent: digests, broadcastEmailsSent: broadcastEmails });
 }

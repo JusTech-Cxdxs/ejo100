@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { getSecurityRoles, searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { requestContractorFormAction } from '@/lib/actions/security-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -6,6 +7,9 @@ import { ContractorForm } from '@/components/ContractorForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 
 export default async function NewContractorPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  // The list and new passes: the Security desk and the heads / manager who approve them.
+  // A single pass stays open to its host and requester (see getContractorPass).
+  await guardAnyPage(['security.view', 'security.pass.approve'], '/security/contractors');
   const { error } = await searchParams;
   const roles = await getSecurityRoles();
   return (

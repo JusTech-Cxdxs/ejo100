@@ -343,9 +343,9 @@ export async function assignTechnicianToVehicleService(serviceId: string, techni
   }
   if (['COLLECTED', 'CANCELLED'].includes(service.status)) throw new VehicleServiceActionError('This Vehicle Service is finished — the technician can no longer change.');
   const org = (await prisma.user.findUnique({ where: { id: user.id }, select: { organisationId: true } }))?.organisationId;
-  const technician = await prisma.user.findFirst({ where: { id: technicianId, isActive: true, ...(org ? { organisationId: org } : {}) }, select: { fullName: true, email: true } });
+  const technician = await prisma.user.findFirst({ where: { id: technicianId, isActive: true, ...(org ? { organisationId: org } : {}), roles: { some: { role: { OR: [{ slug: { in: ['technician', 'workshop-supervisor'] } }, { isSuperAdmin: true }] } } } }, select: { fullName: true, email: true } });
   if (!technician) {
-    throw new VehicleServiceActionError('That technician could not be found.');
+    throw new VehicleServiceActionError('Choose an active technician (or supervisor) — only workshop staff can be assigned to a job.');
   }
   await prisma.vehicleService.update({
     where: { id: serviceId },
