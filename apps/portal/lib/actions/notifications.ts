@@ -350,7 +350,7 @@ export async function listAudienceOptions() {
 /** The cheap change signal (newest business event + newest broadcast change). */
 async function pulseSignature(): Promise<string> {
   const [a, b] = await Promise.all([
-    prisma.auditLog.findFirst({ where: { NOT: [{ entityType: { startsWith: 'db:' } }, { action: { endsWith: '.failed' } }] }, orderBy: { createdAt: 'desc' }, select: { id: true } }),
+    prisma.auditLog.findFirst({ where: { NOT: [{ entityType: { startsWith: 'db:' } }, { action: { endsWith: '.failed' } }, { action: 'system.job_run' }] }, orderBy: { createdAt: 'desc' }, select: { id: true } }),
     prisma.broadcast.findFirst({ orderBy: { updatedAt: 'desc' }, select: { id: true, updatedAt: true } }),
   ]);
   return `${a?.id ?? ''}|${b?.id ?? ''}:${b ? +new Date(b.updatedAt) : 0}`;
