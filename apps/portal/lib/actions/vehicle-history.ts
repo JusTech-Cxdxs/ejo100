@@ -1,5 +1,6 @@
 'use server';
 
+import { seeVehicle } from '@/lib/authz/server';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 
@@ -7,6 +8,7 @@ import { requireUser } from './workshop';
  * Service — with its Parts Request, serials and warranty numbers. */
 export async function listPartsFittedToVehicle(vehicleId: string) {
   await requireUser();
+  await seeVehicle(vehicleId, 'listPartsFittedToVehicle');
   return prisma.partRequestSlipLine.findMany({
     where: {
       quantityReleased: { gt: 0 },
@@ -35,6 +37,7 @@ export async function listPartsFittedToVehicle(vehicleId: string) {
  * lines covered by warranty, goodwill or internally (cancelled jobs excluded). */
 export async function getVehicleCoveredValue(vehicleId: string): Promise<number> {
   await requireUser();
+  await seeVehicle(vehicleId, 'getVehicleCoveredValue');
   const lines = await prisma.estimateLineItem.findMany({
     where: { billTo: { not: 'CUSTOMER' }, estimate: { jobCard: { vehicleId, status: { not: 'CANCELLED' } } } },
     select: { amount: true },

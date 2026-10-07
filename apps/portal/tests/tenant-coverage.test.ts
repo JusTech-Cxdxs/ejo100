@@ -1,0 +1,187 @@
+/**
+ * Phase 4 — "what you are supposed to see is what you see", enforced on the
+ * source. Every exported server action is an endpoint a signed-in browser can
+ * call directly with any id, so each one must check the RECORD, not only the
+ * person's role:
+ *
+ *  1. Reads that take an id check the record's branch / organisation.
+ *  2. Writes that take an id check the record (branch, organisation or assignment).
+ *  3. The security desk acts only on its own branch's records.
+ *  4. Nobody can create an account from the internet; a deactivated person
+ *     cannot sign in and is signed out at once.
+ *  5. Lists that used to read platform-wide are fenced.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const ROOT = join(__dirname, '..', '..');
+const ACTIONS = join(ROOT, 'lib', 'actions');
+const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
+
+const WRITE = /\b(?:prisma|tx)\.\w+\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(/;
+const READ = /\bprisma\.\w+\.(find\w*|count|aggregate|groupBy)\(/;
+const TAKES_ID = /\b\w*[iI]d\w*\s*:\s*string/;
+
+type Fn = { file: string; name: string; sig: string; body: string };
+function actions(): Fn[] {
+  const out: Fn[] = [];
+  for (const file of readdirSync(ACTIONS).filter((n) => n.endsWith('.ts') && !n.includes('form-handlers'))) {
+    const src = readFileSync(join(ACTIONS, file), 'utf8');
+    if (!src.slice(0, 300).includes("'use server'")) continue;
+    for (const part of src.split('\nexport async function ').slice(1)) {
+      const name = part.slice(0, part.indexOf('('));
+      const sig = part.slice(0, part.indexOf(')') + 1);
+      const end = part.indexOf('\nexport ');
+      out.push({ file, name, sig, body: end === -1 ? part : part.slice(0, end) });
+    }
+  }
+  return out;
+}
+
+/** Anything that checks the record (or scopes the query) counts as a fence. */
+const READ_FENCES = [
+  'seeJobCard', 'seeService', 'seeBranch', 'seeVehicle', 'seePart', 'seeTarget', 'jobOrServiceReach', 'partsOfMyOrganisation',
+  'branchOwnedByMyOrganisation', 'myOrganisationBranches', 'reachWhere', 'canSeeRecord', 'seeOrNull', 'authorizeOn', 'orgWhere',
+  'orgOwned', 'inMyOrganisation', 'actingOrgWhere', 'visibleOrNull', 'branchWithinReach', 'firstReach', 'historyVisible',
+  'getAppointment(', 'requireJobCardApprover', 'managerApprovers', 'me()', 'requireStoreStaff',
+  'requireEligible', 'requireWarrantyStaff', 'requireWarrantyApprover', 'requireStaff', 'getSchedulingAccess', 'loadForChange',
+  'loadForGroups', 'requireMasterAdmin', 'currentUserIsMasterAdmin', 'branchInMyOrganisationOrSystem', 'onMyDesk',
+  'allows(', // with the record (branch / assignees) — e.g. canRequestRoadTestOn
+];
+
+/** Reads that need no record fence, with the reason. */
+const READ_EXCEPTIONS: Record<string, string> = {
+  'dashboard.ts:listActiveAnnouncements': 'compares the id with myOrganisationId() and returns nothing otherwise',
+  'organisation.ts:getOrganisation': "the person's own organisation (platform team: the first)",
+  'security.ts:getMe': 'the signed-in person only',
+};
+
+test('every read action that takes an id checks the record it reads', () => {
+  const missing: string[] = [];
+  for (const f of actions()) {
+    if (WRITE.test(f.body) || !READ.test(f.body) || !TAKES_ID.test(f.sig)) continue;
+    if (`${f.file}:${f.name}` in READ_EXCEPTIONS) continue;
+    if (!READ_FENCES.some((k) => f.body.includes(k))) missing.push(`${f.file}: ${f.name}`);
+  }
+  assert.deepEqual(missing, [], `Reads by id with no record check:\n${missing.join('\n')}`);
+});
+
+const RECORD_CHECKS = [
+  ...READ_FENCES, 'requireJobCardApprover', 'requireAssignedTechnician', 'requireEstimateContributor', 'requireJobCardCreatorOrSupervisor',
+  'requireAssignedVehicleServiceTechnician', 'requireVehicleServiceStepRole', 'requireServiceEstimateContributor', 'homeBranch',
+  'canDecide', 'headApproversFor', 'checkPair', 'requireBookFor', 'assertRoomIsMine', 'onMyDesk', 'ownBroadcast', 'editableRole',
+  'actorOrg', 'inMyOrganisation(',
+];
+/** authorize(key, { branchId … }) — a role check WITH the record's branch. */
+const AUTHORIZE_WITH_RECORD = /\bauthorize\([^,]+,\s*\{\s*branchId/;
+/** Writes checked another way, with the reason. */
+const WRITE_EXCEPTIONS: Record<string, string> = {
+  'organisation.ts:updateOrganisation': 'refuses any organisation but the person\'s own (me.organisationId !== organisationId)',
+};
+
+test('every write action that takes an id checks the record it changes', () => {
+  const missing: string[] = [];
+  for (const f of actions()) {
+    if (!WRITE.test(f.body) || !TAKES_ID.test(f.sig)) continue;
+    if (`${f.file}:${f.name}` in WRITE_EXCEPTIONS) continue;
+    if (!RECORD_CHECKS.some((k) => f.body.includes(k)) && !AUTHORIZE_WITH_RECORD.test(f.body)) missing.push(`${f.file}: ${f.name}`);
+  }
+  assert.deepEqual(missing, [], `Writes by id with no record check:\n${missing.join('\n')}`);
+});
+
+test('every security write by id checks the desk branch or the organisation', () => {
+  const src = read('lib/actions/security.ts');
+  const missing: string[] = [];
+  for (const part of src.split('\nexport async function ').slice(1)) {
+    const name = part.slice(0, part.indexOf('('));
+    const sig = part.slice(0, part.indexOf(')') + 1);
+    const end = part.indexOf('\nexport ');
+    const body = end === -1 ? part : part.slice(0, end);
+    if (!TAKES_ID.test(sig) || !WRITE.test(body)) continue;
+    if (!body.includes('onMyDesk(') && !body.includes('inMyOrganisation(')) missing.push(name);
+  }
+  assert.deepEqual(missing, [], `Security writes without a branch / organisation check:\n${missing.join('\n')}`);
+});
+
+test('the security desk acts only on its own branch: every desk action calls onMyDesk', () => {
+  const src = read('lib/actions/security.ts');
+  const missing: string[] = [];
+  for (const part of src.split('\nexport async function ').slice(1)) {
+    const name = part.slice(0, part.indexOf('('));
+    const sig = part.slice(0, part.indexOf(')') + 1);
+    const end = part.indexOf('\nexport ');
+    const body = end === -1 ? part : part.slice(0, end);
+    if (!/await require(Gate|FrontDesk|Chief)\(\)/.test(body) || !TAKES_ID.test(sig)) continue;
+    if (name === 'recordDeliveryArrival' ? !body.includes("if (deliveryId) await onMyDesk(") : !body.includes('await onMyDesk(')) missing.push(name);
+  }
+  assert.deepEqual(missing, [], `Desk actions without the branch check:\n${missing.join('\n')}`);
+  // Acting as the desk on someone else's booking / pass: the desk's own branch.
+  assert.match(src, /export async function updateBooking\([\s\S]{0,1200}await onMyDesk\('visit', visitId, 'updateBooking'\)/);
+  assert.match(src, /export async function cancelVisit\([\s\S]{0,1200}await onMyDesk\('visit', visitId, 'cancelVisit'\)/);
+  assert.match(src, /export async function cancelContractorPass\([\s\S]{0,1200}await onMyDesk\('contractorPass', id, 'cancelContractorPass'\)/);
+  for (const fn of ['confirmDeliveryReceived', 'cancelDelivery']) assert.match(src, new RegExp(`export async function ${fn}\\([\\s\\S]{0,400}onMyDesk\\('gateDelivery', id, '${fn}', true\\)`), fn);
+});
+
+test('nobody can create an account from the internet (staff or customer)', () => {
+  assert.match(read('lib/auth.ts'), /emailAndPassword: \{[\s\S]{0,200}disableSignUp: true/);
+  assert.match(readFileSync(join(ROOT, '..', 'website', 'lib', 'auth-customer.ts'), 'utf8'), /emailAndPassword: \{[\s\S]{0,300}disableSignUp: true/);
+});
+
+test('a deactivated person cannot sign in and is signed out at once', () => {
+  const auth = read('lib/auth.ts');
+  assert.match(auth, /databaseHooks: \{[\s\S]{0,200}session: \{[\s\S]{0,100}create: \{[\s\S]{0,100}before: async[\s\S]{0,200}isActive/);
+  assert.match(read('lib/actions/workshop.ts'), /const sessionForRequest = cache\(async \(\) => \{[\s\S]{0,400}return u\?\.isActive \? session : null;/);
+  assert.match(read('app/(app)/layout.tsx'), /if \(!user\?\.isActive\) redirect\('\/signed-out\?reason=inactive'\)/);
+  // …which clears the browser's session cookies (no redirect loop with the middleware).
+  const out = read('app/signed-out/route.ts');
+  assert.match(out, /session_token/);
+  assert.match(out, /maxAge: 0/);
+  assert.match(read('middleware.ts'), /ALWAYS_PUBLIC = \[[^\]]*'\/signed-out'/);
+  // A stale cookie with no session also goes through /signed-out (never /login ↔ /dashboard).
+  assert.match(read('app/(app)/layout.tsx'), /if \(!session\?\.user\?\.id\) \{[\s\S]{0,250}redirect\('\/signed-out'\)/);
+  const setActive = read('lib/actions/users-admin.ts');
+  assert.match(setActive, /if \(!active\) await tx\.session\.deleteMany\(\{ where: \{ userId \} \}\)/, 'switching off removes every open session');
+  assert.match(setActive, /You cannot switch off your own account/);
+  assert.match(setActive, /platform owner's account cannot be switched off/);
+});
+
+test('adding a staff member never emails a password and stays inside the organisation', () => {
+  const src = read('lib/actions/users-admin.ts');
+  const create = src.slice(src.indexOf('export async function createStaffMember('), src.indexOf('export async function setStaffActive('));
+  assert.match(create, /randomBytes\(32\)/, 'unusable random password until the person sets their own');
+  assert.match(create, /requestPasswordReset/, 'a set-your-password link is emailed');
+  assert.doesNotMatch(create, /temporaryPassword|generateSecurePassword/, 'no password is ever emailed');
+  assert.match(create, /Choose a branch of your organisation/);
+  assert.match(create, /You can only add people to your own branch/);
+  assert.match(create, /Administrator roles are given by headquarters/);
+  assert.match(create, /r\.isSuperAdmin \|\| r\.organisationId !== branchOrg/, 'never the platform role, never another organisation\'s role');
+});
+
+test('lists that used to read platform-wide are fenced', () => {
+  assert.match(read('lib/actions/refunds.ts'), /export async function listAllRefunds[\s\S]{0,300}jobOrServiceReach\(\)/);
+  assert.match(read('lib/actions/workshop.ts'), /export async function getWorkshopCustodySummary[\s\S]{0,1600}reachWhere\('workshop\.job_card\.view'\)/);
+  const wf = read('lib/actions/workflow-actions.ts');
+  assert.doesNotMatch(wf, /const T = 40;/, 'never "the newest 40 platform-wide, then filtered"');
+  for (const m of wf.matchAll(/prisma\.(\w+)\.findMany\(\{ where: \{([^]*?)\}, take: T/g)) {
+    assert.match(m[2]!, /reach/, `${m[1]} action items must be scoped to the person's reach`);
+  }
+  assert.match(read('lib/actions/visit-outcomes.ts'), /id: \{ in: ids \}, \.\.\.\(await reachWhere/);
+  assert.match(read('lib/actions/scheduling.ts'), /export async function listRooms[\s\S]{0,300}branchOwnedByMyOrganisation\(\)/);
+  assert.match(read('lib/actions/dashboard.ts'), /listActiveAnnouncements[\s\S]{0,300}mine !== organisationId\) return \[\]/);
+});
+
+test('staff lists (names and emails) are never handed out for another organisation\'s branch', () => {
+  assert.match(read('lib/actions/store.ts'), /listEligibleStoreManagersForBranch[\s\S]{0,200}branchInMyOrganisationOrSystem/);
+  assert.match(read('lib/actions/store.ts'), /listEligibleStoreOfficersForBranch[\s\S]{0,200}branchInMyOrganisationOrSystem/);
+  assert.match(read('lib/actions/workshop.ts'), /listEligibleFinanceOfficersForBranch[\s\S]{0,200}branchInMyOrganisationOrSystem/);
+  assert.match(read('lib/actions/workshop.ts'), /listEligibleManagersForBranch\(branchId: string\)[\s\S]{0,200}branchInMyOrganisationOrSystem/);
+});
+
+test('the Store is found per organisation, never "the first Store department anywhere"', () => {
+  const store = read('lib/actions/store.ts');
+  const fn = store.slice(store.indexOf('export async function getStoreBranchId('), store.indexOf('export async function getStoreBranchId(') + 600);
+  assert.match(fn, /getStoreBranchIdForMe\(\)/);
+  assert.doesNotMatch(fn, /department\.findFirst\(\{\s*where: \{ slug: 'store' \}/);
+});

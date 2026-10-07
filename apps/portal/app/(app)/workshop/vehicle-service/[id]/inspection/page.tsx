@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { serviceVisible } from '@/lib/authz/server';
 import { getVehicleInspection } from '@/lib/actions/vehicle-inspection';
 import { getVehicleService } from '@/lib/actions/vehicle-service';
 import { InspectionWorkspace } from '@/components/InspectionWorkspace';
@@ -19,6 +20,8 @@ export default async function VehicleInspectionPage({
   searchParams: Promise<{ error?: string; status?: string }>;
 }) {
   const { id: vehicleServiceId } = await params;
+  // A stale, mistyped or out-of-reach id is simply "not found".
+  if (!(await serviceVisible(vehicleServiceId, 'page'))) notFound();
   const { error, status } = await searchParams;
   const [service, inspection] = await Promise.all([
     getVehicleService(vehicleServiceId),

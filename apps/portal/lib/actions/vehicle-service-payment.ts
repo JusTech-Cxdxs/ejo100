@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize } from '@/lib/authz/server';
+import { authorize, seeService } from '@/lib/authz/server';
 
 import { prisma } from '@ejo/database';
 import { claimed, lockExisting } from '@/lib/integrity';
@@ -19,6 +19,7 @@ class ServicePaymentActionError extends Error {}
 
 export async function getVehicleServicePayments(vehicleServiceId: string) {
   await requireUser();
+  await seeService(vehicleServiceId, 'getVehicleServicePayments');
   return prisma.payment.findMany({
     where: { vehicleServiceId },
     orderBy: { recordedAt: 'asc' },

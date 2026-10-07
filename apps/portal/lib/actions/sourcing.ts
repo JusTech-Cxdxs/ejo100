@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach } from '@/lib/authz/server';
+import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach, seeBranchAnyOf, seeJobCard, seeService } from '@/lib/authz/server';
 
 /**
  * Sourcing — the two paths a Job Card's estimate can genuinely need once
@@ -288,6 +288,7 @@ async function requireEligibleFinance(branchId: string, key: 'procurement.epr.re
  * both, shown as two separate, independent requests. */
 export async function getJobCardSourcingNeeds(jobCardId: string) {
   await requireUser();
+  await seeJobCard(jobCardId, 'getJobCardSourcingNeeds');
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
     select: {
@@ -420,6 +421,13 @@ async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
 
 export async function getPartRequestSlip(id: string) {
   await requireUser();
+  const owner = await prisma.partRequestSlip.findUnique({ where: { id }, select: { branchId: true } });
+  if (!owner) return null;
+  try {
+    await seeBranchAnyOf(['workshop.job_card.view', 'store.view'], owner.branchId, `PartRequestSlip:${id}`);
+  } catch {
+    return null; // shown exactly like a request that does not exist
+  }
   const slip = await prisma.partRequestSlip.findUnique({
     where: { id },
     include: {
@@ -553,6 +561,13 @@ export async function listPartRequestSlips(branchId: string, search?: string) {
 
 export async function getExternalProcurementRequest(id: string) {
   await requireUser();
+  const owner = await prisma.externalProcurementRequest.findUnique({ where: { id }, select: { branchId: true } });
+  if (!owner) return null;
+  try {
+    await seeBranchAnyOf(['workshop.job_card.view', 'store.view', 'procurement.epr.review'], owner.branchId, `ExternalProcurementRequest:${id}`);
+  } catch {
+    return null;
+  }
   return prisma.externalProcurementRequest.findUnique({
     where: { id },
     include: {
@@ -791,6 +806,7 @@ async function isVehicleServiceEligibleToSource(vehicleServiceId: string): Promi
  * Job Card's exactly. */
 export async function getVehicleServiceSourcingNeeds(vehicleServiceId: string) {
   await requireUser();
+  await seeService(vehicleServiceId, 'getVehicleServiceSourcingNeeds');
   const service = await prisma.vehicleService.findUnique({
     where: { id: vehicleServiceId },
     select: { serviceEstimate: { select: { id: true, lineItems: { where: { type: 'STORE_PART' }, select: { id: true } } } } },
@@ -1728,6 +1744,9 @@ export async function editExternalProcurementSupplementaryLine(lineId: string, d
  * shown alongside the request's own real milestones on its Timeline. */
 export async function getExternalProcurementRequestAuditTrail(requestId: string) {
   await requireUser();
+  const owner = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { branchId: true } });
+  if (!owner) return [];
+  await seeBranchAnyOf(['workshop.job_card.view', 'store.view', 'procurement.epr.review'], owner.branchId, 'getExternalProcurementRequestAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'ExternalProcurementRequest', entityId: requestId },
     orderBy: { createdAt: 'desc' },

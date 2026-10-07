@@ -43,8 +43,16 @@ export const customerAuth = betterAuth({
     fields: { userId: 'customerId' },
   },
 
+  // Endpoints this platform never uses are switched off entirely (defence in
+  // depth): people never edit their own account record, email or deletion
+  // through the auth library — administrators and the app's own pages do.
+  disabledPaths: ['/update-user', '/change-email', '/delete-user', '/sign-up/email'],
+
   emailAndPassword: {
     enabled: true,
+    // Customer accounts are opened by the front desk (with a welcome email),
+    // never by self-sign-up from the internet.
+    disableSignUp: true,
     requireEmailVerification: false,
   },
 

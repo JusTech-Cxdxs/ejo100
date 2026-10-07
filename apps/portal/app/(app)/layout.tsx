@@ -31,17 +31,22 @@ import { NotificationProvider } from '@/components/NotificationProvider';
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
-    redirect('/login');
+    // A cookie the server no longer accepts (session ended): clear it, then sign in —
+    // never a /login ↔ /dashboard loop with the middleware.
+    redirect('/signed-out');
   }
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: {
       fullName: true,
+      isActive: true,
       organisationId: true,
       roles: { select: { role: { select: { name: true } } }, take: 1 },
     },
   });
+  // Deactivated (or removed) while signed in: out, immediately.
+  if (!user?.isActive) redirect('/signed-out?reason=inactive');
 
 
   return (

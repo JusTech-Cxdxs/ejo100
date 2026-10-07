@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { seeJobCard, seeService } from '@/lib/authz/server';
 import { prisma } from '@ejo/database';
 import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { requireUser } from '@/lib/actions/workshop';
@@ -17,6 +18,13 @@ export default async function NewRoadTestPage({ searchParams }: { searchParams: 
   const staffForCompanions = await loadStaffOptions();
   const { jobCardId, vehicleServiceId, error } = await searchParams;
   await requireUser();
+  // Only a Job Card / Vehicle Service the person can see (never by a guessed id).
+  try {
+    if (jobCardId) await seeJobCard(jobCardId, 'NewRoadTestPage');
+    else if (vehicleServiceId) await seeService(vehicleServiceId, 'NewRoadTestPage');
+  } catch {
+    notFound();
+  }
   const rec = jobCardId
     ? await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { jobNumber: true, vehicle: { select: { make: true, model: true, plateNumber: true, mileage: true } }, customer: { select: { fullName: true } } } }).then((j) => j && { number: j.jobNumber, vehicle: j.vehicle, customer: j.customer.fullName, back: `/workshop/job-cards/${jobCardId}` })
     : vehicleServiceId

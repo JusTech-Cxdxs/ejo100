@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { serviceVisible } from '@/lib/authz/server';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
 import { WarrantiesIssuedPrint } from '@/components/print/WarrantiesIssuedPrint';
 import { getVehicleService, getVehicleServiceCloseRequests } from '@/lib/actions/vehicle-service';
@@ -60,6 +61,8 @@ export default async function PrintVehicleServicePage({
   const { variant } = await searchParams;
   const isOrgCopy = variant !== 'client';
 
+  // A stale, mistyped or out-of-reach id is simply "not found".
+  if (!(await serviceVisible(id, '[id]'))) notFound();
   const [service, estimate, payments, closeRequests, sourcing, organisation] = await Promise.all([
     getVehicleService(id),
     getServiceEstimate(id),

@@ -69,8 +69,27 @@ request → requireUser → getPrincipal (roles, grants, branch, organisation br
 - **Pages:** `guardPage` / `guardAnyPage` in layouts. **Actions:** `authorize`, `authorizeOnJobCard`,
   `authorizeOnService`, or an audited workflow check (`refuse`). **Buttons:** `allows` (same rule).
   **Records:** `canSeeRecord` / `seeOrNull` (out of reach = "not found"). **Lists, search, analytics:** `reachWhere`.
+- **Anything hanging off a record** (payments, refunds, estimates, requests, audit trails):
+  `seeJobCard` / `seeService` / `seeVehicle` / `seePart` / `seeBranch` / `seeBranchAnyOf` check
+  the PARENT record. Out of reach and missing look the same ("not available" / not found), and
+  refusals are audited as `access.denied`.
+- **Branch-owned lists** of the organisation (rooms, goods receipts, warranty badges):
+  `branchOwnedByMyOrganisation`; lists hanging off jobs: `jobOrServiceReach`.
+- **Security desk** actions check the record's branch (`onMyDesk`); actions people take on their
+  own items (hosts, requesters, approvers) check the record is in their organisation
+  (`inMyOrganisation`). **Staff lists** (names and emails) are only given for the person's own
+  organisation (`branchInMyOrganisationOrSystem`; background jobs and the platform team excepted).
+- **Accounts:** public sign-up is closed (staff and customers), and the auth library's own
+  update-user / change-email / delete-user endpoints are switched off — nobody can change their
+  own organisation or account type. Staff are added by an administrator (Users → "Add a staff
+  member": the person sets their own password from an email link — no password is ever emailed).
+  A deactivated account cannot start a session; switching it off deletes its sessions; the
+  portal (every request through `requireUser` and the app layout) and the API guard re-check it.
+  A refused browser is sent to `/signed-out`, which clears its session cookies.
 - **Never:** trust a browser-supplied id, branch, role or price; hide a button as protection.
-- **CI:** `tests/guard-coverage.test.ts` fails if any data-changing server action has no check.
+- **CI:** `tests/guard-coverage.test.ts` fails if any data-changing server action has no check;
+  `tests/tenant-coverage.test.ts` fails if a read or write by id does not check the record, a
+  desk action skips the branch check, sign-up reopens, or a fenced list loses its fence.
 
 ## 7. Tenant isolation rules
 1. Every new table is declared in `lib/governance/data-inventory.ts` (CI enforces it).

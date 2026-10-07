@@ -22,8 +22,9 @@ import { loadQuantityTraces } from '@/lib/inventory/quantity-trace';
 import { pluralize } from '@/lib/utils/pluralize';
 import { markupToMargin, marginToMarkup, actualMargin, actualMarkup, MARGIN_TOLERANCE_PP, roundedPriceForTargetMargin } from '@/lib/pricing-math';
 import { requireUser, currentUserIsMasterAdmin } from './workshop';
+import { branchInMyOrganisationOrSystem, getStoreBranchIdForMe } from '@/lib/workshop-core';
 import { writeAuditLog } from '@/lib/workshop-core';
-import { authorize, branchWithinReach, orgOwned, refuse } from '@/lib/authz/server';
+import { authorize, branchWithinReach, canSeeRecord, orgOwned, refuse, seeBranch, seeJobCard, seePart } from '@/lib/authz/server';
 import { sendEmail } from '@/lib/email';
 import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
 import { renderPricingAlertRaisedEmail } from '@/lib/email-templates/pricing-alert-raised';
@@ -71,10 +72,10 @@ async function getStoreOrgContext(): Promise<{ companyName: string; branchName: 
  * exactly, same reasoning: a single lookup point so nothing hardcodes a
  * branch elsewhere. */
 export async function getStoreBranchId(): Promise<string> {
-  const department = await prisma.department.findFirst({
-    where: { slug: 'store' },
-    select: { branchId: true },
-  });
+  await requireUser();
+  // This person's Store — never another organisation's (lib/workshop-core).
+  const branchId = await getStoreBranchIdForMe();
+  const department = branchId ? { branchId } : null;
   if (!department) {
     throw new StoreActionError('No branch has a Store department yet — run the seed script, or create one under Branches.');
   }
@@ -107,10 +108,14 @@ async function listEligibleStoreStaffForBranch(branchId: string, roleSlug: strin
 }
 
 export async function listEligibleStoreManagersForBranch(branchId: string): Promise<EligibleStoreStaffResult> {
+  // Never another organisation's staff list (names and emails).
+  if (!(await branchInMyOrganisationOrSystem(branchId))) return { staff: [], usingFallback: false };
   return listEligibleStoreStaffForBranch(branchId, 'store-manager');
 }
 
 export async function listEligibleStoreOfficersForBranch(branchId: string): Promise<EligibleStoreStaffResult> {
+  // Never another organisation's staff list (names and emails).
+  if (!(await branchInMyOrganisationOrSystem(branchId))) return { staff: [], usingFallback: false };
   return listEligibleStoreStaffForBranch(branchId, 'store-officer');
 }
 
@@ -651,6 +656,7 @@ export async function deletePartFitment(fitmentId: string): Promise<void> {
 
 export async function listPartFitments(partId: string) {
   await requireUser();
+  await seePart(partId, 'listPartFitments');
   return prisma.partFitment.findMany({ where: { partId }, orderBy: { createdAt: 'asc' } });
 }
 
@@ -670,6 +676,8 @@ export async function getFittingPartsForVehicle(
   partTypeId?: string,
 ) {
   await requireUser();
+  // A branch asked for by the browser is honoured only within reach.
+  branchId = await branchWithinReach('store.view', branchId);
   const q = search?.trim();
   const parts = await prisma.part.findMany({
     where: {
@@ -852,6 +860,7 @@ export async function listAllPartCategoriesForSelect(branchId: string): Promise<
  * yet" rather than a silent, misleading zero. */
 export async function getLastKnownUnitCostForPart(partId: string): Promise<number | null> {
   await requireUser();
+  await seePart(partId, 'getLastKnownUnitCostForPart');
   const line = await prisma.goodsReceiptLine.findFirst({
     where: { partId, unitCost: { not: null } },
     orderBy: { goodsReceipt: { receivedAt: 'desc' } },
@@ -916,6 +925,7 @@ export async function listUnmatchedStorePartLines(branchId: string) {
  * other Job Card's own unmatched lines just to show this one. */
 export async function listUnmatchedStorePartLinesForJobCard(jobCardId: string) {
   await requireUser();
+  await seeJobCard(jobCardId, 'listUnmatchedStorePartLinesForJobCard');
   return prisma.estimateLineItem.findMany({
     where: {
       type: 'STORE_PART',
@@ -1137,6 +1147,7 @@ async function sendStoreMatchingCompleteNotification(
  */
 export async function jobCardHasUnmatchedStoreParts(jobCardId: string): Promise<boolean> {
   await requireUser();
+  await seeJobCard(jobCardId, 'jobCardHasUnmatchedStoreParts');
   const remaining = await prisma.estimateLineItem.count({
     where: { estimate: { jobCardId }, type: 'STORE_PART', matchedPartId: null },
   });
@@ -1443,6 +1454,8 @@ export async function getPart(id: string) {
     },
   });
   if (!part) return null;
+  // A part outside the person's reach is shown exactly like one that does not exist.
+  if (!(await canSeeRecord('store.view', { branchId: part.branchId }, `Part:${id}`))) return null;
   // QUANTITY parts: every delivery as a FIFO layer — what each still
   // holds, which one is being sold from now, and which delivery every
   // release drew from. The same engine the release itself uses.
@@ -1488,6 +1501,8 @@ export type RecordGoodsReceiptInput = {
  * after submitting the whole form and getting a rejection back. */
 export async function checkSerialNumberExists(serialNumber: string): Promise<boolean> {
   await requireUser();
+  // Only for the people who receive goods (serials are unique platform-wide).
+  await authorize('store.grn.record', undefined, 'checkSerialNumberExists');
   const trimmed = serialNumber.trim();
   if (!trimmed) return false;
   const existing = await prisma.partSerial.findFirst({ where: { serialNumber: trimmed }, select: { id: true } });
@@ -2270,6 +2285,7 @@ export async function getGoodsReceipt(id: string) {
     },
   });
   if (!receipt) return null;
+  if (!(await canSeeRecord('store.view', { branchId: receipt.branchId }, `GoodsReceipt:${id}`))) return null;
   // Forward trace, QUANTITY parts — the same FIFO engine as releases.
   const quantityTraces = await loadQuantityTraces(
     receipt.lines.filter((l: (typeof receipt.lines)[number]) => l.part.trackingType === 'QUANTITY').map((l: (typeof receipt.lines)[number]) => l.partId),
@@ -2279,6 +2295,9 @@ export async function getGoodsReceipt(id: string) {
 
 export async function getGoodsReceiptAuditTrail(goodsReceiptId: string) {
   await requireUser();
+  const owner = await prisma.goodsReceipt.findUnique({ where: { id: goodsReceiptId }, select: { branchId: true } });
+  if (!owner) return [];
+  await seeBranch('store.view', owner.branchId, 'getGoodsReceiptAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'GoodsReceipt', entityId: goodsReceiptId },
     orderBy: { createdAt: 'desc' },
@@ -2297,6 +2316,7 @@ export async function getGoodsReceiptAuditTrail(goodsReceiptId: string) {
  * Part's own page. */
 export async function getPartAuditTrail(partId: string) {
   await requireUser();
+  await seePart(partId, 'getPartAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'Part', entityId: partId },
     orderBy: { createdAt: 'desc' },

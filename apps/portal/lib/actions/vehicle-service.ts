@@ -1,7 +1,7 @@
 'use server';
 
 import { claimed, lockExisting } from '@/lib/integrity';
-import { authorize, canSeeRecord, reachWhere, authorizeOnService, refuse, branchWithinReach, orgWhere } from '@/lib/authz/server';
+import { authorize, canSeeRecord, reachWhere, authorizeOnService, refuse, branchWithinReach, orgWhere, seeService, seeVehicle } from '@/lib/authz/server';
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal } from '@/lib/estimate-billing';
@@ -159,6 +159,7 @@ export type VehicleServiceAuditEntry = {
  * entries. */
 export async function getVehicleServiceAuditTrail(serviceId: string): Promise<VehicleServiceAuditEntry[]> {
   await requireUser();
+  await seeService(serviceId, 'getVehicleServiceAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'VehicleService', entityId: serviceId },
     orderBy: { createdAt: 'desc' },
@@ -628,6 +629,7 @@ export type VehicleAnalytics = {
  */
 export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAnalytics> {
   await requireUser();
+  await seeVehicle(vehicleId, 'getVehicleAnalytics');
 
   const [services, jobCards, inspections, payments] = await Promise.all([
     // An escalated service became a Job Card — counting both would
@@ -819,6 +821,8 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
 export async function attendToOverdueVehicle(serviceId: string): Promise<void> {
   await authorize('workshop.customer.manage', undefined, 'attendToOverdueVehicle');
   const user = await requireUser();
+  // On a service within reach only (never another branch's or organisation's).
+  await authorizeOnService('workshop.customer.manage', serviceId, 'attendToOverdueVehicle');
   const service = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { attendedAt: true, serviceNumber: true, vehicleId: true } });
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
@@ -1414,6 +1418,8 @@ async function vehicleServiceStaffRecipients(service: { createdById: string; sup
  * expected-collection date. */
 export async function sendVehicleServiceCollectionReminder(serviceId: string): Promise<void> {
   const user = await requireUser();
+  // Telling the customer is front-desk work, on a service within reach.
+  await authorizeOnService('workshop.customer.notify', serviceId, 'sendVehicleServiceCollectionReminder');
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
     select: {
@@ -1506,6 +1512,7 @@ export async function getServiceTracker(branchId: string) {
 export async function stopTrackingVehicle(vehicleId: string, reason: string): Promise<void> {
   await authorize('workshop.customer.manage', undefined, 'stopTrackingVehicle');
   const user = await requireUser();
+  await seeVehicle(vehicleId, 'stopTrackingVehicle');
   const why = reason.trim();
   if (!why) throw new VehicleServiceActionError('A reason is required to stop tracking this vehicle.');
   const [current] = await loadServiceTracking({ vehicleId });
@@ -1523,6 +1530,7 @@ export async function stopTrackingVehicle(vehicleId: string, reason: string): Pr
 
 export async function getVehicleServiceCancellationRequests(serviceId: string) {
   await requireUser();
+  await seeService(serviceId, 'getVehicleServiceCancellationRequests');
   return prisma.vehicleServiceCancellationRequest.findMany({
     where: { vehicleServiceId: serviceId },
     orderBy: { requestedAt: 'desc' },
@@ -1770,6 +1778,7 @@ export async function declineVehicleServiceCancellationRequest(requestId: string
 export async function handBackCancelledVehicleService(serviceId: string, collectedByName: string): Promise<void> {
   await authorize('workshop.job_card.create', undefined, 'handBackCancelledVehicleService');
   const user = await requireUser();
+  await authorizeOnService('workshop.job_card.create', serviceId, 'handBackCancelledVehicleService');
   const name = collectedByName.trim();
   if (!name) throw new VehicleServiceActionError('The name of whoever is collecting the vehicle is required.');
   const service = await prisma.vehicleService.findUnique({
@@ -1838,6 +1847,7 @@ export async function sendVehicleServiceCancelledCollectionNotice(serviceId: str
 
 export async function getVehicleServiceCloseRequests(serviceId: string) {
   await requireUser();
+  await seeService(serviceId, 'getVehicleServiceCloseRequests');
   return prisma.vehicleServiceCloseRequest.findMany({
     where: { vehicleServiceId: serviceId },
     orderBy: { requestedAt: 'desc' },

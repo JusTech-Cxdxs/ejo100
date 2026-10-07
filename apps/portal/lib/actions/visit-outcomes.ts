@@ -1,5 +1,6 @@
 'use server';
 
+import { reachWhere } from '@/lib/authz/server';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { jobCardOutcome, vehicleServiceOutcome, refundState, type VisitOutcome, type RefundState } from '@/lib/visit-outcome';
@@ -13,7 +14,8 @@ export async function getJobCardOutcomes(ids: string[]): Promise<Record<string, 
   await requireUser();
   if (ids.length === 0) return {};
   const rows = await prisma.jobCard.findMany({
-    where: { id: { in: ids } },
+    // Only records within reach — ids from the browser are never trusted.
+    where: { id: { in: ids }, ...(await reachWhere('workshop.job_card.view')) },
     select: {
       id: true, status: true, checkedOutAt: true,
       cancellationRequests: { where: { status: 'APPROVED' }, select: { id: true } },
@@ -35,7 +37,8 @@ export async function getVehicleServiceOutcomes(ids: string[]): Promise<Record<s
   await requireUser();
   if (ids.length === 0) return {};
   const rows = await prisma.vehicleService.findMany({
-    where: { id: { in: ids } },
+    // Only records within reach — ids from the browser are never trusted.
+    where: { id: { in: ids }, ...(await reachWhere('workshop.job_card.view')) },
     select: { id: true, status: true, collectedAt: true, escalatedToJobCardId: true, payments: { select: { amount: true } }, refunds: { select: { amount: true } } },
   });
   const out: Record<string, OutcomeInfo> = {};

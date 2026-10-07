@@ -26,35 +26,35 @@ class WorkshopActionError extends Error {}
  *   3. otherwise (the platform team, background jobs) the first Workshop branch.
  * The lookup is shared across requests for five minutes per (branch, organisation).
  */
-const workshopDepartmentShared = unstable_cache(
-  async (branchId: string | null, organisationId: string | null) => {
+const departmentBranchShared = unstable_cache(
+  async (slug: 'workshop' | 'store', branchId: string | null, organisationId: string | null) => {
     const sel = { branchId: true } as const;
     if (branchId) {
-      const own = await prisma.department.findFirst({ where: { slug: 'workshop', branchId }, select: sel });
+      const own = await prisma.department.findFirst({ where: { slug, branchId }, select: sel });
       if (own) return own;
     }
     if (organisationId) {
-      const inOrg = await prisma.department.findFirst({ where: { slug: 'workshop', branch: { businessUnit: { organisationId } } }, orderBy: { createdAt: 'asc' }, select: sel });
+      const inOrg = await prisma.department.findFirst({ where: { slug, branch: { businessUnit: { organisationId } } }, orderBy: { createdAt: 'asc' }, select: sel });
       if (inOrg) return inOrg;
       // A person who belongs to an organisation never falls through to another organisation's branch.
       return null;
     }
-    return prisma.department.findFirst({ where: { slug: 'workshop' }, orderBy: { createdAt: 'asc' }, select: sel });
+    return prisma.department.findFirst({ where: { slug }, orderBy: { createdAt: 'asc' }, select: sel });
   },
-  ['workshop-branch-v2'],
+  ['department-branch-v1'],
   { revalidate: 300, tags: ['org-structure'] },
 );
 
 /** The signed-in person's branch and organisation (null outside a request, e.g. cron). */
-const whereIWork = cache(async (): Promise<{ branchId: string | null; organisationId: string | null }> => {
+const whereIWork = cache(async (): Promise<{ branchId: string | null; organisationId: string | null; isPlatformTeam: boolean }> => {
   try {
     const session = await auth.api.getSession({ headers: await headers() });
     const id = session?.user?.id;
-    if (!id) return { branchId: null, organisationId: null };
-    const u = await prisma.user.findUnique({ where: { id }, select: { branchId: true, organisationId: true } });
-    return { branchId: u?.branchId ?? null, organisationId: u?.organisationId ?? null };
+    if (!id) return { branchId: null, organisationId: null, isPlatformTeam: false };
+    const u = await prisma.user.findUnique({ where: { id }, select: { branchId: true, organisationId: true, roles: { where: { role: { isSuperAdmin: true } }, select: { roleId: true }, take: 1 } } });
+    return { branchId: u?.branchId ?? null, organisationId: u?.organisationId ?? null, isPlatformTeam: Boolean(u?.roles.length) };
   } catch {
-    return { branchId: null, organisationId: null };
+    return { branchId: null, organisationId: null, isPlatformTeam: false };
   }
 });
 
@@ -187,7 +187,7 @@ export async function isEligibleSupervisor(userId: string, departmentId: string)
 
 async function getWorkshopBranchIdUncached(): Promise<string> {
   const me = await whereIWork();
-  const department = await workshopDepartmentShared(me.branchId, me.organisationId);
+  const department = await departmentBranchShared('workshop', me.branchId, me.organisationId);
   if (!department) {
     throw new WorkshopActionError(
       'No branch has a Workshop department yet — run the seed script, or create one under Branches.',
@@ -195,6 +195,23 @@ async function getWorkshopBranchIdUncached(): Promise<string> {
   }
   return department.branchId;
 }
+
+/** A branch id passed in from a request is usable only if it belongs to the
+ * signed-in person's organisation. Background jobs (no one signed in) and
+ * the platform team (no organisation) are not limited. */
+export const branchInMyOrganisationOrSystem = cache(async (branchId: string): Promise<boolean> => {
+  const me = await whereIWork();
+  if (!me.organisationId || me.isPlatformTeam) return true;
+  const b = await prisma.branch.findFirst({ where: { id: branchId, businessUnit: { organisationId: me.organisationId } }, select: { id: true } });
+  return Boolean(b);
+});
+
+/** The Store's operating branch for the signed-in person — same rules as the
+ * Workshop's (own branch → own organisation → never another organisation's). */
+export const getStoreBranchIdForMe = cache(async (): Promise<string | null> => {
+  const me = await whereIWork();
+  return (await departmentBranchShared('store', me.branchId, me.organisationId))?.branchId ?? null;
+});
 
 // Once per request: repeated calls during one page load reuse the answer.
 const getWorkshopBranchIdCached = cache(getWorkshopBranchIdUncached);

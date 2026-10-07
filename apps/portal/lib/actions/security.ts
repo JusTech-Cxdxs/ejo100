@@ -5,7 +5,7 @@ import { cache } from 'react';
 
 import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
-import { actingOrgWhere, allows, authorize, canSeeRecord, firstReach, getPrincipal, orgWhere, reachWhere, refuse } from '@/lib/authz/server';
+import { actingOrgWhere, allows, authorize, branchOwnedByMyOrganisation, canSeeRecord, firstReach, getPrincipal, orgWhere, reachWhere, refuse, seeBranchAnyOf, NOT_AVAILABLE } from '@/lib/authz/server';
 import { decide, type PermissionKey } from '@/lib/authz/catalogue';
 import { jobCardInside, serviceInside } from '@/lib/custody';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
@@ -59,6 +59,45 @@ async function requireFrontDesk(): Promise<SecurityRoles> {
   const r = await getSecurityRoles();
   if (!r.isFrontDesk) await authorize('security.reception.operate', undefined, 'security.front_desk', 'Only Security or Reception can do this.');
   return r;
+}
+
+/** Desk work (the gate, reception, the Chief, the Store at the gate) acts only
+ * on records of the person's own branch / organisation — never on another
+ * organisation's visit, pass or delivery by its id. */
+type DeskModel = 'visit' | 'exitPass' | 'roadTestPermit' | 'securityIncident' | 'gateDelivery' | 'contractorPass' | 'jobCard' | 'vehicleService';
+const DESK_KEYS = ['security.gate.operate', 'security.reception.operate', 'security.incident.manage', 'security.view'] as const;
+async function onMyDesk(model: DeskModel, id: string, where: string, alsoStore = false): Promise<void> {
+  const sel = { where: { id }, select: { branchId: true } } as const;
+  const rec =
+    model === 'visit' ? await prisma.visit.findUnique(sel)
+    : model === 'exitPass' ? await prisma.exitPass.findUnique(sel)
+    : model === 'roadTestPermit' ? await prisma.roadTestPermit.findUnique(sel)
+    : model === 'securityIncident' ? await prisma.securityIncident.findUnique(sel)
+    : model === 'gateDelivery' ? await prisma.gateDelivery.findUnique(sel)
+    : model === 'contractorPass' ? await prisma.contractorPass.findUnique(sel)
+    : model === 'jobCard' ? await prisma.jobCard.findUnique(sel)
+    : await prisma.vehicleService.findUnique(sel);
+  if (!rec) return; // the action's own "not found" message follows
+  await seeBranchAnyOf(alsoStore ? ['store.view', ...DESK_KEYS] : [...DESK_KEYS], rec.branchId, where);
+}
+
+/** Actions people take on their OWN items (a host cancelling their visitor,
+ * a requester cancelling their pass, a manager revoking one): whatever the
+ * role check says, the record must belong to the person's organisation. */
+async function inMyOrganisation(model: DeskModel, id: string): Promise<void> {
+  const sel = { where: { id }, select: { branchId: true } } as const;
+  const rec =
+    model === 'visit' ? await prisma.visit.findUnique(sel)
+    : model === 'exitPass' ? await prisma.exitPass.findUnique(sel)
+    : model === 'roadTestPermit' ? await prisma.roadTestPermit.findUnique(sel)
+    : model === 'securityIncident' ? await prisma.securityIncident.findUnique(sel)
+    : model === 'gateDelivery' ? await prisma.gateDelivery.findUnique(sel)
+    : model === 'contractorPass' ? await prisma.contractorPass.findUnique(sel)
+    : model === 'jobCard' ? await prisma.jobCard.findUnique(sel)
+    : await prisma.vehicleService.findUnique(sel);
+  if (!rec) return; // the action's own "not found" message follows
+  const p = await getPrincipal();
+  if (!p.isSuperAdmin && !(p.orgBranchIds ?? []).includes(rec.branchId)) throw new SecurityError(NOT_AVAILABLE);
 }
 
 async function usersWithSlugs(slugList: string[], where: Record<string, unknown> = {}): Promise<Person[]> {
@@ -219,11 +258,14 @@ export async function preRegisterVisit(input: VisitInput): Promise<{ id: string;
 /** Change a booking (before the visitor arrives). */
 export async function updateBooking(visitId: string, input: VisitInput): Promise<void> {
   const user = await requireUser();
+  await inMyOrganisation('visit', visitId);
   const roles = await getSecurityRoles();
   const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true, hostUserId: true, registeredById: true } });
   if (!v) throw new SecurityError('Visit not found.');
   if (v.status !== 'EXPECTED') throw new SecurityError('Only a booking that has not arrived can be changed.');
   if (!roles.isFrontDesk && v.hostUserId !== user.id && v.registeredById !== user.id) throw new SecurityError('Only the host, whoever booked it, Reception or Security can change it.');
+  // Acting as the desk (not as the host or booker): the desk's own branch only.
+  if (v.hostUserId !== user.id && v.registeredById !== user.id) await onMyDesk('visit', visitId, 'updateBooking');
   const data = cleanParty(input);
   if (data.hostUserId !== user.id && !roles.isFrontDesk && data.hostUserId !== v.hostUserId) throw new SecurityError('You can only book your own visitors.');
   if (!input.expectedAt || Number.isNaN(new Date(input.expectedAt).getTime())) throw new SecurityError('Enter when the visitor is expected.');
@@ -253,6 +295,7 @@ export async function recordArrival(input: VisitInput): Promise<{ id: string; vi
  * and issues the pass. */
 export async function checkInVisit(visitId: string, arrivalInput: { vehicleType?: string; plates?: string[]; idType?: string; idNumber?: string }): Promise<{ passNumber: string }> {
   const r = await requireGate();
+  await onMyDesk('visit', visitId, 'checkInVisit');
   const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true } });
   if (!v) throw new SecurityError('Visit not found.');
   if (v.status !== 'EXPECTED') throw new SecurityError('Only an expected visitor can be checked in.');
@@ -290,6 +333,7 @@ async function purgeStaleBookings(actorId: string | null) {
 /** Reception receives the visitor and tells the host (email + dashboard). */
 export async function receiveVisit(visitId: string): Promise<void> {
   const r = await requireFrontDesk();
+  await onMyDesk('visit', visitId, 'receiveVisit');
   const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, receivedAt: true, visitNumber: true, visitorName: true, company: true, purpose: true, passNumber: true, host: { select: { id: true, fullName: true, email: true } } } });
   if (!v) throw new SecurityError('Visit not found.');
   if (v.status !== 'CHECKED_IN') throw new SecurityError('The visitor must be checked in at the gate first.');
@@ -303,6 +347,7 @@ export async function receiveVisit(visitId: string): Promise<void> {
  * Reception or Security, with a reason; the overdue alert re-arms. */
 export async function extendVisit(visitId: string, extraMinutes: number, reason: string): Promise<void> {
   const r = await requireFrontDesk();
+  await onMyDesk('visit', visitId, 'extendVisit');
   if (!Number.isInteger(extraMinutes) || extraMinutes < 5 || extraMinutes > 12 * 60) throw new SecurityError('Choose how much more time — between 5 minutes and 12 hours.');
   if (!reason.trim()) throw new SecurityError('Give the reason for the extra time.');
   const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true, expectedDurationMinutes: true, extendedMinutes: true } });
@@ -314,6 +359,7 @@ export async function extendVisit(visitId: string, extraMinutes: number, reason:
 
 export async function checkOutVisit(visitId: string): Promise<void> {
   const r = await requireGate();
+  await onMyDesk('visit', visitId, 'checkOutVisit');
   const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true, passNumber: true, checkedInAt: true } });
   if (!v) throw new SecurityError('Visit not found.');
   if (v.status !== 'CHECKED_IN') throw new SecurityError('Only a visitor on the premises can be checked out.');
@@ -336,10 +382,13 @@ export async function checkOutVisit(visitId: string): Promise<void> {
  * log) — a visit that never happened leaves no dead record. */
 export async function cancelVisit(visitId: string, reason: string): Promise<void> {
   const user = await requireUser();
+  await inMyOrganisation('visit', visitId);
   const roles = await getSecurityRoles();
   const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true, visitorName: true, hostUserId: true, registeredById: true } });
   if (!v) throw new SecurityError('Visit not found.');
   if (!roles.isFrontDesk && v.hostUserId !== user.id && v.registeredById !== user.id) throw new SecurityError('Only the host, whoever booked it, Reception or Security can cancel.');
+  // Acting as the desk (not as the host or booker): the desk's own branch only.
+  if (v.hostUserId !== user.id && v.registeredById !== user.id) await onMyDesk('visit', visitId, 'cancelVisit');
   if (v.status !== 'EXPECTED') throw new SecurityError('Only a booking that has not arrived can be cancelled.');
   if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
   // Claim the cancellation first: a visitor checked in at this very moment
@@ -434,6 +483,7 @@ export async function createExitPass(input: ExitPassInput): Promise<{ id: string
 
 export async function decideExitPass(passId: string, approve: boolean, reason: string): Promise<void> {
   const user = await requireUser();
+  await inMyOrganisation('exitPass', passId);
   const roles = await getSecurityRoles();
   const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, passNumber: true, requestedById: true, reason: true, requestedBy: { select: { id: true, fullName: true, email: true } } } });
   if (!p) throw new SecurityError('Exit pass not found.');
@@ -472,6 +522,7 @@ export async function decideExitPass(passId: string, approve: boolean, reason: s
 
 export async function cancelExitPass(passId: string, reason: string): Promise<void> {
   const user = await requireUser();
+  await inMyOrganisation('exitPass', passId);
   const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, passNumber: true, requestedById: true } });
   if (!p) throw new SecurityError('Exit pass not found.');
   if (p.requestedById !== user.id) throw new SecurityError('Only the person who requested it can cancel it.');
@@ -486,6 +537,7 @@ export async function cancelExitPass(passId: string, reason: string): Promise<vo
  * closes as they leave. */
 export async function exitPassGateOut(passId: string): Promise<void> {
   const r = await requireGate();
+  await onMyDesk('exitPass', passId, 'exitPassGateOut');
   const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, passNumber: true, returning: true, expectedDurationMinutes: true } });
   if (!p) throw new SecurityError('Exit pass not found.');
   if (p.status !== 'APPROVED') throw new SecurityError('Only an approved exit pass can be used to leave — Security will not permit exit without approval.');
@@ -499,6 +551,7 @@ export async function exitPassGateOut(passId: string): Promise<void> {
 
 export async function exitPassGateIn(passId: string): Promise<void> {
   const r = await requireGate();
+  await onMyDesk('exitPass', passId, 'exitPassGateIn');
   const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, passNumber: true, gateOutAt: true, expectedReturnAt: true } });
   if (!p) throw new SecurityError('Exit pass not found.');
   if (p.status !== 'OUT') throw new SecurityError('Only someone who went out on a returning pass can be recorded back in.');
@@ -537,6 +590,7 @@ export async function listVehiclesClearedToLeave() {
 
 export async function confirmVehicleExit(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', recordId: string, collectedBy: string, notes: string): Promise<{ id: string; exitNumber: string }> {
   const r = await requireGate();
+  await onMyDesk(kind === 'JOB_CARD' ? 'jobCard' : 'vehicleService', recordId, 'confirmVehicleExit');
   const rec =
     kind === 'JOB_CARD'
       ? await prisma.jobCard.findUnique({ where: { id: recordId }, select: { status: true, vehicleId: true, jobNumber: true, gateExit: { select: { id: true } } } }).then((j: { status: string; vehicleId: string; jobNumber: string; gateExit: { id: string } | null } | null) => j && { released: j.status === 'CHECKED_OUT', vehicleId: j.vehicleId, number: j.jobNumber, done: Boolean(j.gateExit) })
@@ -965,6 +1019,7 @@ export async function listVehicleExits(q?: string) {
  * a reason). */
 export async function extendExitPassReturn(passId: string, extraMinutes: number, reason: string): Promise<void> {
   const r = await requireGate();
+  await onMyDesk('exitPass', passId, 'extendExitPassReturn');
   if (!Number.isInteger(extraMinutes) || extraMinutes < 5 || extraMinutes > 12 * 60) throw new SecurityError('Choose how much more time — between 5 minutes and 12 hours.');
   if (!reason.trim()) throw new SecurityError('Give the reason for the extra time.');
   const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, returning: true, passNumber: true, expectedReturnAt: true } });
@@ -980,6 +1035,8 @@ export async function extendExitPassReturn(passId: string, extraMinutes: number,
  * back"), kept on its audit trail. */
 export async function addSecurityFollowUp(entityType: 'Visit' | 'ExitPass' | 'RoadTestPermit' | 'SecurityIncident' | 'GateDelivery' | 'ContractorPass', id: string, note: string): Promise<void> {
   const r = await requireFrontDesk();
+  const deskModel: Record<typeof entityType, DeskModel> = { Visit: 'visit', ExitPass: 'exitPass', RoadTestPermit: 'roadTestPermit', SecurityIncident: 'securityIncident', GateDelivery: 'gateDelivery', ContractorPass: 'contractorPass' };
+  await onMyDesk(deskModel[entityType], id, 'addSecurityFollowUp');
   if (!note.trim()) throw new SecurityError('Write the follow-up note.');
   const exists =
     entityType === 'Visit'
@@ -1096,6 +1153,7 @@ async function roadTestRecordAudit(p: { jobCardId: string | null; vehicleService
 
 export async function decideRoadTest(id: string, approve: boolean, reason: string): Promise<void> {
   const user = await requireUser();
+  await inMyOrganisation('roadTestPermit', id);
   const roles = await getSecurityRoles();
   const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, requestedById: true, jobCardId: true, vehicleServiceId: true, requestedBy: { select: { id: true, fullName: true, email: true } } } });
   if (!p) throw new SecurityError('Road test not found.');
@@ -1114,6 +1172,7 @@ export async function decideRoadTest(id: string, approve: boolean, reason: strin
 
 export async function cancelRoadTest(id: string, reason: string): Promise<void> {
   const user = await requireUser();
+  await inMyOrganisation('roadTestPermit', id);
   const roles = await getSecurityRoles();
   const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, requestedById: true, jobCardId: true, vehicleServiceId: true } });
   if (!p) throw new SecurityError('Road test not found.');
@@ -1130,6 +1189,7 @@ export async function cancelRoadTest(id: string, reason: string): Promise<void> 
 /** Out through the gate — approved permits only, with the odometer. */
 export async function roadTestGateOut(id: string, startOdometer: number): Promise<void> {
   const r = await requireGate();
+  await onMyDesk('roadTestPermit', id, 'roadTestGateOut');
   const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, jobCardId: true, vehicleServiceId: true, vehicle: { select: { mileage: true } } } });
   if (!p) throw new SecurityError('Road test not found.');
   if (p.status !== 'APPROVED') throw new SecurityError('Only an approved road test can go out — Security will not permit it without the Manager\'s approval.');
@@ -1148,6 +1208,7 @@ export async function roadTestGateOut(id: string, startOdometer: number): Promis
  * vehicle's odometer is updated so every page stays in sync. */
 export async function roadTestGateIn(id: string, endOdometer: number, notes: string): Promise<void> {
   const r = await requireGate();
+  await onMyDesk('roadTestPermit', id, 'roadTestGateIn');
   const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, startOdometer: true, gateOutAt: true, vehicleId: true, jobCardId: true, vehicleServiceId: true, vehicle: { select: { mileage: true } } } });
   if (!p) throw new SecurityError('Road test not found.');
   if (p.status !== 'OUT') throw new SecurityError('Only a vehicle out on a road test can be recorded back in.');
@@ -1168,6 +1229,7 @@ export async function roadTestGateIn(id: string, endOdometer: number, notes: str
 
 export async function extendRoadTest(id: string, extraMinutes: number, reason: string): Promise<void> {
   const r = await requireGate();
+  await onMyDesk('roadTestPermit', id, 'extendRoadTest');
   if (!Number.isInteger(extraMinutes) || extraMinutes < 5 || extraMinutes > 240) throw new SecurityError('Choose how much more time — between 5 minutes and 4 hours.');
   if (!reason.trim()) throw new SecurityError('Give the reason for the extra time.');
   const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, expectedDurationMinutes: true } });
@@ -1320,6 +1382,7 @@ async function requireChief(): Promise<SecurityRoles> {
 
 export async function assignIncident(id: string, assigneeId: string): Promise<void> {
   const r = await requireChief();
+  await onMyDesk('securityIncident', id, 'assignIncident');
   const inc = await prisma.securityIncident.findUnique({ where: { id }, select: { status: true, incidentNumber: true, type: true } });
   if (!inc) throw new SecurityError('Incident not found.');
   if (inc.status === 'CLOSED') throw new SecurityError('This incident is closed — reopen it first.');
@@ -1333,6 +1396,7 @@ export async function assignIncident(id: string, assigneeId: string): Promise<vo
 
 export async function closeIncident(id: string, resolution: string): Promise<void> {
   const r = await requireChief();
+  await onMyDesk('securityIncident', id, 'closeIncident');
   if (resolution.trim().length < 5) throw new SecurityError('Write how the incident was resolved.');
   const inc = await prisma.securityIncident.findUnique({ where: { id }, select: { status: true, incidentNumber: true } });
   if (!inc) throw new SecurityError('Incident not found.');
@@ -1344,6 +1408,7 @@ export async function closeIncident(id: string, resolution: string): Promise<voi
 
 export async function reopenIncident(id: string, reason: string): Promise<void> {
   const r = await requireChief();
+  await onMyDesk('securityIncident', id, 'reopenIncident');
   if (!reason.trim()) throw new SecurityError('Give the reason for reopening.');
   const inc = await prisma.securityIncident.findUnique({ where: { id }, select: { status: true, incidentNumber: true } });
   if (!inc) throw new SecurityError('Incident not found.');
@@ -1424,6 +1489,7 @@ function cleanArrivalDelivery(i: DeliveryInput) {
 /** A delivery arrives at the gate — announced (id) or not. The Store is told. */
 export async function recordDeliveryArrival(input: DeliveryInput, deliveryId?: string): Promise<{ id: string; deliveryNumber: string }> {
   const r = await requireGate();
+  if (deliveryId) await onMyDesk('gateDelivery', deliveryId, 'recordDeliveryArrival');
   const arrival = cleanArrivalDelivery(input);
   let id: string, deliveryNumber: string, supplier: string, items: string, reference: string | null;
   if (deliveryId) {
@@ -1448,6 +1514,7 @@ export async function recordDeliveryArrival(input: DeliveryInput, deliveryId?: s
 export async function confirmDeliveryReceived(id: string, note: string, goodsReceiptId?: string): Promise<void> {
   const user = await requireUser();
   const roles = await getSecurityRoles();
+  await onMyDesk('gateDelivery', id, 'confirmDeliveryReceived', true);
   if (!(await isStore(user.id, roles.isMaster))) throw new SecurityError('Only Store staff can confirm a delivery was received.');
   const d = await prisma.gateDelivery.findUnique({ where: { id }, select: { status: true, deliveryNumber: true } });
   if (!d) throw new SecurityError('Delivery not found.');
@@ -1465,6 +1532,7 @@ export async function confirmDeliveryReceived(id: string, note: string, goodsRec
 /** The delivery vehicle leaves. Turned away without receipt → a reason. */
 export async function recordDeliveryLeft(id: string, reason: string): Promise<void> {
   const r = await requireGate();
+  await onMyDesk('gateDelivery', id, 'recordDeliveryLeft');
   const d = await prisma.gateDelivery.findUnique({ where: { id }, select: { status: true, deliveryNumber: true } });
   if (!d) throw new SecurityError('Delivery not found.');
   if (d.status !== 'AT_GATE' && d.status !== 'RECEIVED') throw new SecurityError('Only a delivery on site can leave.');
@@ -1476,6 +1544,7 @@ export async function recordDeliveryLeft(id: string, reason: string): Promise<vo
 export async function cancelDelivery(id: string, reason: string): Promise<void> {
   const user = await requireUser();
   const roles = await getSecurityRoles();
+  await onMyDesk('gateDelivery', id, 'cancelDelivery', true);
   if (!roles.isFrontDesk && !(await isStore(user.id, roles.isMaster))) throw new SecurityError('Only the Store or Security can cancel a delivery.');
   if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
   const d = await prisma.gateDelivery.findUnique({ where: { id }, select: { status: true, deliveryNumber: true, supplierName: true } });
@@ -1517,7 +1586,7 @@ export async function canActForStore(): Promise<boolean> {
 /** Recent goods receipts to link a received delivery to. */
 export async function listRecentGoodsReceipts() {
   await requireUser();
-  return prisma.goodsReceipt.findMany({ where: { receivedAt: { gte: new Date(Date.now() - 30 * 86400000) } }, orderBy: { receivedAt: 'desc' }, take: 50, select: { id: true, referenceNumber: true, supplierName: true, receivedAt: true } });
+  return prisma.goodsReceipt.findMany({ where: { receivedAt: { gte: new Date(Date.now() - 30 * 86400000) }, ...(await branchOwnedByMyOrganisation()) }, orderBy: { receivedAt: 'desc' }, take: 50, select: { id: true, referenceNumber: true, supplierName: true, receivedAt: true } });
 }
 
 // ── Contractors ───────────────────────────────────────────────────────
@@ -1560,6 +1629,7 @@ async function contractorPeople(passId: string) {
 
 export async function decideContractorPass(id: string, approve: boolean, reason: string): Promise<void> {
   const user = await requireUser();
+  await inMyOrganisation('contractorPass', id);
   const roles = await getSecurityRoles();
   const p = await contractorPeople(id);
   if (!p) throw new SecurityError('Contractor pass not found.');
@@ -1579,10 +1649,13 @@ async function openAttendance(passId: string) {
 
 export async function cancelContractorPass(id: string, reason: string): Promise<void> {
   const user = await requireUser();
+  await inMyOrganisation('contractorPass', id);
   const roles = await getSecurityRoles();
   const p = await contractorPeople(id);
   if (!p) throw new SecurityError('Contractor pass not found.');
   if (p.requestedById !== user.id && p.hostUserId !== user.id && !roles.isFrontDesk && !roles.isMaster) throw new SecurityError('Only whoever requested it, the staff member responsible or Security can cancel it.');
+  // Acting as the desk (not as requester or host): the desk's own branch only.
+  if (p.requestedById !== user.id && p.hostUserId !== user.id) await onMyDesk('contractorPass', id, 'cancelContractorPass');
   if (!['PENDING_MANAGER', 'APPROVED'].includes(p.status)) throw new SecurityError('This pass is already closed.');
   if (await openAttendance(id)) throw new SecurityError('The team is on site — sign them out first.');
   if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
@@ -1594,6 +1667,7 @@ export async function cancelContractorPass(id: string, reason: string): Promise<
 /** CSO or Manager withdraws an approved pass (e.g. misconduct). */
 export async function revokeContractorPass(id: string, reason: string): Promise<void> {
   const user = await requireUser();
+  await inMyOrganisation('contractorPass', id);
   const roles = await getSecurityRoles();
   if (!roles.isCso && !roles.isManager && !roles.isMaster) throw new SecurityError('Only the Chief Security Officer or the Manager can revoke a pass.');
   const p = await contractorPeople(id);
@@ -1609,6 +1683,7 @@ export async function revokeContractorPass(id: string, reason: string): Promise<
 /** The team arrives for the day — approved pass, within its dates. */
 export async function contractorSignIn(id: string, workersPresent: number): Promise<void> {
   const r = await requireGate();
+  await onMyDesk('contractorPass', id, 'contractorSignIn');
   const p = await contractorPeople(id);
   if (!p) throw new SecurityError('Contractor pass not found.');
   if (p.status !== 'APPROVED') throw new SecurityError('This pass is not approved — the team cannot be let in on it.');
@@ -1624,6 +1699,7 @@ export async function contractorSignIn(id: string, workersPresent: number): Prom
 
 export async function contractorSignOut(id: string, note: string): Promise<void> {
   const r = await requireGate();
+  await onMyDesk('contractorPass', id, 'contractorSignOut');
   const p = await contractorPeople(id);
   if (!p) throw new SecurityError('Contractor pass not found.');
   const open = await openAttendance(id);

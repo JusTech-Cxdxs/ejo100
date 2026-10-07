@@ -1,4 +1,5 @@
 import { OrgTrail } from '@/components/OrgTrail';
+import { allows } from '@/lib/authz/server';
 import { getWorkshopCustodySummary, type WorkshopCustodyEntry, currentUserIsMasterAdmin, listEligibleManagersForBranch, currentUserId } from '@/lib/actions/workshop';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { sendApprovalReminderFormAction, notifyOverdueCancelledVehicleFormAction, sendReadyForCollectionReminderFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
@@ -157,11 +158,13 @@ export default async function WorkshopCustodyPage({
   const showReadyForCollection = !filter || filter === 'ready_for_collection' || filter === 'overdue';
   const showInService = !filter || filter === 'in_service';
   const branchId = await getWorkshopBranchId();
-  const [summary, isMasterAdmin, eligibleManagers, viewerId] = await Promise.all([
+  const [summary, isMasterAdmin, eligibleManagers, viewerId, canNotify] = await Promise.all([
     getWorkshopCustodySummary(q),
     currentUserIsMasterAdmin(),
     listEligibleManagersForBranch(branchId),
     currentUserId(),
+    // Reminders to customers are front-desk work: only shown to those who may send them.
+    allows('workshop.customer.notify'),
   ]);
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
   // The combined overdue count spans two categories deliberately —
@@ -370,7 +373,7 @@ export default async function WorkshopCustodyPage({
                   <>
                   <ReminderStatus entry={entry} noun="approval reminder" />
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {entry.reminder?.dueNow ? (
+                    {canNotify && entry.reminder?.dueNow ? (
                       <form action={sendApprovalReminderFormAction}>
                         <FormPendingOverlay />
                         <input type="hidden" name="jobCardId" value={entry.id} />
@@ -537,7 +540,7 @@ export default async function WorkshopCustodyPage({
                 </div>
                 <AnalysisLine entry={entry} />
                 <ReminderStatus entry={entry} noun="collection reminder" />
-                {entry.reminder?.dueNow ? (
+                {canNotify && entry.reminder?.dueNow ? (
                   <form action={sendReadyForCollectionReminderFormAction} className="mt-3">
                     <FormPendingOverlay />
                     <input type="hidden" name="jobCardId" value={entry.id} />

@@ -1,4 +1,5 @@
 import { canRequestRoadTestOn } from '@/lib/actions/security';
+import { jobCardVisible } from '@/lib/authz/server';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
 import { listRoadTestsFor } from '@/lib/actions/security';
 import { securityActionDetail } from '@/lib/security-labels';
@@ -360,6 +361,8 @@ export default async function JobCardDetailPage({
   const { status, error, editLineId, editStatus } = await searchParams;
   // Round 1 — everything that needs only the Job Card's id, all at once
   // (each database trip crosses regions, so fewer rounds = a faster page).
+  // A stale, mistyped or out-of-reach id is simply "not found".
+  if (!(await jobCardVisible(id, 'page'))) notFound();
   const [jobCard, technicians, isMasterAdmin, viewerId, auditTrail, eligibleSupervisors, estimate, payments, cancellationRequests, closeRequests, sourcingNeeds, refunds, warranties, roadTests, billing] = await Promise.all([
     getJobCard(id),
     listTechnicianCandidates(),

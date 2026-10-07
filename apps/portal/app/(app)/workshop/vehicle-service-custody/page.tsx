@@ -1,4 +1,5 @@
 import { OrgTrail } from '@/components/OrgTrail';
+import { allows } from '@/lib/authz/server';
 import { getVehicleServiceCustodySummary, type VehicleDueForService } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { attendToOverdueVehicleFormAction, sendVehicleServiceCollectionReminderFormAction, sendManualServiceReminderFormAction, sendVehicleServiceCancelledCollectionNoticeFormAction } from '@/lib/actions/vehicle-service-form-handlers';
@@ -116,7 +117,7 @@ export default async function VehicleServiceCustodyPage({
   const { filter, q, status, error, type: rawType } = await searchParams;
   const vehicleType = rawType === 'PASSENGER' || rawType === 'COMMERCIAL' ? rawType : null;
   const branchId = await getWorkshopBranchId();
-  const summary = await getVehicleServiceCustodySummary(branchId, q);
+  const [summary, canNotify] = await Promise.all([getVehicleServiceCustodySummary(branchId, q), allows('workshop.customer.notify')]);
   // Passenger / Commercial filter — narrows every list (and so every count).
   if (vehicleType) {
     const rec = summary as unknown as Record<string, unknown>;
@@ -377,7 +378,7 @@ export default async function VehicleServiceCustodyPage({
                           Last reminder sent by {entry.collection.lastSentByName ?? 'an unknown user'} on {formatDateOnly(entry.collection.lastSentAt)}.
                         </p>
                       ) : null}
-                      {entry.collection.dueNow ? (
+                      {canNotify && entry.collection.dueNow ? (
                         <form action={sendVehicleServiceCollectionReminderFormAction} className="mt-3">
                           <FormPendingOverlay />
                           <input type="hidden" name="serviceId" value={entry.id} />

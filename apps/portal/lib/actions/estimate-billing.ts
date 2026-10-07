@@ -5,7 +5,7 @@ import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { getWarrantyRoles } from './warranty';
-import { authorizeOnJobCard } from '@/lib/authz/server';
+import { authorizeOnJobCard, seeJobCard } from '@/lib/authz/server';
 import { warrantyCoverage } from '@/lib/warranty-state';
 import { BILL_TO_LABEL, billingSplit, type BillTo } from '@/lib/estimate-billing';
 
@@ -31,6 +31,7 @@ async function eligibleWarranties(vehicleId: string, mileage: number | null) {
 /** Everything the Job Card's "Who pays" panel needs. */
 export async function getJobCardBilling(jobCardId: string) {
   await requireUser();
+  await seeJobCard(jobCardId, 'getJobCardBilling');
   const jc = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
     select: {

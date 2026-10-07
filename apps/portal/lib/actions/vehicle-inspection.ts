@@ -1,6 +1,6 @@
 'use server';
 
-import { authorizeOnService } from '@/lib/authz/server';
+import { authorizeOnService, seeService } from '@/lib/authz/server';
 
 import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
 import { prisma } from '@ejo/database';
@@ -229,6 +229,7 @@ export async function completeVehicleInspection(inspectionId: string, notes?: st
 
 export async function getVehicleInspection(vehicleServiceId: string) {
   await requireUser();
+  await seeService(vehicleServiceId, 'getVehicleInspection');
   const inspection = await prisma.vehicleInspection.findUnique({
     where: { vehicleServiceId },
     include: {

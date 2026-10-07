@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { serviceVisible } from '@/lib/authz/server';
 import { getVehicleService, getVehicleServiceAuditTrail } from '@/lib/actions/vehicle-service';
 import { getServiceEstimate } from '@/lib/actions/vehicle-service-estimate';
 import { getVehicleServicePayments } from '@/lib/actions/vehicle-service-payment';
@@ -30,6 +31,8 @@ export default async function PrintVehicleServiceEstimatePage({
 }) {
   const { id } = await params;
   const { variant } = await searchParams;
+  // A stale, mistyped or out-of-reach id is simply "not found".
+  if (!(await serviceVisible(id, 'estimate'))) notFound();
   const [service, estimate, payments, auditTrail, organisation] = await Promise.all([
     getVehicleService(id),
     getServiceEstimate(id),

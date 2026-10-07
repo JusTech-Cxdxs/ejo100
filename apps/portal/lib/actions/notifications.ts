@@ -374,7 +374,10 @@ export async function getBroadcastAnalytics() {
   const [rows, users, emails] = await Promise.all([
     prisma.broadcast.findMany({ where: { organisationId: m.organisationId ?? '', createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, select: { id: true, broadcastNumber: true, category: true, title: true, audience: true, audienceIds: true, startsAt: true, endsAt: true, isActive: true, stoppedAt: true, sendEmail: true, createdAt: true } }),
     prisma.user.findMany({ where: { organisationId: m.organisationId ?? '', isActive: true }, select: { branchId: true, departmentId: true, roles: { select: { role: { select: { slug: true } } } } } }),
-    prisma.auditLog.findMany({ where: { action: 'broadcast.emailed', createdAt: { gte: since } }, select: { entityId: true, metadata: true } }),
+    // Delivery records of THIS organisation's broadcasts only (by broadcast id —
+    // scheduled deliveries may carry no organisation of their own).
+    prisma.broadcast.findMany({ where: { organisationId: m.organisationId ?? '', createdAt: { gte: since } }, select: { id: true } })
+      .then((own: { id: string }[]) => prisma.auditLog.findMany({ where: { action: 'broadcast.emailed', createdAt: { gte: since }, entityId: { in: own.map((b) => b.id) } }, select: { entityId: true, metadata: true } })),
   ]);
   const people = users.map((u: (typeof users)[number]) => ({ branchId: u.branchId, departmentId: u.departmentId, roleSlugs: u.roles.map((r: { role: { slug: string } }) => r.role.slug) }));
   const readRows = rows.length ? await prisma.notificationRead.groupBy({ by: ['key'], where: { key: { in: rows.map((r: { id: string }) => `bc:${r.id}`) } }, _count: { key: true } }) : [];
