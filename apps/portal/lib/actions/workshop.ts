@@ -4409,7 +4409,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
  * also how the real count shown on the dashboard is derived — no
  * separate counter field to keep in sync, the audit trail is the one
  * source of truth. `reminderSentAt` still tracks the most recent send
- * for display. Callable directly by any Workshop staff, and also
+ * for display. Callable by the front desk (workshop.customer.notify), and also
  * called automatically by runApprovalDeadlineChecks() below. */
 export async function sendApprovalReminder(jobCardId: string): Promise<void> {
   await authorizeOnJobCard('workshop.customer.notify', jobCardId, 'sendApprovalReminder');
@@ -4613,7 +4613,7 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
 /** Sends a reminder to a customer whose vehicle is ready for
  * collection — repeatable, same as the other two reminder actions,
  * every send logged to the audit trail (`collection.ready_reminder_
- * sent`), callable by any Workshop staff at any time this Job Card is
+ * sent`), callable by the front desk (workshop.customer.notify) whenever this Job Card is
  * READY_FOR_COLLECTION, not gated on being overdue first. Reuses the
  * exact same customer email as the original "ready for collection"
  * notice — the facts haven't changed, just that this is a repeat of

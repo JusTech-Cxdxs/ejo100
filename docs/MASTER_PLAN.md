@@ -56,7 +56,13 @@ Deliverable: fixes + a source test that fails CI if a read by id is not fenced.
   part / goods-receipt / slip / outside-purchase pages, vehicle history and analytics) only
   checked "signed in" → each checks its record.
 - Security desk actions (check-in, gate out / in, incidents, deliveries, contractors, vehicle
-  exit, follow-ups) did not check the record's branch → fenced.
+  exit, follow-ups) did not check the record's branch → fenced; actions on one's own items
+  (edit / cancel a booking, decide / cancel passes and road tests, revoke a contractor pass)
+  → must be in the person's organisation.
+- **Anyone signed in could change their own organisation** through the auth library's
+  update-user endpoint → field locked and the endpoint switched off.
+- Overdue-service "attended", stop tracking, hand-back of a cancelled service, inspection items,
+  sourcing needs → each checks its record.
 - Collection reminders could be sent by anyone signed in → front desk only (button hidden otherwise).
 - Store branch lookup was not organisation-aware → per organisation.
 - Staff lists (names, emails) were given for any branch id → own organisation only.
@@ -68,7 +74,10 @@ Deliverable: fixes + a source test that fails CI if a read by id is not fenced.
   signs the person out everywhere.
 - New: **Users → Add a staff member** (set-your-password email, own organisation / branch,
   never an administrator role from a branch) and **Switch off / Switch back on** (with reason,
-  never yourself, never the platform owner, never the last active Administrator).
+  never yourself, never the platform owner, never the last active Administrator; a Branch
+  Administrator never switches off an administrator).
+- The API guard also refuses switched-off accounts; the customer sign-in no longer follows
+  outside "redirect" links.
 
 Still to do in this phase family (next PRs): notification "needs your action" caps of 10 per
 kind (Phase 7), customer-portal direct-id tests once its pages exist (Phase 5).

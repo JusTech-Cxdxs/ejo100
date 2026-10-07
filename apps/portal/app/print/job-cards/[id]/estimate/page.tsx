@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { jobCardVisible } from '@/lib/authz/server';
 import { getJobCard, getJobCardEstimate, getJobCardPayments, getJobCardAuditTrail } from '@/lib/actions/workshop';
 import { getOrganisation } from '@/lib/actions/organisation';
 import { EstimatePrintDocument, isEstimateAuditAction } from '@/components/print/EstimatePrintDocument';
@@ -29,6 +30,8 @@ export default async function PrintJobCardEstimatePage({
 }) {
   const { id } = await params;
   const { variant } = await searchParams;
+  // A stale, mistyped or out-of-reach id is simply "not found".
+  if (!(await jobCardVisible(id, 'estimate'))) notFound();
   const [jobCard, estimate, payments, auditTrail, organisation] = await Promise.all([
     getJobCard(id),
     getJobCardEstimate(id),

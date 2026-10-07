@@ -22,6 +22,11 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:3001',
 
+  // Endpoints this platform never uses are switched off entirely (defence in
+  // depth): people never edit their own account record, email or deletion
+  // through the auth library — administrators and the app's own pages do.
+  disabledPaths: ['/update-user', '/change-email', '/delete-user', '/sign-up/email'],
+
   emailAndPassword: {
     enabled: true,
     // Nobody can create a staff account from the internet.
@@ -76,9 +81,13 @@ export const auth = betterAuth({
   },
 
   user: {
+    // input: false — never settable by the person (Better Auth's own
+    // update-user endpoint would otherwise let anyone change their
+    // organisation, which is the tenant fence). Only administrators, through
+    // the Users page, place people.
     additionalFields: {
-      accountType: { type: 'string', required: false, defaultValue: 'EMPLOYEE' },
-      organisationId: { type: 'string', required: false },
+      accountType: { type: 'string', required: false, defaultValue: 'EMPLOYEE', input: false },
+      organisationId: { type: 'string', required: false, input: false },
     },
   },
 

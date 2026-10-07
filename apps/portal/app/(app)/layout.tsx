@@ -44,7 +44,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     },
   });
   // Deactivated (or removed) while signed in: out, immediately.
-  if (!user?.isActive) redirect('/login?error=inactive');
+  if (!user?.isActive) redirect('/signed-out?reason=inactive');
 
 
   return (

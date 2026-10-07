@@ -1,4 +1,5 @@
 import { canRequestRoadTestOn } from '@/lib/actions/security';
+import { serviceVisible } from '@/lib/authz/server';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
 import { listRoadTestsFor } from '@/lib/actions/security';
 import { securityActionDetail } from '@/lib/security-labels';
@@ -316,6 +317,8 @@ export default async function VehicleServiceDetailPage({
   const { id } = await params;
   // Round 1 — everything that needs only the service's id, all at once
   // (each database trip crosses regions, so fewer rounds = a faster page).
+  // A stale, mistyped or out-of-reach id is simply "not found".
+  if (!(await serviceVisible(id, 'page'))) notFound();
   const [service, isMasterAdmin, viewerId, technicians, auditTrail, inspection, serviceEstimate, payments, sourcingNeeds, closeRequests, refunds, warranties, roadTests, cancellationRequests] = await Promise.all([
     getVehicleService(id),
     currentUserIsMasterAdmin(),

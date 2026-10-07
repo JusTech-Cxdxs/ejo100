@@ -18,7 +18,10 @@ export default function CustomerPortalLoginPage() {
 function CustomerLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirect') ?? '/customer-portal/dashboard';
+  // Only ever return to a page on THIS site — never an outside address
+  // (blocks "…?redirect=https://fake-site" phishing links).
+  const requested = searchParams.get('redirect') ?? '';
+  const redirectTo = /^\/(?![/\\])/.test(requested) ? requested : '/customer-portal/dashboard';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

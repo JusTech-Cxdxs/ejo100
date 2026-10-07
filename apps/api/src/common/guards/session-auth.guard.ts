@@ -44,6 +44,10 @@ export class SessionAuthGuard implements CanActivate {
     if (!session || session.expiresAt < new Date()) {
       throw new UnauthorizedException('Invalid or expired session');
     }
+    // A switched-off account is refused here too (same rule as the portal).
+    if (!session.user.isActive) {
+      throw new UnauthorizedException('This account is not active');
+    }
 
     // Attach the authenticated user to the request for downstream handlers.
     (request as Request & { user?: typeof session.user }).user = session.user;

@@ -283,3 +283,16 @@ export async function partsOfMyOrganisation(): Promise<{ branch?: { businessUnit
 
 /** Same filter, named for what it is when it is not about parts. */
 export const branchOwnedByMyOrganisation = partsOfMyOrganisation;
+
+/** For pages: is this Job Card / Vehicle Service there AND within reach?
+ * Lets a page show "not found" up front for a stale, mistyped or
+ * out-of-reach id, before loading its parts (each of which checks again). */
+export async function jobCardVisible(id: string, where: string): Promise<boolean> {
+  const j = id ? await prisma.jobCard.findUnique({ where: { id }, select: { branchId: true } }) : null;
+  return Boolean(j) && canSeeRecord('workshop.job_card.view', { branchId: j!.branchId }, where);
+}
+
+export async function serviceVisible(id: string, where: string): Promise<boolean> {
+  const v = id ? await prisma.vehicleService.findUnique({ where: { id }, select: { branchId: true } }) : null;
+  return Boolean(v) && canSeeRecord('workshop.job_card.view', { branchId: v!.branchId }, where);
+}

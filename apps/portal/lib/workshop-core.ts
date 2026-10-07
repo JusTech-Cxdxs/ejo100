@@ -46,15 +46,15 @@ const departmentBranchShared = unstable_cache(
 );
 
 /** The signed-in person's branch and organisation (null outside a request, e.g. cron). */
-const whereIWork = cache(async (): Promise<{ branchId: string | null; organisationId: string | null }> => {
+const whereIWork = cache(async (): Promise<{ branchId: string | null; organisationId: string | null; isPlatformTeam: boolean }> => {
   try {
     const session = await auth.api.getSession({ headers: await headers() });
     const id = session?.user?.id;
-    if (!id) return { branchId: null, organisationId: null };
-    const u = await prisma.user.findUnique({ where: { id }, select: { branchId: true, organisationId: true } });
-    return { branchId: u?.branchId ?? null, organisationId: u?.organisationId ?? null };
+    if (!id) return { branchId: null, organisationId: null, isPlatformTeam: false };
+    const u = await prisma.user.findUnique({ where: { id }, select: { branchId: true, organisationId: true, roles: { where: { role: { isSuperAdmin: true } }, select: { roleId: true }, take: 1 } } });
+    return { branchId: u?.branchId ?? null, organisationId: u?.organisationId ?? null, isPlatformTeam: Boolean(u?.roles.length) };
   } catch {
-    return { branchId: null, organisationId: null };
+    return { branchId: null, organisationId: null, isPlatformTeam: false };
   }
 });
 
@@ -201,7 +201,7 @@ async function getWorkshopBranchIdUncached(): Promise<string> {
  * the platform team (no organisation) are not limited. */
 export const branchInMyOrganisationOrSystem = cache(async (branchId: string): Promise<boolean> => {
   const me = await whereIWork();
-  if (!me.organisationId) return true;
+  if (!me.organisationId || me.isPlatformTeam) return true;
   const b = await prisma.branch.findFirst({ where: { id: branchId, businessUnit: { organisationId: me.organisationId } }, select: { id: true } });
   return Boolean(b);
 });

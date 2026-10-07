@@ -188,10 +188,13 @@ export async function createStaffMember(input: NewStaffInput): Promise<{ id: str
   await writeAuditLog({ userId: p.userId, action: 'user.created', entityType: 'User', entityId: created.id, metadata: { person: fullName, email, branchId: branch.id, role: role?.name } });
   if (role) await writeAuditLog({ userId: p.userId, action: 'user.role_assigned', entityType: 'User', entityId: created.id, metadata: { person: fullName, role: role.name } });
 
+  // The auth library sends this email in the background and only logs a
+  // failure, so "sent" means "handed to the mail service"; the page says so
+  // and points to "Forgot password" if it does not arrive.
   let emailSent = false;
   try {
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? process.env.BETTER_AUTH_URL ?? '';
-    await auth.api.requestPasswordReset({ body: { email, redirectTo: `${portalUrl}/reset-password` } });
+    // Relative, like the forgot-password page: always a trusted origin.
+    await auth.api.requestPasswordReset({ body: { email, redirectTo: '/reset-password' } });
     emailSent = true;
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -216,18 +219,24 @@ export async function setStaffActive(userId: string, active: boolean, reason: st
   const targetIsPlatform = user.roles.some((r: { role: { isSuperAdmin: boolean } }) => r.role.isSuperAdmin);
   if (!p.isSuperAdmin && (targetIsPlatform || user.organisationId !== organisationId)) throw new Error('That person no longer exists — refresh the page.');
   if (branchOnly && user.branchId !== branchOnly) throw new Error('You can only manage the people of your own branch.');
+  // Administrators are switched on and off by headquarters, never from a branch.
+  if (branchOnly && user.roles.some((r: { role: { slug: string } }) => ADMIN_ROLE_SLUGS.includes(r.role.slug))) throw new Error('Administrators are managed by headquarters.');
   if (userId === p.userId) throw new Error('You cannot switch off your own account.');
   const owner = process.env.PLATFORM_OWNER_EMAIL?.trim().toLowerCase();
   if (owner && user.email.toLowerCase() === owner) throw new Error("The platform owner's account cannot be switched off.");
   if (user.isActive === active) return;
 
   await prisma.$transaction(async (tx) => {
-    // Never leave the organisation without an active Administrator (counted under the role lock).
-    const adminRole = user.roles.find((r: { role: { slug: string; isSuperAdmin: boolean } }) => r.role.slug === 'administrator' || r.role.isSuperAdmin)?.role;
-    if (!active && adminRole) {
-      await lockRows(tx, 'role', [adminRole.id]);
-      const othersActive = await tx.userRole.count({ where: { roleId: adminRole.id, userId: { not: userId }, user: { isActive: true } } });
-      if (othersActive === 0) throw new Error(adminRole.isSuperAdmin ? 'This is the last active Master Administrator.' : 'This is the organisation\'s last active Administrator — give the role to someone else first.');
+    // Never leave the organisation without an active Administrator, nor the
+    // platform without a Master Administrator — EVERY such role the person
+    // holds is checked, counted under the role locks.
+    const guarded = user.roles.filter((r: { role: { slug: string; isSuperAdmin: boolean } }) => r.role.slug === 'administrator' || r.role.isSuperAdmin).map((r: { role: { id: string; isSuperAdmin: boolean } }) => r.role);
+    if (!active && guarded.length) {
+      await lockRows(tx, 'role', guarded.map((r: { id: string }) => r.id));
+      for (const role of guarded) {
+        const othersActive = await tx.userRole.count({ where: { roleId: role.id, userId: { not: userId }, user: { isActive: true } } });
+        if (othersActive === 0) throw new Error(role.isSuperAdmin ? 'This is the last active Master Administrator.' : 'This is the organisation\'s last active Administrator — give the role to someone else first.');
+      }
     }
     await tx.user.update({ where: { id: userId }, data: { isActive: active } });
     // Signed out everywhere, immediately.

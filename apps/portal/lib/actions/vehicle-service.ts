@@ -821,6 +821,8 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
 export async function attendToOverdueVehicle(serviceId: string): Promise<void> {
   await authorize('workshop.customer.manage', undefined, 'attendToOverdueVehicle');
   const user = await requireUser();
+  // On a service within reach only (never another branch's or organisation's).
+  await authorizeOnService('workshop.customer.manage', serviceId, 'attendToOverdueVehicle');
   const service = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { attendedAt: true, serviceNumber: true, vehicleId: true } });
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
@@ -1510,6 +1512,7 @@ export async function getServiceTracker(branchId: string) {
 export async function stopTrackingVehicle(vehicleId: string, reason: string): Promise<void> {
   await authorize('workshop.customer.manage', undefined, 'stopTrackingVehicle');
   const user = await requireUser();
+  await seeVehicle(vehicleId, 'stopTrackingVehicle');
   const why = reason.trim();
   if (!why) throw new VehicleServiceActionError('A reason is required to stop tracking this vehicle.');
   const [current] = await loadServiceTracking({ vehicleId });
@@ -1775,6 +1778,7 @@ export async function declineVehicleServiceCancellationRequest(requestId: string
 export async function handBackCancelledVehicleService(serviceId: string, collectedByName: string): Promise<void> {
   await authorize('workshop.job_card.create', undefined, 'handBackCancelledVehicleService');
   const user = await requireUser();
+  await authorizeOnService('workshop.job_card.create', serviceId, 'handBackCancelledVehicleService');
   const name = collectedByName.trim();
   if (!name) throw new VehicleServiceActionError('The name of whoever is collecting the vehicle is required.');
   const service = await prisma.vehicleService.findUnique({

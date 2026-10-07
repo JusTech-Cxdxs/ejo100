@@ -45,7 +45,7 @@ const READ_FENCES = [
   'seeJobCard', 'seeService', 'seeBranch', 'seeVehicle', 'seePart', 'seeTarget', 'jobOrServiceReach', 'partsOfMyOrganisation',
   'branchOwnedByMyOrganisation', 'myOrganisationBranches', 'reachWhere', 'canSeeRecord', 'seeOrNull', 'authorizeOn', 'orgWhere',
   'orgOwned', 'inMyOrganisation', 'actingOrgWhere', 'visibleOrNull', 'branchWithinReach', 'firstReach', 'historyVisible',
-  'getAppointment(', 'requireJobCardApprover', 'managerApprovers', 'me()', 'getPrincipal', 'authorize(', 'requireStoreStaff',
+  'getAppointment(', 'requireJobCardApprover', 'managerApprovers', 'me()', 'requireStoreStaff',
   'requireEligible', 'requireWarrantyStaff', 'requireWarrantyApprover', 'requireStaff', 'getSchedulingAccess', 'loadForChange',
   'loadForGroups', 'requireMasterAdmin', 'currentUserIsMasterAdmin', 'branchInMyOrganisationOrSystem', 'onMyDesk',
   'allows(', // with the record (branch / assignees) — e.g. canRequestRoadTestOn
@@ -53,6 +53,7 @@ const READ_FENCES = [
 
 /** Reads that need no record fence, with the reason. */
 const READ_EXCEPTIONS: Record<string, string> = {
+  'dashboard.ts:listActiveAnnouncements': 'compares the id with myOrganisationId() and returns nothing otherwise',
   'organisation.ts:getOrganisation': "the person's own organisation (platform team: the first)",
   'security.ts:getMe': 'the signed-in person only',
 };
@@ -71,16 +72,37 @@ const RECORD_CHECKS = [
   ...READ_FENCES, 'requireJobCardApprover', 'requireAssignedTechnician', 'requireEstimateContributor', 'requireJobCardCreatorOrSupervisor',
   'requireAssignedVehicleServiceTechnician', 'requireVehicleServiceStepRole', 'requireServiceEstimateContributor', 'homeBranch',
   'canDecide', 'headApproversFor', 'checkPair', 'requireBookFor', 'assertRoomIsMine', 'onMyDesk', 'ownBroadcast', 'editableRole',
-  'user.id', 'actorOrg',
+  'actorOrg', 'inMyOrganisation(',
 ];
+/** authorize(key, { branchId … }) — a role check WITH the record's branch. */
+const AUTHORIZE_WITH_RECORD = /\bauthorize\([^,]+,\s*\{\s*branchId/;
+/** Writes checked another way, with the reason. */
+const WRITE_EXCEPTIONS: Record<string, string> = {
+  'organisation.ts:updateOrganisation': 'refuses any organisation but the person\'s own (me.organisationId !== organisationId)',
+};
 
 test('every write action that takes an id checks the record it changes', () => {
   const missing: string[] = [];
   for (const f of actions()) {
     if (!WRITE.test(f.body) || !TAKES_ID.test(f.sig)) continue;
-    if (!RECORD_CHECKS.some((k) => f.body.includes(k))) missing.push(`${f.file}: ${f.name}`);
+    if (`${f.file}:${f.name}` in WRITE_EXCEPTIONS) continue;
+    if (!RECORD_CHECKS.some((k) => f.body.includes(k)) && !AUTHORIZE_WITH_RECORD.test(f.body)) missing.push(`${f.file}: ${f.name}`);
   }
   assert.deepEqual(missing, [], `Writes by id with no record check:\n${missing.join('\n')}`);
+});
+
+test('every security write by id checks the desk branch or the organisation', () => {
+  const src = read('lib/actions/security.ts');
+  const missing: string[] = [];
+  for (const part of src.split('\nexport async function ').slice(1)) {
+    const name = part.slice(0, part.indexOf('('));
+    const sig = part.slice(0, part.indexOf(')') + 1);
+    const end = part.indexOf('\nexport ');
+    const body = end === -1 ? part : part.slice(0, end);
+    if (!TAKES_ID.test(sig) || !WRITE.test(body)) continue;
+    if (!body.includes('onMyDesk(') && !body.includes('inMyOrganisation(')) missing.push(name);
+  }
+  assert.deepEqual(missing, [], `Security writes without a branch / organisation check:\n${missing.join('\n')}`);
 });
 
 test('the security desk acts only on its own branch: every desk action calls onMyDesk', () => {
@@ -107,7 +129,12 @@ test('a deactivated person cannot sign in and is signed out at once', () => {
   const auth = read('lib/auth.ts');
   assert.match(auth, /databaseHooks: \{[\s\S]{0,200}session: \{[\s\S]{0,100}create: \{[\s\S]{0,100}before: async[\s\S]{0,200}isActive/);
   assert.match(read('lib/actions/workshop.ts'), /const sessionForRequest = cache\(async \(\) => \{[\s\S]{0,400}return u\?\.isActive \? session : null;/);
-  assert.match(read('app/(app)/layout.tsx'), /if \(!user\?\.isActive\) redirect\('\/login\?error=inactive'\)/);
+  assert.match(read('app/(app)/layout.tsx'), /if \(!user\?\.isActive\) redirect\('\/signed-out\?reason=inactive'\)/);
+  // …which clears the browser's session cookies (no redirect loop with the middleware).
+  const out = read('app/signed-out/route.ts');
+  assert.match(out, /session_token/);
+  assert.match(out, /maxAge: 0/);
+  assert.match(read('middleware.ts'), /ALWAYS_PUBLIC = \[[^\]]*'\/signed-out'/);
   const setActive = read('lib/actions/users-admin.ts');
   assert.match(setActive, /if \(!active\) await tx\.session\.deleteMany\(\{ where: \{ userId \} \}\)/, 'switching off removes every open session');
   assert.match(setActive, /You cannot switch off your own account/);
