@@ -1,5 +1,6 @@
 'use server';
 
+import { seeVehicle } from '@/lib/authz/server';
 import { prisma } from '@ejo/database';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId } from '@/lib/workshop-core';
@@ -11,6 +12,7 @@ import { getVehiclesNeedingServiceReminder, sendServiceReminder } from '@/lib/se
  * out, or has to guess at what it said at the time. */
 export async function getVehicleReminderHistory(vehicleId: string) {
   await requireUser();
+  await seeVehicle(vehicleId, 'getVehicleReminderHistory');
   return prisma.serviceReminderLog.findMany({
     where: { vehicleId },
     orderBy: { sentAt: 'desc' },

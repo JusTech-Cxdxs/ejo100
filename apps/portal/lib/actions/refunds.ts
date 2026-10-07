@@ -1,6 +1,6 @@
 'use server';
 
-import { authorize } from '@/lib/authz/server';
+import { authorize, jobOrServiceReach, seeJobCard, seeService, } from '@/lib/authz/server';
 
 import { prisma } from '@ejo/database';
 import { lockExisting } from '@/lib/integrity';
@@ -104,8 +104,16 @@ function position(payments: { amount: unknown }[], refunds: { amount: unknown }[
 }
 
 /** Money in, money returned, and what is still owed back to the customer. */
+/** Only for a Job Card / Vehicle Service the person can see (never another
+ * branch's or organisation's). */
+async function seeTarget(target: RefundTarget, where: string): Promise<void> {
+  if ('jobCardId' in target) await seeJobCard(target.jobCardId, where);
+  else await seeService(target.vehicleServiceId, where);
+}
+
 export async function getRefundPosition(target: RefundTarget): Promise<RefundPosition> {
   await requireUser();
+  await seeTarget(target, 'getRefundPosition');
   const t = await loadTarget(target);
   if (!t) throw new RefundActionError('Record not found.');
   return position(t.payments, t.refunds, 'customerOwes' in t ? t.customerOwes : 0);
@@ -114,6 +122,7 @@ export async function getRefundPosition(target: RefundTarget): Promise<RefundPos
 /** Every refund on one Job Card or Vehicle Service, newest first. */
 export async function listRefunds(target: RefundTarget) {
   await requireUser();
+  await seeTarget(target, 'listRefunds');
   return prisma.refund.findMany({
     where: 'jobCardId' in target ? { jobCardId: target.jobCardId } : { vehicleServiceId: target.vehicleServiceId },
     orderBy: { recordedAt: 'desc' },
@@ -124,6 +133,13 @@ export async function listRefunds(target: RefundTarget) {
 /** One refund with everything its receipt needs. */
 export async function getRefund(id: string) {
   await requireUser();
+  const owner = await prisma.refund.findUnique({ where: { id }, select: { jobCardId: true, vehicleServiceId: true } });
+  if (!owner) return null;
+  try {
+    await seeTarget(owner.jobCardId ? { jobCardId: owner.jobCardId } : { vehicleServiceId: owner.vehicleServiceId ?? '' }, `Refund:${id}`);
+  } catch {
+    return null; // shown exactly like a refund that does not exist
+  }
   return prisma.refund.findUnique({
     where: { id },
     include: {
@@ -342,8 +358,13 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
 export async function listAllRefunds(search?: string) {
   await requireUser();
   const q = search?.trim();
+  // The register shows only refunds on Job Cards / Vehicle Services within reach.
+  const reach = await jobOrServiceReach();
   return prisma.refund.findMany({
-    where: q
+    where: {
+      AND: [
+        reach,
+        q
       ? {
           OR: [
             { referenceNumber: { contains: q, mode: 'insensitive' } },
@@ -354,7 +375,9 @@ export async function listAllRefunds(search?: string) {
             { vehicleService: { customer: { fullName: { contains: q, mode: 'insensitive' } } } },
           ],
         }
-      : undefined,
+      : {},
+      ],
+    },
     orderBy: { recordedAt: 'desc' },
     take: 200,
     include: {

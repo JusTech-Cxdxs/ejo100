@@ -1,11 +1,11 @@
 'use server';
 
-import { authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse } from '@/lib/authz/server';
+import { authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE } from '@/lib/authz/server';
 import { jobCardActive, jobCardInside, serviceInside } from '@/lib/custody';
 
 
 import { bankDetailsFor } from '@/lib/workshop-core';
-import { writeAuditLog, getWorkshopOrgContext, getWorkshopDepartmentForVehicleType, isEligibleSupervisor, getWorkshopBranchId } from '@/lib/workshop-core';
+import { writeAuditLog, getWorkshopOrgContext, getWorkshopDepartmentForVehicleType, isEligibleSupervisor, getWorkshopBranchId, branchInMyOrganisationOrSystem } from '@/lib/workshop-core';
 
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
@@ -98,7 +98,14 @@ class WorkshopActionError extends Error {}
  * type here would be an unproven, unnecessary assumption — not something
  * this change should guess at. */
 /** The signed-in session — looked up once per request, then reused. */
-const sessionForRequest = cache(async () => auth.api.getSession({ headers: await headers() }));
+const sessionForRequest = cache(async () => {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user?.id) return null;
+  // A deactivated person is signed out everywhere, at once — an open session
+  // (or a 5-minute session cookie cache) never outlives the deactivation.
+  const u = await prisma.user.findUnique({ where: { id: session.user.id }, select: { isActive: true } });
+  return u?.isActive ? session : null;
+});
 
 export async function requireUser(): Promise<{ id: string }> {
   const session = await sessionForRequest();
@@ -315,6 +322,7 @@ export async function listEligibleSupervisorsForVehicleType(
  * no need to re-derive it from a vehicle type again. */
 export async function listEligibleSupervisorsForJobCard(jobCardId: string): Promise<EligibleSupervisorResult> {
   await requireUser();
+  await seeJobCard(jobCardId, 'listEligibleSupervisorsForJobCard');
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
     select: { departmentId: true },
@@ -787,6 +795,10 @@ export async function updateVehicle(input: UpdateVehicleInput): Promise<void> {
  * creation genuinely has no "last edited" story to tell. */
 export async function getLastEditInfo(entityType: string, entityId: string, action: string): Promise<{ userName: string; at: Date } | null> {
   await requireUser();
+  // Only for records the person can see (today: vehicles and parts).
+  if (entityType === 'CustomerVehicle') await seeVehicle(entityId, 'getLastEditInfo');
+  else if (entityType === 'Part') await seePart(entityId, 'getLastEditInfo');
+  else throw new Error(NOT_AVAILABLE);
   const entry = await prisma.auditLog.findFirst({
     where: { entityType, entityId, action },
     orderBy: { createdAt: 'desc' },
@@ -814,6 +826,7 @@ export type VehicleAuditEntry = {
  * accumulates enough entries. */
 export async function getVehicleAuditTrail(vehicleId: string): Promise<VehicleAuditEntry[]> {
   await requireUser();
+  await seeVehicle(vehicleId, 'getVehicleAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'CustomerVehicle', entityId: vehicleId },
     orderBy: { createdAt: 'desc' },
@@ -989,6 +1002,7 @@ export type JobCardAuditEntry = {
  * read view onto the one shared audit log. */
 export async function getJobCardAuditTrail(jobCardId: string): Promise<JobCardAuditEntry[]> {
   await requireUser();
+  await seeJobCard(jobCardId, 'getJobCardAuditTrail');
   // No take limit here, deliberately — a Job Card's own real history
   // is never something that gets quietly cut off once it accumulates
   // enough entries. A 50-row cap here once silently dropped a Job
@@ -2170,6 +2184,7 @@ async function requirePricingAuthority(
 
 export async function getJobCardEstimate(jobCardId: string) {
   await requireUser();
+  await seeJobCard(jobCardId, 'getJobCardEstimate');
   return prisma.estimate.findUnique({
     where: { jobCardId },
     include: {
@@ -3113,6 +3128,8 @@ export type PaymentMethod = 'BANK_TRANSFER' | 'CASH';
  * whole branch, not one department), same Master Admin fallback. */
 export async function listEligibleFinanceOfficersForBranch(branchId: string): Promise<EligibleSupervisorResult> {
   await requireUser();
+  // Never another organisation's staff list (names and emails).
+  if (!(await branchInMyOrganisationOrSystem(branchId))) return { supervisors: [], usingFallback: false };
   const branchFinance = await prisma.user.findMany({
     where: {
       branchId,
@@ -3141,6 +3158,7 @@ export async function requireEligibleFinanceOfficer(branchId: string, key: 'work
 
 export async function getJobCardPayments(jobCardId: string) {
   await requireUser();
+  await seeJobCard(jobCardId, 'getJobCardPayments');
   return prisma.payment.findMany({
     where: { jobCardId },
     orderBy: { recordedAt: 'asc' },
@@ -3512,6 +3530,7 @@ async function requireJobCardCreatorOrSupervisor(jobCard: {
 
 export async function getCancellationRequests(jobCardId: string) {
   await requireUser();
+  await seeJobCard(jobCardId, 'getCancellationRequests');
   return prisma.cancellationRequest.findMany({
     where: { jobCardId },
     orderBy: { requestedAt: 'desc' },
@@ -3818,6 +3837,7 @@ export async function declineCancellationRequest(requestId: string, decisionNote
 
 export async function getCloseRequests(jobCardId: string) {
   await requireUser();
+  await seeJobCard(jobCardId, 'getCloseRequests');
   return prisma.closeRequest.findMany({
     where: { jobCardId },
     orderBy: { requestedAt: 'desc' },
@@ -4207,6 +4227,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       // actually gone, so a Job Card can sit CLOSED with its vehicle
       // still in the yard for a moment before check-out.
       status: { not: JobCardStatus.CHECKED_OUT },
+      ...(await reachWhere('workshop.job_card.view')),
       ...(trimmedSearch
         ? {
             OR: [
@@ -4599,6 +4620,8 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
  * them. */
 export async function sendReadyForCollectionReminder(jobCardId: string): Promise<void> {
   const user = await requireUser();
+  // Telling the customer is front-desk work, on a Job Card within reach.
+  await authorizeOnJobCard('workshop.customer.notify', jobCardId, 'sendReadyForCollectionReminder');
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
     select: {
@@ -4665,6 +4688,7 @@ export async function currentUserIsMasterAdmin(): Promise<boolean> {
 // Once per request: repeated calls during one page load reuse the answer.
 const listEligibleManagersForBranchCached = cache(listEligibleManagersForBranchUncached);
 export async function listEligibleManagersForBranch(branchId: string): Promise<EligibleSupervisorResult> {
+  if (!(await branchInMyOrganisationOrSystem(branchId))) return { supervisors: [], usingFallback: false };
   return listEligibleManagersForBranchCached(branchId);
 }
 

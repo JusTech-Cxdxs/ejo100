@@ -45,6 +45,9 @@ export const customerAuth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
+    // Customer accounts are opened by the front desk (with a welcome email),
+    // never by self-sign-up from the internet.
+    disableSignUp: true,
     requireEmailVerification: false,
   },
 

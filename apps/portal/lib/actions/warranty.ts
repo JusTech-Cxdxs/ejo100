@@ -4,7 +4,7 @@ import { claimed } from '@/lib/integrity';
 import { prisma } from '@ejo/database';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
-import { authorize, getPrincipal, inMyOrganisation, myOrganisationId, orgOwned, orgWhere } from '@/lib/authz/server';
+import { authorize, getPrincipal, inMyOrganisation, myOrganisationId, orgOwned, orgWhere, partsOfMyOrganisation, seePart } from '@/lib/authz/server';
 import { decide } from '@/lib/authz/catalogue';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
@@ -1345,7 +1345,8 @@ export async function getPartWarrantyBadges(partIds: string[]): Promise<Record<s
   const ids = [...new Set(partIds.filter(Boolean))];
   if (ids.length === 0) return {};
   const parts = await prisma.part.findMany({
-    where: { id: { in: ids }, warrantyPolicy: { isActive: true, archivedAt: null } },
+    // Parts of the person's own organisation only (anyone who can see the estimate sees its badges).
+    where: { id: { in: ids }, warrantyPolicy: { isActive: true, archivedAt: null }, ...(await partsOfMyOrganisation()) },
     select: { id: true, warrantyPolicy: { select: { durationMonths: true, durationUnit: true, distanceLimit: true, isSample: true } } },
   });
   const out: Record<string, string> = {};
@@ -1389,6 +1390,7 @@ export async function loadPartWarrantyPolicyOptions(): Promise<{ value: string; 
  * Vehicle Service → customer & vehicle) — each an exact link. */
 export async function getPartWarrantyTrace(partId: string) {
   await requireUser();
+  await seePart(partId, 'getPartWarrantyTrace');
   const rows = await prisma.warranty.findMany({
     where: { partId },
     orderBy: { issuedAt: 'desc' },

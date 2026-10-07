@@ -38,10 +38,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     where: { id: session.user.id },
     select: {
       fullName: true,
+      isActive: true,
       organisationId: true,
       roles: { select: { role: { select: { name: true } } }, take: 1 },
     },
   });
+  // Deactivated (or removed) while signed in: out, immediately.
+  if (!user?.isActive) redirect('/login?error=inactive');
 
 
   return (

@@ -1,7 +1,7 @@
 'use server';
 
 import { claimed } from '@/lib/integrity';
-import { authorize, authorizeOnService, refuse, branchWithinReach } from '@/lib/authz/server';
+import { authorize, authorizeOnService, refuse, branchWithinReach, seeService } from '@/lib/authz/server';
 
 import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
 import { prisma } from '@ejo/database';
@@ -256,6 +256,7 @@ export async function addServiceEstimateLineItem(estimateId: string, input: Serv
  */
 export async function serviceEstimateHasUnmatchedStoreParts(vehicleServiceId: string): Promise<boolean> {
   await requireUser();
+  await seeService(vehicleServiceId, 'serviceEstimateHasUnmatchedStoreParts');
   const remaining = await prisma.serviceEstimateLineItem.count({
     where: { estimate: { vehicleServiceId }, type: 'STORE_PART', matchedPartId: null },
   });
@@ -1037,6 +1038,7 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
 
 export async function getServiceEstimate(vehicleServiceId: string) {
   await requireUser();
+  await seeService(vehicleServiceId, 'getServiceEstimate');
   return prisma.serviceEstimate.findUnique({
     where: { vehicleServiceId },
     include: {
@@ -1344,6 +1346,7 @@ export async function listUnmatchedServiceEstimateStorePartLines(branchId: strin
 
 export async function listUnmatchedServiceEstimateStorePartLinesForVehicleService(vehicleServiceId: string) {
   await requireUser();
+  await seeService(vehicleServiceId, 'listUnmatchedServiceEstimateStorePartLinesForVehicleService');
   return prisma.serviceEstimateLineItem.findMany({
     where: {
       type: 'STORE_PART',

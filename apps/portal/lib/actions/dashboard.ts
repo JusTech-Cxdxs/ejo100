@@ -2,7 +2,7 @@
 
 import { prisma } from '@ejo/database';
 import { jobCardActive, serviceInside } from '@/lib/custody';
-import { allows, orgWhere, reachWhere } from '@/lib/authz/server';
+import { allows, getPrincipal, myOrganisationId, orgWhere, reachWhere } from '@/lib/authz/server';
 import { getWarrantyDashboardItems } from './warranty';
 import { getSecurityDashboardItems } from './security';
 import { getWorkflowActionItems } from './workflow-actions';
@@ -296,6 +296,10 @@ export async function deactivateAnnouncement(announcementId: string): Promise<vo
 
 export async function listActiveAnnouncements(organisationId: string) {
   await requireUser();
+  // Only the person's own organisation — the id passed in is never trusted.
+  const mine = await myOrganisationId();
+  const p = await getPrincipal();
+  if (!p.isSuperAdmin && mine !== organisationId) return [];
   return prisma.announcement.findMany({
     where: { organisationId, isActive: true, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
     orderBy: { createdAt: 'desc' },

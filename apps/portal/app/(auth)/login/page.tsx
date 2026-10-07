@@ -28,7 +28,8 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const INACTIVE = 'This account is not active. Ask your administrator to reactivate it.';
+  const [error, setError] = useState<string | null>(searchParams.get('error') === 'inactive' ? INACTIVE : null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
@@ -44,7 +45,10 @@ function LoginForm() {
       });
 
       if (signInError) {
-        setError(signInError.message ?? 'Invalid email or password.');
+        // The password was right but the account is deactivated: the session
+        // was refused (lib/auth.ts) — say so plainly.
+        const code = (signInError as { code?: string }).code ?? '';
+        setError(/SESSION/i.test(code) || /session/i.test(signInError.message ?? '') ? INACTIVE : (signInError.message ?? 'Invalid email or password.'));
         return;
       }
 

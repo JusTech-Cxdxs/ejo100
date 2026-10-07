@@ -1,5 +1,6 @@
 'use server';
 
+import { reachWhere } from '@/lib/authz/server';
 import { prisma } from '@ejo/database';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch } from './workshop';
 import { listEligibleStoreManagersForBranch, listEligibleStoreOfficersForBranch } from './store';
@@ -17,24 +18,29 @@ export type WorkflowAction = { id: string; title: string; detail: string; url: s
 export async function getWorkflowActionItems(): Promise<WorkflowAction[]> {
   const user = await requireUser();
   const isMaster = await currentUserIsMasterAdmin();
-  const T = 40;
+  // Asked of the database for THIS person (their jobs, their organisation's
+  // branches) — never "the newest 40 platform-wide, then filtered", which
+  // silently lost people's actions on a busy day.
+  const T = 300;
+  const reach = await reachWhere('workshop.job_card.view');
+  const me = (field: 'supervisorId' | 'createdById') => (isMaster ? {} : { [field]: user.id });
   const jc = { select: { id: true, jobNumber: true, branchId: true, supervisorId: true, createdById: true } } as const;
   const sv = { select: { id: true, serviceNumber: true, branchId: true, supervisorId: true, createdById: true } } as const;
   const [estSubmitted, estApproved, estToNotify, estMatching, sEstSubmitted, sEstApproved, sEstToNotify, sEstMatching, prs, epr, jcClosed, jcCompleted, svCompleted, svClosed] = await Promise.all([
-    prisma.estimate.findMany({ where: { status: 'SUBMITTED' }, take: T, select: { updatedAt: true, jobCard: jc } }),
-    prisma.estimate.findMany({ where: { status: 'APPROVED' }, take: T, select: { updatedAt: true, jobCard: jc } }),
-    prisma.estimate.findMany({ where: { status: 'MANAGER_APPROVED', customerNotifiedAt: null, jobCard: { status: { notIn: ['CHECKED_OUT', 'CANCELLED'] } } }, take: T, select: { managerApprovedAt: true, jobCard: jc } }),
-    prisma.estimate.findMany({ where: { matchingRequestedAt: { not: null }, lineItems: { some: { type: 'STORE_PART', matchedPartId: null } }, jobCard: { status: { notIn: ['CHECKED_OUT', 'CANCELLED'] } } }, take: T, select: { matchingRequestedAt: true, jobCard: jc } }),
-    prisma.serviceEstimate.findMany({ where: { status: 'SUBMITTED' }, take: T, select: { updatedAt: true, vehicleService: sv } }),
-    prisma.serviceEstimate.findMany({ where: { status: 'APPROVED' }, take: T, select: { updatedAt: true, vehicleService: sv } }),
-    prisma.serviceEstimate.findMany({ where: { status: 'MANAGER_APPROVED', customerNotifiedAt: null, vehicleService: { status: { notIn: ['COLLECTED', 'CANCELLED', 'ESCALATED'] } } }, take: T, select: { managerApprovedAt: true, vehicleService: sv } }),
-    prisma.serviceEstimate.findMany({ where: { matchingRequestedAt: { not: null }, lineItems: { some: { type: 'STORE_PART', matchedPartId: null } }, vehicleService: { status: { notIn: ['COLLECTED', 'CANCELLED', 'ESCALATED'] } } }, take: T, select: { matchingRequestedAt: true, vehicleService: sv } }),
-    prisma.partRequestSlip.findMany({ where: { status: { in: ['PENDING_HOD_APPROVAL', 'PENDING_STORE_APPROVAL', 'APPROVED'] } }, take: T, select: { id: true, referenceNumber: true, status: true, branchId: true, updatedAt: true } }),
-    prisma.externalProcurementRequest.findMany({ where: { status: { in: ['PENDING_FINANCE_REVIEW', 'PENDING_MANAGER_APPROVAL', 'APPROVED'] } }, take: T, select: { id: true, referenceNumber: true, status: true, branchId: true, updatedAt: true } }),
-    prisma.jobCard.findMany({ where: { status: 'CLOSED' }, take: T, select: { id: true, jobNumber: true, createdById: true, updatedAt: true } }),
-    prisma.jobCard.findMany({ where: { status: 'COMPLETED' }, take: T, select: { id: true, jobNumber: true, supervisorId: true, updatedAt: true } }),
-    prisma.vehicleService.findMany({ where: { status: 'COMPLETED', escalatedToJobCardId: null }, take: T, select: { id: true, serviceNumber: true, supervisorId: true, completedAt: true } }),
-    prisma.vehicleService.findMany({ where: { status: 'CLOSED', escalatedToJobCardId: null }, take: T, select: { id: true, serviceNumber: true, createdById: true, closedAt: true } }),
+    prisma.estimate.findMany({ where: { status: 'SUBMITTED', jobCard: { ...reach, ...me('supervisorId') } }, take: T, select: { updatedAt: true, jobCard: jc } }),
+    prisma.estimate.findMany({ where: { status: 'APPROVED', jobCard: reach }, take: T, select: { updatedAt: true, jobCard: jc } }),
+    prisma.estimate.findMany({ where: { status: 'MANAGER_APPROVED', customerNotifiedAt: null, jobCard: { status: { notIn: ['CHECKED_OUT', 'CANCELLED'] }, ...reach, ...me('createdById') } }, take: T, select: { managerApprovedAt: true, jobCard: jc } }),
+    prisma.estimate.findMany({ where: { matchingRequestedAt: { not: null }, lineItems: { some: { type: 'STORE_PART', matchedPartId: null } }, jobCard: { status: { notIn: ['CHECKED_OUT', 'CANCELLED'] }, ...reach } }, take: T, select: { matchingRequestedAt: true, jobCard: jc } }),
+    prisma.serviceEstimate.findMany({ where: { status: 'SUBMITTED', vehicleService: { ...reach, ...me('supervisorId') } }, take: T, select: { updatedAt: true, vehicleService: sv } }),
+    prisma.serviceEstimate.findMany({ where: { status: 'APPROVED', vehicleService: reach }, take: T, select: { updatedAt: true, vehicleService: sv } }),
+    prisma.serviceEstimate.findMany({ where: { status: 'MANAGER_APPROVED', customerNotifiedAt: null, vehicleService: { status: { notIn: ['COLLECTED', 'CANCELLED', 'ESCALATED'] }, ...reach, ...me('createdById') } }, take: T, select: { managerApprovedAt: true, vehicleService: sv } }),
+    prisma.serviceEstimate.findMany({ where: { matchingRequestedAt: { not: null }, lineItems: { some: { type: 'STORE_PART', matchedPartId: null } }, vehicleService: { status: { notIn: ['COLLECTED', 'CANCELLED', 'ESCALATED'] }, ...reach } }, take: T, select: { matchingRequestedAt: true, vehicleService: sv } }),
+    prisma.partRequestSlip.findMany({ where: { status: { in: ['PENDING_HOD_APPROVAL', 'PENDING_STORE_APPROVAL', 'APPROVED'] }, ...reach }, take: T, select: { id: true, referenceNumber: true, status: true, branchId: true, updatedAt: true } }),
+    prisma.externalProcurementRequest.findMany({ where: { status: { in: ['PENDING_FINANCE_REVIEW', 'PENDING_MANAGER_APPROVAL', 'APPROVED'] }, ...reach }, take: T, select: { id: true, referenceNumber: true, status: true, branchId: true, updatedAt: true } }),
+    prisma.jobCard.findMany({ where: { status: 'CLOSED', ...reach, ...me('createdById') }, take: T, select: { id: true, jobNumber: true, createdById: true, updatedAt: true } }),
+    prisma.jobCard.findMany({ where: { status: 'COMPLETED', ...reach, ...me('supervisorId') }, take: T, select: { id: true, jobNumber: true, supervisorId: true, updatedAt: true } }),
+    prisma.vehicleService.findMany({ where: { status: 'COMPLETED', escalatedToJobCardId: null, ...reach, ...me('supervisorId') }, take: T, select: { id: true, serviceNumber: true, supervisorId: true, completedAt: true } }),
+    prisma.vehicleService.findMany({ where: { status: 'CLOSED', escalatedToJobCardId: null, ...reach, ...me('createdById') }, take: T, select: { id: true, serviceNumber: true, createdById: true, closedAt: true } }),
   ]);
 
   // Who counts as manager / finance / store for each branch involved.

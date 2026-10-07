@@ -7,7 +7,7 @@ import { after } from 'next/server';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog, getWorkshopBranchId } from '@/lib/workshop-core';
-import { actingOrgWhere, authorize, getPrincipal, orgWhere, refuse } from '@/lib/authz/server';
+import { actingOrgWhere, authorize, branchOwnedByMyOrganisation, getPrincipal, orgWhere, refuse } from '@/lib/authz/server';
 import { decide, ROLE_GRANTS } from '@/lib/authz/catalogue';
 import { sendLoggedEmail, type Recipient } from '@/lib/logged-email';
 import { sendDueAppointmentReminders } from '@/lib/appointment-reminders';
@@ -129,6 +129,13 @@ async function assertNoClash(ownerId: string, roomId: string | null, s: Date, e:
   if (busy) throw new SchedulingError(`The host already has ${busy.appointmentNumber} (${busy.title}) at ${fmt(busy.startsAt)}.`);
 }
 
+/** A room id from the browser must be one of this organisation's rooms. */
+async function assertRoomIsMine(roomId: string | null): Promise<void> {
+  if (!roomId) return;
+  const room = await prisma.meetingRoom.findFirst({ where: { id: roomId, ...(await branchOwnedByMyOrganisation()) }, select: { id: true } });
+  if (!room) throw new SchedulingError('That meeting room is not available.');
+}
+
 /** Two people booking the same room (or the same official) at the same
  * moment: lock the room and the host — always in that order, so two
  * bookings never deadlock — re-check for a clash under the lock, then write.
@@ -207,6 +214,7 @@ export async function createAppointment(input: AppointmentInput): Promise<{ id: 
   const a = await requireBookFor(input.ownerId);
   const d = clean(input);
   if (d.startsAt.getTime() < Date.now() - 5 * 60000) throw new SchedulingError('That time has already passed.');
+  await assertRoomIsMine(d.roomId);
   await assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt);
   const appointmentNumber = await nextNumber('APT');
   const branchId = await getWorkshopBranchId();
@@ -235,6 +243,7 @@ export async function updateAppointment(id: string, input: AppointmentInput): Pr
   if (appt.status !== 'SCHEDULED') throw new SchedulingError('Only a scheduled appointment can be changed.');
   if (!access.owners.some((o) => o.id === input.ownerId) && input.ownerId !== appt.ownerId) throw new SchedulingError('You cannot move it onto that calendar.');
   const d = clean(input);
+  await assertRoomIsMine(d.roomId);
   await assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt, id);
   await bookExclusively([input.ownerId], [d.roomId], (db) => assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt, id, db), async (tx) => {
     // Only while still SCHEDULED — not cancelled or closed by someone else meanwhile.
@@ -336,7 +345,8 @@ export async function getAppointmentHistory(id: string) {
 
 export async function listRooms(includeInactive = false) {
   await requireUser();
-  return prisma.meetingRoom.findMany({ where: includeInactive ? undefined : { isActive: true }, orderBy: { name: 'asc' } });
+  // Rooms of the person's own organisation only.
+  return prisma.meetingRoom.findMany({ where: { ...(includeInactive ? {} : { isActive: true }), ...(await branchOwnedByMyOrganisation()) }, orderBy: { name: 'asc' } });
 }
 
 export async function saveRoom(input: { id?: string; name: string; location?: string; capacity?: number | null }): Promise<void> {

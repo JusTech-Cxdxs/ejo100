@@ -215,3 +215,71 @@ export async function authorizeOnJobCard(key: PermissionKey, jobCardId: string, 
   if (!j) throw new Error('This record no longer exists — refresh the page.');
   await authorize(key, { branchId: j.branchId, assigneeIds: [j.supervisorId, j.assignedTechnicianId], ownerIds: [j.createdById] }, where);
 }
+
+/** The message for a record the person may not see. Deliberately the same
+ * as "not found": it never confirms that someone else's record exists. */
+export const NOT_AVAILABLE = 'This record is not available — it may have been removed, or it is outside what you can see.';
+
+/**
+ * Reads of anything that hangs off a Job Card / Vehicle Service (payments,
+ * refunds, estimates, requests, audit trails …) check the PARENT record:
+ * its branch must be within the person's reach for `key` (default: viewing
+ * Job Cards / Vehicle Services). Refusals are audited as access.denied.
+ */
+export async function seeJobCard(jobCardId: string, where: string, key: PermissionKey = 'workshop.job_card.view'): Promise<void> {
+  const j = jobCardId ? await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { branchId: true } }) : null;
+  if (!j || !(await canSeeRecord(key, { branchId: j.branchId }, where))) throw new Error(NOT_AVAILABLE);
+}
+
+export async function seeService(serviceId: string, where: string, key: PermissionKey = 'workshop.job_card.view'): Promise<void> {
+  const v = serviceId ? await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { branchId: true } }) : null;
+  if (!v || !(await canSeeRecord(key, { branchId: v.branchId }, where))) throw new Error(NOT_AVAILABLE);
+}
+
+/** Records that belong to a branch directly (parts, goods receipts, slips …). */
+export async function seeBranch(key: PermissionKey, branchId: string | null | undefined, where: string): Promise<void> {
+  if (!(await canSeeRecord(key, { branchId: branchId ?? null }, where))) throw new Error(NOT_AVAILABLE);
+}
+
+/** A list of things that hang off Job Cards OR Vehicle Services, fenced to
+ * the person's reach (e.g. the refunds register). */
+type Reach = { branchId?: string | { in: string[] } };
+export async function jobOrServiceReach(key: PermissionKey = 'workshop.job_card.view'): Promise<{ OR: [{ jobCard: Reach }, { vehicleService: Reach }] }> {
+  const reach = await reachWhere(key);
+  return { OR: [{ jobCard: reach }, { vehicleService: reach }] };
+}
+
+/** A customer's vehicle: the customer must belong to the person's organisation. */
+export async function seeVehicle(vehicleId: string, where: string): Promise<void> {
+  const v = vehicleId ? await prisma.customerVehicle.findUnique({ where: { id: vehicleId }, select: { customer: { select: { organisationId: true } } } }) : null;
+  if (!v || !(await inMyOrganisation(v.customer.organisationId))) {
+    if (v) await logDenied((await getPrincipal()).userId, 'workshop.view', where, 'outside organisation');
+    throw new Error(NOT_AVAILABLE);
+  }
+}
+
+/** A Store part: its branch must be within reach for viewing the Store. */
+export async function seePart(partId: string, where: string): Promise<void> {
+  const p = partId ? await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true } }) : null;
+  if (!p) throw new Error(NOT_AVAILABLE);
+  await seeBranch('store.view', p.branchId, where);
+}
+
+/** Records more than one department legitimately opens (a parts request: the
+ * workshop and the Store; an outside purchase: the workshop, Store and
+ * Finance) — visible when ANY of the keys reaches its branch. */
+export async function seeBranchAnyOf(keys: PermissionKey[], branchId: string | null | undefined, where: string): Promise<void> {
+  for (const key of keys.slice(0, -1)) if (await allows(key, { branchId: branchId ?? null })) return;
+  await seeBranch(keys[keys.length - 1]!, branchId, where);
+}
+
+/** Branch-owned records (parts, rooms, goods receipts …) of the person's own
+ * organisation; the platform team: all. */
+export async function partsOfMyOrganisation(): Promise<{ branch?: { businessUnit: { organisationId: string } } }> {
+  const p = await getPrincipal();
+  if (p.isSuperAdmin) return {};
+  return { branch: { businessUnit: { organisationId: p.organisationId ?? '__no_organisation__' } } };
+}
+
+/** Same filter, named for what it is when it is not about parts. */
+export const branchOwnedByMyOrganisation = partsOfMyOrganisation;
