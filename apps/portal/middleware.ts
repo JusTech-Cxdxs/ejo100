@@ -35,19 +35,25 @@ const posts = new Map<string, { n: number; start: number }>();
 function tooManyPosts(request: NextRequest): boolean {
   if (request.method !== 'POST') return false;
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
-  // Counted per signed-in person (session cookie) AND per address: a whole
-  // office behind one internet address is not one person.
+  // Signed-in traffic and anonymous traffic are counted SEPARATELY, so a busy
+  // office (many people behind one internet address) never locks out its own
+  // sign-in / forgot-password / set-password requests. Signed in: 120 a minute
+  // per person and 1,500 per address; anonymous: 120 per address. (The cookie
+  // is not verified here — a forged one only moves a client into the
+  // per-address 1,500 bucket; sign-in itself has its own limit in lib/auth.ts.)
   const token = getSessionCookie(request);
   const now = Date.now();
   if (posts.size > 5000) for (const [k, w] of posts) if (now - w.start > WINDOW_MS) posts.delete(k);
+  if (posts.size > 20000) posts.clear();
   const over = (key: string, max: number) => {
     const w = posts.get(key);
     if (!w || now - w.start > WINDOW_MS) { posts.set(key, { n: 1, start: now }); return false; }
     w.n += 1;
     return w.n > max;
   };
-  const perPerson = token ? over(`s:${token.slice(0, 32)}`, MAX_POSTS) : false;
-  const perAddress = over(`ip:${ip}`, token ? MAX_POSTS_PER_ADDRESS : MAX_POSTS);
+  if (!token) return over(`anon:${ip}`, MAX_POSTS);
+  const perAddress = over(`auth:${ip}`, MAX_POSTS_PER_ADDRESS);
+  const perPerson = over(`s:${token.slice(0, 32)}`, MAX_POSTS);
   return perPerson || perAddress;
 }
 

@@ -14,7 +14,7 @@ function ago(d: Date | null): string {
   return `${days} days ago`;
 }
 
-const LABEL: Record<string, string> = { remindersSent: 'reminders sent', broadcastEmailsSent: 'broadcast emails sent', digestsSent: 'digests sent', branchesWithOpenAlerts: 'branches with open alerts', emailsSent: 'emails sent', emailsFailed: 'emails failed' };
+const LABEL: Record<string, string> = { remindersSent: 'reminders sent', broadcastEmailsSent: 'broadcast emails sent', digestsSent: 'digests sent', branchesWithOpenAlerts: 'branches with open alerts', emailsSent: 'emails sent', emailsFailed: 'emails failed', rolesChanged: 'roles changed' };
 
 /** Settings — the health of everything that runs on its own. */
 export default async function SettingsPage() {
@@ -43,7 +43,7 @@ export default async function SettingsPage() {
                   <p className="text-xs text-[var(--ejo-text-muted)]">{j.runs7d} {j.runs7d === 1 ? 'run' : 'runs'} in 7 days</p>
                   {j.lastResult ? (
                     <p className="text-xs text-[var(--ejo-text-muted)]">
-                      {Object.entries(j.lastResult).map(([k, v]) => `${String(v)} ${LABEL[k] ?? k}`).join(' · ')}
+                      {Object.entries(j.lastResult).filter(([k]) => k !== 'upTo').map(([k, v]) => `${String(v)} ${LABEL[k] ?? k}`).join(' · ')}
                     </p>
                   ) : null}
                 </div>

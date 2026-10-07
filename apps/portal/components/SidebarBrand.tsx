@@ -15,7 +15,7 @@ export function SidebarBrand({ organisationName }: { organisationName: string })
   const top = words[0] ?? organisationName;
   const bottom = words.slice(1).join(' ');
   return (
-    <div className="flex items-center" title={organisationName}>
+    <div className="flex min-w-0 items-center" title={organisationName}>
       {logoFailed ? (
         <span className="mr-1 flex h-10 w-[33px] items-center justify-center rounded-md bg-[var(--ejo-primary)] text-base font-bold text-white">{top.charAt(0)}</span>
       ) : (
@@ -25,9 +25,9 @@ export function SidebarBrand({ organisationName }: { organisationName: string })
       <div className="inline-flex min-w-0 flex-col items-stretch">
         <span className="truncate text-[22px] font-extrabold leading-none tracking-[0.01em] text-[var(--ejo-text)]">{top}</span>
         {bottom ? (
-          <span className="mt-1 flex items-center">
-            <span className="mr-1.5 flex-1 border-b-[1.25px] border-[var(--ejo-primary)]" />
-            <span className="whitespace-nowrap text-[11px] font-semibold leading-none text-[var(--ejo-text-muted)]">{bottom}</span>
+          <span className="mt-1 flex min-w-0 items-center">
+            <span className="mr-1.5 min-w-[12px] flex-1 border-b-[1.25px] border-[var(--ejo-primary)]" />
+            <span className="truncate text-[11px] font-semibold leading-none text-[var(--ejo-text-muted)]">{bottom}</span>
           </span>
         ) : null}
       </div>

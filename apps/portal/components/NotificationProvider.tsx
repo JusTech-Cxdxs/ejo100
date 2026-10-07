@@ -24,12 +24,18 @@ const HEAVY_PAGE_REFRESH_GAP_MS = 60000;
 const HEAVY_PAGE = /\/analytics(\/|$)/;
 const refreshGapFor = (path: string) => (HEAVY_PAGE.test(path) ? HEAVY_PAGE_REFRESH_GAP_MS : PAGE_REFRESH_GAP_MS);
 
-/** The tiny change check — a plain GET, never a page render. '' = unreachable;
- * null = signed out (or switched off). */
-async function fetchPulse(): Promise<string | null> {
+/** The tiny change check — a plain GET, never a page render. '' = unreachable
+ * (offline, slow, server busy); { out } = signed out or switched off. Gives up
+ * after 8 s, so one stalled request can never stop the live updates. */
+type Pulse = string | { out: true; inactive: boolean };
+async function fetchPulse(): Promise<Pulse> {
   try {
-    const r = await fetch('/api/live/pulse', { cache: 'no-store', credentials: 'same-origin', redirect: 'manual' });
-    if (r.status === 401 || r.type === 'opaqueredirect') return null;
+    const r = await fetch('/api/live/pulse', { cache: 'no-store', credentials: 'same-origin', redirect: 'manual', signal: AbortSignal.timeout(8000) });
+    if (r.type === 'opaqueredirect') return { out: true, inactive: false };
+    if (r.status === 401) {
+      const body = (await r.json().catch(() => ({}))) as { reason?: string };
+      return { out: true, inactive: body.reason === 'inactive' };
+    }
     if (!r.ok) return '';
     const body = (await r.json()) as { pulse?: string };
     return typeof body.pulse === 'string' ? body.pulse : '';
@@ -37,6 +43,7 @@ async function fetchPulse(): Promise<string | null> {
     return '';
   }
 }
+
 const RING_MS = 120000;
 const EMPTY: NotificationSummary = { actions: [], unreadActivity: [], unreadBroadcasts: [], total: 0, signature: '', muted: false };
 
@@ -134,6 +141,11 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     refreshWaiting.current = false;
     router.refresh();
   }, [router]);
+  const signedOut = useRef<string | null>(null);
+  const signOutSoon = useCallback((inactive: boolean) => {
+    signedOut.current = inactive ? '/signed-out?reason=inactive' : '/signed-out';
+    if (!typing()) window.location.assign(signedOut.current);
+  }, []);
   // Live pages: whenever anything changes, the page you are looking at updates
   // itself (at most every 10 s, analytics once a minute; the last change is always applied; never while
   // you are typing — refreshPage waits for you to leave the field).
@@ -152,7 +164,10 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
   useEffect(() => () => { if (pageTimer.current) clearTimeout(pageTimer.current); }, []);
 
   useEffect(() => {
-    const onLeaveField = () => { if (refreshWaiting.current) setTimeout(() => { if (!typing()) refreshPage(); }, 300); };
+    const onLeaveField = () => {
+      if (signedOut.current) { const to = signedOut.current; setTimeout(() => { if (!typing()) window.location.assign(to); }, 300); return; }
+      if (refreshWaiting.current) setTimeout(() => { if (!typing()) refreshPage(); }, 300);
+    };
     document.addEventListener('focusout', onLeaveField);
     return () => document.removeEventListener('focusout', onLeaveField);
   }, [refreshPage]);
@@ -186,8 +201,9 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     busy.current = true;
     try {
       const p = await fetchPulse();
-      // Signed out or switched off elsewhere → the sign-out page (clears the cookie).
-      if (p === null) { window.location.assign('/signed-out'); return; }
+      // Signed out or switched off elsewhere → the sign-out page (clears the
+      // cookie) — but never in the middle of typing: it waits until the field is left.
+      if (typeof p === 'object') { signOutSoon(p.inactive); return; }
       if (!p) { setOnline(false); return; }
       setOnline(true);
       setLastSync(Date.now());
@@ -202,7 +218,7 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     } finally {
       busy.current = false;
     }
-  }, [load, refreshPageSoon]);
+  }, [load, refreshPageSoon, signOutSoon]);
 
   // Instant push: a ping means "something changed" — refresh now (coalesced).
   const pingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

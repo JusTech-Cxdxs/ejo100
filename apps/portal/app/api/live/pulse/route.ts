@@ -21,7 +21,7 @@ export async function GET() {
     const session = await auth.api.getSession({ headers: await headers() });
     if (!session?.user?.id) return NextResponse.json({ error: 'Not signed in' }, { status: 401, headers: NO_STORE });
     const u = await prisma.user.findUnique({ where: { id: session.user.id }, select: { isActive: true, organisationId: true } });
-    if (!u?.isActive) return NextResponse.json({ error: 'Not signed in' }, { status: 401, headers: NO_STORE });
+    if (!u?.isActive) return NextResponse.json({ error: 'Not signed in', reason: u ? 'inactive' : 'gone' }, { status: 401, headers: NO_STORE });
     const pulse = await livePulse(u.organisationId);
     return NextResponse.json({ pulse }, { headers: NO_STORE });
   } catch {

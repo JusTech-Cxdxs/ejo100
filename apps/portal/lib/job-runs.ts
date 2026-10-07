@@ -16,6 +16,7 @@ export async function recordJobRun(job: string, result: Record<string, unknown>)
 export const JOBS: { key: string; name: string; when: string; does: string }[] = [
   { key: 'appointment-reminders', name: 'Appointment reminders & scheduled broadcasts', when: 'Every 10 minutes (Supabase scheduler)', does: 'Emails people ~1 hour before their appointment, and sends scheduled broadcasts by email at their start time.' },
   { key: 'morning-digest', name: 'Morning appointments digest', when: '7:00 am, Monday–Friday (Vercel)', does: 'Emails each person a list of their appointments for the day — only people who have appointments that day.' },
+  { key: 'access-notices', name: 'Access-changed emails', when: 'Every 10 minutes, with the reminders', does: 'When permissions are added to or removed from a role, emails everyone who holds it their full, current access — one email per batch of changes.' },
   { key: 'pricing-alerts', name: 'Pricing alerts digest', when: '8:00 am daily (Vercel)', does: 'Emails Store staff one summary of open pricing alerts — only when there are open alerts.' },
 ];
 

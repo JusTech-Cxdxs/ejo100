@@ -5,8 +5,6 @@ import { prisma } from '@ejo/database';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { authorize, getPrincipal } from '@/lib/authz/server';
 import { PERMISSIONS, ROLE_GRANTS, type PermissionKey } from '@/lib/authz/catalogue';
-import { after } from 'next/server';
-import { emailHoldersOfRole } from '@/lib/staff-onboarding';
 
 export type RoleForEditor = { id: string; name: string; slug: string; isPlatform: boolean; users: number; defaults: PermissionKey[]; added: PermissionKey[] };
 
@@ -47,8 +45,8 @@ export async function grantRolePermission(roleId: string, key: string): Promise<
   const perm = await prisma.permission.upsert({ where: { key }, update: {}, create: { key, description: PERMISSIONS[key as PermissionKey].label } });
   await prisma.rolePermission.upsert({ where: { roleId_permissionId: { roleId, permissionId: perm.id } }, update: {}, create: { roleId, permissionId: perm.id } });
   await writeAuditLog({ userId: p.userId, action: 'role.permission_granted', entityType: 'Role', entityId: roleId, metadata: { role: role.name, permission: PERMISSIONS[key as PermissionKey].label } });
-  // Everyone holding the role is told, with their full, current access (after the response).
-  after(() => emailHoldersOfRole(roleId, `Your role ${role.name} can now: ${PERMISSIONS[key as PermissionKey].label}.`));
+  // Everyone holding the role is emailed their full, current access by the
+  // 10-minute job — one email for a batch of changes (lib/access-notices.ts).
   revalidatePath('/roles');
   revalidatePath('/permissions');
 }
@@ -59,7 +57,8 @@ export async function revokeRolePermission(roleId: string, key: string): Promise
   const { p, role } = await editableRole(roleId);
   const perm = await prisma.permission.findUnique({ where: { key }, select: { id: true } });
   const removed = perm ? (await prisma.rolePermission.deleteMany({ where: { roleId, permissionId: perm.id } })).count : 0;
-  if (removed > 0) after(() => emailHoldersOfRole(roleId, `Your role ${role.name} no longer includes: ${PERMISSIONS[key as PermissionKey]?.label ?? key}.`));
+  // Nothing was added, so nothing changed: no audit entry, no access-changed email.
+  if (removed === 0) return;
   await writeAuditLog({ userId: p.userId, action: 'role.permission_revoked', entityType: 'Role', entityId: roleId, metadata: { role: role.name, permission: PERMISSIONS[key as PermissionKey]?.label ?? key } });
   revalidatePath('/roles');
   revalidatePath('/permissions');

@@ -5,7 +5,7 @@ import { sendEmail } from '@/lib/email';
 import { PERMISSIONS, type PermissionKey, type Principal } from '@/lib/authz/catalogue';
 import { describeAccess, roleLabel } from '@/lib/authz/describe-access';
 import { renderStaffAccessEmail } from '@/lib/email-templates/staff-access';
-import { employeeIdPrefix, formatEmployeeId } from '@/lib/employee-id';
+import { formatEmployeeId, uniqueBranchPrefixes } from '@/lib/employee-id';
 import { portalConfig } from '@/lib/site-config';
 
 /**
@@ -23,12 +23,16 @@ function portalUrl(): string {
  * unique, so two administrators adding people at the same moment can never
  * get the same number — the caller retries on a clash. */
 export async function nextEmployeeId(branchId: string): Promise<string> {
-  const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { name: true, code: true, businessUnit: { select: { organisation: { select: { name: true } } } } } });
+  const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { businessUnit: { select: { organisationId: true, organisation: { select: { name: true } } } } } });
   if (!branch) throw new Error('That branch no longer exists.');
-  const prefix = employeeIdPrefix(branch.businessUnit.organisation.name, branch.name, branch.code);
+  // Every branch of the organisation, oldest first: two branches whose names
+  // give the same code ("Isolo", "Isolo Workshop") are told apart — the newer
+  // one gets a digit (ISO, ISO2) — and an existing branch's code never changes.
+  const siblings = await prisma.branch.findMany({ where: { businessUnit: { organisationId: branch.businessUnit.organisationId } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true, name: true, code: true } });
+  const prefix = uniqueBranchPrefixes(branch.businessUnit.organisation.name, siblings).get(branchId)!;
   const rows = await prisma.$queryRaw<{ max: number | null }[]>`
-    SELECT MAX(CAST(SUBSTRING("employeeId" FROM '([0-9]+)$') AS INTEGER)) AS max
-    FROM "users" WHERE "employeeId" LIKE ${`${prefix}-%`} AND "employeeId" ~ ${`^${prefix.replace(/[^A-Z0-9-]/g, '')}-[0-9]+$`}`;
+    SELECT MAX(CAST(SUBSTRING("employeeId" FROM '([0-9]{1,9})$') AS INTEGER)) AS max
+    FROM "users" WHERE "employeeId" ~ ${`^${prefix}-[0-9]{1,9}$`}`;
   return formatEmployeeId(prefix, Number(rows[0]?.max ?? 0) + 1);
 }
 
@@ -36,6 +40,8 @@ export async function nextEmployeeId(branchId: string): Promise<string> {
  * own verification store and its standard /reset-password/:token route. */
 export async function issueSetPasswordLink(userId: string, hours = SET_PASSWORD_HOURS): Promise<string> {
   const ctx = await auth.$context;
+  // Only the newest link works: any earlier, unused set-password link for this person is withdrawn.
+  await prisma.verification.deleteMany({ where: { value: userId, identifier: { startsWith: 'reset-password:' } } });
   const token = randomBytes(18).toString('base64url');
   await ctx.internalAdapter.createVerificationValue({ value: userId, identifier: `reset-password:${token}`, expiresAt: new Date(Date.now() + hours * 3600_000) });
   return `${ctx.baseURL}/reset-password/${token}?callbackURL=${encodeURIComponent('/reset-password')}`;

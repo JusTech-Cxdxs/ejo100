@@ -52,3 +52,23 @@ export function sequenceOf(prefix: string, employeeId: string): number | null {
   const rest = employeeId.slice(prefix.length + 1);
   return /^\d{1,9}$/.test(rest) ? Number(rest) : null;
 }
+
+/**
+ * The prefix of every branch of one organisation, branches given oldest
+ * first. Codes that would repeat get a digit (KN-ISO, KN-ISO2, KN-ISO3), so a
+ * branch's prefix depends only on the branches created before it — adding a
+ * branch never changes the prefix of an existing one.
+ */
+export function uniqueBranchPrefixes(organisationName: string, branchesOldestFirst: { id: string; name: string; code?: string | null }[]): Map<string, string> {
+  const org = organisationCode(organisationName);
+  const used = new Set<string>();
+  const out = new Map<string, string>();
+  for (const b of branchesOldestFirst) {
+    const base = branchCode(b.name, b.code);
+    let code = base;
+    for (let n = 2; used.has(code); n += 1) code = `${base}${n}`;
+    used.add(code);
+    out.set(b.id, `${org}-${code}`);
+  }
+  return out;
+}

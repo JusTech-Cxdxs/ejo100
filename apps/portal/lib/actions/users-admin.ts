@@ -241,13 +241,17 @@ export async function assignMissingEmployeeIds(): Promise<number> {
     take: 500,
   });
   let given = 0;
-  for (const u of missing) {
-    // Only where still empty (compare-and-set): a second administrator doing the same never double-issues.
-    const ok = await retryOnNumberClash('employeeId', async () => (await prisma.user.updateMany({ where: { id: u.id, employeeId: null }, data: { employeeId: await nextEmployeeId(u.branchId!) } })).count);
-    given += ok;
+  try {
+    for (const u of missing) {
+      // Only where still empty (compare-and-set): a second administrator doing the same never double-issues.
+      const ok = await retryOnNumberClash('employeeId', async () => (await prisma.user.updateMany({ where: { id: u.id, employeeId: null }, data: { employeeId: await nextEmployeeId(u.branchId!) } })).count);
+      given += ok;
+    }
+  } finally {
+    // Recorded even if it stops part-way (each ID itself is also in the journal).
+    if (given) await writeAuditLog({ userId: p.userId, action: 'user.employee_ids_assigned', entityType: 'User', entityId: 'bulk', metadata: { count: given } });
+    revalidatePath('/users');
   }
-  if (given) await writeAuditLog({ userId: p.userId, action: 'user.employee_ids_assigned', entityType: 'User', entityId: 'bulk', metadata: { count: given } });
-  revalidatePath('/users');
   return given;
 }
 

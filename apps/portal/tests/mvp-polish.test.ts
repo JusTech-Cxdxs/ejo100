@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { organisationCode, branchCode, employeeIdPrefix, formatEmployeeId, sequenceOf } from '../lib/employee-id';
+import { organisationCode, branchCode, employeeIdPrefix, formatEmployeeId, sequenceOf, uniqueBranchPrefixes } from '../lib/employee-id';
 import { describeAccess } from '../lib/authz/describe-access';
 import { PERMISSIONS, type Principal, type PermissionKey } from '../lib/authz/catalogue';
 import { renderStaffAccessEmail, STAFF_RULES } from '../lib/email-templates/staff-access';
@@ -41,6 +41,15 @@ test('employee IDs: format and running number', () => {
   assert.equal(sequenceOf('KN-ISO', 'KN-ISOX-0042'), null);
   assert.equal(sequenceOf('KN-ISO', 'KN-ISO-12a'), null);
   assert.equal(sequenceOf('KN-ISO', 'EMP-001'), null);
+});
+
+test('employee IDs: branches whose names give the same code are told apart, and existing ones never change', () => {
+  const first = uniqueBranchPrefixes('Kewalram Nigeria', [{ id: 'a', name: 'Isolo' }, { id: 'b', name: 'Isolo Workshop' }, { id: 'c', name: 'Victoria Island' }]);
+  assert.deepEqual([...first.values()], ['KN-ISO', 'KN-ISO2', 'KN-VI']);
+  const later = uniqueBranchPrefixes('Kewalram Nigeria', [{ id: 'a', name: 'Isolo' }, { id: 'b', name: 'Isolo Workshop' }, { id: 'c', name: 'Victoria Island' }, { id: 'd', name: 'Isolo Branch' }]);
+  assert.equal(later.get('a'), 'KN-ISO');
+  assert.equal(later.get('b'), 'KN-ISO2');
+  assert.equal(later.get('d'), 'KN-ISO3');
 });
 
 test('access description: exactly what the catalogue grants, with "added" grants marked', () => {

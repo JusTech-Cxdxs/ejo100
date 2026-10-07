@@ -155,10 +155,11 @@ export function reaches(b: { audience: string; audienceIds: string[] }, u: { bra
 
 const API_RESOURCE: Record<string, { one: string; page: string }> = {
   users: { one: 'User', page: '/users' }, roles: { one: 'Role', page: '/roles' }, permissions: { one: 'Permission', page: '/permissions' },
-  branches: { one: 'Branch', page: '/branches' }, departments: { one: 'Department', page: '/departments' }, teams: { one: 'Team', page: '/teams' },
-  'business-units': { one: 'Business unit', page: '/business-units' }, organisations: { one: 'Organisation', page: '/organisation' },
-  countries: { one: 'Country', page: '/countries' }, states: { one: 'State', page: '/states' }, cities: { one: 'City', page: '/cities' },
-  settings: { one: 'Setting', page: '/settings' }, suppliers: { one: 'Supplier', page: '/suppliers' }, documents: { one: 'Document', page: '/documents' },
+  // Structure items open where they are shown in version 1 (their separate editors are next version).
+  branches: { one: 'Branch', page: '/branches' }, departments: { one: 'Department', page: '/branches' }, teams: { one: 'Team', page: '/organisation' },
+  'business-units': { one: 'Business unit', page: '/organisation' }, organisations: { one: 'Organisation', page: '/organisation' },
+  countries: { one: 'Country', page: '/organisation' }, states: { one: 'State', page: '/organisation' }, cities: { one: 'City', page: '/organisation' },
+  settings: { one: 'Setting', page: '/settings' }, suppliers: { one: 'Supplier', page: '/audit-logs' }, documents: { one: 'Document', page: '/audit-logs' },
 };
 const VERB: Record<string, string> = { post: 'created', put: 'updated', patch: 'updated', delete: 'deleted' };
 

@@ -9,7 +9,9 @@ const chip = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11
 const banner = 'mt-3 rounded-[var(--ejo-radius-md)] border p-3 text-sm text-[var(--ejo-text)]';
 
 export default async function UsersPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; status?: string; id?: string }> }) {
-  const { q, error, status, id } = await searchParams;
+  const { q, error, status, id: rawId } = await searchParams;
+  // Only something shaped like an employee ID is ever shown back.
+  const id = rawId && /^[A-Z0-9-]{3,24}$/.test(rawId) ? rawId : undefined;
   const [{ users, roles, me, isPlatformTeam }, placement] = await Promise.all([listUsersForAdmin(q), staffPlacementOptions()]);
   const field = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
   const branchName = new Map(placement.branches.map((b) => [b.id, b.name]));
