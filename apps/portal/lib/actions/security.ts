@@ -264,6 +264,8 @@ export async function updateBooking(visitId: string, input: VisitInput): Promise
   if (!v) throw new SecurityError('Visit not found.');
   if (v.status !== 'EXPECTED') throw new SecurityError('Only a booking that has not arrived can be changed.');
   if (!roles.isFrontDesk && v.hostUserId !== user.id && v.registeredById !== user.id) throw new SecurityError('Only the host, whoever booked it, Reception or Security can change it.');
+  // Acting as the desk (not as the host or booker): the desk's own branch only.
+  if (v.hostUserId !== user.id && v.registeredById !== user.id) await onMyDesk('visit', visitId, 'updateBooking');
   const data = cleanParty(input);
   if (data.hostUserId !== user.id && !roles.isFrontDesk && data.hostUserId !== v.hostUserId) throw new SecurityError('You can only book your own visitors.');
   if (!input.expectedAt || Number.isNaN(new Date(input.expectedAt).getTime())) throw new SecurityError('Enter when the visitor is expected.');
@@ -385,6 +387,8 @@ export async function cancelVisit(visitId: string, reason: string): Promise<void
   const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true, visitorName: true, hostUserId: true, registeredById: true } });
   if (!v) throw new SecurityError('Visit not found.');
   if (!roles.isFrontDesk && v.hostUserId !== user.id && v.registeredById !== user.id) throw new SecurityError('Only the host, whoever booked it, Reception or Security can cancel.');
+  // Acting as the desk (not as the host or booker): the desk's own branch only.
+  if (v.hostUserId !== user.id && v.registeredById !== user.id) await onMyDesk('visit', visitId, 'cancelVisit');
   if (v.status !== 'EXPECTED') throw new SecurityError('Only a booking that has not arrived can be cancelled.');
   if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');
   // Claim the cancellation first: a visitor checked in at this very moment
@@ -1650,6 +1654,8 @@ export async function cancelContractorPass(id: string, reason: string): Promise<
   const p = await contractorPeople(id);
   if (!p) throw new SecurityError('Contractor pass not found.');
   if (p.requestedById !== user.id && p.hostUserId !== user.id && !roles.isFrontDesk && !roles.isMaster) throw new SecurityError('Only whoever requested it, the staff member responsible or Security can cancel it.');
+  // Acting as the desk (not as requester or host): the desk's own branch only.
+  if (p.requestedById !== user.id && p.hostUserId !== user.id) await onMyDesk('contractorPass', id, 'cancelContractorPass');
   if (!['PENDING_MANAGER', 'APPROVED'].includes(p.status)) throw new SecurityError('This pass is already closed.');
   if (await openAttendance(id)) throw new SecurityError('The team is on site — sign them out first.');
   if (!reason.trim()) throw new SecurityError('Give a reason for cancelling.');

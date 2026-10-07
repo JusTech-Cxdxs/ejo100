@@ -117,6 +117,10 @@ test('the security desk acts only on its own branch: every desk action calls onM
     if (name === 'recordDeliveryArrival' ? !body.includes("if (deliveryId) await onMyDesk(") : !body.includes('await onMyDesk(')) missing.push(name);
   }
   assert.deepEqual(missing, [], `Desk actions without the branch check:\n${missing.join('\n')}`);
+  // Acting as the desk on someone else's booking / pass: the desk's own branch.
+  assert.match(src, /export async function updateBooking\([\s\S]{0,1200}await onMyDesk\('visit', visitId, 'updateBooking'\)/);
+  assert.match(src, /export async function cancelVisit\([\s\S]{0,1200}await onMyDesk\('visit', visitId, 'cancelVisit'\)/);
+  assert.match(src, /export async function cancelContractorPass\([\s\S]{0,1200}await onMyDesk\('contractorPass', id, 'cancelContractorPass'\)/);
   for (const fn of ['confirmDeliveryReceived', 'cancelDelivery']) assert.match(src, new RegExp(`export async function ${fn}\\([\\s\\S]{0,400}onMyDesk\\('gateDelivery', id, '${fn}', true\\)`), fn);
 });
 
@@ -135,6 +139,8 @@ test('a deactivated person cannot sign in and is signed out at once', () => {
   assert.match(out, /session_token/);
   assert.match(out, /maxAge: 0/);
   assert.match(read('middleware.ts'), /ALWAYS_PUBLIC = \[[^\]]*'\/signed-out'/);
+  // A stale cookie with no session also goes through /signed-out (never /login ↔ /dashboard).
+  assert.match(read('app/(app)/layout.tsx'), /if \(!session\?\.user\?\.id\) \{[\s\S]{0,250}redirect\('\/signed-out'\)/);
   const setActive = read('lib/actions/users-admin.ts');
   assert.match(setActive, /if \(!active\) await tx\.session\.deleteMany\(\{ where: \{ userId \} \}\)/, 'switching off removes every open session');
   assert.match(setActive, /You cannot switch off your own account/);
