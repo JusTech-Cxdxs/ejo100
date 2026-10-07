@@ -23,13 +23,43 @@
   --ejo-radius-xl: 24px;
 }
 
-[data-theme='dark'] {
+:root { color-scheme: light; }
+
+/* Dark theme — chosen in the header (Light / Dark / System). "System" follows
+   the device; an explicit choice is stored in the ejo-theme cookie and applied
+   before the first paint (see app/layout.tsx), so pages never flash. */
+:root[data-theme='dark'] {
+  --ejo-secondary: #020617;
+  --ejo-error: #ef4444;
+  --ejo-info: #3b82f6;
   --ejo-bg: #0b1220;
-  --ejo-surface: #111827;
-  --ejo-border: #1f2937;
-  --ejo-text: #f1f5f9;
+  --ejo-surface: #111a2e;
+  --ejo-border: #24324a;
+  --ejo-text: #e8eef7;
   --ejo-text-muted: #94a3b8;
+  color-scheme: dark;
 }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+  --ejo-secondary: #020617;
+  --ejo-error: #ef4444;
+  --ejo-info: #3b82f6;
+  --ejo-bg: #0b1220;
+  --ejo-surface: #111a2e;
+  --ejo-border: #24324a;
+  --ejo-text: #e8eef7;
+  --ejo-text-muted: #94a3b8;
+  color-scheme: dark;
+  }
+}
+
+/* Smooth theme switch, without animating every hover. */
+html.ejo-theme-switching, html.ejo-theme-switching * {
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease !important;
+}
+
+/* Native controls follow the theme (date pickers, selects, scrollbars). */
+input, select, textarea { color: inherit; }
 
 * {
   border-color: var(--ejo-border);
@@ -65,8 +95,27 @@ body {
   animation: ejo-shimmer 3.5s ease-in-out infinite;
 }
 
+.ejo-shimmer-soft {
+  background: linear-gradient(90deg, var(--ejo-primary) 0%, var(--ejo-text) 50%, var(--ejo-primary) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ejo-shimmer 4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .ejo-shimmer-soft { animation: none; color: var(--ejo-primary); }
   .ejo-shimmer {
     animation: none;
   }
+}
+
+/* "Powered by EJO 100" — the platform mark, quietly alive. */
+@keyframes ejo-orbit { to { transform: rotate(360deg); } }
+@keyframes ejo-core { 0%, 100% { opacity: 0.55; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.1); } }
+.ejo-orbit { animation: ejo-orbit 6s linear infinite; transform-origin: 50% 50%; transform-box: fill-box; }
+.ejo-core { animation: ejo-core 2.4s ease-in-out infinite; transform-origin: 50% 50%; transform-box: fill-box; }
+@media (prefers-reduced-motion: reduce) {
+  .ejo-orbit, .ejo-core { animation: none; }
 }

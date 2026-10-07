@@ -1,13 +1,14 @@
 'use server';
 
 import { lockRows } from '@/lib/integrity';
-import { isUniqueClashOn } from '@/lib/integrity-core';
+import { isUniqueClashOn, retryOnNumberClash } from '@/lib/integrity-core';
+import { after } from 'next/server';
+import { nextEmployeeId, sendStaffAccessEmail } from '@/lib/staff-onboarding';
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@ejo/database';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { authorize, getPrincipal } from '@/lib/authz/server';
 import { scopeFor } from '@/lib/authz/catalogue';
-import { auth } from '@/lib/auth';
 import { hashPassword } from 'better-auth/crypto';
 import { randomBytes } from 'node:crypto';
 
@@ -95,6 +96,8 @@ export async function assignRole(userId: string, roleId: string): Promise<void> 
     throw err;
   }
   await writeAuditLog({ userId: p.userId, action: 'user.role_assigned', entityType: 'User', entityId: userId, metadata: { person: user.fullName, role: role.name } });
+  // The person is told, with their full, current access (after the response).
+  after(() => sendStaffAccessEmail(userId, 'updated', `You were given the role ${role.name}.`).then(() => undefined));
   revalidatePath('/users');
 }
 
@@ -121,6 +124,7 @@ export async function removeRole(userId: string, roleId: string): Promise<void> 
   });
   if (removed === 0) return;
   await writeAuditLog({ userId: p.userId, action: 'user.role_removed', entityType: 'User', entityId: userId, metadata: { person: user.fullName, role: role.name } });
+  after(() => sendStaffAccessEmail(userId, 'updated', `The role ${role.name} was removed from your account.`).then(() => undefined));
   revalidatePath('/users');
 }
 
@@ -139,21 +143,23 @@ export async function staffPlacementOptions(): Promise<StaffPlacement> {
   return { branches, departments, branchLocked: branchOnly };
 }
 
-export type NewStaffInput = { fullName: string; email: string; employeeId?: string; phone?: string; branchId: string; departmentId?: string; roleId?: string };
+export type NewStaffInput = { fullName: string; email: string; phone?: string; branchId: string; departmentId?: string; roleId?: string };
 
 /**
- * An administrator adds a staff member. The account is created with an
- * unusable random password and the person is emailed a link to set their
- * own — no password is ever sent by email or seen by the administrator.
+ * An administrator adds a staff member. The employee ID is issued by the
+ * server (ORG-BRANCH-NNNN, lib/employee-id.ts). The account is created with an
+ * unusable random password and the person is emailed a welcome — their
+ * employee ID, roles, branch, exactly what they may do, the rules, and a
+ * one-time link to set their own password (no password is ever sent by email
+ * or seen by the administrator).
  * Headquarters places people in any branch of the organisation; a Branch
  * Administrator only in their own branch and never with an administrator role.
  */
-export async function createStaffMember(input: NewStaffInput): Promise<{ id: string; emailSent: boolean }> {
+export async function createStaffMember(input: NewStaffInput): Promise<{ id: string; employeeId: string; emailSent: boolean }> {
   await authorize('admin.users.manage', undefined, 'users.create');
   const { p, organisationId, branchOnly } = await actorOrg();
   const fullName = input.fullName.trim().replace(/\s+/g, ' ');
   const email = input.email.trim().toLowerCase();
-  const employeeId = input.employeeId?.trim() || null;
   if (fullName.length < 2) throw new Error('Enter the person\'s full name.');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Enter a valid email address.');
   // The branch must be in this organisation (a Branch Administrator: their own).
@@ -173,35 +179,76 @@ export async function createStaffMember(input: NewStaffInput): Promise<{ id: str
     role = r;
   }
   if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) throw new Error('Someone already has that email address.');
-  if (employeeId && (await prisma.user.findUnique({ where: { employeeId }, select: { id: true } }))) throw new Error('Someone already has that employee ID.');
+  const phone = input.phone?.trim().slice(0, 40) || null;
+  // Unusable until the person sets their own password from the email link.
+  const unusable = await hashPassword(randomBytes(32).toString('hex'));
 
-  const created = await prisma.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: { fullName, email, employeeId, phone: input.phone?.trim() || null, organisationId: branchOrg, branchId: branch.id, departmentId: input.departmentId || null, isActive: true, accountType: 'EMPLOYEE' },
-      select: { id: true },
+  // Two administrators adding people to the same branch at the same moment:
+  // the unique employee ID refuses the second, which simply takes the next number.
+  const created = await retryOnNumberClash('employeeId', async () => {
+    const employeeId = await nextEmployeeId(branch.id);
+    return prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: { fullName, email, employeeId, phone, organisationId: branchOrg, branchId: branch.id, departmentId: input.departmentId || null, isActive: true, accountType: 'EMPLOYEE' },
+        select: { id: true, employeeId: true },
+      });
+      await tx.account.create({ data: { userId: user.id, accountId: user.id, providerId: 'credential', password: unusable } });
+      if (role) await tx.userRole.create({ data: { userId: user.id, roleId: role.id } });
+      return user;
     });
-    // Unusable until the person sets their own password from the email link.
-    await tx.account.create({ data: { userId: user.id, accountId: user.id, providerId: 'credential', password: await hashPassword(randomBytes(32).toString('hex')) } });
-    if (role) await tx.userRole.create({ data: { userId: user.id, roleId: role.id } });
-    return user;
+  }).catch((err) => {
+    if (isUniqueClashOn(err, 'email')) throw new Error('Someone already has that email address.');
+    throw err;
   });
-  await writeAuditLog({ userId: p.userId, action: 'user.created', entityType: 'User', entityId: created.id, metadata: { person: fullName, email, branchId: branch.id, role: role?.name } });
+  await writeAuditLog({ userId: p.userId, action: 'user.created', entityType: 'User', entityId: created.id, metadata: { person: fullName, email, employeeId: created.employeeId, branchId: branch.id, role: role?.name } });
   if (role) await writeAuditLog({ userId: p.userId, action: 'user.role_assigned', entityType: 'User', entityId: created.id, metadata: { person: fullName, role: role.name } });
 
-  // The auth library sends this email in the background and only logs a
-  // failure, so "sent" means "handed to the mail service"; the page says so
-  // and points to "Forgot password" if it does not arrive.
-  let emailSent = false;
-  try {
-    // Relative, like the forgot-password page: always a trusted origin.
-    await auth.api.requestPasswordReset({ body: { email, redirectTo: '/reset-password' } });
-    emailSent = true;
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('Could not send the set-your-password email', created.id, err);
-  }
+  // "Sent" means the mail server accepted it; the page says so and points to
+  // "Forgot password" (or "Send the welcome email again") if it does not arrive.
+  const emailSent = await sendStaffAccessEmail(created.id, 'welcome');
   revalidatePath('/users');
-  return { id: created.id, emailSent };
+  return { id: created.id, employeeId: created.employeeId ?? '', emailSent };
+}
+
+/** Target of a staff action: in this administrator's organisation (and branch, for a Branch Administrator). */
+async function manageableStaff(userId: string) {
+  const { p, organisationId, branchOnly } = await actorOrg();
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, fullName: true, email: true, isActive: true, employeeId: true, organisationId: true, branchId: true, roles: { select: { role: { select: { isSuperAdmin: true } } } } } });
+  const targetIsPlatform = Boolean(user?.roles.some((r: { role: { isSuperAdmin: boolean } }) => r.role.isSuperAdmin));
+  if (!user || (!p.isSuperAdmin && (targetIsPlatform || user.organisationId !== organisationId))) throw new Error('That person no longer exists — refresh the page.');
+  if (branchOnly && user.branchId !== branchOnly) throw new Error('You can only manage the people of your own branch.');
+  return { p, user };
+}
+
+/** Send the welcome email again (a fresh set-password link; earlier links still expire on their own). */
+export async function resendWelcomeEmail(userId: string): Promise<boolean> {
+  await authorize('admin.users.manage', undefined, 'users.resendWelcome');
+  const { p, user } = await manageableStaff(userId);
+  if (!user.isActive) throw new Error('Switch the account back on first.');
+  const sent = await sendStaffAccessEmail(user.id, 'welcome');
+  await writeAuditLog({ userId: p.userId, action: 'user.welcome_resent', entityType: 'User', entityId: user.id, metadata: { person: user.fullName, sent } });
+  return sent;
+}
+
+/** Give an employee ID to everyone in reach who has none yet (people with a branch). */
+export async function assignMissingEmployeeIds(): Promise<number> {
+  await authorize('admin.users.manage', undefined, 'users.assignEmployeeIds');
+  const { p, organisationId, branchOnly } = await actorOrg();
+  const missing = await prisma.user.findMany({
+    where: { employeeId: null, branchId: branchOnly ?? { not: null }, ...(organisationId ? { organisationId } : {}), ...(p.isSuperAdmin ? {} : { NOT: { roles: { some: { role: { isSuperAdmin: true } } } } }) },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, branchId: true },
+    take: 500,
+  });
+  let given = 0;
+  for (const u of missing) {
+    // Only where still empty (compare-and-set): a second administrator doing the same never double-issues.
+    const ok = await retryOnNumberClash('employeeId', async () => (await prisma.user.updateMany({ where: { id: u.id, employeeId: null }, data: { employeeId: await nextEmployeeId(u.branchId!) } })).count);
+    given += ok;
+  }
+  if (given) await writeAuditLog({ userId: p.userId, action: 'user.employee_ids_assigned', entityType: 'User', entityId: 'bulk', metadata: { count: given } });
+  revalidatePath('/users');
+  return given;
 }
 
 /**

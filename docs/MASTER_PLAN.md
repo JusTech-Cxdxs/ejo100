@@ -17,12 +17,13 @@ Status keys: ✅ done and merged · 🔄 in progress · ⏳ next · ⬜ planned
 | 1 | Roles realistic (segregation of duties), organisation + branch administrators, organisation isolation | ✅ | #3 |
 | 2 | Architecture & Security Baseline; scheduled jobs out of activity; data inventory | ✅ | #4 |
 | 3 | Integrity & concurrency ("two users at once"): money, stock, workflow, bookings | ✅ | #5 |
-| 4 | **Authorization & cross-organisation attack audit** (refunds first) | 🔄 | #6 |
-| 5 | Finish unfinished surfaces: staff Profile + password, Settings, Customer Portal, placeholders | ⏳ | |
+| 4 | Authorization & cross-organisation attack audit (refunds first) | ✅ | #6 |
+| 4b | **Version-1 polish**: live-update load fix, Render deploy fix, light/dark/system theme, sidebar wordmark + "Powered by", next-version modules hidden, staff profile cards + Profile page, automatic employee IDs, welcome / access-changed emails | 🔄 | #7 |
+| 5 | Finish unfinished surfaces: Settings, Customer Portal (controlled invitation flow) | ⏳ | |
 | 6 | Analytics correctness & actionability (descriptive → diagnostic → trend → prescriptive-ready) | ⬜ | |
 | 7 | Notifications, email, realtime & scheduler end-to-end (who gets what, every link exact) | ⬜ | |
 | 8 | Data lifecycle: Recycle Bin, documents, exports, history views (no long scattered pages) | ⬜ | |
-| 9 | Look & feel: light/dark mode everywhere, header branding, "Powered by" | ⬜ | |
+| 9 | Look & feel: remaining pages checked in dark mode, mobile menu | ⬜ | (theme, branding, "Powered by" done in #7) |
 | 10 | End-to-end business journeys + unpredictable-user scenarios | ⬜ | |
 | 11 | Production reliability, load / pressure tests, performance, observability | ⬜ | |
 | 12 | Final enterprise readiness audit (the full loop, below) | ⬜ | |
@@ -30,7 +31,47 @@ Status keys: ✅ done and merged · 🔄 in progress · ⏳ next · ⬜ planned
 
 ---
 
-## Phase 4 — Authorization & cross-organisation attack audit 🔄
+## Version 1 scope (decided 7 Oct 2026)
+The first version is **what is already built, perfected** — for the presentation and heavy
+multi-user production testing. Order: application solid → analytics reviewed → then AI →
+presentation → later modules.
+- **In version 1:** Dashboard, Organisation, Branches, Users, Roles, Permissions, Workshop (Job
+  Cards, Vehicle Service, estimates, custody, parts requests, outside purchases, refunds),
+  Inventory (+ Inventory Analytics), Warranty (+ Warranty Analytics), Security, Scheduling,
+  Business Analytics, Notifications, Audit Logs, Settings, My Profile.
+- **Next version (hidden from the menu, placeholder routes removed):** HR, Payroll, Finance,
+  Procurement, Suppliers, Warehouse, Manufacturing, Documents, Reports, Module Registry,
+  Branding Engine, Help Center, and the separate Business Units / Countries / States / Cities /
+  Departments / Teams editors. They stay listed (COMING_SOON) in `apps/portal/lib/modules.ts`.
+- Analytics must follow the **Action Contract**: every insight links to the exact record or the
+  exact filtered list behind it.
+
+## Phase 4b — Version-1 polish 🔄 (PR #7)
+- [x] Live updates no longer load the server: the change check is a tiny organisation-scoped
+      `GET /api/live/pulse` (was a page-posting server action every 3 s), every 10 s while the
+      page is in use, once a minute when idle or when instant push is on, never in a hidden tab;
+      pages refresh at most every 10 s, analytics pages at most once a minute.
+- [x] Submission flood limit counted per signed-in person (and per shared office address).
+- [x] Render/Vercel deploys: additive, re-runnable SQL in `scripts/predeploy/` runs before
+      `prisma db push` (still never `--accept-data-loss`).
+- [x] Light / Dark / System theme in the header on every page (and on sign-in), remembered per
+      device, applied before paint; Profile page has the same choice.
+- [x] Sidebar: organisation wordmark styled like the printed document header; animated
+      "Powered by EJO 100" with the platform mark.
+- [x] Users: profile cards (avatar, active status, employee ID, roles); add-staff form starts
+      empty with type-to-search branch / department / role; "Send the welcome email again".
+- [x] Employee IDs issued by the server: ORG-BRANCH-NNNN (e.g. KN-ISO-0007), unique, never
+      reused; one button issues IDs to existing staff without one.
+- [x] Welcome email: employee ID, roles, organisation / branch / department, exactly what they
+      can do (from the catalogue, added grants marked), how to sign in (72-hour set-password
+      link), the rules. Access-changed email on every role given / removed and every permission
+      added to / removed from a role they hold.
+- [x] My Profile: details, what I can do, the rules, theme, change password (other devices
+      signed out).
+
+---
+
+## Phase 4 — Authorization & cross-organisation attack audit ✅
 Principle: **what you are supposed to see is what you see** — and nothing else, by any route.
 For every role: login → menu → page → record → action → server action → database → audit →
 notification → realtime.
@@ -84,17 +125,18 @@ kind (Phase 7), customer-portal direct-id tests once its pages exist (Phase 5).
 
 ## Phase 5 — Finish unfinished surfaces ⏳
 Found by inventory on 7 Oct 2026 (pages that are placeholders today):
-- **Staff Profile** — view own details, **change password**, sessions, notification preferences.
+- ~~Staff Profile~~ — done in #7 (details, access, change password, theme). Still to add:
+  sessions list, notification preferences.
 - **Settings** — for every setting: who may change it, what it affects, its scope, audited,
   validated, cannot break a workflow. No setting hidden behind a generic "admin" assumption.
-- **Customer Portal** (website app; today: login + dashboard) — mobile-first, own sidebar;
+- **Customer Portal** (website app; today: login + dashboard) — a **controlled invitation flow**
+  (staff invite a customer of a real job; no open sign-up), mobile-first, own sidebar;
   my vehicles → service history; estimates; payments and receipts; appointments / book a
   service; notifications; documents; **change and forgot password**; profile (extra phones /
   addresses, synced and audited); support / customer care; privacy; organisation isolation;
   direct-id attack tests. No employee name ever shown to customers.
-- **Placeholder modules** (HR, Payroll, Finance, Reports, Documents, Suppliers, Warehouse,
-  Manufacturing, Procurement, Branding, Help, Module registry): each is either built for real
-  or clearly marked "Planned" and kept out of role menus — never a dead link.
+- ~~Placeholder modules~~ — decided in #7: next version, hidden and their routes removed
+  (see "Version 1 scope").
 - Remaining idempotency: opening a Job Card / Vehicle Service gets an idempotency key.
 - Stock reservation lifecycle: reserved → issued, or **automatically released** when the job is
   cancelled (with safeguards for stock already issued).

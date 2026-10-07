@@ -2,13 +2,13 @@
 
 import { redirect } from 'next/navigation';
 import { friendlyError } from '@/lib/errors';
-import { assignRole, removeRole, createStaffMember, setStaffActive } from './users-admin';
+import { assignRole, removeRole, createStaffMember, setStaffActive, resendWelcomeEmail, assignMissingEmployeeIds } from './users-admin';
 
-function back(formData: FormData, error: string) {
+function back(formData: FormData, error: string, status = 'saved') {
   const q = String(formData.get('q') ?? '');
   const params = new URLSearchParams();
   if (q) params.set('q', q);
-  params.set(error ? 'error' : 'status', error || 'saved');
+  params.set(error ? 'error' : 'status', error || status);
   redirect(`/users?${params.toString()}`);
 }
 
@@ -28,14 +28,16 @@ export async function createStaffMemberFormAction(formData: FormData): Promise<v
   const v = (k: string) => String(formData.get(k) ?? '').trim();
   let error = '';
   let sent = true;
+  let employeeId = '';
   try {
-    const r = await createStaffMember({ fullName: v('fullName'), email: v('email'), employeeId: v('employeeId') || undefined, phone: v('phone') || undefined, branchId: v('branchId'), departmentId: v('departmentId') || undefined, roleId: v('roleId') || undefined });
+    const r = await createStaffMember({ fullName: v('fullName'), email: v('email'), phone: v('phone') || undefined, branchId: v('branchId'), departmentId: v('departmentId') || undefined, roleId: v('roleId') || undefined });
     sent = r.emailSent;
+    employeeId = r.employeeId;
   } catch (err) {
     error = friendlyError(err, 'Could not add the person.', 'users-admin-form-handlers');
   }
   if (error) back(formData, error);
-  redirect(`/users?q=${encodeURIComponent(v('email'))}&status=${sent ? 'added' : 'added_no_email'}`);
+  redirect(`/users?q=${encodeURIComponent(v('email'))}&status=${sent ? 'added' : 'added_no_email'}&id=${encodeURIComponent(employeeId)}`);
 }
 
 export async function setStaffActiveFormAction(formData: FormData): Promise<void> {
@@ -46,4 +48,18 @@ export async function setStaffActiveFormAction(formData: FormData): Promise<void
     error = friendlyError(err, 'Could not change the account.', 'users-admin-form-handlers');
   }
   back(formData, error);
+}
+
+export async function resendWelcomeFormAction(formData: FormData): Promise<void> {
+  let error = '';
+  let sent = false;
+  try { sent = await resendWelcomeEmail(String(formData.get('userId') ?? '')); } catch (err) { error = friendlyError(err, 'Could not send the welcome email.', 'users-admin-form-handlers'); }
+  back(formData, error, sent ? 'welcome_sent' : 'welcome_failed');
+}
+
+export async function assignMissingEmployeeIdsFormAction(formData: FormData): Promise<void> {
+  let error = '';
+  let n = 0;
+  try { n = await assignMissingEmployeeIds(); } catch (err) { error = friendlyError(err, 'Could not issue the employee IDs.', 'users-admin-form-handlers'); }
+  back(formData, error, `ids_${n}`);
 }

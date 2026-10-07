@@ -10,6 +10,7 @@ import { Topbar } from '@/components/Topbar';
 import { Marquee } from '@/components/Marquee';
 import { NavigationLoadingProvider } from '@/components/NavigationLoadingProvider';
 import { NotificationProvider } from '@/components/NotificationProvider';
+import { portalConfig } from '@/lib/site-config';
 
 /**
  * Fetches the logged-in user's real name/role server-side (via Prisma
@@ -42,6 +43,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       fullName: true,
       isActive: true,
       organisationId: true,
+      organisation: { select: { name: true } },
       roles: { select: { role: { select: { name: true } } }, take: 1 },
     },
   });
@@ -52,7 +54,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <NotificationProvider userId={session?.user?.id ?? null}>
     <div className="flex h-screen overflow-hidden">
-      <Sidebar items={navigationFor(await getPrincipal())} />
+      <Sidebar items={navigationFor(await getPrincipal())} organisationName={user.organisation?.name ?? portalConfig.companyName} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar
           userName={user?.fullName ?? 'Unknown user'}

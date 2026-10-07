@@ -151,7 +151,12 @@ test('adding a staff member never emails a password and stays inside the organis
   const src = read('lib/actions/users-admin.ts');
   const create = src.slice(src.indexOf('export async function createStaffMember('), src.indexOf('export async function setStaffActive('));
   assert.match(create, /randomBytes\(32\)/, 'unusable random password until the person sets their own');
-  assert.match(create, /requestPasswordReset/, 'a set-your-password link is emailed');
+  assert.match(create, /sendStaffAccessEmail\(created\.id, 'welcome'\)/, 'a welcome with a set-your-password link is emailed');
+  assert.match(create, /nextEmployeeId\(branch\.id\)/, 'the employee ID is issued by the server, never typed');
+  assert.doesNotMatch(create, /input\.employeeId/, 'nobody chooses an employee ID');
+  const onboarding = read('lib/staff-onboarding.ts');
+  assert.match(onboarding, /createVerificationValue\(\{ value: userId, identifier: `reset-password:\$\{token\}`/, 'the link is the auth library\'s own one-time reset token');
+  assert.match(onboarding, /randomBytes\(18\)/, 'an unguessable token');
   assert.doesNotMatch(create, /temporaryPassword|generateSecurePassword/, 'no password is ever emailed');
   assert.match(create, /Choose a branch of your organisation/);
   assert.match(create, /You can only add people to your own branch/);

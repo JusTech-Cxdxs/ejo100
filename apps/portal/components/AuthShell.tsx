@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { portalConfig } from '@/lib/site-config';
 import { BrandLogo } from './BrandLogo';
+import { ThemeToggle } from './ThemeToggle';
 
 interface AuthShellProps {
   eyebrow: string;
@@ -53,7 +54,8 @@ export function AuthShell({ eyebrow, title, subtitle, children, footer }: AuthSh
       </div>
 
       {/* Form panel */}
-      <div className="flex w-full flex-col items-center justify-center bg-[var(--ejo-bg)] px-6 py-16 lg:w-1/2">
+      <div className="relative flex w-full flex-col items-center justify-center bg-[var(--ejo-bg)] px-6 py-16 lg:w-1/2">
+        <div className="absolute right-4 top-4"><ThemeToggle /></div>
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
