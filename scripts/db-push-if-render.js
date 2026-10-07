@@ -24,6 +24,7 @@
  */
 const { execSync } = require('child_process');
 const path = require('path');
+const { applyPredeploySql } = require('./apply-predeploy-sql');
 
 if (!process.env.RENDER) {
   console.log('[db-push] Skipping — not running on Render.');
@@ -42,6 +43,10 @@ if (!process.env.DATABASE_URL) {
 }
 
 const schemaPath = path.resolve(__dirname, '..', 'packages/database/prisma/schema.prisma');
+
+// Additive, re-runnable SQL first (unique indexes on new optional columns…),
+// so the push below has nothing it would refuse. See apply-predeploy-sql.js.
+applyPredeploySql();
 
 console.log('[db-push] Pushing Prisma schema to the database...');
 // No --accept-data-loss: a change that would drop a column or table (or

@@ -3,6 +3,10 @@ import { sendDueAppointmentReminders, sendMorningDigest } from '@/lib/appointmen
 import { deliverDueBroadcastEmails } from '@/lib/broadcast-delivery';
 import { recordJobRun } from '@/lib/job-runs';
 import { setAuditActor } from '@ejo/database';
+import { deliverRoleAccessNotices } from '@/lib/access-notices';
+
+// Room for a batch of access-changed emails (a role with many holders).
+export const maxDuration = 60;
 
 /**
  * Appointment reminders. Protected by CRON_SECRET (same as the other cron
@@ -24,6 +28,9 @@ export async function GET(request: NextRequest) {
   const digest = request.nextUrl.searchParams.get('digest') === '1';
   const digests = digest ? await sendMorningDigest() : 0;
   await recordJobRun('appointment-reminders', { remindersSent: reminders, broadcastEmailsSent: broadcastEmails });
+  // Role permission changes since the last run → one access-changed email per holder.
+  const notices = await deliverRoleAccessNotices().catch((err) => { console.error('Access notices failed', err); return null; });
+  if (notices) await recordJobRun('access-notices', { rolesChanged: notices.roles, upTo: notices.upTo });
   if (digest) await recordJobRun('morning-digest', { digestsSent: digests });
   return NextResponse.json({ ok: true, remindersSent: reminders, digestsSent: digests, broadcastEmailsSent: broadcastEmails });
 }

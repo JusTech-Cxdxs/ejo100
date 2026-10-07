@@ -4,24 +4,20 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ModuleStatusBadge } from '@ejo/ui';
 import type { NavItem } from '@/lib/authz/navigation';
-import { portalConfig } from '@/lib/site-config';
-import { BrandLogo } from './BrandLogo';
+import { SidebarBrand } from './SidebarBrand';
+import { PoweredByEjo } from './PoweredByEjo';
 
 /**
  * Renders the modules THIS person may open (worked out on the server from
  * their roles — lib/authz/navigation.ts); every page still checks again.
  */
-export function Sidebar({ items }: { items: NavItem[] }) {
+export function Sidebar({ items, organisationName }: { items: NavItem[]; organisationName: string }) {
   const pathname = usePathname();
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
-      <div className="flex items-center gap-2 border-b border-[var(--ejo-border)] px-5 py-5">
-        <BrandLogo size={32} />
-        <div>
-          <p className="text-sm font-bold text-[var(--ejo-text)]">{portalConfig.companyName}</p>
-          <p className="text-xs text-[var(--ejo-text-muted)]">{portalConfig.poweredBy}</p>
-        </div>
+      <div className="border-b border-[var(--ejo-border)] px-5 py-5">
+        <SidebarBrand organisationName={organisationName} />
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
@@ -43,6 +39,10 @@ export function Sidebar({ items }: { items: NavItem[] }) {
           );
         })}
       </nav>
+
+      <div className="border-t border-[var(--ejo-border)] px-5 py-4">
+        <PoweredByEjo />
+      </div>
     </aside>
   );
 }

@@ -3,17 +3,47 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useChangePings } from '@/lib/hooks/use-change-pings';
-import { getNotificationSummary, getNotificationPulse, markNotificationsRead, setNotificationsMuted, type NotificationSummary } from '@/lib/actions/notifications';
+import { getNotificationSummary, markNotificationsRead, setNotificationsMuted, type NotificationSummary } from '@/lib/actions/notifications';
 
-const PULSE_MS = 3000;
+/** How often an open, visible tab asks "has anything changed?" (a tiny GET). */
+const PULSE_MS = 10000;
 /** With instant push connected, the regular check is only a safety net. */
-const PULSE_WHEN_PUSHED_MS = 30000;
-/** On a push ping: refresh within ~1 s, at most once per 3 s (last ping always honoured). */
+const PULSE_WHEN_PUSHED_MS = 60000;
+/** Nobody has touched the page for a while → check rarely (focus checks at once). */
+const PULSE_WHEN_IDLE_MS = 60000;
+const IDLE_AFTER_MS = 5 * 60000;
+/** On a push ping: refresh soon, coalesced. */
 const PING_GAP_MS = 2000;
-/** At most one full summary fetch (and page refresh) per 15 seconds. */
-const MIN_LOAD_GAP_MS = 3000;
-/** Open pages update themselves when anything changes — at most every 8 s. */
-const PAGE_REFRESH_GAP_MS = 3000;
+/** At most one full notification summary fetch per 10 seconds. */
+const MIN_LOAD_GAP_MS = 10000;
+/** Open pages update themselves when something changes — at most every 10 s,
+ * and heavy analytics pages at most once a minute (they recompute a lot). */
+const PAGE_REFRESH_GAP_MS = 10000;
+const HEAVY_PAGE_REFRESH_GAP_MS = 60000;
+/** /analytics, /inventory/analytics, /warranty/analytics, … */
+const HEAVY_PAGE = /\/analytics(\/|$)/;
+const refreshGapFor = (path: string) => (HEAVY_PAGE.test(path) ? HEAVY_PAGE_REFRESH_GAP_MS : PAGE_REFRESH_GAP_MS);
+
+/** The tiny change check — a plain GET, never a page render. '' = unreachable
+ * (offline, slow, server busy); { out } = signed out or switched off. Gives up
+ * after 8 s, so one stalled request can never stop the live updates. */
+type Pulse = string | { out: true; inactive: boolean };
+async function fetchPulse(): Promise<Pulse> {
+  try {
+    const r = await fetch('/api/live/pulse', { cache: 'no-store', credentials: 'same-origin', redirect: 'manual', signal: AbortSignal.timeout(8000) });
+    if (r.type === 'opaqueredirect') return { out: true, inactive: false };
+    if (r.status === 401) {
+      const body = (await r.json().catch(() => ({}))) as { reason?: string };
+      return { out: true, inactive: body.reason === 'inactive' };
+    }
+    if (!r.ok) return '';
+    const body = (await r.json()) as { pulse?: string };
+    return typeof body.pulse === 'string' ? body.pulse : '';
+  } catch {
+    return '';
+  }
+}
+
 const RING_MS = 120000;
 const EMPTY: NotificationSummary = { actions: [], unreadActivity: [], unreadBroadcasts: [], total: 0, signature: '', muted: false };
 
@@ -76,8 +106,9 @@ function chime(ctx: AudioContext | null, urgent: boolean) {
 /**
  * One shared live source for the bell, the marquee and every page:
  *  • the page renders first — notifications load just after, never blocking;
- *  • every 5 seconds (visible tab only) and on returning to the tab it asks
- *    the tiny "has anything changed?" question;
+ *  • every 10 seconds (visible, in-use tab only; once a minute when idle or
+ *    when push is on) and on returning to the tab it asks the tiny
+ *    "has anything changed?" question (GET /api/live/pulse, organisation-scoped);
  *  • only when something changed does it fetch the full summary, chime and
  *    refresh the page's data — so dashboards and lists stay current without
  *    reloading, at almost no cost when nothing is happening.
@@ -110,14 +141,19 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     refreshWaiting.current = false;
     router.refresh();
   }, [router]);
+  const signedOut = useRef<string | null>(null);
+  const signOutSoon = useCallback((inactive: boolean) => {
+    signedOut.current = inactive ? '/signed-out?reason=inactive' : '/signed-out';
+    if (!typing()) window.location.assign(signedOut.current);
+  }, []);
   // Live pages: whenever anything changes, the page you are looking at updates
-  // itself (at most every 8 s; the last change is always applied; never while
+  // itself (at most every 10 s, analytics once a minute; the last change is always applied; never while
   // you are typing — refreshPage waits for you to leave the field).
   const lastPageRefresh = useRef(0);
   const pageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshPageSoon = useCallback(() => {
     if (pageTimer.current) return;
-    const wait = Math.max(0, PAGE_REFRESH_GAP_MS - (Date.now() - lastPageRefresh.current));
+    const wait = Math.max(0, refreshGapFor(window.location.pathname) - (Date.now() - lastPageRefresh.current));
     pageTimer.current = setTimeout(() => {
       pageTimer.current = null;
       if (document.visibilityState === 'hidden') return;
@@ -128,7 +164,10 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
   useEffect(() => () => { if (pageTimer.current) clearTimeout(pageTimer.current); }, []);
 
   useEffect(() => {
-    const onLeaveField = () => { if (refreshWaiting.current) setTimeout(() => { if (!typing()) refreshPage(); }, 300); };
+    const onLeaveField = () => {
+      if (signedOut.current) { const to = signedOut.current; setTimeout(() => { if (!typing()) window.location.assign(to); }, 300); return; }
+      if (refreshWaiting.current) setTimeout(() => { if (!typing()) refreshPage(); }, 300);
+    };
     document.addEventListener('focusout', onLeaveField);
     return () => document.removeEventListener('focusout', onLeaveField);
   }, [refreshPage]);
@@ -161,13 +200,16 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     if (busy.current || document.visibilityState === 'hidden') return;
     busy.current = true;
     try {
-      const p = await getNotificationPulse().catch(() => '');
+      const p = await fetchPulse();
+      // Signed out or switched off elsewhere → the sign-out page (clears the
+      // cookie) — but never in the middle of typing: it waits until the field is left.
+      if (typeof p === 'object') { signOutSoon(p.inactive); return; }
       if (!p) { setOnline(false); return; }
       setOnline(true);
       setLastSync(Date.now());
       if (pulse.current === null) pulse.current = p;
       else if (p && p !== pulse.current && Date.now() - lastLoad.current >= MIN_LOAD_GAP_MS) {
-        // (Within 15 seconds of the last fetch the change is left for the
+        // (Within 10 seconds of the last fetch the change is left for the
         // next check, so a busy day never floods the server.)
         pulse.current = p;
         refreshPageSoon();
@@ -176,7 +218,7 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     } finally {
       busy.current = false;
     }
-  }, [load, refreshPageSoon]);
+  }, [load, refreshPageSoon, signOutSoon]);
 
   // Instant push: a ping means "something changed" — refresh now (coalesced).
   const pingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -235,12 +277,29 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     return () => clearInterval(t);
   }, [state, load]);
 
+  // The regular check: every 10 s while someone is using the page, every
+  // minute when push is connected or nobody has touched it for 5 minutes,
+  // never while the tab is hidden; at once on returning to the tab.
+  const lastActivity = useRef(Date.now());
   useEffect(() => {
-    const t = setInterval(() => void check(), pushed ? PULSE_WHEN_PUSHED_MS : PULSE_MS);
-    const onVisible = () => { if (document.visibilityState === 'visible') void check(); };
+    const touch = () => { lastActivity.current = Date.now(); };
+    const opts = { passive: true } as const;
+    for (const ev of ['pointerdown', 'keydown', 'scroll', 'wheel', 'touchstart'] as const) window.addEventListener(ev, touch, opts);
+    return () => { for (const ev of ['pointerdown', 'keydown', 'scroll', 'wheel', 'touchstart'] as const) window.removeEventListener(ev, touch); };
+  }, []);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    const next = () => {
+      if (stopped) return;
+      const idle = Date.now() - lastActivity.current > IDLE_AFTER_MS;
+      timer = setTimeout(async () => { await check(); next(); }, pushed || idle ? (pushed ? PULSE_WHEN_PUSHED_MS : PULSE_WHEN_IDLE_MS) : PULSE_MS);
+    };
+    next();
+    const onVisible = () => { if (document.visibilityState === 'visible') { lastActivity.current = Date.now(); void check(); } };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
-    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
+    return () => { stopped = true; if (timer) clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
   }, [check, pushed]);
 
   // Browsers allow sound only after the first tap / click.

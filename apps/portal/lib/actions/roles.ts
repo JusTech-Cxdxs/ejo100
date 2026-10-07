@@ -45,6 +45,8 @@ export async function grantRolePermission(roleId: string, key: string): Promise<
   const perm = await prisma.permission.upsert({ where: { key }, update: {}, create: { key, description: PERMISSIONS[key as PermissionKey].label } });
   await prisma.rolePermission.upsert({ where: { roleId_permissionId: { roleId, permissionId: perm.id } }, update: {}, create: { roleId, permissionId: perm.id } });
   await writeAuditLog({ userId: p.userId, action: 'role.permission_granted', entityType: 'Role', entityId: roleId, metadata: { role: role.name, permission: PERMISSIONS[key as PermissionKey].label } });
+  // Everyone holding the role is emailed their full, current access by the
+  // 10-minute job — one email for a batch of changes (lib/access-notices.ts).
   revalidatePath('/roles');
   revalidatePath('/permissions');
 }
@@ -54,7 +56,9 @@ export async function revokeRolePermission(roleId: string, key: string): Promise
   await authorize('admin.roles.manage', undefined, 'roles.revoke');
   const { p, role } = await editableRole(roleId);
   const perm = await prisma.permission.findUnique({ where: { key }, select: { id: true } });
-  if (perm) await prisma.rolePermission.deleteMany({ where: { roleId, permissionId: perm.id } });
+  const removed = perm ? (await prisma.rolePermission.deleteMany({ where: { roleId, permissionId: perm.id } })).count : 0;
+  // Nothing was added, so nothing changed: no audit entry, no access-changed email.
+  if (removed === 0) return;
   await writeAuditLog({ userId: p.userId, action: 'role.permission_revoked', entityType: 'Role', entityId: roleId, metadata: { role: role.name, permission: PERMISSIONS[key as PermissionKey]?.label ?? key } });
   revalidatePath('/roles');
   revalidatePath('/permissions');

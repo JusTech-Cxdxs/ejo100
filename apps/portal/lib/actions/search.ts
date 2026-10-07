@@ -88,7 +88,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     safe(prisma.warrantyProvider.findMany({ where: { ...owned, ...m('name') }, take, select: { id: true, name: true } })),
     safe(prisma.meetingRoom.findMany({ where: { ...(principal.orgBranchIds ? { branchId: { in: principal.orgBranchIds } } : {}), ...m('name') }, take, select: { id: true, name: true } })),
     canStructure ? safe(prisma.branch.findMany({ where: { ...(mineOrg.organisationId ? { businessUnit: mineOrg } : {}), ...m('name') }, take, select: { id: true, name: true } })) : Promise.resolve([]),
-    canStructure ? safe(prisma.department.findMany({ where: { ...(mineOrg.organisationId ? { branch: { businessUnit: mineOrg } } : {}), ...m('name') }, take, select: { id: true, name: true } })) : Promise.resolve([]),
+    canStructure ? safe(prisma.department.findMany({ where: { ...(mineOrg.organisationId ? { branch: { businessUnit: mineOrg } } : {}), ...m('name') }, take, select: { id: true, name: true, branchId: true, branch: { select: { name: true } } } })) : Promise.resolve([]),
     canStaff ? safe(prisma.user.findMany({ where: { ...staffReach, OR: [m('fullName'), m('email'), m('employeeId')] }, take, select: { id: true, fullName: true, email: true } })) : Promise.resolve([]),
   ]);
   const words = (s: string) => s.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
@@ -118,7 +118,8 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     { group: 'Warranty providers', hits: providers.map((r) => ({ label: r.name, href: `/warranty/providers/${r.id}` })) },
     { group: 'Meeting rooms', hits: rooms.map((r) => ({ label: r.name, href: '/schedule/rooms' })) },
     { group: 'Branches', hits: (branches as { id: string; name: string }[]).map((r) => ({ label: r.name, href: `/branches/${r.id}` })) },
-    { group: 'Departments', hits: (departments as { id: string; name: string }[]).map((r) => ({ label: r.name, href: '/departments' })) },
+    // Departments are shown on their branch (the separate Departments editor is next version).
+    { group: 'Departments', hits: (departments as { id: string; name: string; branchId: string; branch: { name: string } | null }[]).map((r) => ({ label: r.name, sub: r.branch?.name, href: `/branches/${r.branchId}` })) },
     { group: 'Staff', hits: (staff as { id: string; fullName: string; email: string }[]).map((r) => ({ label: r.fullName, sub: r.email, href: '/users' })) },
   ];
   return groups.filter((g) => g.hits.length > 0);

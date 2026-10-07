@@ -25,20 +25,36 @@ const AUTH_PAGES = ['/login', '/forgot-password', '/reset-password', '/verify-em
 const ALWAYS_PUBLIC = ['/api/auth', '/api/cron', '/signed-out'];
 
 // Flood protection for submissions (form posts / server actions): at most
-// 120 a minute per address, per server instance. Reading pages is never
+// 120 a minute per person (1,500 per shared address), per server instance. Reading pages is never
 // limited. (The global layer is an edge WAF — see docs/PRODUCTION_READINESS.md.)
 const WINDOW_MS = 60_000;
 const MAX_POSTS = 120;
+/** A shared office address (many signed-in people) gets a larger allowance. */
+const MAX_POSTS_PER_ADDRESS = 1500;
 const posts = new Map<string, { n: number; start: number }>();
 function tooManyPosts(request: NextRequest): boolean {
   if (request.method !== 'POST') return false;
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
+  // Signed-in traffic and anonymous traffic are counted SEPARATELY, so a busy
+  // office (many people behind one internet address) never locks out its own
+  // sign-in / forgot-password / set-password requests. Signed in: 120 a minute
+  // per person and 1,500 per address; anonymous: 120 per address. (The cookie
+  // is not verified here — a forged one only moves a client into the
+  // per-address 1,500 bucket; sign-in itself has its own limit in lib/auth.ts.)
+  const token = getSessionCookie(request);
   const now = Date.now();
   if (posts.size > 5000) for (const [k, w] of posts) if (now - w.start > WINDOW_MS) posts.delete(k);
-  const w = posts.get(ip);
-  if (!w || now - w.start > WINDOW_MS) { posts.set(ip, { n: 1, start: now }); return false; }
-  w.n += 1;
-  return w.n > MAX_POSTS;
+  if (posts.size > 20000) posts.clear();
+  const over = (key: string, max: number) => {
+    const w = posts.get(key);
+    if (!w || now - w.start > WINDOW_MS) { posts.set(key, { n: 1, start: now }); return false; }
+    w.n += 1;
+    return w.n > max;
+  };
+  if (!token) return over(`anon:${ip}`, MAX_POSTS);
+  const perAddress = over(`auth:${ip}`, MAX_POSTS_PER_ADDRESS);
+  const perPerson = over(`s:${token.slice(0, 32)}`, MAX_POSTS);
+  return perPerson || perAddress;
 }
 
 export function middleware(request: NextRequest) {

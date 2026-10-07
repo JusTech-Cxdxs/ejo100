@@ -15,6 +15,7 @@ import {
 } from '@/lib/notification-rules';
 import { deliverDueBroadcastEmails } from '@/lib/broadcast-delivery';
 import { resolveRecords } from '@/lib/record-resolver';
+import { livePulse } from '@/lib/live-pulse';
 
 class NotificationError extends Error {}
 
@@ -161,7 +162,7 @@ function forgetSummary(userId: string) { summaryCache.delete(userId); }
 export async function getNotificationSummary(): Promise<NotificationSummary> {
   try {
     const m = await me();
-    const pulse = await pulseSignature().catch(() => '');
+    const pulse = await livePulse(m.organisationId).catch(() => '');
     const hit = summaryCache.get(m.id);
     if (hit && pulse && hit.pulse === pulse && Date.now() - hit.at < SUMMARY_TTL_MS) return hit.value;
     const value = await computeSummary(m);
@@ -347,19 +348,13 @@ export async function listAudienceOptions() {
  * indexed single-row reads. Only when this changes does the browser fetch
  * the full summary and refresh the page's data.
  */
-/** The cheap change signal (newest business event + newest broadcast change). */
-async function pulseSignature(): Promise<string> {
-  const [a, b] = await Promise.all([
-    prisma.auditLog.findFirst({ where: { NOT: [{ entityType: { startsWith: 'db:' } }, { action: { endsWith: '.failed' } }, { action: 'system.job_run' }] }, orderBy: { createdAt: 'desc' }, select: { id: true } }),
-    prisma.broadcast.findFirst({ orderBy: { updatedAt: 'desc' }, select: { id: true, updatedAt: true } }),
-  ]);
-  return `${a?.id ?? ''}|${b?.id ?? ''}:${b ? +new Date(b.updatedAt) : 0}`;
-}
-
+/** The cheap change signal for this person's organisation (see lib/live-pulse).
+ * The live check itself uses GET /api/live/pulse; this stays for callers that
+ * already hold a session in a server action. */
 export async function getNotificationPulse(): Promise<string> {
   try {
-    await requireUser();
-    return await pulseSignature();
+    const m = await me();
+    return await livePulse(m.organisationId);
   } catch {
     return '';
   }

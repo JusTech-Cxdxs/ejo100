@@ -7,18 +7,24 @@ import type { PlatformModuleDescriptor } from '@ejo/types';
  * This is the single source of truth the sidebar AND route guards read
  * from. To "activate" a module for a client, flip its status here (or,
  * once the API is wired up, in the database) — no new routing or sidebar
- * code is needed because every route already exists per the Phase 1 rule.
+ * code is needed.
+ *
+ * Version 1 scope: only LIVE modules appear anywhere. Everything marked
+ * COMING_SOON (HR, Payroll, Finance, Procurement, Suppliers, Warehouse,
+ * Manufacturing, Documents, Reports, and the location/structure editors) is
+ * the next version — hidden from the menu, and its placeholder route removed
+ * so it cannot be opened by typing the address. See docs/MASTER_PLAN.md.
  */
 export const platformModules: PlatformModuleDescriptor[] = [
   { key: 'dashboard', name: 'Dashboard', status: 'LIVE', href: '/dashboard', icon: 'layout-dashboard' },
   { key: 'organisation', name: 'Organisation', status: 'LIVE', href: '/organisation', icon: 'building' },
-  { key: 'business-units', name: 'Business Units', status: 'LIVE', href: '/business-units', icon: 'briefcase' },
-  { key: 'countries', name: 'Countries', status: 'LIVE', href: '/countries', icon: 'globe' },
-  { key: 'states', name: 'States', status: 'LIVE', href: '/states', icon: 'map' },
-  { key: 'cities', name: 'Cities', status: 'LIVE', href: '/cities', icon: 'map-pin' },
+  { key: 'business-units', name: 'Business Units', status: 'COMING_SOON', href: '/business-units', icon: 'briefcase' },
+  { key: 'countries', name: 'Countries', status: 'COMING_SOON', href: '/countries', icon: 'globe' },
+  { key: 'states', name: 'States', status: 'COMING_SOON', href: '/states', icon: 'map' },
+  { key: 'cities', name: 'Cities', status: 'COMING_SOON', href: '/cities', icon: 'map-pin' },
   { key: 'branches', name: 'Branches', status: 'LIVE', href: '/branches', icon: 'network' },
-  { key: 'departments', name: 'Departments', status: 'LIVE', href: '/departments', icon: 'sitemap' },
-  { key: 'teams', name: 'Teams', status: 'LIVE', href: '/teams', icon: 'users' },
+  { key: 'departments', name: 'Departments', status: 'COMING_SOON', href: '/departments', icon: 'sitemap' },
+  { key: 'teams', name: 'Teams', status: 'COMING_SOON', href: '/teams', icon: 'users' },
   { key: 'users', name: 'Users', status: 'LIVE', href: '/users', icon: 'user' },
   { key: 'roles', name: 'Roles', status: 'LIVE', href: '/roles', icon: 'shield' },
   { key: 'permissions', name: 'Permissions', status: 'LIVE', href: '/permissions', icon: 'key' },
@@ -39,8 +45,8 @@ export const platformModules: PlatformModuleDescriptor[] = [
   { key: 'reports', name: 'Reports', status: 'COMING_SOON', href: '/reports', icon: 'bar-chart' },
   { key: 'notifications', name: 'Notifications', status: 'LIVE', href: '/notifications', icon: 'bell' },
   { key: 'audit-logs', name: 'Audit Logs', status: 'LIVE', href: '/audit-logs', icon: 'history' },
-  { key: 'module-registry', name: 'Module Registry', status: 'LIVE', href: '/module-registry', icon: 'layout-grid' },
-  { key: 'branding', name: 'Branding Engine', status: 'LIVE', href: '/branding', icon: 'palette' },
+  { key: 'module-registry', name: 'Module Registry', status: 'COMING_SOON', href: '/module-registry', icon: 'layout-grid' },
+  { key: 'branding', name: 'Branding Engine', status: 'COMING_SOON', href: '/branding', icon: 'palette' },
   { key: 'settings', name: 'Settings', status: 'LIVE', href: '/settings', icon: 'settings' },
-  { key: 'help', name: 'Help Center', status: 'LIVE', href: '/help', icon: 'help-circle' },
+  { key: 'help', name: 'Help Center', status: 'COMING_SOON', href: '/help', icon: 'help-circle' },
 ];

@@ -1,4 +1,4 @@
-import { platformModules } from '@/lib/modules';
+import { platformModules } from '../modules';
 import { decide, PAGE_PERMISSIONS, type PermissionKey, type Principal } from './catalogue';
 
 export type NavItem = { key: string; name: string; href: string; status: string };
@@ -12,22 +12,20 @@ const MODULE_NEEDS: Record<string, PermissionKey[]> = {
   scheduling: ['schedule.view', 'schedule.manage'],
 };
 /** Areas everyone signed in uses. */
-const EVERYONE = new Set(['dashboard', 'notifications', 'help', 'security']);
+const EVERYONE = new Set(['dashboard', 'notifications', 'security']);
 
 /**
  * The menu for one person — the same rule the pages enforce, so nobody is
  * shown a door they cannot open. Security: the desk for security staff and
  * reception; for everyone else it opens their own exit passes. Modules not
- * yet live are shown only to the platform team and administrators.
+ * yet live are not shown at all (version 1 scope).
  */
 export function navigationFor(p: Principal): NavItem[] {
   const can = (k: PermissionKey) => decide(p, k).allowed;
   const out: NavItem[] = [];
   for (const m of platformModules) {
-    if (m.status !== 'LIVE') {
-      if (p.isSuperAdmin || can('admin.settings.manage')) out.push({ key: m.key, name: m.name, href: m.href, status: m.status });
-      continue;
-    }
+    // Version 1: modules not yet live are not shown to anyone (next version).
+    if (m.status !== 'LIVE') continue;
     if (m.key === 'security') {
       if (can('security.view')) out.push({ key: m.key, name: m.name, href: m.href, status: m.status });
       else {
