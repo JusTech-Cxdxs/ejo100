@@ -1,14 +1,11 @@
 import type { ReactNode } from 'react';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { prisma } from '@ejo/database';
 import { auth } from '@/lib/auth';
-import { Sidebar } from '@/components/Sidebar';
 import { getPrincipal } from '@/lib/authz/server';
 import { navigationFor } from '@/lib/authz/navigation';
-import { Topbar } from '@/components/Topbar';
-import { Marquee } from '@/components/Marquee';
-import { NavigationLoadingProvider } from '@/components/NavigationLoadingProvider';
+import { AppShell } from '@/components/AppShell';
 import { NotificationProvider } from '@/components/NotificationProvider';
 import { portalConfig } from '@/lib/site-config';
 
@@ -57,21 +54,20 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const principal = principalResult.value;
 
 
+  // The menu folded to icons (desktop), remembered on this browser — read here so it never flickers.
+  const collapsed = (await cookies()).get('ejo-sidebar')?.value === 'collapsed';
+
   return (
     <NotificationProvider userId={session?.user?.id ?? null}>
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar items={navigationFor(principal)} organisationName={user.organisation?.name ?? portalConfig.companyName} />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar
-          userName={user?.fullName ?? 'Unknown user'}
-          roleName={user?.roles[0]?.role.name ?? 'No role assigned'}
-        />
-        <Marquee />
-        <main className="flex flex-1 overflow-y-auto bg-[var(--ejo-bg)]">
-          <NavigationLoadingProvider>{children}</NavigationLoadingProvider>
-        </main>
-      </div>
-    </div>
+      <AppShell
+        items={navigationFor(principal)}
+        organisationName={user.organisation?.name ?? portalConfig.companyName}
+        userName={user?.fullName ?? 'Unknown user'}
+        roleName={user?.roles[0]?.role.name ?? 'No role assigned'}
+        initialCollapsed={collapsed}
+      >
+        {children}
+      </AppShell>
     </NotificationProvider>
   );
 }
