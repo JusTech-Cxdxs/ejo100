@@ -47,6 +47,9 @@ export const PERMISSIONS = {
   'workshop.close.request': { module: 'Workshop', label: 'Request closing or cancellation — of jobs they opened (front desk) or supervise' },
   'store.prs.approve_hod': { module: 'Workshop', label: 'Parts requests — first approval, before the Store (Manager)' },
   'workshop.payment.record': { module: 'Finance', label: 'Record payments' },
+  // Customers (CRM)
+  'crm.view': { module: 'Customers', label: 'See customers, their 360 pages, spend and history' },
+  'crm.manage': { module: 'Customers', label: 'Edit customers, their contacts, addresses, notes, tags and portal access' },
   'workshop.refund.record': { module: 'Finance', label: 'Record refunds' },
   // Store & procurement
   'store.view': { module: 'Store', label: 'Open the Store — parts, stock, parts requests and outside purchases' },
@@ -109,22 +112,25 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'admin.organisation.manage': A, 'admin.structure.manage': A, 'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A,
     'audit.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A, 'notifications.broadcast.send': A,
     'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'schedule.view': 'OWN',
+    'crm.view': A, 'crm.manage': A,
   },
   // One branch: its people and their roles, and oversight of that branch.
   'branch-administrator': {
     'admin.users.manage': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
+    'crm.view': B, 'crm.manage': B,
   },
   // ── Workshop ─────────────────────────────────────────────────────
   // Front desk: the customer relationship — customers, vehicles, opening
   // Job Cards and Vehicle Services, telling customers, receiving visitors.
   receptionist: {
     ...VIEW_WORKSHOP, 'workshop.job_card.create': B, 'workshop.customer.manage': B, 'workshop.customer.notify': B, 'workshop.close.request': MINE,
+    'crm.view': B, 'crm.manage': B,
     'security.view': B, 'security.reception.operate': B, 'schedule.view': 'OWN',
   },
   // Accepts the job, assigns the technician, prepares and APPROVES the estimate.
   'workshop-supervisor': {
-    ...VIEW_WORKSHOP, 'store.view': B,
+    ...VIEW_WORKSHOP, 'store.view': B, 'crm.view': B,
     'workshop.job.supervise': MINE, 'workshop.technician.assign': MINE, 'workshop.estimate.edit': MINE, 'workshop.estimate.approve': MINE,
     'workshop.inspection.perform': MINE, 'workshop.job.work': MINE, 'workshop.close.request': MINE, 'sourcing.request': MINE,
   },
@@ -139,6 +145,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'workshop.estimate.final_approve': B, 'workshop.close.approve': B, 'store.prs.approve_hod': B, 'procurement.epr.approve': B,
     'warranty.manage': B, 'warranty.claim.approve': B, 'security.pass.approve': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
+    'crm.view': B, 'crm.manage': B,
   },
   // ── Finance ──────────────────────────────────────────────────────
   // Money only: payments, refunds, outside-purchase review and cash.
@@ -221,7 +228,7 @@ export const PAGE_PERMISSIONS: Record<string, PermissionKey> = {
   organisation: 'admin.organisation.manage', structure: 'admin.structure.manage', 'business-units': 'admin.structure.manage', countries: 'admin.structure.manage', states: 'admin.structure.manage',
   cities: 'admin.structure.manage', branches: 'admin.structure.manage', departments: 'admin.structure.manage', teams: 'admin.structure.manage',
   users: 'admin.users.manage', roles: 'admin.roles.manage', permissions: 'admin.roles.manage', settings: 'admin.settings.manage', branding: 'admin.settings.manage',
-  'module-registry': 'admin.settings.manage', 'audit-logs': 'audit.view', analytics: 'analytics.business.view',
+  'module-registry': 'admin.settings.manage', 'audit-logs': 'audit.view', analytics: 'analytics.business.view', crm: 'crm.view',
 };
 
 /** How each role is named to people. */

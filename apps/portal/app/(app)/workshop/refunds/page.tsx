@@ -1,10 +1,12 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { listAllRefunds } from '@/lib/actions/refunds';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageHeader } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 function naira(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -19,20 +21,21 @@ function naira(n: number): string {
 export default async function RefundsRegisterPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { q } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const refunds = await listAllRefunds(q);
   const total = refunds.reduce((s: number, r: (typeof refunds)[number]) => s + Number(r.amount), 0);
   const cash = refunds.filter((r: (typeof refunds)[number]) => r.method === 'CASH').reduce((s: number, r: (typeof refunds)[number]) => s + Number(r.amount), 0);
 
   return (
     <div className="p-8">
-      <LoadingLink href="/workshop" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Workshop
-      </LoadingLink>
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Refunds</h1>
-      <p className="mt-1 mb-6 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-        Every refund paid back to a customer after a cancelled Job Card or Vehicle Service — authorised by a Manager&apos;s approval,
-        paid and recorded by Finance, each with its own RF receipt.
-      </p>
+      <PageHeader
+        icon="refund"
+        back={{ href: "/workshop", label: "Back to Workshop" }}
+        title="Refunds"
+        description={<>Every refund paid back to a customer after a cancelled Job Card or Vehicle Service — authorised by a Manager&apos;s approval,
+        paid and recorded by Finance, each with its own RF receipt.</>}
+      />
 
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4">
@@ -82,9 +85,9 @@ export default async function RefundsRegisterPage({ searchParams }: { searchPara
             <tbody>
               {refunds.map((r: (typeof refunds)[number]) => {
                 const record = r.jobCard
-                  ? { href: `/workshop/job-cards/${r.jobCard.id}#refunds`, label: `Job Card ${r.jobCard.jobNumber}`, customer: r.jobCard.customer.fullName }
+                  ? { href: `/workshop/job-cards/${r.jobCard.id}#refunds`, label: `Job Card ${r.jobCard.jobNumber}`, customer: r.jobCard.customer.fullName, customerId: r.jobCard.customer.id }
                   : r.vehicleService
-                    ? { href: `/workshop/vehicle-service/${r.vehicleService.id}#refunds`, label: `Vehicle Service ${r.vehicleService.serviceNumber}`, customer: r.vehicleService.customer.fullName }
+                    ? { href: `/workshop/vehicle-service/${r.vehicleService.id}#refunds`, label: `Vehicle Service ${r.vehicleService.serviceNumber}`, customer: r.vehicleService.customer.fullName, customerId: r.vehicleService.customer.id }
                     : null;
                 return (
                   <tr key={r.id} className="border-b border-[var(--ejo-border)] align-top last:border-0">
@@ -99,7 +102,7 @@ export default async function RefundsRegisterPage({ searchParams }: { searchPara
                       )}
                       <div className="text-xs text-[var(--ejo-text-muted)]">{r.reason}</div>
                     </td>
-                    <td className="px-3 py-2 text-[var(--ejo-text)]">{record?.customer ?? '—'}</td>
+                    <td className="px-3 py-2 text-[var(--ejo-text)]">{record ? <CustomerLink id={record.customerId} name={record.customer} canView={canSeeCustomers} /> : '—'}</td>
                     <td className="px-3 py-2 text-right font-medium text-[var(--ejo-text)]">{naira(Number(r.amount))}</td>
                     <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
                       {r.method === 'CASH' ? 'Cash' : 'Bank Transfer'} → {r.paidToName}

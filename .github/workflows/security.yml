@@ -1,0 +1,337 @@
+name: Security
+
+# Security, concurrency and load testing (docs/TESTING_PROGRAMME.md).
+# Everything runs against throw-away CI services — never a deployed environment.
+# Results are printed as annotations (readable through the API) and to the job summary.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [work/testing]
+
+permissions:
+  contents: read
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  # ── 1. Secrets in the full git history and the working tree ─────────────
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks (release binary, pinned)
+        run: |
+          curl -sSL -o /tmp/gl.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz
+          echo "$(curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_checksums.txt | grep linux_x64.tar.gz | cut -d' ' -f1)  /tmp/gl.tgz" | sha256sum -c -
+          tar -xzf /tmp/gl.tgz -C /tmp gitleaks && /tmp/gitleaks version
+      - name: Gitleaks — every commit on every branch
+        run: |
+          /tmp/gitleaks git . --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore --log-opts="--all" --redact \
+            --report-format json --report-path gl-history.json --exit-code 0
+          /tmp/gitleaks dir . --config .gitleaks.toml --redact --report-format json --report-path gl-tree.json --exit-code 0
+          node -e '
+            const h=require("./gl-history.json"), t=require("./gl-tree.json");
+            const all=[...h.map(x=>({...x,where:"history "+x.Commit.slice(0,8)})),...t.map(x=>({...x,where:"working tree"}))];
+            for (const x of all) console.log(`::error file=${x.File},line=${x.StartLine},title=gitleaks ${x.RuleID}::${x.where} — secret redacted (fingerprint ${x.Fingerprint})`);
+            const n=require("child_process").execSync("git rev-list --all --count").toString().trim();
+            const msg=`gitleaks 8.28.0: ${n} commits (all refs) + working tree scanned; findings: history=${h.length}, tree=${t.length}`;
+            console.log(`::${all.length?"error":"notice"} title=gitleaks summary::${msg}`);
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Secrets\n\n${msg}\n`);
+            process.exit(all.length?1:0);'
+
+  # ── 2. Static analysis ───────────────────────────────────────────────────
+  sast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --quiet semgrep==1.180.0
+      - name: Semgrep — project rules (ERROR rules fail the build)
+        run: |
+          semgrep scan --config .semgrep/ejo100.yml --metrics=off --json -o semgrep-custom.json apps packages scripts || true
+          node -e '
+            const d=require("./semgrep-custom.json"); const by={};
+            for (const r of d.results) { const id=r.check_id.split(".").pop(); (by[id] ??= []).push(`${r.path}:${r.start.line}`); }
+            const errs=d.results.filter(r=>r.extra.severity==="ERROR");
+            for (const r of errs.slice(0,10)) console.log(`::error file=${r.path},line=${r.start.line},title=${r.check_id.split(".").pop()}::${r.extra.message.slice(0,300)}`);
+            const msg=Object.entries(by).map(([k,v])=>`${k}: ${v.length} (${v.slice(0,30).join(", ")})`).join("%0A")||"no findings";
+            console.log(`::${errs.length?"error":"notice"} title=semgrep project rules::${msg}`);
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Semgrep (project rules)\n\n${msg.replace(/%0A/g,"\n\n")}\n`);
+            process.exit(errs.length?1:0);'
+      - name: Semgrep — registry rulesets (report only)
+        if: always()
+        run: |
+          semgrep scan --config p/typescript --config p/react --config p/nextjs --config p/secrets --config p/owasp-top-ten \
+            --metrics=off --json -o semgrep-registry.json --timeout 30 apps packages scripts || true
+          node -e '
+            let d; try { d=require("./semgrep-registry.json"); } catch { console.log("::warning title=semgrep registry::registry rulesets not reachable"); process.exit(0); }
+            const by={}; for (const r of d.results) { const id=r.check_id.split(".").pop(); (by[id] ??= []).push(`${r.path.replace(/^apps\//,"")}:${r.start.line}`); }
+            const rows=Object.entries(by).sort((a,b)=>b[1].length-a[1].length).map(([k,v])=>`${k} ×${v.length}: ${v.slice(0,6).join(", ")}`);
+            console.log(`::notice title=semgrep registry (p/typescript p/react p/nextjs p/secrets p/owasp-top-ten)::${d.results.length} findings, ${d.errors.length} errors%0A${rows.join("%0A").slice(0,6000)}`);'
+
+  # ── 3. Dependencies ──────────────────────────────────────────────────────
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+      - name: npm audit (all workspaces; production vs dev)
+        run: |
+          npm audit --package-lock-only --json > audit-all.json || true
+          npm audit --package-lock-only --omit=dev --json > audit-prod.json || true
+          node -e '
+            const all=require("./audit-all.json"), prod=require("./audit-prod.json");
+            const P=new Set(Object.keys(prod.vulnerabilities||{}));
+            const rows=Object.entries(all.vulnerabilities||{}).sort((a,b)=>["critical","high","moderate","low"].indexOf(a[1].severity)-["critical","high","moderate","low"].indexOf(b[1].severity))
+              .map(([n,x])=>{const f=x.fixAvailable; const fix=f===true?"npm audit fix":f?`${f.name}@${f.version}${f.isSemVerMajor?" (MAJOR)":""}`:"none";
+                return `${x.severity} ${n} [${P.has(n)?"prod":"dev"}] fix: ${fix}`;});
+            console.log(`::notice title=npm audit::all=${JSON.stringify(all.metadata.vulnerabilities)} prod=${JSON.stringify(prod.metadata.vulnerabilities)}%0A${rows.join("%0A")}`);
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, "### npm audit\n\n"+rows.map(r=>"- "+r).join("\n")+"\n");'
+
+  # ── 4. Dynamic: database exposure, access control, concurrency, DAST ─────
+  dynamic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: e2e-test-only
+          POSTGRES_DB: ejo_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      mail:
+        image: axllent/mailpit:v1.21
+        ports: ['1025:1025', '8025:8025']
+    env:
+      DATABASE_URL: 'postgresql://postgres:e2e-test-only@localhost:5432/ejo_e2e'
+      DIRECT_URL: 'postgresql://postgres:e2e-test-only@localhost:5432/ejo_e2e'
+      BETTER_AUTH_SECRET: 'e2e-only-secret-0f6c2b8e9a1d4c7f8b3e5a2d9c6f1e4b'
+      BETTER_AUTH_URL: 'http://localhost:3001'
+      NEXT_PUBLIC_PORTAL_URL: 'http://localhost:3001'
+      NEXT_PUBLIC_WEBSITE_URL: 'http://localhost:3000'
+      SMTP_HOST: 'localhost'
+      SMTP_PORT: '1025'
+      SMTP_FROM: 'EJO 100 <no-reply@e2e.test>'
+      CRON_SECRET: 'e2e-cron-secret'
+      AUTH_SIGNIN_PER_MINUTE: '1000'
+      AUTH_RESET_REQUESTS_PER_5_MIN: '1000'
+      CUSTOMER_SIGNIN_PER_MINUTE: '1000'
+      CUSTOMER_RESET_REQUESTS_PER_5_MIN: '1000'
+      ACTION_MAP: ${{ github.workspace }}/actions.json
+      SEC_FIXTURES: ${{ github.workspace }}/sec-fixtures.json
+      PORTAL_LOG: ${{ github.workspace }}/portal.log
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'npm'
+      - run: npm install
+      - run: npm run build --workspace=packages/database
+      - name: Supabase's API roles and default grants (before the schema, as in a new project)
+        run: npx prisma db execute --file=apps/portal/e2e/security/rls-supabase-roles.sql --url="$DIRECT_URL"
+      - name: Schema (pre-deploy SQL → db push → post-deploy SQL), exactly as deployed
+        run: |
+          for f in scripts/predeploy/*.sql; do npx prisma db execute --file="$f" --url="$DIRECT_URL"; done
+          npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate
+          for f in scripts/postdeploy/*.sql; do npx prisma db execute --file="$f" --url="$DIRECT_URL"; done
+          npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate
+      - name: RLS / grants as anon and authenticated
+        run: npx tsx apps/portal/e2e/security/rls-check.ts
+      - name: Seed + security fixtures
+        env:
+          MASTER_ADMIN_EMAIL: 'master@e2e.test'
+          MASTER_ADMIN_PASSWORD: 'E2e-Master-Pass-2026!'
+          MASTER_ADMIN_NAME: 'Morgan Master'
+        run: |
+          npx tsx packages/database/prisma/seed.ts
+          npx prisma db execute --file=scripts/v24-roles.sql --url="$DIRECT_URL"
+          npx tsx apps/portal/e2e/seed.ts
+          npx tsx apps/portal/e2e/security/fixtures.ts
+      - name: Build the portal (names kept, so tests can call server actions by name)
+        run: cd apps/portal && npx next build --no-mangling
+      - name: Client bundle — secrets, env names, source maps
+        if: always()
+        run: node apps/portal/e2e/security/bundle-scan.mjs apps/portal
+      - name: Start the portal
+        run: |
+          node apps/portal/e2e/security/action-map.mjs apps/portal/.next > actions.json
+          (cd apps/portal && nohup npx next start -p 3001 > "$PORTAL_LOG" 2>&1 &)
+          for i in $(seq 1 60); do curl -sf http://localhost:3001/login > /dev/null && break; sleep 2; done
+      - name: Concurrency & idempotency (real server actions, real Postgres)
+        if: always()
+        run: npx tsx apps/portal/e2e/security/concurrency.ts
+      - name: Access control (cron, role × page, cross-organisation, IDOR sweep, signed-out sweep, privilege escalation)
+        if: always()
+        run: npx tsx apps/portal/e2e/security/access-control.ts
+      - name: API (NestJS) — unauthenticated probes
+        if: always()
+        run: |
+          npm run build --workspace=apps/api > /dev/null
+          (PORT=4000 nohup node apps/api/dist/main.js > api.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf http://localhost:4000/api/v1/health > /dev/null && break; sleep 1; done
+          out=""; bad=0
+          for p in users users/x audit-logs permissions roles teams cities states business-units departments auth/me workshop inventory settings notifications email storage warehouse; do
+            s=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:4000/api/v1/$p"); out="$out $p=$s"
+            case "$s" in 401|403|404) ;; *) bad=1 ;; esac
+          done
+          h=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:4000/api/v1/health)
+          forged=$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer forged-token' http://localhost:4000/api/v1/users)
+          echo "::$([ $bad = 0 ] && echo notice || echo error) title=API unauthenticated probes::health=$h forged-bearer=/users:$forged;$out"
+          [ $bad = 0 ]
+      - name: ZAP baseline — portal (signed out, then signed in as an administrator)
+        if: always()
+        run: |
+          mkdir -p zap && chmod 777 zap
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://localhost:3001 -m 2 -I -J portal-anon.json -r portal-anon.html > zap/portal-anon.out 2>&1 || true
+          COOKIE=$(curl -s -i -X POST http://localhost:3001/api/auth/sign-in/email -H 'content-type: application/json' -H 'origin: http://localhost:3001' \
+            -d '{"email":"admin@e2e.test","password":"E2e-Test-Pass-2026!"}' | grep -i '^set-cookie: [^=]*session_token=' | head -1 | sed -E 's/^[Ss]et-[Cc]ookie: ([^;]+).*/\1/' | tr -d '\r')
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://localhost:3001/dashboard -m 3 -I -J portal-auth.json -r portal-auth.html \
+            -z "-config replacer.full_list(0).description=auth -config replacer.full_list(0).enabled=true -config replacer.full_list(0).matchtype=REQ_HEADER -config replacer.full_list(0).matchstr=Cookie -config replacer.full_list(0).regex=false -config replacer.full_list(0).replacement=$COOKIE -config spider.excludedParamList= -config spider.parseComments=false" \
+            > zap/portal-auth.out 2>&1 || true
+          node apps/portal/e2e/security/zap-report.mjs zap/portal-anon.json "Portal (signed out)" zap/portal-anon.out
+          node apps/portal/e2e/security/zap-report.mjs zap/portal-auth.json "Portal (signed in, administrator)" zap/portal-auth.out
+      - name: Website (public site + customer portal) — build, bundle scan, ZAP baseline
+        if: always()
+        env:
+          BETTER_AUTH_URL: 'http://localhost:3000'
+        run: |
+          (cd apps/website && npx next build > ../../website-build.log 2>&1) || { tail -30 website-build.log; echo "::warning title=website::build failed — website not scanned"; exit 0; }
+          node apps/portal/e2e/security/bundle-scan.mjs apps/website || true
+          (cd apps/website && nohup npx next start -p 3000 > ../../website.log 2>&1 &)
+          for i in $(seq 1 60); do curl -sf http://localhost:3000/ > /dev/null && break; sleep 2; done
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://localhost:3000 -m 2 -I -J website.json -r website.html > zap/website.out 2>&1 || true
+          node apps/portal/e2e/security/zap-report.mjs zap/website.json "Website + customer portal (signed out)" zap/website.out
+      - if: always()
+        name: Server logs — errors, and anything that looks like a secret or personal data
+        run: |
+          echo "portal.log: $(wc -l < portal.log) lines, $(grep -c '"level":"error"' portal.log) structured errors, $(grep -c '⨯' portal.log) Next.js error blocks"
+          leaks=$(grep -inE 'e2e-only-secret|e2e-test-only@|E2e-(Test|Master)-Pass|e2e-cron-secret|"password":"[^*]' portal.log | head -5 | cut -c1-160 | sed -E 's/(secret|Pass|password)[^ ]*/\1…/g' || true)
+          echo "::$([ -z "$leaks" ] && echo notice || echo error) title=log secret scan::secret values in portal.log: ${leaks:-none}"
+          emails=$(grep -oE '[A-Za-z0-9._%+-]+@e2e\.test' portal.log | sort | uniq -c | sort -rn | head -5 | tr '\n' ' ' | sed -E 's/([a-z])[a-z.-]*@/\1***@/g')
+          echo "::notice title=log personal data::email addresses printed in portal.log: ${emails:-none}"
+          grep -E '"level":"error"' portal.log | sed -E 's/"stack":"[^"]*"//' | cut -c1-300 | sort | uniq -c | sort -rn | head -15 || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-evidence
+          path: |
+            actions.json
+            sec-*.json
+            zap/
+            portal.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ── 5. Load (k6) + a two-instance failover check ─────────────────────────
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: e2e-test-only
+          POSTGRES_DB: ejo_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      mail:
+        image: axllent/mailpit:v1.21
+        ports: ['1025:1025', '8025:8025']
+    env:
+      DATABASE_URL: 'postgresql://postgres:e2e-test-only@localhost:5432/ejo_e2e'
+      DIRECT_URL: 'postgresql://postgres:e2e-test-only@localhost:5432/ejo_e2e'
+      BETTER_AUTH_SECRET: 'e2e-only-secret-0f6c2b8e9a1d4c7f8b3e5a2d9c6f1e4b'
+      BETTER_AUTH_URL: 'http://localhost:3001'
+      NEXT_PUBLIC_PORTAL_URL: 'http://localhost:3001'
+      NEXT_PUBLIC_WEBSITE_URL: 'http://localhost:3000'
+      SMTP_HOST: 'localhost'
+      SMTP_PORT: '1025'
+      SMTP_FROM: 'EJO 100 <no-reply@e2e.test>'
+      CRON_SECRET: 'e2e-cron-secret'
+      AUTH_SIGNIN_PER_MINUTE: '100000'
+      AUTH_RESET_REQUESTS_PER_5_MIN: '100000'
+      CUSTOMER_SIGNIN_PER_MINUTE: '100000'
+      CUSTOMER_RESET_REQUESTS_PER_5_MIN: '100000'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'npm'
+      - run: npm install
+      - run: npm run build --workspace=packages/database
+      - name: Schema + seed
+        env:
+          MASTER_ADMIN_EMAIL: 'master@e2e.test'
+          MASTER_ADMIN_PASSWORD: 'E2e-Master-Pass-2026!'
+          MASTER_ADMIN_NAME: 'Morgan Master'
+        run: |
+          for f in scripts/predeploy/*.sql; do npx prisma db execute --file="$f" --url="$DIRECT_URL"; done
+          npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate
+          for f in scripts/postdeploy/*.sql; do npx prisma db execute --file="$f" --url="$DIRECT_URL"; done
+          npx tsx packages/database/prisma/seed.ts
+          npx prisma db execute --file=scripts/v24-roles.sql --url="$DIRECT_URL"
+          npx tsx apps/portal/e2e/seed.ts
+      - run: cd apps/portal && npx next build --no-mangling
+      - name: Start the portal
+        run: |
+          node apps/portal/e2e/security/action-map.mjs apps/portal/.next > actions.json
+          (cd apps/portal && nohup npx next start -p 3001 > ../../portal.log 2>&1 &)
+          for i in $(seq 1 60); do curl -sf http://localhost:3001/login > /dev/null && break; sleep 2; done
+          nproc; free -m | head -2
+      - uses: grafana/setup-k6-action@v1
+      - name: k6 staged load (smoke → baseline → ramp → spike → soak → recovery)
+        run: |
+          set +e
+          k6 run --quiet -e BASE=http://localhost:3001 -e ACTION_MAP="$PWD/actions.json" -e K6_SUMMARY="$PWD/k6-summary.json" ops/load-test/k6-ci.js > k6.out 2>&1; rc=$?
+          tail -n 40 k6.out
+          [ $rc = 0 ] || echo "::warning title=k6 exit $rc::99 = a proposed threshold was breached (see stage annotations); other codes = script/run error."
+          echo "::notice title=k6 first failures by kind::$(grep -oE 'first [a-zA-Z ]+ failure: .{0,260}' k6.out | sort -u -t: -k1,1 | head -8 | sed 's/$/%0A/' | tr -d '\n')"
+          node ops/load-test/k6-report.mjs k6-summary.json stage "smoke:30,baseline:60,ramp:90,spike:40,soak:120,recovery:45,write:330"
+      - name: Two instances behind a round-robin proxy — kill one mid-test
+        if: always()
+        run: |
+          set +e
+          NEXT_BIN="$PWD/node_modules/next/dist/bin/next"
+          (cd apps/portal && nohup node "$NEXT_BIN" start -p 3011 > ../../portal-a.log 2>&1 & echo $! > ../../a.pid)
+          (cd apps/portal && nohup node "$NEXT_BIN" start -p 3012 > ../../portal-b.log 2>&1 &)
+          for p in 3011 3012; do for i in $(seq 1 60); do curl -sf http://localhost:$p/login > /dev/null && break; sleep 1; done; done
+          (nohup node ops/load-test/lb.mjs 3010 http://127.0.0.1:3011 http://127.0.0.1:3012 > lb.log 2>&1 &)
+          sleep 2
+          COOKIE=$(curl -s -i -X POST http://localhost:3011/api/auth/sign-in/email -H 'content-type: application/json' -H 'origin: http://localhost:3001' \
+            -d '{"email":"admin@e2e.test","password":"E2e-Test-Pass-2026!"}' | grep -i '^set-cookie: [^=]*session_token=' | head -1 | sed -E 's/^[Ss]et-[Cc]ookie: ([^;]+).*/\1/' | tr -d '\r')
+          echo "session cookie name: ${COOKIE%%=*}"
+          (k6 run --quiet -e BASE=http://localhost:3010 -e COOKIE="$COOKIE" -e KILL_AT=20 -e K6_SUMMARY="$PWD/k6-failover.json" ops/load-test/k6-failover.js > k6-failover.out 2>&1; echo $? > k6-failover.rc) &
+          K6=$!
+          sleep 21
+          kill -9 "$(cat a.pid)" 2>/dev/null; fuser -k -n tcp 3011 2>/dev/null || true
+          sleep 1; curl -s -o /dev/null -w "instance A after kill: HTTP %{http_code}\n" http://localhost:3011/login || true
+          wait $K6
+          tail -n 25 k6-failover.out
+          echo "::notice title=failover proxy::killed instance A (:3011) at ~21 s; upstream stats: $(curl -s http://localhost:3010/__lb); k6 exit $(cat k6-failover.rc); $(grep -m3 -iE 'level=error|failed' k6-failover.out | cut -c1-300 | tr '\n' ' ')"
+          node ops/load-test/k6-report.mjs k6-failover.json phase "before:20,during:10,after:30"
+      - if: always()
+        name: Server log errors under load
+        run: |
+          echo "::notice title=portal log under load::$(grep -c '"level":"error"' portal.log) structured errors; top: $(grep -oE '"message":"[^"]{0,90}' portal.log | sort | uniq -c | sort -rn | head -5 | tr '\n' ' ')"

@@ -1,11 +1,11 @@
 import { guardAnyPage } from '@/lib/authz/server';
 import { reportIncidentFormAction } from '@/lib/actions/security-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { INCIDENT_TYPES, SEVERITY_LABEL } from '@/lib/security-rules';
+import { PageHeader } from '@/components/ui';
 
 export default async function ReportIncidentPage({ searchParams }: { searchParams: Promise<{ error?: string; related?: string }> }) {
   await guardAnyPage(['security.view'], '/security/incidents');
@@ -14,8 +14,11 @@ export default async function ReportIncidentPage({ searchParams }: { searchParam
   const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/security/incidents" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Incidents</LoadingLink>
-      <h1 className="mb-4 text-2xl font-bold text-[var(--ejo-text)]">Report an incident</h1>
+      <PageHeader
+        icon="alert"
+        back={{ href: "/security/incidents", label: "Back to Incidents" }}
+        title="Report an incident"
+      />
       <SecurityNav active="/security/incidents" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       <form action={reportIncidentFormAction} className="max-w-2xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">

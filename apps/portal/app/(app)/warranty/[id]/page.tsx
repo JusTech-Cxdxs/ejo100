@@ -1,8 +1,9 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { requireUser } from '@/lib/actions/workshop';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import type { ReactNode } from 'react';
 import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
-import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS } from '@/lib/warranty-claim-status';
+import { CLAIM_STATUS_LABEL } from '@/lib/warranty-claim-status';
 import { notFound } from 'next/navigation';
 import { getWarranty, getWarrantyAuditTrail, getWarrantyRoles, getWarrantyEmailState } from '@/lib/actions/warranty';
 import { EXPIRY_REMINDER_STAGES } from '@/lib/warranty-reminders';
@@ -13,8 +14,10 @@ import { AuditTrail } from '@/components/AuditTrail';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
-import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL, splitLines } from '@/lib/warranty-state';
+import { warrantyCoverage, WARRANTY_STATE_LABEL, splitLines } from '@/lib/warranty-state';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const ACTION_LABEL: Record<string, string> = {
   'warranty.covers_job_card_line': 'Covers a Job Card line',
@@ -52,27 +55,30 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
   const { status, error } = await searchParams;
   const [w, trail, claims, roles, emails] = await Promise.all([getWarranty(id), getWarrantyAuditTrail(id), listWarrantyClaims({ warrantyId: id }), getWarrantyRoles(), getWarrantyEmailState(id)]);
   if (!w) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const cov = warrantyCoverage(w, w.vehicle?.mileage ?? null);
   const distanceEnd = w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null;
   const canChange = w.status !== 'VOID' && w.status !== 'TRANSFERRED';
+  // Same rule as verifyWarranty: an approver who did not register it (E2E-05).
+  const viewer = await requireUser();
+  const canVerify = roles.canApprove && (roles.isMaster || w.issuedById !== viewer.id);
 
   return (
     <div className="p-8">
-      <LoadingLink href="/warranty" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Warranty
-      </LoadingLink>
+      <BackLink href="/warranty" label="Back to Warranty" className="mb-4" />
       {status && STATUS_BANNER[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={STATUS_BANNER[status]} /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{w.warrantyNumber}</h1>
+          <PageTitle icon="shield-check">{w.warrantyNumber}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
             {w.kind === 'ASSET' ? 'Vehicle warranty' : 'Part warranty'} — {w.subjectDescription}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`rounded-full px-3 py-1 text-sm font-medium ${WARRANTY_STATE_CLASS[cov.state]}`}>{WARRANTY_STATE_LABEL[cov.state]}</span>
+          <StatusChip status={cov.state} label={WARRANTY_STATE_LABEL[cov.state]} className="px-3 py-1 text-sm" />
           <PrintMenu orgHref={`/print/warranty/${w.id}`} clientHref={`/print/warranty/${w.id}?variant=client`} clientLabel="Customer Copy" />
         </div>
       </div>
@@ -117,7 +123,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
             <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Traceability</h2>
             <dl className="grid gap-4 sm:grid-cols-2">
               <Field label="Customer">
-                {w.customer.fullName}
+                <CustomerLink id={w.customerId} name={w.customer.fullName} canView={canSeeCustomers} />
                 <span className="block text-xs text-[var(--ejo-text-muted)]">{[w.customer.email, w.customer.phone].filter(Boolean).join(' · ')}</span>
               </Field>
               {w.vehicle ? (
@@ -207,7 +213,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
                 {claims.map((cl: (typeof claims)[number]) => (
                   <li key={cl.id} className="flex items-center justify-between gap-2">
                     <LoadingLink href={`/warranty/claims/${cl.id}`} className="text-[var(--ejo-primary)] hover:underline">{cl.claimNumber} — {cl.causalPart}</LoadingLink>
-                    <span className={`rounded-full px-2 py-0.5 font-medium ${CLAIM_STATUS_CLASS[cl.status]}`}>{CLAIM_STATUS_LABEL[cl.status]}</span>
+                    <StatusChip status={cl.status} label={CLAIM_STATUS_LABEL[cl.status]} />
                   </li>
                 ))}
               </ul>
@@ -271,11 +277,17 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
                 The Warranty HOD or Branch Manager — not the person who registered it — checks the evidence, then verifies it. Until then it covers nothing.
               </p>
-              <form action={verifyWarrantyFormAction} className="mt-3">
-                <FormPendingOverlay />
-                <input type="hidden" name="warrantyId" value={w.id} />
-                <SubmitButton label="Evidence checked — verify" pendingLabel="Verifying…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
-              </form>
+              {canVerify ? (
+                <form action={verifyWarrantyFormAction} className="mt-3">
+                  <FormPendingOverlay />
+                  <input type="hidden" name="warrantyId" value={w.id} />
+                  <SubmitButton label="Evidence checked — verify" pendingLabel="Verifying…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
+                </form>
+              ) : (
+                <p className="mt-3 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
+                  {roles.canApprove ? 'You registered this warranty, so someone else must verify it.' : 'Waiting for the Warranty HOD or Branch Manager to verify it.'}
+                </p>
+              )}
             </div>
           ) : null}
           {canChange ? (

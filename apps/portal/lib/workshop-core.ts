@@ -1,3 +1,4 @@
+import { logFailure } from '@/lib/log';
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 import { after } from 'next/server';
@@ -72,10 +73,14 @@ export async function writeAuditLog(params: {
   entityType: string;
   entityId: string;
   metadata?: Record<string, unknown>;
+  /** The organisation whose history this is (e.g. a customer's own
+   * organisation) — otherwise stamped from the person acting. */
+  organisationId?: string | null;
 }): Promise<void> {
   try {
     await prisma.auditLog.create({
       data: {
+        ...(params.organisationId ? { organisationId: params.organisationId } : {}),
         userId: params.userId,
         action: params.action,
         entityType: params.entityType,
@@ -102,7 +107,7 @@ export async function writeAuditLog(params: {
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to write audit log:', params.action, params.entityId, err);
+    logFailure('Failed to write audit log:', params.action, params.entityId, err);
   }
 }
 

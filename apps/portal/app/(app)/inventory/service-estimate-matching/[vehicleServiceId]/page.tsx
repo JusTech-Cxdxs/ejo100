@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { serviceVisible, guardAnyPage } from '@/lib/authz/server';
+import { serviceVisible, guardAnyPage, allows } from '@/lib/authz/server';
 import { listUnmatchedServiceEstimateStorePartLinesForVehicleService } from '@/lib/actions/vehicle-service-estimate';
 import { getFittingPartsForVehicle, getStoreBranchId } from '@/lib/actions/store';
 import { getVehicleService } from '@/lib/actions/vehicle-service';
@@ -9,6 +9,8 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
+import { BackLink, PageTitle } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const WRENCH_ICON = (
   <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-warning)]">
@@ -46,6 +48,8 @@ export default async function VehicleServiceMatchingPage({
     listUnmatchedServiceEstimateStorePartLinesForVehicleService(vehicleServiceId),
   ]);
   if (!service) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
 
   const linesWithFittingParts = await Promise.all(
     lines.map(async (line: (typeof lines)[number]) => ({
@@ -58,17 +62,15 @@ export default async function VehicleServiceMatchingPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href={`/workshop/vehicle-service/${vehicleServiceId}`} className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to the Vehicle Service
-      </LoadingLink>
+      <BackLink href={`/workshop/vehicle-service/${vehicleServiceId}`} label="Back to the Vehicle Service" className="mb-4" />
       <div className="mb-2 flex items-center gap-2">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Match — {service.serviceNumber}</h1>
+        <PageTitle icon="match">Match — {service.serviceNumber}</PageTitle>
         <LoadingLink href={`/workshop/vehicle-service/${service.id}`} className="text-xs text-[var(--ejo-primary)] hover:underline">
           Open Vehicle Service
         </LoadingLink>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        {service.customer.fullName} —{' '}
+        <CustomerLink id={service.customerId} name={service.customer.fullName} canView={canSeeCustomers} /> —{' '}
         <LoadingLink href={`/workshop/vehicles/${service.vehicle.id}/edit`} className="hover:underline">
           {vehicleLine}
         </LoadingLink>

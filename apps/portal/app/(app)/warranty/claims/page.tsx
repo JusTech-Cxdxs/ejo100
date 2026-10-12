@@ -1,9 +1,11 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
 import { LoadingLink } from '@/components/LoadingLink';
-import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS, CLAIM_GROUPS, REMEDY_LABEL, PART_RETURN_LABEL } from '@/lib/warranty-claim-status';
+import { CLAIM_STATUS_LABEL, CLAIM_GROUPS, REMEDY_LABEL, PART_RETURN_LABEL } from '@/lib/warranty-claim-status';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageHeader, StatusChip } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 function naira(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -25,6 +27,8 @@ const GROUP_LABEL: Record<string, string> = {
 export default async function WarrantyClaimsPage({ searchParams }: { searchParams: Promise<{ q?: string; group?: string; remedy?: string; part?: string }> }) {
   await guardAnyPage(['warranty.view'], '/warranty');
   const { q, group: rawGroup, remedy: rawRemedy, part: rawPart } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const remedy = rawRemedy && REMEDY_LABEL[rawRemedy] ? rawRemedy : null;
   const part = rawPart && PART_RETURN_LABEL[rawPart] ? rawPart : null;
   const group = rawGroup && CLAIM_GROUPS[rawGroup] ? rawGroup : null;
@@ -49,16 +53,13 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
 
   return (
     <div className="p-8">
-      <LoadingLink href="/warranty" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Warranty</LoadingLink>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Warranty claims</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-            Every claim from draft to money received: staff draft it, the Warranty HOD and the Branch Manager approve it, it goes to
-            the provider, and the decision and settlement are recorded. Start a claim from the warranty it is made against.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon="file"
+        back={{ href: "/warranty", label: "Back to Warranty" }}
+        title="Warranty claims"
+        description={<>Every claim from draft to money received: staff draft it, the Warranty HOD and the Branch Manager approve it, it goes to
+            the provider, and the decision and settlement are recorded. Start a claim from the warranty it is made against.</>}
+      />
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4"><p className="text-xs text-[var(--ejo-text-muted)]">Claimed (excl. cancelled)</p><p className="mt-1 text-xl font-bold text-[var(--ejo-text)]">{naira(claimed)}</p></div>
@@ -137,7 +138,7 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
                       <div className="text-xs text-[var(--ejo-text-muted)]">{REMEDY_LABEL[c.remedy]}{c.partReturnRequired ? ` · ${c.partReturnStatus === 'SENT' ? 'part sent' : c.partReturnStatus === 'RECEIVED_BY_PROVIDER' ? 'part received' : 'part to send'}` : ''}</div>
                     </td>
                     <td className="px-3 py-2 text-xs text-[var(--ejo-text)]">
-                      {c.customer.fullName}
+                      <CustomerLink id={c.customerId} name={c.customer.fullName} canView={canSeeCustomers} />
                       <div className="text-[var(--ejo-text-muted)]">{c.vehicle ? [c.vehicle.make, c.vehicle.model, c.vehicle.plateNumber].filter(Boolean).join(' ') : ''}</div>
                     </td>
                     <td className="px-3 py-2 text-xs text-[var(--ejo-text)]">
@@ -153,7 +154,7 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
                       {c.deadlineAt ? formatDateOnly(c.deadlineAt) : '—'}
                       {open && daysLeft !== null ? <div>{daysLeft < 0 ? `${Math.abs(daysLeft)} ${Math.abs(daysLeft) === 1 ? 'day' : 'days'} late` : `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left`}</div> : null}
                     </td>
-                    <td className="px-3 py-2"><span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${CLAIM_STATUS_CLASS[c.status]}`}>{CLAIM_STATUS_LABEL[c.status]}</span></td>
+                    <td className="px-3 py-2"><StatusChip status={c.status} label={CLAIM_STATUS_LABEL[c.status]} /></td>
                   </tr>
                 );
               })}

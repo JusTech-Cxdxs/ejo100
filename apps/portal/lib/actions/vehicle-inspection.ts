@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { authorizeOnService, seeService } from '@/lib/authz/server';
 
@@ -223,7 +224,7 @@ export async function completeVehicleInspection(inspectionId: string, notes?: st
     const sv = await prisma.vehicleService.findUnique({ where: { id: inspection.vehicleServiceId }, select: { serviceNumber: true, supervisor: { select: { fullName: true, email: true } }, assignedTechnician: { select: { fullName: true, email: true } } } });
     if (sv) await sendLoggedEmail({ entityType: 'VehicleService', entityId: inspection.vehicleServiceId, recipients: [sv.supervisor, sv.assignedTechnician].filter((x): x is { fullName: string; email: string } => Boolean(x?.email)), subject: `Inspection completed — ${sv.serviceNumber}`, heading: 'The vehicle inspection is complete', lines: [sv.serviceNumber, 'The findings are recorded — the estimate can now be prepared.'], path: `/workshop/vehicle-service/${inspection.vehicleServiceId}`, actorId: user.id });
   } catch (err) {
-    console.error('Inspection completed email failed', err);
+    logFailure('Inspection completed email failed', err);
   }
 }
 

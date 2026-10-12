@@ -1,33 +1,37 @@
+import { guardPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getBroadcast, canBroadcast, listAudienceOptions } from '@/lib/actions/notifications';
 import { getSecurityHistory } from '@/lib/actions/security';
 import { broadcastActionFormAction } from '@/lib/actions/notification-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityHistory } from '@/components/SecurityHistory';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { BROADCAST_CATEGORY, BROADCAST_STATE_LABEL, DURATIONS } from '@/lib/notification-rules';
+import { getCustomerNames } from '@/lib/actions/crm';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const DONE: Record<string, string> = { created: 'Broadcast published.', stop: 'Broadcast stopped — it no longer shows.', reactivate: 'Broadcast running again — everyone sees it as new.' };
 
 export default async function BroadcastPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
+  await guardPage('notifications.broadcast.send', '/notifications/broadcasts');
   const { id } = await params;
   const { status, error } = await searchParams;
   const [b, allowed, options, history] = await Promise.all([getBroadcast(id), canBroadcast(), listAudienceOptions(), getSecurityHistory('Broadcast', id)]);
   if (!b) notFound();
   const m = BROADCAST_CATEGORY[b.category]!;
-  const names = b.audience === 'BRANCH' ? options.branches.filter((x) => b.audienceIds.includes(x.id)).map((x) => x.name) : b.audience === 'DEPARTMENT' ? options.departments.filter((x) => b.audienceIds.includes(x.id)).map((x) => x.name) : b.audience === 'ROLE' ? options.roles.filter((x) => b.audienceIds.includes(x.slug)).map((x) => x.name) : ['Everyone'];
+  const customers = b.audience === 'CUSTOMERS_SELECTED' ? await getCustomerNames(b.audienceIds) : [];
+  const names = b.audience === 'CUSTOMERS_ALL' ? ['All customers (customer portal)'] : b.audience === 'CUSTOMERS_SELECTED' ? [`${customers.length} ${customers.length === 1 ? 'customer' : 'customers'}: ${customers.slice(0, 8).map((x) => x.fullName).join(', ')}${customers.length > 8 ? '…' : ''}`] : b.audience === 'BRANCH' ? options.branches.filter((x) => b.audienceIds.includes(x.id)).map((x) => x.name) : b.audience === 'DEPARTMENT' ? options.departments.filter((x) => b.audienceIds.includes(x.id)).map((x) => x.name) : b.audience === 'ROLE' ? options.roles.filter((x) => b.audienceIds.includes(x.slug)).map((x) => x.name) : ['Everyone'];
   const input = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
   const Hidden = ({ action }: { action: string }) => (<><FormPendingOverlay /><input type="hidden" name="broadcastId" value={b.id} /><input type="hidden" name="action" value={action} /></>);
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => (val ? <div className="flex justify-between gap-3 py-1 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right text-[var(--ejo-text)]">{val}</dd></div> : null);
   return (
     <div className="w-full p-4 sm:p-8">
-      <LoadingLink href="/notifications/broadcasts" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Broadcasts</LoadingLink>
+      <BackLink href="/notifications/broadcasts" label="Back to Broadcasts" className="mb-4" />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{b.broadcastNumber}</h1>
+        <PageTitle icon="megaphone">{b.broadcastNumber}</PageTitle>
         <span className="rounded-full bg-[var(--ejo-bg)] px-3 py-1 text-sm font-medium text-[var(--ejo-text)]">{BROADCAST_STATE_LABEL[b.state]}</span>
       </div>
       {status && DONE[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={DONE[status]!} /></div> : null}
@@ -42,7 +46,7 @@ export default async function BroadcastPage({ params, searchParams }: { params: 
             <Row k="Starts" val={formatDateTime(b.startsAt)} />
             <Row k="Ends" val={b.endsAt ? `${formatDateTime(b.endsAt)}${b.durationLabel ? ` (${b.durationLabel})` : ''}` : 'Until stopped'} />
             <Row k="Email" val={b.sendEmail ? (b.emailedAt ? `Sent ${formatDateTime(b.emailedAt)}` : 'Goes out when it starts') : 'Not emailed'} />
-            <Row k="Read by" val={pluralize(b.readCount, 'person', 'people')} />
+            <Row k="Read by" val={b.audience.startsWith('CUSTOMERS') ? pluralize(b.readCount, 'customer') : pluralize(b.readCount, 'person', 'people')} />
             <Row k="Published by" val={`${b.createdBy.fullName} · ${formatDateTime(b.createdAt)}`} />
             <Row k="Stopped" val={b.stoppedAt ? `${formatDateTime(b.stoppedAt)}${b.stoppedBy ? ` · ${b.stoppedBy.fullName}` : ''}` : null} />
           </dl>

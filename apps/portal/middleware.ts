@@ -22,7 +22,7 @@ const AUTH_PAGES = ['/login', '/forgot-password', '/reset-password', '/verify-em
 // Scheduled jobs carry no sign-in cookie — they are protected by CRON_SECRET
 // inside each route (a missing or wrong secret is refused there).
 // /signed-out clears a session the server refused (switched-off account).
-const ALWAYS_PUBLIC = ['/api/auth', '/api/cron', '/signed-out'];
+const ALWAYS_PUBLIC = ['/api/auth', '/api/cron', '/api/health', '/signed-out'];
 
 // Flood protection for submissions (form posts / server actions): at most
 // 120 a minute per person (1,500 per shared address), per server instance. Reading pages is never
@@ -57,8 +57,15 @@ function tooManyPosts(request: NextRequest): boolean {
   return perPerson || perAddress;
 }
 
+// Public files at the root (robots.txt, a manifest, an icon…) are fetched
+// with GET. Only those pass straight through: a POST to a ".json"-looking
+// path still reaches the server actions, so it is signed-in checked and
+// flood-limited like any other (SEC-03).
+const STATIC_FILE = /\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|woff2?|ttf|txt|json|map|xml|webmanifest)$/i;
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  if ((request.method === 'GET' || request.method === 'HEAD') && STATIC_FILE.test(pathname)) return NextResponse.next();
   if (tooManyPosts(request)) {
     return new NextResponse('Too many requests — please wait a moment and try again.', { status: 429, headers: { 'Retry-After': '60' } });
   }
@@ -90,11 +97,10 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Run on everything except Next's own internals, favicon.ico, the
-  // public /images directory, and any request that looks like a static
-  // file (has a recognizable file extension) — none of those should ever
-  // be treated as a protected app route.
+  // Run on everything except Next's own internals, favicon.ico and the
+  // public /images directory. Other static-looking paths are let through by
+  // the middleware itself, for GET only (see STATIC_FILE above).
   matcher: [
-    '/((?!_next/static|_next/image|favicon\\.ico|images/|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|woff2?|ttf|txt|json|map)$).*)',
+    '/((?!_next/static|_next/image|favicon\\.ico|images/).*)',
   ],
 };

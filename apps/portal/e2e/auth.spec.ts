@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { E2E_PASSWORD, who } from './people';
+import { E2E_PASSWORD, RESET, who } from './people';
 import { signIn, latestMail, linkIn } from './helpers';
 
 test.describe('Sign-in', () => {
@@ -46,7 +46,7 @@ test.describe('Sign-in', () => {
   });
 
   test('forgot password: email arrives, link sets a new password once, old link is dead', async ({ page, request }) => {
-    const email = who('calendar-user').email;
+    const email = RESET.email;
     await page.goto('/forgot-password');
     await page.getByLabel('Work email').fill(email);
     await page.getByRole('button', { name: 'Send reset link' }).click();

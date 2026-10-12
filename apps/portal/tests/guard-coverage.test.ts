@@ -45,6 +45,7 @@ test('organisation-owned lists and lookups carry the organisation fence', () => 
     'warranty-claims.ts': ['listWarrantyClaims', 'getWarrantyClaim', 'getWarrantyClaimDashboardItems'],
     'audit-logs.ts': ['getAuditLogPage', 'listAuditUsers'],
     'security.ts': ['listActiveStaff', 'searchStaffOptions'],
+    'crm.ts': ['getCrmHub', 'searchCrmCustomers', 'getCustomerNames', 'getCustomer360'],
   };
   const missing: string[] = [];
   for (const [f, fns] of Object.entries(must)) {

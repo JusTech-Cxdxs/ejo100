@@ -7,6 +7,7 @@ import { SecurityHistory } from '@/components/SecurityHistory';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle } from '@/components/ui';
 
 export default async function VehicleExitPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string }> }) {
   await guardAnyPage(['security.view'], '/security/vehicles');
@@ -18,10 +19,10 @@ export default async function VehicleExitPage({ params, searchParams }: { params
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => <div className="flex justify-between gap-3 py-1.5 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right font-medium text-[var(--ejo-text)]">{val || '—'}</dd></div>;
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/security/vehicles/exits" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Exit history</LoadingLink>
+      <BackLink href="/security/vehicles/exits" label="Back to Exit history" className="mb-4" />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{x.exitNumber}</h1>
+          <PageTitle icon="car">{x.exitNumber}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">Vehicle left the gate {formatDateTime(x.exitedAt)}</p>
         </div>
         <PrintMenu orgHref={`/print/vehicle-exit/${x.id}`} clientHref={`/print/vehicle-exit/${x.id}?variant=client`} clientLabel="Customer Copy" align="right" />

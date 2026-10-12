@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { getServiceTracker } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { attendToOverdueVehicleFormAction, sendManualServiceReminderFormAction, runServiceRemindersNowFormAction } from '@/lib/actions/vehicle-service-form-handlers';
@@ -10,6 +10,8 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { StopTrackingDialog } from '@/components/StopTrackingDialog';
+import { BackLink, PageTitle } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const STAGE_LABEL: Record<number, string> = { 1: '1st — Friendly', 2: '2nd — Follow-up', 3: '3rd — Due', 4: 'Overdue' };
 
@@ -30,6 +32,8 @@ export default async function ServiceTrackerPage({
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { filter: rawFilter, q, type: rawType, status, error, sent, evaluated, failed } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const vehicleType = rawType === 'PASSENGER' || rawType === 'COMMERCIAL' ? rawType : null;
   const filter: Filter = (['overdue', 'due_soon', 'on_track', 'in_workshop', 'attended', 'lapsed'] as const).includes(rawFilter as never) ? (rawFilter as Filter) : 'all';
   const branchId = await getWorkshopBranchId();
@@ -86,12 +90,10 @@ export default async function ServiceTrackerPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/workshop" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Workshop
-      </LoadingLink>
+      <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
       <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Service Tracker</h1>
+          <PageTitle icon="gauge">Service Tracker</PageTitle>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
             Aftercare for every vehicle once it has left the workshop — when it&apos;s next due (by mileage or date,
             whichever comes first), where it stands now, and every reminder sent. Vehicles still with us are on{' '}
@@ -221,7 +223,7 @@ export default async function ServiceTrackerPage({
                         {v.vehicleDescription}
                       </LoadingLink>
                       <div className="text-xs text-[var(--ejo-text-muted)]">
-                        {v.plateNumber ?? '—'} · {v.customerName}
+                        {v.plateNumber ?? '—'} · <CustomerLink id={v.customerId} name={v.customerName} canView={canSeeCustomers} />
                       </div>
                     </td>
                     <td className="px-3 py-2 text-xs">

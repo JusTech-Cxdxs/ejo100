@@ -10,6 +10,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { VISIT_STATUS_LABEL } from '@/lib/security-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const DONE: Record<string, string> = {
   created: 'Appointment booked — the host and participants have been emailed.',
@@ -39,10 +40,10 @@ export default async function AppointmentPage({ params, searchParams }: { params
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => (val ? <div className="flex justify-between gap-3 py-1 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right text-[var(--ejo-text)]">{val}</dd></div> : null);
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/schedule/appointments" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Appointments</LoadingLink>
+      <BackLink href="/schedule/appointments" label="Back to Appointments" className="mb-4" />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{a.title}</h1>
+          <PageTitle icon="calendar">{a.title}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{a.appointmentNumber} · {new Date(a.startsAt).toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}, {t(a.startsAt)} – {t(a.endsAt)}</p>
         </div>
         <span className="rounded-full bg-[var(--ejo-info)]/15 px-3 py-1 text-sm font-medium text-[var(--ejo-info)]">{STATUS[a.status]}</span>

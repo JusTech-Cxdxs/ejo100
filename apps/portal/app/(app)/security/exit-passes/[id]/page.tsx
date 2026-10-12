@@ -2,15 +2,15 @@ import { notFound } from 'next/navigation';
 import { getExitPass, getSecurityRoles, getSecurityHistory, canDecideExitPass } from '@/lib/actions/security';
 import { exitPassActionFormAction, extendExitPassFormAction, securityFollowUpFormAction } from '@/lib/actions/security-form-handlers';
 import { PrintMenu } from '@/components/print/PrintMenu';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityHistory } from '@/components/SecurityHistory';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
-import { EXIT_PASS_STATUS_LABEL, STATUS_CHIP, durationText, minutesBetween, exitPassOverdueMinutes } from '@/lib/security-rules';
+import { EXIT_PASS_STATUS_LABEL, durationText, minutesBetween, exitPassOverdueMinutes } from '@/lib/security-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 
 const DONE: Record<string, string> = {
   requested: 'Exit pass submitted — your Department Head has been asked to authorise it.',
@@ -40,13 +40,13 @@ export default async function ExitPassPage({ params, searchParams }: { params: P
 
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/security/exit-passes" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Exit passes</LoadingLink>
+      <BackLink href="/security/exit-passes" label="Back to Exit passes" className="mb-4" />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Exit pass {p.passNumber}</h1>
+          <PageTitle icon="exit">Exit pass {p.passNumber}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">Requested by {p.requestedBy.fullName} on {formatDateTime(p.createdAt)} · {pluralize(p.people.length, 'person', 'people')}</p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_CHIP[p.status]}`}>{EXIT_PASS_STATUS_LABEL[p.status]}</span>
+        <StatusChip status={p.status} label={EXIT_PASS_STATUS_LABEL[p.status]} className="px-3 py-1 text-sm" />
       </div>
       <SecurityNav active="/security/exit-passes" />
       {status && DONE[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={DONE[status]!} /></div> : null}

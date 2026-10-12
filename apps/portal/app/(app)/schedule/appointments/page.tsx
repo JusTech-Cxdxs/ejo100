@@ -5,6 +5,7 @@ import { ScheduleNav } from '@/components/ScheduleNav';
 import { SecurityTable } from '@/components/SecurityTable';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageHeader } from '@/components/ui';
 
 const TABS: [string, string][] = [['upcoming', 'Upcoming'], ['today', 'Today'], ['awaiting', 'Awaiting outcome'], ['completed', 'Completed'], ['no_show', 'No-show'], ['cancelled', 'Cancelled'], ['all', 'All']];
 const STATUS: Record<string, [string, string]> = {
@@ -22,8 +23,11 @@ export default async function AppointmentsRegisterPage({ searchParams }: { searc
   const { tab, counts, rows } = await listAppointments(q, show);
   return (
     <div className="p-4 sm:p-8">
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Appointments</h1>
-      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Every appointment on the calendars you can see — search by APT number, title, host, room, place, visitor or organisation.</p>
+      <PageHeader
+        icon="list"
+        title="Appointments"
+        description={<>Every appointment on the calendars you can see — search by APT number, title, host, room, place, visitor or organisation.</>}
+      />
       <ScheduleNav active="/schedule/appointments" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {TABS.map(([k, l]) => (

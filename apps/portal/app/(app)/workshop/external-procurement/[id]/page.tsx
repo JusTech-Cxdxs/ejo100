@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getExternalProcurementRequest, getExternalProcurementRequestAuditTrail } from '@/lib/actions/sourcing';
 import { listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
@@ -17,6 +17,8 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SupplementaryLineRow } from '@/components/SupplementaryLineRow';
 import { pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_FINANCE_REVIEW: 'Awaiting Finance review',
@@ -47,6 +49,8 @@ export default async function ExternalProcurementDetailPage({
   const { error, status } = await searchParams;
   const request = await getExternalProcurementRequest(id);
   if (!request) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
 
   const [isMasterAdmin, viewerId, eligibleManagers, eligibleFinance, auditTrail] = await Promise.all([
     currentUserIsMasterAdmin(),
@@ -77,11 +81,9 @@ export default async function ExternalProcurementDetailPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/workshop/external-procurement" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to External Procurement
-      </LoadingLink>
+      <BackLink href="/workshop/external-procurement" label="Back to External Procurement" className="mb-4" />
       <div className="mb-2 flex items-center gap-2">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">External Procurement Request</h1>
+        <PageTitle icon="cart">External Procurement Request</PageTitle>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">{request.referenceNumber}</p>
 
@@ -142,7 +144,7 @@ export default async function ExternalProcurementDetailPage({
           </div>
           <div>
             <dt className="text-xs text-[var(--ejo-text-muted)]">Customer</dt>
-            <dd className="text-sm font-medium text-[var(--ejo-text)]">{request.jobCard.customer.fullName}</dd>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]"><CustomerLink id={request.jobCard.customer.id} name={request.jobCard.customer.fullName} canView={canSeeCustomers} /></dd>
           </div>
           <div>
             <dt className="text-xs text-[var(--ejo-text-muted)]">Vehicle</dt>

@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach, seeBranchAnyOf, seeJobCard, seeService } from '@/lib/authz/server';
 
@@ -145,7 +146,7 @@ async function notifySupervisorAndTechnicianOfServiceEstimatePartRequestStatus(
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Service Estimate Parts Request status emails', referenceNumber, err);
+    logFailure('Failed to send Service Estimate Parts Request status emails', referenceNumber, err);
   }
 }
 
@@ -188,7 +189,7 @@ async function notifyTechnicianAndSupervisorOfPartRequestStatus(
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Parts Request status emails', referenceNumber, err);
+    logFailure('Failed to send Parts Request status emails', referenceNumber, err);
   }
 }
 
@@ -234,7 +235,7 @@ async function notifyTechnicianAndSupervisorOfExternalProcurementStatus(
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send External Procurement status emails', referenceNumber, err);
+    logFailure('Failed to send External Procurement status emails', referenceNumber, err);
   }
 }
 
@@ -415,7 +416,7 @@ async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
       );
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send work-resumed email', jobCardId, err);
+      logFailure('Failed to send work-resumed email', jobCardId, err);
     }
   }
 }
@@ -439,7 +440,7 @@ export async function getPartRequestSlip(id: string) {
           supervisorId: true,
           assignedTechnicianId: true,
           assignedTechnician: { select: { id: true, fullName: true } },
-          customer: { select: { fullName: true, address: true } },
+          customer: { select: { id: true, fullName: true, address: true } },
           vehicle: { select: { make: true, model: true, year: true, engineType: true, chassisNumber: true, plateNumber: true } },
           branch: { select: { name: true, address: true, hotlines: true, email: true } },
         },
@@ -451,7 +452,7 @@ export async function getPartRequestSlip(id: string) {
           supervisorId: true,
           assignedTechnicianId: true,
           assignedTechnician: { select: { id: true, fullName: true } },
-          customer: { select: { fullName: true, address: true } },
+          customer: { select: { id: true, fullName: true, address: true } },
           vehicle: { select: { make: true, model: true, year: true, engineType: true, chassisNumber: true, plateNumber: true } },
           branch: { select: { name: true, address: true, hotlines: true, email: true } },
         },
@@ -578,7 +579,7 @@ export async function getExternalProcurementRequest(id: string) {
           jobNumber: true,
           assignedTechnician: { select: { fullName: true } },
           supervisor: { select: { fullName: true } },
-          customer: { select: { fullName: true, address: true } },
+          customer: { select: { id: true, fullName: true, address: true } },
           vehicle: { select: { make: true, model: true, year: true, engineType: true, chassisNumber: true, plateNumber: true } },
           branch: { select: { name: true, address: true, hotlines: true, email: true } },
         },
@@ -765,7 +766,7 @@ export async function requestPartRequestSlip(jobCardId: string): Promise<{ id: s
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Parts Request approval-needed emails', referenceNumber, err);
+    logFailure('Failed to send Parts Request approval-needed emails', referenceNumber, err);
   }
 
   return { id: slip.id, referenceNumber };
@@ -969,7 +970,7 @@ export async function requestServiceEstimatePartRequestSlip(serviceEstimateId: s
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Service Estimate Parts Request approval-needed emails', referenceNumber, err);
+    logFailure('Failed to send Service Estimate Parts Request approval-needed emails', referenceNumber, err);
   }
 
   return { id: slip.id, referenceNumber };
@@ -1059,7 +1060,7 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send Parts Request Store-approval-needed emails', slip.referenceNumber, err);
+      logFailure('Failed to send Parts Request Store-approval-needed emails', slip.referenceNumber, err);
     }
   } else if (slip.vehicleServiceId) {
     await writeAuditLog({
@@ -1112,7 +1113,7 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send Service Estimate Parts Request Store-approval-needed emails', slip.referenceNumber, err);
+      logFailure('Failed to send Service Estimate Parts Request Store-approval-needed emails', slip.referenceNumber, err);
     }
   }
 }
@@ -1327,7 +1328,7 @@ export async function releasePartRequestSlip(
           // this is a real data-integrity signal worth knowing about,
           // not silently swallowed.
           // eslint-disable-next-line no-console
-          console.error('Batch records did not cover the full released quantity', line.partId, remaining);
+          logFailure('Batch records did not cover the full released quantity', line.partId, remaining);
         }
       } else if (line.part.trackingType === 'SERIALIZED') {
         const serials = (lineSerials?.[line.id] ?? []).map((s) => s.trim()).filter(Boolean);
@@ -1387,7 +1388,7 @@ export async function releasePartRequestSlip(
           // aggregate is still correct, but received deliveries didn't
           // fully account for this release.
           // eslint-disable-next-line no-console
-          console.error('Goods Receipt layers did not cover the full released quantity', line.partId);
+          logFailure('Goods Receipt layers did not cover the full released quantity', line.partId);
         }
       }
 
@@ -1407,7 +1408,7 @@ export async function releasePartRequestSlip(
     // Never silent: the failure is in the audit trail (Warranty can issue
     // the missing warranties from the slip) as well as the server log.
     // eslint-disable-next-line no-console
-    console.error('Failed to issue part warranties for released slip', slipId, err);
+    logFailure('Failed to issue part warranties for released slip', slipId, err);
     await writeAuditLog({ userId: user.id, action: 'part_warranty.issue_failed', entityType: 'PartRequestSlip', entityId: slipId, metadata: { error: String((err as Error)?.message ?? err).slice(0, 300) } }).catch(() => undefined);
   }
   await writeAuditLog({
@@ -1655,7 +1656,7 @@ export async function requestExternalProcurementBatch(jobCardId: string): Promis
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send External Procurement approval-needed email', referenceNumber, err);
+    logFailure('Failed to send External Procurement approval-needed email', referenceNumber, err);
   }
 
   return { id: request.id, referenceNumber };
@@ -1868,7 +1869,7 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send External Procurement Manager-approval-needed email', request.referenceNumber, err);
+    logFailure('Failed to send External Procurement Manager-approval-needed email', request.referenceNumber, err);
   }
 }
 

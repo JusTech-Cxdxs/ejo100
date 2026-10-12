@@ -59,6 +59,29 @@ export function setAuditActor(userId: string | null, source: string, organisatio
   context.enterWith({ userId, source, organisationId, pending: existing?.pending ?? [], tx: existing?.tx ?? null });
 }
 
+/**
+ * How the app finds "who is acting" when no actor was recorded in this async
+ * context. `setAuditActor` uses AsyncLocalStorage.enterWith, which does NOT
+ * flow back out of an awaited async function — so an actor set inside
+ * requireUser() was lost to its caller and every journal row came out
+ * unattributed (E2E-09). The app registers a resolver that reads its
+ * per-request (cached) session instead; it is only ever called OUTSIDE a
+ * database transaction, so it can never wait on its own connection.
+ */
+let actorResolver: (() => Promise<AuditActor | null>) | null = null;
+export function setAuditActorResolver(fn: () => Promise<AuditActor | null>): void {
+  actorResolver = fn;
+}
+async function resolveActor(store: AuditContext | undefined): Promise<AuditActor | null> {
+  if (store && (store.userId || store.organisationId)) return store;
+  if (!actorResolver) return store ?? null;
+  try {
+    return (await actorResolver()) ?? store ?? null;
+  } catch {
+    return store ?? null;
+  }
+}
+
 /** The actor recorded for the current request, if any. */
 export function getAuditActor(): AuditActor | null {
   const store = context.getStore();
@@ -87,6 +110,12 @@ async function stampOrganisation(client: PrismaClient, row: Record<string, unkno
     return;
   }
   if (inTx) return;
+  const actor = await resolveActor(store);
+  if (actor?.organisationId) {
+    row.organisationId = actor.organisationId;
+    return;
+  }
+  if (!row.userId && actor?.userId) row.userId = actor.userId;
   const userId = typeof row.userId === 'string' ? row.userId : null;
   try {
     if (userId) row.organisationId = await organisationOf(client, userId);
@@ -112,7 +141,12 @@ const WRITE_ACTIONS = new Set(['create', 'createMany', 'update', 'updateMany', '
 // Notification read-markers and mute settings are personal screen state, not
 // business data — journaling them would make every "mark as read" look like
 // company activity.
-const SKIP_MODELS = new Set(['AuditLog', 'Session', 'Account', 'Verification', 'NotificationRead', 'NotificationPreference']);
+// Customer-portal auth tables are auth internals too: a CustomerVerification
+// identifier IS a live reset token, so it must never reach audit_logs.
+const SKIP_MODELS = new Set([
+  'AuditLog', 'Session', 'Account', 'Verification', 'NotificationRead', 'NotificationPreference',
+  'CustomerSession', 'CustomerAccount', 'CustomerVerification', 'CustomerNotificationRead',
+]);
 const SENSITIVE_KEY = /password|token|secret|hash/i;
 const MAX_JSON = 6000;
 
@@ -122,17 +156,20 @@ function redact(value: unknown, depth = 0): unknown {
   if (typeof value === 'bigint') return value.toString();
   if (Array.isArray(value)) return value.slice(0, 50).map((v) => redact(v, depth + 1));
   if (typeof value === 'object') {
-    // Prisma Decimal and similar: serialise via toString/toJSON.
-    const maybe = value as { toJSON?: () => unknown; constructor?: { name?: string } };
-    if (maybe.constructor?.name === 'Decimal' && typeof (value as { toString: () => string }).toString === 'function') {
-      return (value as { toString: () => string }).toString();
-    }
+    // Prisma Decimal (and anything else that knows how to serialise itself):
+    // use its own toJSON. Never test constructor.name — production builds
+    // minify class names, and a Decimal walked as a plain object produced
+    // values Postgres refused, losing the whole batch (E2E-04).
+    const maybe = value as { toJSON?: () => unknown };
+    if (typeof maybe.toJSON === 'function') return redact(maybe.toJSON(), depth + 1);
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       out[k] = SENSITIVE_KEY.test(k) ? '[redacted]' : redact(v, depth + 1);
     }
     return out;
   }
+  // A one-time link token in any value (e.g. "reset-password:<token>").
+  if (typeof value === 'string' && /^(reset-password|email-verification|set-password):/i.test(value)) return '[redacted]';
   return value;
 }
 
@@ -173,9 +210,12 @@ export function installAuditJournal(client: PrismaClient): void {
   (client as unknown as { $transaction: (arg: unknown, options?: unknown) => Promise<unknown> }).$transaction = (arg: unknown, options?: unknown) => {
     const outer = context.getStore();
     const token = Symbol('tx');
-    const inner: AuditContext = outer
-      ? { ...outer, tx: token }
-      : { userId: null, source: 'unattributed', organisationId: null, pending: [], tx: token };
+    const begin = (actor: AuditActor | null) => {
+      const inner: AuditContext = outer
+        ? { ...outer, ...(actor && !outer.userId && !outer.organisationId ? { userId: actor.userId, source: actor.source, organisationId: actor.organisationId ?? null } : {}), tx: token }
+        : { userId: actor?.userId ?? null, source: actor?.source ?? 'unattributed', organisationId: actor?.organisationId ?? null, pending: [], tx: token };
+      return inner;
+    };
     const settle = async (committed: boolean) => {
       const list = inner.pending;
       const done: PendingEntry[] = [];
@@ -196,7 +236,12 @@ export function installAuditJournal(client: PrismaClient): void {
         }
       }
     };
-    return context.run(inner, () => original(arg, options)).then(
+    // Who is acting is worked out BEFORE the transaction opens (never inside it).
+    let inner: AuditContext = begin(null);
+    return resolveActor(outer).then((actor) => {
+      inner = begin(actor);
+      return context.run(inner, () => original(arg, options));
+    }).then(
       async (value) => { await settle(true); return value; },
       async (err) => { await settle(false); throw err; },
     );
@@ -241,6 +286,14 @@ export function installAuditJournal(client: PrismaClient): void {
       && Boolean(args.where && typeof args.where === 'object' && typeof (args.where as { id?: unknown }).id === 'string');
     const single = params.action === 'update' || params.action === 'delete' || params.action === 'upsert' || oneRecord;
 
+    // The journal names the record by the id the write returns: a create with
+    // a narrow select (e.g. only the warranty number) must still return it (E2E-10).
+    const sel = (params.args as { select?: Record<string, unknown> } | undefined)?.select;
+    if ((params.action === 'create' || params.action === 'update' || params.action === 'upsert' || params.action === 'delete') && sel && typeof sel === 'object' && !('id' in sel)) {
+      (params.args as { select: Record<string, unknown> }).select = { ...sel, id: true };
+    }
+    const actor = params.runInTransaction ? store ?? null : await resolveActor(store);
+
     let before: Record<string, unknown> | null = null;
     if (single && args.where && !params.runInTransaction) {
       try {
@@ -278,12 +331,12 @@ export function installAuditJournal(client: PrismaClient): void {
             : { where: args.where, data: args.data, count };
       }
       const entry: PendingEntry = {
-        userId: store?.userId ?? null,
-        organisationId: store?.organisationId ?? null,
+        userId: actor?.userId ?? null,
+        organisationId: actor?.organisationId ?? null,
         action: `data.${params.action}`,
         entityType: `db:${params.model}`,
         entityId: resultId ?? whereId,
-        metadata: capped({ ...metadata, source: store?.source ?? 'unknown', ...(params.runInTransaction ? { inTransaction: true } : {}) }),
+        metadata: capped({ ...metadata, source: actor?.source ?? 'unknown', ...(params.runInTransaction ? { inTransaction: true } : {}) }),
       };
       if (params.runInTransaction) {
         // Held for this request; written by its next ordinary query. With
@@ -304,3 +357,4 @@ export function installAuditJournal(client: PrismaClient): void {
     return result;
   });
 }
+export { redact as redactForJournal };

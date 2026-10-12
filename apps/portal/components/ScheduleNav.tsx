@@ -1,21 +1,16 @@
-import { LoadingLink } from '@/components/LoadingLink';
+import { SubNav } from '@/components/ui/SubNav';
+import type { IconName } from '@/components/ui/Icon';
 
-const TABS = [
-  { href: '/schedule', label: 'Dashboard' },
-  { href: '/schedule/calendar', label: 'Calendar' },
-  { href: '/schedule/appointments', label: 'Appointments' },
-  { href: '/schedule/availability', label: 'Room availability' },
-  { href: '/schedule/new', label: 'New appointment' },
-  { href: '/schedule/rooms', label: 'Meeting rooms' },
-  { href: '/schedule/aides', label: 'Aides' },
+const TABS: { href: string; label: string; icon: IconName }[] = [
+  { href: '/schedule', label: 'Dashboard', icon: 'dashboard' },
+  { href: '/schedule/calendar', label: 'Calendar', icon: 'calendar' },
+  { href: '/schedule/appointments', label: 'Appointments', icon: 'list' },
+  { href: '/schedule/availability', label: 'Room availability', icon: 'clock' },
+  { href: '/schedule/new', label: 'New appointment', icon: 'plus' },
+  { href: '/schedule/rooms', label: 'Meeting rooms', icon: 'room' },
+  { href: '/schedule/aides', label: 'Aides', icon: 'users' },
 ];
 
 export function ScheduleNav({ active }: { active: string }) {
-  return (
-    <div className="mb-6 flex flex-wrap gap-2">
-      {TABS.map((t) => (
-        <LoadingLink key={t.href} href={t.href} className={`rounded-full px-4 py-1.5 text-sm font-medium ${active === t.href ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]'}`}>{t.label}</LoadingLink>
-      ))}
-    </div>
-  );
+  return <SubNav tabs={TABS} active={active} label="Scheduling" />;
 }

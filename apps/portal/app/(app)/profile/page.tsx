@@ -5,6 +5,7 @@ import { STAFF_RULES } from '@/lib/email-templates/staff-access';
 import { Avatar } from '@/components/Avatar';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ChangePasswordForm } from '@/components/ChangePasswordForm';
+import { PageTitle } from '@/components/ui';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6';
 const label = 'text-[11px] font-medium uppercase tracking-wide text-[var(--ejo-text-muted)]';
@@ -32,7 +33,7 @@ export default async function ProfilePage() {
       <section className={`${card} flex flex-wrap items-center gap-5`}>
         <Avatar name={u.fullName} size={72} active={u.isActive} />
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{u.fullName}</h1>
+          <PageTitle icon="user">{u.fullName}</PageTitle>
           <p className="mt-0.5 text-sm text-[var(--ejo-text-muted)]">{roles.length ? roles.join(' · ') : 'No role yet'}</p>
           <span className="mt-2 inline-flex rounded-full bg-[var(--ejo-success)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-success)]">Active</span>
         </div>

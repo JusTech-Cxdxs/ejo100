@@ -10,6 +10,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { coverText, type StockStatus } from '@/lib/inventory-analytics';
+import { PageHeader, HeaderAction, StatTile, PriorityActions, BarRow, EmptyState, Icon, CHART, type IconName, type Tone } from '@/components/ui';
 
 const naira = (n: number | null) => (n === null ? '—' : `₦${Math.round(n).toLocaleString('en-NG')}`);
 const pct = (n: number | null) => (n === null ? '—' : `${n.toFixed(1)}%`);
@@ -18,32 +19,37 @@ const qty = (n: number, unit: string) => `${n.toLocaleString('en-NG', { maximumF
 const STATUS: Record<StockStatus, { label: string; colour: string; chip: string }> = {
   OUT_OF_STOCK: { label: 'Out of stock', colour: '#DC2626', chip: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' },
   BELOW_SAFETY: { label: 'Below safety stock', colour: '#F97316', chip: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' },
-  BELOW_REORDER: { label: 'At / below reorder point', colour: '#F59E0B', chip: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]' },
+  BELOW_REORDER: { label: 'At / below reorder point', colour: '#F59E0B', chip: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning-text)]' },
   HEALTHY: { label: 'Healthy', colour: '#16A34A', chip: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]' },
-  OVERSTOCK: { label: 'Overstocked', colour: '#2563EB', chip: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]' },
+  OVERSTOCK: { label: 'Overstocked', colour: '#86EFAC', chip: 'bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]' },
   DEAD: { label: 'Dead stock', colour: '#6B7280', chip: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]' },
   NO_DEMAND: { label: 'No recent demand', colour: '#CBD5E1', chip: 'bg-[var(--ejo-text-muted)]/10 text-[var(--ejo-text-muted)]' },
 };
 const ATTENTION: StockStatus[] = ['OUT_OF_STOCK', 'BELOW_SAFETY', 'BELOW_REORDER'];
 
-function Section({ title, subtitle, children, id }: { title: string; subtitle: string; children: ReactNode; id?: string }) {
+function Section({ title, subtitle, children, id, icon = 'chart' }: { title: string; subtitle: string; children: ReactNode; id?: string; icon?: IconName }) {
   return (
     <section id={id} className="mb-10 scroll-mt-24">
-      <h2 className="text-lg font-semibold text-[var(--ejo-text)]">{title}</h2>
-      <p className="mb-4 text-xs text-[var(--ejo-text-muted)]">{subtitle}</p>
+      <div className="mb-4 flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)] ring-1 ring-[var(--ejo-primary)]/15"><Icon name={icon} size={18} /></span>
+        <div>
+          <h2 className="text-lg font-semibold leading-tight text-[var(--ejo-text)]">{title}</h2>
+          <p className="text-xs text-[var(--ejo-text-muted)]">{subtitle}</p>
+        </div>
+      </div>
       {children}
     </section>
   );
 }
-const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5';
-function Kpi({ label, value, hint, tone = 'text-[var(--ejo-text)]' }: { label: string; value: string; hint?: string; tone?: string }) {
-  return (
-    <div className={card}>
-      <p className="text-xs text-[var(--ejo-text-muted)]">{label}</p>
-      <p className={`mt-1 text-xl font-bold ${tone}`}>{value}</p>
-      {hint ? <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">{hint}</p> : null}
-    </div>
-  );
+const card = 'min-w-0 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5';
+const TONE_OF: Record<string, Tone> = { 'text-[var(--ejo-warning)]': 'warning', 'text-[var(--ejo-success)]': 'success', 'text-[var(--ejo-error)]': 'error' };
+function Kpi({ label, value, hint, tone = 'text-[var(--ejo-text)]', icon = 'chart' }: { label: string; value: string; hint?: string; tone?: string; icon?: IconName }) {
+  const t = TONE_OF[tone];
+  return <StatTile icon={icon} label={label} value={value} hint={hint} tone={t ?? 'brand'} emphasis={Boolean(t)} />;
+}
+/** A card title with its icon. */
+function CardTitle({ icon, children }: { icon: IconName; children: ReactNode }) {
+  return <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--ejo-text)]"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]"><Icon name={icon} size={15} /></span>{children}</p>;
 }
 /** A donut chart drawn with a CSS conic gradient — no chart library. */
 function Donut({ slices, centre }: { slices: { label: string; value: number; colour: string; note?: string }[]; centre: string }) {
@@ -52,8 +58,8 @@ function Donut({ slices, centre }: { slices: { label: string; value: number; col
   const stops = total > 0 ? slices.filter((x) => x.value > 0).map((x) => { const from = (acc / total) * 360; acc += x.value; return `${x.colour} ${from}deg ${(acc / total) * 360}deg`; }).join(', ') : '#E2E8F0 0deg 360deg';
   return (
     <div className="flex flex-wrap items-center gap-5">
-      <div className="relative h-36 w-36 shrink-0 rounded-full" style={{ background: `conic-gradient(${stops})` }}>
-        <div className="absolute inset-5 flex items-center justify-center rounded-full bg-[var(--ejo-surface)] text-center text-xs font-semibold text-[var(--ejo-text)]">{centre}</div>
+      <div className="ejo-spin-in relative h-36 w-36 shrink-0 rounded-full shadow-inner" style={{ background: `conic-gradient(${stops})` }}>
+        <div className="absolute inset-5 flex items-center justify-center rounded-full bg-[var(--ejo-surface)] text-center text-xs font-semibold text-[var(--ejo-text)] shadow-sm">{centre}</div>
       </div>
       <ul className="min-w-0 flex-1 space-y-1 text-xs">
         {slices.map((x) => (
@@ -68,24 +74,14 @@ function Donut({ slices, centre }: { slices: { label: string; value: number; col
 }
 function Bars({ rows }: { rows: { label: string; value: number; note: string }[] }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
-  return (
-    <div className="space-y-1.5">
-      {rows.map((r) => (
-        <div key={r.label} className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-2 text-xs">
-          <span className="truncate text-[var(--ejo-text)]" title={r.label}>{r.label}</span>
-          <div className="h-3 rounded bg-[var(--ejo-bg)]"><div className="h-3 rounded bg-[var(--ejo-primary)]" style={{ width: `${(r.value / max) * 100}%` }} /></div>
-          <span className="text-right text-[var(--ejo-text-muted)]">{r.note}</span>
-        </div>
-      ))}
-    </div>
-  );
+  return <div className="space-y-2">{rows.map((r) => <BarRow key={r.label} label={r.label} value={r.value} max={max} note={r.note} />)}</div>;
 }
 
 export default async function InventoryAnalyticsPage({ searchParams }: { searchParams: Promise<{ lead?: string; service?: string; show?: string; focus?: string; status?: string; error?: string }> }) {
   await guardPage('analytics.inventory.view', '/inventory/analytics');
   const params = await searchParams;
   const branchId = await getStoreBranchId();
-  if (!branchId) return <div className="p-8 text-sm text-[var(--ejo-text-muted)]">No Store branch is set up yet.</div>;
+  if (!branchId) return <div className="w-full p-4 sm:p-8"><PageHeader icon="chart" title="Inventory analytics" description="No Store branch is set up yet." back={{ href: '/inventory', label: 'Back to Inventory' }} /></div>;
   const lead = Math.min(180, Math.max(1, Number(params.lead) || 14));
   const service = ['0.9', '0.95', '0.975', '0.99'].includes(params.service ?? '') ? Number(params.service) : 0.95;
   const a = await getInventoryAnalytics(branchId, { leadTimeDays: lead, serviceLevel: service });
@@ -99,21 +95,21 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
   const input = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1 text-sm text-[var(--ejo-text)]';
 
   return (
-    <div className="p-8">
-      <LoadingLink href="/inventory" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Inventory</LoadingLink>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Inventory analytics</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-            Stock health, reorder intelligence, demand and profitability — from real movements: true costs traced to each goods receipt, and the
-            prices actually charged on Job Cards and Vehicle Services. Every figure says how it is worked out.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <LoadingLink href="/inventory/pricing" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Pricing Command Center</LoadingLink>
-          <LoadingLink href="/inventory/parts" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Parts catalogue</LoadingLink>
-        </div>
-      </div>
+    <div className="w-full p-4 sm:p-8">
+      <PageHeader
+        hero
+        live
+        back={{ href: '/inventory', label: 'Back to Inventory' }}
+        icon="chart"
+        eyebrow="Analytics · Store"
+        title="Inventory analytics"
+        description={<>Stock health, reorder intelligence, demand and profitability — from real movements: true costs traced to each goods receipt, and the
+            prices actually charged on Job Cards and Vehicle Services. Every figure says how it is worked out.</>}
+        actions={<>
+          <HeaderAction href="/inventory/pricing" icon="tag" variant="secondary">Pricing Command Center</HeaderAction>
+          <HeaderAction href="/inventory/parts" icon="package" variant="secondary">Parts catalogue</HeaderAction>
+        </>}
+      />
       {params.status === 'levels_set' ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message="Stock levels updated — the parts list indicators follow them straight away." /></div> : null}
       {params.error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={params.error} /></div> : null}
 
@@ -134,76 +130,75 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
         </p>
       </form>
 
-      <Section title="What to do now" subtitle="Prescriptive — prioritised actions, each linked to the part or tool that fixes it.">
-        {a.prescriptive.actions.length === 0 ? <p className={`${card} text-sm text-[var(--ejo-text-muted)]`}>Nothing needs attention right now.</p> : (
-          <div className="space-y-2">
-            {a.prescriptive.actions.slice(0, 25).map((act, i) => (
-              <LoadingLink key={`${act.href}-${i}`} href={act.href} className={`flex items-start gap-3 ${card} hover:border-[var(--ejo-primary)]`}>
-                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${act.priority === 1 ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' : act.priority === 2 ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]' : 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]'}`}>P{act.priority}</span>
-                <span className="min-w-0"><span className="block text-sm font-medium text-[var(--ejo-text)]">{act.title}</span><span className="block text-xs text-[var(--ejo-text-muted)]">{act.detail}</span></span>
-              </LoadingLink>
-            ))}
-            {a.prescriptive.actions.length > 25 ? <p className="text-xs text-[var(--ejo-text-muted)]">+ {pluralize(a.prescriptive.actions.length - 25, 'more action')} — see the planner below.</p> : null}
-          </div>
+      <Section icon="bolt" title="What to do now" subtitle="Prescriptive — prioritised actions, each linked to the part or tool that fixes it.">
+        {a.prescriptive.actions.length === 0 ? <div className={card}><EmptyState compact icon="check-circle" title="Nothing needs attention right now." /></div> : (
+          <>
+            <PriorityActions actions={a.prescriptive.actions.slice(0, 25)} title="Prioritised" note={null} />
+            {a.prescriptive.actions.length > 25 ? <p className="-mt-6 text-xs text-[var(--ejo-text-muted)]">+ {pluralize(a.prescriptive.actions.length - 25, 'more action')} — see the planner below.</p> : null}
+          </>
         )}
       </Section>
 
-      <Section title="Descriptive" subtitle="What you hold and what it earned — last 365 days.">
-        <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <Kpi label="Stock value (FIFO, at receipt cost)" value={naira(d.stockValue)} hint={`${pluralize(d.parts, 'part')} · ${d.unitsOnHand.toLocaleString('en-NG')} on hand${d.uncostedUnits > 0 ? ` · ${d.uncostedUnits.toLocaleString('en-NG')} units on ${pluralize(d.partsWithUncostedStock, 'part')} have no recorded cost (valued at average)` : ''}`} />
-          <Kpi label="Revenue from parts" value={naira(d.revenue365)} hint={st.estimatedRevenueShare > 0 ? `${Math.round(st.estimatedRevenueShare * 100)}% at current price (no estimate price)` : 'Prices actually charged'} />
-          <Kpi label="Cost of parts issued" value={naira(d.cogs365)} hint="True cost from each goods receipt" />
-          <Kpi label="Gross profit" value={naira(d.grossProfit)} tone={d.grossProfit >= 0 ? 'text-[var(--ejo-success)]' : 'text-[var(--ejo-error)]'} />
-          <Kpi label="Margin / markup" value={`${pct(d.marginPercent)} / ${pct(d.markupPercent)}`} hint="Profit ÷ revenue / profit ÷ cost" />
-          <Kpi label="Needing attention" value={String(d.statusCounts.OUT_OF_STOCK + d.statusCounts.BELOW_SAFETY + d.statusCounts.BELOW_REORDER)} hint="Out of stock, below safety or reorder" tone="text-[var(--ejo-warning)]" />
+      <Section icon="activity" title="Descriptive" subtitle="What you hold and what it earned — last 365 days.">
+        <div className="ejo-stagger mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <Kpi icon="boxes" label="Stock value (FIFO, at receipt cost)" value={naira(d.stockValue)} hint={`${pluralize(d.parts, 'part')} · ${d.unitsOnHand.toLocaleString('en-NG')} on hand${d.uncostedUnits > 0 ? ` · ${d.uncostedUnits.toLocaleString('en-NG')} units on ${pluralize(d.partsWithUncostedStock, 'part')} have no recorded cost (valued at average)` : ''}`} />
+          <Kpi icon="money" label="Revenue from parts" value={naira(d.revenue365)} hint={st.estimatedRevenueShare > 0 ? `${Math.round(st.estimatedRevenueShare * 100)}% at current price (no estimate price)` : 'Prices actually charged'} />
+          <Kpi icon="receipt" label="Cost of parts issued" value={naira(d.cogs365)} hint="True cost from each goods receipt" />
+          <Kpi icon="trend-up" label="Gross profit" value={naira(d.grossProfit)} tone={d.grossProfit >= 0 ? 'text-[var(--ejo-success)]' : 'text-[var(--ejo-error)]'} />
+          <Kpi icon="percent" label="Margin / markup" value={`${pct(d.marginPercent)} / ${pct(d.markupPercent)}`} hint="Profit ÷ revenue / profit ÷ cost" />
+          <Kpi icon="alert" label="Needing attention" value={String(d.statusCounts.OUT_OF_STOCK + d.statusCounts.BELOW_SAFETY + d.statusCounts.BELOW_REORDER)} hint="Out of stock, below safety or reorder" tone="text-[var(--ejo-warning)]" />
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
           <div className={card}>
-            <p className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Stock health</p>
+            <CardTitle icon="pie">Stock health</CardTitle>
             <Donut centre={pluralize(d.parts, 'part')} slices={(Object.keys(STATUS) as StockStatus[]).map((k) => ({ label: STATUS[k].label, value: d.statusCounts[k], colour: STATUS[k].colour }))} />
           </div>
           <div className={card}>
-            <p className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Stock value by category</p>
+            <CardTitle icon="layers">Stock value by category</CardTitle>
             {d.categories.length === 0 ? <p className="text-xs text-[var(--ejo-text-muted)]">No parts yet.</p> : <Bars rows={d.categories.slice(0, 10).map((c) => ({ label: c.category, value: c.stockValue, note: `${naira(c.stockValue)} · margin ${pct(c.marginPercent)}` }))} />}
           </div>
           <div className={`${card} lg:col-span-2`}>
-            <p className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Last 12 months — received vs issued (at cost) vs revenue</p>
+            <CardTitle icon="bars">Last 12 months — received vs issued (at cost) vs revenue</CardTitle>
             <div className="flex h-40 items-end gap-1">
               {d.trend.map((t) => (
                 <div key={t.label} className="flex min-w-0 flex-1 flex-col items-center gap-0.5" title={`${t.label}: received ${naira(t.received)} · issued ${naira(t.issuedCost)} · revenue ${naira(t.revenue)}`}>
                   <div className="flex h-32 w-full items-end gap-px">
-                    <div className="flex-1 rounded-t bg-[#94A3B8]" style={{ height: `${(t.received / trendMax) * 100}%` }} />
-                    <div className="flex-1 rounded-t bg-[var(--ejo-primary)]/80" style={{ height: `${(t.issuedCost / trendMax) * 100}%` }} />
-                    <div className="flex-1 rounded-t bg-[var(--ejo-success)]/80" style={{ height: `${(t.revenue / trendMax) * 100}%` }} />
+                    <div className="ejo-grow-up flex-1 rounded-t-sm" style={{ height: `${(t.received / trendMax) * 100}%`, background: CHART.neutralSoft }} />
+                    <div className="ejo-grow-up flex-1 rounded-t-sm" style={{ height: `${(t.issuedCost / trendMax) * 100}%`, background: CHART.primarySoft }} />
+                    <div className="ejo-grow-up flex-1 rounded-t-sm" style={{ height: `${(t.revenue / trendMax) * 100}%`, background: CHART.primary }} />
                   </div>
                   <span className="text-[9px] text-[var(--ejo-text-muted)]">{t.label}</span>
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">Grey: received · Blue: issued at cost · Green: revenue.</p>
+            <p className="mt-3 flex flex-wrap gap-3 text-[11px] text-[var(--ejo-text-muted)]">
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm" style={{ background: CHART.neutralSoft }} />Received</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm" style={{ background: CHART.primarySoft }} />Issued at cost</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm" style={{ background: CHART.primary }} />Revenue</span>
+            </p>
           </div>
         </div>
       </Section>
 
-      <Section title="Statistics" subtitle="Efficiency and the shape of demand.">
-        <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Kpi label="Stock turnover" value={st.turnover === null ? '—' : `${st.turnover.toFixed(2)}×`} hint="Cost issued in a year ÷ stock value" />
-          <Kpi label="Days of inventory" value={st.daysOfInventory === null ? '—' : coverText(st.daysOfInventory)} hint="How long current stock lasts at the yearly pace" />
-          <Kpi label="GMROI" value={st.gmroi === null ? '—' : `₦${st.gmroi.toFixed(2)}`} hint="Gross profit per ₦1 held in stock" />
-          <Kpi label="Demand variability (X / Y / Z)" value={`${st.xyzCount.X} / ${st.xyzCount.Y} / ${st.xyzCount.Z}`} hint="Steady / variable / erratic weekly demand" />
+      <Section icon="pie" title="Statistics" subtitle="Efficiency and the shape of demand.">
+        <div className="ejo-stagger mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <Kpi icon="refund" label="Stock turnover" value={st.turnover === null ? '—' : `${st.turnover.toFixed(2)}×`} hint="Cost issued in a year ÷ stock value" />
+          <Kpi icon="calendar" label="Days of inventory" value={st.daysOfInventory === null ? '—' : coverText(st.daysOfInventory)} hint="How long current stock lasts at the yearly pace" />
+          <Kpi icon="trend-up" label="GMROI" value={st.gmroi === null ? '—' : `₦${st.gmroi.toFixed(2)}`} hint="Gross profit per ₦1 held in stock" />
+          <Kpi icon="activity" label="Demand variability (X / Y / Z)" value={`${st.xyzCount.X} / ${st.xyzCount.Y} / ${st.xyzCount.Z}`} hint="Steady / variable / erratic weekly demand" />
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
           <div className={card}>
-            <p className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">ABC — where the money moves (share of yearly consumption value)</p>
+            <CardTitle icon="star">ABC — where the money moves (share of yearly consumption value)</CardTitle>
             <Donut centre="ABC" slices={[
-              { label: `A — top 80% of value (${pluralize(st.abcCount.A, 'part')})`, value: st.abcValue.A, colour: '#1D4ED8', note: naira(st.abcValue.A) },
-              { label: `B — next 15% (${pluralize(st.abcCount.B, 'part')})`, value: st.abcValue.B, colour: '#60A5FA', note: naira(st.abcValue.B) },
-              { label: `C — the rest (${pluralize(st.abcCount.C, 'part')})`, value: st.abcValue.C, colour: '#BFDBFE', note: naira(st.abcValue.C) },
+              { label: `A — top 80% of value (${pluralize(st.abcCount.A, 'part')})`, value: st.abcValue.A, colour: '#15803D', note: naira(st.abcValue.A) },
+              { label: `B — next 15% (${pluralize(st.abcCount.B, 'part')})`, value: st.abcValue.B, colour: '#4ADE80', note: naira(st.abcValue.B) },
+              { label: `C — the rest (${pluralize(st.abcCount.C, 'part')})`, value: st.abcValue.C, colour: '#BBF7D0', note: naira(st.abcValue.C) },
             ]} />
             <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">Watch A parts closely (tight levels, frequent review); C parts can be ordered in larger, rarer batches.</p>
           </div>
           <div className={card}>
-            <p className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Tied-up capital</p>
+            <CardTitle icon="lock">Tied-up capital</CardTitle>
             <Bars rows={[
               { label: 'Dead stock', value: g.deadStockValue, note: `${naira(g.deadStockValue)} · ${pluralize(g.deadStock.length, 'part')}` },
               { label: 'Overstocked', value: g.overstockValue, note: `${naira(g.overstockValue)} · ${pluralize(g.overstock.length, 'part')}` },
@@ -213,11 +208,11 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
         </div>
       </Section>
 
-      <Section title="Diagnostic" subtitle="Why — what earns, what doesn't, and where costs are moving.">
+      <Section icon="search" title="Diagnostic" subtitle="Why — what earns, what doesn't, and where costs are moving.">
         <div className="grid gap-4 lg:grid-cols-2">
           {([['Top revenue parts', g.topRevenue, (r: (typeof g.topRevenue)[number]) => `${naira(r.revenue365)} · ${pct(r.marginPercent)}`], ['Top profit parts', g.topProfit, (r: (typeof g.topProfit)[number]) => `${naira(r.grossProfit)} · ${pct(r.marginPercent)}`], ['Lowest margins', g.lowestMargin, (r: (typeof g.lowestMargin)[number]) => `${pct(r.marginPercent)} on ${naira(r.revenue365)}`], ['Cost rising (last receipt vs average)', g.costInflation, (r: (typeof g.costInflation)[number]) => `+${r.costInflation}% · now ${naira(r.lastCost)}`]] as const).map(([title, list, note]) => (
             <div key={title} className={card}>
-              <p className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">{title}</p>
+              <CardTitle icon={title.startsWith('Top revenue') ? 'money' : title.startsWith('Top profit') ? 'trend-up' : title.startsWith('Lowest') ? 'trend-down' : 'alert'}>{title}</CardTitle>
               {list.length === 0 ? <p className="text-xs text-[var(--ejo-text-muted)]">Nothing to show yet.</p> : (
                 <ul className="space-y-1 text-sm">
                   {list.map((r) => (
@@ -231,7 +226,7 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
             </div>
           ))}
           <div className={`${card} lg:col-span-2`}>
-            <p className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">Priced below target margin ({g.belowTarget.length})</p>
+            <CardTitle icon="tag">Priced below target margin ({g.belowTarget.length})</CardTitle>
             {g.belowTarget.length === 0 ? <p className="text-xs text-[var(--ejo-text-muted)]">Every priced part meets its target margin at its latest cost.</p> : (
               <ul className="space-y-1 text-sm">
                 {g.belowTarget.map((r) => (
@@ -247,14 +242,14 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
         </div>
       </Section>
 
-      <Section title="Predictive" subtitle="What's coming at the current pace of demand.">
-        <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Kpi label="Will run out in 14 / 30 days" value={`${p.stockoutIn14} / ${p.stockoutIn30}`} hint="Parts in stock today" tone="text-[var(--ejo-warning)]" />
-          <Kpi label="Next 30 days' demand (at cost)" value={naira(p.demand30Cost)} hint={`≈ ${naira(p.demand30Revenue)} at current prices`} />
-          <Kpi label="Spend to reorder now" value={naira(p.reorderSpend)} hint="Suggested quantities at latest cost, for parts needing it" />
+      <Section icon="sparkles" title="Predictive" subtitle="What's coming at the current pace of demand.">
+        <div className="ejo-stagger mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <Kpi icon="clock" label="Will run out in 14 / 30 days" value={`${p.stockoutIn14} / ${p.stockoutIn30}`} hint="Parts in stock today" tone="text-[var(--ejo-warning)]" />
+          <Kpi icon="sparkles" label="Next 30 days' demand (at cost)" value={naira(p.demand30Cost)} hint={`≈ ${naira(p.demand30Revenue)} at current prices`} />
+          <Kpi icon="cart" label="Spend to reorder now" value={naira(p.reorderSpend)} hint="Suggested quantities at latest cost, for parts needing it" />
         </div>
         <div className={card}>
-          <p className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">Projected stock-outs (next 30 days)</p>
+          <CardTitle icon="clock">Projected stock-outs (next 30 days)</CardTitle>
           {p.upcomingStockouts.length === 0 ? <p className="text-xs text-[var(--ejo-text-muted)]">None expected at the current pace.</p> : (
             <ul className="space-y-1 text-sm">
               {p.upcomingStockouts.map((r) => (
@@ -268,7 +263,7 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
         </div>
       </Section>
 
-      <Section id="planner" title="Reorder planner" subtitle={showAll ? 'Every part, with its suggested levels.' : 'Parts needing attention, and parts with demand but no stock levels set.'}>
+      <Section id="planner" icon="cart" title="Reorder planner" subtitle={showAll ? 'Every part, with its suggested levels.' : 'Parts needing attention, and parts with demand but no stock levels set.'}>
         <div className="mb-3 flex flex-wrap gap-2 text-xs">
           <LoadingLink href={`/inventory/analytics?${keep}#planner`} className={`rounded-full px-3 py-1 font-medium ${!showAll ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>Needs attention</LoadingLink>
           <LoadingLink href={`/inventory/analytics?${keep}&show=all#planner`} className={`rounded-full px-3 py-1 font-medium ${showAll ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>All parts ({a.rows.length})</LoadingLink>
@@ -291,7 +286,7 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
                     <span className="text-[var(--ejo-text-muted)]">Suggested</span><span className="font-medium">{r.avgDaily > 0 ? `reorder ${r.suggestedReorder} · safety ${r.suggestedSafety}` : 'needs demand history'}</span>
                   </div>
                   <div className="space-y-2 text-xs">
-                    {r.idleAtLevel ? <p className="text-[var(--ejo-warning)]">Unused for {a.settings.demandWindowDays} days while at its reorder level — consider lowering the level.</p> : null}
+                    {r.idleAtLevel ? <p className="text-[var(--ejo-warning-text)]">Unused for {a.settings.demandWindowDays} days while at its reorder level — consider lowering the level.</p> : null}
                     {r.suggestedOrderQty > 0 ? <p className="text-[var(--ejo-text)]">Order about <span className="font-semibold">{qty(r.suggestedOrderQty, r.unit)}</span>{r.lastCost !== null || r.avgCost !== null ? ` (≈ ${naira(r.reorderCost)})` : ''}</p> : <p className="text-[var(--ejo-text-muted)]">No order needed now.</p>}
                     {r.avgDaily > 0 ? (
                       <form action={setPartStockLevelsFormAction} className="flex flex-wrap items-end gap-2">

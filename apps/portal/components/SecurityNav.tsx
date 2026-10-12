@@ -1,26 +1,19 @@
-import { LoadingLink } from '@/components/LoadingLink';
+import { SubNav } from '@/components/ui/SubNav';
+import type { IconName } from '@/components/ui/Icon';
 
-const TABS = [
-  { href: '/security', label: 'Gate dashboard' },
-  { href: '/security/visitors', label: 'Visitors' },
-  { href: '/security/exit-passes', label: 'Exit passes' },
-  { href: '/security/vehicles', label: 'Vehicles leaving' },
-  { href: '/security/road-tests', label: 'Road tests' },
-  { href: '/security/deliveries', label: 'Deliveries' },
-  { href: '/security/contractors', label: 'Contractors' },
-  { href: '/security/incidents', label: 'Incidents' },
-  { href: '/security/overdue', label: 'Overdue' },
-  { href: '/security/register', label: 'Register' },
+const TABS: { href: string; label: string; icon: IconName }[] = [
+  { href: '/security', label: 'Gate dashboard', icon: 'dashboard' },
+  { href: '/security/visitors', label: 'Visitors', icon: 'badge' },
+  { href: '/security/exit-passes', label: 'Exit passes', icon: 'exit' },
+  { href: '/security/vehicles', label: 'Vehicles leaving', icon: 'car' },
+  { href: '/security/road-tests', label: 'Road tests', icon: 'road' },
+  { href: '/security/deliveries', label: 'Deliveries', icon: 'truck' },
+  { href: '/security/contractors', label: 'Contractors', icon: 'hardhat' },
+  { href: '/security/incidents', label: 'Incidents', icon: 'alert' },
+  { href: '/security/overdue', label: 'Overdue', icon: 'clock' },
+  { href: '/security/register', label: 'Register', icon: 'list' },
 ];
 
 export function SecurityNav({ active }: { active: string }) {
-  return (
-    <div className="mb-6 flex flex-wrap gap-2">
-      {TABS.map((t) => (
-        <LoadingLink key={t.href} href={t.href} className={`rounded-full px-4 py-1.5 text-sm font-medium ${active === t.href ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]'}`}>
-          {t.label}
-        </LoadingLink>
-      ))}
-    </div>
-  );
+  return <SubNav tabs={TABS} active={active} label="Security" />;
 }

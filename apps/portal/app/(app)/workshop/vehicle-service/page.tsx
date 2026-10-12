@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { headers } from 'next/headers';
 import { getVehicleServiceOutcomes } from '@/lib/actions/visit-outcomes';
 import { OutcomeFilterTabs } from '@/components/OutcomeFilterTabs';
@@ -19,6 +19,8 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { ServiceComplaintListInput } from '@/components/ServiceComplaintListInput';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -30,17 +32,6 @@ const STATUS_LABEL: Record<string, string> = {
   COLLECTED: 'Checked Out',
   CANCELLED: 'Cancelled',
   ESCALATED: 'Escalated to Job Card',
-};
-const STATUS_CLASS: Record<string, string> = {
-  SCHEDULED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
-  CHECKED_IN: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  IN_SERVICE: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
-  READY_FOR_COLLECTION: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
-  CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
-  COLLECTED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
-  ESCALATED: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
 /**
@@ -59,6 +50,8 @@ export default async function VehicleServicePage({
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { q, type, error, status, editInterval, outcome: rawOutcome } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const outcomeFilter = parseOutcomeFilter(rawOutcome);
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   const [branchId, session] = await Promise.all([
@@ -89,14 +82,9 @@ export default async function VehicleServicePage({
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/workshop"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Workshop
-      </LoadingLink>
+      <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
       <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Vehicle Service</h1>
+        <PageTitle icon="droplet">Vehicle Service</PageTitle>
         {isMasterAdmin && organisation ? (
           editInterval === 'true' ? (
             <form action={updatePrimaryServiceIntervalFormAction} className="flex flex-wrap items-end gap-2">
@@ -250,7 +238,7 @@ export default async function VehicleServicePage({
                         </LoadingLink>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3 text-[var(--ejo-text)]">{s.customer.fullName}</td>
+                    <td className="px-4 py-3 text-[var(--ejo-text)]"><CustomerLink id={s.customerId} name={s.customer.fullName} canView={canSeeCustomers} /></td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       <LoadingLink href={`/workshop/vehicles/${s.vehicle.id}/edit`} className="hover:underline hover:text-[var(--ejo-text)]">
                         {[s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || '—'}
@@ -258,13 +246,7 @@ export default async function VehicleServicePage({
                       </LoadingLink>
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          s.escalatedToJobCard ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]' : STATUS_CLASS[s.status]
-                        }`}
-                      >
-                        {s.escalatedToJobCard ? 'Escalated' : STATUS_LABEL[s.status]}
-                      </span>
+                      {s.escalatedToJobCard ? <StatusChip tone="warning">Escalated</StatusChip> : <StatusChip status={s.status} label={STATUS_LABEL[s.status]} />}
                     </td>
                     <td className="px-4 py-3">
                       {(() => {

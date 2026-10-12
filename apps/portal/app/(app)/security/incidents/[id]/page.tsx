@@ -8,8 +8,9 @@ import { SecurityHistory } from '@/components/SecurityHistory';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
-import { INCIDENT_STATUS_LABEL, SEVERITY_LABEL, SEVERITY_CHIP, STATUS_CHIP } from '@/lib/security-rules';
+import { INCIDENT_STATUS_LABEL, SEVERITY_LABEL, SEVERITY_CHIP } from '@/lib/security-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 
 const DONE: Record<string, string> = { reported: 'Incident reported — the Chief Security Officer has been emailed.', assign: 'Assigned — the officer has been emailed.', close: 'Incident closed.', reopen: 'Incident reopened.', follow_up: 'Follow-up saved.' };
 const HREF: Record<string, string> = { Visit: '/security/visitors/', ExitPass: '/security/exit-passes/', RoadTestPermit: '/security/road-tests/', VehicleGateExit: '/security/vehicles/exits/', GateDelivery: '/security/deliveries/', ContractorPass: '/security/contractors/' };
@@ -28,15 +29,15 @@ export default async function IncidentPage({ params, searchParams }: { params: P
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => (val ? <div className="flex justify-between gap-3 py-1 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right text-[var(--ejo-text)]">{val}</dd></div> : null);
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/security/incidents" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Incidents</LoadingLink>
+      <BackLink href="/security/incidents" label="Back to Incidents" className="mb-4" />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{inc.incidentNumber} — {inc.type}</h1>
+          <PageTitle icon="alert">{inc.incidentNumber} — {inc.type}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{formatDateTime(inc.occurredAt)} · {inc.location}</p>
         </div>
         <div className="flex gap-2">
           <span className={`rounded-full px-3 py-1 text-sm font-medium ${SEVERITY_CHIP[inc.severity]}`}>{SEVERITY_LABEL[inc.severity]}</span>
-          <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_CHIP[inc.status] ?? ''}`}>{INCIDENT_STATUS_LABEL[inc.status]}</span>
+          <StatusChip status={inc.status} label={INCIDENT_STATUS_LABEL[inc.status]} className="px-3 py-1 text-sm" />
         </div>
       </div>
       <SecurityNav active="/security/incidents" />

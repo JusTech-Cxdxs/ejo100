@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
 import { LiveStatus } from '@/components/LiveStatus';
@@ -7,37 +9,124 @@ import { GlobalSearch } from '@/components/GlobalSearch';
 import { NotificationBell } from '@/components/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Avatar } from '@/components/Avatar';
-import Link from 'next/link';
+import { Icon } from '@/components/ui/Icon';
 
-export function Topbar({ userName, roleName }: { userName: string; roleName: string }) {
+/**
+ * The sticky header: menu button and logo (phones/tablets), the master
+ * search front and centre, live status, theme, notifications and the
+ * person's own menu (profile, theme, sign out).
+ */
+export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen = false }: { userName: string; roleName: string; organisationName?: string; onMenu?: () => void; menuOpen?: boolean }) {
   const router = useRouter();
+  const [account, setAccount] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const accountRef = useRef<HTMLDivElement>(null);
 
   async function handleSignOut() {
+    setLeaving(true);
     await authClient.signOut();
     router.push('/login');
     router.refresh();
   }
 
+  useEffect(() => {
+    if (!account) return;
+    const outside = (e: MouseEvent) => { if (accountRef.current && !accountRef.current.contains(e.target as Node)) setAccount(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setAccount(false); };
+    document.addEventListener('mousedown', outside);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', esc); };
+  }, [account]);
+
+  // (No backdrop-filter on the header: it would make the header the containing
+  // block of the phone search sheet and menus, which are position: fixed.)
   return (
-    <header className="flex h-16 items-center justify-between gap-4 border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-6">
-      <GlobalSearch />
-      <div className="flex shrink-0 items-center gap-3">
+    <header className="relative z-40 flex h-16 shrink-0 items-center gap-2 border-b border-[var(--ejo-border)] bg-[color-mix(in_srgb,var(--ejo-bg)_92%,var(--ejo-primary))] px-3 shadow-[0_1px_0_0_rgba(0,0,0,0.02)] sm:gap-3 sm:px-5">
+      {/* Phones and tablets: the menu button and the logo. */}
+      <button
+        type="button"
+        onClick={onMenu}
+        aria-label="Open menu"
+        aria-expanded={menuOpen}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--ejo-text)] transition-colors hover:bg-[var(--ejo-surface)] lg:hidden"
+      >
+        <Icon name="menu" size={20} />
+      </button>
+      <Link href="/dashboard" className="flex shrink-0 items-center gap-2 lg:hidden" aria-label={`${organisationName ?? 'Home'} — dashboard`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/images/logo/logo.png" alt="" width={26} height={32} className="h-8 w-auto object-contain" />
+        <span className="hidden text-base font-extrabold tracking-tight text-[var(--ejo-text)] min-[420px]:inline">{(organisationName ?? '').split(/\s+/)[0]}</span>
+      </Link>
+
+      <div className="flex min-w-0 flex-1 justify-end md:justify-center">
+        <GlobalSearch />
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
         <LiveStatus />
-        <ThemeToggle />
+        <span className="hidden sm:inline-flex"><ThemeToggle /></span>
         <NotificationBell />
-        <Link href="/profile" className="flex items-center gap-2 rounded-full pr-1 hover:opacity-90" title="My profile">
-          <Avatar name={userName} size={32} />
-          <div className="hidden max-w-[12rem] text-sm md:block">
-            <p className="truncate font-medium text-[var(--ejo-text)]">{userName}</p>
-            <p className="truncate text-xs text-[var(--ejo-text-muted)]" title={roleName}>{roleName}</p>
-          </div>
-        </Link>
+
+        <div ref={accountRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setAccount((v) => !v)}
+            aria-label="Account menu"
+            aria-expanded={account}
+            aria-haspopup="true"
+            className="flex items-center gap-2 rounded-full p-0.5 pr-0.5 transition-colors hover:bg-[var(--ejo-surface)] md:pr-2"
+          >
+            <Avatar name={userName} size={32} />
+            <span className="hidden max-w-[11rem] text-left text-sm leading-tight xl:block">
+              <span className="block truncate font-medium text-[var(--ejo-text)]">{userName}</span>
+              <span className="block truncate text-xs text-[var(--ejo-text-muted)]" title={roleName}>{roleName}</span>
+            </span>
+            <span className={`hidden text-[var(--ejo-text-muted)] transition-transform md:inline ${account ? 'rotate-180' : ''}`} aria-hidden="true"><Icon name="chevron-down" size={14} /></span>
+          </button>
+          {account ? (
+            <div className="ejo-pop fixed inset-x-2 top-16 z-50 overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-2xl shadow-black/10 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-72">
+              <div className="flex items-center gap-3 border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4">
+                <Avatar name={userName} size={40} />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[var(--ejo-text)]">{userName}</p>
+                  <p className="truncate text-xs text-[var(--ejo-text-muted)]">{roleName}</p>
+                </div>
+              </div>
+              <div className="p-1.5">
+                <Link href="/profile" onClick={() => setAccount(false)} className="flex items-center gap-3 rounded-[var(--ejo-radius-md)] px-3 py-2 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">
+                  <span className="text-[var(--ejo-primary)]"><Icon name="user" size={17} /></span>My profile
+                </Link>
+                <Link href="/notifications" onClick={() => setAccount(false)} className="flex items-center gap-3 rounded-[var(--ejo-radius-md)] px-3 py-2 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">
+                  <span className="text-[var(--ejo-primary)]"><Icon name="bell" size={17} /></span>Notification Center
+                </Link>
+                <Link href="/roadmap" onClick={() => setAccount(false)} className="flex items-center gap-3 rounded-[var(--ejo-radius-md)] px-3 py-2 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">
+                  <span className="text-[var(--ejo-primary)]"><Icon name="roadmap" size={17} /></span>What’s coming next
+                </Link>
+              </div>
+              <div className="border-t border-[var(--ejo-border)] px-4 py-3">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--ejo-text-muted)]">Appearance</p>
+                <ThemeToggle variant="segmented" />
+              </div>
+              {/* Phones and tablets: sign out lives here (desktops have it in the header). */}
+              <div className="border-t border-[var(--ejo-border)] p-1.5 lg:hidden">
+                <button type="button" onClick={handleSignOut} disabled={leaving} className="flex w-full items-center gap-3 rounded-[var(--ejo-radius-md)] px-3 py-2 text-left text-sm text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/5">
+                  <Icon name="logout" size={17} />{leaving ? 'Signing out…' : 'Sign out'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
         <button
+          type="button"
           onClick={handleSignOut}
+          disabled={leaving}
           aria-label="Sign out"
-          className="whitespace-nowrap text-xs font-medium text-[var(--ejo-text-muted)] hover:text-[var(--ejo-error)]"
+          title="Sign out"
+          className="hidden h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-[var(--ejo-text-muted)] transition-colors hover:bg-[var(--ejo-error)]/8 hover:text-[var(--ejo-error)] lg:inline-flex"
         >
-          Sign out
+          <Icon name="logout" size={16} />
+          <span className="hidden 2xl:inline">Sign out</span>
         </button>
       </div>
     </header>

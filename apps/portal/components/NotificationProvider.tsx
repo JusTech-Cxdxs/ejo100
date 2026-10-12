@@ -53,8 +53,8 @@ const EMPTY: NotificationSummary = { actions: [], unreadActivity: [], unreadBroa
 export type LiveMode = 'push' | 'polling' | 'offline';
 /** Loading → Ready (with or without items) · Error (retrying) — never a false "caught up". */
 export type LoadState = 'loading' | 'ready' | 'error';
-type Ctx = { summary: NotificationSummary; loaded: boolean; state: LoadState; muted: boolean; toggleMute: () => void; markRead: (key: string) => Promise<void>; mode: LiveMode; lastSync: number };
-const NotificationContext = createContext<Ctx>({ summary: EMPTY, loaded: false, state: 'loading', muted: false, toggleMute: () => undefined, markRead: async () => undefined, mode: 'polling', lastSync: 0 });
+type Ctx = { summary: NotificationSummary; loaded: boolean; state: LoadState; muted: boolean; toggleMute: () => void; markRead: (key: string) => Promise<void>; markManyRead: (keys: string[]) => Promise<void>; mode: LiveMode; lastSync: number };
+const NotificationContext = createContext<Ctx>({ summary: EMPTY, loaded: false, state: 'loading', muted: false, toggleMute: () => undefined, markRead: async () => undefined, markManyRead: async () => undefined, mode: 'polling', lastSync: 0 });
 export const useNotifications = () => useContext(NotificationContext);
 
 /**
@@ -379,5 +379,17 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     await markNotificationsRead([key]).catch(() => undefined);
   }, []);
 
-  return <NotificationContext.Provider value={{ summary, loaded, state, muted, toggleMute, markRead, mode, lastSync }}>{children}</NotificationContext.Provider>;
+  /** "Mark all read" in the bell — the same as markRead, for several at once. */
+  const markManyRead = useCallback(async (keys: string[]) => {
+    if (keys.length === 0) return;
+    const gone = new Set(keys);
+    setSummary((s) => {
+      const unreadActivity = s.unreadActivity.filter((a) => !gone.has(a.key));
+      const unreadBroadcasts = s.unreadBroadcasts.filter((b) => !gone.has(b.key));
+      return { ...s, unreadActivity, unreadBroadcasts, total: s.actions.length + unreadActivity.length + unreadBroadcasts.length };
+    });
+    await markNotificationsRead(keys).catch(() => undefined);
+  }, []);
+
+  return <NotificationContext.Provider value={{ summary, loaded, state, muted, toggleMute, markRead, markManyRead, mode, lastSync }}>{children}</NotificationContext.Provider>;
 }

@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { allows, guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { listParts, getStoreBranchId, listAllPartTypesForSelect, searchPartTypesForSelect } from '@/lib/actions/store';
 import { durationLabel, durationShort } from '@/lib/warranty-state';
@@ -14,6 +14,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { EmptyState, PageHeader } from '@/components/ui';
 
 const TRACKING_TYPE_LABEL: Record<string, string> = {
   QUANTITY: 'Quantity',
@@ -37,22 +38,16 @@ export default async function InventoryPartsPage({
   await guardAnyPage(['store.view'], '/inventory');
   const { error, status, q } = await searchParams;
   const branchId = await getStoreBranchId();
-  const [parts, partPolicies] = await Promise.all([listParts(branchId, q), listWarrantyPolicies('PART', { state: 'active' })]);
+  const [parts, partPolicies, canManage] = await Promise.all([listParts(branchId, q), listWarrantyPolicies('PART', { state: 'active' }), allows('store.parts.manage', { branchId })]);
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/inventory"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Inventory
-      </LoadingLink>
-      <div className="mb-2">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Parts Catalog</h1>
-      </div>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        <OrgTrail area="Store" />
-      </p>
+      <PageHeader
+        icon="package"
+        back={{ href: "/inventory", label: "Back to Inventory" }}
+        title="Parts Catalog"
+        description={<><OrgTrail area="Store" /></>}
+      />
 
       {error ? (
         <div className="mb-6">
@@ -88,10 +83,10 @@ export default async function InventoryPartsPage({
         ) : null}
       </form>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className={canManage ? 'grid gap-6 lg:grid-cols-[1fr_360px]' : 'grid gap-6'}>
         <div>
           {parts.length === 0 ? (
-            <p className="text-sm text-[var(--ejo-text-muted)]">No parts in the catalog yet.</p>
+            <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="package" title="No parts in the catalog yet." /></div>
           ) : (
             <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
               <table className="w-full text-sm">
@@ -153,6 +148,7 @@ export default async function InventoryPartsPage({
           )}
         </div>
 
+        {canManage ? (
         <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Add a Part</h2>
           <form action={createPartFormAction} className="mt-4 space-y-3">
@@ -260,6 +256,7 @@ export default async function InventoryPartsPage({
             />
           </form>
         </div>
+        ) : null}
       </div>
     </div>
   );

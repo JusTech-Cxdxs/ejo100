@@ -7,6 +7,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { HotlineListInput } from '@/components/HotlineListInput';
 import { LoadingLink } from '@/components/LoadingLink';
 import { EditIcon, BuildingIcon } from '@/components/icons';
+import { EmptyState, PageTitle } from '@/components/ui';
 
 /**
  * The organisation's own real, printed identity — name, legal name,
@@ -31,7 +32,7 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
     <div className="p-8">
       <div className="mb-2 flex items-center gap-2">
         <BuildingIcon className="h-6 w-6 text-[var(--ejo-primary)]" />
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Organisation</h1>
+        <PageTitle icon="building">Organisation</PageTitle>
       </div>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
         Organisation profile, legal name, and the real contact and registration details every printed document — Job
@@ -50,7 +51,7 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
       ) : null}
 
       {!organisation ? (
-        <p className="text-sm text-[var(--ejo-text-muted)]">No organisation record found yet.</p>
+        <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="building" title="No organisation record found yet." /></div>
       ) : isEditing ? (
         <form action={updateOrganisationFormAction} className="max-w-xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
           <FormPendingOverlay />

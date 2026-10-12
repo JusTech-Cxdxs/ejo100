@@ -155,7 +155,7 @@ export const ROADMAP: RoadmapModule[] = [
       { name: 'Selling', items: ['Leads and opportunities by stage', 'Quotations and orders', 'Vehicle and parts sales'] },
       { name: 'Relationships', items: ['Customer 360: vehicles, visits, spend, warranties and complaints', 'Service reminders and campaigns (WhatsApp, SMS, email)', 'Loyalty and customer satisfaction'] },
     ],
-    connects: [{ label: 'Customers', href: '/workshop/customers' }, { label: 'Service tracker', href: '/workshop/service-tracker' }],
+    connects: [{ label: 'Customers', href: '/crm' }, { label: 'Service tracker', href: '/workshop/service-tracker' }],
   },
   {
     key: 'assets',

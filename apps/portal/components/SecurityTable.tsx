@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { EmptyState } from '@/components/ui/Cards';
 
 let seq = 0;
 
@@ -21,7 +22,7 @@ ${headers.map((h, i) => (h ? `  .${cls} td:nth-child(${i + 1})::before { content
   return (
     <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
       {empty ? (
-        <p className="p-6 text-sm text-[var(--ejo-text-muted)]">{empty}</p>
+        <EmptyState compact icon="inbox" title={empty} />
       ) : (
         <>
           <style>{css}</style>

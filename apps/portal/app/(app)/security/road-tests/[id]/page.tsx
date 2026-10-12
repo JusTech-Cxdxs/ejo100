@@ -9,8 +9,10 @@ import { PrintMenu } from '@/components/print/PrintMenu';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
-import { ROAD_TEST_STATUS_LABEL, STATUS_CHIP, durationText, minutesBetween, roadTestOverdueMinutes } from '@/lib/security-rules';
+import { ROAD_TEST_STATUS_LABEL, durationText, minutesBetween, roadTestOverdueMinutes } from '@/lib/security-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const DONE: Record<string, string> = {
   requested: 'Road test requested — the Manager has been asked to approve it.',
@@ -29,10 +31,12 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
   const { status, error } = await searchParams;
   const [r, roles, history, canDecide] = await Promise.all([getRoadTest(id), getSecurityRoles(), getSecurityHistory('RoadTestPermit', id), canDecideRoadTest(id)]);
   if (!r) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const away = minutesBetween(r.gateOutAt, r.gateInAt);
   const km = r.startOdometer !== null && r.endOdometer !== null ? r.endOdometer - r.startOdometer : null;
   const over = roadTestOverdueMinutes(r);
-  const rec = r.jobCard ? { number: r.jobCard.jobNumber, href: `/workshop/job-cards/${r.jobCard.id}`, customer: r.jobCard.customer.fullName } : r.vehicleService ? { number: r.vehicleService.serviceNumber, href: `/workshop/vehicle-service/${r.vehicleService.id}`, customer: r.vehicleService.customer.fullName } : null;
+  const rec = r.jobCard ? { number: r.jobCard.jobNumber, href: `/workshop/job-cards/${r.jobCard.id}`, customer: r.jobCard.customer.fullName, customerId: r.jobCard.customer.id } : r.vehicleService ? { number: r.vehicleService.serviceNumber, href: `/workshop/vehicle-service/${r.vehicleService.id}`, customer: r.vehicleService.customer.fullName, customerId: r.vehicleService.customer.id } : null;
   const input = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
   const btn = 'rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90';
   const line = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]';
@@ -41,15 +45,15 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
   const kmText = (n: number | null) => (n === null ? null : `${n.toLocaleString('en-NG')} km`);
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/security/road-tests" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Road tests</LoadingLink>
+      <BackLink href="/security/road-tests" label="Back to Road tests" className="mb-4" />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Road test {r.permitNumber}</h1>
+          <PageTitle icon="road">Road test {r.permitNumber}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{[r.vehicle.make, r.vehicle.model].filter(Boolean).join(' ')}{r.vehicle.plateNumber ? ` — ${r.vehicle.plateNumber}` : ''} · requested by {r.requestedBy.fullName} on {formatDateTime(r.createdAt)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {['APPROVED', 'OUT', 'RETURNED'].includes(r.status) ? <PrintMenu orgHref={`/print/road-test/${r.id}`} clientHref={`/print/road-test/${r.id}?variant=client`} clientLabel="Driver Copy" align="right" /> : null}
-          <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_CHIP[r.status] ?? ''}`}>{ROAD_TEST_STATUS_LABEL[r.status]}</span>
+          <StatusChip status={r.status} label={ROAD_TEST_STATUS_LABEL[r.status]} className="px-3 py-1 text-sm" />
         </div>
       </div>
       <SecurityNav active="/security/road-tests" />
@@ -59,7 +63,7 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
         <dl className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
           <Row k="Record" val={rec?.number} />
-          <Row k="Customer" val={rec?.customer} />
+          {rec?.customer ? <div className="flex justify-between gap-3 py-1 text-sm"><dt className="text-[var(--ejo-text-muted)]">Customer</dt><dd className="text-right text-[var(--ejo-text)]"><CustomerLink id={rec.customerId} name={rec.customer} canView={canSeeCustomers} /></dd></div> : null}
           <Row k="Plate / VIN" val={[r.vehicle.plateNumber, r.vehicle.chassisNumber].filter(Boolean).join(' · ') || null} />
           <Row k="Driver" val={`${r.driver.fullName}${r.driver.phone ? ` · ${r.driver.phone}` : ''}`} />
           {r.people.length ? <Row k="Going along" val={r.people.map((x: { name: string; employeeId: string | null }) => `${x.name}${x.employeeId ? ` (${x.employeeId})` : ''}`).join(', ')} /> : null}

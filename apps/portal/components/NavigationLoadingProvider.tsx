@@ -43,7 +43,7 @@ export function NavigationLoadingProvider({ children }: { children: ReactNode })
 
   return (
     <NavigationLoadingContext.Provider value={{ isPending, navigate }}>
-      <div className="relative flex-1">
+      <div className="ejo-page relative min-w-0 flex-1">
         {isPending ? (
           // Fixed, not absolute — the real bug this fixes. `absolute`
           // was positioned relative to this own div, which (before a

@@ -79,9 +79,10 @@ export async function createCustomerFormAction(formData: FormData) {
     const { wasExisting, welcomeEmailSent } = await findOrCreateCustomer({
       customerType: str(formData, 'customerType') === 'ORGANIZATION' ? 'ORGANIZATION' : 'INDIVIDUAL',
       fullName: str(formData, 'fullName'),
-      address: str(formData, 'address') || undefined,
+      address: str(formData, 'address'),
       email: str(formData, 'email'),
-      phone: str(formData, 'phone') || undefined,
+      phone: str(formData, 'phone'),
+      altPhone: str(formData, 'altPhone') || undefined,
     });
     revalidatePath('/workshop/customers');
     if (wasExisting) {

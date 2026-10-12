@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { authorize, jobOrServiceReach, seeJobCard, seeService, } from '@/lib/authz/server';
 
@@ -348,7 +349,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send refund receipt email', referenceNumber, err);
+    logFailure('Failed to send refund receipt email', referenceNumber, err);
   }
   return { id: refund.id, referenceNumber };
 }
@@ -382,8 +383,8 @@ export async function listAllRefunds(search?: string) {
     take: 200,
     include: {
       recordedBy: { select: { fullName: true } },
-      jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
-      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
+      jobCard: { select: { id: true, jobNumber: true, customer: { select: { id: true, fullName: true } } } },
+      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { id: true, fullName: true } } } },
     },
   });
 }

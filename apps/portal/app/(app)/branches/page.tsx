@@ -1,6 +1,7 @@
 import { guardPage } from '@/lib/authz/server';
 import { getBranches } from '@/lib/actions/branches';
 import { LoadingLink } from '@/components/LoadingLink';
+import { EmptyState, HeaderAction, PageHeader } from '@/components/ui';
 
 /**
  * Every real physical facility — each with its own real address and
@@ -16,17 +17,15 @@ export default async function BranchesPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Branches</h1>
-        <LoadingLink href="/structure" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Organisation structure · open a branch →</LoadingLink>
-      </div>
-      <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
-        Every real physical facility this platform operates from, and the real address and hotlines each one prints
-        on its own documents.
-      </p>
+      <PageHeader
+        icon="branch"
+        title="Branches"
+        description="Every real physical facility this platform operates from, and the real address and hotlines each one prints on its own documents."
+        actions={<HeaderAction href="/structure" icon="sitemap" variant="secondary">Organisation structure · open a branch →</HeaderAction>}
+      />
 
       {branches.length === 0 ? (
-        <p className="text-sm text-[var(--ejo-text-muted)]">No branches yet.</p>
+        <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="branch" title="No branches yet." /></div>
       ) : (
         <div className="max-w-3xl space-y-2">
           {branches.map((branch: (typeof branches)[number]) => (

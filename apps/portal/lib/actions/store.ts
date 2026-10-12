@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 /**
  * Store Server Actions — Phase 1: the part catalog, unit-of-measure
@@ -15,7 +16,7 @@
  */
 
 import { claimed } from '@/lib/integrity';
-import { retryOnNumberClash } from '@/lib/integrity-core';
+import { isUniqueClashOn, retryOnNumberClash } from '@/lib/integrity-core';
 import { prisma, PartTrackingType } from '@ejo/database';
 import { notifyWarrantyDepartmentOfPartWarranty } from '@/lib/warranty-department-notify';
 import { loadQuantityTraces } from '@/lib/inventory/quantity-trace';
@@ -412,7 +413,7 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send selling price notification emails', partId, err);
+    logFailure('Failed to send selling price notification emails', partId, err);
   }
 }
 
@@ -502,7 +503,7 @@ export async function setPartTargetMargin(partId: string, targetValue: number, p
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send target-margin-set notification emails', partId, err);
+    logFailure('Failed to send target-margin-set notification emails', partId, err);
   }
 }
 
@@ -1067,7 +1068,7 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Store matching request emails', jobCardId, err);
+    logFailure('Failed to send Store matching request emails', jobCardId, err);
   }
 }
 
@@ -1132,7 +1133,7 @@ async function sendStoreMatchingCompleteNotification(
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Store matching complete emails', jobCard.id, err);
+    logFailure('Failed to send Store matching complete emails', jobCard.id, err);
   }
 }
 
@@ -1383,8 +1384,8 @@ export async function getPart(id: string) {
                     select: {
                       id: true,
                       referenceNumber: true,
-                      jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
-                      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
+                      jobCard: { select: { id: true, jobNumber: true, customer: { select: { id: true, fullName: true } } } },
+                      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { id: true, fullName: true } } } },
                     },
                   },
                 },
@@ -1410,8 +1411,8 @@ export async function getPart(id: string) {
                 select: {
                   id: true,
                   referenceNumber: true,
-                  jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
-                  vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
+                  jobCard: { select: { id: true, jobNumber: true, customer: { select: { id: true, fullName: true } } } },
+                  vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { id: true, fullName: true } } } },
                 },
               },
             },
@@ -1443,8 +1444,8 @@ export async function getPart(id: string) {
                 select: {
                   id: true,
                   referenceNumber: true,
-                  jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
-                  vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
+                  jobCard: { select: { id: true, jobNumber: true, customer: { select: { id: true, fullName: true } } } },
+                  vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { id: true, fullName: true } } } },
                 },
               },
             },
@@ -1519,6 +1520,20 @@ export async function checkSerialNumberExists(serialNumber: string): Promise<boo
  * disagreeing with each other. */
 export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promise<{ id: string; referenceNumber: string }> {
   const user = await requireStoreStaff(input.branchId, 'store.grn.record');
+  try {
+    return await recordGoodsReceiptOnce(input, user);
+  } catch (err) {
+    // The same form landing twice at the same instant: the first one recorded
+    // the delivery — the second gets that receipt, never a technical error.
+    if (input.idempotencyKey && isUniqueClashOn(err, 'idempotencyKey')) {
+      const done = await prisma.goodsReceipt.findUnique({ where: { idempotencyKey: input.idempotencyKey }, select: { id: true, referenceNumber: true, branchId: true } });
+      if (done && done.branchId === input.branchId) return { id: done.id, referenceNumber: done.referenceNumber };
+    }
+    throw err;
+  }
+}
+
+async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awaited<ReturnType<typeof requireStoreStaff>>): Promise<{ id: string; referenceNumber: string }> {
   // Same form submitted again (dropped connection, double click): the stock
   // was already added — hand back that receipt instead of adding it twice.
   if (input.idempotencyKey) {
@@ -1844,7 +1859,7 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send goods-receipt notification email', receipt.id, err);
+    logFailure('Failed to send goods-receipt notification email', receipt.id, err);
   }
 
   // The real, immediate first notice for any genuinely new Pricing
@@ -1894,7 +1909,7 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send pricing-alert-raised emails', receipt.id, err);
+      logFailure('Failed to send pricing-alert-raised emails', receipt.id, err);
     }
   }
 
@@ -2120,7 +2135,7 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send price-sync notification emails', alert.part.id, err);
+    logFailure('Failed to send price-sync notification emails', alert.part.id, err);
   }
 }
 
@@ -2138,8 +2153,8 @@ export async function listGoodsReceipts(branchId: string) {
 const SLIP_DESTINATION_SELECT = {
   id: true,
   referenceNumber: true,
-  jobCard: { select: { jobNumber: true, customer: { select: { fullName: true } } } },
-  vehicleService: { select: { serviceNumber: true, customer: { select: { fullName: true } } } },
+  jobCard: { select: { jobNumber: true, customer: { select: { id: true, fullName: true } } } },
+  vehicleService: { select: { serviceNumber: true, customer: { select: { id: true, fullName: true } } } },
 } as const;
 
 export async function getGoodsReceipt(id: string) {
@@ -2259,7 +2274,7 @@ async function notifyStoreOfGoodsReceiptEdit(branchId: string, editedByName: str
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Goods Receipt edit notification emails', referenceNumber, err);
+    logFailure('Failed to send Goods Receipt edit notification emails', referenceNumber, err);
   }
 }
 

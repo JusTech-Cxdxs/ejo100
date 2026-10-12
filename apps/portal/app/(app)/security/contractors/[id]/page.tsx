@@ -12,6 +12,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { CONTRACTOR_STATUS_LABEL, STATUS_CHIP, durationText, lagosDay, minutesBetween } from '@/lib/security-rules';
 import { formatDateTime, formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const DONE: Record<string, string> = { requested: 'Pass requested — the Manager has been emailed.', approve: 'Approved — the staff member responsible and Security have been emailed.', decline: 'Declined — the requester has been emailed.', cancel: 'Pass cancelled.', revoke: 'Pass revoked — Security and the staff member responsible have been emailed.', sign_in: 'Team signed in.', sign_out: 'Team signed out.', follow_up: 'Follow-up saved.' };
 
@@ -29,10 +30,10 @@ export default async function ContractorPassPage({ params, searchParams }: { par
   const canCancel = ['PENDING_MANAGER', 'APPROVED'].includes(p.status) && !p.onSite && (p.requestedBy.id === roles.userId || p.host.id === roles.userId || roles.isFrontDesk || roles.isMaster);
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/security/contractors" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Contractors</LoadingLink>
+      <BackLink href="/security/contractors" label="Back to Contractors" className="mb-4" />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{p.passNumber} — {p.company}</h1>
+          <PageTitle icon="hardhat">{p.passNumber} — {p.company}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{p.work} · {p.workArea}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

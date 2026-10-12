@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
@@ -7,11 +7,11 @@ import { getGoodsReceipt, getGoodsReceiptAuditTrail } from '@/lib/actions/store'
 import { updateGoodsReceiptFormAction } from '@/lib/actions/store-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { GoodsReceiptLineCard, type GoodsReceiptLineStockTrace } from '@/components/GoodsReceiptLineCard';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
   'goods_receipt.recorded': 'Goods Receipt recorded',
@@ -36,7 +36,7 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
  */
 type ReceiptWithTrace = NonNullable<Awaited<ReturnType<typeof getGoodsReceipt>>>;
 type ReceiptLine = ReceiptWithTrace['lines'][number];
-type SlipDestination = { id: string; referenceNumber: string; jobCard: { jobNumber: string; customer: { fullName: string } } | null; vehicleService: { serviceNumber: string; customer: { fullName: string } } | null };
+type SlipDestination = { id: string; referenceNumber: string; jobCard: { jobNumber: string; customer: { id?: string; fullName: string } } | null; vehicleService: { serviceNumber: string; customer: { id?: string; fullName: string } } | null };
 
 function destination(slip: SlipDestination, quantity: number, detail: string | null): GoodsReceiptLineStockTrace['issuedTo'][number] {
   return {
@@ -44,6 +44,7 @@ function destination(slip: SlipDestination, quantity: number, detail: string | n
     referenceNumber: slip.referenceNumber,
     sourceNumber: slip.jobCard?.jobNumber ?? slip.vehicleService?.serviceNumber ?? null,
     customerName: slip.jobCard?.customer.fullName ?? slip.vehicleService?.customer.fullName ?? null,
+    customerId: slip.jobCard?.customer.id ?? slip.vehicleService?.customer.id ?? null,
     quantity,
     detail,
   };
@@ -95,6 +96,7 @@ function buildStockTrace(line: ReceiptLine, quantityTraces: ReceiptWithTrace['qu
         referenceNumber: release.slip.referenceNumber,
         sourceNumber: release.slip.sourceNumber,
         customerName: release.slip.customerName,
+        customerId: release.slip.customerId ?? null,
         quantity: a.quantity,
         detail: null,
       });
@@ -122,13 +124,13 @@ export default async function GoodsReceiptDetailPage({
   const { error, status } = await searchParams;
   const [receipt, auditTrail, grnWarranties] = await Promise.all([getGoodsReceipt(id), getGoodsReceiptAuditTrail(id), listWarrantiesFor({ goodsReceiptId: id })]);
   if (!receipt) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
 
   return (
     <div className="p-8">
-      <LoadingLink href="/inventory/goods-receipts" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Goods Receipts
-      </LoadingLink>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">{receipt.referenceNumber}</h1>
+      <BackLink href="/inventory/goods-receipts" label="Back to Goods Receipts" className="mb-4" />
+      <PageTitle icon="receipt" className="mb-2">{receipt.referenceNumber}</PageTitle>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         Received by {receipt.receivedBy.fullName} on {formatDateTime(new Date(receipt.receivedAt))}
       </p>
@@ -188,6 +190,7 @@ export default async function GoodsReceiptDetailPage({
               {receipt.lines.map((line: (typeof receipt.lines)[number]) => (
                 <GoodsReceiptLineCard
                   key={`${line.id}-${line.totalCost?.toString() ?? 'unset'}`}
+                  canSeeCustomers={canSeeCustomers}
                   goodsReceiptId={receipt.id}
                   lineId={line.id}
                   partId={line.part.id}

@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { seeVehicle } from '@/lib/authz/server';
 import { prisma } from '@ejo/database';
@@ -83,7 +84,7 @@ export async function runServiceRemindersNow(): Promise<{ evaluated: number; sen
     } catch (err) {
       failed += 1;
       // eslint-disable-next-line no-console
-      console.error('Failed to send service reminder', need.vehicleId, err);
+      logFailure('Failed to send service reminder', need.vehicleId, err);
     }
   }
   await writeAuditLog({ userId: user.id, action: 'service_reminders.run_manually', entityType: 'System', entityId: 'service-reminders', metadata: { evaluated: needing.length, sent, failed } });

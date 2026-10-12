@@ -1,10 +1,11 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { allows, guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { listGoodsReceipts, getStoreBranchId } from '@/lib/actions/store';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
+import { EmptyState, HeaderAction, PageHeader } from '@/components/ui';
 
 /**
  * A complete, permanent record of every delivery received into the
@@ -20,28 +21,17 @@ export default async function GoodsReceiptsPage({
   await guardAnyPage(['store.view'], '/inventory');
   const { status, error } = await searchParams;
   const branchId = await getStoreBranchId();
-  const receipts = await listGoodsReceipts(branchId);
+  const [receipts, canRecord] = await Promise.all([listGoodsReceipts(branchId), allows('store.grn.record', { branchId })]);
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/inventory"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Inventory
-      </LoadingLink>
-      <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Goods Receipts</h1>
-        <LoadingLink
-          href="/inventory/goods-receipts/new"
-          className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
-          Record Goods Receipt
-        </LoadingLink>
-      </div>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        <OrgTrail area="Store" />
-      </p>
+      <PageHeader
+        icon="receipt"
+        back={{ href: "/inventory", label: "Back to Inventory" }}
+        title="Goods Receipts"
+        description={<><OrgTrail area="Store" /></>}
+        actions={canRecord ? <HeaderAction href="/inventory/goods-receipts/new">Record Goods Receipt</HeaderAction> : null}
+      />
 
       {error ? (
         <div className="mb-6">
@@ -55,7 +45,7 @@ export default async function GoodsReceiptsPage({
       ) : null}
 
       {receipts.length === 0 ? (
-        <p className="text-sm text-[var(--ejo-text-muted)]">No goods receipts recorded yet.</p>
+        <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="receipt" title="No goods receipts recorded yet." /></div>
       ) : (
         <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">

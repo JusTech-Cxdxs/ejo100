@@ -10,7 +10,7 @@ import type { PlatformModuleDescriptor } from '@ejo/types';
  * code is needed.
  *
  * Version 1: the modules below are live. Everything planned next (HR,
- * Payroll, Finance, Procurement, Suppliers, Warehouse, Manufacturing, CRM,
+ * Payroll, Finance, Procurement, Suppliers, Warehouse, Manufacturing, Sales,
  * Documents, Reports, …) is on the Roadmap (lib/roadmap.ts) — shown to
  * everyone in its own "Coming next" menu section with a page describing what
  * it will do, so nobody mistakes "not yet" for "never".
@@ -24,6 +24,7 @@ export const platformModules: PlatformModuleDescriptor[] = [
   { key: 'roles', name: 'Roles', status: 'LIVE', href: '/roles', icon: 'shield' },
   { key: 'permissions', name: 'Permissions', status: 'LIVE', href: '/permissions', icon: 'key' },
   { key: 'workshop', name: 'Workshop', status: 'LIVE', href: '/workshop', icon: 'wrench' },
+  { key: 'crm', name: 'Customers', status: 'LIVE', href: '/crm', icon: 'users' },
   { key: 'inventory', name: 'Inventory', status: 'LIVE', href: '/inventory', icon: 'boxes' },
   { key: 'warranty', name: 'Warranty', status: 'LIVE', href: '/warranty', icon: 'shield' },
   { key: 'security', name: 'Security', status: 'LIVE', href: '/security', icon: 'shield' },

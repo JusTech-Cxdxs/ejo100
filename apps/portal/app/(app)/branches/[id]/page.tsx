@@ -11,6 +11,7 @@ import { EditIcon } from '@/components/icons';
 import { getBranchDepartments } from '@/lib/actions/structure';
 import { DepartmentsPanel } from '@/components/DepartmentsPanel';
 import { STRUCTURE_STATUS } from '@/lib/structure-messages';
+import { BackLink, PageTitle } from '@/components/ui';
 
 /**
  * A branch's own real, printed identity — the same view/edit toggle
@@ -35,10 +36,8 @@ export default async function BranchEditPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/branches" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Branches
-      </LoadingLink>
-      <h1 className="mb-1 text-2xl font-bold text-[var(--ejo-text)]">{branch.name}</h1>
+      <BackLink href="/branches" label="Back to Branches" className="mb-4" />
+      <PageTitle icon="branch" className="mb-1">{branch.name}</PageTitle>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         {branch.businessUnit.name} · {branch.city.name}, {branch.city.state.name}
       </p>

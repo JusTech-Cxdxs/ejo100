@@ -1,7 +1,8 @@
 import { LoadingLink } from '@/components/LoadingLink';
-import { ROAD_TEST_STATUS_LABEL, STATUS_CHIP } from '@/lib/security-rules';
+import { ROAD_TEST_STATUS_LABEL } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import type { listRoadTestsFor } from '@/lib/actions/security';
+import { StatusChip } from '@/components/ui';
 
 type Rows = Awaited<ReturnType<typeof listRoadTestsFor>>;
 
@@ -37,7 +38,7 @@ export function RoadTestsPanel({ rows, requestHref, ready = false }: { rows: Row
                   {r.startOdometer !== null && r.endOdometer !== null ? ` · ${(r.endOdometer - r.startOdometer).toLocaleString('en-NG')} km` : ''}
                 </span>
               </span>
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_CHIP[r.status] ?? ''}`}>{ROAD_TEST_STATUS_LABEL[r.status]}</span>
+              <StatusChip status={r.status} label={ROAD_TEST_STATUS_LABEL[r.status]} className="text-[11px]" />
             </li>
           ))}
         </ul>

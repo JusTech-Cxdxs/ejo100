@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { JobRef } from '@/components/JobRef';
 import { listVehicleExits } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -6,17 +6,24 @@ import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityTable } from '@/components/SecurityTable';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageHeader } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 export default async function VehicleExitsPage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string }> }) {
   await guardAnyPage(['security.view'], '/security/vehicles');
   const { q, kind } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const all = await listVehicleExits(q);
   const rows = all.filter((x) => (kind === 'job-card' ? x.jobCard : kind === 'vehicle-service' ? x.vehicleService : true));
   const tabs: [string, string, number][] = [['all', 'All', all.length], ['job-card', 'Job Cards', all.filter((x) => x.jobCard).length], ['vehicle-service', 'Vehicle Services', all.filter((x) => x.vehicleService).length]];
   const link = 'text-[var(--ejo-primary)] hover:underline';
   return (
     <div className="p-4 sm:p-8">
-      <h1 className="mb-4 text-2xl font-bold text-[var(--ejo-text)]">Vehicle exit history</h1>
+      <PageHeader
+        icon="car"
+        title="Vehicle exit history"
+      />
       <SecurityNav active="/security/vehicles" />
       <div className="mb-3 flex flex-wrap gap-2">
         {tabs.map(([key, l, n]) => (
@@ -36,7 +43,7 @@ export default async function VehicleExitsPage({ searchParams }: { searchParams:
             <td><LoadingLink href={`/workshop/vehicles/${x.vehicle.id}/edit`} className={link}>{[x.vehicle.make, x.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}</LoadingLink></td>
             <td className="font-medium">{x.vehicle.plateNumber ?? '—'}</td>
             <td>{x.jobCard ? <JobRef kind="JOB_CARD" id={x.jobCard.id} number={x.jobCard.jobNumber} className={link} /> : x.vehicleService ? <JobRef kind="VEHICLE_SERVICE" id={x.vehicleService.id} number={x.vehicleService.serviceNumber} className={link} /> : '—'}</td>
-            <td>{x.jobCard?.customer.fullName ?? x.vehicleService?.customer.fullName ?? '—'}</td>
+            <td>{(() => { const c = x.jobCard?.customer ?? x.vehicleService?.customer; return c ? <CustomerLink id={c.id} name={c.fullName} canView={canSeeCustomers} /> : '—'; })()}</td>
             <td className="text-xs">{x.driverName ?? '—'}</td>
             <td><LoadingLink href={`/security/vehicles/exits/${x.id}`} className={`text-xs ${link}`}>Open</LoadingLink></td>
           </tr>

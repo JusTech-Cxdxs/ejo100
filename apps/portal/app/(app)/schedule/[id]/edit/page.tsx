@@ -3,10 +3,10 @@ import { notFound } from 'next/navigation';
 import { getSchedulingAccess, getAppointment, listRooms } from '@/lib/actions/scheduling';
 import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { updateAppointmentFormAction } from '@/lib/actions/scheduling-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
 import { AppointmentForm } from '@/components/AppointmentForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { BackLink, PageTitle } from '@/components/ui';
 
 export default async function EditAppointmentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
   // Calendars are for people who keep one (an appointment itself stays open to the people in it).
@@ -19,8 +19,8 @@ export default async function EditAppointmentPage({ params, searchParams }: { pa
   const owners = access.owners.some((o) => o.id === a.ownerId) ? access.owners : [{ id: a.owner.id, fullName: a.owner.fullName, mine: false }, ...access.owners];
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href={`/schedule/${a.id}`} className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to {a.appointmentNumber}</LoadingLink>
-      <h1 className="mb-4 text-2xl font-bold text-[var(--ejo-text)]">Change {a.appointmentNumber}</h1>
+      <BackLink href={`/schedule/${a.id}`} label={<>Back to {a.appointmentNumber}</>} className="mb-4" />
+      <PageTitle icon="calendar" className="mb-4">Change {a.appointmentNumber}</PageTitle>
       <ScheduleNav active="/schedule/appointments" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       {a.status !== 'SCHEDULED' ? (

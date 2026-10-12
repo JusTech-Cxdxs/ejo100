@@ -1,5 +1,5 @@
 import { canRequestRoadTestOn } from '@/lib/actions/security';
-import { serviceVisible, guardAnyPage, can } from '@/lib/authz/server';
+import { serviceVisible, guardAnyPage, can, allows } from '@/lib/authz/server';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
 import { listRoadTestsFor } from '@/lib/actions/security';
 import { securityActionDetail } from '@/lib/security-labels';
@@ -63,6 +63,8 @@ import { formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { IdempotencyKey } from '@/components/IdempotencyKey';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -74,17 +76,6 @@ const STATUS_LABEL: Record<string, string> = {
   COLLECTED: 'Checked Out',
   CANCELLED: 'Cancelled',
   ESCALATED: 'Escalated to Job Card',
-};
-const STATUS_CLASS: Record<string, string> = {
-  SCHEDULED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
-  CHECKED_IN: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  IN_SERVICE: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
-  READY_FOR_COLLECTION: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
-  CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
-  COLLECTED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
-  ESCALATED: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
 const PAYMENT_STATUS_LABEL: Record<string, string> = {
@@ -337,6 +328,8 @@ export default async function VehicleServiceDetailPage({
     getVehicleServiceCancellationRequests(id),
   ]);
   if (!service) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
 
   const isApprover = isMasterAdmin || service.supervisor?.id === viewerId;
   const isAssignedTechnician = isMasterAdmin || service.assignedTechnician?.id === viewerId;
@@ -425,12 +418,7 @@ export default async function VehicleServiceDetailPage({
   const canRoadTest = await canRequestRoadTestOn('VEHICLE_SERVICE', service.id);
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/workshop/vehicle-service"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Vehicle Service
-      </LoadingLink>
+      <BackLink href="/workshop/vehicle-service" label="Back to Vehicle Service" className="mb-4" />
 
       {error ? (
         <div className="mb-6 max-w-xl">
@@ -570,22 +558,15 @@ export default async function VehicleServiceDetailPage({
         </div>
       ) : null}
 
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{service.serviceNumber}</h1>
-          <span
-            className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
-              service.escalatedToJobCard ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]' : STATUS_CLASS[service.status]
-            }`}
-          >
-            {service.escalatedToJobCard ? 'Escalated' : STATUS_LABEL[service.status]}
+      <div className="ejo-hero relative mb-6 flex flex-wrap items-center gap-3 overflow-hidden rounded-[var(--ejo-radius-xl)] border border-[var(--ejo-border)] p-4 sm:p-5">
+        <div className="ejo-orb pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-[var(--ejo-primary)]/15 blur-3xl" aria-hidden="true" />
+        <PageTitle icon="droplet" className="relative mr-1">{service.serviceNumber}</PageTitle>
+        {service.escalatedToJobCard ? <StatusChip tone="warning">Escalated</StatusChip> : <StatusChip status={service.status} label={STATUS_LABEL[service.status]} />}
+        {showPayments ? (
+          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYMENT_STATUS_COLOR[paymentStatus]}`}>
+            {PAYMENT_STATUS_LABEL[paymentStatus]}
           </span>
-          {showPayments ? (
-            <span className={`ml-2 mt-1 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYMENT_STATUS_COLOR[paymentStatus]}`}>
-              {PAYMENT_STATUS_LABEL[paymentStatus]}
-            </span>
-          ) : null}
-        </div>
+        ) : null}
       </div>
 
       {service.escalatedToJobCard ? (
@@ -609,7 +590,7 @@ export default async function VehicleServiceDetailPage({
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Customer</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
-                  {service.customer.fullName}
+                  <CustomerLink id={service.customerId} name={service.customer.fullName} canView={canSeeCustomers} />
                   {service.customer.customerType === 'ORGANIZATION' ? (
                     <span className="ml-2 rounded-full bg-[var(--ejo-info)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--ejo-info)]">
                       Organization

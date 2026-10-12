@@ -22,11 +22,11 @@ export class HealthController {
     try {
       await this.prisma.client.$queryRaw`SELECT 1`;
     } catch (error) {
-      throw new ServiceUnavailableException({
-        status: 'error',
-        database: 'unreachable',
-        message: error instanceof Error ? error.message : 'Unknown database error',
-      });
+      // The reason stays in the server log; callers (unauthenticated) only
+      // learn that the database is unreachable — never its host or error (SEC-09).
+      // eslint-disable-next-line no-console
+      console.error(JSON.stringify({ level: 'error', at: 'health', error: error instanceof Error ? error.name : 'unknown' }));
+      throw new ServiceUnavailableException({ status: 'error', database: 'unreachable' });
     }
 
     return {

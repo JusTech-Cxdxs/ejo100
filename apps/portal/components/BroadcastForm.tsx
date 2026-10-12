@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
-import { BROADCAST_CATEGORY, DURATIONS } from '@/lib/notification-rules';
+import { BROADCAST_CATEGORY, DURATIONS, isCustomerAudience } from '@/lib/notification-rules';
+import { CustomerMultiPicker } from '@/components/crm/CustomerMultiPicker';
 
 const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]';
 const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
@@ -11,11 +12,11 @@ const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
 type Options = { branches: { id: string; name: string }[]; departments: { id: string; name: string }[]; roles: { slug: string; name: string }[] };
 
 /** Create a broadcast — step by step, nothing pre-filled, with a live preview. */
-export function BroadcastForm({ options, action }: { options: Options; action: (f: FormData) => Promise<void> }) {
+export function BroadcastForm({ options, action, initialAudience, initialCustomers }: { options: Options; action: (f: FormData) => Promise<void>; initialAudience?: string; initialCustomers?: { id: string; fullName: string }[] }) {
   const [category, setCategory] = useState('');
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
-  const [audience, setAudience] = useState('');
+  const [audience, setAudience] = useState(initialAudience ?? '');
   const [when, setWhen] = useState('');
   const meta = category ? BROADCAST_CATEGORY[category] : null;
   const choices = audience === 'BRANCH' ? options.branches.map((b) => ({ v: b.id, l: b.name })) : audience === 'DEPARTMENT' ? options.departments.map((d) => ({ v: d.id, l: d.name })) : audience === 'ROLE' ? options.roles.map((r) => ({ v: r.slug, l: r.name })) : [];
@@ -47,13 +48,19 @@ export function BroadcastForm({ options, action }: { options: Options; action: (
                 <option value="BRANCH">Particular branches</option>
                 <option value="DEPARTMENT">Particular departments</option>
                 <option value="ROLE">Particular roles</option>
+                <optgroup label="Customers (their portal dashboard)">
+                  <option value="CUSTOMERS_ALL">All customers</option>
+                  <option value="CUSTOMERS_SELECTED">Particular customers</option>
+                </optgroup>
               </select>
+              {isCustomerAudience(audience) ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Shown on the customer portal while it runs — never to staff. Customers whose portal access is off are left out.</p> : null}
             </div>
+            {audience === 'CUSTOMERS_SELECTED' ? <CustomerMultiPicker initial={initialCustomers} /> : null}
             {choices.length ? (
               <div className="grid max-h-52 gap-1 overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-3 sm:grid-cols-2">
                 {choices.map((c) => <label key={c.v} className="flex items-center gap-2 text-sm text-[var(--ejo-text)]"><input type="checkbox" name="audienceIds" value={c.v} className="h-4 w-4" />{c.l}</label>)}
               </div>
-            ) : audience && audience !== 'ALL' ? <p className="text-xs text-[var(--ejo-text-muted)]">None set up yet.</p> : null}
+            ) : audience && audience !== 'ALL' && !isCustomerAudience(audience) ? <p className="text-xs text-[var(--ejo-text-muted)]">None set up yet.</p> : null}
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label className={label}>Starts</label>
@@ -77,7 +84,7 @@ export function BroadcastForm({ options, action }: { options: Options; action: (
                 <label className={label}>Email it too?</label>
                 <select name="sendEmail" required defaultValue="" className={input}>
                   <option value="" disabled>Choose…</option>
-                  <option value="yes">Yes — email everyone it is for</option>
+                  <option value="yes">{isCustomerAudience(audience) ? 'Yes — email the customers who chose email updates' : 'Yes — email everyone it is for'}</option>
                   <option value="no">No — dashboard and notifications only</option>
                 </select>
               </div>

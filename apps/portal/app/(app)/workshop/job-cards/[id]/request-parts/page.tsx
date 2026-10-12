@@ -1,13 +1,14 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getJobCard } from '@/lib/actions/workshop';
 import { getJobCardSourcingNeeds, getRequestablePartRequestLines } from '@/lib/actions/sourcing';
 import { requestPartRequestSlipFormAction } from '@/lib/actions/sourcing-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
+import { BackLink, PageTitle } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 function formatNaira(value: number): string {
   return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -37,6 +38,8 @@ export default async function RequestPartsPage({
   const { error } = await searchParams;
   const jobCard = await getJobCard(id);
   if (!jobCard) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
 
   const [sourcingNeeds, requestableLines] = await Promise.all([getJobCardSourcingNeeds(id), getRequestablePartRequestLines(id)]);
   const totalAmount = requestableLines.reduce((sum: number, l: (typeof requestableLines)[number]) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
@@ -45,13 +48,8 @@ export default async function RequestPartsPage({
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href={`/workshop/job-cards/${id}`}
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Job Card {jobCard.jobNumber}
-      </LoadingLink>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Request Store Parts</h1>
+      <BackLink href={`/workshop/job-cards/${id}`} label={<>Back to Job Card {jobCard.jobNumber}</>} className="mb-4" />
+      <PageTitle icon="package" className="mb-2">Request Store Parts</PageTitle>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
         Every Part below was already matched and priced by Store. Nothing here needs editing; raising the request
         simply sends this exact list forward for approval.
@@ -81,7 +79,7 @@ export default async function RequestPartsPage({
             </div>
             <div>
               <dt className="text-xs text-[var(--ejo-text-muted)]">Customer</dt>
-              <dd className="text-sm font-medium text-[var(--ejo-text)]">{jobCard.customer.fullName}</dd>
+              <dd className="text-sm font-medium text-[var(--ejo-text)]"><CustomerLink id={jobCard.customerId} name={jobCard.customer.fullName} canView={canSeeCustomers} /></dd>
             </div>
             <div>
               <dt className="text-xs text-[var(--ejo-text-muted)]">Vehicle</dt>

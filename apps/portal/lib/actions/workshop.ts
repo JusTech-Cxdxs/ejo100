@@ -1,6 +1,9 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
-import { authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE } from '@/lib/authz/server';
+import { allows, authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE } from '@/lib/authz/server';
+import { cleanEmail, cleanName, cleanPhone, cleanPrimaryAddress, normaliseTags } from '@/lib/crm';
+import { sendCustomerAccessEmail } from '@/lib/customer-access';
 import { withdrawOpenSourcing } from '@/lib/sourcing-lifecycle';
 import { ESCALATION_CLAIM_MS } from '@/lib/vehicle-service-cycle';
 import { jobCardActive, jobCardInside, serviceInside } from '@/lib/custody';
@@ -36,9 +39,9 @@ import { unstable_cache } from 'next/cache';
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal, isCustomerLine, coveredLabel } from '@/lib/estimate-billing';
 import { headers } from 'next/headers';
-import { prisma, JobCardStatus, setAuditActor } from '@ejo/database';
+import { prisma, JobCardStatus, setAuditActor, setAuditActorResolver } from '@ejo/database';
 import { claimed, lockExisting } from '@/lib/integrity';
-import { exceedsBalance } from '@/lib/integrity-core';
+import { exceedsBalance, NUMBER_CLASH_TRIES, numberClashPause } from '@/lib/integrity-core';
 import { MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
 import { workingDaysBetween, addWorkingDays } from '@/lib/utils/working-days';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
@@ -48,11 +51,8 @@ import { anchorEscalatedServiceFromJobCard } from '@/lib/vehicle-service-cycle';
 import { custodyReminderState, notDueYetMessage, type CustodyReminderKind } from '@/lib/custody-reminders';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
-import { hashPassword } from 'better-auth/crypto';
 import { auth } from '@/lib/auth';
 import { sendEmail } from '@/lib/email';
-import { generateSecurePassword } from '@/lib/utils/generate-password';
-import { renderCustomerWelcomeEmail } from '@/lib/email-templates/customer-welcome';
 import { renderSupervisorJobCardAssignedEmail } from '@/lib/email-templates/supervisor-job-card-assigned';
 import { renderCustomerJobCardAcknowledgmentEmail } from '@/lib/email-templates/customer-job-card-acknowledgment';
 import { renderJobCardDecisionEmail } from '@/lib/email-templates/job-card-decision';
@@ -107,6 +107,19 @@ const sessionForRequest = cache(async () => {
   // (or a 5-minute session cookie cache) never outlives the deactivation.
   const u = await prisma.user.findUnique({ where: { id: session.user.id }, select: { isActive: true } });
   return u?.isActive ? session : null;
+});
+
+// The data journal asks "who is acting?" from this request's cached session:
+// an actor set inside requireUser() does not flow back to its caller (E2E-09).
+// Outside a request (scheduled jobs, after()) there is no one: null.
+setAuditActorResolver(async () => {
+  try {
+    const session = await sessionForRequest();
+    if (!session?.user?.id) return null;
+    return { userId: session.user.id, source: 'portal', organisationId: (session.user as { organisationId?: string | null }).organisationId ?? null };
+  } catch {
+    return null;
+  }
 });
 
 export async function requireUser(): Promise<{ id: string }> {
@@ -242,7 +255,7 @@ async function notifyJobCardCreatorOfDecision(params: {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Job Card decision email to creator', params.jobNumber, err);
+    logFailure('Failed to send Job Card decision email to creator', params.jobNumber, err);
   }
 }
 
@@ -425,27 +438,26 @@ export async function listRecentCustomers(): Promise<CustomerSearchResult[]> {
 export type CreateCustomerInput = {
   customerType: 'INDIVIDUAL' | 'ORGANIZATION';
   fullName: string;
-  address?: string;
+  /** Primary address — required from v28 on (one short line, ≤ 80 characters). */
+  address: string;
   email: string;
-  phone?: string;
+  /** Primary phone — required from v28 on. */
+  phone: string;
+  altPhone?: string;
+  tags?: string[];
 };
 
 /** Finds an existing customer by email first — per the project rule that
  * a returning customer must never get a duplicate record. Only creates a
- * new row when no existing customer has that email. */
+ * new row when no existing customer has that email. A new customer must
+ * have a primary address and phone; they get a welcome email with a
+ * one-time set-password link (never a password). Front desk registers
+ * customers; the CRM's managers and administrators may too. */
 export async function findOrCreateCustomer(input: CreateCustomerInput) {
-  await authorize('workshop.customer.manage', undefined, 'findOrCreateCustomer');
+  if (!(await allows('workshop.customer.manage'))) await authorize('crm.manage', undefined, 'findOrCreateCustomer', 'Only front desk, managers and administrators can register customers.');
   const currentUser = await requireUser();
-  const email = input.email.trim().toLowerCase();
-  if (!email || !input.fullName.trim()) {
-    throw new WorkshopActionError('Customer name and email are required.');
-  }
-  const address = input.address?.trim() || null;
-  // Enforced, not just a UI hint — kept brief on purpose (like a VIN)
-  // so it never stretches the Job Card layout it's displayed on.
-  if (address && address.length > 80) {
-    throw new WorkshopActionError('Address must be 80 characters or fewer — keep it brief, e.g. "Plot 3, Cheesebrough, Lagos".');
-  }
+  const email = cleanEmail(input.email);
+  const fullName = cleanName(input.fullName, input.customerType === 'ORGANIZATION' ? 'Organisation name' : 'Customer name');
 
   const existing = await prisma.customer.findUnique({ where: { email } });
   if (existing) {
@@ -455,6 +467,12 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
     }
     return { customer: existing, wasExisting: true, welcomeEmailSent: false };
   }
+
+  // Required for every new customer (older records may still lack them).
+  const address = cleanPrimaryAddress(input.address);
+  const phone = cleanPhone(input.phone, { required: true, label: 'Phone number' })!;
+  const altPhone = cleanPhone(input.altPhone, { required: false, label: 'Second phone number' });
+  const tags = normaliseTags(input.tags ?? []);
 
   const branchId = await getWorkshopBranchId();
   const branch = await prisma.branch.findUniqueOrThrow({
@@ -466,73 +484,28 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
     data: {
       organisationId: branch.businessUnit.organisationId,
       customerType: input.customerType,
-      fullName: input.fullName.trim(),
+      fullName,
       address,
       email,
-      phone: input.phone?.trim() || null,
+      phone,
+      altPhone,
+      tags,
       createdById: currentUser.id,
     },
   });
 
   await writeAuditLog({
     userId: currentUser.id,
+    organisationId: customer.organisationId,
     action: 'customer.created',
     entityType: 'Customer',
     entityId: customer.id,
-    metadata: { fullName: customer.fullName, email: customer.email, customerType: customer.customerType },
+    metadata: { actor: 'staff', fullName: customer.fullName, email: customer.email, customerType: customer.customerType, phone, address },
   });
 
-  const orgContext = await getWorkshopOrgContext();
-  const welcomeEmailSent = await provisionCustomerAccountAndWelcomeEmail(customer, orgContext);
+  const welcome = await sendCustomerAccessEmail(customer.id, 'welcome', currentUser.id);
 
-  return { customer, wasExisting: false, welcomeEmailSent };
-}
-
-/** Creates the customer's Better Auth credential row (a random temporary
- * password, hashed the same way seed.ts hashes the Master Administrator's)
- * and emails it via the branded welcome template.
- *
- * Deliberately never throws: a customer record is a real, valuable
- * business outcome on its own — an SMTP hiccup shouldn't roll that back
- * or block the staff member at the counter. Failure is caught, logged,
- * and reported back via the `welcomeEmailSent` flag instead, so the UI
- * can tell staff to relay the details manually if it ever happens. */
-async function provisionCustomerAccountAndWelcomeEmail(
-  customer: { id: string; fullName: string; email: string },
-  orgContext: { companyName: string; branchName: string; departmentName: string },
-): Promise<boolean> {
-  try {
-    const temporaryPassword = generateSecurePassword();
-    await prisma.customerAccount.create({
-      data: {
-        customerId: customer.id,
-        accountId: customer.id,
-        providerId: 'credential',
-        password: await hashPassword(temporaryPassword),
-      },
-    });
-
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-    await sendEmail(
-      customer.email,
-      'Your Kewalram customer account is ready',
-      renderCustomerWelcomeEmail({
-        customerName: customer.fullName,
-        email: customer.email,
-        temporaryPassword,
-        loginUrl: `${websiteUrl}/customer-portal`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
-        companyName: orgContext.companyName,
-        branchName: orgContext.branchName,
-        departmentName: orgContext.departmentName,
-      }),
-    );
-    return true;
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to provision customer account / send welcome email:', err);
-    return false;
-  }
+  return { customer, wasExisting: false, welcomeEmailSent: welcome.sent };
 }
 
 // ---------------------------------------------------------------------------
@@ -1161,7 +1134,7 @@ export async function createJobCard(input: CreateJobCardInput) {
     });
   }
 
-  const MAX_ATTEMPTS = 5;
+  const MAX_ATTEMPTS = NUMBER_CLASH_TRIES;
   let created: Awaited<ReturnType<typeof attemptCreate>> | undefined;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -1181,6 +1154,7 @@ export async function createJobCard(input: CreateJobCardInput) {
         ((Array.isArray(target) && target.includes('jobNumber')) ||
           (typeof target === 'string' && target.includes('jobNumber')));
       if (isJobNumberCollision && attempt < MAX_ATTEMPTS) {
+        await numberClashPause(attempt);
         continue;
       }
       throw err;
@@ -1216,7 +1190,7 @@ export async function createJobCard(input: CreateJobCardInput) {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send supervisor notification email for Job Card', created.jobNumber, err);
+    logFailure('Failed to send supervisor notification email for Job Card', created.jobNumber, err);
   }
 
   // Notify the customer too — a genuinely separate try/catch from the
@@ -1247,7 +1221,7 @@ export async function createJobCard(input: CreateJobCardInput) {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send customer acknowledgment email for Job Card', created.jobNumber, err);
+    logFailure('Failed to send customer acknowledgment email for Job Card', created.jobNumber, err);
   }
 
   await writeAuditLog({
@@ -1433,7 +1407,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       await anchorEscalatedServiceFromJobCard(id);
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to start the next-service count from this Job Card checkout', id, err);
+      logFailure('Failed to start the next-service count from this Job Card checkout', id, err);
     }
   }
 
@@ -1519,7 +1493,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send status-lifecycle email', id, status, err);
+      logFailure('Failed to send status-lifecycle email', id, status, err);
     }
   }
 
@@ -1597,7 +1571,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send checkout email chain', id, status, err);
+      logFailure('Failed to send checkout email chain', id, status, err);
     }
   }
 
@@ -1805,7 +1779,7 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send supervisor reassignment email for Job Card', jobCard.jobNumber, err);
+    logFailure('Failed to send supervisor reassignment email for Job Card', jobCard.jobNumber, err);
   }
 }
 
@@ -1906,7 +1880,7 @@ export async function assignTechnician(jobCardId: string, technicianId: string) 
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send technician assignment email for Job Card', jobCard.jobNumber, err);
+    logFailure('Failed to send technician assignment email for Job Card', jobCard.jobNumber, err);
   }
 
   return jobCard;
@@ -1975,7 +1949,7 @@ async function notifySupervisorOfTechnicianResponse(params: {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send technician response email to supervisor', params.jobNumber, err);
+    logFailure('Failed to send technician response email to supervisor', params.jobNumber, err);
   }
 }
 
@@ -2570,7 +2544,7 @@ async function sendEstimateNudge(params: {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send estimate nudge email', params.jobCardId, err);
+    logFailure('Failed to send estimate nudge email', params.jobCardId, err);
   }
 }
 
@@ -2727,7 +2701,7 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send estimate-submitted email to supervisor', jobCardId, err);
+    logFailure('Failed to send estimate-submitted email to supervisor', jobCardId, err);
   }
 }
 
@@ -2873,7 +2847,7 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send estimate-ready-for-manager email', jobCardId, err);
+    logFailure('Failed to send estimate-ready-for-manager email', jobCardId, err);
   }
 }
 
@@ -2959,7 +2933,7 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send estimate-ready-for-customer-notification email', jobCardId, err);
+    logFailure('Failed to send estimate-ready-for-customer-notification email', jobCardId, err);
   }
 }
 
@@ -3163,14 +3137,14 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
           // A failed PDF must never block the email itself — the
           // customer still needs the approval notice either way.
           // eslint-disable-next-line no-console
-          console.error('Failed to generate estimate PDF attachment', jobCardId, pdfErr);
+          logFailure('Failed to generate estimate PDF attachment', jobCardId, pdfErr);
           return undefined;
         }
       })(),
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send customer estimate-approved email', jobCardId, err);
+    logFailure('Failed to send customer estimate-approved email', jobCardId, err);
   }
 }
 
@@ -3473,7 +3447,7 @@ export async function recordPayment(
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send payment-recorded update emails', jobCardId, err);
+    logFailure('Failed to send payment-recorded update emails', jobCardId, err);
   }
 
   // The milestone broadcasts — every real party on the Job Card
@@ -3539,7 +3513,7 @@ export async function recordPayment(
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send payment milestone emails', jobCardId, err);
+      logFailure('Failed to send payment milestone emails', jobCardId, err);
     }
   }
 
@@ -3565,7 +3539,7 @@ export async function recordPayment(
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send customer payment-received email', jobCardId, err);
+    logFailure('Failed to send customer payment-received email', jobCardId, err);
   }
 }
 
@@ -3684,7 +3658,7 @@ export async function requestJobCardCancellation(jobCardId: string, reason: stri
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send cancellation-requested emails', jobCardId, err);
+    logFailure('Failed to send cancellation-requested emails', jobCardId, err);
   }
 }
 
@@ -3811,7 +3785,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send staff cancellation-broadcast emails', request.jobCardId, err);
+    logFailure('Failed to send staff cancellation-broadcast emails', request.jobCardId, err);
   }
 
   try {
@@ -3832,7 +3806,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send customer cancellation email', request.jobCardId, err);
+    logFailure('Failed to send customer cancellation email', request.jobCardId, err);
   }
 }
 
@@ -3908,7 +3882,7 @@ export async function declineCancellationRequest(requestId: string, decisionNote
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send cancellation-declined email', request.jobCardId, err);
+    logFailure('Failed to send cancellation-declined email', request.jobCardId, err);
   }
 }
 
@@ -4013,7 +3987,7 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send close-requested emails', jobCardId, err);
+    logFailure('Failed to send close-requested emails', jobCardId, err);
   }
 }
 
@@ -4155,7 +4129,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send close-approval emails', request.jobCardId, err);
+    logFailure('Failed to send close-approval emails', request.jobCardId, err);
   }
 }
 
@@ -4231,7 +4205,7 @@ export async function declineCloseRequest(requestId: string, decisionNotes?: str
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send close-declined email', request.jobCardId, err);
+    logFailure('Failed to send close-declined email', request.jobCardId, err);
   }
 }
 
@@ -4247,6 +4221,7 @@ export type WorkshopCustodyEntry = {
   vehicleId: string;
   vehicleType: string | null;
   jobNumber: string;
+  customerId?: string;
   customerName: string;
   vehicleDescription: string;
   status: string;
@@ -4330,7 +4305,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       jobNumber: true,
       status: true,
       readyForCollectionAt: true,
-      customer: { select: { fullName: true } },
+      customer: { select: { id: true, fullName: true } },
       vehicle: { select: { id: true, make: true, model: true, vehicleType: true } },
       estimate: { select: { customerNotifiedAt: true } },
       // Every request, not just approved ones — the same array
@@ -4362,7 +4337,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
     jobNumber: string;
     status: string;
     readyForCollectionAt: Date | null;
-    customer: { fullName: string };
+    customer: { id: string; fullName: string };
     vehicle: { id: string; make: string | null; model: string | null; vehicleType: string | null };
     estimate: { customerNotifiedAt: Date | null } | null;
     cancellationRequests: { id: string; status: string; reason: string; decidedAt: Date | null; requestedBy: { fullName: string } }[];
@@ -4373,6 +4348,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       vehicleId: jc.vehicle.id,
       vehicleType: jc.vehicle.vehicleType ?? null,
       jobNumber: jc.jobNumber,
+      customerId: jc.customer.id,
       customerName: jc.customer.fullName,
       vehicleDescription,
       status: jc.status,
@@ -4616,7 +4592,7 @@ export async function runApprovalDeadlineChecks(): Promise<{ remindersSent: numb
         remindersSent += 1;
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.error('Failed to send approval reminder', jc.id, err);
+        logFailure('Failed to send approval reminder', jc.id, err);
       }
     }
   }

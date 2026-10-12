@@ -201,10 +201,10 @@ export function computeMasterAnalytics(input: { jobs: Job[]; purchases: Purchase
   // the two explanations always add up exactly to the change.
   const ticketEffect = volumeEffect !== null && current.averageJob !== null ? r2(current.sales - previous.sales - volumeEffect) : null;
   const doneNow = jobs.filter((j) => !j.cancelled && inRange(j.finishedAt, from, to));
-  const byCustomer = new Map<string, { name: string; value: number }>();
+  const byCustomer = new Map<string, { id: string | null; name: string; value: number }>();
   for (const j of doneNow) {
     const k = j.customerId ?? j.customer;
-    const e = byCustomer.get(k) ?? { name: j.customer, value: 0 };
+    const e = byCustomer.get(k) ?? { id: j.customerId ?? null, name: j.customer, value: 0 };
     e.value += jobMoney(j).sales;
     byCustomer.set(k, e);
   }
@@ -218,7 +218,7 @@ export function computeMasterAnalytics(input: { jobs: Job[]; purchases: Purchase
     mix: [
       { name: 'Labour', value: current.labour }, { name: 'Parts', value: current.parts }, { name: 'Sublet', value: current.sublet }, { name: 'Sundry', value: current.sundry },
     ],
-    topCustomers: [...byCustomer.values()].map(({ name, value }) => ({ name, value: r2(value) })).sort((a, b) => b.value - a.value).slice(0, 8),
+    topCustomers: [...byCustomer.values()].map(({ id, name, value }) => ({ id, name, value: r2(value) })).sort((a, b) => b.value - a.value).slice(0, 8),
   };
 
   // ── Predictive

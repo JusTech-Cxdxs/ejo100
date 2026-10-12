@@ -1,14 +1,14 @@
 import { allows, guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
-import { LoadingLink } from '@/components/LoadingLink';
+import { PageHeader, NavCard, type IconName } from '@/components/ui';
 
-const sections = [
-  { name: 'Parts Catalog', href: '/inventory/parts', desc: 'Every part the store stocks — tracking type, unit of measure, and current stock on hand.' },
-  { name: 'Goods Receipts', href: '/inventory/goods-receipts', desc: 'A complete record of every delivery received into the store.' },
-  { name: 'Part Categories & Types', href: '/inventory/part-types', desc: 'The generic classification technicians pick from when requesting Store Parts on an estimate.' },
-  { name: 'Estimate Matching', href: '/inventory/estimate-matching', desc: 'Store Part lines awaiting a real, vehicle-fitting catalog Part and price.' },
-  { name: 'Inventory Analytics', href: '/inventory/analytics', desc: 'Stock health, reorder intelligence (suggested reorder points and safety stock), demand, ABC/XYZ, turnover and true profitability — with what to do next.' },
-  { name: 'Pricing Command Center', href: '/inventory/pricing', desc: 'Every delivery cost auto-compared against a Part\'s own target margin — real alerts, real analysis, one-click price sync.' },
+const sections: { name: string; href: string; desc: string; icon: IconName }[] = [
+  { name: 'Parts Catalog', href: '/inventory/parts', icon: 'package', desc: 'Every part the store stocks — tracking type, unit of measure, and current stock on hand.' },
+  { name: 'Goods Receipts', href: '/inventory/goods-receipts', icon: 'receipt', desc: 'A complete record of every delivery received into the store.' },
+  { name: 'Part Categories & Types', href: '/inventory/part-types', icon: 'layers', desc: 'The generic classification technicians pick from when requesting Store Parts on an estimate.' },
+  { name: 'Estimate Matching', href: '/inventory/estimate-matching', icon: 'match', desc: 'Store Part lines awaiting a real, vehicle-fitting catalog Part and price.' },
+  { name: 'Inventory Analytics', href: '/inventory/analytics', icon: 'chart', desc: 'Stock health, reorder intelligence (suggested reorder points and safety stock), demand, ABC/XYZ, turnover and true profitability — with what to do next.' },
+  { name: 'Pricing Command Center', href: '/inventory/pricing', icon: 'tag', desc: 'Every delivery cost auto-compared against a Part\'s own target margin — real alerts, real analysis, one-click price sync.' },
 ];
 
 /**
@@ -23,27 +23,19 @@ export default async function InventoryPage() {
   const canAnalytics = await allows('analytics.inventory.view');
   const visible = sections.filter((s) => s.href !== '/inventory/analytics' || canAnalytics);
   return (
-    <div className="p-8">
-      <div className="mb-2 flex items-center gap-2">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Inventory</h1>
-        <span className="rounded-full bg-[var(--ejo-success)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-success)]">
-          Live
-        </span>
-      </div>
-      <p className="mb-8 text-sm text-[var(--ejo-text-muted)]">
-        <OrgTrail area="Store" />
-      </p>
+    <div className="w-full p-4 sm:p-8">
+      <PageHeader
+        hero
+        live
+        icon="boxes"
+        eyebrow="Module · Store"
+        title="Inventory"
+        description={<>The store: what is on the shelf, what came in, what it costs and what to reorder. <span className="block text-xs"><OrgTrail area="Store" /></span></>}
+      />
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="ejo-stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {visible.map((s) => (
-          <LoadingLink
-            key={s.href}
-            href={s.href}
-            className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6 transition-shadow hover:shadow-md"
-          >
-            <h3 className="font-semibold text-[var(--ejo-text)]">{s.name}</h3>
-            <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">{s.desc}</p>
-          </LoadingLink>
+          <NavCard key={s.href} href={s.href} icon={s.icon} title={s.name} description={s.desc} />
         ))}
       </div>
     </div>

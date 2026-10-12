@@ -9,8 +9,9 @@ import { SecurityHistory } from '@/components/SecurityHistory';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
-import { VISIT_STATUS_LABEL, STATUS_CHIP, VEHICLE_TYPE_LABEL, durationText, minutesBetween, visitOverdueMinutes } from '@/lib/security-rules';
+import { VISIT_STATUS_LABEL, VEHICLE_TYPE_LABEL, durationText, minutesBetween, visitOverdueMinutes } from '@/lib/security-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 
 const DONE: Record<string, string> = {
   registered: 'Visit booked — Security will see it under Expected today. ID and vehicle are taken when they arrive.',
@@ -41,13 +42,13 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
 
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/security/visitors" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Visitors</LoadingLink>
+      <BackLink href="/security/visitors" label="Back to Visitors" className="mb-4" />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{v.visitorName}</h1>
+          <PageTitle icon="badge">{v.visitorName}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{v.visitNumber}{v.passNumber ? ` · Pass ${v.passNumber}` : ''}{v.isWalkIn ? ' · walk-in' : ''}</p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_CHIP[v.status]}`}>{VISIT_STATUS_LABEL[v.status]}</span>
+        <StatusChip status={v.status} label={VISIT_STATUS_LABEL[v.status]} className="px-3 py-1 text-sm" />
       </div>
       <SecurityNav active="/security/visitors" />
       {status && DONE[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={DONE[status]!} /></div> : null}

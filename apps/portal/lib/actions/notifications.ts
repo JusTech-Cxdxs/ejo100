@@ -1,6 +1,8 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { cache } from 'react';
+import { after } from 'next/server';
 
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
@@ -11,7 +13,7 @@ import { getDashboardNotifications, type DashboardNotification } from './dashboa
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
 import {
   entityTypesForRoles, recordUrl, areaOf, HIDDEN_ACTIONS, describeApiEntry, BROADCAST_CATEGORIES, DURATIONS,
-  broadcastEnd, durationLabel, broadcastState, reaches, type BroadcastState,
+  broadcastEnd, durationLabel, broadcastState, reaches, isCustomerAudience, type BroadcastState,
 } from '@/lib/notification-rules';
 import { deliverDueBroadcastEmails } from '@/lib/broadcast-delivery';
 import { resolveRecords } from '@/lib/record-resolver';
@@ -177,7 +179,7 @@ export async function getNotificationSummary(): Promise<NotificationSummary> {
     return value;
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Notification summary failed', err);
+    logFailure('Notification summary failed', err);
     return { actions: [], unreadActivity: [], unreadBroadcasts: [], total: 0, signature: '', muted: false };
   }
 }
@@ -259,6 +261,18 @@ async function nextBroadcastNumber(): Promise<string> {
   return `${start}${String(last ? parseInt(last.broadcastNumber.slice(start.length), 10) + 1 : 1).padStart(6, '0')}`;
 }
 
+/** Staff emails go out before the page answers (as before). Customer emails
+ * can be many — they go out right after the response, never holding it up
+ * (the scheduled delivery run picks up anything left). */
+async function deliverEmails(audience: string): Promise<void> {
+  if (!isCustomerAudience(audience)) { await deliverDueBroadcastEmails(); return; }
+  try {
+    after(() => deliverDueBroadcastEmails().catch(() => 0));
+  } catch {
+    void deliverDueBroadcastEmails().catch(() => 0);
+  }
+}
+
 export type BroadcastInput = { category: string; title: string; message: string; audience: string; audienceIds: string[]; startsAt: Date; duration: string; sendEmail: boolean };
 
 export async function createBroadcast(input: BroadcastInput): Promise<{ id: string; broadcastNumber: string }> {
@@ -266,17 +280,24 @@ export async function createBroadcast(input: BroadcastInput): Promise<{ id: stri
   if (!BROADCAST_CATEGORIES.includes(input.category)) throw new NotificationError('Choose the kind of broadcast.');
   if (!input.title.trim()) throw new NotificationError('Give the broadcast a title.');
   if (!input.message.trim()) throw new NotificationError('Write the message.');
-  if (!['ALL', 'BRANCH', 'DEPARTMENT', 'ROLE'].includes(input.audience)) throw new NotificationError('Choose who it is for.');
+  if (!['ALL', 'BRANCH', 'DEPARTMENT', 'ROLE', 'CUSTOMERS_ALL', 'CUSTOMERS_SELECTED'].includes(input.audience)) throw new NotificationError('Choose who it is for.');
   const ids = [...new Set(input.audienceIds.filter(Boolean))];
-  if (input.audience !== 'ALL' && ids.length === 0) throw new NotificationError(`Choose at least one ${input.audience === 'BRANCH' ? 'branch' : input.audience === 'DEPARTMENT' ? 'department' : 'role'}.`);
+  const noIds = input.audience === 'ALL' || input.audience === 'CUSTOMERS_ALL';
+  if (!noIds && ids.length === 0) throw new NotificationError(`Choose at least one ${input.audience === 'BRANCH' ? 'branch' : input.audience === 'DEPARTMENT' ? 'department' : input.audience === 'CUSTOMERS_SELECTED' ? 'customer' : 'role'}.`);
+  if (input.audience === 'CUSTOMERS_SELECTED') {
+    if (ids.length > 1000) throw new NotificationError('Choose at most 1,000 customers — or send it to all customers.');
+    // Only this organisation's own customers — never anyone else's.
+    const mine = await prisma.customer.count({ where: { id: { in: ids }, organisationId: m.organisationId! } });
+    if (mine !== ids.length) throw new NotificationError('Some of the chosen customers are not available — refresh the page and choose again.');
+  }
   if (!DURATIONS.some((d) => d.value === input.duration)) throw new NotificationError('Choose how long it runs.');
   const start = Number.isNaN(new Date(input.startsAt).getTime()) ? new Date() : new Date(input.startsAt);
   if (start.getTime() < Date.now() - 5 * 60000) throw new NotificationError('The start time has already passed — choose "now" or a later time.');
   const endsAt = broadcastEnd(start, input.duration);
   const broadcastNumber = await nextBroadcastNumber();
-  const b = await prisma.broadcast.create({ data: { broadcastNumber, organisationId: m.organisationId!, category: input.category as never, title: input.title.trim(), message: input.message.trim(), audience: input.audience as never, audienceIds: input.audience === 'ALL' ? [] : ids, startsAt: start, endsAt, durationLabel: durationLabel(input.duration), sendEmail: input.sendEmail, createdById: m.id } });
+  const b = await prisma.broadcast.create({ data: { broadcastNumber, organisationId: m.organisationId!, category: input.category as never, title: input.title.trim(), message: input.message.trim(), audience: input.audience as never, audienceIds: noIds ? [] : ids, startsAt: start, endsAt, durationLabel: durationLabel(input.duration), sendEmail: input.sendEmail, createdById: m.id } });
   await writeAuditLog({ userId: m.id, action: 'broadcast.created', entityType: 'Broadcast', entityId: b.id, metadata: { broadcastNumber, category: input.category, title: input.title.trim(), audience: input.audience, duration: durationLabel(input.duration), email: input.sendEmail } });
-  if (input.sendEmail) await deliverDueBroadcastEmails();
+  if (input.sendEmail) await deliverEmails(input.audience);
   return { id: b.id, broadcastNumber };
 }
 
@@ -292,14 +313,15 @@ export async function stopBroadcast(id: string): Promise<void> {
 export async function reactivateBroadcast(id: string, duration: string, resendEmail: boolean): Promise<void> {
   const m = await requireBroadcaster();
   if (!DURATIONS.some((d) => d.value === duration)) throw new NotificationError('Choose how long it runs.');
-  const b = (await ownBroadcast(m, id, { broadcastNumber: true, isActive: true, startsAt: true, endsAt: true, stoppedAt: true })) as { broadcastNumber: string; isActive: boolean; startsAt: Date; endsAt: Date | null; stoppedAt: Date | null };
+  const b = (await ownBroadcast(m, id, { broadcastNumber: true, isActive: true, startsAt: true, endsAt: true, stoppedAt: true, audience: true })) as { broadcastNumber: string; isActive: boolean; startsAt: Date; endsAt: Date | null; stoppedAt: Date | null; audience: string };
   if (broadcastState(b) === 'LIVE' || broadcastState(b) === 'SCHEDULED') throw new NotificationError('It is still running.');
   const now = new Date();
   await prisma.broadcast.update({ where: { id }, data: { isActive: true, startsAt: now, endsAt: broadcastEnd(now, duration), durationLabel: durationLabel(duration), stoppedAt: null, stoppedById: null, ...(resendEmail ? { sendEmail: true, emailedAt: null } : {}) } });
-  // Everyone sees it again as new.
+  // Everyone sees it again as new (staff and, for customer broadcasts, customers).
   await prisma.notificationRead.deleteMany({ where: { key: `bc:${id}` } });
+  await prisma.customerNotificationRead.deleteMany({ where: { key: `bc:${id}` } });
   await writeAuditLog({ userId: m.id, action: 'broadcast.reactivated', entityType: 'Broadcast', entityId: id, metadata: { broadcastNumber: b.broadcastNumber, duration: durationLabel(duration), email: resendEmail } });
-  if (resendEmail) await deliverDueBroadcastEmails();
+  if (resendEmail) await deliverEmails(String((b as { audience?: string }).audience ?? ''));
 }
 
 export async function deleteBroadcast(id: string): Promise<void> {
@@ -307,12 +329,15 @@ export async function deleteBroadcast(id: string): Promise<void> {
   const b = (await ownBroadcast(m, id, { broadcastNumber: true, title: true })) as { broadcastNumber: string; title: string };
   await writeAuditLog({ userId: m.id, action: 'broadcast.deleted', entityType: 'Broadcast', entityId: id, metadata: { broadcastNumber: b.broadcastNumber, title: b.title } });
   await prisma.notificationRead.deleteMany({ where: { key: `bc:${id}` } });
+  await prisma.customerNotificationRead.deleteMany({ where: { key: `bc:${id}` } });
   await prisma.broadcast.delete({ where: { id } });
 }
 
 const BC_TABS = ['live', 'scheduled', 'ended', 'all'] as const;
 export async function listBroadcasts(q?: string, tab?: string, category?: string) {
-  const m = await me();
+  // The full list (every audience, scheduled and stopped ones too) is for the
+  // people who send broadcasts; everyone else sees theirs in the bell (E2E-02).
+  const m = await requireBroadcaster();
   const t = q?.trim();
   const rows = await prisma.broadcast.findMany({
     where: { organisationId: m.organisationId ?? '', ...(category && BROADCAST_CATEGORIES.includes(category) ? { category: category as never } : {}), ...(t ? { OR: [{ broadcastNumber: { contains: t, mode: 'insensitive' } }, { title: { contains: t, mode: 'insensitive' } }, { message: { contains: t, mode: 'insensitive' } }] } : {}) },
@@ -328,10 +353,14 @@ export async function listBroadcasts(q?: string, tab?: string, category?: string
 }
 
 export async function getBroadcast(id: string) {
+  // Broadcasters only (E2E-02), and only their own organisation's broadcast.
+  await requireBroadcaster();
   const m = await me();
   const b = await prisma.broadcast.findUnique({ where: { id }, include: { createdBy: { select: { fullName: true } }, stoppedBy: { select: { fullName: true } } } });
   if (!b || b.organisationId !== m.organisationId) return null;
-  const readCount = await prisma.notificationRead.count({ where: { key: `bc:${id}` } });
+  const readCount = isCustomerAudience(b.audience)
+    ? await prisma.customerNotificationRead.count({ where: { key: `bc:${id}`, customer: { organisationId: b.organisationId } } })
+    : await prisma.notificationRead.count({ where: { key: `bc:${id}` } });
   return { ...b, state: broadcastState(b), readCount };
 }
 
@@ -381,8 +410,17 @@ export async function getBroadcastAnalytics() {
       .then((own: { id: string }[]) => prisma.auditLog.findMany({ where: { action: 'broadcast.emailed', createdAt: { gte: since }, entityId: { in: own.map((b) => b.id) } }, select: { entityId: true, metadata: true } })),
   ]);
   const people = users.map((u: (typeof users)[number]) => ({ branchId: u.branchId, departmentId: u.departmentId, roleSlugs: u.roles.map((r: { role: { slug: string } }) => r.role.slug) }));
-  const readRows = rows.length ? await prisma.notificationRead.groupBy({ by: ['key'], where: { key: { in: rows.map((r: { id: string }) => `bc:${r.id}`) } }, _count: { key: true } }) : [];
-  const reads = new Map(readRows.map((r: { key: string; _count: { key: number } }) => [r.key, r._count.key]));
+  const staffRows = rows.filter((r: (typeof rows)[number]) => !isCustomerAudience(r.audience));
+  const customerRows = rows.filter((r: (typeof rows)[number]) => isCustomerAudience(r.audience));
+  const [readRows, customerReadRows, activeCustomers] = await Promise.all([
+    staffRows.length ? prisma.notificationRead.groupBy({ by: ['key'], where: { key: { in: staffRows.map((r: { id: string }) => `bc:${r.id}`) } }, _count: { key: true } }) : Promise.resolve([]),
+    customerRows.length ? prisma.customerNotificationRead.groupBy({ by: ['key'], where: { key: { in: customerRows.map((r: { id: string }) => `bc:${r.id}`) }, customer: { organisationId: m.organisationId ?? '' } }, _count: { key: true } }) : Promise.resolve([]),
+    // Customer broadcasts reach the organisation's active customers (all, or those chosen).
+    customerRows.length ? prisma.customer.findMany({ where: { organisationId: m.organisationId ?? '', isActive: true }, select: { id: true } }) : Promise.resolve([]),
+  ]);
+  const reads = new Map([...readRows, ...customerReadRows].map((r: { key: string; _count: { key: number } }) => [r.key, r._count.key]));
+  const activeCustomerIds = new Set(activeCustomers.map((c: { id: string }) => c.id));
+  const customerReach = (b: { audience: string; audienceIds: string[] }) => (b.audience === 'CUSTOMERS_ALL' ? activeCustomerIds.size : b.audienceIds.filter((id) => activeCustomerIds.has(id)).length);
   const emailed = new Map<string, { sent: number; failed: number }>();
   for (const e of emails) {
     const meta = (e.metadata ?? {}) as { sent?: number; failed?: number };
@@ -390,7 +428,7 @@ export async function getBroadcastAnalytics() {
   }
   const now = new Date();
   const list = rows.map((b: (typeof rows)[number]) => {
-    const reach = people.filter((p: (typeof people)[number]) => reaches(b, p)).length;
+    const reach = isCustomerAudience(b.audience) ? customerReach(b) : people.filter((p: (typeof people)[number]) => reaches(b, p)).length;
     const read = Math.min(reach, Number(reads.get(`bc:${b.id}`) ?? 0));
     const state = broadcastState(b, now);
     const started = +new Date(b.startsAt) <= +now;
@@ -408,7 +446,7 @@ export async function getBroadcastAnalytics() {
     const r = sumBy(xs, (b) => b.reach), rd = sumBy(xs, (b) => b.read);
     return { category: c, count: list.filter((b: (typeof list)[number]) => b.category === c).length, reach: r, read: rd, readRate: rate(rd, r) };
   });
-  const byAudience = ['ALL', 'BRANCH', 'DEPARTMENT', 'ROLE'].map((a) => ({ audience: a, count: list.filter((b: (typeof list)[number]) => b.audience === a).length }));
+  const byAudience = ['ALL', 'BRANCH', 'DEPARTMENT', 'ROLE', 'CUSTOMERS_ALL', 'CUSTOMERS_SELECTED'].map((a) => ({ audience: a, count: list.filter((b: (typeof list)[number]) => b.audience === a).length }));
   // Lagos calendar months (UTC+1) — a broadcast at 00:30 on the 1st is the new month's.
   const lagosMonth = (d: Date) => new Date(new Date(d).getTime() + 3600000).toISOString().slice(0, 7);
   const nowL = new Date(now.getTime() + 3600000);
@@ -423,7 +461,7 @@ export async function getBroadcastAnalytics() {
     actions.push({ priority: 1, title: `${b.title}: ${b.reach - b.read} ${b.reach - b.read === 1 ? 'person has' : 'people have'} not read this alert`, detail: `${b.broadcastNumber} — consider calling or messaging them directly.`, href: `/notifications/broadcasts/${b.id}` });
   }
   for (const b of list.filter((x: (typeof list)[number]) => (x.email?.failed ?? 0) > 0)) {
-    actions.push({ priority: 2, title: `${b.email!.failed} ${b.email!.failed === 1 ? 'email' : 'emails'} failed for ${b.broadcastNumber}`, detail: 'Check those staff email addresses in Users.', href: `/notifications/broadcasts/${b.id}` });
+    actions.push({ priority: 2, title: `${b.email!.failed} ${b.email!.failed === 1 ? 'email' : 'emails'} failed for ${b.broadcastNumber}`, detail: isCustomerAudience(b.audience) ? 'Check those customers\' email addresses in Customers (Settings → Email delivery shows each failure).' : 'Check those staff email addresses in Users.', href: `/notifications/broadcasts/${b.id}` });
   }
   for (const b of list.filter((x: (typeof list)[number]) => x.state === 'LIVE' && x.readRate !== null && x.readRate < 30 && (+now - +new Date(x.startsAt)) > 86400000)) {
     actions.push({ priority: 3, title: `${b.title}: only ${b.readRate}% have read it`, detail: `Live for more than a day — consider emailing it, or making it Important.`, href: `/notifications/broadcasts/${b.id}` });

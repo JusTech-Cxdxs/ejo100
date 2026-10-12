@@ -1,0 +1,107 @@
+# EJO100 targeted Semgrep rules (run in CI by .github/workflows/security.yml).
+# ERROR-level rules fail the build; WARNING-level rules are reported only.
+# Triage notes for every current finding live in docs/TESTING_PROGRAMME.md.
+rules:
+  - id: ejo-prisma-raw-unsafe
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      $queryRawUnsafe / $executeRawUnsafe take a SQL string: any interpolated value is SQL injection.
+      Use the tagged-template $queryRaw`...${value}` (parameterised) instead.
+    pattern-either:
+      - pattern: $DB.$queryRawUnsafe(...)
+      - pattern: $DB.$executeRawUnsafe(...)
+
+  - id: ejo-prisma-raw-template-string
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      Prisma.raw()/$queryRaw() called with a built string — not parameterised. Use the tagged template form.
+    pattern-either:
+      - patterns:
+          - pattern: Prisma.raw($X)
+          - pattern-not: Prisma.raw("...")
+      - pattern: $DB.$queryRaw(`...`)
+      - pattern: $DB.$executeRaw(`...`)
+      - pattern: $DB.$queryRaw($A + $B)
+      - pattern: $DB.$executeRaw($A + $B)
+
+  - id: ejo-dangerously-set-inner-html
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      dangerouslySetInnerHTML renders raw HTML. Only allowed for constant, developer-written strings
+      (theme boot script). Never pass user or database content.
+    patterns:
+      - pattern: |
+          <$EL dangerouslySetInnerHTML={{__html: $X}} />
+      - pattern-not: |
+          <$EL dangerouslySetInnerHTML={{__html: "..."}} />
+
+  - id: ejo-redirect-user-input
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      redirect() to a destination taken from the submitted form / query (returnTo, redirect, next, …)
+      without validation is an open redirect. Accept only a fixed path, or check it starts with a single
+      "/" and an expected prefix (e.g. safeWorkshopPath / a regex test) before redirecting.
+    patterns:
+      - pattern-inside: |
+          $V = $RHS;
+          ...
+      - metavariable-pattern:
+          metavariable: $RHS
+          patterns:
+            - pattern-either:
+                - pattern: <... $FD.get($KEY) ...>
+                - pattern: <... $H($FD, $KEY) ...>
+                - pattern: <... $SP.get($KEY) ...>
+            - metavariable-regex:
+                metavariable: $KEY
+                regex: (?i)^['"](returnto|return_to|redirect\w*|next|callback\w*|url|dest\w*|target|back|from)['"]$
+            # validated / compared values are fine
+            - pattern-not-inside: "$A === $B ? $X : $Y"
+            - pattern-not-inside: "$A !== $B ? $X : $Y"
+            - pattern-not-inside: <... $RE.test(...) ...>
+            - pattern-not-inside: <... $S.startsWith(...) ...>
+            - pattern-not-inside: <... safeWorkshopPath(...) ...>
+            - pattern-not-inside: <... safePath(...) ...>
+            - pattern-not-inside: <... safeReturnTo(...) ...>
+      - pattern-either:
+          - pattern: redirect(<... $V ...>)
+          - pattern: permanentRedirect(<... $V ...>)
+          - pattern: NextResponse.redirect(<... $V ...>)
+
+  - id: ejo-server-action-without-guard
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      Exported function $F in a 'use server' file has no visible sign-in / permission check. Every export
+      of a 'use server' module can be called directly with a POST (Next-Action header) by anyone who knows
+      its id. Call requireUser()/authorize()/a guard first, or move the helper out of the 'use server' file.
+    paths:
+      include: ['apps/portal/lib/actions/', 'apps/website/']
+      # Form handlers only parse the form and call a guarded action (verified dynamically
+      # by the AC-ANON test, which calls every action of the build signed out).
+      exclude: ['*-form-handlers.ts']
+    patterns:
+      - pattern-inside: |
+          'use server';
+          ...
+      - pattern-either:
+          - pattern: export async function $F(...) { ... }
+          - pattern: export const $F = async (...) => { ... }
+      - pattern-not-regex: (?s)\b(requireUser|requireCustomer|getCustomer\w*|authorize\w*|getPrincipal|guard\w*|allows|can|refuse|canSeeRecord|seeOrNull|orgWhere|orgOwned|reachWhere|firstReach|myOrganisationId|actingOrgWhere|inMyOrganisation|require[A-Z]\w*|getSession|auth\.api\.getSession|customerAuth\.api\.getSession|currentUserIsMasterAdmin|isSuperAdmin|getWarrantyRoles|getSecurityRoles|loadForChange|loadForGroups|canDecide|isStore|branchWithinReach)\s*\(
+
+  - id: ejo-fetch-user-url
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      Server-side fetch() of a URL taken from the request (SSRF). Only fetch fixed, configured hosts.
+    patterns:
+      - pattern-either:
+          - pattern: fetch(<... $FD.get(...) ...>, ...)
+          - pattern: fetch(<... $FD.get(...) ...>)
+          - pattern: fetch(<... searchParams ...>, ...)
+          - pattern: fetch(<... searchParams ...>)
+          - pattern: fetch(<... $REQ.url ...>, ...)

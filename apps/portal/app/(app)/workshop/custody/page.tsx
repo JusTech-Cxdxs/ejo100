@@ -11,6 +11,8 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { ordinal } from '@/lib/custody-reminders';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { EmptyState, PageHeader } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -24,6 +26,7 @@ const STATUS_LABEL: Record<string, string> = {
 type CustodyEntry = {
   id: string;
   jobNumber: string;
+  customerId?: string;
   customerName: string;
   vehicleDescription: string;
   status: string;
@@ -153,6 +156,8 @@ export default async function WorkshopCustodyPage({
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { error, status, reminders, overdue, filter, q, type: rawType } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const vehicleType = rawType === 'PASSENGER' || rawType === 'COMMERCIAL' ? rawType : null;
   const showAwaiting = !filter || filter === 'awaiting';
   const showCancelled = !filter || filter === 'cancelled' || filter === 'overdue';
@@ -191,18 +196,12 @@ export default async function WorkshopCustodyPage({
   }
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/workshop"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Workshop
-      </LoadingLink>
-      <div className="mb-2">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Vehicles In Custody</h1>
-      </div>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        <OrgTrail area="Workshop" />
-      </p>
+      <PageHeader
+        icon="garage"
+        back={{ href: "/workshop", label: "Back to Workshop" }}
+        title="Vehicles In Custody"
+        description={<><OrgTrail area="Workshop" /></>}
+      />
 
       <form className="mb-8 flex gap-2" action="/workshop/custody">
         <select
@@ -328,7 +327,7 @@ export default async function WorkshopCustodyPage({
       <section className="mb-10">
         <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Awaiting Customer Approval</h2>
         {summary.awaitingApproval.length === 0 ? (
-          <p className="text-sm text-[var(--ejo-text-muted)]">Nothing currently awaiting approval.</p>
+          <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="garage" title="Nothing currently awaiting approval." /></div>
         ) : (
           <div className="space-y-3">
             {summary.awaitingApproval.map((entry) => (
@@ -344,7 +343,7 @@ export default async function WorkshopCustodyPage({
                       {entry.jobNumber}
                     </LoadingLink>
                     <p className="text-sm text-[var(--ejo-text)]">
-                      {entry.customerName} —{' '}
+                      <CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /> —{' '}
                       <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="hover:underline">
                         {entry.vehicleDescription}
                       </LoadingLink>
@@ -440,7 +439,7 @@ export default async function WorkshopCustodyPage({
                       {entry.jobNumber}
                     </LoadingLink>
                     <p className="text-sm text-[var(--ejo-text)]">
-                      {entry.customerName} —{' '}
+                      <CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /> —{' '}
                       <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="hover:underline">
                         {entry.vehicleDescription}
                       </LoadingLink>
@@ -516,7 +515,7 @@ export default async function WorkshopCustodyPage({
                       {entry.jobNumber}
                     </LoadingLink>
                     <p className="text-sm text-[var(--ejo-text)]">
-                      {entry.customerName} —{' '}
+                      <CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /> —{' '}
                       <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="hover:underline">
                         {entry.vehicleDescription}
                       </LoadingLink>
@@ -563,7 +562,7 @@ export default async function WorkshopCustodyPage({
       <section>
         <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">In Service</h2>
         {summary.inService.length === 0 ? (
-          <p className="text-sm text-[var(--ejo-text-muted)]">No vehicles currently in service.</p>
+          <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="garage" title="No vehicles currently in service." /></div>
         ) : (
           <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
             <table className="w-full text-sm">
@@ -583,7 +582,7 @@ export default async function WorkshopCustodyPage({
                         {entry.jobNumber}
                       </LoadingLink>
                     </td>
-                    <td className="px-4 py-2 text-[var(--ejo-text)]">{entry.customerName}</td>
+                    <td className="px-4 py-2 text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></td>
                     <td className="px-4 py-2">
                       <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-text)] hover:underline">
                         {entry.vehicleDescription}

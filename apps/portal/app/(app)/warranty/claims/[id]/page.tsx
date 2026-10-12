@@ -29,8 +29,9 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { WarrantyClaimFields } from '@/components/WarrantyClaimFields';
-import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS, REMEDY_LABEL, PART_RETURN_LABEL, CUSTOMER_RESOLUTION_LABEL, coverageLabel } from '@/lib/warranty-claim-status';
+import { CLAIM_STATUS_LABEL, REMEDY_LABEL, PART_RETURN_LABEL, CUSTOMER_RESOLUTION_LABEL, coverageLabel } from '@/lib/warranty-claim-status';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 
 function naira(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -105,13 +106,13 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
 
   return (
     <div className="p-8">
-      <LoadingLink href="/warranty/claims" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Claims</LoadingLink>
+      <BackLink href="/warranty/claims" label="Back to Claims" className="mb-4" />
       {status && BANNER[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={BANNER[status]} /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{c.claimNumber}</h1>
+          <PageTitle icon="file">{c.claimNumber}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
             {c.causalPart} · against{' '}
             <LoadingLink href={`/warranty/${c.warranty.id}`} className="text-[var(--ejo-primary)] hover:underline">{c.warranty.warrantyNumber}</LoadingLink> · {c.provider.name}
@@ -119,7 +120,7 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`rounded-full px-3 py-1 text-sm font-medium ${CLAIM_STATUS_CLASS[c.status]}`}>{CLAIM_STATUS_LABEL[c.status]}</span>
+          <StatusChip status={c.status} label={CLAIM_STATUS_LABEL[c.status]} className="px-3 py-1 text-sm" />
           <PrintMenu orgHref={`/print/warranty-claims/${c.id}`} clientHref={`/print/warranty-claims/${c.id}?variant=client`} clientLabel="Provider Copy" />
         </div>
       </div>

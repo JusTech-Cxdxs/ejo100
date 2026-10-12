@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { claimed, lockRows } from '@/lib/integrity';
 import { retryOnNumberClash } from '@/lib/integrity-core';
@@ -421,7 +422,7 @@ let lastSafetyNet = 0;
 function reminderSafetyNet() {
   if (Date.now() - lastSafetyNet < 5 * 60_000) return;
   lastSafetyNet = Date.now();
-  after(() => sendDueAppointmentReminders().then(() => undefined).catch((err) => console.error('Reminder safety net failed', err)));
+  after(() => sendDueAppointmentReminders().then(() => undefined).catch((err) => logFailure('Reminder safety net failed', err)));
 }
 
 /** Dashboard reminders: this person's appointments today (host or
