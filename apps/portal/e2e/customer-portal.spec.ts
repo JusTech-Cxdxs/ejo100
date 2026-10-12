@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { CUSTOMER, OTHER_PORTAL_CUSTOMER, PASSWORD_CUSTOMER, PORTAL_CUSTOMER, SEED_WARRANTY } from './people';
-import { as, open, latestMail, linkIn, uniq, urlOrExplain, waitOutcome } from './helpers';
-import { WEB, customerSignOut, customerSignedIn, portal, submitSignIn, websiteUp } from './customer';
+import { as, open, latestMail, linkIn, uniq, urlOrExplain, visibleOrExplain, waitOutcome } from './helpers';
+import { WEB, afterSignIn, customerSignOut, customerSignedIn, portal, submitSignIn, websiteUp } from './customer';
 import { freshVehicle, resetCustomerAccount } from './db';
 import {
   addLine, jcForm, jobCardReadyForEstimate, jobNumber, managerApprovesEstimate, notifyCustomer, recordPayment, submitEstimate, supervisorApprovesEstimate,
@@ -35,7 +35,7 @@ test.describe('signing in', () => {
     await expect(page).toHaveURL(/\/customer-portal\?redirect=/);
 
     await submitSignIn(page, PORTAL_CUSTOMER.email, PORTAL_CUSTOMER.password);
-    await urlOrExplain(page, /\/customer-portal\/dashboard\/payments/);
+    await afterSignIn(page, /\/customer-portal\/dashboard\/payments/);
     await expect(page.getByRole('heading', { level: 1, name: 'Payments & balances' })).toBeVisible();
   });
 
@@ -83,7 +83,7 @@ test.describe('passwords', () => {
       await submitSignIn(page, PASSWORD_CUSTOMER.email, PASSWORD_CUSTOMER.password);
       await expect(page.getByTestId('customer-sign-in-form').getByRole('alert')).toBeVisible();
       await submitSignIn(page, PASSWORD_CUSTOMER.email, fresh);
-      await urlOrExplain(page, /\/customer-portal\/dashboard/);
+      await afterSignIn(page);
     });
 
     await test.step('the same link again is refused, with a way forward', async () => {
@@ -119,12 +119,12 @@ test.describe('passwords', () => {
     await form.getByLabel('Type the new password again', { exact: true }).fill(next);
     await form.getByRole('button', { name: 'Change password' }).click();
     // The form's own answer (an error would show here instead).
-    await expect(form.locator('[role="status"], [role="alert"]').first()).toContainText('Your password is changed. Other devices have been signed out.');
+    await visibleOrExplain(page, form.getByRole('status').filter({ hasText: 'Your password is changed. Other devices have been signed out.' }), 'the confirmation "Your password is changed"');
     await customerSignOut(page);
     await submitSignIn(page, PASSWORD_CUSTOMER.email, PASSWORD_CUSTOMER.password);
     await expect(page.getByTestId('customer-sign-in-form').getByRole('alert')).toBeVisible();
     await submitSignIn(page, PASSWORD_CUSTOMER.email, next);
-    await urlOrExplain(page, /\/customer-portal\/dashboard/);
+    await afterSignIn(page);
   });
 });
 

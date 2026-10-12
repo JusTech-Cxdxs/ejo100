@@ -3,18 +3,30 @@ import { E2E_PASSWORD, who, type Person } from './people';
 
 const MAIL = process.env.E2E_MAIL_URL ?? 'http://localhost:8025';
 
+/** What a person would see right now: the address, messages (alerts, statuses), the form, else the page text. */
+export async function describePage(page: Page): Promise<string> {
+  const grab = async (sel: string) => (await page.locator(sel).allInnerTexts().catch(() => [] as string[])).join(' | ').replace(/\s+/g, ' ').trim();
+  const messages = await grab('[role="alert"], [role="status"]');
+  const form = await grab('form');
+  const body = messages || form ? '' : await grab('main, body');
+  return `${page.url()}${messages ? ` — messages: ${messages.slice(0, 300)}` : ''}${form ? ` — form: ${form.slice(0, 300)}` : ''}${body ? ` — page: ${body.slice(0, 400)}` : ''}`;
+}
+
 /** Wait for the URL; on a timeout say where the page actually is and what it shows. */
 export async function urlOrExplain(page: Page, url: RegExp, timeout = 30_000) {
   try {
     await page.waitForURL(url, { timeout });
   } catch {
-    // What the person would see: messages first (alerts, statuses), then the form, then the page.
-    const grab = async (sel: string) => (await page.locator(sel).allInnerTexts().catch(() => [] as string[])).join(' | ').replace(/\s+/g, ' ').trim();
-    const messages = await grab('[role="alert"], [role="status"]');
-    const form = await grab('form');
-    const body = messages || form ? '' : await grab('main, body');
-    throw new Error(`Expected the URL to match ${url} within ${timeout / 1000}s, but the page is at ${page.url()}` +
-      `${messages ? ` — messages: ${messages.slice(0, 300)}` : ''}${form ? ` — form: ${form.slice(0, 300)}` : ''}${body ? ` — page: ${body.slice(0, 400)}` : ''}`);
+    throw new Error(`Expected the URL to match ${url} within ${timeout / 1000}s, but the page is at ${await describePage(page)}`);
+  }
+}
+
+/** Expect a locator to be visible; on failure say what the page shows instead. */
+export async function visibleOrExplain(page: Page, locator: Locator, what: string, timeout = 20_000) {
+  try {
+    await expect(locator).toBeVisible({ timeout });
+  } catch {
+    throw new Error(`Expected ${what} within ${timeout / 1000}s; the page is at ${await describePage(page)}`);
   }
 }
 

@@ -26,6 +26,7 @@ const locOf = (r) => {
 const titleOf = (trail, spec) => [...trail, spec.title].filter(Boolean).join(' › ').replace(/[\n:,]/g, ' ').slice(0, 180);
 const where = (spec) => (spec.file ? `${spec.file}:${spec.line}` : '');
 const perFile = new Map();
+const intermittent = [];
 function walk(suite, trail) {
   for (const s of suite.suites ?? []) walk(s, [...trail, s.title]);
   for (const spec of suite.specs ?? []) {
@@ -35,6 +36,10 @@ function walk(suite, trail) {
       const last = t.results?.[t.results.length - 1];
       const title = titleOf(trail, spec);
       const knownDefect = (t.annotations ?? []).find((a) => a.type === 'fail');
+      // Intermittent known defects recorded at run time (e.g. E2E-11), whatever the outcome.
+      for (const a of [...(t.annotations ?? []), ...(t.results ?? []).flatMap((r) => r.annotations ?? [])]) {
+        if (/^E2E-\d+$/.test(a.type ?? '')) intermittent.push(`${a.type} in ${title}: ${(a.description ?? '').slice(0, 500)}`);
+      }
       if (t.status === 'unexpected') {
         const msg = knownDefect && last?.status === 'passed'
           ? `Marked as a known defect (${knownDefect.description ?? ''}) but it PASSED — the defect looks fixed; remove test.fail.`
@@ -62,6 +67,8 @@ if (part === 0) {
   const st = data.stats ?? {};
   const files = [...perFile.entries()].sort((a, b) => b[1] - a[1]).map(([f, ms]) => `${f.replace(/\.spec\.ts$/, '')} ${Math.round(ms / 1000)}s`).join(' · ');
   console.log(`::notice title=e2e time per file (test time incl. retries)::${files}`);
+  const seen = [...new Set(intermittent)];
+  if (seen.length) console.log(`::notice title=Intermittent known defects (${seen.length})::${seen.slice(0, 4).join(' ⏎ ').replace(/[\r\n]/g, ' ').slice(0, 3500)}`);
   console.log(`::notice title=e2e totals::expected ${st.expected ?? '?'} · unexpected ${st.unexpected ?? '?'} · flaky ${st.flaky ?? '?'} · skipped ${st.skipped ?? '?'} · ${Math.round((st.duration ?? 0) / 1000)} s · ${errors.length} failing, ${warnings.length} flaky, ${notices.length} known defects`);
 }
 console.log(`${errors.length} failing test(s), ${warnings.length} flaky, ${notices.length} known defect(s).`);
