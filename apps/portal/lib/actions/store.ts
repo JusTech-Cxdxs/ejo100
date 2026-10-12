@@ -1,4 +1,5 @@
 'use server';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 /**
@@ -388,7 +389,7 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
       recipients.set(staffMember.id, staffMember);
     }
     const orgContext = await getStoreOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/logo.png`;
     for (const recipient of recipients.values()) {
       await sendEmail(
@@ -478,7 +479,7 @@ export async function setPartTargetMargin(partId: string, targetValue: number, p
       recipients.set(staffMember.id, staffMember);
     }
     const orgContext = await getStoreOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/logo.png`;
     const equivalentMarkup = marginToMarkup(targetMarginPercent);
     for (const recipient of recipients.values()) {
@@ -1019,7 +1020,7 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
       storeRecipients.set(staffMember.id, staffMember);
     }
     const orgContext = await getStoreOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/logo.png`;
 
     for (const recipient of storeRecipients.values()) {
@@ -1109,7 +1110,7 @@ async function sendStoreMatchingCompleteNotification(
 
   try {
     const orgContext = await getStoreOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/logo.png`;
     const statusRecipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
     const statusRecipients = await prisma.user.findMany({ where: { id: { in: statusRecipientIds } }, select: { fullName: true, email: true } });
@@ -1833,8 +1834,8 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
       listEligibleStoreManagersForBranch(input.branchId),
     ]);
     if (recordedByUser) {
-      const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const websiteUrl = websiteBaseUrl();
+      const portalUrl = portalBaseUrl();
       const recipients = [...new Set([recordedByUser.email, ...storeManagers.staff.map((m) => m.email)])];
       for (const line of resolvedLines) {
         const html = renderStaffGoodsReceiptRecordedEmail({
@@ -1879,7 +1880,7 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
       for (const staffMember of [...officers.staff, ...managers.staff]) {
         recipients.set(staffMember.id, staffMember);
       }
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const portalUrl = portalBaseUrl();
       const logoUrl = `${portalUrl}/images/logo/logo.png`;
       const formatNairaForAlert = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       for (const alert of newAlertsForEmail) {
@@ -2103,7 +2104,7 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
       recipients.set(staffMember.id, staffMember);
     }
     const orgContext = await getStoreOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/logo.png`;
     for (const recipient of recipients.values()) {
       await sendEmail(
@@ -2254,7 +2255,7 @@ async function notifyStoreOfGoodsReceiptEdit(branchId: string, editedByName: str
       recipients.set(staffMember.id, staffMember);
     }
     const orgContext = await getStoreOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     for (const recipient of recipients.values()) {
       await sendEmail(
         recipient.email,

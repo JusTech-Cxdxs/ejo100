@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
 import { WarrantiesIssuedPrint } from '@/components/print/WarrantiesIssuedPrint';
@@ -60,7 +61,7 @@ export default async function PrintPartRequestSlipPage({
   if (!slip || !organisation) notFound();
   if (slip.status !== 'RELEASED') notFound();
 
-  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const portalUrl = portalBaseUrl();
   const logoUrl = `${portalUrl}/images/logo/logo.png`;
   const totalAmount = slip.lines.reduce((sum: number, l: (typeof slip.lines)[number]) => {
     const amount = l.estimateLineItem?.amount ?? l.serviceEstimateLineItem?.amount;

@@ -21,19 +21,14 @@ function hotlinesText(hotlines: string[]): string | null {
 }
 
 /**
- * The one real, shared masthead every printable document in the
- * system starts with — a genuine letterhead, not a screenshot of the
- * dashboard. Two real tiers, confirmed directly from a real printed
- * Kewalram Job Card: the Organisation's own legal identity (name,
- * legal entity, HQ address, RC number, general hotlines) is the
- * masthead itself; the specific executing Branch — its own real
- * address and its own real hotlines, genuinely different from the
- * Organisation's general ones — follows as its own block underneath.
+ * The shared letterhead every printable document starts with. Two tiers,
+ * as on the organisation's printed Job Card: the Organisation's legal
+ * identity (name, legal entity, HQ address, RC number, general hotlines)
+ * is the masthead; the executing Branch, with its own address and
+ * hotlines, follows underneath. Everything comes from the database.
  *
  * The wordmark splits the organisation's name on its first word (bold,
- * large) from the rest (smaller, set off by a thin accent rule above
- * it) — matching the real Kewalram lockup: KEWALRAM bold on top,
- * Chanrai Group smaller beneath a green rule. Deliberately quiet
+ * large) from the rest (smaller, set off by a thin accent rule). Quiet
  * everywhere else: the accent color marks only the wordmark rule,
  * the document title, and the section rules, never a full-width
  * colored band, since this needs to read cleanly even on a
@@ -71,13 +66,8 @@ export function DocumentHeader({
         <tbody>
           <tr>
             <td style={{ verticalAlign: 'middle', padding: 0 }}>
-              {/* A real flexbox here, not table cells, for the
-                  logo+wordmark pairing — a real flex row is what makes
-                  a precise, equal 4px gap actually reliable, matched
-                  intentionally to the same 4px vertical gap between
-                  "Kewalram" and "Chanrai Group" below, so the spacing
-                  reads as one consistent design decision rather than
-                  two different numbers that happen to look similar. */}
+              {/* Flex, not table cells, so the 4px gap beside the logo
+                  matches the 4px gap between the two wordmark lines. */}
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 {/* A hard-coded width AND height, both matching the real
                     cropped logo file's own exact aspect ratio, not
@@ -108,10 +98,8 @@ export function DocumentHeader({
                           only reliable way to guarantee the line
                           actually shows up on a real printed page, not
                           just on screen. flex:1 automatically grows it
-                          to fill exactly the leftover space, which is
-                          what pushes "Chanrai Group" to end flush with
-                          "Kewalram" above it, on any name, at any
-                          size, without hand-tuned pixel widths. */}
+                          to fill the leftover space, so the second line
+                          ends flush with the first on any name. */}
                       <div style={{ flex: 1, borderBottom: `1.25px solid ${accentColor}`, marginRight: '6px' }} />
                       <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{wordmarkBottom}</span>
                     </div>

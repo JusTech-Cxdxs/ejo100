@@ -4,10 +4,8 @@ import { AppModule } from './app.module';
 import { securityHeaders, rateLimit } from './common/middleware/security';
 
 /**
- * EJO 100 API entrypoint. Phase 1: bootstraps the app with every domain
- * module registered (see app.module.ts) but no business logic or
- * database-backed endpoints yet — those land module-by-module in later
- * phases per the project's incremental build rule.
+ * EJO 100 API entrypoint: every domain module is registered (app.module.ts);
+ * business endpoints land module by module in later phases.
  */
 
 // Browsers never send an Origin header with a trailing slash — if the
@@ -29,7 +27,13 @@ async function bootstrap() {
   // instead of letting it shut down cleanly.
   app.enableShutdownHooks();
 
-  const portalOrigin = stripTrailingSlash(process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001');
+  // The only browser origin allowed to call the API. Required in production:
+  // the API refuses to start rather than fall back to a default address.
+  const configuredOrigin = process.env.NEXT_PUBLIC_PORTAL_URL?.trim();
+  if (!configuredOrigin && process.env.NODE_ENV === 'production') {
+    throw new Error('NEXT_PUBLIC_PORTAL_URL is not set. Set it in Render → Environment, then redeploy.');
+  }
+  const portalOrigin = stripTrailingSlash(configuredOrigin || 'http://localhost:3001');
   app.enableCors({
     origin: [portalOrigin],
     credentials: true, // required so an explicitly-attached session token is accepted cross-origin

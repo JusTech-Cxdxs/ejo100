@@ -1,4 +1,5 @@
 'use server';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { allows, authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE } from '@/lib/authz/server';
@@ -231,7 +232,7 @@ async function notifyJobCardCreatorOfDecision(params: {
       select: { fullName: true },
     });
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
 
     await sendEmail(
       jobCard.createdBy.email,
@@ -1171,7 +1172,7 @@ export async function createJobCard(input: CreateJobCardInput) {
   // already-successful Job Card creation.
   try {
     const orgContext = await getWorkshopOrgContext(department.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       created.supervisor!.email,
       `New Job Card ${created.jobNumber} assigned to you`,
@@ -1200,7 +1201,7 @@ export async function createJobCard(input: CreateJobCardInput) {
   // dashboard lives on apps/website, not apps/portal.
   try {
     const orgContext = await getWorkshopOrgContext(department.name);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     await sendEmail(
       created.customer.email,
       input.escalatedFromServiceNumber
@@ -1424,7 +1425,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   )) {
     try {
       const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-      const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+      const websiteUrl = websiteBaseUrl();
       const vehicleDescription = [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
       const dashboardUrl = `${websiteUrl}/customer-portal/dashboard#jobcard-${id}`;
       const logoUrl = `${websiteUrl}/images/logo/logo.png`;
@@ -1516,8 +1517,8 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   if (priorStatus !== status && status === JobCardStatus.CHECKED_OUT) {
     try {
       const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-      const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const websiteUrl = websiteBaseUrl();
+      const portalUrl = portalBaseUrl();
       const vehicleDescription = [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
       const dashboardUrl = `${websiteUrl}/customer-portal/dashboard`;
       const jobCardUrl = `${portalUrl}/workshop/job-cards/${id}`;
@@ -1760,7 +1761,7 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
       select: { name: true },
     });
     const orgContext = await getWorkshopOrgContext(department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       supervisor.email,
       `New Job Card ${jobCard.jobNumber} assigned to you`,
@@ -1860,7 +1861,7 @@ export async function assignTechnician(jobCardId: string, technicianId: string) 
     });
     if (!technician) return jobCard;
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       technician.email,
       `You've been assigned to Job Card ${jobCard.jobNumber}`,
@@ -1926,7 +1927,7 @@ async function notifySupervisorOfTechnicianResponse(params: {
       select: { fullName: true },
     });
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
 
     await sendEmail(
       jobCard.supervisor.email,
@@ -2524,7 +2525,7 @@ async function sendEstimateNudge(params: {
     ]);
     if (!toUser) return;
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       toUser.email,
       `A note on the estimate for Job Card ${jobCard.jobNumber}`,
@@ -2681,7 +2682,7 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
     if (!estimate.jobCard.supervisor) return;
     // Independent lookups for the email — run together.
     const [submitter, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(estimate.jobCard.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const total = customerTotal(estimate.lineItems);
     await sendEmail(
       estimate.jobCard.supervisor.email,
@@ -2825,7 +2826,7 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
     const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
     const lineItems = await prisma.estimateLineItem.findMany({ where: { estimateId: estimate.id }, select: { amount: true, billTo: true } });
     const total = customerTotal(lineItems);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const companyName = estimate.jobCard.branch.businessUnit.organisation.name;
     const branchName = estimate.jobCard.branch.name;
     for (const manager of managers.supervisors) {
@@ -2915,7 +2916,7 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
     const manager = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
     const lineItems = await prisma.estimateLineItem.findMany({ where: { estimateId: estimate.id }, select: { amount: true, billTo: true } });
     const total = customerTotal(lineItems);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       estimate.jobCard.createdBy.email,
       `Estimate for Job Card ${estimate.jobCard.jobNumber} approved by manager`,
@@ -3050,7 +3051,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
     // real financial documents, not a downgrade.
     const formatNairaForPdf = (value: number) => `NGN ${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     const vehicleDescription = [estimate.jobCard.vehicle.make, estimate.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     const paymentRemarkSuggestion = [estimate.jobCard.jobNumber, vehicleDescription, estimate.jobCard.vehicle.plateNumber]
       .filter(Boolean)
@@ -3091,7 +3092,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
         try {
           const organisation = await getOrganisation();
           if (!organisation) return undefined;
-          const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+          const portalUrl = portalBaseUrl();
           const pdfBuffer = await renderToBuffer(
             EstimatePdf({
               organisation: {
@@ -3411,7 +3412,7 @@ export async function recordPayment(
   // recording event.
   try {
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const balance = roundedTotal - newTotal;
 
     const recipientIds = new Set<string>();
@@ -3459,7 +3460,7 @@ export async function recordPayment(
   if (justMetDeposit || justCompletedFull) {
     try {
       const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const portalUrl = portalBaseUrl();
 
       const recipientIds = new Set<string>();
       if (jobCard.createdById) recipientIds.add(jobCard.createdById);
@@ -3519,7 +3520,7 @@ export async function recordPayment(
 
   try {
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     const balance = roundedTotal - newTotal;
     await sendEmail(
       jobCard.customer.email,
@@ -3637,7 +3638,7 @@ export async function requestJobCardCancellation(jobCardId: string, reason: stri
   try {
     // Independent lookups for the email — run together.
     const [requester, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(jobCard.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const managers = await listEligibleManagersForBranch(jobCard.branchId);
     for (const manager of managers.supervisors) {
       await sendEmail(
@@ -3751,7 +3752,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
   try {
     // Independent lookups for the email — run together.
     const [approver, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(request.jobCard.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
 
     const recipientIds = new Set<string>();
     if (request.jobCard.createdById) recipientIds.add(request.jobCard.createdById);
@@ -3790,7 +3791,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
 
   try {
     const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     await sendEmail(
       request.jobCard.customer.email,
       `Job Card ${request.jobCard.jobNumber} cancelled`,
@@ -3864,7 +3865,7 @@ export async function declineCancellationRequest(requestId: string, decisionNote
     ]);
     if (!requester) return;
     const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       requester.email,
       `Cancellation request declined — Job Card ${request.jobCard.jobNumber}`,
@@ -3967,7 +3968,7 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
   try {
     // Independent lookups for the email — run together.
     const [requester, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(jobCard.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const managers = await listEligibleManagersForBranch(jobCard.branchId);
     for (const manager of managers.supervisors) {
       await sendEmail(
@@ -4080,8 +4081,8 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
   try {
     // Independent lookups for the email — run together.
     const [approver, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(request.jobCard.department?.name)]);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const websiteUrl = websiteBaseUrl();
+    const portalUrl = portalBaseUrl();
     const vehicleDescription = [request.jobCard.vehicle.make, request.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
 
     await sendEmail(
@@ -4187,7 +4188,7 @@ export async function declineCloseRequest(requestId: string, decisionNotes?: str
     ]);
     if (!requester) return;
     const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       requester.email,
       `Close request declined — Job Card ${request.jobCard.jobNumber}`,
@@ -4500,7 +4501,7 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
   const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
   const dueDate = addWorkingDays(jobCard.estimate.customerNotifiedAt, APPROVAL_DEADLINE_WORKING_DAYS);
   const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const orgContext = await getWorkshopOrgContext();
 
   await prisma.estimate.update({ where: { id: jobCard.estimate.id }, data: { reminderSentAt: new Date() } });
@@ -4653,7 +4654,7 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
     where: { entityId: jobCardId, action: 'collection.overdue_notice_sent' },
   });
 
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const orgContext = await getWorkshopOrgContext();
   await sendEmail(
     jobCard.customer.email,
@@ -4699,7 +4700,7 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
   }
 
   const dueDate = addWorkingDays(jobCard.readyForCollectionAt, READY_FOR_COLLECTION_GRACE_WORKING_DAYS);
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const orgContext = await getWorkshopOrgContext();
 
   // Staged, semi-automatic (lib/custody-reminders): refused until due.

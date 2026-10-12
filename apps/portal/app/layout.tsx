@@ -11,6 +11,11 @@ export const metadata: Metadata = {
   description: portalConfig.poweredBy,
 };
 
+// Every page is rendered per request so it can carry that response's
+// Content-Security-Policy nonce (middleware.ts); a page built ahead of time
+// could not, and its scripts would be blocked.
+export const dynamic = 'force-dynamic';
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     // The theme attribute is set before paint by the boot script (Light / Dark /

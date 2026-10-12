@@ -1,3 +1,4 @@
+import { portalConfig } from '@/lib/site-config';
 import { notFound } from 'next/navigation';
 import { getExitPass } from '@/lib/actions/security';
 import { getOrganisation } from '@/lib/actions/organisation';
@@ -20,7 +21,7 @@ export default async function ExitPassPrint({ params, searchParams }: { params: 
       <PrintOnLoad />
       <PassSheet
         copyLabel={isOrg ? 'Organisation copy' : 'Holder copy'}
-        orgName={org?.name ?? 'Kewalram Chanrai Group'}
+        orgName={org?.name ?? portalConfig.organisationName}
         subName={p.branch.name}
         title="Employee Exit Pass"
         note="NOTE: The Security Officers will not permit or allow any Employee on duty to go out during working hour(s) without the Employee Exit pass approval."

@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { customerTotal, billingSplit, isCustomerLine, coveredLabel } from '@/lib/estimate-billing';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
@@ -113,7 +114,7 @@ export default async function PrintJobCardPage({
       <DocumentHeader
         organisation={organisation}
         branch={jobCard.branch}
-        logoUrl={`${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app'}/images/logo/logo.png`}
+        logoUrl={`${portalBaseUrl()}/images/logo/logo.png`}
         documentTitle={
           wasCancelled
             ? (isOrgCopy ? 'Job Card — Cancelled, Vehicle Returned' : 'Vehicle Return Receipt (Cancelled)')

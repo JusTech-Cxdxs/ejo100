@@ -90,7 +90,7 @@ body {
 }
 
 /* Reusable "photography" placeholder — used on the auth screens' brand
-   panel until real Kewalram photography is available. */
+   panel until real photography is available. */
 .ejo-media-placeholder {
   background:
     radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.55), transparent 55%),

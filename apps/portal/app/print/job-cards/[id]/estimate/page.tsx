@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { jobCardVisible } from '@/lib/authz/server';
 import { getJobCard, getJobCardEstimate, getJobCardPayments, getJobCardAuditTrail } from '@/lib/actions/workshop';
@@ -43,7 +44,7 @@ export default async function PrintJobCardEstimatePage({
   if (estimate.status !== 'MANAGER_APPROVED') notFound();
 
   const vehicleDescription = [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
-  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const portalUrl = portalBaseUrl();
 
   return (
     <EstimatePrintDocument

@@ -1,4 +1,5 @@
 'use server';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
@@ -92,7 +93,7 @@ async function warrantyApproverRecipients(): Promise<{ id: string; fullName: str
 async function notifyStaff(recipients: { fullName: string; email: string }[], subject: string, heading: string, lines: string[], path: string) {
   try {
     const orgContext = await getWorkshopOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     for (const r of recipients) {
       await sendEmail(
         r.email,
@@ -308,7 +309,7 @@ export async function loadSampleWarrantyPolicies(): Promise<{ created: number }>
   const user = await requireWarrantyApprover();
   const providers: { name: string; type: WarrantyProviderInput['type']; claimSubmissionDays: number; partRetentionDays: number; notes: string }[] = [
     { name: 'Foton (Sample)', type: 'MANUFACTURER', claimSubmissionDays: 30, partRetentionDays: 60, notes: 'SAMPLE provider — replace with the real Foton / Foton International terms.' },
-    { name: 'Kewalram Workshop (Sample)', type: 'INTERNAL', claimSubmissionDays: 30, partRetentionDays: 30, notes: 'SAMPLE — the workshop’s own parts-and-workmanship warranty.' },
+    { name: 'In-house workshop (Sample)', type: 'INTERNAL', claimSubmissionDays: 30, partRetentionDays: 30, notes: 'SAMPLE — the workshop’s own parts-and-workmanship warranty.' },
   ];
   let created = 0;
   const ids: Record<string, string> = {};
@@ -332,14 +333,14 @@ export async function loadSampleWarrantyPolicies(): Promise<{ created: number }>
       conditions: 'Scheduled servicing at an authorised workshop at the recommended intervals\nFailure reported promptly\nFailed parts kept for inspection',
     },
     {
-      provider: 'Kewalram Workshop (Sample)', code: 'SAMPLE-PART-12', name: 'Replacement part warranty — 12 months (sample)', kind: 'PART', coversParts: true, coversLabour: true, defaultRemedy: 'REPLACEMENT',
+      provider: 'In-house workshop (Sample)', code: 'SAMPLE-PART-12', name: 'Replacement part warranty — 12 months (sample)', kind: 'PART', coversParts: true, coversLabour: true, defaultRemedy: 'REPLACEMENT',
       durationMonths: 12, distanceLimit: 20000,
       coverageSummary: 'Manufacturing defects in the replacement part\nWorkmanship of fitting it',
       exclusions: 'Accident or misuse damage\nIncorrect fluids\nUnrelated failures\nNormal wear',
       conditions: 'Part fitted by the workshop\nFailure reported before the warranty ends',
     },
     {
-      provider: 'Kewalram Workshop (Sample)', code: 'SAMPLE-PART-6', name: 'Replacement part warranty — 6 months (sample)', kind: 'PART', coversParts: true, coversLabour: false, defaultRemedy: 'REPLACEMENT',
+      provider: 'In-house workshop (Sample)', code: 'SAMPLE-PART-6', name: 'Replacement part warranty — 6 months (sample)', kind: 'PART', coversParts: true, coversLabour: false, defaultRemedy: 'REPLACEMENT',
       durationMonths: 6, distanceLimit: 10000,
       coverageSummary: 'Manufacturing defects in the replacement part (defect-only cover)',
       exclusions: 'Normal wear\nContamination\nIncorrect fitting by others',
@@ -1249,7 +1250,7 @@ export async function sendWarrantyCertificateEmail(warrantyId: string): Promise<
   if (!w.customer.email) throw new WarrantyActionError('The customer has no email address on file.');
   const previous = await prisma.auditLog.count({ where: { entityType: 'Warranty', entityId: warrantyId, action: 'warranty.certificate_emailed' } });
   const orgContext = await getWorkshopOrgContext();
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const distanceEnd = w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null;
   await sendEmail(
     w.customer.email,
@@ -1294,7 +1295,7 @@ export async function sendWarrantyExpiryReminder(warrantyId: string): Promise<vo
     );
   }
   const orgContext = await getWorkshopOrgContext();
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const distanceEnd = w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null;
   const daysLeft = Math.max(0, Math.ceil((new Date(w.endsAt).getTime() - Date.now()) / 86400000));
   const number = sentStages.length + 1;

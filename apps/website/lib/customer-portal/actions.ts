@@ -24,7 +24,10 @@ const SIGNED_OUT: ActionState = { ok: false, error: 'Your session has ended. Ple
 const MAX_EXTRA_ADDRESSES = 5;
 const PRIMARY_ADDRESS_MAX = 80;
 
-const text = (fd: FormData, k: string) => String(fd.get(k) ?? '').replace(/\s+/g, ' ').trim();
+// Any one field is cut to 2,000 characters before it is cleaned, so an oversized
+// post costs nothing; each field's own limit below then gives the friendly error.
+const FIELD_CAP = 2000;
+const text = (fd: FormData, k: string) => String(fd.get(k) ?? '').slice(0, FIELD_CAP).replace(/\s+/g, ' ').trim();
 
 function checkPhone(v: string, required: boolean): string | null {
   if (!v) return required ? 'Enter your phone number.' : null;
@@ -173,9 +176,9 @@ function strongEnough(pw: string): boolean {
 export async function changePassword(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const me = await currentCustomer();
   if (!me) return SIGNED_OUT;
-  const currentPassword = String(fd.get('currentPassword') ?? '');
-  const newPassword = String(fd.get('newPassword') ?? '');
-  const confirmPassword = String(fd.get('confirmPassword') ?? '');
+  const currentPassword = String(fd.get('currentPassword') ?? '').slice(0, FIELD_CAP);
+  const newPassword = String(fd.get('newPassword') ?? '').slice(0, FIELD_CAP);
+  const confirmPassword = String(fd.get('confirmPassword') ?? '').slice(0, FIELD_CAP);
   const fieldErrors: Record<string, string> = {};
   if (!currentPassword) fieldErrors.currentPassword = 'Enter your current password.';
   if (newPassword.length < 8) fieldErrors.newPassword = 'Use at least 8 characters.';

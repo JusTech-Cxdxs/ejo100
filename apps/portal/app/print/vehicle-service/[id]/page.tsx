@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { serviceVisible } from '@/lib/authz/server';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
@@ -103,7 +104,7 @@ export default async function PrintVehicleServicePage({
       <DocumentHeader
         organisation={organisation}
         branch={service.branch}
-        logoUrl={`${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app'}/images/logo/logo.png`}
+        logoUrl={`${portalBaseUrl()}/images/logo/logo.png`}
         documentTitle={isOrgCopy ? 'Vehicle Service — Vehicle Collection Record' : 'Vehicle Collection Receipt'}
         referenceNumber={service.serviceNumber}
         statusLabel="Checked Out"

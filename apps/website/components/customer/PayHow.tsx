@@ -1,21 +1,20 @@
-import { COMPANY_BANK_DETAILS } from '@/lib/workshop-payment-constants';
 import { CopyButton } from './CopyButton';
 import { Icon } from './Icon';
 
 export type BankDetails = { bankName: string | null; accountName: string | null; accountNumber: string | null };
 
-/** A real account number has digits — the shared constant's "XXX" placeholder doesn't. */
+/** A usable account has a bank, a name and a number with digits. */
 function usable(b: BankDetails | null | undefined): b is { bankName: string; accountName: string; accountNumber: string } {
   return Boolean(b?.bankName && b.accountName && b.accountNumber && /\d{6,}/.test(b.accountNumber));
 }
 
 /**
- * How to pay: the branch's own bank account (falling back to the company
- * account), the payment reference to use, each with a copy button, and the
+ * How to pay: the branch's own bank account (set by the organisation under
+ * Branches), the payment reference to use, each with a copy button, and the
  * pay-in-person option.
  */
 export function PayHow({ branchBank, reference, compact = false }: { branchBank?: BankDetails | null; reference?: string; compact?: boolean }) {
-  const bank = usable(branchBank) ? branchBank : usable(COMPANY_BANK_DETAILS) ? COMPANY_BANK_DETAILS : null;
+  const bank = usable(branchBank) ? branchBank : null;
   const rows: { label: string; value: string; copy?: boolean }[] = bank
     ? [
         { label: 'Bank', value: bank.bankName },

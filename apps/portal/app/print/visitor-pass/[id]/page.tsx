@@ -1,3 +1,4 @@
+import { portalConfig } from '@/lib/site-config';
 import { notFound } from 'next/navigation';
 import { getVisit } from '@/lib/actions/security';
 import { getOrganisation } from '@/lib/actions/organisation';
@@ -18,7 +19,7 @@ export default async function VisitorPassPrint({ params, searchParams }: { param
   return (
     <>
       <PrintOnLoad />
-      <PassSheet copyLabel={isOrg ? 'Organisation copy' : 'Visitor copy'} orgName={org?.name ?? 'Kewalram Chanrai Group'} subName={v.branch.name} title="VISITOR PASS" note={isOrg ? undefined : 'Wear this pass at all times while on the premises and return it to Security when you leave.'}>
+      <PassSheet copyLabel={isOrg ? 'Organisation copy' : 'Visitor copy'} orgName={org?.name ?? portalConfig.organisationName} subName={v.branch.name} title="VISITOR PASS" note={isOrg ? undefined : 'Wear this pass at all times while on the premises and return it to Security when you leave.'}>
         <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '1.3em', marginBottom: '4px' }}>{v.passNumber}</div>
         <PassLine label={v.partySize > 1 ? 'Lead' : 'Visitor'} value={v.visitorName} />
         {v.partySize > 1 ? <PassLine label={`With (${v.partySize - 1})`} value={v.memberNames.join(', ')} /> : null}

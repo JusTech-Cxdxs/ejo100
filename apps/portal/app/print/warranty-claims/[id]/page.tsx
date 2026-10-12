@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { prisma } from '@ejo/database';
 import { getWarrantyClaim } from '@/lib/actions/warranty-claims';
@@ -53,7 +54,7 @@ export default async function PrintWarrantyClaimPage({ params, searchParams }: {
       <DocumentHeader
         organisation={organisation}
         branch={branch}
-        logoUrl={`${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app'}/images/logo/logo.png`}
+        logoUrl={`${portalBaseUrl()}/images/logo/logo.png`}
         documentTitle={isOrgCopy ? 'Warranty Claim — Organisation Copy' : `Warranty Claim — ${c.provider.name}`}
         referenceNumber={c.claimNumber}
         statusLabel={CLAIM_STATUS_LABEL[c.status] ?? c.status}

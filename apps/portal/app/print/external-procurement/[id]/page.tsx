@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { getExternalProcurementRequest } from '@/lib/actions/sourcing';
 import { getOrganisation } from '@/lib/actions/organisation';
@@ -53,7 +54,7 @@ export default async function PrintExternalProcurementRequestPage({
   if (!request || !organisation) notFound();
   if (request.status !== 'DISBURSED') notFound();
 
-  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const portalUrl = portalBaseUrl();
   const logoUrl = `${portalUrl}/images/logo/logo.png`;
   const vehicleSummary = [request.jobCard.vehicle.year, request.jobCard.vehicle.make, request.jobCard.vehicle.model].filter(Boolean).join(' ') || '—';
 

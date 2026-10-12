@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { portalConfig } from '@/lib/site-config';
 
 interface BrandLogoProps {
   size?: number;
@@ -9,7 +10,7 @@ interface BrandLogoProps {
 /**
  * Portal's own copy of the organisation logo component (mirrors
  * apps/website/components/BrandLogo.tsx). Looks for a real logo at
- * public/images/logo/logo.png; falls back to the "K" monogram if it
+ * public/images/logo/logo.png; falls back to a one-letter monogram if it
  * hasn't been uploaded yet.
  *
  * Important: apps/portal and apps/website are separate Next.js
@@ -29,7 +30,7 @@ export function BrandLogo({ size = 40 }: BrandLogoProps) {
         className="flex items-center justify-center rounded-full bg-[var(--ejo-primary)] text-lg font-bold text-white"
         style={{ height: size, width: size }}
       >
-        K
+        {portalConfig.organisationName.charAt(0)}
       </span>
     );
   }
@@ -38,7 +39,7 @@ export function BrandLogo({ size = 40 }: BrandLogoProps) {
     // eslint-disable-next-line @next/next/no-img-element -- needs a plain onError fallback to the monogram
     <img
       src="/images/logo/logo.png"
-      alt="Kewalram Chanrai Group"
+      alt={portalConfig.organisationName}
       style={{ height: size, width: 'auto' }}
       onError={() => setFailed(true)}
     />

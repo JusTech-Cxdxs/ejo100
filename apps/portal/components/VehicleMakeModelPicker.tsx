@@ -9,7 +9,7 @@ import {
 } from '@/lib/data/vehicle-catalog';
 
 /**
- * Vehicle Type → Make → Model → Engine, with Kewalram's real
+ * Vehicle Type → Make → Model → Engine, with the workshop's
  * brand/model/engine suggestions cascading at each step — built on
  * native HTML <datalist> rather than a custom dropdown: it's the
  * standard, zero-dependency way to get exactly "suggestions, but freely
@@ -143,7 +143,7 @@ export function VehicleMakeModelPicker({
       </div>
 
       <p className="text-[11px] text-[var(--ejo-text-muted)]">
-        Suggestions are based on brands Kewalram commonly services — any make, model, or engine can still be typed manually.
+        Suggestions are based on brands the workshop commonly services — any make, model, or engine can still be typed manually.
       </p>
     </>
   );

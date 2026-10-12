@@ -1,3 +1,4 @@
+import { websiteBaseUrl } from '@/lib/portal-url';
 /**
  * Server-only service-reminder engine (used by the scheduled job and by the
  * signed-in reminder actions). NOT a 'use server' file — none of this can be
@@ -80,7 +81,7 @@ export async function sendServiceReminder(need: VehicleNeedingReminder, trigger?
 
   const lastService = vehicle.vehicleServices[0];
   const branchContext = lastService?.branch;
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const vehicleDescription = [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'your vehicle';
   // Which reminder this is in the current service cycle — shown to the
   // customer. (Who sent it is recorded on the internal audit trail only;

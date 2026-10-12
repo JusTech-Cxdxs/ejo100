@@ -92,7 +92,7 @@ export default async function BranchEditPage({
               name="email"
               type="email"
               defaultValue={branch.email ?? ''}
-              placeholder="e.g. isolo.workshop@kewalramnigeria.com"
+              placeholder="e.g. workshop@example.com"
               className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
             />
           </div>
@@ -109,7 +109,7 @@ export default async function BranchEditPage({
             </div>
             <div>
               <label htmlFor="bankAccountName" className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Account name</label>
-              <input id="bankAccountName" name="bankAccountName" defaultValue={branch.bankAccountName ?? ''} placeholder="e.g. Kewalram Nigeria Ltd" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+              <input id="bankAccountName" name="bankAccountName" defaultValue={branch.bankAccountName ?? ''} placeholder="e.g. Example Holdings Ltd" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
             </div>
             <div>
               <label htmlFor="bankAccountNumber" className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Account number (10 digits)</label>

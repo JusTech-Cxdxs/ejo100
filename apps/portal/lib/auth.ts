@@ -24,7 +24,7 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
 
   secret: process.env.BETTER_AUTH_SECRET,
-  baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:3001',
+  baseURL: process.env.BETTER_AUTH_URL || portalBaseUrl() || undefined,
 
   // Endpoints this platform never uses are switched off entirely (defence in
   // depth): people never edit their own account record, email or deletion
@@ -36,11 +36,23 @@ export const auth = betterAuth({
     // Nobody can create a staff account from the internet.
     disableSignUp: true,
     requireEmailVerification: false, // set true once verification is confirmed working end-to-end
+    // Password rules, stated here rather than left to library defaults so a
+    // reviewer can read them: 8 to 128 characters (NIST SP 800-63B lengths).
+    minPasswordLength: 8,
+    maxPasswordLength: 128,
+    // "Forgot password" links work for one hour. Set-password links for new
+    // staff (72 hours) are issued separately in lib/staff-onboarding.ts.
+    resetPasswordTokenExpiresIn: 60 * 60,
+    // A reset signs the person out on every device (a stolen session dies).
+    revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
-      // The branded "set a new password" email (lib/email-templates/password-reset.ts).
+      // The branded "set a new password" email (lib/email-templates/password-reset.ts),
+      // in the name of the person's own organisation.
       const name = (user as { fullName?: string; name?: string }).fullName ?? user.name ?? '';
       const base = portalBaseUrl();
-      const { subject, html } = renderPasswordResetEmail({ fullName: name, url, companyName: portalConfig.organisationName, logoUrl: `${base}/images/logo/logo.png` });
+      const org = await prisma.user.findUnique({ where: { id: user.id }, select: { organisation: { select: { name: true } } } }).catch(() => null);
+      const companyName = org?.organisation?.name ?? portalConfig.organisationName;
+      const { subject, html } = renderPasswordResetEmail({ fullName: name, url, companyName, logoUrl: `${base}/images/logo/logo.png` });
       await sendEmail(user.email, subject, html);
     },
   },
@@ -62,7 +74,11 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days when "remember me" is checked
     updateAge: 60 * 60 * 24, // refresh once per day of activity
-    cookieCache: { enabled: true, maxAge: 5 * 60 },
+    // No cookie cache: every request checks the session row, so signing out
+    // other devices, a password reset or switching an account off takes effect
+    // on the next click instead of up to five minutes later. The cost is one
+    // indexed lookup by token per request.
+    cookieCache: { enabled: false },
   },
 
   // A deactivated person cannot sign in (their open sessions are removed on

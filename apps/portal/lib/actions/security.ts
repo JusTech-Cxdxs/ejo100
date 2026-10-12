@@ -1,4 +1,5 @@
 'use server';
+import { portalBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
@@ -164,7 +165,7 @@ async function sendLogged(entityType: string, entityId: string, recipients: Pers
   const unique = recipients.filter((r, i, a) => r.email && a.findIndex((x) => x.email === r.email) === i);
   if (unique.length === 0) return;
   const org = await getWorkshopOrgContext().catch(() => ({ companyName: 'EJO 100', branchName: '', departmentName: '' }));
-  const portal = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const portal = portalBaseUrl();
   for (const r of unique) {
     let sent = true;
     let error: string | null = null;

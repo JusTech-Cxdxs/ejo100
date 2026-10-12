@@ -12,8 +12,8 @@ import type { BrandingTokens } from '@ejo/types';
  */
 export function getActiveBranding(): BrandingTokens {
   return {
-    organisationSlug: process.env.NEXT_PUBLIC_ACTIVE_ORGANISATION_SLUG ?? 'kewalram-nigeria',
-    primaryColor: '#16A34A', // Kewalram green
+    organisationSlug: process.env.NEXT_PUBLIC_ACTIVE_ORGANISATION_SLUG ?? '',
+    primaryColor: '#16A34A', // brand green
     secondaryColor: '#0F172A',
     accentColor: '#22C55E',
     successColor: '#16A34A',

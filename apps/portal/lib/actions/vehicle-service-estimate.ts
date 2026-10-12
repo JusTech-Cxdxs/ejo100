@@ -1,4 +1,5 @@
 'use server';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
@@ -609,7 +610,7 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
     if (!estimate.vehicleService.supervisor) return;
     // Independent lookups for the email — run together.
     const [submitter, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(estimate.vehicleService.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
     await sendEmail(
       estimate.vehicleService.supervisor.email,
@@ -692,7 +693,7 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
     if (managers.supervisors.length === 0) return;
     const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
     const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const companyName = estimate.vehicleService.branch.businessUnit.organisation.name;
     const branchName = estimate.vehicleService.branch.name;
     for (const manager of managers.supervisors) {
@@ -773,7 +774,7 @@ export async function approveServiceEstimateAsManager(estimateId: string): Promi
   try {
     const manager = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
     const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       estimate.vehicleService.createdBy.email,
       `Estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} approved by manager`,
@@ -866,7 +867,7 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
   try {
     const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const vehicleDescription = [estimate.vehicleService.vehicle.make, estimate.vehicleService.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     // Same real three-way customer-facing split as Job Card's own —
     // Store Part + Internal Job merged into "Parts & Services", Labour
@@ -885,7 +886,7 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
     const paymentRemarkSuggestion = [estimate.vehicleService.serviceNumber, vehicleDescription, estimate.vehicleService.vehicle.plateNumber]
       .filter(Boolean)
       .join(' — ');
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     await sendEmail(
       estimate.vehicleService.customer.email,
       `Your estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} has been approved`,
@@ -1083,7 +1084,7 @@ async function sendServiceEstimateNudge(params: {
     ]);
     if (!toUser) return;
     const orgContext = await getWorkshopOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       toUser.email,
       `A note on the estimate for Vehicle Service ${service.serviceNumber}`,
@@ -1161,7 +1162,7 @@ async function sendServiceStoreMatchingCompleteNotification(
   });
   try {
     const orgContext = await getWorkshopOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/logo.png`;
     const recipientIds = [service.supervisorId, service.assignedTechnicianId].filter((id): id is string => Boolean(id));
     const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
@@ -1258,7 +1259,7 @@ export async function requestServiceEstimateStoreMatching(vehicleServiceId: stri
       storeRecipients.set(staffMember.id, staffMember);
     }
     const orgContext = await getWorkshopOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/logo.png`;
     for (const recipient of storeRecipients.values()) {
       await sendEmail(

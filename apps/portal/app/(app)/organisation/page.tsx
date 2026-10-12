@@ -71,7 +71,7 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
             <input
               name="legalName"
               defaultValue={organisation.legalName ?? ''}
-              placeholder="e.g. Kewalram Nigeria Limited"
+              placeholder="e.g. Example Holdings Limited"
               className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
             />
           </div>
@@ -81,7 +81,7 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
               <input
                 name="website"
                 defaultValue={organisation.website ?? ''}
-                placeholder="e.g. www.kewalram.com"
+                placeholder="e.g. www.example.com"
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
             </div>
@@ -91,7 +91,7 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
                 name="email"
                 type="email"
                 defaultValue={organisation.email ?? ''}
-                placeholder="e.g. info@kewalramnigeria.com"
+                placeholder="e.g. info@example.com"
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
             </div>
@@ -105,7 +105,7 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
             <input
               name="hqAddress"
               defaultValue={organisation.hqAddress ?? ''}
-              placeholder="e.g. 1 Kewalram Way, Isolo, Lagos"
+              placeholder="e.g. 12 Example Road, Ikeja, Lagos"
               className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
             />
           </div>

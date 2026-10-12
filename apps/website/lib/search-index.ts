@@ -1,3 +1,4 @@
+import { siteConfig } from './site-config';
 /**
  * Static, client-side search index. No backend search service exists yet
  * (out of scope for this frontend-only fix) — this indexes every real
@@ -41,12 +42,12 @@ export const SEARCH_INDEX: SearchEntry[] = [
   { title: 'Product Catalogue', category: 'Product', href: '/products' },
 
   // News
-  { title: 'Kewalram Chanrai Group Expands Operations in West Africa', category: 'News', href: '/news' },
-  { title: 'KCG Partners With Global Industry Leaders', category: 'News', href: '/news' },
+  { title: `${siteConfig.organisationName} Expands Operations in West Africa`, category: 'News', href: '/news' },
+  { title: 'New Partnerships With Industry Leaders', category: 'News', href: '/news' },
   { title: 'New Manufacturing Facility Officially Opened', category: 'News', href: '/news' },
 
   // Careers
-  { title: 'Careers at Kewalram Chanrai Group', category: 'Careers', href: '/careers' },
+  { title: `Careers at ${siteConfig.organisationName}`, category: 'Careers', href: '/careers' },
 ];
 
 export function searchSite(query: string): SearchEntry[] {

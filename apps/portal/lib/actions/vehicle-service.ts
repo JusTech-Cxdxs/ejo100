@@ -1,4 +1,5 @@
 'use server';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { claimed, lockExisting } from '@/lib/integrity';
@@ -129,7 +130,7 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
     ]);
     if (supervisor && customer) {
       const orgContext = await getWorkshopOrgContext(department.name);
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const portalUrl = portalBaseUrl();
       await sendEmail(
         supervisor.email,
         `New Vehicle Service ${serviceNumber} assigned to you`,
@@ -301,7 +302,7 @@ async function notifyVehicleServiceCreatorOfDecision(params: {
     ]);
     if (!creator || !approver) return;
     const orgContext = await getWorkshopOrgContext(params.departmentName);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       creator.email,
       params.decision === 'APPROVED' ? `Vehicle Service ${params.serviceNumber} approved` : `Vehicle Service ${params.serviceNumber} rejected`,
@@ -377,7 +378,7 @@ export async function assignTechnicianToVehicleService(serviceId: string, techni
 
   try {
     const orgContext = await getWorkshopOrgContext(service.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       technician.email,
       `You've been assigned to Vehicle Service ${service.serviceNumber}`,
@@ -436,7 +437,7 @@ async function notifySupervisorOfVehicleServiceTechnicianResponse(params: {
     if (!service?.supervisor) return;
     // Independent lookups for the email — run together.
     const [technician, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: params.technicianId }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
 
     await sendEmail(
       service.supervisor.email,
@@ -1344,8 +1345,8 @@ export async function updateVehicleServiceStatus(
   if (newStatus !== 'COMPLETED' && newStatus !== 'READY_FOR_COLLECTION' && newStatus !== 'COLLECTED') return;
   try {
     const orgContext = await getWorkshopOrgContext(service.department?.name);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const websiteUrl = websiteBaseUrl();
+    const portalUrl = portalBaseUrl();
     const vehicleDescription = [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     const dashboardUrl = `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`;
     const websiteLogoUrl = `${websiteUrl}/images/logo/logo.png`;
@@ -1480,7 +1481,7 @@ export async function sendVehicleServiceCollectionReminder(serviceId: string): P
   // Counted after the audit entry above, so this send is included.
   const reminderNumber = await prisma.auditLog.count({ where: { entityId: serviceId, action: 'vehicle_service.collection_reminder_sent' } });
   const dueDate = addWorkingDays(service.readyForCollectionAt, READY_FOR_COLLECTION_GRACE_WORKING_DAYS);
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const orgContext = await getWorkshopOrgContext(service.department?.name);
   await sendEmail(
     service.customer.email,
@@ -1600,7 +1601,7 @@ export async function requestVehicleServiceCancellation(serviceId: string, reaso
   try {
     // Independent lookups for the email — run together.
     const [requester, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const managers = await listEligibleManagersForBranch(service.branchId);
     for (const manager of managers.supervisors) {
       await sendEmail(
@@ -1710,7 +1711,7 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
   try {
     // Independent lookups for the email — run together.
     const [approver, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const staff = await vehicleServiceStaffRecipients(service);
     for (const recipient of staff) {
       await sendEmail(
@@ -1736,7 +1737,7 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
   }
   try {
     const orgContext = await getWorkshopOrgContext(service.department?.name);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     await sendEmail(
       service.customer.email,
       `Vehicle Service ${service.serviceNumber} cancelled`,
@@ -1782,7 +1783,7 @@ export async function declineVehicleServiceCancellationRequest(requestId: string
     ]);
     if (!requester) return;
     const orgContext = await getWorkshopOrgContext(request.vehicleService.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       requester.email,
       `Cancellation request declined — Vehicle Service ${request.vehicleService.serviceNumber}`,
@@ -1859,7 +1860,7 @@ export async function sendVehicleServiceCancelledCollectionNotice(serviceId: str
     entityId: serviceId,
     metadata: { daysElapsed, notes: notes?.trim() || undefined },
   });
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const orgContext = await getWorkshopOrgContext();
   await sendEmail(
     service.customer.email,
@@ -1941,7 +1942,7 @@ export async function requestVehicleServiceClose(serviceId: string): Promise<voi
   try {
     // Independent lookups for the email — run together.
     const [requester, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const managers = await listEligibleManagersForBranch(service.branchId);
     for (const manager of managers.supervisors) {
       await sendEmail(
@@ -2039,8 +2040,8 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
   try {
     // Independent lookups for the email — run together.
     const [approver, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const websiteUrl = websiteBaseUrl();
+    const portalUrl = portalBaseUrl();
     const vehicleDescription = [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     await sendEmail(
       service.customer.email,
@@ -2115,7 +2116,7 @@ export async function declineVehicleServiceCloseRequest(requestId: string, decis
     ]);
     if (!requester) return;
     const orgContext = await getWorkshopOrgContext(request.vehicleService.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       requester.email,
       `Close request declined — Vehicle Service ${request.vehicleService.serviceNumber}`,
@@ -2300,7 +2301,7 @@ export async function escalateVehicleServiceToJobCard(
         prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
         getWorkshopOrgContext(),
       ]);
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const portalUrl = portalBaseUrl();
       for (const r of recipients) {
         await sendEmail(
           r.email,

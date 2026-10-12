@@ -16,9 +16,8 @@
  * restrict" pattern already used for vehicle Make/Model. Kept here as
  * the one place this list is maintained, not duplicated between server
  * validation (there isn't any — free text is always allowed) and the
- * UI. The Labour entries are directly evidenced, not guessed — an
- * actual Kewalram paper estimate shows "Labour for Service" and
- * "Labour for Brake" as real, separate line items. */
+ * UI. The Labour entries match the workshop's paper estimate, which lists
+ * "Labour for Service" and "Labour for Brake" as separate lines. */
 export const COMMON_ESTIMATE_LINE_DESCRIPTIONS = [
   'Wheel Alignment',
   'Wheel Balancing',
@@ -31,20 +30,6 @@ export const COMMON_ESTIMATE_LINE_DESCRIPTIONS = [
   'Labour for Service',
   'Labour for Brake',
 ];
-
-/** Organisation bank details shown to customers for the deposit payment —
- * a real placeholder, not a guessed value: the account number is
- * deliberately "XXX" until the real one is supplied. The real
- * Organisation settings record (see /organisation) doesn't carry bank
- * details yet — once it does, this moves there instead of living as a
- * hardcoded constant.
- * Kept in one place so it's trivial to update everywhere it's used
- * once the real account number is known. */
-export const COMPANY_BANK_DETAILS = {
-  bankName: 'Zenith Bank',
-  accountName: 'Kewalram Nigeria',
-  accountNumber: 'XXX',
-};
 
 /** The minimum deposit required before work begins, as a fraction of
  * the total estimate — kept as one named constant so the 70% figure

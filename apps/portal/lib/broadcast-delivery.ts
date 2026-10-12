@@ -1,3 +1,4 @@
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { prisma } from '@ejo/database';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
@@ -15,7 +16,7 @@ async function emailCustomers(b: { id: string; title: string; message: string; c
     select: { id: true, fullName: true, email: true },
   });
   const meta = BROADCAST_CATEGORY[b.category] ?? BROADCAST_CATEGORY.ANNOUNCEMENT!;
-  const website = (process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app').replace(/\/+$/, '');
+  const website = websiteBaseUrl();
   let sent = 0, failed = 0;
   for (let i = 0; i < customers.length; i += CUSTOMER_BATCH) {
     const batch = customers.slice(i, i + CUSTOMER_BATCH);
@@ -62,7 +63,7 @@ export async function deliverDueBroadcastEmails(now: Date = new Date()): Promise
     const users = await prisma.user.findMany({ where: { organisationId: b.organisationId, isActive: true }, select: { fullName: true, email: true, branchId: true, departmentId: true, roles: { select: { role: { select: { slug: true } } } } } });
     const audience = users.filter((u: (typeof users)[number]) => u.email && reaches(b, { branchId: u.branchId, departmentId: u.departmentId, roleSlugs: u.roles.map((r: { role: { slug: string } }) => r.role.slug) }));
     const meta = BROADCAST_CATEGORY[b.category] ?? BROADCAST_CATEGORY.ANNOUNCEMENT!;
-    const portal = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portal = portalBaseUrl();
     let sent = 0, failed = 0;
     for (const u of audience) {
       try {

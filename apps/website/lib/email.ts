@@ -1,3 +1,4 @@
+import { siteConfig } from './site-config';
 import nodemailer, { type Transporter } from 'nodemailer';
 
 /**
@@ -31,14 +32,12 @@ export async function sendEmail(to: string, subject: string, html: string) {
     return;
   }
   await getTransporter().sendMail({
-    from: process.env.SMTP_FROM ?? 'Kewalram Chanrai Group <no-reply@example.com>',
+    from: process.env.SMTP_FROM || `${siteConfig.organisationName} <no-reply@example.com>`,
     to,
     subject,
     html,
   });
 }
 
-/** The website's own public address — absolute links in emails. */
-export function websiteBaseUrl(): string {
-  return (process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
-}
+/** The website's own public address — absolute links in emails (lib/site-urls.ts). */
+export { websiteBaseUrl } from './site-urls';
