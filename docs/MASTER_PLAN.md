@@ -31,6 +31,12 @@ Status keys: ✅ done and merged · 🔄 in progress · ⏳ next · ⬜ planned
 
 ---
 
+## Customer portal + CRM + redesign + full test programme — 12 Oct 2026 (PR #11)
+Customer portal rebuilt (mobile-first, forgot/reset, services, payments, warranties, notifications, profile), staff CRM (hub, customer 360,
+portal access, customer broadcasts), portal shell and module redesign, and a free/open-source test programme (Playwright 135 tests, Gitleaks,
+Semgrep, ZAP, k6, RLS and concurrency checks). Recommendation: **READY WITH DOCUMENTED LIMITATIONS** — see
+[CUSTOMER_PORTAL_CRM_RELEASE.md](CUSTOMER_PORTAL_CRM_RELEASE.md).
+
 ## V1 closure — 12 Oct 2026 (PR #8) ✅
 Final audit, hardening and E2E/load testing done. Recommendation: **READY WITH DOCUMENTED LIMITATIONS** — see [V1_CLOSURE_REPORT.md](V1_CLOSURE_REPORT.md) for the findings register, load baseline, metric register and the list of what is left.
 

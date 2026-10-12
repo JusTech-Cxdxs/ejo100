@@ -8,6 +8,17 @@ Catalogue, the workflow rules in the actions), not "whatever the page does today
 
 _Status: see "Latest CI run" at the bottom. Adapted to the new portal shell (grouped sidebar, phone drawer, account menu, grouped bell, combobox search) and extended to the rebuilt customer portal and the CRM. E2E-01…07 are fixed (their tests now pass unmarked); E2E-08 is open; E2E-09…12 are new._
 
+## Status after the fixes (12 Oct 2026, PR #11)
+
+Every product defect this suite found has been fixed on `platform/customer-portal-crm`, and its `test.fail()` marker removed:
+E2E-01 (Store forms offered to view-only roles), E2E-02 (broadcast list/detail visible to all staff), E2E-03 (no phone drawer — the
+new shell has one), E2E-04 (journal lost money-related entries), E2E-05 (Verify offered to the registrant), E2E-06 (Audit Logs tabs
+filtered nothing), E2E-07 (claims dated today blocked until 1 pm), E2E-09 (journal rows unattributed), E2E-10 (journal rows without
+a record id), E2E-11 (customer sign-in could stall on "Opening…"), E2E-12 (changing a password signed the customer out).
+E2E-08 (an intermittent "Notification summary failed" log line) did not reproduce on the latest runs; it stays open as Low.
+Latest run on PR #11: 135 tests across 2 shards — 0 failing, 0 known defects, 1 flaky on its first attempt (customer profile save
+banner), passed on retry.
+
 ## How it runs
 
 | Piece | Where |

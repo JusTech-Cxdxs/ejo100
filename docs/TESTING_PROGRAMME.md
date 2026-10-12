@@ -4,6 +4,30 @@
 **Where it runs:** `.github/workflows/security.yml`. It runs on every pull request to `main` and on every push to `work/testing`. Everything runs against throw-away CI services: Postgres 16, Mailpit, `next start` and the NestJS API on the runner. **Nothing was run against Vercel, Render or Supabase.**
 **Evidence** is reported as GitHub annotations, readable through the API: `gh api repos/{o}/{r}/check-runs/{id}/annotations`. It also goes into each job's summary. The numbers below come from run **38209691735**, commit `e59e9b9`. All five jobs were green.
 
+## 0. Status after the fixes on `platform/customer-portal-crm` (12 Oct 2026, PR #11)
+
+The findings below were re-checked in CI after the lead's fixes. Current status:
+
+| ID | Status now |
+|---|---|
+| SEC-01 | **Owner action** — change the Master Admin password in every environment (it is in git history). |
+| SEC-02 | Fixed (`ea33556`), CI blocks a regression. |
+| SEC-03 | **Fixed** — middleware runs on every path; only GET/HEAD of static files pass straight through. CI `AC-MW`: the ".json" path now gets 307 to sign-in; `AC-RATE`: the flood limit applies there too. |
+| SEC-04 | **Partly fixed** — full CSP on portal and website (`default-src 'self'`, scripts/styles/fonts/connections limited to the site, Supabase realtime on the portal). `'unsafe-inline'` remains for Next.js hydration scripts; a nonce-based policy is the next step. ZAP still reports 10055 for that reason. |
+| SEC-05 | Fixed for CORP (`same-origin`, `/images` `cross-origin` for email logos). COEP not set (would block cross-origin images in print views). |
+| SEC-06 | Accepted for V1 (in-memory, per-instance limits; use Vercel WAF rules for a global limit). |
+| SEC-07, SEC-08 | Open (Low) — documented. |
+| SEC-09 | **Fixed** — API `/health` returns only `{status, database}`; the reason is logged. |
+| SEC-10 | Accepted — every exported caller signs in first (verified by the signed-out sweep); kept for background jobs. |
+| SEC-12 | Open (Low) — no leak (sweep proves it); ordering cleanup later. |
+| CONC-01 | **Fixed** — number clashes retried up to 10 times with a short random pause (all generators). |
+| LOAD-02 | **Improved** — plain-word searches skip the 8 tables searched only by reference number. |
+| LOG-01 | **Fixed** — server-side `console.error` calls replaced by `logFailure` (one JSON line, secrets removed, emails masked); the pricing-alerts email address no longer logged. |
+| LOG-02 | Open — no request id yet. |
+| LOG-03, LOG-04 | **Fixed** — website error boundary + structured `onRequestError`; `/api/health` on portal and website. |
+| DEP-01..03 | **Fixed** — overrides `multer ^2.3.0`, `lodash ^4.18.1`, `body-parser ^1.20.6`, `qs ^6.16.0`, `postcss ^8.5.23`. `npm audit --omit=dev`: **0 high**, 4 moderate (NestJS 10 core/common — need NestJS 11). |
+| Audit journal (found by the CRM and customer-portal workstreams) | **Fixed** — customer auth tables and one-time link tokens never reach `audit_logs`; Decimals serialised correctly; rows attributed to the right person and organisation (E2E-04, E2E-09, E2E-10). |
+
 ## 1. Summary
 
 | Area | Result |

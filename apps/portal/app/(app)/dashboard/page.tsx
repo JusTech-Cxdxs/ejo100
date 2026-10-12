@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { prisma } from '@ejo/database';
 import { allows } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
@@ -51,7 +52,9 @@ function greeting(): string {
  */
 export default async function DashboardPage() {
   // What this person works with — the dashboard shows only their areas.
-  const me = await requireUser();
+  // A session that just ended (account switched off) goes to sign-in quietly,
+  // like the layout does, instead of a render error.
+  const me = await requireUser().catch(() => redirect('/signed-out'));
   const [seesWorkshop, seesMoney, quickAllowed] = await Promise.all([allows('workshop.view'), allows('analytics.business.view'), Promise.all(QUICK.map((q) => allows(q.key)))]);
   const [counts, trend, notifications, myBroadcasts, broadcaster, glance, person] = await Promise.all([
     getWorkshopDashboardCounts(),
