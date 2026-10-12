@@ -98,7 +98,7 @@ test('a claim is drafted, approved by the HOD and the Branch Manager, submitted,
   await form.getByRole('button', { name: 'Save draft claim' }).click();
   await waitOutcome(page, /\/warranty\/claims\/[^/?]+\?status=created/);
   S.claimUrl = new URL(page.url()).pathname;
-  const readiness = (await page.getByRole('heading', { name: 'Readiness' }).locator('..').textContent()) ?? '';
+  const readiness = (await page.getByRole('heading', { name: 'Readiness' }).locator('xpath=ancestor::div[contains(@class,"p-5")][1]').textContent()) ?? '';
   await expect(page.getByRole('button', { name: 'Send for approval' }), `claim not ready — ${readiness.replace(/\s+/g, ' ').slice(0, 600)}`).toBeVisible();
   await page.getByRole('button', { name: 'Send for approval' }).click();
   await waitOutcome(page, /status=sent_for_approval/);

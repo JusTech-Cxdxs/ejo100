@@ -93,23 +93,36 @@ for (const acct of ACCOUNTS) {
       }
     });
 
-    await test.step('protected areas follow the Authorization Catalogue', async () => {
+    await test.step('menu pages that are protected areas open (the catalogue grants them)', async () => {
       const problems: string[] = [];
-      for (const area of AREAS) {
+      for (const area of AREAS.filter((a) => hrefs.includes(a.url))) {
         const allowed = 'master' in acct || mayOpen(acct.roles, area.needs);
-        // Allowed pages are opened when they are in this person's menu (the
-        // workflow specs open the rest); every forbidden address is typed in.
-        if (allowed && !hrefs.includes(area.url)) continue;
+        if (!allowed) problems.push(`${area.url}: in the menu but not permitted (${area.needs.join(' / ')})`);
         const res = await gotoSettled(page, area.url);
         if ((res?.status() ?? 0) >= 500) { problems.push(`${area.url}: HTTP ${res?.status()}`); continue; }
-        const denied = /\/access-denied/.test(page.url());
-        if (allowed && denied) problems.push(`${area.url}: refused, but the role grants ${area.needs.join(' or ')}`);
-        if (denied && hrefs.includes(area.url)) problems.push(`${area.url}: in the menu, but refused when opened`);
-        if (!allowed && !denied) problems.push(`${area.url}: opened, but the role has none of ${area.needs.join(', ')}`);
-        if (denied) await expect(page.getByRole('heading', { name: /don.t have access/ })).toBeVisible();
+        if (/\/access-denied/.test(page.url())) problems.push(`${area.url}: in the menu, but refused when opened`);
         else await expectHealthy(page, area.url);
-        // A page the menu hides must not be in the menu either.
-        if (!allowed && hrefs.includes(area.url)) problems.push(`${area.url}: in the menu but not permitted`);
+      }
+      expect(problems, problems.join('\n')).toEqual([]);
+    });
+
+    const forbidden = AREAS.filter((a) => !('master' in acct) && !mayOpen(acct.roles, a.needs));
+    await test.step(`${forbidden.length} forbidden addresses typed in are refused`, async () => {
+      // The page itself, once, in the browser: the friendly "Access denied".
+      if (forbidden[0]) {
+        await gotoSettled(page, forbidden[0].url);
+        await expect(page, forbidden[0].url).toHaveURL(/\/access-denied/);
+        await expect(page.getByRole('heading', { name: /don.t have access/ })).toBeVisible();
+      }
+      // Every one of them over HTTP with the same session (fast): the server
+      // answers with the redirect to Access denied and never the page.
+      const problems: string[] = [];
+      for (const area of forbidden) {
+        const res = await page.request.get(area.url);
+        const body = await res.text();
+        if (res.status() >= 500) { problems.push(`${area.url}: HTTP ${res.status()}`); continue; }
+        if (!/\/access-denied/.test(res.url()) && !body.includes('/access-denied')) problems.push(`${area.url}: opened, but the role has none of ${area.needs.join(', ')}`);
+        if (/\/login/.test(res.url())) problems.push(`${area.url}: sent to sign in (session lost?)`);
       }
       expect(problems, problems.join('\n')).toEqual([]);
     });

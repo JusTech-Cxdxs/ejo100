@@ -77,7 +77,7 @@ test('every administration page opens cleanly', async ({ page }) => {
     await visitHealthy(page, url);
   }
   await page.goto('/branches');
-  await page.getByRole('link', { name: /Manage|→/ }).first().click();
+  await page.locator('main a[href^="/branches/"]').first().click();
   await page.waitForURL(/\/branches\/[^/]+/);
   await expect(page.locator('main h1').first()).toBeVisible();
 });
@@ -122,7 +122,7 @@ test('branch fences: a branch administrator manages only their branch; another b
 });
 
 test('Audit Logs: the Data changes and API requests tabs show only their kind', async ({ page }) => {
-  test.fail(true, 'E2E-06: lib/actions/audit-logs.ts:46-55 — kindWhere ({ entityType: { startsWith: "db:" } } / "api:") is spread first and then overwritten by the literal entityType: { notIn: [...] } key in the same where object, so "Data changes" and "API requests" list every kind of entry');
+  test.fail(true, 'E2E-06: lib/actions/audit-logs.ts:44-56 — kindWhere ({ entityType: { startsWith: "db:" } } / "api:") is spread first and then overwritten by the literal entityType: { notIn: [...] } key in the same where object, so "Data changes" and "API requests" list every kind of entry');
   await as(page, 'administrator');
   for (const [kind, chip] of [['data', 'Data change'], ['api', 'API']] as const) {
     await page.goto(`/audit-logs?kind=${kind}`);
