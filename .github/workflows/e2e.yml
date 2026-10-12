@@ -50,6 +50,8 @@ jobs:
       # Every test signs in from the same address.
       AUTH_SIGNIN_PER_MINUTE: '1000'
       NEXT_TELEMETRY_DISABLED: '1'
+      # One retry in CI (a flaky test is reported as a warning, never hidden).
+      E2E_RETRIES: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

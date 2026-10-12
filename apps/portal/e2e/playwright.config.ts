@@ -11,11 +11,13 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: '.',
   testMatch: /.*\.spec\.ts/,
-  timeout: 90_000,
+  timeout: 75_000,
+  // Always finish (and write the results) well inside the CI job's limit.
+  globalTimeout: 38 * 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: process.env.CI ? 2 : 1,
-  retries: process.env.CI ? 1 : 0,
+  retries: Number(process.env.E2E_RETRIES ?? (process.env.CI ? 1 : 0)),
   reporter: [['list'], ['json', { outputFile: 'report/results.json' }]],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3001',
