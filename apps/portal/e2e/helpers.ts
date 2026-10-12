@@ -8,8 +8,13 @@ export async function urlOrExplain(page: Page, url: RegExp, timeout = 30_000) {
   try {
     await page.waitForURL(url, { timeout });
   } catch {
-    const text = await page.locator('body').innerText({ timeout: 2_000 }).catch(() => '');
-    throw new Error(`Expected the URL to match ${url} within ${timeout / 1000}s, but the page is at ${page.url()} showing: ${text.replace(/\s+/g, ' ').slice(0, 400)}`);
+    // What the person would see: messages first (alerts, statuses), then the form, then the page.
+    const grab = async (sel: string) => (await page.locator(sel).allInnerTexts().catch(() => [] as string[])).join(' | ').replace(/\s+/g, ' ').trim();
+    const messages = await grab('[role="alert"], [role="status"]');
+    const form = await grab('form');
+    const body = messages || form ? '' : await grab('main, body');
+    throw new Error(`Expected the URL to match ${url} within ${timeout / 1000}s, but the page is at ${page.url()}` +
+      `${messages ? ` — messages: ${messages.slice(0, 300)}` : ''}${form ? ` — form: ${form.slice(0, 300)}` : ''}${body ? ` — page: ${body.slice(0, 400)}` : ''}`);
   }
 }
 
@@ -198,7 +203,8 @@ export async function expectAuditEntry(page: Page, q: string, mustContain?: RegE
 /** On Hand / reserved figures from a part's page. */
 export async function readStock(page: Page, partUrl: string): Promise<{ onHand: number; reserved: number }> {
   await page.goto(partUrl);
-  const card = page.getByText('On Hand', { exact: true }).locator('..');
+  // The stock card: "On Hand" followed by its figure (not a table heading of the same words).
+  const card = page.getByText('On Hand', { exact: true }).locator('..').filter({ hasText: /On Hand\s*[\d,.]+/ }).first();
   await expect(card).toBeVisible();
   const text = (await card.textContent()) ?? '';
   const num = (s: string | undefined) => Number((s ?? '0').replace(/,/g, ''));

@@ -118,7 +118,8 @@ test.describe('passwords', () => {
     await form.getByLabel('New password', { exact: true }).fill(next);
     await form.getByLabel('Type the new password again', { exact: true }).fill(next);
     await form.getByRole('button', { name: 'Change password' }).click();
-    await expect(page.getByText('Your password is changed. Other devices have been signed out.')).toBeVisible();
+    // The form's own answer (an error would show here instead).
+    await expect(form.locator('[role="status"], [role="alert"]').first()).toContainText('Your password is changed. Other devices have been signed out.');
     await customerSignOut(page);
     await submitSignIn(page, PASSWORD_CUSTOMER.email, PASSWORD_CUSTOMER.password);
     await expect(page.getByTestId('customer-sign-in-form').getByRole('alert')).toBeVisible();
@@ -320,14 +321,18 @@ test.describe('on a 375 px phone', () => {
 });
 
 test('a staff session never opens the customer portal, and a customer session never opens the staff portal', async ({ page, context }) => {
+  // Production builds use secure cookie names: __Secure-better-auth.* (staff) and __Secure-customer-auth.* (customers).
+  const sessionCookie = async (app: 'better-auth' | 'customer-auth') =>
+    (await context.cookies()).find((c) => new RegExp(`(^|-)${app}\\.session_token$`).test(c.name));
+
   await test.step('signed in as staff: the customer portal still asks for a customer sign-in', async () => {
     await as(page, 'receptionist');
     await page.goto(portal('/dashboard'));
     await expect(page).toHaveURL(/\/customer-portal\?redirect=/);
     // Even the staff session token presented as a customer cookie is refused.
-    const staff = (await context.cookies()).find((c) => c.name === 'better-auth.session_token');
-    expect(staff, 'the staff session cookie').toBeTruthy();
-    await context.addCookies([{ ...staff!, name: 'customer-auth.session_token' }]);
+    const staff = await sessionCookie('better-auth');
+    expect(staff, `the staff session cookie (have: ${(await context.cookies()).map((c) => c.name).join(', ')})`).toBeTruthy();
+    await context.addCookies([{ ...staff!, name: staff!.name.replace('better-auth.', 'customer-auth.') }]);
     await page.goto(portal('/dashboard'));
     await expect(page).toHaveURL(/\/customer-portal\?error=expired/);
     await expect(page.getByTestId('customer-sign-in-form')).toBeVisible();
@@ -338,9 +343,9 @@ test('a staff session never opens the customer portal, and a customer session ne
     await customerSignedIn(page, PORTAL_CUSTOMER);
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/login/);
-    const customer = (await context.cookies()).find((c) => c.name === 'customer-auth.session_token');
-    expect(customer, 'the customer session cookie').toBeTruthy();
-    await context.addCookies([{ ...customer!, name: 'better-auth.session_token' }]);
+    const customer = await sessionCookie('customer-auth');
+    expect(customer, `the customer session cookie (have: ${(await context.cookies()).map((c) => c.name).join(', ')})`).toBeTruthy();
+    await context.addCookies([{ ...customer!, name: customer!.name.replace('customer-auth.', 'better-auth.') }]);
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/login/);
     await expect(page.getByLabel('Work email')).toBeVisible();

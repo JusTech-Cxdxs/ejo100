@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { CUSTOMER, SEED_PARTS, SUPERMANAGER, who } from './people';
 import { as, open, eventually, bellText, countMail, expectAuditEntry, expectNoUrlError, latestMail, readStock, urlError, waitOutcome } from './helpers';
-import { db, freshVehicle, idOfPart, paymentsOn } from './db';
+import { db, freshVehicle, idOfPart, journalDiagnosis, paymentsOn } from './db';
 import {
   addLine, assignTechnician, expectStatus, jobNumber, jcForm, nextStep, notifyCustomer, openJobCard, recordPayment,
   requestStoreMatching, statusPanel, storeMatchesAll, submitEstimate, supervisorApproves, supervisorApprovesEstimate, technicianAccepts,
@@ -183,7 +183,7 @@ test('the data-change journal records the part warranty issued with the release'
   const warranties = await db().warranty.findMany({ where: { jobCardId: S.id }, select: { id: true } });
   expect(warranties.length, 'a part warranty was issued').toBeGreaterThan(0);
   const journal = await db().auditLog.count({ where: { entityType: 'db:Warranty', entityId: { in: warranties.map((w) => w.id) } } });
-  expect(journal, 'journal entries for the issued warranties').toBeGreaterThan(0);
+  expect(journal, `journal entries for the issued warranties${journal ? '' : ` — ${await journalDiagnosis(who('administrator').email)}`}`).toBeGreaterThan(0);
 });
 
 test('outside purchase: technician requests → Finance reviews → Manager approves → Finance disburses', async ({ page }) => {

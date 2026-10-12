@@ -61,7 +61,13 @@ export async function journalDiagnosis(userEmail: string): Promise<string> {
     tally.set(key, (tally.get(key) ?? 0) + 1);
   }
   const orgs = await prisma.organisation.count();
-  return `${rows.length} data-change rows (latest 2000), ${orgs} organisations: ${[...tally.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n}× ${k}`).join('; ') || 'none'}`;
+  const kinds = await prisma.auditLog.groupBy({ by: ['entityType', 'action'], where: { entityType: { startsWith: 'db:' } }, _count: { _all: true } });
+  const business = await prisma.auditLog.count({ where: { NOT: [{ entityType: { startsWith: 'db:' } }, { entityType: { startsWith: 'api:' } }] } });
+  const businessMine = await prisma.auditLog.count({ where: { organisationId: me.organisationId, NOT: [{ entityType: { startsWith: 'db:' } }, { entityType: { startsWith: 'api:' } }] } });
+  const [jobCards, warranties, payments] = await Promise.all([prisma.jobCard.count(), prisma.warranty.count(), prisma.payment.count()]);
+  return `${rows.length} data-change rows (latest 2000), ${orgs} organisations: ${[...tally.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n}× ${k}`).join('; ') || 'none'}` +
+    ` · journaled: ${kinds.map((k) => `${k.entityType} ${k.action}×${k._count._all}`).join(', ') || 'nothing'}` +
+    ` · business events: ${business} (${businessMine} stamped with this organisation) · written meanwhile: ${jobCards} job cards, ${warranties} warranties, ${payments} payments`;
 }
 
 /** Fixture: put a portal customer's password back to a known value and their access on (so a retry starts clean). */
