@@ -14,10 +14,13 @@ const notices = [];
 const clean = (s) => String(s ?? '').replace(/\u001b\[[0-9;]*m/g, '');
 const titleOf = (trail, spec) => [...trail, spec.title].filter(Boolean).join(' › ').replace(/[\n:,]/g, ' ').slice(0, 180);
 const where = (spec) => (spec.file ? `${spec.file}:${spec.line}` : '');
+const perFile = new Map();
 function walk(suite, trail) {
   for (const s of suite.suites ?? []) walk(s, [...trail, s.title]);
   for (const spec of suite.specs ?? []) {
     for (const t of spec.tests ?? []) {
+      const ms = (t.results ?? []).reduce((a, r) => a + (r.duration ?? 0), 0);
+      if (spec.file) perFile.set(spec.file, (perFile.get(spec.file) ?? 0) + ms);
       const last = t.results?.[t.results.length - 1];
       const title = titleOf(trail, spec);
       const knownDefect = (t.annotations ?? []).find((a) => a.type === 'fail');
@@ -46,6 +49,8 @@ for (const line of slice(warnings)) console.log(line);
 for (const line of slice(notices)) console.log(line);
 if (part === 0) {
   const st = data.stats ?? {};
+  const files = [...perFile.entries()].sort((a, b) => b[1] - a[1]).map(([f, ms]) => `${f.replace(/\.spec\.ts$/, '')} ${Math.round(ms / 1000)}s`).join(' · ');
+  console.log(`::notice title=e2e time per file (test time incl. retries)::${files}`);
   console.log(`::notice title=e2e totals::expected ${st.expected ?? '?'} · unexpected ${st.unexpected ?? '?'} · flaky ${st.flaky ?? '?'} · skipped ${st.skipped ?? '?'} · ${Math.round((st.duration ?? 0) / 1000)} s · ${errors.length} failing, ${warnings.length} flaky, ${notices.length} known defects`);
 }
 console.log(`${errors.length} failing test(s), ${warnings.length} flaky, ${notices.length} known defect(s).`);

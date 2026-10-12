@@ -12,7 +12,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from 'better-auth/crypto';
-import { E2E_PASSWORD, PEOPLE, RESET, OTHER_ORG_ADMIN, CUSTOMER, PORTAL_CUSTOMER, OTHER_PORTAL_CUSTOMER, SEED_PARTS, SEED_CATEGORY, SEED_WARRANTY, type Person } from './people';
+import { E2E_PASSWORD, PEOPLE, RESET, OTHER_ORG_ADMIN, OTHER_BRANCH_TECH, SECOND_BRANCH, CUSTOMER, PORTAL_CUSTOMER, OTHER_PORTAL_CUSTOMER, SEED_PARTS, SEED_CATEGORY, SEED_WARRANTY, type Person } from './people';
 
 const prisma = new PrismaClient();
 
@@ -126,6 +126,11 @@ async function main() {
       await prisma.partStock.upsert({ where: { partId: part.id }, update: { quantityOnHand: p.stock }, create: { partId: part.id, quantityOnHand: p.stock } });
     }
   }
+
+  // ── A second branch of THIS organisation, with one technician (branch fences) ──
+  const second = (await prisma.branch.findFirst({ where: { businessUnitId: branch.businessUnitId, name: SECOND_BRANCH } }))
+    ?? (await prisma.branch.create({ data: { businessUnitId: branch.businessUnitId, cityId: branch.cityId, name: SECOND_BRANCH } }));
+  await person(org.id, second.id, OTHER_BRANCH_TECH);
 
   // ── A second organisation — nothing of the first may ever be visible to it ──
   const other = await prisma.organisation.upsert({ where: { slug: 'other-org-e2e' }, update: {}, create: { name: 'Other Motors', slug: 'other-org-e2e' } });

@@ -35,6 +35,9 @@ export const RESET: Person = { email: 'reset@e2e.test', name: 'Rita Reset', role
 export const SUPERMANAGER = PEOPLE.find((p) => p.email === 'supermanager@e2e.test')!;
 export const SWITCHABLE = PEOPLE.find((p) => p.email === 'switchable@e2e.test')!;
 export const OTHER_ORG_ADMIN = { email: 'other-admin@e2e.test', name: 'Olu Otheradmin' };
+/** A technician in a SECOND branch of the same organisation — for the branch fences. */
+export const OTHER_BRANCH_TECH: Person = { email: 'otherbranch@e2e.test', name: 'Bisi Otherbranch', role: 'technician' };
+export const SECOND_BRANCH = 'E2E Lekki Branch';
 export const who = (role: string): Person => {
   const p = PEOPLE.find((x) => x.role === role);
   if (!p) throw new Error(`No seeded person for role ${role}`);

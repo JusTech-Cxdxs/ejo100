@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
-import { E2E_PASSWORD, SWITCHABLE } from './people';
-import { suggestion } from './workflows';
+import { E2E_PASSWORD, OTHER_BRANCH_TECH, SWITCHABLE } from './people';
+import { freshVehicle } from './db';
+import { openJobCard, suggestion } from './workflows';
 import { as, expectAuditEntry, signIn, visitHealthy, waitOutcome } from './helpers';
 
 /**
@@ -67,7 +68,8 @@ test('switching an account off signs the person out at once; switching on lets t
   await expect(card(page)).toContainText('Active');
   await signIn(sola, SWITCHABLE.email, E2E_PASSWORD);
   await other.close();
-  await expectAuditEntry(page, SWITCHABLE.name);
+  await expectAuditEntry(page, 'user.deactivated');
+  await expectAuditEntry(page, 'user.reactivated');
 });
 
 test('every administration page opens cleanly', async ({ page }) => {
@@ -98,4 +100,35 @@ test('Audit Logs: kinds, search and dates filter the trail', async ({ page }) =>
   await as(page, 'workshop-manager');
   await page.goto('/audit-logs');
   await expect(page).toHaveURL(/access-denied/);
+});
+
+test('branch fences: a branch administrator manages only their branch; another branch cannot open our Job Cards', async ({ page }) => {
+  await as(page, 'branch-administrator');
+  await page.goto(`/users?q=${encodeURIComponent(OTHER_BRANCH_TECH.email)}`);
+  await expect(page.getByRole('heading', { name: 'Users', level: 1 })).toBeVisible();
+  await expect(page.getByRole('listitem', { name: OTHER_BRANCH_TECH.name })).toHaveCount(0);
+  await as(page, 'administrator');
+  await page.goto(`/users?q=${encodeURIComponent(OTHER_BRANCH_TECH.email)}`);
+  await expect(page.getByRole('listitem', { name: OTHER_BRANCH_TECH.name })).toBeVisible();
+
+  const plate = (await freshVehicle('BRF')).plate;
+  await as(page, 'receptionist');
+  const url = await openJobCard(page, { plate, complaint: 'Branch fence check' });
+  await as(page, OTHER_BRANCH_TECH);
+  await page.goto(url);
+  await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+  await expect(page.getByText('Branch fence check')).toHaveCount(0);
+  await page.goto('/workshop/job-cards');
+  await expect(page.getByText(plate)).toHaveCount(0);
+});
+
+test('Audit Logs: the Data changes and API requests tabs show only their kind', async ({ page }) => {
+  test.fail(true, 'E2E-06: lib/actions/audit-logs.ts:46-55 — kindWhere ({ entityType: { startsWith: "db:" } } / "api:") is spread first and then overwritten by the literal entityType: { notIn: [...] } key in the same where object, so "Data changes" and "API requests" list every kind of entry');
+  await as(page, 'administrator');
+  for (const [kind, chip] of [['data', 'Data change'], ['api', 'API']] as const) {
+    await page.goto(`/audit-logs?kind=${kind}`);
+    const chips = await page.locator('section li span').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()).filter((t) => ['Business', 'Data change', 'API', 'System job'].includes(t)));
+    expect(chips.length, `${kind}: entries shown`).toBeGreaterThan(0);
+    expect(new Set(chips), `${kind}: only "${chip}" entries`).toEqual(new Set([chip]));
+  }
 });

@@ -73,8 +73,10 @@ for (const acct of ACCOUNTS) {
     const hrefs = [...new Set(await menu.evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? '')))];
     expect(hrefs.length, 'menu entries').toBeGreaterThan(1);
 
+    // Each address is opened once: protected areas are checked in the last step.
+    const areaUrls = new Set(AREAS.map((a) => a.url));
     await test.step('every menu page opens cleanly', async () => {
-      for (const href of hrefs) {
+      for (const href of hrefs.filter((h) => !areaUrls.has(h))) {
         const res = await gotoSettled(page, href);
         expect(res?.status() ?? 0, `${href} status`).toBeLessThan(500);
         await expect(page, `${href} is in the menu, so it must not be refused`).not.toHaveURL(/\/access-denied/);
@@ -83,7 +85,7 @@ for (const acct of ACCOUNTS) {
     });
 
     await test.step('pages for everyone open cleanly', async () => {
-      for (const url of EVERYONE) {
+      for (const url of EVERYONE.filter((u) => !hrefs.includes(u))) {
         const res = await gotoSettled(page, url);
         expect(res?.status() ?? 0, `${url} status`).toBeLessThan(500);
         await expect(page, url).not.toHaveURL(/\/access-denied|\/login/);
@@ -99,6 +101,7 @@ for (const acct of ACCOUNTS) {
         if ((res?.status() ?? 0) >= 500) { problems.push(`${area.url}: HTTP ${res?.status()}`); continue; }
         const denied = /\/access-denied/.test(page.url());
         if (allowed && denied) problems.push(`${area.url}: refused, but the role grants ${area.needs.join(' or ')}`);
+        if (denied && hrefs.includes(area.url)) problems.push(`${area.url}: in the menu, but refused when opened`);
         if (!allowed && !denied) problems.push(`${area.url}: opened, but the role has none of ${area.needs.join(', ')}`);
         if (denied) await expect(page.getByRole('heading', { name: /don.t have access/ })).toBeVisible();
         else await expectHealthy(page, area.url);

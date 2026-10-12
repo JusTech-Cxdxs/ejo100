@@ -65,9 +65,14 @@ test('a Warranty Officer registers the vehicle warranty; the HOD verifies it', a
   await waitOutcome(page, /\/warranty\/[^/?]+\?status=registered/);
   S.warrantyUrl = new URL(page.url()).pathname;
   S.warrantyNumber = ((await page.getByRole('heading', { level: 1 }).textContent()) ?? '').trim();
-  // The person who registered it cannot verify it.
-  await expect(page.getByRole('button', { name: 'Evidence checked — verify' })).toHaveCount(0);
   await expect(page.getByText('Claims can be started once the warranty is active.')).toBeVisible();
+  // The person who registered it cannot verify it — refused by the server.
+  const verify = page.getByRole('button', { name: 'Evidence checked — verify' });
+  if (await verify.count()) {
+    await verify.click();
+    await page.waitForURL(/error=/);
+    await expect(page.getByText(/someone other than the person who registered it|Only the Warranty HOD/)).toBeVisible();
+  }
 
   await as(page, 'warranty-hod');
   await page.goto(S.warrantyUrl);
@@ -135,4 +140,21 @@ test('the register, claims, analytics and part warranties are all visible', asyn
   // The seeded part policy is on the policy list (parts carry it to the customer on release).
   await page.goto(`/warranty/policies?q=${encodeURIComponent(SEED_WARRANTY.policyCode)}`);
   await expect(page.getByRole('link', { name: SEED_WARRANTY.policyName })).toBeVisible();
+});
+
+test('the person who registered a warranty is not offered the Verify button', async ({ page }) => {
+  test.fail(true, 'E2E-05: app/(app)/warranty/[id]/page.tsx:268 shows "Evidence checked — verify" to everyone on a pending warranty (the registrar and Warranty Officers included); only verifyWarranty() refuses');
+  const plate = (await freshVehicle('WTV', { make: 'Toyota', model: 'Hilux', year: 2026 })).plate;
+  await as(page, 'warranty-officer');
+  await page.goto(`/warranty/register?q=${encodeURIComponent(plate)}`);
+  await page.getByRole('link', { name: new RegExp(plate) }).first().click();
+  await page.waitForURL(/vehicleId=/);
+  const form = jcForm(page, 'Register warranty');
+  const policyValue = await form.locator('select[name="policyId"] option', { hasText: S.policy }).first().getAttribute('value');
+  await form.locator('select[name="policyId"]').selectOption(policyValue!);
+  await form.locator('input[name="startsAt"]').fill(lagosDay(-3));
+  await form.locator('textarea[name="evidenceNote"]').fill('Sales invoice INV-E2E-0099');
+  await form.getByRole('button', { name: 'Register warranty' }).click();
+  await waitOutcome(page, /\/warranty\/[^/?]+\?status=registered/);
+  await expect(page.getByRole('button', { name: 'Evidence checked — verify' })).toHaveCount(0);
 });

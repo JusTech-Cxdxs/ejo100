@@ -76,7 +76,7 @@ test('the reads are counted; broadcast analytics open', async ({ page }) => {
 });
 
 test('a broadcast meant for managers stays hidden from a technician everywhere', async ({ page }) => {
-  test.fail(true, 'E2E-03: /notifications/broadcasts (list) and /notifications/broadcasts/[id] (no guard) show every organisation broadcast — role/branch-targeted ones included — to any staff member (lib/actions/notifications.ts listBroadcasts/getBroadcast filter by organisation only)');
+  test.fail(true, 'E2E-02: /notifications/broadcasts (list) and /notifications/broadcasts/[id] (no guard) show every organisation broadcast — role/branch-targeted ones included — to any staff member (lib/actions/notifications.ts listBroadcasts/getBroadcast filter by organisation only)');
   await as(page, 'technician');
   await page.goto('/notifications/broadcasts?tab=all');
   await expect(page.getByText(S.role)).toHaveCount(0);

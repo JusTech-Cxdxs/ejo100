@@ -179,6 +179,14 @@ test('parts: technician requests → HOD approves → Store reserves → Store r
   });
 });
 
+test('the data-change journal records the part warranty issued with the release', async () => {
+  test.fail(true, 'E2E-04: packages/database/src/audit-journal.ts:127 recognises Prisma Decimals by constructor.name === "Decimal", which the production build minifies — decimal.js instances (own enumerable "constructor" function) then reach auditLog.create/createMany and Prisma refuses them, so every journal entry carrying a Decimal (and the whole batch of its transaction) is silently lost');
+  const warranties = await db().warranty.findMany({ where: { jobCardId: S.id }, select: { id: true } });
+  expect(warranties.length, 'a part warranty was issued').toBeGreaterThan(0);
+  const journal = await db().auditLog.count({ where: { entityType: 'db:Warranty', entityId: { in: warranties.map((w) => w.id) } } });
+  expect(journal, 'journal entries for the issued warranties').toBeGreaterThan(0);
+});
+
 test('outside purchase: technician requests → Finance reviews → Manager approves → Finance disburses', async ({ page }) => {
   await as(page, 'technician');
   await page.goto(S.url);
@@ -206,7 +214,7 @@ test('outside purchase: technician requests → Finance reviews → Manager appr
   await as(page, 'finance-officer');
   await page.goto(S.eprUrl);
   await page.locator('input[name="paymentMethod"]').fill('Cash');
-  await page.locator('input[name="disbursementNotes"]').fill('Cash advance to the technician');
+  await page.locator('textarea[name="disbursementNotes"]').fill('Cash advance to the technician');
   await page.getByRole('button', { name: 'Disburse' }).click();
   await expect(page.getByText('Disbursed.', { exact: true })).toBeVisible();
 

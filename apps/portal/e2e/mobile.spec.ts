@@ -33,7 +33,7 @@ for (const { role, urls } of PAGES) {
 }
 
 test('phone: the menu is a drawer — content gets the screen, the menu opens on demand', async ({ page }) => {
-  test.fail(true, 'E2E-04: components/Sidebar.tsx is a fixed w-64 column with no responsive/drawer behaviour and app/(app)/layout.tsx has no menu button — on a 375 px phone the menu takes 256 px and the page gets ~119 px');
+  test.fail(true, 'E2E-03: components/Sidebar.tsx is a fixed w-64 column with no responsive/drawer behaviour and app/(app)/layout.tsx has no menu button — on a 375 px phone the menu takes 256 px and the page gets ~119 px');
   await as(page, 'receptionist');
   await page.goto('/workshop/job-cards');
   await page.locator('main h1').first().waitFor();
