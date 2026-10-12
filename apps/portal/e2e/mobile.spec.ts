@@ -38,7 +38,36 @@ test('phone: the menu is a drawer — content gets the screen, the menu opens on
   await page.locator('main h1').first().waitFor();
   const mainBox = await page.locator('main').boundingBox();
   expect(mainBox!.width, 'main content width on a phone').toBeGreaterThanOrEqual(375 * 0.9);
+  const menu = page.getByRole('navigation', { name: 'Main' });
+  await expect(menu, 'no menu column on a phone until asked for').toHaveCount(0);
+
   const menuButton = page.getByRole('button', { name: 'Open menu', exact: true });
   await menuButton.click();
-  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Workshop', exact: true })).toBeVisible();
+  const drawer = page.getByRole('dialog', { name: 'Menu' });
+  await expect(drawer).toBeVisible();
+  await expect(menuButton).toHaveAttribute('aria-expanded', 'true');
+  await expect(drawer.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Workshop', exact: true })).toBeVisible();
+
+  await test.step('"Close menu" closes it; Esc closes it too', async () => {
+    await drawer.getByRole('button', { name: 'Close menu' }).click();
+    await expect(drawer).toHaveCount(0);
+    await menuButton.click();
+    await expect(drawer).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(0);
+  });
+
+  await test.step('a menu link navigates and the drawer closes behind it', async () => {
+    await menuButton.click();
+    await drawer.getByRole('link', { name: 'Notifications', exact: true }).click();
+    await page.waitForURL(/\/notifications/);
+    await expect(drawer).toHaveCount(0);
+  });
+
+  await test.step('below 1024 px, Sign out lives in the account menu', async () => {
+    await expect(page.getByRole('button', { name: 'Sign out' })).toBeHidden();
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByRole('button', { name: 'Sign out' }).click();
+    await page.waitForURL(/\/login/);
+  });
 });

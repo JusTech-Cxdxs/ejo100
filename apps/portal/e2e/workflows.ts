@@ -223,7 +223,7 @@ export async function nextStep(page: Page, label: string | RegExp, expectLabel?:
 }
 
 /** Opens a Job Card, approves it, assigns and accepts — ready for the estimate. */
-export async function jobCardReadyForEstimate(page: Page, opts: { plate: string; supervisor?: Person; complaint?: string }): Promise<string> {
+export async function jobCardReadyForEstimate(page: Page, opts: { plate: string; customer?: string; supervisor?: Person; complaint?: string }): Promise<string> {
   await as(page, 'receptionist');
   const url = await openJobCard(page, opts);
   await supervisorApproves(page, url, opts.supervisor);
@@ -268,4 +268,22 @@ export async function jobCardInProgress(page: Page, opts: { plate: string; lines
   await recordPayment(page, 'SEVENTY_PERCENT');
   await expectStatus(page, 'In Progress');
   return { url, id, number };
+}
+
+/** Publish a broadcast now, for 4 hours (as whoever is signed in — an administrator or broadcaster). */
+export async function publishBroadcast(page: Page, opts: { category: RegExp; title: string; message: string; audience: 'ALL' | 'ROLE' | 'CUSTOMERS_ALL'; role?: string; email: boolean }): Promise<string> {
+  await page.goto('/notifications/broadcasts/new');
+  await page.getByRole('button', { name: opts.category }).click();
+  const form = jcForm(page, 'Publish broadcast');
+  await form.locator('input[name="title"]').fill(opts.title);
+  await form.locator('textarea[name="message"]').fill(opts.message);
+  await form.locator('select[name="audience"]').selectOption(opts.audience);
+  if (opts.role) await form.getByRole('checkbox', { name: opts.role, exact: true }).check();
+  await form.locator('select[name="when"]').selectOption('NOW');
+  await form.locator('select[name="duration"]').selectOption('h4');
+  await form.locator('select[name="sendEmail"]').selectOption(opts.email ? 'yes' : 'no');
+  await form.getByRole('button', { name: 'Publish broadcast' }).click();
+  await waitOutcome(page, /\/notifications\/broadcasts\/[^/?]+\?status=created/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^BC-/);
+  return new URL(page.url()).pathname;
 }

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { decide, type PermissionKey, type Principal } from '../lib/authz/catalogue';
 import { E2E_PASSWORD, MASTER, PEOPLE, SUPERMANAGER, SWITCHABLE } from './people';
-import { expectHealthy, gotoSettled, signIn, watchServerErrors } from './helpers';
+import { expectHealthy, gotoSettled, menuLinks, signIn, watchServerErrors } from './helpers';
 
 /**
  * Every role × every page: the menu's pages all open cleanly, and the
@@ -68,7 +68,7 @@ for (const acct of ACCOUNTS) {
     const serverErrors = watchServerErrors(page);
     await signIn(page, acct.email, acct.password);
 
-    const menu = page.getByRole('navigation', { name: 'Main' }).locator(':scope > a');
+    const menu = menuLinks(page);
     await expect(menu.first()).toBeVisible();
     const hrefs = [...new Set(await menu.evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? '')))];
     expect(hrefs.length, 'menu entries').toBeGreaterThan(1);

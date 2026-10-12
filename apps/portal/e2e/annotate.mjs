@@ -14,6 +14,15 @@ const notices = [];
 const clean = (s) => String(s ?? '').replace(/\u001b\[[0-9;]*m/g, '');
 // The first real message of a result (errors[] carries it when error is empty).
 const msgOf = (r) => clean(r?.error?.message || (r?.errors ?? []).map((e) => e?.message).filter(Boolean)[0] || r?.error?.value || r?.status || '');
+// Where it failed: the spec line of the first error (not just the test's first line).
+const locOf = (r) => {
+  const e = r?.error ?? (r?.errors ?? [])[0];
+  const l = e?.location ?? (r?.errors ?? []).map((x) => x?.location).filter(Boolean)[0];
+  const at = l ? `${String(l.file).split('/').pop()}:${l.line}` : '';
+  // A helper's line alone says little — add the spec line that called it.
+  const spec = (clean(e?.stack ?? '').match(/([\w-]+\.spec\.ts):(\d+)/) ?? [])[0];
+  return at || spec ? `@${[at, spec].filter((x, i, a) => x && a.indexOf(x) === i).join(' ← ')} ` : '';
+};
 const titleOf = (trail, spec) => [...trail, spec.title].filter(Boolean).join(' › ').replace(/[\n:,]/g, ' ').slice(0, 180);
 const where = (spec) => (spec.file ? `${spec.file}:${spec.line}` : '');
 const perFile = new Map();
@@ -30,10 +39,10 @@ function walk(suite, trail) {
         const msg = knownDefect && last?.status === 'passed'
           ? `Marked as a known defect (${knownDefect.description ?? ''}) but it PASSED — the defect looks fixed; remove test.fail.`
           : msgOf(last).split('\n').slice(0, 6).join(' | ').slice(0, 900);
-        errors.push(`::error title=${title}::${where(spec)} ${msg.replace(/[\r\n]/g, ' ')}`);
+        errors.push(`::error title=${title}::${where(spec)} ${locOf(last)}${msg.replace(/[\r\n]/g, ' ')}`);
       } else if (t.status === 'flaky') {
         const first = t.results?.[0];
-        warnings.push(`::warning title=FLAKY ${title}::${where(spec)} passed on retry; first attempt: ${msgOf(first).split('\n').filter(Boolean).slice(0, 4).join(' | ').slice(0, 600)}`);
+        warnings.push(`::warning title=FLAKY ${title}::${where(spec)} passed on retry; first attempt: ${locOf(first)}${msgOf(first).split('\n').filter(Boolean).slice(0, 4).join(' | ').slice(0, 600)}`);
       } else if (t.status === 'expected' && knownDefect) {
         notices.push(`::notice title=Known defect ${title}::${(knownDefect.description ?? '').slice(0, 400)}`);
       }

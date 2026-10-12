@@ -1,8 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
-import { E2E_PASSWORD, OTHER_BRANCH_TECH, SWITCHABLE } from './people';
-import { freshVehicle } from './db';
+import { E2E_PASSWORD, OTHER_BRANCH_TECH, SWITCHABLE, who } from './people';
+import { freshVehicle, journalDiagnosis } from './db';
 import { openJobCard, suggestion } from './workflows';
-import { as, open, expectAuditEntry, signIn, visitHealthy, waitOutcome } from './helpers';
+import { as, open, expectAuditEntry, signIn, urlOrExplain, visitHealthy, waitOutcome } from './helpers';
 
 /**
  * Administration: give and take away a role (the person's menu follows),
@@ -50,7 +50,7 @@ test('switching an account off signs the person out at once; switching on lets t
 
   await test.step('the switched-off person is out on their next click', async () => {
     await sola.goto('/notifications');
-    await sola.waitForURL(/\/login/);
+    await urlOrExplain(sola, /\/login/);
     await expect(sola.getByText(/switched off|session ended/i)).toBeVisible();
   });
   await test.step('and cannot sign back in', async () => {
@@ -128,7 +128,7 @@ test('Audit Logs: the Data changes and API requests tabs show only their kind', 
   for (const [kind, chip] of [['data', 'Data change'], ['api', 'API']] as const) {
     await page.goto(`/audit-logs?kind=${kind}`);
     const chips = await page.locator('section li span').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()).filter((t) => ['Business', 'Data change', 'API', 'System job'].includes(t)));
-    expect(chips.length, `${kind}: entries shown`).toBeGreaterThan(0);
+    expect(chips.length, `${kind}: entries shown${chips.length || kind !== 'data' ? '' : ` — ${await journalDiagnosis(who('administrator').email)}`}`).toBeGreaterThan(0);
     expect(new Set(chips), `${kind}: only "${chip}" entries`).toEqual(new Set([chip]));
   }
 });

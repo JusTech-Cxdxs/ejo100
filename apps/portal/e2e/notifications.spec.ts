@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { who } from './people';
 import { as, open, eventually, bellText, countMail, latestMail, uniq, visitHealthy, waitOutcome } from './helpers';
-import { jcForm } from './workflows';
+import { publishBroadcast } from './workflows';
 
 /**
  * Broadcasts reach exactly the people they are for: one to everyone, one
@@ -13,22 +13,7 @@ test.describe.configure({ mode: 'serial' });
 const tag = uniq();
 const S = { all: `Fire drill at 2 pm ${tag}`, role: `Managers: budget review ${tag}`, allUrl: '', roleUrl: '' };
 
-async function publish(page: Page, opts: { category: RegExp; title: string; message: string; audience: 'ALL' | 'ROLE'; role?: string; email: boolean }): Promise<string> {
-  await page.goto('/notifications/broadcasts/new');
-  await page.getByRole('button', { name: opts.category }).click();
-  const form = jcForm(page, 'Publish broadcast');
-  await form.locator('input[name="title"]').fill(opts.title);
-  await form.locator('textarea[name="message"]').fill(opts.message);
-  await form.locator('select[name="audience"]').selectOption(opts.audience);
-  if (opts.role) await form.getByRole('checkbox', { name: opts.role, exact: true }).check();
-  await form.locator('select[name="when"]').selectOption('NOW');
-  await form.locator('select[name="duration"]').selectOption('h4');
-  await form.locator('select[name="sendEmail"]').selectOption(opts.email ? 'yes' : 'no');
-  await form.getByRole('button', { name: 'Publish broadcast' }).click();
-  await waitOutcome(page, /\/notifications\/broadcasts\/[^/?]+\?status=created/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^BC-/);
-  return new URL(page.url()).pathname;
-}
+const publish = publishBroadcast;
 
 test('an administrator publishes one broadcast to everyone and one to Workshop Managers', async ({ page, request }) => {
   await as(page, 'administrator');

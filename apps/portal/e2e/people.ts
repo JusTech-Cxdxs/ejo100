@@ -49,6 +49,12 @@ export const CUSTOMER = { email: 'customer@e2e.test', name: 'Ada Customer' };
 /** Customers who use the customer portal (known passwords). */
 export const PORTAL_CUSTOMER = { email: 'portal-customer@e2e.test', name: 'Kemi Portal', password: 'Portal-Pass-2026!', plate: 'E2E-PORTAL-1' };
 export const OTHER_PORTAL_CUSTOMER = { email: 'portal-other@e2e.test', name: 'Lanre Otherportal', password: 'Portal-Other-2026!', plate: 'E2E-PORTAL-2' };
+/** Changes their own password (forgot password, change password) — nobody else signs in as them. */
+export const PASSWORD_CUSTOMER = { email: 'portal-password@e2e.test', name: 'Tobi Passwordchange', password: 'Portal-Pwd-2026!', plate: 'E2E-PORTAL-3' };
+/** Has their portal access switched off and on again by the front desk (CRM spec). */
+export const SWITCH_CUSTOMER = { email: 'portal-switch@e2e.test', name: 'Funmi Switchoff', password: 'Portal-Switch-2026!', plate: 'E2E-PORTAL-4' };
+/** Every customer with a portal password, seeded with a vehicle each. */
+export const PORTAL_CUSTOMERS = [PORTAL_CUSTOMER, OTHER_PORTAL_CUSTOMER, PASSWORD_CUSTOMER, SWITCH_CUSTOMER] as const;
 
 /** Store data seeded for the workflow specs (each spec uses its own part, so stock numbers never collide). */
 export const SEED_PARTS = {
@@ -60,4 +66,4 @@ export const SEED_PARTS = {
   sparkPlug: { type: 'E2E Spark Plug', name: 'E2E Spark Plug', number: 'E2ES-003', price: 2500, stock: 60 },
 } as const;
 export const SEED_CATEGORY = { name: 'E2E Seed Parts', code: 'E2ES' };
-export const SEED_WARRANTY = { provider: 'E2E Parts Warranty Co', policyCode: 'E2E-PART-12', policyName: 'E2E 12-month part warranty' };
+export const SEED_WARRANTY = { provider: 'E2E Parts Warranty Co', policyCode: 'E2E-PART-12', policyName: 'E2E 12-month part warranty', vehiclePolicyCode: 'E2E-VEH-24', vehiclePolicyName: 'E2E 24-month vehicle warranty' };

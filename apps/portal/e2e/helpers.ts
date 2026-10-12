@@ -3,14 +3,29 @@ import { E2E_PASSWORD, who, type Person } from './people';
 
 const MAIL = process.env.E2E_MAIL_URL ?? 'http://localhost:8025';
 
+/** Wait for the URL; on a timeout say where the page actually is and what it shows. */
+export async function urlOrExplain(page: Page, url: RegExp, timeout = 30_000) {
+  try {
+    await page.waitForURL(url, { timeout });
+  } catch {
+    const text = await page.locator('body').innerText({ timeout: 2_000 }).catch(() => '');
+    throw new Error(`Expected the URL to match ${url} within ${timeout / 1000}s, but the page is at ${page.url()} showing: ${text.replace(/\s+/g, ' ').slice(0, 400)}`);
+  }
+}
+
+/** The signed-in shell is up: the account menu sits in the header at every screen size. */
+export async function expectSignedIn(page: Page) {
+  await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible({ timeout: 30_000 });
+}
+
 export async function signIn(page: Page, email: string, password: string) {
   await page.goto('/login');
   await page.getByLabel('Work email').fill(email);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
+  await urlOrExplain(page, /\/dashboard/);
   // The URL changes before the signed-in layout has rendered (client-side push).
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible({ timeout: 30_000 });
+  await expectSignedIn(page);
 }
 
 /**
@@ -28,9 +43,20 @@ export async function gotoSettled(page: Page, url: string) {
   return res;
 }
 
+/** Sign out the way a person does: the header button on desktops, the account menu below 1024 px. */
 export async function signOut(page: Page) {
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  const header = page.getByRole('button', { name: 'Sign out' });
+  if (await header.isVisible()) await header.click();
+  else {
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByRole('button', { name: 'Sign out' }).click();
+  }
   await page.waitForURL(/\/login/);
+}
+
+/** The module links of the main menu (grouped under Overview / Operations / Administration — not the roadmap). */
+export function menuLinks(page: Page): Locator {
+  return page.getByRole('navigation', { name: 'Main' }).locator(':scope > div a');
 }
 
 /** Open a page and wait until it is interactive (scripts loaded, quiet network). */
@@ -145,14 +171,16 @@ export async function submit(page: Page, button: Locator) {
   await page.waitForLoadState('networkidle').catch(() => undefined);
 }
 
-/** The bell's panel text (opens and closes it). */
+/** The bell's panel text (opens and closes it): Needs you / Broadcasts / Today / Earlier. */
 export async function bellText(page: Page): Promise<string> {
   const bell = page.getByRole('button', { name: /^Notifications/ });
   await bell.click();
-  const panel = page.getByRole('link', { name: 'Open the Notification Center →' }).first().locator('..');
-  await expect(panel).toBeVisible();
+  await expect(bell).toHaveAttribute('aria-expanded', 'true');
+  // The bell's own wrapper holds the button and its open panel.
+  const panel = bell.locator('xpath=..');
+  await expect(panel.getByRole('link', { name: /Open the Notification Center/ })).toBeVisible();
   await expect(panel).not.toContainText('Loading your notifications…');
-  const text = (await panel.textContent()) ?? '';
+  const text = (await panel.innerText()) ?? '';
   await bell.click();
   return text;
 }
