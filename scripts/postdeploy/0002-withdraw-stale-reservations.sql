@@ -11,39 +11,34 @@ BEGIN
     RETURN;
   END IF;
 
-  DROP TABLE IF EXISTS _stale_slips;
-  CREATE TEMP TABLE _stale_slips ON COMMIT DROP AS
-  SELECT s.id
-  FROM part_request_slips s
-  LEFT JOIN job_cards j ON j.id = s."jobCardId"
-  LEFT JOIN vehicle_services v ON v.id = s."vehicleServiceId"
-  WHERE s.status = 'APPROVED'
-    AND (j.status::text IN ('CANCELLED', 'CLOSED', 'CHECKED_OUT')
-         OR v.status::text IN ('CANCELLED', 'CLOSED', 'COLLECTED', 'ESCALATED'))
-  FOR UPDATE OF s;
-
-  IF NOT EXISTS (SELECT 1 FROM _stale_slips) THEN
-    RETURN;
-  END IF;
-
-  -- Stock first (from the lines), then the requests.
-  UPDATE part_stock ps
-  SET "quantityReserved" = GREATEST(0, ps."quantityReserved" - r.qty)
-  FROM (
-    SELECT l."partId", SUM(l."quantityRequested") AS qty
-    FROM part_request_slip_lines l
-    JOIN _stale_slips x ON x.id = l."slipId"
-    GROUP BY l."partId"
-  ) r
-  WHERE ps."partId" = r."partId";
-
+  -- One statement: stock is given back and the requests withdrawn together.
+  WITH stale AS (
+    SELECT s.id
+    FROM part_request_slips s
+    LEFT JOIN job_cards j ON j.id = s."jobCardId"
+    LEFT JOIN vehicle_services v ON v.id = s."vehicleServiceId"
+    WHERE s.status = 'APPROVED'
+      AND (j.status::text IN ('CANCELLED', 'CLOSED', 'CHECKED_OUT')
+           OR v.status::text IN ('CANCELLED', 'CLOSED', 'COLLECTED', 'ESCALATED'))
+    FOR UPDATE OF s
+  ), given_back AS (
+    UPDATE part_stock ps
+    SET "quantityReserved" = GREATEST(0, ps."quantityReserved" - r.qty)
+    FROM (
+      SELECT l."partId", SUM(l."quantityRequested") AS qty
+      FROM part_request_slip_lines l
+      JOIN stale x ON x.id = l."slipId"
+      GROUP BY l."partId"
+    ) r
+    WHERE ps."partId" = r."partId"
+    RETURNING ps."partId"
+  )
   UPDATE part_request_slips s
   SET status = 'REJECTED',
       "rejectedAt" = now(),
       "rejectionStage" = 'WITHDRAWN',
       "rejectionReason" = 'Withdrawn automatically: the job had already finished (V1 clean-up)',
       "updatedAt" = now()
-  FROM _stale_slips x
-  WHERE s.id = x.id;
+  WHERE s.id IN (SELECT id FROM stale);
 END
 $$;
