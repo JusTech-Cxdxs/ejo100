@@ -42,7 +42,7 @@ export function recordUrl(entityType: string, id: string): string {
     JobCard: `/workshop/job-cards/${id}`,
     VehicleService: `/workshop/vehicle-service/${id}`,
     CustomerVehicle: `/workshop/vehicles/${id}/edit`,
-    Customer: '/workshop/customers',
+    Customer: `/crm/customers/${id}`,
     PartRequestSlip: `/workshop/parts-requests/${id}`,
     ExternalProcurementRequest: `/workshop/external-procurement/${id}`,
     Part: `/inventory/parts/${id}`,
@@ -142,7 +142,18 @@ export function broadcastState(b: { isActive: boolean; startsAt: Date; endsAt: D
 }
 export const BROADCAST_STATE_LABEL: Record<BroadcastState, string> = { SCHEDULED: 'Scheduled', LIVE: 'Live', ENDED: 'Ended', STOPPED: 'Stopped' };
 
-/** Does this broadcast reach this person? */
+/** Who a broadcast is for, in words (lists, analytics, detail pages). */
+export const AUDIENCE_LABEL: Record<string, string> = {
+  ALL: 'Everyone', BRANCH: 'Branches', DEPARTMENT: 'Departments', ROLE: 'Roles', CUSTOMERS_ALL: 'All customers', CUSTOMERS_SELECTED: 'Selected customers',
+};
+
+/** Customer broadcasts: shown on the customer portal (and emailed to customers) — never to staff. */
+export const CUSTOMER_AUDIENCES = ['CUSTOMERS_ALL', 'CUSTOMERS_SELECTED'] as const;
+export function isCustomerAudience(audience: string): boolean {
+  return (CUSTOMER_AUDIENCES as readonly string[]).includes(audience);
+}
+
+/** Does this broadcast reach this member of staff? (Never a customer broadcast.) */
 export function reaches(b: { audience: string; audienceIds: string[] }, u: { branchId: string | null; departmentId: string | null; roleSlugs: string[] }): boolean {
   if (b.audience === 'ALL') return true;
   if (b.audience === 'BRANCH') return Boolean(u.branchId && b.audienceIds.includes(u.branchId));
