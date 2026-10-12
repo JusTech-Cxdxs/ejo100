@@ -16,7 +16,7 @@ import { logFailure } from '@/lib/log';
  */
 
 import { claimed } from '@/lib/integrity';
-import { retryOnNumberClash } from '@/lib/integrity-core';
+import { isUniqueClashOn, retryOnNumberClash } from '@/lib/integrity-core';
 import { prisma, PartTrackingType } from '@ejo/database';
 import { notifyWarrantyDepartmentOfPartWarranty } from '@/lib/warranty-department-notify';
 import { loadQuantityTraces } from '@/lib/inventory/quantity-trace';
@@ -1520,6 +1520,20 @@ export async function checkSerialNumberExists(serialNumber: string): Promise<boo
  * disagreeing with each other. */
 export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promise<{ id: string; referenceNumber: string }> {
   const user = await requireStoreStaff(input.branchId, 'store.grn.record');
+  try {
+    return await recordGoodsReceiptOnce(input, user);
+  } catch (err) {
+    // The same form landing twice at the same instant: the first one recorded
+    // the delivery — the second gets that receipt, never a technical error.
+    if (input.idempotencyKey && isUniqueClashOn(err, 'idempotencyKey')) {
+      const done = await prisma.goodsReceipt.findUnique({ where: { idempotencyKey: input.idempotencyKey }, select: { id: true, referenceNumber: true, branchId: true } });
+      if (done && done.branchId === input.branchId) return { id: done.id, referenceNumber: done.referenceNumber };
+    }
+    throw err;
+  }
+}
+
+async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awaited<ReturnType<typeof requireStoreStaff>>): Promise<{ id: string; referenceNumber: string }> {
   // Same form submitted again (dropped connection, double click): the stock
   // was already added — hand back that receipt instead of adding it twice.
   if (input.idempotencyKey) {
