@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
+import { endAssistSession } from '@/lib/actions/assist';
 import { LiveStatus } from '@/components/LiveStatus';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -24,6 +25,8 @@ export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen 
 
   async function handleSignOut() {
     setLeaving(true);
+    // An assisted session never outlives the assistant's sign-in.
+    await endAssistSession().catch(() => undefined);
     await authClient.signOut();
     router.push('/login');
     router.refresh();

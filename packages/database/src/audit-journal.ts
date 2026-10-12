@@ -38,7 +38,10 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 
 /** organisationId: the actor's organisation — every audit row is stamped
  * with it, so each organisation only ever sees its own history. */
-type AuditActor = { userId: string | null; source: string; organisationId?: string | null };
+/** assistedBy / assistSessionId: set while a branch assistant works on the
+ * user's behalf (an assisted session); every entry then names both people. */
+type AssistedBy = { id: string; name: string };
+type AuditActor = { userId: string | null; source: string; organisationId?: string | null; assistedBy?: AssistedBy | null; assistSessionId?: string | null };
 type PendingEntry = Prisma.AuditLogCreateManyInput;
 /** An entry written inside a transaction carries that transaction's token
  * until it commits; a rolled-back transaction's entries are dropped, so the
@@ -53,10 +56,10 @@ const context = new AsyncLocalStorage<AuditContext>();
  * user is authenticated (portal requireUser, API session guard) or by a
  * scheduled job with a null user and its own source name.
  */
-export function setAuditActor(userId: string | null, source: string, organisationId: string | null = null): void {
+export function setAuditActor(userId: string | null, source: string, organisationId: string | null = null, assist: { assistedBy: AssistedBy; assistSessionId: string } | null = null): void {
   const existing = context.getStore();
-  if (existing && existing.userId === userId && existing.source === source && (existing.organisationId ?? null) === organisationId) return;
-  context.enterWith({ userId, source, organisationId, pending: existing?.pending ?? [], tx: existing?.tx ?? null });
+  if (existing && existing.userId === userId && existing.source === source && (existing.organisationId ?? null) === organisationId && (existing.assistSessionId ?? null) === (assist?.assistSessionId ?? null)) return;
+  context.enterWith({ userId, source, organisationId, assistedBy: assist?.assistedBy ?? null, assistSessionId: assist?.assistSessionId ?? null, pending: existing?.pending ?? [], tx: existing?.tx ?? null });
 }
 
 /**
@@ -85,7 +88,14 @@ async function resolveActor(store: AuditContext | undefined): Promise<AuditActor
 /** The actor recorded for the current request, if any. */
 export function getAuditActor(): AuditActor | null {
   const store = context.getStore();
-  return store ? { userId: store.userId, source: store.source, organisationId: store.organisationId ?? null } : null;
+  return store ? { userId: store.userId, source: store.source, organisationId: store.organisationId ?? null, assistedBy: store.assistedBy ?? null, assistSessionId: store.assistSessionId ?? null } : null;
+}
+
+/** Who is acting in this request, asking the app's resolver when nothing was
+ * recorded in this async context. Never call inside a transaction. */
+export async function currentAuditActor(): Promise<AuditActor | null> {
+  const actor = await resolveActor(context.getStore());
+  return actor ? { userId: actor.userId, source: actor.source, organisationId: actor.organisationId ?? null, assistedBy: actor.assistedBy ?? null, assistSessionId: actor.assistSessionId ?? null } : null;
 }
 
 /** userId → organisationId, remembered for five minutes (people rarely move). */
@@ -214,8 +224,8 @@ export function installAuditJournal(client: PrismaClient): void {
     const token = Symbol('tx');
     const begin = (actor: AuditActor | null) => {
       const inner: AuditContext = outer
-        ? { ...outer, ...(actor && !outer.userId && !outer.organisationId ? { userId: actor.userId, source: actor.source, organisationId: actor.organisationId ?? null } : {}), tx: token }
-        : { userId: actor?.userId ?? null, source: actor?.source ?? 'unattributed', organisationId: actor?.organisationId ?? null, pending: [], tx: token };
+        ? { ...outer, ...(actor && !outer.userId && !outer.organisationId ? { userId: actor.userId, source: actor.source, organisationId: actor.organisationId ?? null, assistedBy: actor.assistedBy ?? null, assistSessionId: actor.assistSessionId ?? null } : {}), tx: token }
+        : { userId: actor?.userId ?? null, source: actor?.source ?? 'unattributed', organisationId: actor?.organisationId ?? null, assistedBy: actor?.assistedBy ?? null, assistSessionId: actor?.assistSessionId ?? null, pending: [], tx: token };
       return inner;
     };
     const settle = async (committed: boolean) => {
@@ -338,7 +348,7 @@ export function installAuditJournal(client: PrismaClient): void {
         action: `data.${params.action}`,
         entityType: `db:${params.model}`,
         entityId: resultId ?? whereId,
-        metadata: capped({ ...metadata, source: actor?.source ?? 'unknown', ...(params.runInTransaction ? { inTransaction: true } : {}) }),
+        metadata: capped({ ...metadata, source: actor?.source ?? 'unknown', ...(actor?.assistedBy ? { assistedBy: actor.assistedBy, assistSessionId: actor.assistSessionId ?? null } : {}), ...(params.runInTransaction ? { inTransaction: true } : {}) }),
       };
       if (params.runInTransaction) {
         // Held for this request; written by its next ordinary query. With

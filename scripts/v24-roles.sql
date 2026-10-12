@@ -22,11 +22,12 @@ CROSS JOIN (VALUES
   ('Security Officer', 'security-officer', 'The gate: visitors, vehicles and passes in and out.'),
   ('Calendar User', 'calendar-user', 'Keeps a calendar and books appointments.'),
   ('Scheduling Admin', 'scheduling-admin', 'Meeting rooms, aides, and any calendar.'),
-  ('Broadcaster', 'broadcaster', 'Sends broadcasts to the organisation.')
+  ('Broadcaster', 'broadcaster', 'Sends broadcasts to the organisation.'),
+  ('Branch Assistant', 'branch-assistant', 'Helps colleagues who are not at ease with computers, on their behalf and with their password as consent. Every action is recorded for both.')
 ) AS r(name, slug, description)
 ON CONFLICT ("organisationId", "slug") DO NOTHING;
 
--- Check: the roles each organisation now has (expect at least 17 per organisation).
+-- Check: the roles each organisation now has (expect at least 18 per organisation).
 SELECT o."name" AS organisation, COUNT(r."id") AS roles
 FROM "organisations" o LEFT JOIN "roles" r ON r."organisationId" = o."id"
 GROUP BY o."name";

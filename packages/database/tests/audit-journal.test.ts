@@ -102,3 +102,26 @@ test('a committed transaction is journaled once, after the commit, never from in
   assert.equal(journal.filter((j) => j.action === 'data.updateMany').length, 1);
   assert.deepEqual(queriesInsideTx, []);
 });
+
+test('during an assisted session every entry names the colleague and the assistant', async () => {
+  const { client, journal } = fakeClient();
+  setAuditActor('colleague-1', 'portal', 'org-1', { assistedBy: { id: 'assistant-1', name: 'Ada Okafor' }, assistSessionId: 'as-1' });
+  await client.jobCard.updateMany({ where: { id: 'jc-1', status: 'PENDING' }, data: { status: 'APPROVED' } });
+  await client.$transaction(async (tx: unknown) => {
+    const t = tx as { jobCard: { updateMany: (a: unknown) => Promise<unknown> } };
+    await t.jobCard.updateMany({ where: { id: 'jc-1', status: 'APPROVED' }, data: { status: 'DONE' } });
+  });
+  const entries = journal.filter((j) => j.action === 'data.updateMany');
+  assert.equal(entries.length, 2);
+  for (const e of entries) {
+    assert.equal(e.userId, 'colleague-1');
+    const meta = e.metadata as { assistedBy?: { id: string; name: string }; assistSessionId?: string };
+    assert.deepEqual(meta.assistedBy, { id: 'assistant-1', name: 'Ada Okafor' });
+    assert.equal(meta.assistSessionId, 'as-1');
+  }
+  // Back to working alone: no assistant on the entry.
+  setAuditActor('colleague-1', 'portal', 'org-1');
+  await client.jobCard.updateMany({ where: { id: 'jc-1', status: 'DONE' }, data: { status: 'PENDING' } });
+  const last = journal.filter((j) => j.action === 'data.updateMany').at(-1)!;
+  assert.equal((last.metadata as { assistedBy?: unknown }).assistedBy, undefined);
+});

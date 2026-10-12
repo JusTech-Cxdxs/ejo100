@@ -1,3 +1,4 @@
+import { actorLabel } from '@/lib/assist/rules';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { listPartsFittedToVehicle, getVehicleCoveredValue } from '@/lib/actions/vehicle-history';
@@ -343,7 +344,7 @@ export default async function VehiclePage({
                   entries={auditTrail.map((entry: (typeof auditTrail)[number]) => ({
                     id: entry.id,
                     actionLabel: AUDIT_ACTION_LABEL[entry.action] ?? humanizeAction(entry.action),
-                    userName: entry.user?.fullName ?? null,
+                    userName: actorLabel(entry.user?.fullName ?? null, entry.metadata),
                     detail: formatAuditDetail(entry),
                     dateLabel: formatDateTime(entry.createdAt),
                   }))}

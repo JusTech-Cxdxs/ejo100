@@ -13,7 +13,7 @@ export function PasswordField({
   id, label, value, onChange, autoComplete, placeholder = '••••••••', invalid, describedBy, minLength, required = true, autoFocus,
 }: {
   id: string; label: string; value: string; onChange: (v: string) => void;
-  autoComplete: 'current-password' | 'new-password'; placeholder?: string; invalid?: boolean; describedBy?: string; minLength?: number; required?: boolean; autoFocus?: boolean;
+  autoComplete: 'current-password' | 'new-password' | 'off'; placeholder?: string; invalid?: boolean; describedBy?: string; minLength?: number; required?: boolean; autoFocus?: boolean;
 }) {
   const [shown, setShown] = useState(false);
   const [caps, setCaps] = useState(false);
