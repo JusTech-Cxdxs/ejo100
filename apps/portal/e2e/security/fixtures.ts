@@ -48,7 +48,7 @@ async function main() {
 
   let n = 900000;
   const jobNumber = () => `JC-SEC-${String((n += 1))}`;
-  const jobCard = async (plate: string, status: 'AWAITING_CUSTOMER_APPROVAL' | 'CANCELLED' | 'IN_PROGRESS', total: number) => {
+  const jobCard = async (plate: string, status: 'AWAITING_CUSTOMER_APPROVAL' | 'CANCELLED' | 'IN_PROGRESS' | 'CHECKED_OUT', total: number) => {
     const v = await vehicle(plate);
     const jc = await prisma.jobCard.create({
       data: {
@@ -73,6 +73,9 @@ async function main() {
   // Refunds: cancelled, 50,000 paid.
   const jcRefund = await jobCard('SEC-REF-01', 'CANCELLED', 100000);
   await prisma.payment.create({ data: { jobCardId: jcRefund.id, amount: D(50000), method: 'CASH', recordedById: fin.id, notes: 'fixture' } });
+  // Print views exist only for finished records — one checked-out card, one collected service.
+  const jcOut = await jobCard('SEC-OUT-01', 'CHECKED_OUT', 50000);
+  await prisma.jobCard.update({ where: { id: jcOut.id }, data: { checkedOutAt: new Date(), collectedByName: 'Ada Customer', closedAt: new Date(), completedAt: new Date() } });
   // Stock: an open job with parts requests waiting for the Store.
   const jcSlips = await jobCard('SEC-SLIP-01', 'IN_PROGRESS', 100000);
 
@@ -105,6 +108,7 @@ async function main() {
     data: { branchId: branch.id, referenceNumber: 'GRN-SEC-000001', supplierName: 'Fixture Supplier Ltd', receivedById: store.id, lines: { create: [{ partId: pReceive.id, quantityReceivedInUnit: D(0), unitUsed: 'piece', quantityInBaseUnit: D(0) }] } },
   }).catch(async () => prisma.goodsReceipt.findUniqueOrThrow({ where: { referenceNumber: 'GRN-SEC-000001' } }));
   const vs = await prisma.vehicleService.create({ data: { serviceNumber: 'VS-SEC-000001', branchId: branch.id, customerId: customer.id, vehicleId: (await vehicle('SEC-VS-01')).id, createdById: front.id } });
+  const vsDone = await prisma.vehicleService.create({ data: { serviceNumber: 'VS-SEC-000002', branchId: branch.id, customerId: customer.id, vehicleId: (await vehicle('SEC-VS-02')).id, createdById: front.id, status: 'COLLECTED' } });
   const provider = await prisma.warrantyProvider.upsert({ where: { name: 'Sec Test Motors Warranty' }, update: {}, create: { name: 'Sec Test Motors Warranty', type: 'MANUFACTURER', createdById: admin.id, organisationId: org.id } });
   const policy = await prisma.warrantyPolicy.upsert({ where: { code: 'SEC-POL-1' }, update: {}, create: { code: 'SEC-POL-1', name: 'Sec 12 month', kind: 'PART', providerId: provider.id, durationMonths: 12, coverageSummary: 'Fixture', createdById: admin.id, organisationId: org.id } });
   const warranty = await prisma.warranty.upsert({
@@ -120,7 +124,7 @@ async function main() {
     users: { front: front.id, sup: sup.id, tech: tech.id, mgr: mgr.id, fin: fin.id, store: store.id, admin: admin.id, master: master.id, otherAdmin: otherAdmin.id },
     roles: { admin: ourAdminRole.id, tech: (await prisma.role.findUniqueOrThrow({ where: { organisationId_slug: { organisationId: org.id, slug: 'technician' } } })).id },
     sameVehicleId: sameVehicle.id, manyVehicleIds: manyVehicles.map((v) => v.id),
-    jcPay: jcPay.id, jcPay2: jcPay2.id, jcRefund: jcRefund.id, jcSlips: jcSlips.id,
+    jcPay: jcPay.id, jcPay2: jcPay2.id, jcRefund: jcRefund.id, jcSlips: jcSlips.id, jcOut: jcOut.id, vehicleServiceDone: vsDone.id,
     parts: { approve: pApprove.id, release: pRelease.id, receive: pReceive.id },
     pendingSlips: pendingSlips.map((x) => x.id), approvedSlip: approvedSlip.id,
     goodsReceipt: gr.id, vehicleService: vs.id, warranty: warranty.id, warrantyProvider: provider.id, warrantyPolicy: policy.id,

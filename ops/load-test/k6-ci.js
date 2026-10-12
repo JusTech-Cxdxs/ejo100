@@ -50,9 +50,11 @@ for (const st of Object.keys(STAGES)) {
   thresholds[`http_req_duration{stage:${st},kind:signin}`] = ['p(95)<1500'];
   thresholds[`http_reqs{stage:${st}}`] = ['count>=0'];
   thresholds[`ejo_errors{stage:${st}}`] = ['rate<0.01'];
+  for (const k of ['pulse', 'page', 'search', 'signin']) thresholds[`ejo_errors{stage:${st},kind:${k}}`] = ['rate<0.01'];
 }
 thresholds['http_req_duration{stage:write,kind:write}'] = ['p(95)<2000'];
 thresholds['ejo_errors{stage:write}'] = ['rate<0.05'];
+thresholds['ejo_errors{stage:write,kind:write}'] = ['rate<0.05'];
 
 export const options = {
   scenarios,
@@ -70,43 +72,60 @@ function signIn(email, password) {
     headers: { 'content-type': 'application/json', origin: BASE, 'x-forwarded-for': xff() },
     tags: { kind: 'signin' }, responseType: 'none',
   });
-  const c = r.cookies['better-auth.session_token'];
-  return { ok: r.status === 200 && c && c.length > 0, cookie: c && c.length ? `better-auth.session_token=${c[0].value}` : '' };
+  // "better-auth.session_token" (or "__Secure-…" when served over https).
+  const name = Object.keys(r.cookies).find((k) => k.endsWith('session_token'));
+  const c = name ? r.cookies[name] : null;
+  return { ok: r.status === 200 && !!c && c.length > 0, status: r.status, cookie: c && c.length ? `${name}=${c[0].value}` : '' };
 }
 
 export function setup() {
   const cookies = [];
   for (const e of STAFF) { const s = signIn(e, PASSWORD); if (s.ok) cookies.push(s.cookie); }
   const master = signIn('master@e2e.test', 'E2e-Master-Pass-2026!');
-  if (master.ok) cookies.push(master.cookie);
-  return { cookies, master: master.cookie };
+  const admin = signIn('admin@e2e.test', PASSWORD);
+  if (!master.ok || !admin.ok || cookies.length < STAFF.length) throw new Error(`setup sign-in failed: master=${master.ok} admin=${admin.ok} staff=${cookies.length}/${STAFF.length}`);
+  // Pulse: every role. Pages: people allowed to open all of them (Master Admin, Administrator),
+  // so a refused page (redirect to Access denied) never counts as a load error.
+  return { cookies: [...cookies, master.cookie], pageCookies: [master.cookie, admin.cookie], master: master.cookie };
+}
+
+const logged = {};
+/** First failure of each kind per VU goes to the k6 log (status + start of body) for triage. */
+function logOnce(kind, r) {
+  if (logged[kind]) return;
+  logged[kind] = true;
+  console.error(`first ${kind} failure: HTTP ${r.status} ${r.request ? r.request.url : ''} location=${r.headers.Location || ''} body=${String(r.body || '').slice(0, 160).replace(/\s+/g, ' ')}`);
 }
 
 function get(path, cookie, kind) {
   const r = http.get(`${BASE}${path}`, { headers: { cookie }, redirects: 0, tags: { kind, name: kind === 'pulse' ? '/api/live/pulse' : path.split('?')[0] } });
   const ok = r.status === 200;
   errors.add(!ok, { kind });
+  if (!ok) logOnce(kind, r);
   check(r, { [`${kind} 200`]: () => ok });
   return r;
 }
 
 export function browse(data) {
   const cookie = data.cookies[(__VU + __ITER) % data.cookies.length];
+  const pageCookie = data.pageCookies[(__VU + __ITER) % data.pageCookies.length];
   const roll = Math.random();
   if (roll < 0.5) get('/api/live/pulse', cookie, 'pulse');
-  else if (roll < 0.8) get(HEAVY[Math.floor(Math.random() * HEAVY.length)], cookie, 'page');
+  else if (roll < 0.8) get(HEAVY[Math.floor(Math.random() * HEAVY.length)], pageCookie, 'page');
   else if (roll < 0.9) {
     // Search: the global search action (as typed in the top bar).
     const id = idOf('globalSearch');
     if (id) {
-      const r = http.post(`${BASE}${pageOf('globalSearch')}`, JSON.stringify(['Ada']), { headers: { cookie, 'Next-Action': id, origin: BASE, 'content-type': 'text/plain;charset=UTF-8', 'x-forwarded-for': xff() }, redirects: 0, tags: { kind: 'search', name: 'globalSearch' } });
-      const ok = r.status === 200;
+      const r = http.post(`${BASE}${pageOf('globalSearch')}`, JSON.stringify(['Ada']), { headers: { cookie: pageCookie, 'Next-Action': id, origin: BASE, 'content-type': 'text/plain;charset=UTF-8', 'x-forwarded-for': xff() }, redirects: 0, responseType: 'text', tags: { kind: 'search', name: 'globalSearch' } });
+      const ok = r.status === 200 && !/\n\d+:E\{/.test(r.body || '');
       errors.add(!ok, { kind: 'search' });
+      if (!ok) logOnce('search', r);
     } else get('/workshop/job-cards?q=JC', cookie, 'search');
   } else if (roll < 0.95) {
     const s = signIn(STAFF[Math.floor(Math.random() * STAFF.length)], PASSWORD);
     errors.add(!s.ok, { kind: 'signin' });
-  } else get(LISTS[Math.floor(Math.random() * LISTS.length)], cookie, 'page');
+    if (!s.ok) logOnce('signin', { status: s.status, headers: {}, body: '' });
+  } else get(LISTS[Math.floor(Math.random() * LISTS.length)], pageCookie, 'page');
   sleep(0.2 + Math.random() * 0.6);
 }
 
@@ -116,6 +135,7 @@ function act(name, args, cookie) {
   const r = http.post(`${BASE}${pageOf(name)}`, body, { headers: { cookie, 'Next-Action': idOf(name), origin: BASE, 'content-type': 'text/plain;charset=UTF-8' }, redirects: 0, responseType: 'text', tags: { kind: 'write', name } });
   const err = r.status !== 200 || /\n\d+:E\{/.test(r.body || '');
   errors.add(err, { kind: 'write' });
+  if (err) logOnce(`write ${name}`, r);
   const m = (r.body || '').match(/"id":"([a-z0-9]+)"/);
   return { ok: !err, id: m ? m[1] : null };
 }

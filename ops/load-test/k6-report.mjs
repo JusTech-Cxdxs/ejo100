@@ -26,8 +26,10 @@ for (const st of stages) {
     if (!v || !v.count) continue;
     const slo = k === 'pulse' ? 500 : k === 'write' ? 2000 : 1500;
     const breach = v['p(95)'] > slo;
-    rows.push(`| ${st} | ${k || 'all'} | ${v.count} | ${ms(v.med)} | ${ms(v['p(90)'])} | ${ms(v['p(95)'])}${breach ? ' ⚠️' : ''} | ${ms(v['p(99)'])} | ${ms(v.max)} |`);
-    parts.push(`${k || 'all'} n=${v.count} p50=${ms(v.med)} p90=${ms(v['p(90)'])} p95=${ms(v['p(95)'])} p99=${ms(v['p(99)'])} max=${ms(v.max)}${breach ? ` (p95 over proposed ${slo} ms)` : ''}`);
+    const ke = tag === 'stage' ? m[`ejo_errors{${tag}:${st},kind:${k}}`]?.values?.rate : undefined;
+    const kerr = ke === undefined ? '' : ` err=${(ke * 100).toFixed(1)}%`;
+    rows.push(`| ${st} | ${k || 'all'} | ${v.count} | ${ms(v.med)} | ${ms(v['p(90)'])} | ${ms(v['p(95)'])}${breach ? ' ⚠️' : ''} | ${ms(v['p(99)'])} | ${ms(v.max)} |${kerr} |`);
+    parts.push(`${k || 'all'} n=${v.count} p50=${ms(v.med)} p90=${ms(v['p(90)'])} p95=${ms(v['p(95)'])} p99=${ms(v['p(99)'])} max=${ms(v.max)}${kerr}${breach ? ` (p95 over proposed ${slo} ms)` : ''}`);
   }
   const rps = secs[st] ? (reqs / secs[st]).toFixed(1) : '–';
   rows.push(`| ${st} | **total** | ${reqs} | | | | | | ${rps} req/s, errors ${err === undefined ? '–' : (err * 100).toFixed(2) + '%'} |`);

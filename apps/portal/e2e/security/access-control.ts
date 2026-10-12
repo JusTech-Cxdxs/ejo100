@@ -39,7 +39,7 @@ const evidence: Record<string, unknown> = {};
 let failures = 0;
 
 /** Strings that only the FIRST organisation's data contains. */
-const LEAK = [/JC-SEC-\d/, /SEC-(PAY|SLIP|REF|SAME|NUM|VS)-\d/, /Ada Customer/, /Secret fixture/, /Fixture Supplier/, /PRS-SEC-/, /GRN-SEC-/, /VS-SEC-/, /WTY-SEC-/, /RF-SEC-/, /BC-SEC-/, /APT-SEC-/,
+const LEAK = [/JC-SEC-\d/, /SEC-(PAY|SLIP|REF|SAME|NUM|VS|OUT)-\d/, /Ada Customer/, /Secret fixture/, /Fixture Supplier/, /PRS-SEC-/, /GRN-SEC-/, /VS-SEC-/, /WTY-SEC-/, /RF-SEC-/, /BC-SEC-/, /APT-SEC-/,
   /Hannah Admin/, /Tunde Technician/, /Mary Manager/, /Stella Store/, /Femi Finance/, /Morgan Master/, /Funmi Frontdesk/, /Brake pad \(sec test\)/, /Sec Test Motors/, /customer@e2e\.test/, /(?<![-\w])(admin|tech|finance|store|manager)@e2e\.test/];
 const leaks = (raw: string) => LEAK.filter((r) => r.test(raw)).map((r) => r.source);
 
@@ -170,8 +170,8 @@ async function crossOrgPages(theirs: string, ours: string): Promise<Check[]> {
     ['/warranty/providers/', FIX.warrantyProvider], ['/warranty/policies/', FIX.warrantyPolicy], ['/workshop/vehicles/%/edit', FIX.vehicleId],
     ['/branches/', FIX.branchId], ['/notifications/broadcasts/', FIX.broadcast], ['/schedule/', FIX.appointment], ['/schedule/%/edit', FIX.appointment],
     ['/workshop/job-cards/%/request-parts', FIX.jcSlips], ['/inventory/estimate-matching/', FIX.jcSlips],
-    ['/print/job-cards/', FIX.jcPay], ['/print/job-cards/%/estimate', FIX.jcPay], ['/print/vehicle-service/', FIX.vehicleService], ['/print/vehicle-service/%/estimate', FIX.vehicleService],
-    ['/print/parts-requests/', FIX.pendingSlips[0]], ['/print/refunds/', FIX.refund], ['/print/warranty/', FIX.warranty],
+    ['/print/job-cards/', FIX.jcOut], ['/print/job-cards/%/estimate', FIX.jcPay], ['/print/vehicle-service/', FIX.vehicleServiceDone], ['/print/vehicle-service/%/estimate', FIX.vehicleService],
+    ['/print/parts-requests/', FIX.approvedSlip], ['/print/refunds/', FIX.refund], ['/print/warranty/', FIX.warranty],
   ];
   const checks: Check[] = [];
   const bad: string[] = [];
@@ -183,10 +183,10 @@ async function crossOrgPages(theirs: string, ours: string): Promise<Check[]> {
     const leaked = leaks(them.body);
     const refused = them.status === 404 || denied(them) || /not.found|could not be found|This page could not be found/i.test(them.body);
     if (leaked.length || !refused) bad.push(`${path.replace(id, ':id')}: HTTP ${them.status}${leaked.length ? ` LEAK[${leaked.join(',')}]` : ''}${refused ? '' : ' not refused'}`);
-    if (us.status !== 200 || leaks(us.body).length === 0) control.push(`${path.replace(id, ':id')}: own admin HTTP ${us.status}, markers ${leaks(us.body).length}`);
+    if (us.status !== 200 || leaks(us.body).length === 0) control.push(`${path.replace(id, ':id')}: Master Admin HTTP ${us.status}, markers ${leaks(us.body).length}`);
   }
   checks.push({ id: 'AC-XORG', title: `another organisation's admin opens ${targets.length} record pages / print views by id`, pass: bad.length === 0, detail: bad.length ? bad.join('; ') : `all ${targets.length} refused (404 / denied), no data in any response` });
-  checks.push({ id: 'AC-XORG-CTRL', title: 'positive control: the Master Admin sees them (proves the leak markers work)', pass: true, severity: 'warning', detail: control.length ? `pages where the own admin did not see a marker (no oracle there): ${control.join('; ')}` : 'own admin sees every record (test can detect a leak)' });
+  checks.push({ id: 'AC-XORG-CTRL', title: 'positive control: the Master Admin sees them (proves the leak markers work)', pass: true, severity: 'warning', detail: control.length ? `${targets.length - control.length}/${targets.length} with a working oracle; no marker for the Master Admin (record state not printable): ${control.join('; ')}` : `Master Admin sees all ${targets.length} records (the test can detect a leak on every one)` });
   return checks;
 }
 
@@ -275,6 +275,13 @@ async function anonSweep(): Promise<Check[]> {
     { id: 'AC-ANON', title: `all ${results.length} server actions of the build called with a forged session cookie`, pass: returnedData.length === 0 && changed.length === 0,
       detail: `returned data: ${returnedData.length ? returnedData.map((r) => `${r.file}:${r.name}=${r.value}`).slice(0, 10).join('; ') : 'none'}; tables changed: ${changed.join(',') || 'none'}; outcomes: ${[...why].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${v}× ${k}`).join(' | ')}` },
     { id: 'AC-ANON-EMPTY', title: 'actions that answered (empty) instead of refusing — triage', pass: true, severity: 'warning', detail: returnedEmpty.length ? returnedEmpty.map((r) => `${r.file}:${r.name}=${r.value}`).join('; ').slice(0, 1500) : 'none' },
+    // Refused, but by something OTHER than the sign-in check: code (database queries, parsing)
+    // ran for a caller who is not signed in. Not a leak (nothing returned, nothing changed) — an ordering finding.
+    { id: 'AC-ANON-ORDER', title: 'actions that ran code before checking sign-in (refused for another reason)', pass: true, severity: 'warning',
+      detail: (() => {
+        const pre = results.filter((r) => r.outcome.startsWith('error ') && !/Not authenticated|Not signed in|sign in/i.test((r as { reason?: string }).reason ?? ''));
+        return `${pre.length}: ` + pre.map((r) => `${r.file}:${r.name} (${((r as { reason?: string }).reason ?? '').slice(0, 60)})`).join('; ').slice(0, 3500);
+      })() },
   ];
 }
 

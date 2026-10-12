@@ -14,11 +14,12 @@ for (const p of phases) { thresholds[`http_req_duration{phase:${p}}`] = ['p(95)<
 export const options = { scenarios: { mixed: { executor: 'constant-vus', vus: 20, duration: '60s' } }, thresholds, summaryTrendStats: ['min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max', 'count'], discardResponseBodies: true };
 
 export function setup() {
-  // Sign in on the proxy; Origin must be the configured BETTER_AUTH_URL (trusted origin).
-  const r = http.post(`${BASE}/api/auth/sign-in/email`, JSON.stringify({ email: 'admin@e2e.test', password: 'E2e-Test-Pass-2026!' }), { headers: { 'content-type': 'application/json', origin: __ENV.ORIGIN || BASE } });
-  if (r.status !== 200) throw new Error(`sign-in through the proxy failed: HTTP ${r.status}`);
-  const c = r.cookies['better-auth.session_token'];
-  return { cookie: c && c.length ? `better-auth.session_token=${c[0].value}` : '', t0: Date.now() };
+  // The session cookie comes from the workflow (signed in with curl); sessions live in
+  // Postgres, so it is valid on both instances. Checked through the proxy before starting.
+  const cookie = __ENV.COOKIE || '';
+  const probe = http.get(`${BASE}/api/live/pulse`, { headers: { cookie }, redirects: 0 });
+  if (probe.status !== 200) throw new Error(`session check through the proxy failed: HTTP ${probe.status} (cookie ${cookie ? 'set' : 'missing'})`);
+  return { cookie, t0: Date.now() };
 }
 export default function (d) {
   const s = (Date.now() - d.t0) / 1000;
