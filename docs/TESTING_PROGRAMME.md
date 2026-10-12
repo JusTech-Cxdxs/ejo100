@@ -45,7 +45,7 @@ Severity reflects real exploitability in this application, not the scanner's lab
 | RLS-02 | Info | A table created by `prisma db push` has RLS **off** until the post-deploy SQL runs again in the same deploy. Default privileges are revoked, so `anon` / `authenticated` still have no grants on it, and it is not exposed. | CI `RLS-08`: anon SELECT=false, authenticated INSERT=false on a probe table created after the deploy SQL. | Accepted. Keep the post-deploy step in every deploy path. |
 | LOAD-01 | Medium | A **single instance saturates at about 42 requests per second** of the mixed workload. In the 120-user spike, p95 reaches pages 3.6 s, pulse 1.4 s, search 9.3 s and sign-in 2.0 s. All proposed SLOs are breached, but there are 0 errors. | k6 stage table (§7). | Expected for one 2-vCPU instance. Production capacity depends on Vercel's concurrency; re-measure on staging. |
 | LOAD-02 | Medium | **Global search is the slowest operation**: p95 2.0 s already at 50 users (ramp), and p50 5.3 s in the spike. | k6 `kind:search` (`globalSearch` server action). | Open. Profile `lib/actions/search.ts`: run the per-module queries in parallel, add `pg_trgm` GIN indexes for `ILIKE '%q%'`, and cap the result count. |
-| LOAD-03 | Low | The write workflow (create, stop and delete a broadcast, 165 operations) has p95 2.7 s, against a proposed 2 s. | k6 `kind:write`. | Watch. Emails and realtime pings already run after the response. |
+| LOAD-03 | Low | The write workflow (create, stop and delete a broadcast) made 165 write requests in 55 cycles. Its p95 is 2.7 s, against a proposed 2 s. | k6 `kind:write`. | Watch. Emails and realtime pings already run after the response. |
 | LOAD-04 | Info | **Not verified:** horizontal scaling and production load balancing. The two-instance check uses a tiny proxy (`ops/load-test/lb.mjs`), not Vercel. Its result is in §7. | — | Re-run `ops/load-test/k6-portal.js` against staging. |
 | LOG-01 | Medium | About 80 `console.error(…, err)` calls log **raw error objects**, unstructured and un-redacted. They bypass `lib/errors.ts` `redact()`. Some include personal data: `app/api/cron/pricing-alerts/route.ts:78` logs `recipient.email`. | Code review: 88 `console.*` calls in the portal, 6 `logError(` calls. The CI log scan found no secret values and no emails in `portal.log` during the test run. | Open. Route every failure through `logError(where, err, extra)`, and never pass emails or tokens. |
 | LOG-02 | Low | There is no request or correlation id. Only unhandled errors get a reference (the Next digest), which users see on the error page. Handled failures get `logError`'s random ref. | Code review. | Proposal below (§8). |
@@ -204,7 +204,14 @@ Not covered by a burst test: cancellation and close **approvals** (the compare-a
 | spike | 0→120→0 / 40 s | 42.7 | 0 % | 736 / 1,229 / **1,419** / 2,232 ms | 1,953 / 3,177 / **3,557** / 4,221 ms | **9,348 ms** | **2,047 ms** |
 | soak | 25 / 120 s | 41.7 | 0 % | 23 / 78 / 104 / 181 ms | 93 / 258 / 361 / 543 ms | 562 ms | 415 ms |
 | recovery | 10 / 45 s | 19.2 | 0 % | 6 / 15 / 26 / 43 ms | 30 / 80 / 99 / 144 ms | 110 ms | 139 ms |
-| write (whole run) | 1 per 6 s | — | 0 % (165 ops) | — | write p50 90 / p95 **2,698** ms | — | — |
+| write (whole run) | 1 cycle per 6 s | — | 0 % (165 requests) | — | write p50 90 / p95 **2,698** ms | — | — |
+
+**Repeatability:** a second full run (38211594563, commit `8b628cf`) reproduced these numbers within about 10 %:
+- spike: pages p95 3,396 ms, pulse p95 1,274 ms, search p95 8,465 ms;
+- ramp: pages p95 1,017 ms, search p95 1,999 ms;
+- soak: pages p95 326 ms;
+- errors: 0 % in every stage;
+- failover: 0.21 % errors in the 10 s after the kill, 0 % after it.
 
 **What the stages show:**
 - **Recovery:** after the spike, latency is back to (or below) the baseline. There is no lasting degradation, no errors, and no error lines in the server log under load.
