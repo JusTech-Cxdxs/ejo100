@@ -39,7 +39,7 @@ export function PassSheet({ copyLabel, orgName, subName, title, children, note }
         <div style={{ padding: '6px' }}>{children}</div>
         {note ? <div style={{ borderTop: '1.5px solid #0F172A', padding: '5px', fontSize: '9.5px', fontWeight: 600 }}>{note}</div> : null}
       </div>
-      <div style={{ textAlign: 'center', fontSize: '8.5px', color: '#64748B', marginTop: '4px' }}>Printed {new Date().toLocaleString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+      <div style={{ textAlign: 'center', fontSize: '8.5px', color: '#64748B', marginTop: '4px' }}>Printed {new Date().toLocaleString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' })}</div>
       <div style={{ textAlign: 'center', fontSize: '8px', color: '#CBD5E1', marginTop: '2px' }}>Powered by EJO 100 Enterprise Platform</div>
     </div>
   );

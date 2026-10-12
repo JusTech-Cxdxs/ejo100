@@ -11,7 +11,7 @@ export function formatDateTime(date: Date): string {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    hour12: true,
+    hourCycle: 'h12',
     timeZone: 'Africa/Lagos',
   }).format(date);
 }
@@ -24,7 +24,7 @@ export function formatDateTimeCompact(date: Date): string {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    hour12: true,
+    hourCycle: 'h12',
     timeZone: 'Africa/Lagos',
   }).format(date);
 }

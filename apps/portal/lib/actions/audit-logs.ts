@@ -129,7 +129,7 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
     if (typeof v === 'boolean') return v ? 'Yes' : 'No';
     if (typeof v === 'string') {
       if (key && names.has(v)) return names.get(v)!;
-      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) return new Date(v).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) return new Date(v).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' });
       if (/^[A-Z][A-Z0-9_]+$/.test(v)) return v.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
       if (key && /Id$/.test(key) && /^c[a-z0-9]{20,}$/.test(v)) return 'A record';
       return v.slice(0, 200);

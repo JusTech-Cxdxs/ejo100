@@ -251,7 +251,9 @@ test('dates are Lagos dates, not server (UTC) dates', () => {
   assert.equal(lagosYear(d), 2027);
   assert.match(formatDateOnly(d), /01\/01\/2027/);
   assert.match(formatDateTime(d), /1 January 2027/);
-  assert.match(formatDateTime(d), /12:30/);
+  // hour12 gave "0:30 am" on Node 20 (the production runtime); hourCycle h12 gives "12:30 am" everywhere.
+  assert.match(formatDateTime(d), /12:30\s?am/i);
+  assert.match(formatDateTime(new Date('2026-10-12T12:05:00Z')), /1:05\s?pm/i);
   assert.equal(isSameLagosDay(new Date('2026-10-12T23:10:00Z'), new Date('2026-10-13T08:00:00Z')), true);
   assert.equal(isSameLagosDay(new Date('2026-10-12T22:50:00Z'), new Date('2026-10-12T23:10:00Z')), false);
 });

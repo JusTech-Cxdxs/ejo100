@@ -39,7 +39,7 @@ test.describe('Error log', () => {
     await page.getByRole('link', { name: 'Error log' }).click();
     await page.waitForURL(/\/audit-logs\/errors/);
     await expect(page.getByRole('heading', { level: 1, name: 'Error log' })).toBeVisible();
-    await page.getByLabel('Reference').fill(`Reference: ${ref}`);
+    await page.getByRole('textbox', { name: 'Reference' }).fill(`Reference: ${ref}`);
     await page.getByRole('button', { name: 'Search' }).click();
     await page.waitForURL(new RegExp(`ref=`));
     const row = page.locator('li').filter({ has: page.getByTestId('error-ref').filter({ hasText: ref }) });
@@ -96,5 +96,5 @@ test('a missing record shows the branded "Page not found", never an error screen
   await expect(page.getByRole('link', { name: 'Back to the dashboard' })).toBeVisible();
   await expect(page.locator('body')).not.toContainText('Something went wrong');
   await page.getByRole('link', { name: 'Back to the dashboard' }).click();
-  await page.waitForURL(/\/dashboard/);
+  await page.waitForURL(/\/dashboard/, { waitUntil: 'commit' });
 });

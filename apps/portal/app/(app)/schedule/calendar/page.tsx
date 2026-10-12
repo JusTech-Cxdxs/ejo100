@@ -15,7 +15,7 @@ const STATUS: Record<string, [string, string]> = {
 const lagosToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' });
 const dayStart = (ymd: string) => new Date(`${ymd}T00:00:00+01:00`);
 const ymdOf = (d: Date) => new Date(d.getTime() + 3600000).toISOString().slice(0, 10);
-const time = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' });
+const time = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' });
 
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ date?: string; view?: string; owner?: string }> }) {
   // Calendars are for people who keep one (an appointment itself stays open to the people in it).
