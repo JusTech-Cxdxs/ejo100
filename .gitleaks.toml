@@ -1,0 +1,61 @@
+# Gitleaks configuration (CI: .github/workflows/security.yml, job "secrets").
+# Default rules + a few project-specific ones; the allowlist covers ONLY known
+# test-only values (throw-away CI database / e2e accounts / .env.example
+# placeholders). Never add a real credential here — rotate it instead.
+title = "EJO100 gitleaks config"
+
+[extend]
+useDefault = true
+
+# A Postgres URL with an inline password (Supabase / Neon / Render).
+[[rules]]
+id = "ejo-postgres-url-with-password"
+description = "PostgreSQL connection string with an inline password"
+regex = '''postgres(?:ql)?://[^:@/\s'"]+:([^@/\s'"]{6,})@[^/\s'"]+'''
+secretGroup = 1
+keywords = ["postgres://", "postgresql://"]
+
+# Better Auth / cron / SMTP secrets assigned literally in code or env files.
+[[rules]]
+id = "ejo-app-secret-assignment"
+description = "Literal value assigned to an EJO secret variable"
+regex = '''(?i)\b(BETTER_AUTH_SECRET|CRON_SECRET|SMTP_PASS(?:WORD)?|SUPABASE_SERVICE_ROLE_KEY|MASTER_ADMIN_PASSWORD)\b\s*[:=]\s*['"]?([^\s'"$<{]{8,})'''
+secretGroup = 2
+keywords = ["better_auth_secret", "cron_secret", "smtp_pass", "supabase_service_role_key", "master_admin_password"]
+
+# Supabase service-role / anon JWTs (the anon key is public by design but must
+# come from env, not source).
+[[rules]]
+id = "ejo-supabase-jwt"
+description = "Supabase JWT (anon or service_role) committed to source"
+regex = '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'''
+keywords = ["eyjhbgcioijiuzi1niisinr5cci6ikpxvcj9"]
+
+[allowlist]
+description = "Test-only values: CI/e2e throw-away databases and accounts, documented placeholders"
+regexTarget = "match"
+regexes = [
+  # e2e / CI throw-away credentials (people.ts, workflows)
+  '''E2e-(Test|Master)-Pass-2026!''',
+  '''e2e-only-secret-[0-9a-f]{32}''',
+  '''e2e-cron-secret''',
+  '''ci-placeholder-secret-do-not-use-in-production''',
+  '''dummy-secret-at-least-32-characters-long''',
+  '''postgres(ql)?://postgres:(e2e-test-only|ci-test-only)@localhost''',
+  '''postgres(ql)?://(user|x):(password|x)@localhost''',
+  # .env.example / docs placeholders
+  '''replace-with-a-long-random-secret''',
+  '''change-me-to-a-long-unique-password''',
+  '''postgres(ql)?://[^:]+:\[?(YOUR|your)[-_A-Za-z]*\]?@''',
+  '''postgres(ql)?://user:password@ep-example''',
+  '''PASTE_YOUR_CRON_SECRET_HERE''',
+  '''postgres(ql)?://postgres:password@db\.your-project\.supabase\.co''',
+  '''SUPABASE_SERVICE_ROLE_KEY="?replace-me''',
+  # security test canaries and forged credentials (apps/portal/e2e/security, security.yml)
+  '''Bearer forged-token''',
+  '''forged\.not-a-real-session''',
+  '''CANARY[A-Z]+[0-9]*''',
+]
+paths = [
+  '''(^|/)package-lock\.json$''',
+]

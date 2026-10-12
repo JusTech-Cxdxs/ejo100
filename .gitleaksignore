@@ -1,0 +1,8 @@
+# Triaged historical findings (see docs/TESTING_PROGRAMME.md SEC-01).
+# A real-looking MASTER_ADMIN_PASSWORD was committed to .env.example in two
+# commits (July/Aug 2026) and later replaced by a placeholder. It must be treated
+# as compromised: the Master Admin password must be changed in every environment.
+# Listed here so CI fails only on NEW leaks.
+da8ddc6c013acce5b3fd86113ead94a1ff280ce6:.env.example:ejo-app-secret-assignment:20
+49a57538bf66015117cb8bee2101fbd4bbdcfc7a:.env.example:ejo-app-secret-assignment:16
+7ea36a9d281b888a2207e9fd293f3a44044bb164:.env.example:ejo-app-secret-assignment:20
