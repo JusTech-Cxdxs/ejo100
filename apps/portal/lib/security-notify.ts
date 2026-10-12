@@ -56,7 +56,6 @@ export async function notifyGateOfRelease(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', 
       await prisma.auditLog.create({ data: { userId: actorId, action: sent ? 'security.email_sent' : 'security.email_failed', entityType, entityId: recordId, metadata: { to: g.fullName, subject, ...(error ? { error } : {}) } } });
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to notify Security of a released vehicle', kind, recordId, err);
   }
 }

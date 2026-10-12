@@ -1,15 +1,14 @@
 /**
- * Phase 4 — "what you are supposed to see is what you see", enforced on the
- * source. Every exported server action is an endpoint a signed-in browser can
- * call directly with any id, so each one must check the RECORD, not only the
- * person's role:
+ * "What you are supposed to see is what you see", checked on the source.
+ * Every exported server action is an endpoint a signed-in browser can call
+ * with any id, so each one must check the record, not only the person's role:
  *
  *  1. Reads that take an id check the record's branch / organisation.
  *  2. Writes that take an id check the record (branch, organisation or assignment).
  *  3. The security desk acts only on its own branch's records.
  *  4. Nobody can create an account from the internet; a deactivated person
  *     cannot sign in and is signed out at once.
- *  5. Lists that used to read platform-wide are fenced.
+ *  5. Lists are fenced to the person's organisation.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

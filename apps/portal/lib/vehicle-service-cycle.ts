@@ -5,19 +5,16 @@ import { onOrAfterWorkingDay, addWorkingDays } from '@/lib/utils/working-days';
 /**
  * The next-service clock for Vehicle Services.
  *
- * Every completed service now starts the count — there is no longer an
- * "engine oil was changed" tick deciding whether it does. The anchor is
- * the service's own odometer reading and completion date; the interval
- * is the vehicle's own (manufacturer) interval when set, otherwise the
- * organisation's default.
+ * Every completed service starts the count, anchored on the service's
+ * odometer reading and completion date. The interval is the vehicle's own
+ * (manufacturer) interval when set, otherwise the organisation's default.
  *
- * Deliberately NOT a server action ('use server' is absent): it writes
- * data and performs no authorisation of its own, so it must never be
- * exposed as a callable endpoint. Only ever called from code that has
- * already authorised (loaders, the status action) or from the cron.
+ * Not a 'use server' file: these functions write data without authorising,
+ * so they must never be callable endpoints. Callers (loaders, the status
+ * action, the cron) authorise first.
  */
 
-/** Statuses that mean the work on a Vehicle Service is genuinely done. */
+/** Statuses that mean the work on a Vehicle Service is done. */
 export const SERVICE_DONE_STATUSES = ['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED', 'COLLECTED'] as const;
 
 /** Statuses that mean a vehicle is currently booked in for a routine service. */
@@ -31,8 +28,7 @@ type IntervalSource = {
 /** The anchor + prediction one completed visit establishes. */
 export function computeServiceCycle(odometer: number | null, completedAt: Date, source: IntervalSource) {
   const org = source.branch.businessUnit.organisation;
-  // A vehicle's own real interval takes priority over the organisation
-  // default the moment it's set — never silently overridden.
+  // The vehicle's own interval, when set, overrides the organisation default.
   const intervalKm = source.vehicle.serviceIntervalKm ?? org.primaryServiceIntervalKm;
   const intervalDays = source.vehicle.serviceIntervalDays ?? org.primaryServiceIntervalDays;
   const next = calculateNextServiceDue(odometer, completedAt, intervalKm, intervalDays);
@@ -40,19 +36,16 @@ export function computeServiceCycle(odometer: number | null, completedAt: Date, 
     primaryServiceMileage: odometer,
     primaryServiceDate: completedAt,
     nextServiceDueOdometer: next.dueOdometer,
-    // A date the customer can actually bring the vehicle in: a weekend
-    // due date rolls to the Monday.
+    // A weekend due date rolls to the Monday.
     nextServiceDueDate: next.dueDate ? onOrAfterWorkingDay(next.dueDate) : null,
   };
 }
 
 /**
- * Starts the count for any service completed before every completion
- * anchored the clock (i.e. when the old oil-change tick was left
- * unticked). Uses that service's own real completion date and odometer
- * — never "now" — so the prediction is exactly what it would have been.
- * Idempotent: only touches completed, non-escalated services with no
- * anchor yet, so after the first run it finds nothing.
+ * Starts the count for services completed before every completion
+ * anchored the clock (the old oil-change tick). Uses each service's own
+ * completion date and odometer, never "now". Idempotent: only completed,
+ * non-escalated services with no anchor are touched.
  */
 export async function backfillServiceCycleAnchors(): Promise<number> {
   await normaliseEscalatedServices();
@@ -89,11 +82,10 @@ const CYCLE_SOURCE_SELECT = {
 } as const;
 
 /**
- * Escalated services, made consistent (idempotent):
- * 1. Any escalated before the ESCALATED status existed gets it now.
- * 2. Any whose Job Card has since been genuinely checked out (not a
- *    cancelled hand-back) starts its next-service count from that
- *    checkout — the moment the work actually finished and left.
+ * Makes escalated services consistent (idempotent):
+ * 1. Services escalated before the ESCALATED status existed get it.
+ * 2. Services whose Job Card has been checked out (not a cancelled
+ *    hand-back) start their next-service count from that checkout.
  */
 export async function normaliseEscalatedServices(): Promise<void> {
   // An "Escalated" service whose Job Card no longer exists (deleted) has
@@ -123,12 +115,10 @@ export async function normaliseEscalatedServices(): Promise<void> {
 }
 
 /**
- * When a Job Card that came from a Vehicle Service is genuinely checked
- * out, that is the moment the vehicle's service was actually finished —
- * so the next-service count starts from that checkout (date) and the
- * Job Card's own odometer reading. A cancelled Job Card never anchors:
- * no service was done. No-op for a Job Card with no linked service, or
- * one already anchored.
+ * When a Job Card that came from a Vehicle Service is checked out, the
+ * next-service count starts from the checkout date and the Job Card's
+ * odometer reading. A cancelled Job Card never anchors (no service was
+ * done). No-op without a linked service or if already anchored.
  */
 export async function anchorEscalatedServiceFromJobCard(jobCardId: string): Promise<void> {
   const svc = await prisma.vehicleService.findFirst({
@@ -141,9 +131,8 @@ export async function anchorEscalatedServiceFromJobCard(jobCardId: string): Prom
           status: true,
           checkedOutAt: true,
           mileageAtCheckIn: true,
-          // An approved cancellation is the one real signal a Job Card was
-          // cancelled — its vehicle is also "checked out" (handed back),
-          // but no service was ever done, so it must never anchor.
+          // An approved cancellation means no service was done, even though the
+          // vehicle was "checked out" (handed back).
           cancellationRequests: { where: { status: 'APPROVED' }, select: { id: true }, take: 1 },
         },
       },
@@ -159,10 +148,9 @@ export async function anchorEscalatedServiceFromJobCard(jobCardId: string): Prom
 }
 
 /**
- * Vehicles currently in the workshop for work — an open routine
- * service, or an open repair Job Card — and exactly which visit. Such a
- * vehicle is still tracked and shown everywhere (with the visit named),
- * but no "your service is due" reminder is ever emailed while it's here.
+ * Vehicles currently in the workshop (an open service or repair Job Card),
+ * with the visit. Such vehicles are still tracked and shown, but never sent
+ * a "service due" reminder.
  */
 export async function workshopVisitsForVehicles(vehicleIds: string[]): Promise<Map<string, WorkshopVisit>> {
   const out = new Map<string, WorkshopVisit>();
@@ -213,14 +201,13 @@ export function serviceDueStatus(nextServiceDueOdometer: number | null, nextServ
 export const REMINDER_SPACING_WORKING_DAYS = 7;
 
 /**
- * Which reminder is due now for one prediction — the single rule the
- * whole system uses. Reminders are SEMI-AUTOMATIC: this only decides
- * WHEN a reminder is due and which stage; a person always clicks Send.
- *   Due soon: 1st (friendly) as soon as the vehicle is due soon, then
- *   2nd (follow-up) and 3rd (due), each 7 working days after the last.
+ * Which reminder is due now for one prediction. Reminders are
+ * semi-automatic: this decides when and which stage; a person clicks Send.
+ *   Due soon: 1st (friendly) when the vehicle becomes due soon, then 2nd
+ *   (follow-up) and 3rd (due), each 7 working days after the last.
  *   Overdue: the overdue reminder (4) straight away, repeatable every 7
- *   working days. Returns when the next one becomes due if it isn't yet
- *   (always a working day).
+ *   working days. If none is due yet, returns when the next one is (always
+ *   a working day).
  */
 export function nextReminderStage(
   status: ServiceDueStatus,
@@ -229,7 +216,7 @@ export function nextReminderStage(
   now: Date = new Date(),
 ): { stage: 1 | 2 | 3 | 4 | null; dueFrom: Date | null } {
   if (status === 'ON_TRACK') return { stage: null, dueFrom: null };
-  // Counted in working days (Mon–Fri) — the team's own calendar.
+  // Working days (Mon–Fri).
   const gapPassedAt = lastSentAt ? addWorkingDays(new Date(lastSentAt), REMINDER_SPACING_WORKING_DAYS) : null;
   const gapPassed = !gapPassedAt || gapPassedAt <= now;
   if (status === 'OVERDUE') {
@@ -241,9 +228,8 @@ export function nextReminderStage(
   return { stage: lastStage === 1 ? 2 : 3, dueFrom: null };
 }
 
-/** Overdue by more than this many days = lapsed: the customer has clearly
- * gone elsewhere, so no more reminders (tracking restarts automatically
- * the day the vehicle comes back and a service is completed). */
+/** Overdue by more than this many days = lapsed: no more reminders.
+ * Tracking restarts when the vehicle next completes a service. */
 export const LAPSED_AFTER_DAYS_OVERDUE = 365;
 
 export type TrackedVehicle = {
@@ -307,7 +293,7 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
       escalatedToJobCard: { select: { id: true, jobNumber: true } },
     },
   });
-  // Only the latest real prediction per vehicle counts.
+  // Only the latest prediction per vehicle counts.
   const latest = new Map<string, (typeof services)[number]>();
   for (const s of services) if (!latest.has(s.vehicleId)) latest.set(s.vehicleId, s);
   const vehicleIds = [...latest.keys()];
@@ -385,11 +371,10 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
 type EscalationRef = { vehicleServiceId?: string; estimateId?: string; lineItemId?: string; inspectionId?: string };
 
 /**
- * Refuses any change to a Vehicle Service that has been handed over to
- * a Job Card — all work, payment and checkout continue there. Called at
- * the top of every mutation that isn't already refused by its own
- * status rules, so "Escalated" is genuinely read-only on the server,
- * not just hidden on the page.
+ * Refuses any change to a Vehicle Service that has been handed over to a
+ * Job Card (work, payment and checkout continue there). Called at the top
+ * of every mutation not already refused by its status rules, so ESCALATED
+ * is read-only on the server, not just on the page.
  */
 /** An escalation claim (escalatedAt set, no link yet) younger than ten
  * minutes: a Job Card is being opened for this service. */

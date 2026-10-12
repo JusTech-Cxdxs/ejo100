@@ -19,8 +19,8 @@ function priceOf(slipLine: { estimateLineItem: { unitPrice: unknown; billTo?: st
 
 const SLIP_PRICE = { select: { estimateLineItem: { select: { unitPrice: true, billTo: true } }, serviceEstimateLineItem: { select: { unitPrice: true } } } } as const;
 
-/** Gathers the branch's real stock movements (true costs from goods-receipt
- * lines; prices actually charged) and hands them to the pure engine. */
+/** Gathers the branch's stock movements (costs from goods-receipt lines,
+ * prices actually charged) and hands them to the pure engine. */
 export async function getInventoryAnalytics(branchId: string, settings?: Partial<Settings>) {
   await requireUser();
   await authorize('analytics.inventory.view', undefined, 'getInventoryAnalytics', 'Inventory Analytics is for the Store Manager, the Workshop Manager and administrators.');

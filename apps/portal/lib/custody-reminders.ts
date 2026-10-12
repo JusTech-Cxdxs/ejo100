@@ -14,7 +14,7 @@ export type CustodyReminderKind = 'APPROVAL' | 'COLLECTION' | 'CANCELLED_COLLECT
 
 export const CUSTODY_REMINDER_SCHEDULE: Record<CustodyReminderKind, { firstAfterWorkingDays: number; spacingWorkingDays: number; label: string }> = {
   // Estimate sent, customer hasn't approved/paid: first nudge after 3
-  // working days (unchanged from before), then every 2.
+  // working days, then every 2.
   APPROVAL: { firstAfterWorkingDays: 3, spacingWorkingDays: 2, label: 'approval reminder' },
   // Vehicle ready, not collected: first reminder 2 working days after
   // the ready notice, then every 2.

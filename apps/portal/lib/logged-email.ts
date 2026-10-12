@@ -15,9 +15,8 @@ export type Recipient = { fullName: string; email: string };
 export async function sendLoggedEmail(opts: { entityType: string; entityId: string; recipients: Recipient[]; subject: string; heading: string; lines: string[]; path: string; actorId: string | null; branchId?: string | null }) {
   const unique = opts.recipients.filter((r, i, a) => r.email && a.findIndex((x) => x.email === r.email) === i);
   if (unique.length === 0) return;
-  // The operating branch of whoever acted (each organisation's own name on its emails).
   // The record's own branch when known (scheduled jobs pass it); otherwise the
-  // operating branch of whoever acted — each organisation's own name.
+  // operating branch of whoever acted, so each organisation's name is used.
   const branchId = opts.branchId ?? (await getWorkshopBranchId().catch(() => null));
   const branch = branchId ? await prisma.branch.findUnique({ where: { id: branchId }, select: { name: true, businessUnit: { select: { organisationId: true, organisation: { select: { name: true } } } } } }).catch(() => null) : null;
   const portal = portalBaseUrl();

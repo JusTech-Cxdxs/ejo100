@@ -18,9 +18,8 @@ export type WorkflowAction = { id: string; title: string; detail: string; url: s
 export async function getWorkflowActionItems(): Promise<WorkflowAction[]> {
   const user = await requireUser();
   const isMaster = await currentUserIsMasterAdmin();
-  // Asked of the database for THIS person (their jobs, their organisation's
-  // branches) — never "the newest 40 platform-wide, then filtered", which
-  // silently lost people's actions on a busy day.
+  // Queried for this person (their jobs, their organisation's branches), not
+  // "the newest N platform-wide, then filtered", which drops items on a busy day.
   const T = 300;
   const reach = await reachWhere('workshop.job_card.view');
   const me = (field: 'supervisorId' | 'createdById') => (isMaster ? {} : { [field]: user.id });

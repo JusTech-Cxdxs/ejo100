@@ -59,7 +59,6 @@ async function notify(recipients: { fullName: string; email: string }[], subject
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send warranty claim notice', subject, err);
   }
 }

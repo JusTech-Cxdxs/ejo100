@@ -29,8 +29,7 @@ export function formatDateTimeCompact(date: Date): string {
   }).format(date);
 }
 
-/** Date only, no time — for contexts where the exact time genuinely
- * doesn't matter (a batch's own "Received At" column, for instance). */
+/** Date only, where the time doesn't matter (e.g. a batch's Received At). */
 export function formatDateOnly(date: Date): string {
   return new Intl.DateTimeFormat('en-NG', {
     year: 'numeric',

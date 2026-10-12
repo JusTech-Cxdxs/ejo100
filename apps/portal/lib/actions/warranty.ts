@@ -104,7 +104,6 @@ async function notifyStaff(recipients: { fullName: string; email: string }[], su
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send warranty staff notice', subject, err);
   }
 }
@@ -485,7 +484,7 @@ export async function setWarrantyStatus(warrantyId: string, status: 'ACTIVE' | '
   await writeAuditLog({ userId: user.id, action: `warranty.${status === 'ACTIVE' ? 'reinstated' : status.toLowerCase()}`, entityType: 'Warranty', entityId: warrantyId, metadata: { warrantyNumber: w.warrantyNumber, from: w.status, to: status, reason: why } });
 }
 
-// ── Automatic part warranties (issued with every real release) ────────
+// ── Automatic part warranties (issued on release) ─────────────────────
 
 /**
  * Called right after a Parts Request Slip is released: every released
@@ -868,9 +867,9 @@ async function completePolicyDeletion(requestId: string, actorId: string): Promi
   const issued = await prisma.warranty.count({ where: { policyId: req.policyId } });
   const outcome = issued > 0 ? 'ARCHIVED' : 'DELETED';
   const policyId = req.policyId;
-  // All-or-nothing, exactly once: the request is marked decided in the same
-  // transaction that archives or deletes the policy. If a warranty is issued
-  // under it at that very moment, the delete fails and nothing is marked done.
+  // All-or-nothing: the request is marked decided in the same transaction
+  // that archives or deletes the policy. If a warranty is issued under it at
+  // that moment, the delete fails and nothing is marked done.
   await prisma.$transaction(async (tx) => {
     claimed(await tx.warrantyPolicyDeletionRequest.updateMany({ where: { id: requestId, status: 'PENDING_MANAGER' }, data: { status: 'APPROVED', outcome } }), 'This deletion request was just decided by someone else — refresh the page.');
     if (outcome === 'ARCHIVED') {

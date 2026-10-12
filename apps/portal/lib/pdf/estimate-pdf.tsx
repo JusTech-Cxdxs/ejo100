@@ -93,25 +93,16 @@ export type EstimatePdfProps = {
   accountName: string;
   accountNumber: string;
   paymentRemarkSuggestion: string;
-  /** The field label above the reference number itself — defaults to
-   * "JOB CARD", exactly Job Card's own existing real behavior,
-   * unchanged for every existing call site. Vehicle Service's own
-   * usage passes "VEHICLE SERVICE" instead — the one real, genuinely
-   * Job-Card-specific word anywhere in this whole document, now
-   * parameterized rather than duplicating the other 250+ lines of
-   * shared layout and styling just to change one label. */
+  /** Label above the reference number. Defaults to "JOB CARD"; Vehicle
+   * Service passes "VEHICLE SERVICE". */
   referenceLabel?: string;
 };
 
 /**
- * The customer's own real, styled estimate document — attached to the
- * estimate-approved email as a real PDF, not just an HTML email body.
- * Deliberately NOT given a `type` field anywhere in its own props —
- * the internal Store Part / External Part / Labour / Sundry breakdown
- * never reaches this document at all, the same real "nothing to leak,
- * not just careful wording" reasoning already used for the estimate
- * email itself. Every quantity carries its own real unit, never a
- * bare number.
+ * The customer's estimate PDF, attached to the estimate-approved email.
+ * Its props have no line `type`, so the internal Store Part / External /
+ * Labour / Sundry breakdown can't reach the customer. Every quantity
+ * carries its unit.
  */
 export function EstimatePdf(props: EstimatePdfProps) {
   const {

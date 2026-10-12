@@ -107,7 +107,6 @@ export async function sendStaffAccessEmail(userId: string, kind: 'welcome' | 'up
     if (error) throw new Error(error);
     return true;
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Staff access email failed', userId, kind, redact(String((err as Error)?.message ?? err)));
     return false;
   }

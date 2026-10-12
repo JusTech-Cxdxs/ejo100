@@ -7,13 +7,9 @@ export type InspectionTemplateItem = {
 export type InspectionTemplateSection = { section: string; items: InspectionTemplateItem[] };
 
 /**
- * Real, tailored suggestion sets — researched per item type, not one
- * generic list stretched across everything. Each item below picks
- * whichever set genuinely fits it; several items share a set only
- * when the real vocabulary is genuinely the same (e.g. every fluid
- * level check uses the same real language: Normal/Low/Overfilled...).
- * These feed a <datalist> — the technician can still type anything,
- * but almost never needs to.
+ * Suggestion sets per item type; items share a set only when the
+ * vocabulary is the same (e.g. every fluid level: Normal/Low/Overfilled...).
+ * They feed a <datalist>, so the technician can still type anything.
  */
 const FLUID_CONDITION = ['Normal', 'Low', 'Overfilled', 'Dirty', 'Contaminated', 'Due for Replacement', 'Leak Suspected'];
 const FLUID_ACTION = ['No Action', 'Top Up', 'Replace', 'Flush & Replace', 'Inspect Leak', 'Further Diagnosis'];
@@ -60,18 +56,13 @@ function item(
 }
 
 /**
- * The one real, shared checklist structure — filtered per vehicle by
- * getApplicableTemplate() below, never asked of the front desk.
- * Deliberately code-defined rather than a database catalogue: this
- * changes rarely, needs careful curation when it does, and a full
- * admin UI for it now would be premature scope for this phase.
+ * The shared checklist, filtered per vehicle type by getApplicableTemplate().
+ * Defined in code rather than the database: it changes rarely and needs
+ * careful curation when it does.
  *
- * Ordered by real workshop priority, not alphabetically — Engine &
- * Lubrication first (Engine Oil first within it), matching what a
- * technician actually reaches for first on almost every visit.
- * Section order and item order within each section both reflect
- * this — the most commonly-changed, most safety-critical items sit
- * at the top of their section.
+ * Ordered by workshop priority, not alphabetically: Engine & Lubrication
+ * first (Engine Oil first within it), and within each section the most
+ * commonly changed and safety-critical items first.
  */
 export const VEHICLE_INSPECTION_TEMPLATE: InspectionTemplateSection[] = [
   {
@@ -193,9 +184,7 @@ export const VEHICLE_INSPECTION_TEMPLATE: InspectionTemplateSection[] = [
   },
 ];
 
-/** Filters the shared template down to what's real for one vehicle's
- * own registered type, dropping any section that ends up with no
- * applicable items rather than showing an empty section header. */
+/** The template for one vehicle type, dropping sections left with no items. */
 export function getApplicableTemplate(vehicleType: 'PASSENGER' | 'COMMERCIAL'): InspectionTemplateSection[] {
   return VEHICLE_INSPECTION_TEMPLATE.map((s) => ({
     section: s.section,
@@ -203,9 +192,7 @@ export function getApplicableTemplate(vehicleType: 'PASSENGER' | 'COMMERCIAL'): 
   })).filter((s) => s.items.length > 0);
 }
 
-/** A flat name -> {conditionOptions, actionOptions} lookup, built
- * once, so the inspection page can pull one item's own real
- * suggestions without re-scanning the whole template every render. */
+/** Item name → its condition and action suggestions, built once. */
 export const INSPECTION_ITEM_OPTIONS: Record<string, { conditionOptions: string[]; actionOptions: string[] }> = Object.fromEntries(
   VEHICLE_INSPECTION_TEMPLATE.flatMap((s) => s.items.map((i) => [i.name, { conditionOptions: i.conditionOptions, actionOptions: i.actionOptions }])),
 );

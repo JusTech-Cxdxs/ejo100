@@ -12,27 +12,17 @@ import { markCustomerActor, writeCustomerAudit } from './customer-audit';
 const RESET_LINK_SECONDS = 60 * 60;
 
 /**
- * Customer authentication. A SEPARATE Better Auth instance from the
- * portal's employee/admin auth (apps/portal/lib/auth.ts), mapped onto
- * the Customer / CustomerSession / CustomerAccount tables instead of
- * User / Session / Account. Same Postgres database and secret, so both
- * flows share one backend as required — but a customer's session token
- * only ever resolves against Customer, so it structurally cannot
- * authenticate an employee-only route, and vice versa.
+ * Customer authentication: a separate Better Auth instance from the staff
+ * portal's (apps/portal/lib/auth.ts), on the Customer / CustomerSession /
+ * CustomerAccount tables. Same database and secret, but a customer session
+ * only resolves against Customer, so it cannot authenticate a staff route,
+ * and the reverse.
  *
- * IMPORTANT: remapping `modelName` (below) only tells Better Auth which
- * *table* to use — it does NOT rename the internal *field names* Better
- * Auth expects within that table. Better Auth's own default schema
- * expects `account.userId` and `session.userId` as the foreign key back
- * to the user row; our schema names that column `customerId` on both
- * CustomerAccount and CustomerSession (since it references Customer, not
- * User). Without the `fields: { userId: 'customerId' }` remap below,
- * every sign-in attempt fails with a real Prisma error —
- * `Unknown argument 'userId'` — surfaced to the customer only as a
- * generic "Invalid email or password." Confirmed directly from Better
- * Auth's own reference docs (the exact `fields: { userId: '...' }`
- * pattern), not guessed. Likewise, `Customer.fullName` isn't named
- * `name` (Better Auth's own default expectation) — mapped the same way.
+ * `modelName` only changes the table. Better Auth still expects a `userId`
+ * foreign key on sessions and accounts and a `name` on the user; our tables
+ * use `customerId` and `fullName`, hence the `fields` mappings below. Without
+ * them every sign-in fails with Prisma's "Unknown argument 'userId'", shown
+ * to the customer as "Invalid email or password".
  */
 export const customerAuth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
@@ -119,8 +109,8 @@ export const customerAuth = betterAuth({
           const c = await prisma.customer.findUnique({ where: { id: session.userId }, select: { isActive: true } });
           return Boolean(c?.isActive);
         },
-        // Every real sign-in is recorded (contract 3) — not the sessions
-        // Better Auth re-issues itself (e.g. after a password change).
+        // Every sign-in is recorded (contract 3), but not the sessions Better Auth
+        // re-issues itself (e.g. after a password change).
         after: async (session, ctx) => {
           if (!ctx?.path?.startsWith('/sign-in')) return;
           const c = await prisma.customer.update({

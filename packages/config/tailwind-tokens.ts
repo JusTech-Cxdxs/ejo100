@@ -10,7 +10,7 @@
  */
 export const baseTokens = {
   colors: {
-    primary: '#16A34A', // Kewalram-default green; overridden per organisation
+    primary: '#16A34A', // default brand green; overridden per organisation
     secondary: '#0F172A',
     accent: '#22C55E',
     success: '#16A34A',

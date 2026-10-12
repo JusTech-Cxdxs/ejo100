@@ -1,8 +1,8 @@
 /**
- * Who pays for each Job Card estimate line — ONE rule for every total the
+ * Who pays for each Job Card estimate line: one rule for every total the
  * customer is asked to pay (payment status, deposits, recording payments,
  * close requests, reminders, emails, the Job Card page and print). A line
- * with no bill-to (older data) is the customer's, exactly as before.
+ * with no bill-to (older data) is the customer's.
  */
 export type BillTo = 'CUSTOMER' | 'WARRANTY' | 'GOODWILL' | 'INTERNAL';
 

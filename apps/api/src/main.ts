@@ -4,16 +4,11 @@ import { AppModule } from './app.module';
 import { securityHeaders, rateLimit } from './common/middleware/security';
 
 /**
- * EJO 100 API entrypoint: every domain module is registered (app.module.ts);
- * business endpoints land module by module in later phases.
+ * EJO 100 API entry point. Modules are registered in app.module.ts.
  */
 
-// Browsers never send an Origin header with a trailing slash — if the
-// configured env var has one (e.g. "https://portal.example.com/"), a
-// strict-equality CORS allow-list check against it would never match a
-// real request's Origin, silently rejecting every cross-origin call.
-// Stripping it here means the env var can be set either way without
-// breaking CORS.
+// Browsers never send an Origin with a trailing slash, so strip one from the
+// configured URL; otherwise the CORS allow-list would never match.
 function stripTrailingSlash(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
@@ -21,10 +16,8 @@ function stripTrailingSlash(url: string): string {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Without this, Nest never listens for SIGTERM/SIGINT, so
-  // onModuleDestroy hooks (e.g. PrismaService's clean $disconnect())
-  // never run — a Render rolling deploy would kill the process mid-query
-  // instead of letting it shut down cleanly.
+  // Lets onModuleDestroy hooks (PrismaService's $disconnect) run on
+  // SIGTERM/SIGINT, so a rolling deploy doesn't cut queries off mid-way.
   app.enableShutdownHooks();
 
   // The only browser origin allowed to call the API. Required in production:

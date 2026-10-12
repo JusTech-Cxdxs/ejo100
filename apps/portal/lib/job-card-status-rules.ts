@@ -1,71 +1,38 @@
 import type { JobCardStatus } from '@ejo/database';
 
 /**
- * The real, standard Job Card status progression — designed after the
- * user's own explicit request for a worldclass, no-skip, no-backward
- * system, with named, audited exceptions rather than silent loopholes.
+ * Which status a Job Card may move to next, for everyone except Master
+ * Admin. Forward only, one step at a time, with rework as the one named
+ * exception.
  *
- * DESIGN DECISIONS, stated plainly (not guessed at, chosen and
- * reasoned through):
- *
- * 1. CHECKED_IN and AWAITING_CUSTOMER_APPROVAL never appear as a
- *    dropdown "next status" option for anyone but Master Admin. Both
- *    already have their own real, dedicated, more meaningful action
- *    that causes the transition — notifying the customer of the
- *    approved estimate moves CHECKED_IN → AWAITING_CUSTOMER_APPROVAL;
- *    a payment crossing the deposit or full threshold moves
- *    AWAITING_CUSTOMER_APPROVAL → IN_PROGRESS automatically. Offering
- *    these as a raw status pick too would be a second, looser way to
- *    reach the same place — exactly the kind of inconsistent side
- *    door this whole system is meant to close.
- *
- * 2. CLOSED and CANCELLED never appear here either — both already go
- *    through their own real request → Manager approve/decline flow
- *    (see CloseRequest/CancellationRequest), enforced independently in
- *    updateJobCardStatus itself. This file only governs the plain,
- *    single-step status moves — not the two flows that already have
- *    their own, stronger real governance.
- *
- * 3. CHECKED_OUT requires CLOSED first for every real role but Master
- *    Admin — a direct instruction: "no seeing checkout until closed."
- *    The one deliberate exception is a cancelled Job Card, which skips
- *    CLOSED entirely (there's no service left to settle, only a
- *    vehicle to hand back) — that path is handled separately, already
- *    built, untouched by this file.
- *
- * 4. QUALITY_CHECK → COMPLETED requires the Supervisor or a Manager,
- *    never the Assigned Technician alone. This is a deliberate,
- *    genuine separation-of-duties call: letting the same person who
- *    did the work also be the one who certifies it passed quality
- *    control defeats the entire point of a quality check step. The
- *    Technician can still move work into QUALITY_CHECK — they just
- *    can't be the one who signs off that it passed.
- *
- * 5. QUALITY_CHECK → IN_PROGRESS is the one deliberate, real exception
- *    to "never move backward" — rework. A vehicle that fails its
- *    quality check has to go back for real further work; refusing to
- *    allow that isn't "safer", it just forces a workaround. The
- *    difference between this and a silent loophole is that it's named,
- *    requires a real reason, and is logged as its own distinct audit
- *    action ("Rework requested") rather than a generic status change —
- *    see REWORK_REQUIRES_REASON below and its own handling in
+ * 1. CHECKED_IN and AWAITING_CUSTOMER_APPROVAL are never offered: notifying
+ *    the customer of the approved estimate moves CHECKED_IN →
+ *    AWAITING_CUSTOMER_APPROVAL, and the deposit payment moves it on to
+ *    IN_PROGRESS.
+ * 2. CLOSED and CANCELLED are never offered: both go through a request that
+ *    a Manager approves (CloseRequest / CancellationRequest), enforced in
  *    updateJobCardStatus.
+ * 3. CHECKED_OUT requires CLOSED first. A cancelled Job Card skips CLOSED;
+ *    that hand-back is handled outside this file.
+ * 4. QUALITY_CHECK → COMPLETED needs the supervisor or a Manager, never the
+ *    assigned technician alone (separation of duties). The technician can
+ *    still move work into QUALITY_CHECK.
+ * 5. Rework (back to IN_PROGRESS) needs a reason and is audited as its own
+ *    action ("Rework requested"); see REWORK_FROM_STATUSES.
  */
 
 export type JobCardRoleContext = {
-  /** Unrestricted — the one deliberate, existing bypass already used
-   * everywhere else in this system for this exact role. */
+  /** Unrestricted (bypasses this file). */
   isMasterAdmin: boolean;
-  /** This specific Job Card's own assigned Supervisor. */
+  /** This Job Card's assigned supervisor. */
   isSupervisor: boolean;
-  /** This specific Job Card's own assigned Technician. */
+  /** This Job Card's assigned technician. */
   isAssignedTechnician: boolean;
   /** Holds the branch-wide Workshop Manager role. */
   isEligibleManager: boolean;
 };
 
-/** The one real, named exception to "never move backward" — everything
- * else in this file only ever moves forward, one real step at a time. */
+/** Rework: the one allowed backward move. */
 export const REWORK_TRANSITION: { from: JobCardStatus; to: JobCardStatus } = {
   from: 'QUALITY_CHECK' as JobCardStatus,
   to: 'IN_PROGRESS' as JobCardStatus,
@@ -86,12 +53,9 @@ export function isReworkTransition(from: string, to: string): boolean {
 }
 
 /**
- * Every status a non-Master-Admin viewer could ever move a Job Card to
- * directly, from its current real status — the one canonical answer,
- * checked identically by the dropdown's own options AND by
- * updateJobCardStatus's own real, server-side refusal of anything not
- * in this list. Master Admin bypasses this file entirely, matching
- * every other unrestricted check already in this system.
+ * Statuses a non-Master-Admin viewer may move this Job Card to directly.
+ * Used for the dropdown options and by updateJobCardStatus to refuse
+ * anything else server-side. Master Admin bypasses it.
  */
 export function getSelectableJobCardStatuses(
   currentStatus: JobCardStatus,
@@ -104,13 +68,10 @@ export function getSelectableJobCardStatuses(
     ] as JobCardStatus[];
   }
 
-  // Whoever's actually doing or overseeing the hands-on work — the
-  // people who legitimately move a Job Card through its own real
-  // day-to-day progress steps.
+  // The people doing or overseeing the work move it through day-to-day steps.
   const canProgress = ctx.isSupervisor || ctx.isAssignedTechnician;
-  // The people with real sign-off authority — a Supervisor (their own
-  // Job Card) or a branch Manager, never the Technician alone for the
-  // steps that need genuine separation of duties.
+  // Sign-off authority: the supervisor (own Job Card) or a branch Manager,
+  // never the technician alone.
   const canSignOff = ctx.isSupervisor || ctx.isEligibleManager;
 
   switch (currentStatus) {
@@ -125,22 +86,19 @@ export function getSelectableJobCardStatuses(
       return options;
     }
     case 'COMPLETED':
-      // Onward to collection, or back for rework (e.g. failed road test)
-      // — both by whoever holds sign-off authority, since rework here
-      // revokes a sign-off they gave.
+      // On to collection, or back for rework (e.g. failed road test), by whoever
+      // holds sign-off authority, since rework revokes their sign-off.
       return canSignOff ? (['READY_FOR_COLLECTION', 'IN_PROGRESS'] as JobCardStatus[]) : [];
     case 'READY_FOR_COLLECTION':
       // Onward only via the close request (Manager-approved); the one
       // direct move is rework before the customer takes the vehicle.
       return canSignOff ? (['IN_PROGRESS'] as JobCardStatus[]) : [];
     case 'CLOSED':
-      // Broad on purpose — whoever's physically at the counter when a
-      // customer arrives to collect their vehicle should be able to
-      // check it out, matching how a real front desk actually works.
+      // Broad on purpose: whoever is at the counter when the customer arrives
+      // can check the vehicle out.
       return (canProgress || canSignOff) ? (['CHECKED_OUT'] as JobCardStatus[]) : [];
-    // CHECKED_IN, AWAITING_CUSTOMER_APPROVAL: no direct option for
-    // anyone but Master Admin — see design decision 1 above. CANCELLED and CHECKED_OUT (as a current
-    // status) are handled entirely outside this file already.
+    // CHECKED_IN, AWAITING_CUSTOMER_APPROVAL: no direct option (see 1 above).
+    // CANCELLED and CHECKED_OUT are handled outside this file.
     default:
       return [];
   }

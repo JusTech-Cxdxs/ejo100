@@ -45,7 +45,7 @@ export type SecurityRoles = { userId: string; isMaster: boolean; isCso: boolean;
 async function getSecurityRolesUncached(): Promise<SecurityRoles> {
   const user = await requireUser();
   const [{ slugs, isMaster }, principal] = await Promise.all([slugsOf(user.id), getPrincipal()]);
-  // Gate roles are role-based (as before) — whichever branch the officer is on.
+  // Gate roles apply on whichever branch the officer is on.
   const here = undefined;
   const isCso = decide(principal, 'security.incident.manage', here).allowed;
   const isOfficer = slugs.includes('security-officer');
@@ -433,11 +433,9 @@ async function headApproversFor(requesterId: string): Promise<Person[]> {
   const any = (await usersWithSlugs(['department-head'])).filter((h) => h.id !== requesterId);
   return any.length ? any : (await masterAdmins()).filter((h) => h.id !== requesterId);
 }
-/** The Manager step — the branch's managers (the same people Warranty
- * uses as Branch Manager); a quiet fallback so a pass is never stuck. */
-/** The Managers who decide for a branch — the RECORD's branch when one is
- * given (a pass or permit is decided by its own branch's Manager, never by
- * a Manager of another branch). */
+/** The branch's Managers (the same people Warranty uses as Branch Manager).
+ * Uses the record's branch when given: a pass or permit is decided by its
+ * own branch's Manager. Falls back quietly so a pass is never stuck. */
 async function managerApprovers(excludeId: string | null, branchId?: string | null): Promise<Person[]> {
   const m = await listEligibleManagersForBranch(branchId ?? (await getWorkshopBranchId()));
   const list = (m.usingFallback ? await masterAdmins() : (m.supervisors as Person[])).filter((x) => x.id !== excludeId);
@@ -977,12 +975,13 @@ export async function listVehiclesInside(): Promise<InsideVehicle[]> {
   ].sort((a, b) => (b.since?.getTime() ?? 0) - (a.since?.getTime() ?? 0));
 }
 
-/** One released vehicle, for its own release (confirm exit) page. */
+/** Payments minus refunds. */
 function netPaid(payments: { amount: unknown }[], refunds: { amount: unknown }[]): number {
   const sum = (xs: { amount: unknown }[]) => xs.reduce((n, x) => n + Number(x.amount), 0);
   return Math.round((sum(payments) - sum(refunds)) * 100) / 100;
 }
 
+/** One released vehicle, for its release (confirm exit) page. */
 export async function getClearedVehicle(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', id: string) {
   await requireUser();
   const reach = await reachWhere('security.view');
@@ -1776,7 +1775,7 @@ export async function canDecideContractorPass(id: string): Promise<boolean> {
 }
 
 
-// Once per request: repeated calls during one page load reuse the answer.
+// Cached per request.
 const getSecurityRolesCached = cache(getSecurityRolesUncached);
 export async function getSecurityRoles(): Promise<SecurityRoles> {
   return getSecurityRolesCached();

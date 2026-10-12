@@ -182,7 +182,6 @@ export async function getNotificationSummary(): Promise<NotificationSummary> {
     }
     return value;
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Notification summary failed', err);
     return { actions: [], unreadActivity: [], unreadBroadcasts: [], total: 0, signature: '', muted: false };
   }
@@ -269,9 +268,9 @@ async function nextBroadcastNumber(): Promise<string> {
   return `${start}${String(last ? parseInt(last.broadcastNumber.slice(start.length), 10) + 1 : 1).padStart(6, '0')}`;
 }
 
-/** Staff emails go out before the page answers (as before). Customer emails
- * can be many — they go out right after the response, never holding it up
- * (the scheduled delivery run picks up anything left). */
+/** Staff emails go out before the page answers. Customer emails can be
+ * many, so they go out right after the response (the scheduled delivery run
+ * picks up anything left). */
 async function deliverEmails(audience: string): Promise<void> {
   if (!isCustomerAudience(audience)) { await deliverDueBroadcastEmails(); return; }
   try {
@@ -383,15 +382,10 @@ export async function listAudienceOptions() {
   return { branches, departments, roles: roles.filter((r: { slug: string }, i: number, a: { slug: string }[]) => a.findIndex((x) => x.slug === r.slug) === i) };
 }
 
-/**
- * The cheap "has anything changed?" check the browser makes every few
- * seconds: the newest audit entry and the newest broadcast change — two
- * indexed single-row reads. Only when this changes does the browser fetch
- * the full summary and refresh the page's data.
- */
-/** The cheap change signal for this person's organisation (see lib/live-pulse).
- * The live check itself uses GET /api/live/pulse; this stays for callers that
- * already hold a session in a server action. */
+/** The cheap "has anything changed?" signal for this person's organisation:
+ * the newest audit entry and broadcast change (two indexed single-row
+ * reads). The browser polls GET /api/live/pulse (lib/live-pulse); this is
+ * for callers already inside a server action. */
 export async function getNotificationPulse(): Promise<string> {
   try {
     const m = await me();

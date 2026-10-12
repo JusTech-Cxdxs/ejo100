@@ -252,12 +252,12 @@ export async function branchWithinReach(key: PermissionKey, branchId: string): P
   return decide(await getPrincipal(), key, { branchId }).allowed ? branchId : '__no_access__';
 }
 
-/** Assignment-aware check on a Vehicle Service, using the record itself (never the browser's word). */
 /** The parent record's branch and people — read once per request, however
  * many panels of a page check it (a Job Card page asks ~10 times). */
 const jobCardParent = cache(async (id: string) => prisma.jobCard.findUnique({ where: { id }, select: { branchId: true, supervisorId: true, assignedTechnicianId: true, createdById: true } }));
 const serviceParent = cache(async (id: string) => prisma.vehicleService.findUnique({ where: { id }, select: { branchId: true, supervisorId: true, assignedTechnicianId: true, createdById: true } }));
 
+/** Assignment-aware check on a Vehicle Service, using the record itself (never the browser's word). */
 export async function authorizeOnService(key: PermissionKey, serviceId: string, where: string): Promise<void> {
   const v = await serviceParent(serviceId);
   if (!v) throw new Error('This record no longer exists — refresh the page.');

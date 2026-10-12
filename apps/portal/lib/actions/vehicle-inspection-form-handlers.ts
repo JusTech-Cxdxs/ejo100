@@ -37,10 +37,8 @@ export async function skipVehicleInspectionFormAction(formData: FormData) {
   redirect(`/workshop/vehicle-service/${vehicleServiceId}/inspection?status=skipped`);
 }
 
-/** Reusable from both the Vehicle Service detail page and the
- * inspection page itself — where it redirects to afterward is the
- * only real difference, driven by a hidden `redirectTo` field rather
- * than two near-duplicate handlers. */
+/** Used from both the Vehicle Service page and the inspection page; a
+ * hidden `redirectTo` field says where to go afterwards. */
 export async function cancelVehicleInspectionFormAction(formData: FormData) {
   const vehicleServiceId = str(formData, 'vehicleServiceId');
   // Only ever back inside the workshop — never an address taken as-is from the form.
@@ -58,11 +56,8 @@ export async function cancelVehicleInspectionFormAction(formData: FormData) {
   redirect(`${redirectTo}?status=inspection_cancelled`);
 }
 
-/** One real save action for the whole inspection page — item IDs
- * travel as a hidden, comma-separated list so this single handler
- * can save every currently-editable item across every zone/category
- * in one real transaction, without a separate server action per
- * section or per item. */
+/** Saves the whole inspection page in one transaction. Item ids arrive as
+ * a hidden comma-separated list. */
 export async function saveInspectionFormAction(formData: FormData) {
   const inspectionId = str(formData, 'inspectionId');
   const vehicleServiceId = str(formData, 'vehicleServiceId');
@@ -99,11 +94,8 @@ export async function completeVehicleInspectionFormAction(formData: FormData) {
 }
 
 /**
- * The real Vehicle Service page's own "Complete" shortcut — same
- * exact real action as the inspection workspace's own Complete
- * button, just redirecting back to the main page instead of staying
- * on the inspection page, so a technician who's already finished
- * scrolling through never has to go back in just to click Complete.
+ * "Complete" from the Vehicle Service page: the same action as on the
+ * inspection page, redirecting back to the service.
  */
 export async function completeVehicleInspectionFromServicePageFormAction(formData: FormData) {
   const inspectionId = str(formData, 'inspectionId');

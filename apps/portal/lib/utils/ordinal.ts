@@ -1,9 +1,4 @@
-/**
- * "1st" / "2nd" / "3rd" / "4th" — the standard, correct English
- * ordinal suffix for a positive integer. Used for "this is our 1st
- * reminder" / "this is our 2nd reminder" style language, so it never
- * has to be hand-written per call site.
- */
+/** "1st", "2nd", "3rd", "4th", e.g. for "our 2nd reminder". */
 export function ordinal(n: number): string {
   const remainder100 = n % 100;
   if (remainder100 >= 11 && remainder100 <= 13) return `${n}th`;

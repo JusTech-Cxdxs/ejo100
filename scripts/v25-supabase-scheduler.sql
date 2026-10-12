@@ -1,15 +1,15 @@
--- EJO 100 — v25: the 10-minute scheduler, inside Supabase (free; no extra service).
+-- EJO 100 — v25: a 10-minute scheduler inside Supabase (pg_cron).
 --
--- WHY: Vercel's free plan runs scheduled jobs at most once a day. Appointment
--- reminders (~1 hour before) and broadcasts scheduled for later need a check
--- every 10 minutes. Supabase's own scheduler (pg_cron) calls the portal for us.
+-- Vercel's free plan runs scheduled jobs at most once a day. Appointment
+-- reminders (~1 hour before) and scheduled broadcasts need a check every 10
+-- minutes, so pg_cron calls the portal.
 --
--- BEFORE RUNNING: replace PASTE_YOUR_CRON_SECRET_HERE below with the exact
--- CRON_SECRET value you set in Vercel (Settings → Environment Variables), and
+-- Before running: replace PASTE_YOUR_CRON_SECRET_HERE below with the
+-- CRON_SECRET set in Vercel (Settings → Environment Variables), and
 -- PASTE_YOUR_PORTAL_ADDRESS_HERE with the portal's public address (the value
 -- of NEXT_PUBLIC_PORTAL_URL, e.g. https://portal.example.com, no trailing slash).
--- It is stored ENCRYPTED in Supabase Vault — never in this file or in GitHub.
--- Do not share it with anyone (Claude included). Safe to run more than once.
+-- The secret is stored encrypted in Supabase Vault, never in this file or in
+-- git. Do not share it. Safe to run more than once.
 
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;

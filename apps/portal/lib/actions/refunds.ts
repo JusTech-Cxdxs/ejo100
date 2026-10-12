@@ -106,7 +106,6 @@ function position(payments: { amount: unknown }[], refunds: { amount: unknown }[
   return { paid, refunded, remaining, isFullyRefunded: remaining <= 0 };
 }
 
-/** Money in, money returned, and what is still owed back to the customer. */
 /** Only for a Job Card / Vehicle Service the person can see (never another
  * branch's or organisation's). */
 async function seeTarget(target: RefundTarget, where: string): Promise<void> {
@@ -196,16 +195,17 @@ export type RecordRefundInput = {
 };
 
 /**
- * Finance pays money back to the customer and records it here — only
- * once the job has been CANCELLED (i.e. a Manager has already authorised
- * it), only by a Finance Officer for this branch or a Master Admin, and
- * never more than is still owed back. A refund can be paid in parts
- * (e.g. part cash, part transfer); each gets its own RF-number and
- * receipt. The vehicle can't be handed back until the refund is complete.
+ * Finance pays money back to the customer and records it here. Only by a
+ * Finance Officer for the branch or a Master Admin, and never more than is
+ * owed back: on a cancelled job (cancellation is the Manager's authorisation)
+ * everything paid; on an active Job Card only an overpayment. A refund can
+ * be paid in parts (e.g. part cash, part transfer), each with its own
+ * RF-number and receipt. A cancelled vehicle can't be handed back until the
+ * refund is complete.
  */
 export async function recordRefund(input: RecordRefundInput): Promise<{ id: string; referenceNumber: string }> {
-  // Central catalogue first (who may attempt this); branch eligibility and the
-  // workflow state are still checked below, exactly as before.
+  // Catalogue check first (who may attempt this); branch eligibility and
+  // workflow state are checked below.
   await authorize('workshop.refund.record', undefined, 'recordRefund');
   const t = await loadTarget(input.target);
   if (!t) throw new RefundActionError('Record not found.');
@@ -219,14 +219,14 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
       throw new RefundActionError('This form was already used for a different refund — refresh the page and enter it again.');
     }
   }
-  // Duplicate guard: the same amount, method and record by the same person
-  // within 20 seconds is a double click or a resend after a dropped network.
+  // Duplicate guard: same amount and recorder within 20 seconds is a double
+  // click or a resend after a dropped connection.
   if (await prisma.refund.findFirst({ where: { amount: input.amount, recordedById: user.id, recordedAt: { gte: new Date(Date.now() - 20000) }, ...(t.kind === 'JOB_CARD' ? { jobCardId: t.id } : { vehicleServiceId: t.id }) }, select: { id: true } })) {
     throw new RefundActionError('This refund was just recorded — check the refunds list before recording it again.');
   }
 
-  // An active Job Card can refund an OVERPAYMENT only (the customer paid
-  // more than they now owe — e.g. lines moved to warranty after a deposit).
+  // An active Job Card can refund an overpayment only (the customer paid more
+  // than they now owe, e.g. lines moved to warranty after a deposit).
   const owes = 'customerOwes' in t ? t.customerOwes : 0;
   const isOverpaymentRefund = t.status !== 'CANCELLED' && t.kind === 'JOB_CARD' && position(t.payments, t.refunds, owes).remaining > 0;
   if (t.status !== 'CANCELLED' && t.kind === 'JOB_CARD' && !isOverpaymentRefund && t.refunds.length > 0) {
@@ -262,9 +262,9 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
     throw new RefundActionError('Enter the reason for this refund.');
   }
 
-  // Two Finance officers at once: re-decide with the Job Card / Vehicle
-  // Service row locked, against payments and refunds as they are at that
-  // instant — so two refunds can never both fit into the same balance.
+  // Two Finance officers at once: decide again with the Job Card / Vehicle
+  // Service row locked, against payments and refunds as they are now, so two
+  // refunds can never both fit into the same balance.
   const recorded = await retryOnNumberClash('referenceNumber', () => prisma.$transaction(async (tx) => {
     await lockExisting(tx, t.kind === 'JOB_CARD' ? 'jobCard' : 'vehicleService', [t.id], 'This record no longer exists — refresh the page.');
     // The same form, resent while the first was still being saved: hand back that refund.
@@ -350,7 +350,6 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send refund receipt email', referenceNumber, err);
   }
   return { id: refund.id, referenceNumber };

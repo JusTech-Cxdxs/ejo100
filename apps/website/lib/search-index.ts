@@ -1,10 +1,7 @@
 import { siteConfig } from './site-config';
 /**
- * Static, client-side search index. No backend search service exists yet
- * (out of scope for this frontend-only fix) — this indexes every real
- * page/entity currently in the site so the search modal returns genuine
- * results instead of doing nothing. Add an entry here whenever a new
- * page, business unit, product, news item, or careers listing is added.
+ * Static, client-side search index for the site search. Add an entry when a
+ * page, business unit, product, news item or careers listing is added.
  */
 export interface SearchEntry {
   title: string;

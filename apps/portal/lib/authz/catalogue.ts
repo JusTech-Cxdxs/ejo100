@@ -1,19 +1,18 @@
 /**
- * EJO 100 — Authorization Catalogue (Phase B foundation).
+ * EJO 100 Authorization Catalogue.
  *
- * The ONE definition of what can be done in EJO 100, and the default grants
+ * The one definition of what can be done in EJO 100, and the default grants
  * per role. Model: User → Role → Permission → Scope → Record → State → Action.
  *
- *  • Permissions are DEFINED here (version-controlled, reviewed): a permission
- *    without code that enforces it is meaningless, so definitions never come
- *    from a click. Grants can later be added per organisation in the database
- *    (RolePermission) — but only for permissions defined here.
- *  • Scope says WHICH records: ALL · BRANCH · DEPARTMENT · ASSIGNED · OWN.
- *  • `decide()` is a pure function — the same rule everywhere (pages, actions,
- *    search, exports, notifications, realtime, analytics, future AI), and fully
- *    testable with allowed AND denied cases.
- *  • State rules (who may move a record from one stage to the next) stay in
- *    each workflow action, which already checks the current status atomically.
+ *  • Permissions are defined here, in reviewed code: a permission needs code
+ *    that enforces it. Organisations can add grants in the database
+ *    (RolePermission), but only for permissions defined here.
+ *  • Scope says which records: ALL · BRANCH · DEPARTMENT · ASSIGNED · OWN.
+ *  • `decide()` is a pure function used everywhere (pages, actions, search,
+ *    exports, notifications, realtime, analytics), tested with allowed and
+ *    denied cases.
+ *  • State rules (who may move a record to its next stage) stay in each
+ *    workflow action, which checks the current status atomically.
  */
 export type Scope = 'ALL' | 'BRANCH' | 'DEPARTMENT' | 'ASSIGNED' | 'OWN';
 const RANK: Record<Scope, number> = { OWN: 1, ASSIGNED: 2, DEPARTMENT: 3, BRANCH: 4, ALL: 5 };
@@ -82,10 +81,9 @@ export const PERMISSIONS = {
 export type PermissionKey = keyof typeof PERMISSIONS;
 
 /**
- * Everyone signed in — ONLY what every employee genuinely does: request
- * their own exit pass. Everything else comes from the role a person holds
- * (a person may hold several — the widest grant wins). Approvals routed to
- * a person by the workflow (e.g. the requester's reporting manager on an
+ * Everyone signed in: only requesting their own exit pass. Everything else
+ * comes from the roles a person holds (the widest grant wins). Approvals the
+ * workflow routes to a person (e.g. the requester's reporting manager on an
  * exit pass) are decided by that workflow, not by this list.
  */
 const BASELINE: Partial<Record<PermissionKey, Scope>> = {

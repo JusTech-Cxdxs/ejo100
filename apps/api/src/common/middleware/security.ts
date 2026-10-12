@@ -1,8 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 
-/**
- * Security headers on every API response (no extra library needed).
- */
+/** Security headers on every API response. */
 export function securityHeaders(_req: Request, res: Response, next: NextFunction): void {
   res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -29,10 +27,9 @@ function clientIp(req: Request): string {
 }
 
 /**
- * Rate limiting per client address (fixed one-minute window, in memory per
- * instance): 300 requests a minute in general, 20 a minute on auth routes.
- * Over the limit → 429 with Retry-After. (A WAF / shared store adds a
- * global limit in front later — see the platform blueprint.)
+ * Rate limit per client address (fixed one-minute window, in memory per
+ * instance): 300 requests a minute in general, 20 on auth routes. Over the
+ * limit → 429 with Retry-After. A WAF or shared store would add a global limit.
  */
 export function rateLimit(req: Request, res: Response, next: NextFunction): void {
   const isAuth = req.path.includes('/auth');

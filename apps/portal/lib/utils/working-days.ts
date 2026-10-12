@@ -1,9 +1,6 @@
 /**
- * Working-day date math — Saturday and Sunday never count, matching
- * "use working days, not calendar days" for every deadline in the
- * approval-reminder and cancellation-collection-grace engine. Kept as
- * one small, dependency-free utility rather than pulling in a date
- * library for what's genuinely a two-function need.
+ * Working-day date maths: Saturday and Sunday never count. Used for every
+ * approval, reminder and collection deadline.
  */
 
 export function isWeekend(date: Date): boolean {
@@ -11,10 +8,8 @@ export function isWeekend(date: Date): boolean {
   return day === 0 || day === 6; // Sunday, Saturday
 }
 
-/** Number of whole working days that have elapsed between two dates —
- * `from` itself is never counted (a deadline set "today" hasn't had
- * any working days elapse yet), each subsequent weekday up to and
- * including `to`'s date is counted once. */
+/** Whole working days elapsed between two dates. `from` itself is not
+ * counted; each weekday after it, up to and including `to`, counts once. */
 export function workingDaysBetween(from: Date, to: Date): number {
   let count = 0;
   const cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
@@ -26,8 +21,7 @@ export function workingDaysBetween(from: Date, to: Date): number {
   return count;
 }
 
-/** The calendar date `n` working days after `from` — used to show a
- * real due date, not just a day count, e.g. on a reminder email. */
+/** The calendar date `n` working days after `from` (e.g. a due date in an email). */
 export function addWorkingDays(from: Date, n: number): Date {
   const cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
   let added = 0;
@@ -49,10 +43,9 @@ export function isLagosWeekend(date: Date): boolean {
 }
 
 /**
- * The same moment if it falls on a working day (Mon–Fri, Lagos),
- * otherwise the following Monday at the same time of day. Used so
- * every date the workshop acts on — when a reminder becomes due, when
- * a vehicle's next service is due — is a day the team is actually in.
+ * The same moment if it falls on a working day (Mon–Fri, Lagos), otherwise
+ * the following Monday at the same time, so reminders and due dates land
+ * on days the team is in.
  */
 export function onOrAfterWorkingDay(date: Date): Date {
   const d = new Date(date.getTime());
