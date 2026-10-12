@@ -49,7 +49,7 @@ export async function writeCustomerAudit(o: {
 }
 
 /** Only the fields that really changed, as { field: { from, to } }. */
-export function diffFields<T extends Record<string, unknown>>(before: T, after: Partial<T>): FieldChanges {
+export function diffFields(before: Record<string, unknown>, after: Record<string, unknown>): FieldChanges {
   const out: FieldChanges = {};
   for (const key of Object.keys(after)) {
     const a = (before as Record<string, unknown>)[key] ?? null;

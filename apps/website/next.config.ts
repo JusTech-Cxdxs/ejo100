@@ -21,6 +21,12 @@ const nextConfig: NextConfig = {
           { key: 'Content-Security-Policy', value: "frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests" },
         ],
       },
+      // Customer portal pages and data are personal — never kept by a shared
+      // cache or the back/forward cache (middleware.ts sets the same).
+      ...['/customer-portal', '/customer-portal/:path*', '/api/customer/:path*'].map((source) => ({
+        source,
+        headers: [{ key: 'Cache-Control', value: 'private, no-store, max-age=0' }],
+      })),
     ];
   },
 };

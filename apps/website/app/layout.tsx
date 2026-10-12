@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
+import { SiteChrome } from '@/components/SiteChrome';
 import { ThemeProvider } from '@/lib/theme';
 import { I18nProvider } from '@/lib/i18n';
 import { siteConfig } from '@/lib/site-config';
@@ -67,9 +68,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <ThemeProvider>
           <I18nProvider>
-            <Header />
+            <SiteChrome><Header /></SiteChrome>
             {children}
-            <Footer />
+            <SiteChrome><Footer /></SiteChrome>
           </I18nProvider>
         </ThemeProvider>
       </body>
