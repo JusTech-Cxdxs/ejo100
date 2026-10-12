@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { getSecurityRoles } from '@/lib/actions/security';
 import { registerDeliveryFormAction } from '@/lib/actions/security-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -6,6 +7,7 @@ import { DeliveryForm } from '@/components/DeliveryForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 
 export default async function NewDeliveryPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  await guardAnyPage(['security.view', 'store.grn.record'], '/security/deliveries');
   const { error } = await searchParams;
   const roles = await getSecurityRoles();
   return (

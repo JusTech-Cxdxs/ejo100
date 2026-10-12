@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getJobCard } from '@/lib/actions/workshop';
 import { getJobCardSourcingNeeds, getRequestablePartRequestLines } from '@/lib/actions/sourcing';
@@ -31,6 +32,7 @@ export default async function RequestPartsPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { id } = await params;
   const { error } = await searchParams;
   const jobCard = await getJobCard(id);

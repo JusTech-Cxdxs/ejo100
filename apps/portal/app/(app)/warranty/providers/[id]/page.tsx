@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { humanizeAction } from '@/lib/humanize-action';
 import { getWarrantyProvider, getWarrantyProviderAuditTrail, getWarrantyRoles } from '@/lib/actions/warranty';
@@ -40,6 +41,7 @@ const BANNER: Record<string, string> = {
 };
 
 export default async function WarrantyProviderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string; edit?: string }> }) {
+  await guardAnyPage(['warranty.view'], '/warranty');
   const { id } = await params;
   const { status, error, edit } = await searchParams;
   const [p, trail, roles, viewer] = await Promise.all([getWarrantyProvider(id), getWarrantyProviderAuditTrail(id), getWarrantyRoles(), requireUser()]);

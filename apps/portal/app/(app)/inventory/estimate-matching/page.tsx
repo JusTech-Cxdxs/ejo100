@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listUnmatchedStorePartLines, getStoreBranchId } from '@/lib/actions/store';
 import { listUnmatchedServiceEstimateStorePartLines } from '@/lib/actions/vehicle-service-estimate';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -34,6 +35,7 @@ type MatchingGroup = {
  * records underneath.
  */
 export default async function EstimateMatchingPage({ searchParams }: { searchParams: Promise<{ type?: string; q?: string }> }) {
+  await guardAnyPage(['store.view'], '/inventory');
   const { type, q } = await searchParams;
   const branchId = await getStoreBranchId();
   const [jcLines, svLines] = await Promise.all([listUnmatchedStorePartLines(branchId), listUnmatchedServiceEstimateStorePartLines(branchId)]);

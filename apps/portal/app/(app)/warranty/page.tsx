@@ -1,4 +1,4 @@
-import { allows } from '@/lib/authz/server';
+import { allows, guardAnyPage } from '@/lib/authz/server';
 import { listWarranties, listWarrantyIdsWithReminderDue } from '@/lib/actions/warranty';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
@@ -23,6 +23,7 @@ const FILTER_STATES: Record<Exclude<Filter, 'all' | 'asset' | 'part' | 'reminder
  * certificate for each.
  */
 export default async function WarrantyRegisterPage({ searchParams }: { searchParams: Promise<{ q?: string; filter?: string }> }) {
+  await guardAnyPage(['warranty.view'], '/warranty');
   const { q, filter: rawFilter } = await searchParams;
   const filter: Filter = (['covered', 'expiring', 'pending', 'expired', 'inactive', 'asset', 'part', 'reminder'] as const).includes(rawFilter as never) ? (rawFilter as Filter) : 'all';
   const [warranties, reminderDueIds, canAnalytics] = await Promise.all([listWarranties(q), listWarrantyIdsWithReminderDue(), allows('analytics.warranty.view')]);

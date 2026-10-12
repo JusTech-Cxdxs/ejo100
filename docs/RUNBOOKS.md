@@ -89,7 +89,7 @@ drain (Vercel → Log Drains → e.g. Better Stack) with alerts on `"level":"err
 1. Open **Settings** in the portal: each job shows its last run, what it sent, and whether it is on time.
    A job that sends nothing has found nothing to send (no appointments today / no open price alerts).
 2. **Email delivery** (platform team): sent / failed in the last 7 days and the last error. Failures
-   almost always mean SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_FROM are missing or wrong in Vercel.
+   almost always mean SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASSWORD / SMTP_FROM are missing or wrong in Vercel.
 3. **Appointment reminders "Not running on time"**: run `scripts/v25-supabase-scheduler.sql` (with your
    CRON_SECRET pasted in) in Supabase. Check: `SELECT status_code, created FROM net._http_response ORDER BY created DESC LIMIT 5;`
    — 200 = working, 401 = the secret in Supabase does not match the one in Vercel.

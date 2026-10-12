@@ -41,8 +41,15 @@
   --ejo-text-muted: #9db3a6;
 }
 
-* {
-  border-color: var(--ejo-border);
+/* In a base layer so border-[…] utilities always win (unlayered rules beat
+   every Tailwind v4 utility). */
+@layer base {
+  *, ::before, ::after {
+    border-color: var(--ejo-border);
+  }
+  input[type='checkbox'], input[type='radio'] {
+    accent-color: var(--ejo-primary);
+  }
 }
 
 body {

@@ -1,4 +1,4 @@
-import { pluralizeWord } from '@/lib/utils/pluralize';
+import { pluralizeWord } from './utils/pluralize';
 
 /**
  * Inventory analytics & reorder intelligence — pure functions over plain
@@ -112,7 +112,7 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
     // Status — uses the part's SET levels when present, else the suggestions.
     const rop = p.reorderPoint ?? (avgDaily > 0 ? suggestedReorder : null);
     const ss = p.safetyStock ?? (avgDaily > 0 ? suggestedSafety : null);
-    const lastIssue = iss.length ? new Date(Math.max(...iss.map((i) => i.date.getTime()))) : null;
+    const lastIssue = iss.length ? new Date(iss.reduce((m, i) => Math.max(m, i.date.getTime()), 0)) : null;
     const lastMovement = lastIssue ?? (recs.length ? recs[recs.length - 1]!.date : p.createdAt);
     let status: StockStatus;
     // Unused for the whole demand window but stock on hand: never a
@@ -144,7 +144,21 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
     // Same tolerance as the Pricing Command Center: kobo rounding is not a deficit.
     const belowTarget = p.targetMarginPercent !== null && priceMarginNow !== null && priceMarginNow < p.targetMarginPercent - 0.05;
     const costInflation = avgCost && lastCost !== null ? ((lastCost - avgCost) / avgCost) * 100 : null;
-    const stockValue = p.onHand * (avgCost ?? 0);
+    // Stock value at FIFO: what is on the shelf is what was received LAST
+    // (issues draw the oldest first), each lot at its own receipt cost. Units
+    // with no recorded cost (an uncosted receipt, or stock older than any
+    // receipt) are valued at the average cost and counted, so the gap shows.
+    let remaining = Math.max(0, p.onHand);
+    let stockValue = 0;
+    let uncostedUnits = 0;
+    for (let k = recs.length - 1; k >= 0 && remaining > 1e-9; k -= 1) {
+      const r = recs[k]!;
+      const take = Math.min(remaining, r.qty);
+      if (r.unitCost === null) { uncostedUnits += take; stockValue += take * (avgCost ?? 0); }
+      else stockValue += take * r.unitCost;
+      remaining -= take;
+    }
+    if (remaining > 1e-9) { uncostedUnits += remaining; stockValue += remaining * (avgCost ?? 0); }
 
     return {
       id: p.id, name: p.name, partNumber: p.partNumber, category: p.category ?? 'Uncategorised', unit: p.unit,
@@ -160,6 +174,7 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
       priceMarginNow: priceMarginNow === null ? null : r2(priceMarginNow), belowTarget, costInflation: costInflation === null ? null : r2(costInflation),
       estimatedRevenueShare: r2(estimatedRevenueShare),
       stockValue: r2(stockValue),
+      uncostedUnits: r3(uncostedUnits),
       reorderCost: r2(suggestedOrderQty * (lastCost ?? avgCost ?? 0)),
       abc: 'C' as 'A' | 'B' | 'C',
     };
@@ -197,11 +212,15 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
     .sort((a, b) => b.stockValue - a.stockValue);
 
   const months: { key: string; label: string; issuedCost: number; revenue: number; received: number }[] = [];
+  // Calendar months in Lagos time (UTC+1, no daylight saving): 00:30 on the
+  // 1st belongs to the new month, not the old one.
+  const lagos = (d: Date) => new Date(d.getTime() + 3600000);
+  const nowL = lagos(now);
   for (let i = 11; i >= 0; i -= 1) {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const d = new Date(Date.UTC(nowL.getUTCFullYear(), nowL.getUTCMonth() - i, 1));
     months.push({ key: `${d.getUTCFullYear()}-${d.getUTCMonth()}`, label: d.toLocaleDateString('en-NG', { month: 'short', year: '2-digit', timeZone: 'UTC' }), issuedCost: 0, revenue: 0, received: 0 });
   }
-  const mk = (d: Date) => `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+  const mk = (d: Date) => { const l = lagos(d); return `${l.getUTCFullYear()}-${l.getUTCMonth()}`; };
   const avgCostOf = new Map(rows.map((r) => [r.id, r.avgCost ?? 0]));
   const priceOf = new Map(input.parts.map((p) => [p.id, p.sellingPrice ?? 0]));
   input.issues.forEach((i) => {
@@ -218,6 +237,8 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
   const descriptive = {
     parts: rows.length,
     stockValue: r2(stockValue),
+    uncostedUnits: r3(sum(rows.map((r) => r.uncostedUnits))),
+    partsWithUncostedStock: rows.filter((r) => r.uncostedUnits > 0).length,
     unitsOnHand: r3(sum(rows.map((r) => r.onHand))),
     revenue365: r2(revenue365),
     cogs365: r2(cogs365),
@@ -289,13 +310,13 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
     actions.push({ priority: 2, title: `Reprice ${r.name}`, detail: `Current margin ${r.priceMarginNow}% is below its ${r.targetMarginPercent}% target.`, href: '/inventory/pricing' }),
   );
   rows.filter((r) => r.avgDaily > 0 && (r.reorderPoint === null || r.safetyStock === null)).forEach((r) =>
-    actions.push({ priority: 3, title: `Set stock levels for ${r.name}`, detail: `Suggested: reorder at ${u(r.suggestedReorder, r.unit)}, safety stock ${u(r.suggestedSafety, r.unit)}.`, href: `/inventory/analytics?focus=${r.id}#planner` }),
+    actions.push({ priority: 3, title: `Set stock levels for ${r.name}`, detail: `Suggested: reorder at ${u(r.suggestedReorder, r.unit)}, safety stock ${u(r.suggestedSafety, r.unit)}.`, href: `/inventory/analytics?lead=${s.leadTimeDays}&service=${s.serviceLevel}&focus=${r.id}#planner` }),
   );
   rows
     .filter((r) => r.avgDaily > 0 && r.reorderPoint !== null && r.reorderPoint > 0 && Math.abs(r.reorderPoint - r.suggestedReorder) / r.reorderPoint > 0.3)
-    .forEach((r) => actions.push({ priority: 3, title: `Review ${r.name}'s reorder point`, detail: `Set at ${u(r.reorderPoint!, r.unit)}; recent demand suggests ${u(r.suggestedReorder, r.unit)}.`, href: `/inventory/analytics?focus=${r.id}#planner` }));
+    .forEach((r) => actions.push({ priority: 3, title: `Review ${r.name}'s reorder point`, detail: `Set at ${u(r.reorderPoint!, r.unit)}; recent demand suggests ${u(r.suggestedReorder, r.unit)}.`, href: `/inventory/analytics?lead=${s.leadTimeDays}&service=${s.serviceLevel}&focus=${r.id}#planner` }));
   rows.filter((r) => r.idleAtLevel).forEach((r) =>
-    actions.push({ priority: 3, title: `Review ${r.name}'s stock levels`, detail: `At its reorder level (${u(r.onHand, r.unit)}) but unused for ${s.demandWindowDays} days — no order suggested; consider lowering the level.`, href: `/inventory/analytics?focus=${r.id}#planner` }),
+    actions.push({ priority: 3, title: `Review ${r.name}'s stock levels`, detail: `At its reorder level (${u(r.onHand, r.unit)}) but unused for ${s.demandWindowDays} days — no order suggested; consider lowering the level.`, href: `/inventory/analytics?lead=${s.leadTimeDays}&service=${s.serviceLevel}&focus=${r.id}#planner` }),
   );
   diagnostic.deadStock.slice(0, 10).forEach((r) =>
     actions.push({ priority: 3, title: `Dead stock: ${r.name}`, detail: `No movement for over ${s.deadDays} days — ₦${r.stockValue.toLocaleString('en-NG')} tied up. Consider a promotion, return to supplier or write-off.`, href: `/inventory/parts/${r.id}` }),

@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listWarrantyProviders, getWarrantyRoles, type ProviderStateFilter } from '@/lib/actions/warranty';
 import { createWarrantyProviderFormAction, setWarrantyProviderActiveFormAction } from '@/lib/actions/warranty-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -18,6 +19,7 @@ const BANNER: Record<string, string> = {
 /** Who stands behind each warranty — searchable, filterable, each one
  * viewable and editable, with deletion through the approval chain. */
 export default async function WarrantyProvidersPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string; q?: string; state?: string; type?: string }> }) {
+  await guardAnyPage(['warranty.view'], '/warranty');
   const { status, error, q, state: rawState, type: rawType } = await searchParams;
   const state = (['active', 'inactive', 'archived'] as const).includes(rawState as never) ? (rawState as ProviderStateFilter) : undefined;
   const type = rawType && PROVIDER_TYPE_LABEL[rawType] ? rawType : undefined;

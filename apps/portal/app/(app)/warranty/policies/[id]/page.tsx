@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { humanizeAction } from '@/lib/humanize-action';
 import { PolicyCoverageFields } from '@/components/PolicyCoverageFields';
@@ -66,6 +67,7 @@ function describeChange(v: unknown): string {
 }
 
 export default async function WarrantyPolicyPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string; edit?: string }> }) {
+  await guardAnyPage(['warranty.view'], '/warranty');
   const { id } = await params;
   const { status, error, edit } = await searchParams;
   const [policy, trail, providers, roles, viewer] = await Promise.all([getWarrantyPolicy(id), getWarrantyPolicyAuditTrail(id), listWarrantyProviders(), getWarrantyRoles(), requireUser()]);

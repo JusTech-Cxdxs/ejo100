@@ -59,7 +59,7 @@ function accessBlock(o: StaffAccessEmailOptions): string {
   return groups.map((g) => `
     <p style="margin: 18px 0 6px 0; font-size: 13px; font-weight: bold; color: #15803D;">${escapeHtml(g.module)}</p>
     <ul style="margin: 0 0 8px 0; padding-left: 20px; color: #0F172A; font-size: 14px; line-height: 1.5;">
-      ${g.lines.map((l) => `<li style="margin: 0 0 4px 0;">${escapeHtml(l.label)} — <span style="color: #64748B;">${escapeHtml(l.where)}</span>${l.added ? ' <span style="color: #B45309; font-size: 12px;">(added by your administrator)</span>' : ''}</li>`).join('')}
+      ${g.lines.map((l) => `<li style="margin: 0 0 4px 0;">${escapeHtml(l.label)}${l.where ? ` <span style="color: #64748B;">— ${escapeHtml(l.where)}</span>` : ''}${l.added ? ' <span style="color: #B45309; font-size: 12px;">(added by your administrator)</span>' : ''}</li>`).join('')}
     </ul>`).join('');
 }
 
@@ -76,6 +76,9 @@ export function renderStaffAccessEmail(o: StaffAccessEmailOptions): { subject: s
       <li>Go to <a href="${escapeHtml(o.signInUrl)}" style="color: #15803D;">${escapeHtml(o.signInUrl)}</a>.</li>
       <li>Sign in with your work email <strong>${escapeHtml(o.email)}</strong> and the password you chose.</li>
     </ol>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 14px 0 10px 0;"><tr><td style="border-radius: 8px; background-color: #16A34A;">
+      <a href="${o.setPasswordUrl}" style="display: inline-block; padding: 12px 26px; font-family: Arial, Helvetica, sans-serif; font-size: 15px; font-weight: bold; color: #ffffff; text-decoration: none;">Set my password</a>
+    </td></tr></table>
     <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748B;">Link expired? Use “Forgot password” on the sign-in page to get a new one.</p>`
     : '';
   const bodyHtml = `

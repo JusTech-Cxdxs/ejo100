@@ -2,11 +2,11 @@
 
 import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
-import { portalConfig } from '@/lib/site-config';
 import { AuthShell } from '@/components/AuthShell';
+import { AuthNotice, authButton, authInput } from '@/components/AuthNotice';
+import { PasswordField } from '@/components/PasswordField';
 import { EjoSpinner } from '@/components/EjoSpinner';
 
 export default function LoginPage() {
@@ -17,124 +17,107 @@ export default function LoginPage() {
   );
 }
 
+const INACTIVE = 'This account has been switched off. Ask your administrator to switch it back on.';
+const ARRIVAL: Record<string, { kind: 'error' | 'success' | 'info'; text: string }> = {
+  inactive: { kind: 'error', text: INACTIVE },
+  signed_out: { kind: 'info', text: 'Your session ended. Please sign in again.' },
+};
+
+/** Plain words for every way signing in can fail — never a raw server message. */
+function explain(err: { status?: number; code?: string; message?: string }): string {
+  const code = err.code ?? '';
+  if (err.status === 429) return 'Too many sign-in attempts. Wait a minute, then try again.';
+  if (/SESSION|BANNED|INACTIVE/i.test(code) || /session/i.test(err.message ?? '')) return INACTIVE;
+  if (/INVALID_EMAIL_OR_PASSWORD|INVALID_PASSWORD|USER_NOT_FOUND|CREDENTIAL/i.test(code) || err.status === 401) {
+    return 'That email and password don’t match. Check both and try again — or reset your password.';
+  }
+  if (/INVALID_EMAIL/i.test(code)) return 'Enter a valid work email address.';
+  if ((err.status ?? 0) >= 500) return 'The sign-in service is having a problem right now. Please try again in a moment.';
+  return 'Could not sign you in. Please try again.';
+}
+
 function LoginForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const params = useSearchParams();
   // Only ever return to a page on THIS site — never an outside address
   // (blocks "…/login?redirect=https://fake-site" phishing links).
-  const requested = searchParams.get('redirect') ?? '';
+  const requested = params.get('redirect') ?? '';
   const redirectTo = /^\/(?![/\\])/.test(requested) ? requested : '/dashboard';
+  const arrival = params.get('reset') === 'done'
+    ? { kind: 'success' as const, text: 'Your password is set. Sign in with it now.' }
+    : ARRIVAL[params.get('error') ?? ''];
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
-  const INACTIVE = 'This account is not active. Ask your administrator to reactivate it.';
-  const [error, setError] = useState<string | null>(searchParams.get('error') === 'inactive' ? INACTIVE : null);
-  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<'idle' | 'working' | 'success'>('idle');
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (state !== 'idle') return;
     setError(null);
-    setLoading(true);
-
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) { setError('Enter a valid work email address.'); return; }
+    if (!password) { setError('Enter your password.'); return; }
+    setState('working');
     try {
-      const { error: signInError } = await authClient.signIn.email({
-        email,
-        password,
-        rememberMe,
-      });
-
+      const { error: signInError } = await authClient.signIn.email({ email: cleanEmail, password, rememberMe });
       if (signInError) {
-        // The password was right but the account is deactivated: the session
-        // was refused (lib/auth.ts) — say so plainly.
-        const code = (signInError as { code?: string }).code ?? '';
-        setError(/SESSION/i.test(code) || /session/i.test(signInError.message ?? '') ? INACTIVE : (signInError.message ?? 'Invalid email or password.'));
+        setError(explain(signInError as { status?: number; code?: string; message?: string }));
+        setState('idle');
         return;
       }
-
-      // Portal is Employee/Admin only — both land on the same dashboard;
-      // guards elsewhere in the app narrow what each accountType can see.
-      router.push(redirectTo);
+      setState('success');
+      router.replace(redirectTo);
+      router.refresh();
     } catch {
-      // The signIn call itself threw (e.g. the API is unreachable) rather
-      // than resolving with a Better Auth error object — without this
-      // catch, `loading` would never reset and the button would be stuck
-      // on "Signing in…" forever with no feedback.
-      setError('Could not reach the server. Please check your connection and try again.');
-    } finally {
-      setLoading(false);
+      setError('Could not reach the server. Check your connection and try again.');
+      setState('idle');
     }
   }
 
   return (
-    <AuthShell
-      eyebrow={portalConfig.poweredBy}
-      title={portalConfig.companyName}
-      subtitle="Sign in to your employee account"
-    >
-      <form className="space-y-4" onSubmit={handleSubmit}>
+    <AuthShell title="Welcome back" subtitle="Sign in to your staff account to continue.">
+      <form className="space-y-5" onSubmit={handleSubmit} noValidate>
+        {arrival && !error && state === 'idle' ? <AuthNotice kind={arrival.kind}>{arrival.text}</AuthNotice> : null}
         <div>
-          <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-[var(--ejo-text)]">
-            Email
-          </label>
+          <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-[var(--ejo-text)]">Work email</label>
           <input
             id="email"
             type="email"
+            inputMode="email"
+            autoComplete="username"
+            autoCapitalize="off"
+            spellCheck={false}
             required
+            maxLength={200}
+            autoFocus
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@kewalram.com"
-            className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-4 py-3 text-sm text-[var(--ejo-text)] outline-none transition-colors focus:border-[var(--ejo-primary)] focus:ring-2 focus:ring-[var(--ejo-primary)]/20"
+            placeholder="name@company.com"
+            aria-invalid={Boolean(error) || undefined}
+            className={authInput}
           />
         </div>
-        <div>
-          <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-[var(--ejo-text)]">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-4 py-3 text-sm text-[var(--ejo-text)] outline-none transition-colors focus:border-[var(--ejo-primary)] focus:ring-2 focus:ring-[var(--ejo-primary)]/20"
-          />
-        </div>
+        <PasswordField id="password" label="Password" value={password} onChange={setPassword} autoComplete="current-password" invalid={Boolean(error)} />
 
         <div className="flex items-center justify-between text-sm">
-          <label className="flex items-center gap-2 text-[var(--ejo-text-muted)]">
-            <input
-              type="checkbox"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-              className="rounded border-[var(--ejo-border)] text-[var(--ejo-primary)] focus:ring-[var(--ejo-primary)]"
-            />
-            Remember me
+          <label className="flex cursor-pointer select-none items-center gap-2 text-[var(--ejo-text-muted)]">
+            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="h-4 w-4 rounded" />
+            Keep me signed in
           </label>
-          <Link href="/forgot-password" className="font-medium text-[var(--ejo-primary)] hover:underline">
-            Forgot password?
-          </Link>
+          <Link href="/forgot-password" className="font-medium text-[var(--ejo-primary)] hover:underline">Forgot password?</Link>
         </div>
 
-        {error && (
-          <motion.p
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)]/10 px-3 py-2.5 text-sm text-[var(--ejo-error)]"
-          >
-            {error}
-          </motion.p>
-        )}
+        {error ? <AuthNotice kind="error">{error}</AuthNotice> : null}
+        {state === 'success' ? <AuthNotice kind="success">Signed in — opening your dashboard…</AuthNotice> : null}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-[var(--ejo-primary)] py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[1.01] hover:opacity-90 disabled:scale-100 disabled:opacity-60"
-        >
-          {loading && <EjoSpinner />}
-          {loading ? 'Signing in…' : 'Sign In'}
+        <button type="submit" disabled={state !== 'idle'} className={authButton}>
+          {state !== 'idle' ? <EjoSpinner /> : null}
+          {state === 'working' ? 'Signing in…' : state === 'success' ? 'Opening…' : 'Sign in'}
         </button>
+        <p className="text-center text-xs text-[var(--ejo-text-muted)]">New here? Your administrator creates your account — check your email for the welcome message.</p>
       </form>
     </AuthShell>
   );

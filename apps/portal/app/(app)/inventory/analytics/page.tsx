@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import type { ReactNode } from 'react';
 import { getStoreBranchId } from '@/lib/actions/store';
 import { getInventoryAnalytics } from '@/lib/actions/inventory-analytics';
@@ -81,6 +82,7 @@ function Bars({ rows }: { rows: { label: string; value: number; note: string }[]
 }
 
 export default async function InventoryAnalyticsPage({ searchParams }: { searchParams: Promise<{ lead?: string; service?: string; show?: string; focus?: string; status?: string; error?: string }> }) {
+  await guardPage('analytics.inventory.view', '/inventory/analytics');
   const params = await searchParams;
   const branchId = await getStoreBranchId();
   if (!branchId) return <div className="p-8 text-sm text-[var(--ejo-text-muted)]">No Store branch is set up yet.</div>;
@@ -148,7 +150,7 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
 
       <Section title="Descriptive" subtitle="What you hold and what it earned — last 365 days.">
         <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <Kpi label="Stock value (at average cost)" value={naira(d.stockValue)} hint={`${pluralize(d.parts, 'part')} · ${d.unitsOnHand.toLocaleString('en-NG')} on hand`} />
+          <Kpi label="Stock value (FIFO, at receipt cost)" value={naira(d.stockValue)} hint={`${pluralize(d.parts, 'part')} · ${d.unitsOnHand.toLocaleString('en-NG')} on hand${d.uncostedUnits > 0 ? ` · ${d.uncostedUnits.toLocaleString('en-NG')} units on ${pluralize(d.partsWithUncostedStock, 'part')} have no recorded cost (valued at average)` : ''}`} />
           <Kpi label="Revenue from parts" value={naira(d.revenue365)} hint={st.estimatedRevenueShare > 0 ? `${Math.round(st.estimatedRevenueShare * 100)}% at current price (no estimate price)` : 'Prices actually charged'} />
           <Kpi label="Cost of parts issued" value={naira(d.cogs365)} hint="True cost from each goods receipt" />
           <Kpi label="Gross profit" value={naira(d.grossProfit)} tone={d.grossProfit >= 0 ? 'text-[var(--ejo-success)]' : 'text-[var(--ejo-error)]'} />

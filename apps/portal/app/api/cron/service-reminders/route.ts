@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronRequest } from '@/lib/cron-auth';
 import { setAuditActor } from '@ejo/database';
 import { getVehiclesNeedingServiceReminder } from '@/lib/service-reminders-core';
 
@@ -11,7 +12,7 @@ import { getVehiclesNeedingServiceReminder } from '@/lib/service-reminders-core'
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
-  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isCronRequest(authHeader)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   setAuditActor(null, 'cron:service-reminders');

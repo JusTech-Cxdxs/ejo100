@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { LoadingLink } from '@/components/LoadingLink';
 import { listCustomers } from '@/lib/actions/workshop';
@@ -19,6 +20,7 @@ export default async function WorkshopCustomersPage({
 }: {
   searchParams: Promise<{ q?: string; status?: string; error?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { q, status, error } = await searchParams;
   const customers = await listCustomers(q);
   const statusInfo = status ? STATUS_MESSAGES[status] : undefined;

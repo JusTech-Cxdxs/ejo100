@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listPartCategories, listPartTypes, getStoreBranchId, searchPartCategoriesForSelect, listAllPartCategoriesForSelect } from '@/lib/actions/store';
 import { createPartCategoryFormAction, createPartTypeFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -42,6 +43,7 @@ export default async function PartTypesPage({
 }: {
   searchParams: Promise<{ error?: string; status?: string }>;
 }) {
+  await guardAnyPage(['store.view'], '/inventory');
   const { error, status } = await searchParams;
   const branchId = await getStoreBranchId();
   const [categories, types] = await Promise.all([listPartCategories(branchId), listPartTypes(branchId)]);

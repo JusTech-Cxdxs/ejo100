@@ -31,6 +31,9 @@ Status keys: ✅ done and merged · 🔄 in progress · ⏳ next · ⬜ planned
 
 ---
 
+## V1 closure — 12 Oct 2026 (PR #8) ✅
+Final audit, hardening and E2E/load testing done. Recommendation: **READY WITH DOCUMENTED LIMITATIONS** — see [V1_CLOSURE_REPORT.md](V1_CLOSURE_REPORT.md) for the findings register, load baseline, metric register and the list of what is left.
+
 ## Version 1 scope (decided 7 Oct 2026)
 The first version is **what is already built, perfected** — for the presentation and heavy
 multi-user production testing. Order: application solid → analytics reviewed → then AI →

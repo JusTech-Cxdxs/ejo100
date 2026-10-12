@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { reportIncidentFormAction } from '@/lib/actions/security-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -7,6 +8,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { INCIDENT_TYPES, SEVERITY_LABEL } from '@/lib/security-rules';
 
 export default async function ReportIncidentPage({ searchParams }: { searchParams: Promise<{ error?: string; related?: string }> }) {
+  await guardAnyPage(['security.view'], '/security/incidents');
   const { error, related } = await searchParams;
   const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]';
   const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';

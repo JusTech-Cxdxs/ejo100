@@ -1,6 +1,7 @@
 'use server';
 
 import { claimed } from '@/lib/integrity';
+import { retryOnNumberClash } from '@/lib/integrity-core';
 import { prisma } from '@ejo/database';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
@@ -366,7 +367,8 @@ export async function setPartWarrantyPolicy(partId: string, policyId: string | n
     const policy = await prisma.warrantyPolicy.findFirst({ where: { ...(await orgOwned()), id: policyId }, select: { kind: true, isActive: true } });
     if (!policy || policy.kind !== 'PART' || !policy.isActive) throw new WarrantyActionError('Choose an active PART warranty policy.');
   }
-  const before = await prisma.part.findUnique({ where: { id: partId }, select: { warrantyPolicyId: true, name: true } });
+  // Only a part of this organisation's own catalogue.
+  const before = await prisma.part.findFirst({ where: { id: partId, ...(await partsOfMyOrganisation()) }, select: { warrantyPolicyId: true, name: true } });
   if (!before) throw new WarrantyActionError('Part not found.');
   if ((before.warrantyPolicyId ?? null) === (policyId ?? null)) throw new WarrantyActionError('That is already this part’s warranty.');
   const [fromPolicy, toPolicy] = await Promise.all([
@@ -556,14 +558,14 @@ export async function issuePartWarrantiesForSlip(slipId: string): Promise<{ issu
     if (line.part.trackingType === 'SERIALIZED') {
       for (const serial of line.issuedSerials) {
         if (line.warranties.some((w: { partSerialId: string | null }) => w.partSerialId === serial.id)) continue;
-        const warrantyNumber = await nextWarrantyNumber();
-        await prisma.warranty.create({ data: { ...base, warrantyNumber, partSerialId: serial.id, subjectDescription: `${partLabel} — serial ${serial.serialNumber}`, quantity: 1 } });
-        issued.push(warrantyNumber);
+        // Two releases at the same moment can pick the same number: the
+        // database refuses the second, which simply takes the next one.
+        const w = await retryOnNumberClash('warrantyNumber', async () => prisma.warranty.create({ data: { ...base, warrantyNumber: await nextWarrantyNumber(), partSerialId: serial.id, subjectDescription: `${partLabel} — serial ${serial.serialNumber}`, quantity: 1 }, select: { warrantyNumber: true } }));
+        issued.push(w.warrantyNumber);
       }
     } else if (line.warranties.length === 0) {
-      const warrantyNumber = await nextWarrantyNumber();
-      await prisma.warranty.create({ data: { ...base, warrantyNumber, subjectDescription: partLabel, quantity: line.quantityReleased ?? 0 } });
-      issued.push(warrantyNumber);
+      const w = await retryOnNumberClash('warrantyNumber', async () => prisma.warranty.create({ data: { ...base, warrantyNumber: await nextWarrantyNumber(), subjectDescription: partLabel, quantity: line.quantityReleased ?? 0 }, select: { warrantyNumber: true } }));
+      issued.push(w.warrantyNumber);
     }
   }
   if (issued.length > 0) {

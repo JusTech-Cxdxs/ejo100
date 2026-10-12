@@ -1,6 +1,8 @@
 'use server';
 
 import { authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE } from '@/lib/authz/server';
+import { withdrawOpenSourcing } from '@/lib/sourcing-lifecycle';
+import { ESCALATION_CLAIM_MS } from '@/lib/vehicle-service-cycle';
 import { jobCardActive, jobCardInside, serviceInside } from '@/lib/custody';
 
 
@@ -1053,7 +1055,10 @@ export async function createJobCard(input: CreateJobCardInput) {
     // supervisor or technician) — checked on the real service record, never on
     // the caller's word: same customer, same vehicle, not already escalated.
     const sv = await prisma.vehicleService.findFirst({
-      where: { serviceNumber: input.escalatedFromServiceNumber, customerId: input.customerId, vehicleId: input.vehicleId, escalatedToJobCardId: null },
+      // Only a service that escalateVehicleService has just CLAIMED for hand-over
+      // (its checks — status, no payments, not cancelled — already passed):
+      // never a direct call that skips them.
+      where: { serviceNumber: input.escalatedFromServiceNumber, customerId: input.customerId, vehicleId: input.vehicleId, escalatedToJobCardId: null, escalatedAt: { gte: new Date(Date.now() - ESCALATION_CLAIM_MS) } },
       select: { id: true },
     });
     if (!sv) throw new WorkshopActionError('That Vehicle Service cannot be escalated — refresh the page.');
@@ -1070,6 +1075,12 @@ export async function createJobCard(input: CreateJobCardInput) {
   if (!input.supervisorId) {
     throw new WorkshopActionError('A supervisor must be assigned to open a Job Card.');
   }
+  if (input.mileageAtCheckIn !== undefined && input.mileageAtCheckIn !== null && (!Number.isInteger(input.mileageAtCheckIn) || input.mileageAtCheckIn < 0 || input.mileageAtCheckIn > 5_000_000)) {
+    throw new WorkshopActionError('Enter the mileage as a whole number of kilometres.');
+  }
+  if (complaints.some((c) => c.length > 500)) {
+    throw new WorkshopActionError('Keep each complaint under 500 characters.');
+  }
 
   // The routed department is derived from the vehicle's own recorded
   // type — never taken from client input — so it's structurally
@@ -1078,10 +1089,14 @@ export async function createJobCard(input: CreateJobCardInput) {
   // The vehicle must belong to this organisation (never another's).
   const vehicle = await prisma.customerVehicle.findFirst({
     where: { id: input.vehicleId, customer: await orgWhere() },
-    select: { vehicleType: true, make: true, model: true, plateNumber: true },
+    select: { vehicleType: true, make: true, model: true, plateNumber: true, customerId: true },
   });
   if (!vehicle) {
     throw new WorkshopActionError('That vehicle could not be found.');
+  }
+  // The Job Card is always filed under the vehicle's own owner.
+  if (vehicle.customerId !== input.customerId) {
+    throw new WorkshopActionError('That vehicle belongs to a different customer — choose the customer again.');
   }
   if (!vehicle.vehicleType) {
     throw new WorkshopActionError(
@@ -1111,7 +1126,13 @@ export async function createJobCard(input: CreateJobCardInput) {
   // after a genuinely successful creation, never inside the retry loop
   // itself (which could otherwise fire it multiple times on retries).
   async function attemptCreate(jobNumber: string) {
-    return prisma.jobCard.create({
+    return prisma.$transaction(async (tx) => {
+    // One open Job Card per vehicle: the vehicle is locked while this is
+    // decided, so a double click (or two desks at once) opens exactly one.
+    await lockExisting(tx, 'customerVehicle', [input.vehicleId], 'That vehicle could not be found.');
+    const open = await tx.jobCard.findFirst({ where: { vehicleId: input.vehicleId, status: { notIn: [JobCardStatus.CANCELLED, JobCardStatus.CLOSED, JobCardStatus.CHECKED_OUT] } }, select: { jobNumber: true } });
+    if (open) throw new WorkshopActionError(`This vehicle already has an open Job Card (${open.jobNumber}) — continue on that one.`);
+    return tx.jobCard.create({
       data: {
         jobNumber,
         branchId,
@@ -1136,6 +1157,7 @@ export async function createJobCard(input: CreateJobCardInput) {
         supervisor: { select: { fullName: true, email: true } },
         complaints: { orderBy: { sequenceNumber: 'asc' } },
       },
+    });
     });
   }
 
@@ -1265,6 +1287,14 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
   }
+  // Only someone who may see this Job Card (its branch, their organisation)
+  // can move it at all — a refusal is audited and reads as "not available".
+  await authorizeOnJobCard('workshop.job_card.view', id, 'workshop.updateJobCardStatus');
+  // Re-saving the status it already has changes nothing (no reset of the
+  // collection clock, no overwritten collector, no false audit entry).
+  if (jobCard.status === status) {
+    return (await prisma.jobCard.findUnique({ where: { id } }))!;
+  }
   // Closed and Cancelled are no longer things this function ever sets
   // directly — both now go through their own real request → Manager
   // approve/decline flow (requestJobCardClose/approveCloseRequest,
@@ -1291,6 +1321,9 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   // until Finance has refunded all of it — so a refund can never be
   // forgotten once the customer has driven away.
   if (jobCard.status === JobCardStatus.CANCELLED && status === JobCardStatus.CHECKED_OUT) {
+    // Handing a cancelled vehicle back is the front desk's step for that
+    // branch (the same rule as a cancelled Vehicle Service hand-back).
+    await authorizeOnJobCard('workshop.job_card.create', id, 'workshop.handBackCancelledJobCard');
     const paid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
     const refunded = jobCard.refunds.reduce((sum: number, r: { amount: unknown }) => sum + Number(r.amount), 0);
     const owed = Math.round((paid - refunded) * 100) / 100;
@@ -2366,8 +2399,12 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
   if (!lineItem) {
     throw new WorkshopActionError('Estimate line item not found.');
   }
-  if (lineItem.estimate.status === 'MANAGER_APPROVED') {
-    throw new WorkshopActionError('This estimate has already been approved by the manager and can no longer be edited.');
+  // Once the supervisor has approved it, the Manager decides on exactly what
+  // the supervisor saw — no edits in between (the same rule as Vehicle Service).
+  if (lineItem.estimate.status === 'MANAGER_APPROVED' || lineItem.estimate.status === 'APPROVED') {
+    throw new WorkshopActionError(lineItem.estimate.status === 'APPROVED'
+      ? 'This estimate has been approved by the supervisor and is waiting for the Manager — it can no longer be edited. Ask the Manager to send it back if it needs changing.'
+      : 'This estimate has already been approved by the manager and can no longer be edited.');
   }
   const editor = await requireEstimateContributor(lineItem.estimate.jobCard);
   if (input.unitPrice !== undefined) {
@@ -2440,8 +2477,12 @@ export async function deleteEstimateLineItem(lineItemId: string): Promise<void> 
   if (!lineItem) {
     throw new WorkshopActionError('Estimate line item not found.');
   }
-  if (lineItem.estimate.status === 'MANAGER_APPROVED') {
-    throw new WorkshopActionError('This estimate has already been approved by the manager and can no longer be edited.');
+  // Once the supervisor has approved it, the Manager decides on exactly what
+  // the supervisor saw — no edits in between (the same rule as Vehicle Service).
+  if (lineItem.estimate.status === 'MANAGER_APPROVED' || lineItem.estimate.status === 'APPROVED') {
+    throw new WorkshopActionError(lineItem.estimate.status === 'APPROVED'
+      ? 'This estimate has been approved by the supervisor and is waiting for the Manager — it can no longer be edited. Ask the Manager to send it back if it needs changing.'
+      : 'This estimate has already been approved by the manager and can no longer be edited.');
   }
   const user = await requireUser();
   const isOwnEntry = lineItem.enteredById === user.id;
@@ -2852,6 +2893,7 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
     select: {
       id: true,
       status: true,
+      approvedById: true,
       jobCard: {
         select: {
           branchId: true,
@@ -2871,6 +2913,11 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
   }
   const user = await requireEligibleManager(estimate.jobCard.branchId, 'workshop.estimate.final_approve');
   await authorize('workshop.estimate.final_approve', { branchId: estimate.jobCard.branchId }, 'approveEstimateAsManager');
+  // Segregation of duties: the Manager's final approval is a second pair of
+  // eyes — never the same person who approved it as supervisor.
+  if (estimate.approvedById === user.id && !(await currentUserIsMasterAdmin())) {
+    throw new WorkshopActionError('You approved this estimate as its supervisor — another Manager gives the final approval.');
+  }
 
   claimed(await prisma.estimate.updateMany({
     where: { id: estimate.id, status: 'APPROVED' },
@@ -2921,6 +2968,27 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
  * Manager has approved. Deliberately not automatic: the Manager
  * approving means the numbers are right, not that anyone has decided
  * the customer should be told yet. That's this person's call. */
+/**
+ * The Manager sends a supervisor-approved estimate back for changes (with a
+ * reason): it returns to SUBMITTED, so the supervisor and technician can edit
+ * it and the supervisor approves again — the Manager always decides on exactly
+ * what the supervisor approved last.
+ */
+export async function returnEstimateForChanges(jobCardId: string, reason: string): Promise<void> {
+  const why = reason.trim().slice(0, 500);
+  if (why.length < 3) throw new WorkshopActionError('Say what needs to change.');
+  const estimate = await prisma.estimate.findUnique({ where: { jobCardId }, select: { id: true, status: true, jobCard: { select: { branchId: true, jobNumber: true, supervisorId: true, assignedTechnicianId: true } } } });
+  if (!estimate) throw new WorkshopActionError('This Job Card has no estimate yet.');
+  if (estimate.status !== 'APPROVED') throw new WorkshopActionError('Only an estimate waiting for the Manager can be sent back.');
+  const user = await requireEligibleManager(estimate.jobCard.branchId, 'workshop.estimate.final_approve');
+  await authorize('workshop.estimate.final_approve', { branchId: estimate.jobCard.branchId }, 'returnEstimateForChanges');
+  claimed(await prisma.estimate.updateMany({
+    where: { id: estimate.id, status: 'APPROVED' },
+    data: { status: 'SUBMITTED', approvedAt: null, approvedById: null },
+  }), 'This estimate was just approved or changed by someone else — refresh the page.');
+  await writeAuditLog({ userId: user.id, action: 'estimate.returned_for_changes', entityType: 'JobCard', entityId: jobCardId, metadata: { reason: why } });
+}
+
 export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promise<void> {
   const estimate = await prisma.estimate.findUnique({
     where: { jobCardId },
@@ -3629,6 +3697,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
     where: { id: requestId },
     select: {
       id: true,
+      requestedById: true,
       status: true,
       reason: true,
       jobCardId: true,
@@ -3659,11 +3728,16 @@ export async function approveCancellationRequest(requestId: string, decisionNote
     throw new WorkshopActionError('This Job Card has since been closed or checked out, so it can no longer be cancelled — decline this request.');
   }
   const user = await requireEligibleManager(request.jobCard.branchId, 'workshop.close.approve');
+  // Segregation of duties: whoever asked for this cannot also approve it.
+  if (request.requestedById === user.id && !(await currentUserIsMasterAdmin())) {
+    throw new WorkshopActionError('You asked for this — another Manager decides it.');
+  }
 
   // All-or-nothing, and each step only from the state it was decided on: a
   // close approved at the same moment, or a second click, makes this stop
   // with nothing changed — a Job Card can never end up both closed and
   // cancelled.
+  let withdrawn: Awaited<ReturnType<typeof withdrawOpenSourcing>> | undefined;
   await prisma.$transaction(async (tx) => {
     // The Job Card first: a close and a cancellation decided at the same
     // moment queue on it instead of deadlocking on each other's requests.
@@ -3687,6 +3761,9 @@ export async function approveCancellationRequest(requestId: string, decisionNote
       where: { jobCardId: request.jobCardId, status: 'PENDING' },
       data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: 'Superseded — the Job Card was cancelled.' },
     });
+    // Parts requests and outside purchases still in flight for it are withdrawn,
+    // and stock reserved for them goes back on the shelf.
+    withdrawn = await withdrawOpenSourcing(tx, { jobCardId: request.jobCardId }, user.id, 'Withdrawn automatically — the Job Card was cancelled.');
   });
 
   await writeAuditLog({
@@ -3694,7 +3771,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
     action: 'cancellation.approved',
     entityType: 'JobCard',
     entityId: request.jobCardId,
-    metadata: { reason: request.reason, notes: decisionNotes?.trim() || undefined },
+    metadata: { withdrawn: withdrawn && (withdrawn.slips.length || withdrawn.procurements.length) ? withdrawn : undefined,  reason: request.reason, notes: decisionNotes?.trim() || undefined },
   });
 
   try {
@@ -3954,6 +4031,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
     where: { id: requestId },
     select: {
       id: true,
+      requestedById: true,
       status: true,
       jobCardId: true,
       jobCard: {
@@ -3983,8 +4061,13 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
     throw new WorkshopActionError('This Job Card is no longer Ready for Collection, so it cannot be closed — decline this request.');
   }
   const user = await requireEligibleManager(request.jobCard.branchId, 'workshop.close.approve');
+  // Segregation of duties: whoever asked for this cannot also approve it.
+  if (request.requestedById === user.id && !(await currentUserIsMasterAdmin())) {
+    throw new WorkshopActionError('You asked for this — another Manager decides it.');
+  }
 
   // Same all-or-nothing, compare-and-set shape as approving a cancellation.
+  let withdrawn: Awaited<ReturnType<typeof withdrawOpenSourcing>> | undefined;
   await prisma.$transaction(async (tx) => {
     // The Job Card first: a close and a cancellation decided at the same
     // moment queue on it instead of deadlocking on each other's requests.
@@ -4007,6 +4090,9 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
       where: { jobCardId: request.jobCardId, status: 'PENDING' },
       data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: 'Superseded — the Job Card was closed.' },
     });
+    // Parts requests and outside purchases still in flight for it are withdrawn,
+    // and stock reserved for them goes back on the shelf.
+    withdrawn = await withdrawOpenSourcing(tx, { jobCardId: request.jobCardId }, user.id, 'Withdrawn automatically — the Job Card was closed.');
   });
 
   await writeAuditLog({
@@ -4014,7 +4100,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
     action: 'job_card.status_updated',
     entityType: 'JobCard',
     entityId: request.jobCardId,
-    metadata: { from: 'READY_FOR_COLLECTION', to: 'CLOSED', notes: decisionNotes?.trim() || undefined },
+    metadata: { withdrawn: withdrawn && (withdrawn.slips.length || withdrawn.procurements.length) ? withdrawn : undefined,  from: 'READY_FOR_COLLECTION', to: 'CLOSED', notes: decisionNotes?.trim() || undefined },
   });
 
   try {

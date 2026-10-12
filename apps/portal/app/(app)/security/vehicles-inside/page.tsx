@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listVehiclesInside } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -10,6 +11,7 @@ const TABS = [['all', 'All'], ['visitor', 'Visitor vehicles'], ['workshop', 'Wor
 const STAGE: Record<string, string> = { VISITOR: 'Visitor', WORKSHOP: 'In the workshop', CLEARED: 'Cleared to leave', DELIVERY: 'Delivery' };
 
 export default async function VehiclesInsidePage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  await guardAnyPage(['security.view'], '/security/vehicles-inside');
   const { type } = await searchParams;
   const all = await listVehiclesInside();
   const t = TABS.some(([k]) => k === type) ? type! : 'all';

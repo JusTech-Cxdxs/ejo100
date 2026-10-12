@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listPartRequestSlips } from '@/lib/actions/sourcing';
 import { getStoreBranchId } from '@/lib/actions/store';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -34,6 +35,7 @@ export default async function PartsRequestsPage({
 }: {
   searchParams: Promise<{ q?: string; type?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { q, type } = await searchParams;
   const branchId = await getStoreBranchId();
   const allSlips = await listPartRequestSlips(branchId, q);

@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { JobRef } from '@/components/JobRef';
 import { listVehiclesClearedToLeave } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -8,6 +9,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 export default async function ClearedToLeavePage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string }> }) {
+  await guardAnyPage(['security.view'], '/security/vehicles');
   const { q, kind } = await searchParams;
   const all = await listVehiclesClearedToLeave();
   const term = (q ?? '').trim().toLowerCase();

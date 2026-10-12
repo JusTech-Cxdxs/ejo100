@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listOverdue, getSecurityRoles } from '@/lib/actions/security';
 import { visitActionFormAction, extendExitPassFormAction, securityFollowUpFormAction, roadTestActionFormAction } from '@/lib/actions/security-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -16,6 +17,7 @@ const DONE: Record<string, string> = { extend: 'Time extended.', extended: 'Retu
 /** The Chief Security Officer's follow-up desk: who is overdue, by how
  * much — extend their time or record the follow-up, right here. */
 export default async function OverduePage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string; q?: string; show?: string }> }) {
+  await guardAnyPage(['security.view'], '/security/overdue');
   const { status, error, q, show } = await searchParams;
   const [all, roles] = await Promise.all([listOverdue(), getSecurityRoles()]);
   const term = (q ?? '').trim().toLowerCase();

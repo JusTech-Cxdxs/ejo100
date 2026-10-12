@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { serviceVisible } from '@/lib/authz/server';
+import { serviceVisible, guardAnyPage } from '@/lib/authz/server';
 import { listUnmatchedServiceEstimateStorePartLinesForVehicleService } from '@/lib/actions/vehicle-service-estimate';
 import { getFittingPartsForVehicle, getStoreBranchId } from '@/lib/actions/store';
 import { getVehicleService } from '@/lib/actions/vehicle-service';
@@ -35,6 +35,7 @@ export default async function VehicleServiceMatchingPage({
   params: Promise<{ vehicleServiceId: string }>;
   searchParams: Promise<{ error?: string; status?: string }>;
 }) {
+  await guardAnyPage(['store.view'], '/inventory');
   const { vehicleServiceId } = await params;
   // A stale, mistyped or out-of-reach id is simply "not found".
   if (!(await serviceVisible(vehicleServiceId, 'page'))) notFound();

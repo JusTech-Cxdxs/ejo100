@@ -1,6 +1,8 @@
 'use server';
 
 import { claimed, lockExisting } from '@/lib/integrity';
+import { retryOnNumberClash } from '@/lib/integrity-core';
+import { withdrawOpenSourcing } from '@/lib/sourcing-lifecycle';
 import { authorize, canSeeRecord, reachWhere, authorizeOnService, refuse, branchWithinReach, orgWhere, seeService, seeVehicle } from '@/lib/authz/server';
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
@@ -82,9 +84,15 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
     throw new VehicleServiceActionError("The selected supervisor is not eligible for this vehicle's Workshop department.");
   }
   const branchId = await getWorkshopBranchId();
-  const serviceNumber = await generateServiceNumber();
   const realComplaints = input.customerComplaints.map((c) => c.trim()).filter((c) => c.length > 0);
-  const service = await prisma.$transaction(async (tx) => {
+  // Two bookings saved at the same moment can pick the same number: the
+  // database refuses the second, which simply takes the next one.
+  const service = await retryOnNumberClash('serviceNumber', async () => { const serviceNumber = await generateServiceNumber(); return prisma.$transaction(async (tx) => {
+    // One active visit per vehicle at a time: locked while decided, so a
+    // double click (or two desks at once) books exactly one.
+    await lockExisting(tx, 'customerVehicle', [input.vehicleId], 'That vehicle could not be found.');
+    const open = await tx.vehicleService.findFirst({ where: { vehicleId: input.vehicleId, status: { in: ['SCHEDULED', 'CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'] } }, select: { serviceNumber: true } });
+    if (open) throw new VehicleServiceActionError(`This vehicle already has an open Vehicle Service (${open.serviceNumber}) — continue on that one.`);
     const created = await tx.vehicleService.create({
       data: {
         serviceNumber,
@@ -103,7 +111,8 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
       });
     }
     return created;
-  });
+  }); });
+  const serviceNumber = service.serviceNumber;
   await writeAuditLog({ userId: user.id, action: 'vehicle_service.created', entityType: 'VehicleService', entityId: service.id, metadata: { serviceNumber } });
 
   // Notify the assigned supervisor — best-effort, fail-soft, matching
@@ -1246,6 +1255,16 @@ export async function updateVehicleServiceStatus(
   if (!ladder[service.status]?.includes(newStatus)) {
     throw new VehicleServiceActionError(`A Vehicle Service currently ${service.status} cannot move directly to ${newStatus}.`);
   }
+  // Every move needs someone who may see this service (its branch, their organisation).
+  await authorizeOnService('workshop.job_card.view', serviceId, 'vehicleService.updateStatus');
+  if (newStatus === 'CHECKED_IN') {
+    // Receiving the vehicle is the front desk's step for that branch.
+    await authorizeOnService('workshop.job_card.create', serviceId, 'vehicleService.checkIn');
+    const km = input?.odometerAtService;
+    if (km !== undefined && (!Number.isInteger(km) || km < 0 || km > 5_000_000)) {
+      throw new VehicleServiceActionError('Enter the odometer reading as a whole number of kilometres.');
+    }
+  }
   if (newStatus === 'COMPLETED') await requireVehicleServiceStepRole(service, 'COMPLETE', user.id);
   if (newStatus === 'READY_FOR_COLLECTION') await requireVehicleServiceStepRole(service, 'SIGN_OFF', user.id);
   if (newStatus === 'COLLECTED') {
@@ -1287,7 +1306,9 @@ export async function updateVehicleServiceStatus(
     // The one real, shared "last known odometer" — the same field Job
     // Card check-in writes to, never a second competing value.
     if (newStatus === 'CHECKED_IN' && input?.odometerAtService !== undefined) {
-      await tx.customerVehicle.update({ where: { id: service.vehicleId }, data: { mileage: input.odometerAtService } });
+      // Only ever forward: a lower reading (a mistyped figure, a replaced
+      // instrument cluster) stays on this visit but never lowers the vehicle's.
+      await tx.customerVehicle.updateMany({ where: { id: service.vehicleId, OR: [{ mileage: null }, { mileage: { lt: input.odometerAtService } }] }, data: { mileage: input.odometerAtService } });
     }
   });
 
@@ -1637,6 +1658,7 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
   const paid = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
   // All-or-nothing, each step only from the state it was decided on — a
   // close approved at the same moment, or a second click, changes nothing.
+  let withdrawn: Awaited<ReturnType<typeof withdrawOpenSourcing>> | undefined;
   await prisma.$transaction(async (tx) => {
     // The service first, so a close and a cancellation queue rather than deadlock.
     await lockExisting(tx, 'vehicleService', [request.vehicleServiceId]);
@@ -1653,13 +1675,16 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
       where: { vehicleServiceId: request.vehicleServiceId, status: 'PENDING' },
       data: { status: 'DECLINED', decidedById: user.id, decidedAt: now, decisionNotes: 'Superseded — the Vehicle Service was cancelled.' },
     });
+    // Parts requests and outside purchases still in flight for it are withdrawn,
+    // and stock reserved for them goes back on the shelf.
+    withdrawn = await withdrawOpenSourcing(tx, { vehicleServiceId: request.vehicleServiceId }, user.id, 'Withdrawn automatically — the Vehicle Service was cancelled.');
   });
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.cancellation_approved',
     entityType: 'VehicleService',
     entityId: request.vehicleServiceId,
-    metadata: { reason: request.reason, notes: decisionNotes?.trim() || undefined, ...(paid > 0 ? { refundAuthorised: Math.round(paid * 100) / 100 } : {}) },
+    metadata: { withdrawn: withdrawn && (withdrawn.slips.length || withdrawn.procurements.length) ? withdrawn : undefined,  reason: request.reason, notes: decisionNotes?.trim() || undefined, ...(paid > 0 ? { refundAuthorised: Math.round(paid * 100) / 100 } : {}) },
   });
   // Cancelling a service stops the vehicle's service tracking — the
   // customer isn't reminded until a service is next completed.
@@ -1974,6 +1999,7 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
   }
   const user = await requireEligibleManager(service.branchId, 'workshop.close.approve');
   const now = new Date();
+  let withdrawn: Awaited<ReturnType<typeof withdrawOpenSourcing>> | undefined;
   await prisma.$transaction(async (tx) => {
     // The service first, so a close and a cancellation queue rather than deadlock.
     await lockExisting(tx, 'vehicleService', [request.vehicleServiceId]);
@@ -1990,13 +2016,16 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
       where: { vehicleServiceId: request.vehicleServiceId, status: 'PENDING' },
       data: { status: 'DECLINED', decidedById: user.id, decidedAt: now, decisionNotes: 'Superseded — the Vehicle Service was closed.' },
     });
+    // Parts requests and outside purchases still in flight for it are withdrawn,
+    // and stock reserved for them goes back on the shelf.
+    withdrawn = await withdrawOpenSourcing(tx, { vehicleServiceId: request.vehicleServiceId }, user.id, 'Withdrawn automatically — the Vehicle Service was closed.');
   });
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.status_updated',
     entityType: 'VehicleService',
     entityId: request.vehicleServiceId,
-    metadata: { serviceNumber: service.serviceNumber, from: 'READY_FOR_COLLECTION', to: 'CLOSED', notes: decisionNotes?.trim() || undefined },
+    metadata: { withdrawn: withdrawn && (withdrawn.slips.length || withdrawn.procurements.length) ? withdrawn : undefined,  serviceNumber: service.serviceNumber, from: 'READY_FOR_COLLECTION', to: 'CLOSED', notes: decisionNotes?.trim() || undefined },
   });
 
   try {

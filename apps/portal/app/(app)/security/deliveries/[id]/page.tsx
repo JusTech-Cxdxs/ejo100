@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getDelivery, getSecurityRoles, getSecurityHistory, canActForStore, listRecentGoodsReceipts } from '@/lib/actions/security';
 import { deliveryActionFormAction, securityFollowUpFormAction } from '@/lib/actions/security-form-handlers';
@@ -14,6 +15,7 @@ import { formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
 const DONE: Record<string, string> = { expected: 'Delivery announced — Security has been emailed.', arrived: 'Arrival recorded — the Store has been emailed.', arrive: 'Arrival recorded — the Store has been emailed.', receive: 'Received by the Store.', left: 'Delivery vehicle recorded leaving.', cancel: 'Delivery cancelled — Security has been emailed.', follow_up: 'Follow-up saved.' };
 
 export default async function DeliveryPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
+  await guardAnyPage(['security.view', 'store.grn.record'], '/security/deliveries');
   const { id } = await params;
   const { status, error } = await searchParams;
   const [d, roles, history, store, grns] = await Promise.all([getDelivery(id), getSecurityRoles(), getSecurityHistory('GateDelivery', id), canActForStore(), listRecentGoodsReceipts()]);

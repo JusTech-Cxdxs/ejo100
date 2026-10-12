@@ -1,4 +1,4 @@
-import { allows } from '@/lib/authz/server';
+import { allows, guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { LoadingLink } from '@/components/LoadingLink';
 
@@ -18,6 +18,7 @@ const sections = [
  * sourcing) are their own later phases, not yet built.
  */
 export default async function InventoryPage() {
+  await guardAnyPage(['store.view'], '/inventory');
   // Show only what this person may open (the same rule the pages enforce).
   const canAnalytics = await allows('analytics.inventory.view');
   const visible = sections.filter((s) => s.href !== '/inventory/analytics' || canAnalytics);

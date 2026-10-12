@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { listGoodsReceipts, getStoreBranchId } from '@/lib/actions/store';
 import { formatDateOnly } from '@/lib/utils/format-date';
@@ -16,6 +17,7 @@ export default async function GoodsReceiptsPage({
 }: {
   searchParams: Promise<{ status?: string; error?: string }>;
 }) {
+  await guardAnyPage(['store.view'], '/inventory');
   const { status, error } = await searchParams;
   const branchId = await getStoreBranchId();
   const receipts = await listGoodsReceipts(branchId);

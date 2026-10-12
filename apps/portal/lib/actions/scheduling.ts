@@ -1,6 +1,7 @@
 'use server';
 
 import { claimed, lockRows } from '@/lib/integrity';
+import { retryOnNumberClash } from '@/lib/integrity-core';
 import { cache } from 'react';
 import { after } from 'next/server';
 
@@ -180,10 +181,12 @@ function cleanGroup(g: VisitorGroupInput) {
  * meeting's time and length, hosted by the meeting's host. */
 async function createGroupBooking(appt: { id: string; title: string; startsAt: Date; endsAt: Date; ownerId: string }, g: ReturnType<typeof cleanGroup>, bookerId: string) {
   const [lead, ...members] = g.names;
-  const visitNumber = await nextNumber('VIS');
-  const v = await prisma.visit.create({
-    data: { visitNumber, status: 'EXPECTED', vehicleType: 'ON_FOOT', branchId: await getWorkshopBranchId(), registeredById: bookerId, appointmentId: appt.id, visitorName: lead!, partySize: g.names.length, memberNames: members, company: g.organisation, phone: g.phone, purpose: g.purpose, hostUserId: appt.ownerId, expectedAt: appt.startsAt, expectedDurationMinutes: Math.max(5, mins(appt.startsAt, appt.endsAt)) },
-  });
+  // Two bookings at the same moment can pick the same number: the second takes the next one.
+  const branchId = await getWorkshopBranchId();
+  const v = await retryOnNumberClash('visitNumber', async () => prisma.visit.create({
+    data: { visitNumber: await nextNumber('VIS'), status: 'EXPECTED', vehicleType: 'ON_FOOT', branchId, registeredById: bookerId, appointmentId: appt.id, visitorName: lead!, partySize: g.names.length, memberNames: members, company: g.organisation, phone: g.phone, purpose: g.purpose, hostUserId: appt.ownerId, expectedAt: appt.startsAt, expectedDurationMinutes: Math.max(5, mins(appt.startsAt, appt.endsAt)) },
+  }));
+  const visitNumber = v.visitNumber;
   const host = (await prisma.user.findUnique({ where: { id: appt.ownerId }, select: { fullName: true } }))?.fullName ?? '';
   await writeAuditLog({ userId: bookerId, action: 'visit.pre_registered', entityType: 'Visit', entityId: v.id, metadata: { visitNumber, visitor: lead, people: g.names.length, expectedAt: appt.startsAt } });
   await emailGate('new', v.id, appt, g, host, bookerId);
@@ -216,12 +219,13 @@ export async function createAppointment(input: AppointmentInput): Promise<{ id: 
   if (d.startsAt.getTime() < Date.now() - 5 * 60000) throw new SchedulingError('That time has already passed.');
   await assertRoomIsMine(d.roomId);
   await assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt);
-  const appointmentNumber = await nextNumber('APT');
   const branchId = await getWorkshopBranchId();
-  const appt = await bookExclusively([input.ownerId], [d.roomId], (db) => assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt, undefined, db), (tx) => tx.appointment.create({
+  // Two bookings at the same moment can pick the same number: the second takes the next one.
+  let appointmentNumber = '';
+  const appt = await retryOnNumberClash('appointmentNumber', async () => { appointmentNumber = await nextNumber('APT'); return bookExclusively([input.ownerId], [d.roomId], (db) => assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt, undefined, db), (tx) => tx.appointment.create({
     data: { appointmentNumber, branchId, title: d.title, agenda: d.agenda, ownerId: input.ownerId, createdById: a.userId, startsAt: d.startsAt, endsAt: d.endsAt, roomId: d.roomId, location: d.location, participants: { create: d.participantIds.map((userId) => ({ userId })) } },
     select: { id: true, owner: { select: { fullName: true } }, room: { select: { name: true } } },
-  }));
+  })); });
   if (d.visitors) await createGroupBooking({ id: appt.id, title: d.title, startsAt: d.startsAt, endsAt: d.endsAt, ownerId: input.ownerId }, d.visitors, a.userId);
   await writeAuditLog({ userId: a.userId, action: 'appointment.created', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber, title: d.title, startsAt: d.startsAt, onBehalfOf: input.ownerId !== a.userId ? appt.owner.fullName : undefined } });
   await sendLoggedEmail({ entityType: 'Appointment', entityId: appt.id, recipients: await recipientsFor(appt.id, a.userId), subject: `New appointment: ${d.title} — ${fmt(d.startsAt)}`, heading: 'You have a new appointment', lines: describe(d, appt.room?.name ?? null, appt.owner.fullName, d.visitors?.names ?? null), path: `/schedule/${appt.id}`, actorId: a.userId });
@@ -230,7 +234,7 @@ export async function createAppointment(input: AppointmentInput): Promise<{ id: 
 
 async function loadForChange(id: string) {
   const user = await requireUser();
-  const appt = await prisma.appointment.findUnique({ where: { id }, select: { id: true, status: true, appointmentNumber: true, ownerId: true, createdById: true, visitId: true, startsAt: true, endsAt: true, title: true } });
+  const appt = await prisma.appointment.findFirst({ where: { id, ...(await branchOwnedByMyOrganisation()) }, select: { id: true, status: true, appointmentNumber: true, ownerId: true, createdById: true, visitId: true, startsAt: true, endsAt: true, title: true } });
   if (!appt) throw new SchedulingError('Appointment not found.');
   const access = await getSchedulingAccess();
   const allowed = access.isAdmin || appt.ownerId === user.id || appt.createdById === user.id || access.owners.some((o) => o.id === appt.ownerId);
@@ -241,6 +245,7 @@ async function loadForChange(id: string) {
 export async function updateAppointment(id: string, input: AppointmentInput): Promise<void> {
   const { user, appt, access } = await loadForChange(id);
   if (appt.status !== 'SCHEDULED') throw new SchedulingError('Only a scheduled appointment can be changed.');
+  if (new Date(input.startsAt).getTime() < Date.now() - 5 * 60000 && new Date(input.startsAt).getTime() !== new Date(appt.startsAt).getTime()) throw new SchedulingError('That time has already passed.');
   if (!access.owners.some((o) => o.id === input.ownerId) && input.ownerId !== appt.ownerId) throw new SchedulingError('You cannot move it onto that calendar.');
   const d = clean(input);
   await assertRoomIsMine(d.roomId);
@@ -313,7 +318,7 @@ export async function listCalendar(from: Date, to: Date, ownerId?: string) {
   const ids = access.owners.map((o) => o.id);
   const scope = ownerId && ids.includes(ownerId) ? [ownerId] : ids;
   return prisma.appointment.findMany({
-    where: { startsAt: { gte: from, lt: to }, OR: [{ ownerId: { in: scope } }, ...(ownerId ? [] : [{ participants: { some: { userId: access.userId } } }])] },
+    where: { startsAt: { gte: from, lt: to }, ...(await branchOwnedByMyOrganisation()), OR: [{ ownerId: { in: scope } }, ...(ownerId ? [] : [{ participants: { some: { userId: access.userId } } }])] },
     orderBy: { startsAt: 'asc' },
     select: APPT_ROW,
   });
@@ -321,7 +326,8 @@ export async function listCalendar(from: Date, to: Date, ownerId?: string) {
 
 export async function getAppointment(id: string) {
   const access = await getSchedulingAccess();
-  const a = await prisma.appointment.findUnique({ where: { id }, include: { owner: { select: { id: true, fullName: true } }, createdBy: { select: { fullName: true } }, room: true, visits: { orderBy: { createdAt: 'asc' }, select: { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, memberNames: true, company: true, phone: true, purpose: true, checkedInAt: true, checkedOutAt: true } }, participants: { select: { user: { select: { id: true, fullName: true } } } } } });
+  // Only within this organisation (a Scheduling Admin manages their own organisation's calendars).
+  const a = await prisma.appointment.findFirst({ where: { id, ...(await branchOwnedByMyOrganisation()) }, include: { owner: { select: { id: true, fullName: true } }, createdBy: { select: { fullName: true } }, room: true, visits: { orderBy: { createdAt: 'asc' }, select: { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, memberNames: true, company: true, phone: true, purpose: true, checkedInAt: true, checkedOutAt: true } }, participants: { select: { user: { select: { id: true, fullName: true } } } } } });
   if (!a) return null;
   const visible = access.isAdmin || access.owners.some((o) => o.id === a.ownerId) || a.createdById === access.userId || a.participants.some((p: { user: { id: string } }) => p.user.id === access.userId);
   return visible ? a : null;
@@ -359,6 +365,7 @@ export async function saveRoom(input: { id?: string; name: string; location?: st
   const dup = await prisma.meetingRoom.findFirst({ where: { branchId, name: { equals: name, mode: 'insensitive' }, ...(input.id ? { NOT: { id: input.id } } : {}) }, select: { id: true } });
   if (dup) throw new SchedulingError('There is already a room with that name.');
   const data = { name, location: input.location?.trim() || null, capacity: input.capacity ?? null };
+  if (input.id && !(await prisma.meetingRoom.findFirst({ where: { id: input.id, ...(await branchOwnedByMyOrganisation()) }, select: { id: true } }))) throw new SchedulingError('That room no longer exists — refresh the page.');
   const room = input.id ? await prisma.meetingRoom.update({ where: { id: input.id }, data }) : await prisma.meetingRoom.create({ data: { ...data, branchId } });
   await writeAuditLog({ userId: a.userId, action: input.id ? 'meeting_room.updated' : 'meeting_room.created', entityType: 'MeetingRoom', entityId: room.id, metadata: { name } });
 }
@@ -366,6 +373,7 @@ export async function saveRoom(input: { id?: string; name: string; location?: st
 export async function setRoomActive(id: string, active: boolean): Promise<void> {
   const a = await getSchedulingAccess();
   if (!a.isAdmin) await authorize('schedule.manage', undefined, 'schedule.rooms', 'Only a Scheduling Admin can manage meeting rooms.');
+  if (!(await prisma.meetingRoom.findFirst({ where: { id, ...(await branchOwnedByMyOrganisation()) }, select: { id: true } }))) throw new SchedulingError('That room no longer exists — refresh the page.');
   const room = await prisma.meetingRoom.update({ where: { id }, data: { isActive: active } });
   await writeAuditLog({ userId: a.userId, action: active ? 'meeting_room.reopened' : 'meeting_room.closed', entityType: 'MeetingRoom', entityId: id, metadata: { name: room.name } });
 }
@@ -375,7 +383,7 @@ export async function setRoomActive(id: string, active: boolean): Promise<void> 
 export async function listDelegations() {
   const a = await getSchedulingAccess();
   return prisma.calendarDelegate.findMany({
-    where: a.isAdmin ? undefined : { OR: [{ ownerId: a.userId }, { delegateId: a.userId }] },
+    where: a.isAdmin ? { owner: await orgWhere() } : { OR: [{ ownerId: a.userId }, { delegateId: a.userId }] },
     orderBy: { createdAt: 'desc' },
     select: { id: true, owner: { select: { id: true, fullName: true } }, delegate: { select: { id: true, fullName: true } }, createdBy: { select: { fullName: true } }, createdAt: true },
   });
@@ -403,17 +411,27 @@ export async function removeDelegate(id: string): Promise<void> {
   const a = await getSchedulingAccess();
   const d = await prisma.calendarDelegate.findUnique({ where: { id }, select: { ownerId: true, owner: { select: { fullName: true } }, delegate: { select: { fullName: true } } } });
   if (!d) throw new SchedulingError('Not found.');
+  if (a.isAdmin && d.ownerId !== a.userId && !(await prisma.user.findFirst({ where: { id: d.ownerId, ...(await orgWhere()) }, select: { id: true } }))) throw new SchedulingError('Not found.');
   if (!a.isAdmin && d.ownerId !== a.userId) return refuse('schedule.manage', 'removeDelegate', 'Only the official or a Scheduling Admin can remove aides.');
   await prisma.calendarDelegate.delete({ where: { id } });
   await writeAuditLog({ userId: a.userId, action: 'calendar_delegate.removed', entityType: 'CalendarDelegate', entityId: id, metadata: { owner: d.owner.fullName, aide: d.delegate.fullName } });
+}
+
+let lastSafetyNet = 0;
+function reminderSafetyNet() {
+  if (Date.now() - lastSafetyNet < 5 * 60_000) return;
+  lastSafetyNet = Date.now();
+  after(() => sendDueAppointmentReminders().then(() => undefined).catch((err) => console.error('Reminder safety net failed', err)));
 }
 
 /** Dashboard reminders: this person's appointments today (host or
  * participant), still to happen. */
 export async function getSchedulingDashboardItems(): Promise<{ id: string; title: string; detail: string; url: string; createdAt: Date }[]> {
   const user = await requireUser();
-  // The reminder safety net runs AFTER the response is sent — nobody waits for it.
-  after(() => sendDueAppointmentReminders().then(() => undefined).catch((err) => console.error('Reminder safety net failed', err)));
+  // The reminder safety net runs AFTER the response is sent — nobody waits
+  // for it — and at most once every 5 minutes per server (the scheduled job
+  // is the real sender; this only covers a missed run).
+  reminderSafetyNet();
   const now = new Date();
   const end = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }) + 'T23:59:59+01:00');
   const cancelled = await prisma.appointment.findMany({
@@ -437,20 +455,22 @@ export async function getSchedulingDashboardItems(): Promise<{ id: string; title
  * person can see; the room grid covers every room. */
 export async function getSchedulingOverview(gridDate?: string) {
   const access = await getSchedulingAccess();
-  await sendDueAppointmentReminders().catch((err) => console.error('Reminder safety net failed', err));
+  reminderSafetyNet();
   const ids = access.owners.map((o) => o.id);
+  // Never beyond this organisation — rooms, bookings and calendars alike.
+  const org = await branchOwnedByMyOrganisation();
   const since = new Date(Date.now() - 95 * 86400000);
   const until = new Date(Date.now() + 60 * 86400000);
   const [appts, rooms] = await Promise.all([
     prisma.appointment.findMany({
-      where: { startsAt: { gte: since, lte: until }, OR: [{ ownerId: { in: ids } }, { participants: { some: { userId: access.userId } } }, ...(access.isAdmin ? [{}] : [])] },
+      where: { startsAt: { gte: since, lte: until }, ...org, OR: [{ ownerId: { in: ids } }, { participants: { some: { userId: access.userId } } }, ...(access.isAdmin ? [{}] : [])] },
       select: { id: true, appointmentNumber: true, title: true, status: true, startsAt: true, endsAt: true, roomId: true, location: true, ownerId: true, room: { select: { name: true } }, owner: { select: { fullName: true } }, visits: { select: { partySize: true } } },
     }),
-    prisma.meetingRoom.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, capacity: true, isActive: true } }),
+    prisma.meetingRoom.findMany({ where: org, orderBy: { name: 'asc' }, select: { id: true, name: true, capacity: true, isActive: true } }),
   ]);
   // The room grid must see every booking of every room, not only my calendars.
   const roomBookings = await prisma.appointment.findMany({
-    where: { roomId: { not: null }, status: { not: 'CANCELLED' }, startsAt: { gte: new Date(Date.now() - 2 * 86400000), lte: until } },
+    where: { roomId: { not: null }, ...org, status: { not: 'CANCELLED' }, startsAt: { gte: new Date(Date.now() - 2 * 86400000), lte: until } },
     select: { id: true, appointmentNumber: true, title: true, status: true, startsAt: true, endsAt: true, roomId: true, location: true, ownerId: true, room: { select: { name: true } }, owner: { select: { fullName: true } }, visits: { select: { partySize: true } } },
   });
   const map = (a: (typeof appts)[number]) => ({ id: a.id, number: a.appointmentNumber, title: a.title, status: a.status, startsAt: a.startsAt, endsAt: a.endsAt, roomId: a.roomId, roomName: a.room?.name ?? null, location: a.location, ownerId: a.ownerId, ownerName: a.owner.fullName, visitors: a.visits.reduce((n: number, v: { partySize: number }) => n + v.partySize, 0) });
@@ -475,6 +495,7 @@ export async function listAppointments(q?: string, show?: string) {
   const dayEnd = new Date(dayStart.getTime() + 86400000);
   const rows = await prisma.appointment.findMany({
     where: {
+      ...(await branchOwnedByMyOrganisation()),
       OR: [{ ownerId: { in: access.owners.map((o) => o.id) } }, { participants: { some: { userId: access.userId } } }, ...(access.isAdmin ? [{}] : [])],
       ...(t ? { AND: [{ OR: [{ appointmentNumber: { contains: t, mode: 'insensitive' as const } }, { title: { contains: t, mode: 'insensitive' as const } }, { location: { contains: t, mode: 'insensitive' as const } }, { owner: { fullName: { contains: t, mode: 'insensitive' as const } } }, { room: { name: { contains: t, mode: 'insensitive' as const } } }, { visits: { some: { visitorName: { contains: t, mode: 'insensitive' as const } } } }, { visits: { some: { company: { contains: t, mode: 'insensitive' as const } } } }] }] } : {}),
     },

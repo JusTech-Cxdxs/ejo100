@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listOnPremises } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -7,6 +8,7 @@ import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 
 export default async function OnPremisesPage() {
+  await guardAnyPage(['security.view'], '/security/on-premises');
   const rows = await listOnPremises();
   const now = new Date();
   const link = 'text-[var(--ejo-primary)] hover:underline';

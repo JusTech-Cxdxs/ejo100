@@ -1,4 +1,4 @@
-import { allows } from '@/lib/authz/server';
+import { allows, guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getRoadTest, getSecurityRoles, getSecurityHistory, canDecideRoadTest } from '@/lib/actions/security';
 import { roadTestActionFormAction, securityFollowUpFormAction } from '@/lib/actions/security-form-handlers';
@@ -24,6 +24,7 @@ const DONE: Record<string, string> = {
 };
 
 export default async function RoadTestPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
+  await guardAnyPage(['security.view', 'workshop.job_card.view'], '/security/road-tests');
   const { id } = await params;
   const { status, error } = await searchParams;
   const [r, roles, history, canDecide] = await Promise.all([getRoadTest(id), getSecurityRoles(), getSecurityHistory('RoadTestPermit', id), canDecideRoadTest(id)]);

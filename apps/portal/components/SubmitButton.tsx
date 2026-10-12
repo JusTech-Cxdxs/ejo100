@@ -19,16 +19,21 @@ export function SubmitButton({
   label,
   pendingLabel,
   className,
+  ariaLabel,
 }: {
   label: string;
   pendingLabel: string;
   className?: string;
+  /** For icon-like labels ("×"): what the button does, for screen readers. */
+  ariaLabel?: string;
 }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
       disabled={pending}
+      aria-label={ariaLabel}
+      aria-busy={pending || undefined}
       className={`${className ?? ''} inline-flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-70`}
     >
       {pending ? <EjoSpinner size={16} /> : null}

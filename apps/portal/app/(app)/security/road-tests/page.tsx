@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { JobRef } from '@/components/JobRef';
 import { listRoadTests, getSecurityRoles } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -10,6 +11,7 @@ import { LiveSearchInput } from '@/components/LiveSearchInput';
 const TABS = [['out', 'Out now'], ['approved', 'Approved — ready to go'], ['to_decide', 'To approve'], ['all', 'All']] as const;
 
 export default async function RoadTestsPage({ searchParams }: { searchParams: Promise<{ tab?: string; q?: string }> }) {
+  await guardAnyPage(['security.view', 'workshop.job_card.view'], '/security/road-tests');
   const { tab, q } = await searchParams;
   const roles = await getSecurityRoles();
   const scope = (TABS.some(([k]) => k === tab) ? tab : 'out') as (typeof TABS)[number][0];

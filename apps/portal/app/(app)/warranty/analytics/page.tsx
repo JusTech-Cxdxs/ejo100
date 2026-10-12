@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import type { ReactNode } from 'react';
 import { getWarrantyAnalytics } from '@/lib/actions/warranty-analytics';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -59,6 +60,7 @@ const td = 'px-3 py-2 text-sm text-[var(--ejo-text)]';
  * coming) and prescriptive (what to do now, linked to each record).
  */
 export default async function WarrantyAnalyticsPage() {
+  await guardPage('analytics.warranty.view', '/warranty/analytics');
   const a = await getWarrantyAnalytics();
   const d = a.descriptive;
   const g = a.diagnostic;

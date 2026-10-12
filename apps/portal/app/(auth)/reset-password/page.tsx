@@ -2,11 +2,11 @@
 
 import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
-import { portalConfig } from '@/lib/site-config';
 import { AuthShell } from '@/components/AuthShell';
+import { AuthNotice, authButton } from '@/components/AuthNotice';
+import { PasswordField, StrengthMeter, passwordStrength } from '@/components/PasswordField';
 import { EjoSpinner } from '@/components/EjoSpinner';
 
 export default function ResetPasswordPage() {
@@ -17,95 +17,82 @@ export default function ResetPasswordPage() {
   );
 }
 
+/**
+ * Set a new (or first) password from an emailed link. The link's token is
+ * checked by the auth service before this page opens; an expired or used
+ * link arrives here as ?error=INVALID_TOKEN and gets a clear way forward.
+ */
 function ResetPasswordForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const token = searchParams.get('token') ?? '';
+  const params = useSearchParams();
+  const token = params.get('token') ?? '';
+  const linkBroken = !token || params.get('error') === 'INVALID_TOKEN';
 
-  const [newPassword, setNewPassword] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [state, setState] = useState<'idle' | 'working' | 'done'>('idle');
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (state !== 'idle') return;
     setError(null);
-
-    if (!token) {
-      setError('This reset link is invalid or has expired. Please request a new one.');
-      return;
-    }
-
-    setLoading(true);
+    if (password.length < 8) { setError('Use at least 8 characters.'); return; }
+    if (passwordStrength(password).score < 2) { setError('Choose a stronger password — longer, with a mix of letters, numbers and a symbol.'); return; }
+    if (password !== confirm) { setError('The two passwords don’t match.'); return; }
+    setState('working');
     try {
-      const { error: resetError } = await authClient.resetPassword({ newPassword, token });
-
+      const { error: resetError } = await authClient.resetPassword({ newPassword: password, token });
       if (resetError) {
-        setError(resetError.message ?? 'Could not reset your password. Please request a new link.');
+        const code = (resetError as { code?: string }).code ?? '';
+        setError(/INVALID_TOKEN|EXPIRED/i.test(code) || resetError.status === 400
+          ? 'This link has expired or was already used. Ask for a new one below.'
+          : resetError.status === 429 ? 'Too many attempts. Wait a few minutes, then try again.'
+          : 'Could not set your password. Please try again.');
+        setState('idle');
         return;
       }
-
-      setSuccess(true);
-      setTimeout(() => router.push('/login'), 2000);
+      setState('done');
+      setTimeout(() => router.replace('/login?reset=done'), 1200);
     } catch {
-      setError('Could not reach the server. Please check your connection and try again.');
-    } finally {
-      setLoading(false);
+      setError('Could not reach the server. Check your connection and try again.');
+      setState('idle');
     }
+  }
+
+  if (linkBroken) {
+    return (
+      <AuthShell title="This link can’t be used" footer={<Link href="/login" className="block text-center text-sm font-medium text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)]">← Back to sign in</Link>}>
+        <div className="space-y-5">
+          <AuthNotice kind="error">The link has expired or was already used. Links to set a password work once — 1 hour for “forgot password”, 72 hours for a welcome email.</AuthNotice>
+          <Link href="/forgot-password" className={authButton}>Send me a new link</Link>
+        </div>
+      </AuthShell>
+    );
   }
 
   return (
     <AuthShell
-      eyebrow={portalConfig.poweredBy}
-      title="Set a new password"
-      footer={
-        <Link
-          href="/login"
-          className="block text-center text-sm font-medium text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)]"
-        >
-          Back to sign in
-        </Link>
-      }
+      title="Set your password"
+      subtitle="Choose a password only you know. You’ll use it with your work email to sign in."
+      footer={<Link href="/login" className="block text-center text-sm font-medium text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)]">← Back to sign in</Link>}
     >
-      {success ? (
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)]/10 px-3 py-3 text-center text-sm text-[var(--ejo-success)]"
-        >
-          Password updated. Redirecting you to sign in…
-        </motion.p>
+      {state === 'done' ? (
+        <AuthNotice kind="success">Your password is set. Taking you to sign in…</AuthNotice>
       ) : (
-        <form className="space-y-4" onSubmit={handleSubmit}>
+        <form className="space-y-5" onSubmit={handleSubmit} noValidate>
+          {/* Lets password managers save the new password against the right account. */}
+          <input type="text" name="username" autoComplete="username" className="hidden" aria-hidden="true" tabIndex={-1} readOnly />
           <div>
-            <label htmlFor="newPassword" className="mb-1.5 block text-sm font-medium text-[var(--ejo-text)]">
-              New password
-            </label>
-            <input
-              id="newPassword"
-              type="password"
-              required
-              minLength={8}
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-4 py-3 text-sm text-[var(--ejo-text)] outline-none focus:border-[var(--ejo-primary)] focus:ring-2 focus:ring-[var(--ejo-primary)]/20"
-            />
+            <PasswordField id="newPassword" label="New password" value={password} onChange={setPassword} autoComplete="new-password" minLength={8} autoFocus describedBy="pw-rules" />
+            <StrengthMeter password={password} />
+            {!password ? <p id="pw-rules" className="mt-1.5 text-xs text-[var(--ejo-text-muted)]">At least 8 characters. Longer is stronger — a short sentence works well.</p> : null}
           </div>
-
-          {error && (
-            <p className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)]/10 px-3 py-2.5 text-sm text-[var(--ejo-error)]">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-[var(--ejo-primary)] py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[1.01] hover:opacity-90 disabled:scale-100 disabled:opacity-60"
-          >
-            {loading && <EjoSpinner />}
-            {loading ? 'Updating…' : 'Update password'}
+          <PasswordField id="confirmPassword" label="Type it again" value={confirm} onChange={setConfirm} autoComplete="new-password" invalid={Boolean(confirm) && confirm !== password} />
+          {error ? <AuthNotice kind="error">{error}</AuthNotice> : null}
+          <button type="submit" disabled={state !== 'idle'} className={authButton}>
+            {state === 'working' ? <EjoSpinner /> : null}
+            {state === 'working' ? 'Saving…' : 'Set password'}
           </button>
         </form>
       )}

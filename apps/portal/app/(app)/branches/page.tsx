@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { getBranches } from '@/lib/actions/branches';
 import { LoadingLink } from '@/components/LoadingLink';
 
@@ -10,11 +11,15 @@ import { LoadingLink } from '@/components/LoadingLink';
  * different blocks on the same document).
  */
 export default async function BranchesPage() {
+  await guardPage('admin.structure.manage', '/branches');
   const branches = await getBranches();
 
   return (
     <div className="p-8">
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Branches</h1>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Branches</h1>
+        <LoadingLink href="/structure" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Organisation structure · open a branch →</LoadingLink>
+      </div>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
         Every real physical facility this platform operates from, and the real address and hotlines each one prints
         on its own documents.

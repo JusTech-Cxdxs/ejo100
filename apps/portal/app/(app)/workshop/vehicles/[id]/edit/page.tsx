@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { listPartsFittedToVehicle, getVehicleCoveredValue } from '@/lib/actions/vehicle-history';
 import { computeVehicleIntelligence } from '@/lib/vehicle-intelligence';
@@ -20,9 +21,9 @@ import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { AuditTrail } from '@/components/AuditTrail';
-import { VehicleMileageTrendChart } from '@/components/VehicleMileageTrendChart';
-import { VehicleVisitHistoryChart } from '@/components/VehicleVisitHistoryChart';
-import { VehicleFindingsBreakdownChart } from '@/components/VehicleFindingsBreakdownChart';
+import { VehicleMileageTrendChart } from '@/components/LazyCharts';
+import { VehicleVisitHistoryChart } from '@/components/LazyCharts';
+import { VehicleFindingsBreakdownChart } from '@/components/LazyCharts';
 import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateTime, formatDateTimeCompact, formatDateOnly } from '@/lib/utils/format-date';
 
@@ -77,6 +78,7 @@ export default async function VehiclePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string; edit?: string; status?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { id } = await params;
   const { error, edit, status } = await searchParams;
   // Everything on this page needs only the vehicle's id — one round, all at once.

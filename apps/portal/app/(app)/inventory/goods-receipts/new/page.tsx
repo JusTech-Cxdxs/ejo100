@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { listParts, getStoreBranchId } from '@/lib/actions/store';
 import { recordGoodsReceiptFormAction } from '@/lib/actions/store-form-handlers';
@@ -22,6 +23,7 @@ export default async function NewGoodsReceiptPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  await guardAnyPage(['store.view'], '/inventory');
   const { error } = await searchParams;
   const branchId = await getStoreBranchId();
   const parts = await listParts(branchId);

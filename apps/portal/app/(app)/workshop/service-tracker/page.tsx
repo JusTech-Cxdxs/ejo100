@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { getServiceTracker } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { attendToOverdueVehicleFormAction, sendManualServiceReminderFormAction, runServiceRemindersNowFormAction } from '@/lib/actions/vehicle-service-form-handlers';
@@ -27,6 +28,7 @@ export default async function ServiceTrackerPage({
 }: {
   searchParams: Promise<{ filter?: string; q?: string; type?: string; status?: string; error?: string; sent?: string; evaluated?: string; failed?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { filter: rawFilter, q, type: rawType, status, error, sent, evaluated, failed } = await searchParams;
   const vehicleType = rawType === 'PASSENGER' || rawType === 'COMMERCIAL' ? rawType : null;
   const filter: Filter = (['overdue', 'due_soon', 'on_track', 'in_workshop', 'attended', 'lapsed'] as const).includes(rawFilter as never) ? (rawFilter as Filter) : 'all';

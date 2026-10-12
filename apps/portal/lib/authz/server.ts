@@ -41,7 +41,9 @@ export const getPrincipal = cache(async (): Promise<Principal> => {
   // A staff account not yet placed in an organisation, while the platform has
   // exactly one: it belongs to that one (the v23 SQL makes this permanent).
   const organisationId = u?.organisationId ?? (isSuperAdmin ? null : await soleOrganisationId());
-  const orgBranchIds = !isSuperAdmin && organisationId ? await branchesOfOrganisation(organisationId) : undefined;
+  // Fails CLOSED: a staff account with no organisation (once there is more than
+  // one organisation) reaches no branch at all — never "every branch".
+  const orgBranchIds = isSuperAdmin ? undefined : organisationId ? await branchesOfOrganisation(organisationId) : [];
   const roles = u?.roles ?? [];
   // Database grants can ADD permissions the catalogue defines (scope: branch).
   const extra: Partial<Record<PermissionKey, 'BRANCH'>> = {};
@@ -63,9 +65,10 @@ export async function can(key: PermissionKey, record?: RecordContext): Promise<D
 }
 
 /** Record a refusal in the audit trail — a security signal, never noise for users. */
-async function logDenied(userId: string, key: PermissionKey, where: string, reason: string) {
+// Once per request: a page and its layout both guard, and render together.
+const logDenied = cache(async (userId: string, key: PermissionKey, where: string, reason: string) => {
   await writeAuditLog({ userId, action: 'access.denied', entityType: 'Access', entityId: where.slice(0, 120), metadata: { permission: key, reason } }).catch(() => undefined);
-}
+});
 
 /** Pages / layouts: refuse on the SERVER (pasted links included). */
 export async function guardPage(key: PermissionKey, where: string): Promise<void> {
@@ -203,15 +206,20 @@ export async function branchWithinReach(key: PermissionKey, branchId: string): P
 }
 
 /** Assignment-aware check on a Vehicle Service, using the record itself (never the browser's word). */
+/** The parent record's branch and people — read once per request, however
+ * many panels of a page check it (a Job Card page asks ~10 times). */
+const jobCardParent = cache(async (id: string) => prisma.jobCard.findUnique({ where: { id }, select: { branchId: true, supervisorId: true, assignedTechnicianId: true, createdById: true } }));
+const serviceParent = cache(async (id: string) => prisma.vehicleService.findUnique({ where: { id }, select: { branchId: true, supervisorId: true, assignedTechnicianId: true, createdById: true } }));
+
 export async function authorizeOnService(key: PermissionKey, serviceId: string, where: string): Promise<void> {
-  const v = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { branchId: true, supervisorId: true, assignedTechnicianId: true, createdById: true } });
+  const v = await serviceParent(serviceId);
   if (!v) throw new Error('This record no longer exists — refresh the page.');
   await authorize(key, { branchId: v.branchId, assigneeIds: [v.supervisorId, v.assignedTechnicianId], ownerIds: [v.createdById] }, where);
 }
 
 /** Assignment-aware check on a Job Card, using the record itself. */
 export async function authorizeOnJobCard(key: PermissionKey, jobCardId: string, where: string): Promise<void> {
-  const j = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { branchId: true, supervisorId: true, assignedTechnicianId: true, createdById: true } });
+  const j = await jobCardParent(jobCardId);
   if (!j) throw new Error('This record no longer exists — refresh the page.');
   await authorize(key, { branchId: j.branchId, assigneeIds: [j.supervisorId, j.assignedTechnicianId], ownerIds: [j.createdById] }, where);
 }
@@ -227,12 +235,12 @@ export const NOT_AVAILABLE = 'This record is not available — it may have been 
  * Job Cards / Vehicle Services). Refusals are audited as access.denied.
  */
 export async function seeJobCard(jobCardId: string, where: string, key: PermissionKey = 'workshop.job_card.view'): Promise<void> {
-  const j = jobCardId ? await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { branchId: true } }) : null;
+  const j = jobCardId ? await jobCardParent(jobCardId) : null;
   if (!j || !(await canSeeRecord(key, { branchId: j.branchId }, where))) throw new Error(NOT_AVAILABLE);
 }
 
 export async function seeService(serviceId: string, where: string, key: PermissionKey = 'workshop.job_card.view'): Promise<void> {
-  const v = serviceId ? await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { branchId: true } }) : null;
+  const v = serviceId ? await serviceParent(serviceId) : null;
   if (!v || !(await canSeeRecord(key, { branchId: v.branchId }, where))) throw new Error(NOT_AVAILABLE);
 }
 
@@ -288,11 +296,11 @@ export const branchOwnedByMyOrganisation = partsOfMyOrganisation;
  * Lets a page show "not found" up front for a stale, mistyped or
  * out-of-reach id, before loading its parts (each of which checks again). */
 export async function jobCardVisible(id: string, where: string): Promise<boolean> {
-  const j = id ? await prisma.jobCard.findUnique({ where: { id }, select: { branchId: true } }) : null;
+  const j = id ? await jobCardParent(id) : null;
   return Boolean(j) && canSeeRecord('workshop.job_card.view', { branchId: j!.branchId }, where);
 }
 
 export async function serviceVisible(id: string, where: string): Promise<boolean> {
-  const v = id ? await prisma.vehicleService.findUnique({ where: { id }, select: { branchId: true } }) : null;
+  const v = id ? await serviceParent(id) : null;
   return Boolean(v) && canSeeRecord('workshop.job_card.view', { branchId: v!.branchId }, where);
 }

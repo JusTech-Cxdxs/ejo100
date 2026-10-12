@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getCoveredAmountsForClaim } from '@/lib/actions/estimate-billing';
 import { pluralize } from '@/lib/utils/pluralize';
@@ -15,6 +16,7 @@ import { coverageLabel } from '@/lib/warranty-claim-status';
 /** Start a claim against one warranty. A draft can be incomplete — the
  * readiness check on the claim page says what's still needed. */
 export default async function NewWarrantyClaimPage({ searchParams }: { searchParams: Promise<{ warrantyId?: string; jobCardId?: string; error?: string }> }) {
+  await guardAnyPage(['warranty.view'], '/warranty');
   const { warrantyId, jobCardId, error } = await searchParams;
   if (!warrantyId) notFound();
   const w = await getWarranty(warrantyId);

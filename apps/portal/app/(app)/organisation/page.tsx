@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { getOrganisation } from '@/lib/actions/organisation';
 import { updateOrganisationFormAction } from '@/lib/actions/organisation-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -21,6 +22,7 @@ import { EditIcon, BuildingIcon } from '@/components/icons';
  * sitting open and editable by accident.
  */
 export default async function OrganisationPage({ searchParams }: { searchParams: Promise<{ error?: string; status?: string; edit?: string }> }) {
+  await guardPage('admin.organisation.manage', '/organisation');
   const { error, status, edit } = await searchParams;
   const organisation = await getOrganisation();
   const isEditing = edit === 'true';

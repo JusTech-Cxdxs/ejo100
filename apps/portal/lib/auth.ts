@@ -1,7 +1,11 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { prisma } from '@ejo/database';
+import { after } from 'next/server';
 import { sendEmail } from './email';
+import { renderPasswordResetEmail } from './email-templates/password-reset';
+import { portalConfig } from './site-config';
+import { portalBaseUrl } from './portal-url';
 
 /**
  * Employee/Admin authentication (Better Auth). Deliberately scoped to
@@ -33,17 +37,11 @@ export const auth = betterAuth({
     disableSignUp: true,
     requireEmailVerification: false, // set true once verification is confirmed working end-to-end
     sendResetPassword: async ({ user, url }) => {
-      // Also sent when an administrator adds a new staff member: they set
-      // their own password from this link (no password is ever emailed).
+      // The branded "set a new password" email (lib/email-templates/password-reset.ts).
       const name = (user as { fullName?: string; name?: string }).fullName ?? user.name ?? '';
-      await sendEmail(
-        user.email,
-        'Set your EJO 100 password',
-        `<p>Hello ${escapeHtml(name)},</p>
-         <p>Use the link below to set your EJO 100 Enterprise Platform password. It expires in 1 hour — if it has expired, use "Forgot password" on the sign-in page to get a new one.</p>
-         <p><a href="${url}">Set my password</a></p>
-         <p>If you were not expecting this, you can safely ignore this email.</p>`,
-      );
+      const base = portalBaseUrl();
+      const { subject, html } = renderPasswordResetEmail({ fullName: name, url, companyName: portalConfig.organisationName, logoUrl: `${base}/images/logo/logo.png` });
+      await sendEmail(user.email, subject, html);
     },
   },
 
@@ -91,7 +89,7 @@ export const auth = betterAuth({
     },
   },
 
-  // Brute-force protection: at most 5 sign-in attempts a minute per client,
+  // Brute-force protection: sign-in attempts are limited per address (below),
   // and 100 auth requests a minute overall. (Per server instance; a WAF /
   // shared store adds a global limit in front — see the platform blueprint.)
   rateLimit: {
@@ -99,7 +97,10 @@ export const auth = betterAuth({
     window: 60,
     max: 100,
     customRules: {
-      '/sign-in/email': { window: 60, max: 5 },
+      // Per internet address: a whole office signs in from ONE address at
+      // 8 am, so 20 a minute (one guess every 3 s is still useless for
+      // brute force). Tunable with AUTH_SIGNIN_PER_MINUTE (tests raise it).
+      '/sign-in/email': { window: 60, max: Number(process.env.AUTH_SIGNIN_PER_MINUTE) || 20 },
       '/sign-up/email': { window: 60, max: 5 },
       '/forget-password': { window: 300, max: 3 },
       '/reset-password': { window: 300, max: 5 },
@@ -107,6 +108,14 @@ export const auth = betterAuth({
   },
 
   advanced: {
+    // Emails (e.g. "forgot password") are sent AFTER the response: the answer
+    // takes the same time whether or not the email has an account, so timing
+    // never reveals who works here.
+    backgroundTasks: {
+      handler: (task: Promise<unknown>) => {
+        try { after(task); } catch { void task.catch(() => undefined); }
+      },
+    },
     // Better Auth's Prisma adapter maps model names 1:1 to our schema's
     // User / Session / Account / Verification models — no field mapping
     // override needed as long as those model names stay as-is.

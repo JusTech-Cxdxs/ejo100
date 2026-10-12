@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { seeJobCard, seeService } from '@/lib/authz/server';
+import { seeJobCard, seeService, guardAnyPage } from '@/lib/authz/server';
 import { prisma } from '@ejo/database';
 import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { requireUser } from '@/lib/actions/workshop';
@@ -15,6 +15,7 @@ import { durationText } from '@/lib/security-rules';
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 
 export default async function NewRoadTestPage({ searchParams }: { searchParams: Promise<{ jobCardId?: string; vehicleServiceId?: string; error?: string }> }) {
+  await guardAnyPage(['security.view', 'workshop.job_card.view'], '/security/road-tests');
   const staffForCompanions = await loadStaffOptions();
   const { jobCardId, vehicleServiceId, error } = await searchParams;
   await requireUser();

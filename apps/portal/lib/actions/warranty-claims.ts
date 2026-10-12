@@ -1,6 +1,7 @@
 'use server';
 
 import { claimed as stillAsSeen } from '@/lib/integrity';
+import { retryOnNumberClash } from '@/lib/integrity-core';
 import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
@@ -140,10 +141,11 @@ export async function createWarrantyClaim(warrantyId: string, input: WarrantyCla
   const partReturnRequired = data.partReturnRequired ?? warranty.provider.partRetentionDays !== null;
   if (!data.complaint) throw new WarrantyClaimError('Describe the complaint to start a claim.');
   const deadlineAt = warranty.provider.claimSubmissionDays ? new Date(data.failureDate.getTime() + warranty.provider.claimSubmissionDays * 86400000) : null;
-  const claimNumber = await nextClaimNumber();
-  const claim = await prisma.warrantyClaim.create({
-    data: { ...data, remedy, partReturnRequired, partReturnStatus: partReturnRequired ? 'AWAITING' : null, claimNumber, warrantyId: warranty.id, providerId: warranty.providerId, customerId: warranty.customerId, vehicleId: warranty.vehicleId, deadlineAt, createdById: user.id },
-  });
+  // Two claims saved at the same moment can pick the same number: the second takes the next one.
+  const claim = await retryOnNumberClash('claimNumber', async () => prisma.warrantyClaim.create({
+    data: { ...data, remedy, partReturnRequired, partReturnStatus: partReturnRequired ? 'AWAITING' : null, claimNumber: await nextClaimNumber(), warrantyId: warranty.id, providerId: warranty.providerId, customerId: warranty.customerId, vehicleId: warranty.vehicleId, deadlineAt, createdById: user.id },
+  }));
+  const claimNumber = claim.claimNumber;
   await audit(user.id, claim.id, 'created', { claimNumber, warrantyNumber: warranty.warrantyNumber, claimedAmount: data.claimedAmount });
   await writeAuditLog({ userId: user.id, action: 'warranty.claim_opened', entityType: 'Warranty', entityId: warranty.id, metadata: { claimNumber } });
   return { id: claim.id, claimNumber };

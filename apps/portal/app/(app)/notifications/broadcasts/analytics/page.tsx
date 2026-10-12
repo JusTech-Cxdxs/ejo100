@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { getBroadcastAnalytics } from '@/lib/actions/notifications';
 import { LoadingLink } from '@/components/LoadingLink';
 import { BROADCAST_CATEGORY } from '@/lib/notification-rules';
@@ -8,6 +9,7 @@ const AUDIENCE: Record<string, string> = { ALL: 'Everyone', BRANCH: 'Branches', 
 const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 
 export default async function BroadcastAnalyticsPage() {
+  await guardPage('notifications.broadcast.send', '/notifications/broadcasts/analytics');
   const a = await getBroadcastAnalytics();
   const t = a.totals;
   const maxCat = Math.max(1, ...a.byCategory.map((c) => c.count));
@@ -26,7 +28,7 @@ export default async function BroadcastAnalyticsPage() {
     <div className="w-full p-4 sm:p-8">
       <LoadingLink href="/notifications/broadcasts" className="mb-2 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Broadcasts</LoadingLink>
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Broadcast analytics</h1>
-      <p className="mb-6 mt-1 text-sm text-[var(--ejo-text-muted)]">Last 12 months — how many broadcasts went out, who they reached, who read them and how email delivery went.</p>
+      <p className="mb-6 mt-1 text-sm text-[var(--ejo-text-muted)]">Last 12 months (monthly chart: last 6) — how many broadcasts went out, who they reached, who read them and how email delivery went.</p>
 
       {a.actions.length ? (
         <div className="mb-6 space-y-2">

@@ -4,18 +4,19 @@ import { prisma } from '@ejo/database';
  * The cheap "has anything changed?" signal behind live pages and the bell.
  *
  * Scoped to ONE organisation: another company's activity never makes this
- * organisation's pages refresh. Rows with no organisation (system work) still
- * count, so nothing that concerns everyone is missed.
+ * organisation's pages refresh. (Broadcasts are checked separately, so a
+ * scheduled broadcast going live is still noticed.)
  *
  * Many people in the same organisation ask the same question every few
  * seconds, so the answer is shared for a moment per server instance —
  * at most one pair of tiny indexed queries per organisation per PULSE_MEMO_MS.
  */
-const PULSE_MEMO_MS = 2000;
+const PULSE_MEMO_MS = 5000;
 const memo = new Map<string, { at: number; value: Promise<string> }>();
 
 async function compute(organisationId: string | null): Promise<string> {
-  const orgFence = organisationId ? { OR: [{ organisationId }, { organisationId: null }] } : {};
+  // Organisation rows only: served by the (organisationId, createdAt) index.
+  const orgFence = organisationId ? { organisationId } : {};
   const [a, b] = await Promise.all([
     prisma.auditLog.findFirst({
       where: { ...orgFence, NOT: [{ entityType: { startsWith: 'db:' } }, { action: { endsWith: '.failed' } }, { action: 'system.job_run' }] },

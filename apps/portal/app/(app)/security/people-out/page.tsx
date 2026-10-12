@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listPeopleOut } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -7,6 +8,7 @@ import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 
 export default async function PeopleOutPage() {
+  await guardAnyPage(['security.view'], '/security/people-out');
   const rows = await listPeopleOut();
   const now = new Date();
   const people = rows.reduce((s, p) => s + p.people.length, 0);

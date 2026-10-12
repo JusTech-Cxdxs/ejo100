@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listExternalProcurementRequests } from '@/lib/actions/sourcing';
 import { getStoreBranchId } from '@/lib/actions/store';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -29,6 +30,7 @@ export default async function ExternalProcurementPage({
 }: {
   searchParams: Promise<{ q?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { q } = await searchParams;
   const branchId = await getStoreBranchId();
   const requests = await listExternalProcurementRequests(branchId, q);

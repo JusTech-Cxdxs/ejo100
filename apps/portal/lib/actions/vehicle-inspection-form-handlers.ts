@@ -43,7 +43,10 @@ export async function skipVehicleInspectionFormAction(formData: FormData) {
  * than two near-duplicate handlers. */
 export async function cancelVehicleInspectionFormAction(formData: FormData) {
   const vehicleServiceId = str(formData, 'vehicleServiceId');
-  const redirectTo = str(formData, 'redirectTo') || `/workshop/vehicle-service/${vehicleServiceId}/inspection`;
+  // Only ever back inside the workshop — never an address taken as-is from the form.
+  const fallback = `/workshop/vehicle-service/${vehicleServiceId}/inspection`;
+  const raw = str(formData, 'redirectTo');
+  const redirectTo = raw.startsWith('/workshop/') && !raw.startsWith('//') && !raw.includes('://') && !raw.includes('\\') ? (raw.split('?')[0] ?? fallback) : fallback;
   try {
     await cancelVehicleInspection(vehicleServiceId, str(formData, 'reason') || undefined);
   } catch (err) {

@@ -37,7 +37,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect('/signed-out');
   }
 
-  const user = await prisma.user.findUnique({
+  // The person and their permissions are read in parallel (one round trip, not two).
+  const [userResult, principalResult] = await Promise.allSettled([prisma.user.findUnique({
     where: { id: session.user.id },
     select: {
       fullName: true,
@@ -46,15 +47,20 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       organisation: { select: { name: true } },
       roles: { select: { role: { select: { name: true } } }, take: 1 },
     },
-  });
+  }), getPrincipal()]);
   // Deactivated (or removed) while signed in: out, immediately.
+  if (userResult.status === 'rejected') throw userResult.reason;
+  const user = userResult.value;
   if (!user?.isActive) redirect('/signed-out?reason=inactive');
+  // (A switched-off person never reaches this: their permissions are not loaded.)
+  if (principalResult.status === 'rejected') throw principalResult.reason;
+  const principal = principalResult.value;
 
 
   return (
     <NotificationProvider userId={session?.user?.id ?? null}>
     <div className="flex h-screen overflow-hidden">
-      <Sidebar items={navigationFor(await getPrincipal())} organisationName={user.organisation?.name ?? portalConfig.companyName} />
+      <Sidebar items={navigationFor(principal)} organisationName={user.organisation?.name ?? portalConfig.companyName} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar
           userName={user?.fullName ?? 'Unknown user'}

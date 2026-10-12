@@ -1,4 +1,4 @@
-import { orgWhere } from '@/lib/authz/server';
+import { orgWhere, guardAnyPage } from '@/lib/authz/server';
 import { prisma } from '@ejo/database';
 import { durationLabel } from '@/lib/warranty-state';
 import { requireUser } from '@/lib/actions/workshop';
@@ -19,6 +19,7 @@ import { LiveSearchInput } from '@/components/LiveSearchInput';
  * it before it covers anything.
  */
 export default async function RegisterWarrantyPage({ searchParams }: { searchParams: Promise<{ vehicleId?: string; q?: string; error?: string }> }) {
+  await guardAnyPage(['warranty.view'], '/warranty');
   const { vehicleId, q, error } = await searchParams;
   await requireUser();
   // Only this organisation's vehicles.

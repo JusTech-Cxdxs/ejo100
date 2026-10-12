@@ -1,4 +1,4 @@
-import { allows } from '@/lib/authz/server';
+import { allows, guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getVehicleGateExit, getVehicleExitHistory } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -9,6 +9,7 @@ import { PrintMenu } from '@/components/print/PrintMenu';
 import { formatDateTime } from '@/lib/utils/format-date';
 
 export default async function VehicleExitPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string }> }) {
+  await guardAnyPage(['security.view'], '/security/vehicles');
   const { id } = await params;
   const { status } = await searchParams;
   const [x, history] = await Promise.all([getVehicleGateExit(id), getVehicleExitHistory(id)]);

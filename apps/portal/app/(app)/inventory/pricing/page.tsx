@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { getStoreBranchId, getPricingAlertSummary, listPricingAlerts } from '@/lib/actions/store';
 import { syncPartPriceToTargetMarginFormAction, dismissPricingAlertFormAction } from '@/lib/actions/store-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -33,6 +34,7 @@ export default async function PricingCommandCenterPage({
 }: {
   searchParams: Promise<{ branchId?: string; severity?: string; status?: string; error?: string; status_msg?: string }>;
 }) {
+  await guardAnyPage(['store.view'], '/inventory');
   const params = await searchParams;
   const defaultBranchId = await getStoreBranchId();
   const branchId = params.branchId ?? defaultBranchId;

@@ -3,6 +3,7 @@ import { sendDueAppointmentReminders, sendMorningDigest } from '@/lib/appointmen
 import { deliverDueBroadcastEmails } from '@/lib/broadcast-delivery';
 import { recordJobRun } from '@/lib/job-runs';
 import { setAuditActor } from '@ejo/database';
+import { isCronRequest } from '@/lib/cron-auth';
 import { deliverRoleAccessNotices } from '@/lib/access-notices';
 
 // Room for a batch of access-changed emails (a role with many holders).
@@ -15,10 +16,7 @@ export const maxDuration = 60;
  * emails (Vercel Cron does this at 7 am Lagos on working days).
  */
 export async function GET(request: NextRequest) {
-  const auth = request.headers.get('authorization');
-  const key = request.nextUrl.searchParams.get('key');
-  const secret = process.env.CRON_SECRET;
-  if (!secret || (auth !== `Bearer ${secret}` && key !== secret)) {
+  if (!isCronRequest(request.headers.get('authorization'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   setAuditActor(null, 'cron:appointment-reminders');

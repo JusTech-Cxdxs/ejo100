@@ -1,5 +1,5 @@
 import { PERMISSIONS, ROLE_GRANTS, ROLE_LABELS, PLATFORM_ONLY, scopeFor, type PermissionKey } from '@/lib/authz/catalogue';
-import { getPrincipal } from '@/lib/authz/server';
+import { getPrincipal, guardPage } from '@/lib/authz/server';
 import { PermissionsMatrix, type MatrixRow } from '@/components/PermissionsMatrix';
 
 /**
@@ -7,6 +7,7 @@ import { PermissionsMatrix, type MatrixRow } from '@/components/PermissionsMatri
  * enforces, so it can never disagree with what actually happens.
  */
 export default async function PermissionsPage() {
+  await guardPage('admin.roles.manage', '/permissions');
   const me = await getPrincipal();
   const slugs = Object.keys(ROLE_GRANTS);
   const keys = Object.keys(PERMISSIONS) as PermissionKey[];

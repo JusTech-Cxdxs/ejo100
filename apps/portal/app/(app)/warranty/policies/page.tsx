@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listWarrantyPolicies, listWarrantyProviders, getWarrantyRoles, searchWarrantyProviderOptions, loadWarrantyProviderOptions, type PolicyStateFilter } from '@/lib/actions/warranty';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { PolicyCoverageFields } from '@/components/PolicyCoverageFields';
@@ -42,6 +43,7 @@ export default async function WarrantyPoliciesPage({
 }: {
   searchParams: Promise<{ status?: string; error?: string; created?: string; q?: string; state?: string; kind?: string }>;
 }) {
+  await guardAnyPage(['warranty.view'], '/warranty');
   const { status, error, created, q, state: rawState, kind: rawKind } = await searchParams;
   const state = (['active', 'inactive', 'sample', 'archived'] as const).includes(rawState as never) ? (rawState as PolicyStateFilter) : undefined;
   const kind = rawKind === 'ASSET' || rawKind === 'PART' ? rawKind : undefined;

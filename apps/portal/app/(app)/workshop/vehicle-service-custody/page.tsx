@@ -1,5 +1,5 @@
 import { OrgTrail } from '@/components/OrgTrail';
-import { allows } from '@/lib/authz/server';
+import { allows, guardAnyPage } from '@/lib/authz/server';
 import { getVehicleServiceCustodySummary, type VehicleDueForService } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { attendToOverdueVehicleFormAction, sendVehicleServiceCollectionReminderFormAction, sendManualServiceReminderFormAction, sendVehicleServiceCancelledCollectionNoticeFormAction } from '@/lib/actions/vehicle-service-form-handlers';
@@ -114,6 +114,7 @@ export default async function VehicleServiceCustodyPage({
 }: {
   searchParams: Promise<{ filter?: string; q?: string; status?: string; error?: string; type?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { filter, q, status, error, type: rawType } = await searchParams;
   const vehicleType = rawType === 'PASSENGER' || rawType === 'COMMERCIAL' ? rawType : null;
   const branchId = await getWorkshopBranchId();

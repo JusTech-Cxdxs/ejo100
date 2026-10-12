@@ -153,9 +153,10 @@ export type NotificationSummary = {
 
 // Per-user summary cache (per server instance): if nothing has changed since
 // this person's last summary (same change signal) and it is under a minute old,
-// return it instantly instead of recomputing ~25 queries. Own read / unread /
+// return it instantly instead of recomputing (~70–100 queries). Own read / unread /
 // mute actions clear it; the minute limit covers time-based items (overdue…).
 const SUMMARY_TTL_MS = 60_000;
+const SUMMARY_MIN_AGE_MS = 20_000;
 const summaryCache = new Map<string, { pulse: string; at: number; value: NotificationSummary }>();
 function forgetSummary(userId: string) { summaryCache.delete(userId); }
 
@@ -164,7 +165,10 @@ export async function getNotificationSummary(): Promise<NotificationSummary> {
     const m = await me();
     const pulse = await livePulse(m.organisationId).catch(() => '');
     const hit = summaryCache.get(m.id);
-    if (hit && pulse && hit.pulse === pulse && Date.now() - hit.at < SUMMARY_TTL_MS) return hit.value;
+    // Unchanged organisation → the cached summary (up to a minute). Changed →
+    // recomputed, but never more than once every 20 s per person: one busy
+    // organisation can't make every open tab recompute on every click.
+    if (hit && pulse && ((hit.pulse === pulse && Date.now() - hit.at < SUMMARY_TTL_MS) || Date.now() - hit.at < SUMMARY_MIN_AGE_MS)) return hit.value;
     const value = await computeSummary(m);
     if (pulse) {
       if (summaryCache.size > 2000) summaryCache.clear();
@@ -364,6 +368,8 @@ export async function getNotificationPulse(): Promise<string> {
 
 /** Everything the broadcast dashboard shows (last 12 months). */
 export async function getBroadcastAnalytics() {
+  // Reach, read rates and email failures are for the people who send broadcasts.
+  await authorize('notifications.broadcast.send', undefined, 'broadcasts.analytics');
   const m = await me();
   const since = new Date(Date.now() - 365 * 86400000);
   const [rows, users, emails] = await Promise.all([
@@ -403,10 +409,13 @@ export async function getBroadcastAnalytics() {
     return { category: c, count: list.filter((b: (typeof list)[number]) => b.category === c).length, reach: r, read: rd, readRate: rate(rd, r) };
   });
   const byAudience = ['ALL', 'BRANCH', 'DEPARTMENT', 'ROLE'].map((a) => ({ audience: a, count: list.filter((b: (typeof list)[number]) => b.audience === a).length }));
+  // Lagos calendar months (UTC+1) — a broadcast at 00:30 on the 1st is the new month's.
+  const lagosMonth = (d: Date) => new Date(new Date(d).getTime() + 3600000).toISOString().slice(0, 7);
+  const nowL = new Date(now.getTime() + 3600000);
   const months = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    return { label: d.toLocaleDateString('en-NG', { month: 'short', year: '2-digit' }), count: list.filter((b: (typeof list)[number]) => new Date(b.createdAt).toISOString().slice(0, 7) === key).length };
+    const d = new Date(Date.UTC(nowL.getUTCFullYear(), nowL.getUTCMonth() - (5 - i), 1));
+    const key = d.toISOString().slice(0, 7);
+    return { label: d.toLocaleDateString('en-NG', { month: 'short', year: '2-digit', timeZone: 'UTC' }), count: list.filter((b: (typeof list)[number]) => lagosMonth(b.createdAt) === key).length };
   });
   const rated = started.filter((b: (typeof list)[number]) => b.readRate !== null && b.reach > 0);
   const actions: { priority: 1 | 2 | 3; title: string; detail: string; href: string }[] = [];

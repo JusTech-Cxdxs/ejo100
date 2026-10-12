@@ -1,0 +1,99 @@
+name: E2E
+
+# Real-life tests: the real schema pushed to a real PostgreSQL, real Prisma,
+# the production build of the portal, a mail catcher for every email, and a
+# real browser signing in as each role. Never touches a real database.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: e2e-test-only
+          POSTGRES_DB: ejo_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      mail:
+        image: axllent/mailpit:v1.21
+        ports: ['1025:1025', '8025:8025']
+    env:
+      DATABASE_URL: 'postgresql://postgres:e2e-test-only@localhost:5432/ejo_e2e'
+      DIRECT_URL: 'postgresql://postgres:e2e-test-only@localhost:5432/ejo_e2e'
+      BETTER_AUTH_SECRET: 'e2e-only-secret-0f6c2b8e9a1d4c7f8b3e5a2d9c6f1e4b'
+      BETTER_AUTH_URL: 'http://localhost:3001'
+      NEXT_PUBLIC_PORTAL_URL: 'http://localhost:3001'
+      NEXT_PUBLIC_WEBSITE_URL: 'http://localhost:3000'
+      SMTP_HOST: 'localhost'
+      SMTP_PORT: '1025'
+      SMTP_FROM: 'EJO 100 <no-reply@e2e.test>'
+      CRON_SECRET: 'e2e-cron-secret'
+      # Every test signs in from the same address.
+      AUTH_SIGNIN_PER_MINUTE: '1000'
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'npm'
+      - run: npm install
+      - run: npm run build --workspace=packages/database
+      # The exact deploy path: pre-deploy SQL, push, post-deploy SQL.
+      - name: Schema (pre-deploy SQL → db push → post-deploy SQL)
+        run: |
+          for f in scripts/predeploy/*.sql; do npx prisma db execute --file="$f" --url="$DIRECT_URL"; done
+          npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate
+          for f in scripts/postdeploy/*.sql; do npx prisma db execute --file="$f" --url="$DIRECT_URL"; done
+          npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate
+      - name: Seed the test organisation (one account per role)
+        env:
+          MASTER_ADMIN_EMAIL: 'master@e2e.test'
+          MASTER_ADMIN_PASSWORD: 'E2e-Master-Pass-2026!'
+          MASTER_ADMIN_NAME: 'Morgan Master'
+        run: |
+          npx tsx packages/database/prisma/seed.ts
+          npx prisma db execute --file=scripts/v24-roles.sql --url="$DIRECT_URL"
+          npx tsx apps/portal/e2e/seed.ts
+      - run: npm run build --workspace=apps/portal
+      - name: Start the portal
+        run: |
+          (cd apps/portal && nohup npx next start -p 3001 > ../../portal.log 2>&1 &)
+          for i in $(seq 1 60); do curl -sf http://localhost:3001/login > /dev/null && break; sleep 2; done
+      - run: npx playwright install --with-deps chromium
+      - name: Real-browser tests
+        run: npx playwright test --config=apps/portal/e2e/playwright.config.ts
+      - name: Load test (p50 / p95 / p99 against this CI instance)
+        run: npx tsx apps/portal/e2e/load.ts
+        env:
+          LOAD_SECONDS: '30'
+      - if: always()
+        name: Dependency audit (production dependencies, summary only)
+        run: |
+          npm audit --omit=dev --json > audit.json 2>/dev/null || true
+          node -e "const a=require('./audit.json');const v=(a.metadata||{}).vulnerabilities||{};console.log('::notice title=npm audit::'+JSON.stringify(v));for(const [n,x] of Object.entries(a.vulnerabilities||{})){if(['high','critical'].includes(x.severity))console.log('::warning title=npm audit '+x.severity+'::'+n+' via '+[].concat(x.via).map(y=>typeof y==='string'?y:y.title).join('; ').slice(0,300))}" || true
+      # Failures as annotations (readable from the API, not only the web page).
+      - if: failure()
+        name: Report failures
+        run: node apps/portal/e2e/annotate.mjs
+      - if: always()
+        name: Portal log (errors as annotations)
+        run: |
+          tail -n 200 portal.log || true
+          grep -iE '"level":"error"|Error:|PrismaClient|Unhandled' portal.log | head -n 8 | sed 's/^/::warning title=portal log::/' || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/portal/e2e/report
+          if-no-files-found: ignore
+          retention-days: 7
