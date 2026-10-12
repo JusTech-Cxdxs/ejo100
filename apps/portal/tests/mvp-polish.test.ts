@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { organisationCode, branchCode, employeeIdPrefix, formatEmployeeId, sequenceOf, uniqueBranchPrefixes } from '../lib/employee-id';
-import { describeAccess } from '../lib/authz/describe-access';
+import { describeAccess, plainLabel } from '../lib/authz/describe-access';
 import { PERMISSIONS, type Principal, type PermissionKey } from '../lib/authz/catalogue';
 import { renderStaffAccessEmail, STAFF_RULES } from '../lib/email-templates/staff-access';
 import { navigationFor } from '../lib/authz/navigation';
@@ -66,7 +66,8 @@ test('access description: exactly what the catalogue grants, with "added" grants
   const w = extra.flatMap((g) => g.lines).find((l) => l.key === 'warranty.view')!;
   assert.equal(w.added, true);
   assert.equal(w.where, 'in your branch');
-  for (const g of tech) for (const l of g.lines) assert.equal(l.label, PERMISSIONS[l.key as PermissionKey].label);
+  for (const g of tech) for (const l of g.lines) assert.equal(l.label, plainLabel(PERMISSIONS[l.key as PermissionKey].label));
+  assert.ok(!tech.flatMap((g) => g.lines).some((l) => / — |\(/.test(l.label)), 'labels are plain — no repeated scope or role hints');
   assert.deepEqual(describeAccess(who([], { isSuperAdmin: true })), [{ module: 'Platform', lines: [] }]);
 });
 

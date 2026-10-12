@@ -52,21 +52,30 @@ export async function getMasterAnalytics(periodKey?: string, custom?: { from?: s
   // Claims belong to the organisation through their customer (a claim need not have a job).
   const claimsMine = reach.branchId && typeof reach.branchId === 'string' ? viaJob : { customer: await orgWhere() };
 
-  const [jcs, svs, qty, batch, serial, eprs, grn, claims] = await Promise.all([
+  const [jcs, svs, grn, claims] = await Promise.all([
     prisma.jobCard.findMany({
-      where: { ...reach, OR: [{ createdAt: { gte: since } }, { status: { notIn: ['CHECKED_OUT', 'CANCELLED', 'CLOSED'] } }, { checkedOutAt: { gte: since } }] },
-      select: { id: true, jobNumber: true, status: true, createdAt: true, completedAt: true, checkedOutAt: true, closedAt: true, cancellationRequests: { where: { status: 'APPROVED' }, orderBy: { decidedAt: 'desc' }, take: 1, select: { decidedAt: true } }, customer: { select: { fullName: true } }, estimate: { select: { lineItems: { select: { type: true, amount: true, billTo: true } } } }, payments: { select: { amount: true, recordedAt: true } }, refunds: { select: { amount: true, recordedAt: true } } },
+      where: { ...reach, OR: [{ createdAt: { gte: since } }, { status: { notIn: ['CHECKED_OUT', 'CANCELLED', 'CLOSED'] } }, { checkedOutAt: { gte: since } }, { completedAt: { gte: since } }, { closedAt: { gte: since } }, { payments: { some: { recordedAt: { gte: since } } } }, { refunds: { some: { recordedAt: { gte: since } } } }] },
+      select: { id: true, jobNumber: true, status: true, createdAt: true, completedAt: true, checkedOutAt: true, closedAt: true, customerId: true, cancellationRequests: { where: { status: 'APPROVED' }, orderBy: { decidedAt: 'desc' }, take: 1, select: { decidedAt: true } }, customer: { select: { fullName: true } }, estimate: { select: { lineItems: { select: { type: true, amount: true, billTo: true } } } }, payments: { select: { amount: true, recordedAt: true } }, refunds: { select: { amount: true, recordedAt: true } } },
     }),
     prisma.vehicleService.findMany({
-      where: { ...reach, OR: [{ createdAt: { gte: since } }, { status: { notIn: ['COLLECTED', 'CANCELLED', 'ESCALATED'] } }, { collectedAt: { gte: since } }] },
-      select: { id: true, serviceNumber: true, status: true, createdAt: true, completedAt: true, collectedAt: true, closedAt: true, cancelledAt: true, customer: { select: { fullName: true } }, serviceEstimate: { select: { lineItems: { select: { type: true, amount: true } } } }, payments: { select: { amount: true, recordedAt: true } }, refunds: { select: { amount: true, recordedAt: true } } },
+      where: { ...reach, OR: [{ createdAt: { gte: since } }, { status: { notIn: ['COLLECTED', 'CANCELLED', 'ESCALATED'] } }, { collectedAt: { gte: since } }, { completedAt: { gte: since } }, { closedAt: { gte: since } }, { payments: { some: { recordedAt: { gte: since } } } }, { refunds: { some: { recordedAt: { gte: since } } } }] },
+      select: { id: true, serviceNumber: true, status: true, createdAt: true, checkedInAt: true, completedAt: true, collectedAt: true, closedAt: true, cancelledAt: true, customerId: true, customer: { select: { fullName: true } }, serviceEstimate: { select: { lineItems: { select: { type: true, amount: true } } } }, payments: { select: { amount: true, recordedAt: true } }, refunds: { select: { amount: true, recordedAt: true } } },
     }),
-    prisma.partQuantityConsumption.findMany({ where: { consumedAt: { gte: since }, slipLine: { slip: reach } }, select: { quantityTaken: true, goodsReceiptLine: { select: { unitCost: true } }, ...SLIP_JOB } }),
-    prisma.partBatchConsumption.findMany({ where: { consumedAt: { gte: since }, slipLine: { slip: reach } }, select: { quantityTaken: true, batch: { select: { goodsReceiptLine: { select: { unitCost: true } } } }, ...SLIP_JOB } }),
-    prisma.partSerial.findMany({ where: { issuedToSlipLineId: { not: null }, issuedToSlipLine: { slip: reach } }, select: { goodsReceiptLine: { select: { unitCost: true } }, issuedToSlipLine: { select: { slip: { select: { jobCardId: true, vehicleServiceId: true } } } } } }),
-    prisma.externalProcurementRequest.findMany({ where: { ...reach, disbursedAmount: { not: null } }, select: { jobCardId: true, disbursedAmount: true } }),
     prisma.goodsReceiptLine.findMany({ where: { goodsReceipt: { ...reach, receivedAt: { gte: since } } }, select: { totalCost: true, goodsReceipt: { select: { receivedAt: true } } } }),
     prisma.warrantyClaim.findMany({ where: { ...claimsMine, settledAt: { gte: since } }, select: { settledAt: true, settledAmount: true } }),
+  ]);
+
+  // Parts and sublet cost of EXACTLY the jobs loaded above — whenever the parts
+  // were issued (a job opened months ago still carries all of its cost) and
+  // nothing for jobs outside the window.
+  const jcIds = jcs.map((j: { id: string }) => j.id);
+  const svIds = svs.map((v: { id: string }) => v.id);
+  const ofLoadedJobs = { OR: [{ jobCardId: { in: jcIds } }, { vehicleServiceId: { in: svIds } }] };
+  const [qty, batch, serial, eprs] = jcIds.length + svIds.length === 0 ? [[], [], [], []] as const : await Promise.all([
+    prisma.partQuantityConsumption.findMany({ where: { slipLine: { slip: ofLoadedJobs } }, select: { quantityTaken: true, goodsReceiptLine: { select: { unitCost: true } }, ...SLIP_JOB } }),
+    prisma.partBatchConsumption.findMany({ where: { slipLine: { slip: ofLoadedJobs } }, select: { quantityTaken: true, batch: { select: { goodsReceiptLine: { select: { unitCost: true } } } }, ...SLIP_JOB } }),
+    prisma.partSerial.findMany({ where: { issuedToSlipLine: { slip: ofLoadedJobs } }, select: { goodsReceiptLine: { select: { unitCost: true } }, issuedToSlipLine: { select: { slip: { select: { jobCardId: true, vehicleServiceId: true } } } } } }),
+    prisma.externalProcurementRequest.findMany({ where: { jobCardId: { in: jcIds }, disbursedAmount: { not: null } }, select: { jobCardId: true, disbursedAmount: true } }),
   ]);
 
   // Parts cost per job (actual goods-receipt cost), and issues with no cost.
@@ -92,7 +101,7 @@ export async function getMasterAnalytics(periodKey?: string, custom?: { from?: s
   const pay = (xs: { amount: unknown; recordedAt: Date }[]) => xs.map((p) => ({ at: p.recordedAt, amount: num(p.amount) }));
   const jobs: Job[] = [
     ...jcs.map((j: (typeof jcs)[number]) => ({
-      kind: 'JC' as const, id: j.id, number: j.jobNumber, customer: j.customer.fullName, status: j.status, openedAt: j.createdAt,
+      kind: 'JC' as const, id: j.id, number: j.jobNumber, customer: j.customer.fullName, customerId: j.customerId, status: j.status, openedAt: j.createdAt,
       // A cancelled hand-back (latest approved cancellation after its last
       // completion — even if it was later "checked out" to return the car)
       // earns nothing and owes nothing; its payments / refunds still count
@@ -105,7 +114,9 @@ export async function getMasterAnalytics(periodKey?: string, custom?: { from?: s
     })),
     // Escalated services moved to a Job Card — counted there, not twice.
     ...svs.filter((v: (typeof svs)[number]) => v.status !== 'ESCALATED').map((v: (typeof svs)[number]) => ({
-      kind: 'SV' as const, id: v.id, number: v.serviceNumber, customer: v.customer.fullName, status: v.status, openedAt: v.createdAt,
+      kind: 'SV' as const, id: v.id, number: v.serviceNumber, customer: v.customer.fullName, customerId: v.customerId, status: v.status,
+      // A booking is not open work until the vehicle is actually received.
+      openedAt: v.checkedInAt ?? v.createdAt,
       finishedAt: v.status === 'CANCELLED' || v.cancelledAt ? null : v.completedAt ?? v.collectedAt ?? v.closedAt ?? null,
       cancelled: v.status === 'CANCELLED' || Boolean(v.cancelledAt),
       lines: (v.serviceEstimate?.lineItems ?? []).map((l: { type: string; amount: unknown }) => ({ type: l.type, amount: num(l.amount), billTo: 'CUSTOMER' })),

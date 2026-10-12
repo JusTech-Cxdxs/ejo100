@@ -1,4 +1,4 @@
-import { warrantyCoverage, type WarrantyCoverageState } from '@/lib/warranty-state';
+import { warrantyCoverage, type WarrantyCoverageState } from './warranty-state';
 
 /**
  * Warranty analytics — pure functions over plain rows, so every number on
@@ -124,7 +124,8 @@ export function computeWarrantyAnalytics(input: AnalyticsInput) {
     byState,
     assetWarranties: warranties.filter((w) => w.kind === 'ASSET').length,
     partWarranties: warranties.filter((w) => w.kind === 'PART').length,
-    claims: claims.length,
+    // Same basis as "Claimed": cancelled claims are not counted.
+    claims: claims.filter((c) => c.status !== 'CANCELLED').length,
     byStatus,
     claimed: round2(claimed),
     approved: round2(approved),
@@ -209,10 +210,11 @@ export function computeWarrantyAnalytics(input: AnalyticsInput) {
   const toSettle = claims.filter((c) => c.decidedAt && c.settledAt).map((c) => days(c.decidedAt!, c.settledAt!));
   const months: { key: string; label: string; opened: number; claimed: number; recovered: number }[] = [];
   for (let i = 11; i >= 0; i -= 1) {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const nowL = new Date(now.getTime() + 3600000); // Lagos calendar month (UTC+1)
+    const d = new Date(Date.UTC(nowL.getUTCFullYear(), nowL.getUTCMonth() - i, 1));
     months.push({ key: `${d.getUTCFullYear()}-${d.getUTCMonth()}`, label: d.toLocaleDateString('en-NG', { month: 'short', year: '2-digit', timeZone: 'UTC' }), opened: 0, claimed: 0, recovered: 0 });
   }
-  const mKey = (d: Date) => `${new Date(d).getUTCFullYear()}-${new Date(d).getUTCMonth()}`;
+  const mKey = (d: Date) => { const l = new Date(new Date(d).getTime() + 3600000); return `${l.getUTCFullYear()}-${l.getUTCMonth()}`; };
   live.forEach((c) => {
     const m = months.find((x) => x.key === mKey(c.createdAt));
     if (m) {
@@ -225,7 +227,7 @@ export function computeWarrantyAnalytics(input: AnalyticsInput) {
     }
   });
   const statistics = {
-    claimValue: { count: values.length, mean: mean(values), median: percentile(values, 50), p90: percentile(values, 90), stdDev: stdDev(values), min: values.length ? Math.min(...values) : null, max: values.length ? Math.max(...values) : null },
+    claimValue: { count: values.length, mean: mean(values), median: percentile(values, 50), p90: percentile(values, 90), stdDev: stdDev(values), min: values.length ? values.reduce((a, b) => Math.min(a, b), Infinity) : null, max: values.length ? values.reduce((a, b) => Math.max(a, b), -Infinity) : null },
     turnaround: {
       failureToSubmission: { mean: mean(toSubmit), median: percentile(toSubmit, 50) },
       submissionToDecision: { mean: mean(toDecide), median: percentile(toDecide, 50) },

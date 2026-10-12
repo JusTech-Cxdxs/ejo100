@@ -68,7 +68,7 @@ export default async function ProfilePage() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ejo-primary)]">{g.module}</p>
                 <ul className="mt-2 space-y-1.5">
                   {g.lines.map((l) => (
-                    <li key={l.key} className="text-sm text-[var(--ejo-text)]">{l.label} <span className="text-[var(--ejo-text-muted)]">— {l.where}</span>{l.added ? <span className="ml-1 rounded-full bg-[var(--ejo-warning)]/15 px-1.5 text-[10px] text-[var(--ejo-warning)]">added</span> : null}</li>
+                    <li key={l.key} className="text-sm text-[var(--ejo-text)]">{l.label}{l.where ? <span className="text-[var(--ejo-text-muted)]"> — {l.where}</span> : null}{l.added ? <span className="ml-1 rounded-full bg-[var(--ejo-warning)]/15 px-1.5 text-[10px] text-[var(--ejo-warning)]">added</span> : null}</li>
                   ))}
                 </ul>
               </div>

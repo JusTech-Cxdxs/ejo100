@@ -9,11 +9,15 @@ const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 
 /** The price charged for one issued unit: the Job Card / Vehicle Service
  * estimate line it was released against. */
-function priceOf(slipLine: { estimateLineItem: { unitPrice: unknown } | null; serviceEstimateLineItem: { unitPrice: unknown } | null } | null): number | null {
+function priceOf(slipLine: { estimateLineItem: { unitPrice: unknown; billTo?: string | null } | null; serviceEstimateLineItem: { unitPrice: unknown } | null } | null): number | null {
+  // A part given away (goodwill) or used internally earns nothing — the same
+  // rule as Business Analytics. Warranty lines are recovered from the provider.
+  const billTo = slipLine?.estimateLineItem?.billTo;
+  if (billTo === 'GOODWILL' || billTo === 'INTERNAL') return 0;
   return num(slipLine?.estimateLineItem?.unitPrice) ?? num(slipLine?.serviceEstimateLineItem?.unitPrice);
 }
 
-const SLIP_PRICE = { select: { estimateLineItem: { select: { unitPrice: true } }, serviceEstimateLineItem: { select: { unitPrice: true } } } } as const;
+const SLIP_PRICE = { select: { estimateLineItem: { select: { unitPrice: true, billTo: true } }, serviceEstimateLineItem: { select: { unitPrice: true } } } } as const;
 
 /** Gathers the branch's real stock movements (true costs from goods-receipt
  * lines; prices actually charged) and hands them to the pure engine. */
@@ -40,7 +44,7 @@ export async function getInventoryAnalytics(branchId: string, settings?: Partial
     }),
     prisma.partSerial.findMany({
       where: { part: { branchId }, issuedToSlipLineId: { not: null } },
-      select: { partId: true, goodsReceiptLine: { select: { unitCost: true } }, issuedToSlipLine: { select: { estimateLineItem: { select: { unitPrice: true } }, serviceEstimateLineItem: { select: { unitPrice: true } }, slip: { select: { releasedAt: true } } } } },
+      select: { partId: true, goodsReceiptLine: { select: { unitCost: true } }, issuedToSlipLine: { select: { estimateLineItem: { select: { unitPrice: true, billTo: true } }, serviceEstimateLineItem: { select: { unitPrice: true } }, slip: { select: { releasedAt: true } } } } },
     }),
     prisma.pricingAlert.count({ where: { status: 'OPEN', part: { branchId } } }),
   ]);

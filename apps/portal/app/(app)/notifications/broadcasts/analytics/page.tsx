@@ -26,7 +26,7 @@ export default async function BroadcastAnalyticsPage() {
     <div className="w-full p-4 sm:p-8">
       <LoadingLink href="/notifications/broadcasts" className="mb-2 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Broadcasts</LoadingLink>
       <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Broadcast analytics</h1>
-      <p className="mb-6 mt-1 text-sm text-[var(--ejo-text-muted)]">Last 12 months — how many broadcasts went out, who they reached, who read them and how email delivery went.</p>
+      <p className="mb-6 mt-1 text-sm text-[var(--ejo-text-muted)]">Last 12 months (monthly chart: last 6) — how many broadcasts went out, who they reached, who read them and how email delivery went.</p>
 
       {a.actions.length ? (
         <div className="mb-6 space-y-2">

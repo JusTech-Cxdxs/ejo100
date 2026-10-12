@@ -17,6 +17,13 @@ const WHERE: Record<Scope, string> = {
   OWN: 'for yourself',
 };
 
+/** The catalogue label in plain words for the person themselves: the scope
+ * hint after " — " and role hints in brackets are dropped (the scope is
+ * stated separately, from what the person actually holds). */
+export function plainLabel(label: string): string {
+  return label.split(' — ')[0]!.replace(/\s*\([^)]*\)\s*$/, '').replace(/\bfor themselves\b/, 'for yourself').trim();
+}
+
 export function describeAccess(p: Principal): AccessGroup[] {
   if (p.isSuperAdmin) return [{ module: 'Platform', lines: [] }];
   const byModule = new Map<string, AccessLine[]>();
@@ -27,7 +34,8 @@ export function describeAccess(p: Principal): AccessGroup[] {
     const added = !fromRoles && Boolean(p.extraGrants?.[key]);
     const { module, label } = PERMISSIONS[key];
     const list = byModule.get(module) ?? [];
-    list.push({ key, label, where: WHERE[scope], added });
+    const plain = plainLabel(label);
+    list.push({ key, label: plain, where: /for yourself$/.test(plain) ? '' : WHERE[scope], added });
     byModule.set(module, list);
   }
   return [...byModule.entries()].map(([module, lines]) => ({ module, lines }));

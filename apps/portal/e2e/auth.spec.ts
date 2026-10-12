@@ -32,7 +32,7 @@ test.describe('Sign-in', () => {
     await page.getByLabel('Work email').fill(who('technician').email);
     await page.getByLabel('Password', { exact: true }).fill('not-the-password');
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.getByRole('alert')).toContainText('don’t match');
+    await expect(page.getByRole('alert').filter({ hasText: 'don’t match' })).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
   });
 

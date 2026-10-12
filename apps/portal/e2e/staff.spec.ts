@@ -22,7 +22,7 @@ test('add a staff member, welcome email, set password, first sign-in', async ({ 
 
   await expect(page.getByRole('status').filter({ hasText: 'Staff member added' })).toBeVisible();
   const idText = (await page.getByRole('status').filter({ hasText: 'employee ID' }).textContent()) ?? '';
-  const employeeId = /employee ID ([A-Z0-9-]+)/.exec(idText)?.[1];
+  const employeeId = /employee ID ([A-Z0-9]+-[A-Z0-9]+-\d{4})/.exec(idText)?.[1];
   expect(employeeId, 'an employee ID was issued').toMatch(/^[A-Z0-9]+-[A-Z0-9]+-\d{4}$/);
   await expect(page.getByRole('listitem', { name: 'Nkechi Newstarter' })).toContainText(employeeId!);
 

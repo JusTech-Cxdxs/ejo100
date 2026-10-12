@@ -37,6 +37,8 @@ jobs:
       SMTP_PORT: '1025'
       SMTP_FROM: 'EJO 100 <no-reply@e2e.test>'
       CRON_SECRET: 'e2e-cron-secret'
+      # Every test signs in from the same address.
+      AUTH_SIGNIN_PER_MINUTE: '1000'
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v4

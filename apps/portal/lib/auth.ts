@@ -89,7 +89,7 @@ export const auth = betterAuth({
     },
   },
 
-  // Brute-force protection: at most 5 sign-in attempts a minute per client,
+  // Brute-force protection: sign-in attempts are limited per address (below),
   // and 100 auth requests a minute overall. (Per server instance; a WAF /
   // shared store adds a global limit in front — see the platform blueprint.)
   rateLimit: {
@@ -97,7 +97,10 @@ export const auth = betterAuth({
     window: 60,
     max: 100,
     customRules: {
-      '/sign-in/email': { window: 60, max: 5 },
+      // Per internet address: a whole office signs in from ONE address at
+      // 8 am, so 20 a minute (one guess every 3 s is still useless for
+      // brute force). Tunable with AUTH_SIGNIN_PER_MINUTE (tests raise it).
+      '/sign-in/email': { window: 60, max: Number(process.env.AUTH_SIGNIN_PER_MINUTE) || 20 },
       '/sign-up/email': { window: 60, max: 5 },
       '/forget-password': { window: 300, max: 3 },
       '/reset-password': { window: 300, max: 5 },

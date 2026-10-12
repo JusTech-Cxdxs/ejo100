@@ -1,4 +1,4 @@
-import { dayKind, lagosYmd } from '@/lib/nigeria-calendar';
+import { dayKind, lagosYmd } from './nigeria-calendar';
 
 /**
  * Master analytics — pure functions over plain rows (tested against
@@ -23,6 +23,8 @@ export type Job = {
   id: string;
   number: string;
   customer: string;
+  /** Groups "top customers" — two customers with the same name stay apart. */
+  customerId?: string;
   status: string;
   openedAt: Date;
   finishedAt: Date | null;
@@ -159,7 +161,8 @@ export function computeMasterAnalytics(input: { jobs: Job[]; purchases: Purchase
   const change = (a: number | null, b: number | null) => (a === null || b === null ? null : b === 0 ? (a === 0 ? 0 : null) : Math.round(((a - b) / Math.abs(b)) * 1000) / 10);
 
   // ── Position now (not period-bound)
-  const open = jobs.filter((j) => !j.cancelled && !j.finishedAt);
+  // Open work: received and not finished — a future booking (SCHEDULED) is not work in progress.
+  const open = jobs.filter((j) => !j.cancelled && !j.finishedAt && j.status !== 'SCHEDULED');
   const finishedOwing = jobs.filter((j) => !j.cancelled && j.finishedAt).map((j) => ({ j, m: jobMoney(j) })).filter((x) => x.m.owed > 0.009);
   // Money to give back: paid more than owed on a live job, or anything still
   // held on a cancelled job (a cancelled job owes the customer all of it).
@@ -198,8 +201,13 @@ export function computeMasterAnalytics(input: { jobs: Job[]; purchases: Purchase
   // the two explanations always add up exactly to the change.
   const ticketEffect = volumeEffect !== null && current.averageJob !== null ? r2(current.sales - previous.sales - volumeEffect) : null;
   const doneNow = jobs.filter((j) => !j.cancelled && inRange(j.finishedAt, from, to));
-  const byCustomer = new Map<string, number>();
-  for (const j of doneNow) byCustomer.set(j.customer, (byCustomer.get(j.customer) ?? 0) + jobMoney(j).sales);
+  const byCustomer = new Map<string, { name: string; value: number }>();
+  for (const j of doneNow) {
+    const k = j.customerId ?? j.customer;
+    const e = byCustomer.get(k) ?? { name: j.customer, value: 0 };
+    e.value += jobMoney(j).sales;
+    byCustomer.set(k, e);
+  }
   const diagnostic = {
     salesChange: r2(current.sales - previous.sales),
     volumeEffect,
@@ -210,11 +218,13 @@ export function computeMasterAnalytics(input: { jobs: Job[]; purchases: Purchase
     mix: [
       { name: 'Labour', value: current.labour }, { name: 'Parts', value: current.parts }, { name: 'Sublet', value: current.sublet }, { name: 'Sundry', value: current.sundry },
     ],
-    topCustomers: [...byCustomer.entries()].map(([name, value]) => ({ name, value: r2(value) })).sort((a, b) => b.value - a.value).slice(0, 8),
+    topCustomers: [...byCustomer.values()].map(({ name, value }) => ({ name, value: r2(value) })).sort((a, b) => b.value - a.value).slice(0, 8),
   };
 
   // ── Predictive
-  const fit = linearFit(weeks.map((w) => w.sales));
+  // Fitted on the COMPLETED weeks only: the current, part-finished week would
+  // otherwise drag the trend down every Monday.
+  const fit = linearFit(weeks.slice(0, -1).map((w) => w.sales));
   const forecast = Array.from({ length: 4 }, (_, i) => {
     const x = weeks.length + i;
     const mid = Math.max(0, fit.intercept + fit.slope * x);
@@ -226,6 +236,10 @@ export function computeMasterAnalytics(input: { jobs: Job[]; purchases: Purchase
   const wdTotal = workingDaysBetween(monthStart, monthEndDate);
   const wdDone = workingDaysBetween(monthStart, today);
   const monthSoFar = periodTotals(jobs, purchases, settlements, new Date(`${monthStart}T00:00:00+01:00`), new Date(+now + 1));
+  // The previous CALENDAR month — what "tracking below last month" compares with,
+  // whatever period the page is showing.
+  const pm = Number(monthStart.slice(5, 7)) === 1 ? `${Number(monthStart.slice(0, 4)) - 1}-12-01` : `${monthStart.slice(0, 5)}${String(Number(monthStart.slice(5, 7)) - 1).padStart(2, '0')}-01`;
+  const lastMonth = periodTotals(jobs, purchases, settlements, new Date(`${pm}T00:00:00+01:00`), new Date(`${monthStart}T00:00:00+01:00`));
   const predictive = {
     trendPerWeek: r2(fit.slope),
     forecast,
@@ -233,6 +247,7 @@ export function computeMasterAnalytics(input: { jobs: Job[]; purchases: Purchase
     monthProjection: wdDone > 0 ? r2((monthSoFar.sales / wdDone) * wdTotal) : null,
     workingDaysDone: wdDone,
     workingDaysInMonth: wdTotal,
+    lastMonthSales: lastMonth.sales,
   };
 
   // ── Prescriptive
@@ -254,7 +269,7 @@ export function computeMasterAnalytics(input: { jobs: Job[]; purchases: Purchase
   const uncosted = jobs.filter((j) => j.partsIssuedWithoutCost > 0);
   if (uncosted.length) actions.push({ priority: 2, title: `${plural(uncosted.length, 'job')} with parts issued without a recorded cost`, detail: 'Profit on these jobs is overstated until the cost of each part is recorded on its goods receipt.', href: href(uncosted[0]!), items: uncosted.slice(0, 12).map((j) => item(j, plural(j.partsIssuedWithoutCost, 'part'))) });
   if (current.purchases > 0 && current.partsCost > 0 && current.purchases > current.partsCost * 1.5) actions.push({ priority: 3, title: 'Buying much more than is being used', detail: `Purchases ${money(current.purchases)} vs parts used ${money(current.partsCost)} this period — stock is building up.`, href: '/inventory/analytics', items: [] });
-  if (predictive.monthProjection !== null && previous.sales > 0 && predictive.monthProjection < previous.sales * 0.85) actions.push({ priority: 3, title: 'This month is tracking below the last period', detail: `Projected ${money(predictive.monthProjection)} — follow up open estimates and due services.`, href: '/workshop', items: [] });
+  if (predictive.monthProjection !== null && predictive.workingDaysDone >= 3 && lastMonth.sales > 0 && predictive.monthProjection < lastMonth.sales * 0.85) actions.push({ priority: 3, title: 'This month is tracking below last month', detail: `Projected ${money(predictive.monthProjection)} against ${money(lastMonth.sales)} last month — follow up open estimates and due services.`, href: '/workshop/service-tracker', items: [] });
   actions.sort((a, b) => a.priority - b.priority);
 
   return {
