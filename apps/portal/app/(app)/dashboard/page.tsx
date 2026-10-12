@@ -8,7 +8,7 @@ import { BROADCAST_CATEGORY } from '@/lib/notification-rules';
 import { DashboardTrendChart } from '@/components/LazyCharts';
 import { LoadingLink } from '@/components/LoadingLink';
 import { DashboardActivity } from '@/components/DashboardActivity';
-import { PageHeader, StatTile, SectionCard, Icon, type IconName, type Tone } from '@/components/ui';
+import { EmptyState, Icon, PageHeader, SectionCard, StatTile, type IconName, type Tone } from '@/components/ui';
 import { ACTION_ICON, CATEGORY_ICON, CATEGORY_TILE } from '@/components/ui/notify-icons';
 import type { PermissionKey } from '@/lib/authz/catalogue';
 
@@ -186,7 +186,7 @@ export default async function DashboardPage() {
               {broadcaster ? <LoadingLink href="/notifications/broadcasts/new" className="font-medium text-[var(--ejo-primary)] hover:underline">+ New broadcast</LoadingLink> : null}
             </>}
           >
-            {myBroadcasts.length === 0 ? <p className="text-sm text-[var(--ejo-text-muted)]">No broadcasts running right now.</p> : (
+            {myBroadcasts.length === 0 ? <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="megaphone" title="No broadcasts running right now." /></div> : (
               <div className="space-y-2">
                 {myBroadcasts.slice(0, 4).map((b) => (
                   <LoadingLink key={b.key} href={`/notifications?tab=broadcasts#${b.id}`} className="ejo-lift flex gap-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3 hover:border-[var(--ejo-primary)]/50">

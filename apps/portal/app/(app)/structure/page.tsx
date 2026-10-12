@@ -6,7 +6,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { LoadingLink } from '@/components/LoadingLink';
 import { STRUCTURE_STATUS } from '@/lib/structure-messages';
 import { SYSTEM_DEPARTMENTS } from '@/lib/structure-rules';
-import { PageTitle } from '@/components/ui';
+import { EmptyState, PageTitle } from '@/components/ui';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]';
 const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
@@ -84,7 +84,7 @@ export default async function StructurePage({ searchParams }: { searchParams: Pr
       </div>
 
       <div className="mt-8 space-y-6">
-        {s.units.length === 0 ? <p className="text-sm text-[var(--ejo-text-muted)]">No business units yet — add the first one above.</p> : null}
+        {s.units.length === 0 ? <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="sitemap" title="No business units yet — add the first one above." /></div> : null}
         {s.units.map((u) => (
           <section key={u.id} className={`${card} p-5`} aria-label={u.name}>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -104,7 +104,7 @@ export default async function StructurePage({ searchParams }: { searchParams: Pr
             </div>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              {u.branches.length === 0 ? <p className="text-sm text-[var(--ejo-text-muted)]">No branches yet — open one above.</p> : null}
+              {u.branches.length === 0 ? <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="sitemap" title="No branches yet — open one above." /></div> : null}
               {u.branches.map((b) => (
                 <article key={b.id} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4">
                   <div className="flex items-start justify-between gap-3">

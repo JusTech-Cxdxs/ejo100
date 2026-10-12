@@ -7,7 +7,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { HotlineListInput } from '@/components/HotlineListInput';
 import { LoadingLink } from '@/components/LoadingLink';
 import { EditIcon, BuildingIcon } from '@/components/icons';
-import { PageTitle } from '@/components/ui';
+import { EmptyState, PageTitle } from '@/components/ui';
 
 /**
  * The organisation's own real, printed identity — name, legal name,
@@ -51,7 +51,7 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
       ) : null}
 
       {!organisation ? (
-        <p className="text-sm text-[var(--ejo-text-muted)]">No organisation record found yet.</p>
+        <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="building" title="No organisation record found yet." /></div>
       ) : isEditing ? (
         <form action={updateOrganisationFormAction} className="max-w-xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
           <FormPendingOverlay />

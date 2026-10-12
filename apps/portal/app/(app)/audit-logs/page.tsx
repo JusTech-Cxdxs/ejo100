@@ -6,7 +6,7 @@ import { LinkedText } from '@/components/LinkedText';
 import { LoadingLink } from '@/components/LoadingLink';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { PageTitle } from '@/components/ui';
+import { PageHeader, PageTitle } from '@/components/ui';
 
 const KINDS: [string, string][] = [['all', 'Everything'], ['business', 'Business events'], ['data', 'Data changes'], ['api', 'API requests'], ['system', 'Scheduled jobs']];
 const AREA_DOT: Record<string, string> = { Workshop: 'bg-[var(--ejo-primary)]', Store: 'bg-[var(--ejo-info)]', Warranty: 'bg-[var(--ejo-warning)]', Security: 'bg-[var(--ejo-error)]', Scheduling: 'bg-purple-500', System: 'bg-[var(--ejo-text-muted)]' };
@@ -33,7 +33,10 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Pr
   if (!(await canSeeAuditLogs())) {
     return (
       <div className="p-4 sm:p-8">
-        <PageTitle icon="history">Audit Logs</PageTitle>
+        <PageHeader
+        icon="history"
+        title="Audit Logs"
+      />
         <p className="mt-3 max-w-xl text-sm text-[var(--ejo-text-muted)]">The full audit trail is for the Master Admin and Administrators. Each record&apos;s own history is on its page.</p>
       </div>
     );
