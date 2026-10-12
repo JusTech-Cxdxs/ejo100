@@ -11,7 +11,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { ordinal } from '@/lib/custody-reminders';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { BackLink, PageTitle } from '@/components/ui';
+import { EmptyState, PageHeader } from '@/components/ui';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -192,13 +192,12 @@ export default async function WorkshopCustodyPage({
   }
   return (
     <div className="p-8">
-      <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
-      <div className="mb-2">
-        <PageTitle icon="garage">Vehicles In Custody</PageTitle>
-      </div>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        <OrgTrail area="Workshop" />
-      </p>
+      <PageHeader
+        icon="garage"
+        back={{ href: "/workshop", label: "Back to Workshop" }}
+        title="Vehicles In Custody"
+        description={<><OrgTrail area="Workshop" /></>}
+      />
 
       <form className="mb-8 flex gap-2" action="/workshop/custody">
         <select
@@ -324,7 +323,7 @@ export default async function WorkshopCustodyPage({
       <section className="mb-10">
         <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Awaiting Customer Approval</h2>
         {summary.awaitingApproval.length === 0 ? (
-          <p className="text-sm text-[var(--ejo-text-muted)]">Nothing currently awaiting approval.</p>
+          <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="garage" title="Nothing currently awaiting approval." /></div>
         ) : (
           <div className="space-y-3">
             {summary.awaitingApproval.map((entry) => (
@@ -559,7 +558,7 @@ export default async function WorkshopCustodyPage({
       <section>
         <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">In Service</h2>
         {summary.inService.length === 0 ? (
-          <p className="text-sm text-[var(--ejo-text-muted)]">No vehicles currently in service.</p>
+          <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="garage" title="No vehicles currently in service." /></div>
         ) : (
           <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
             <table className="w-full text-sm">

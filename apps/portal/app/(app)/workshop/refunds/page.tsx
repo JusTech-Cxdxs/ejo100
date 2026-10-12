@@ -5,7 +5,7 @@ import { PrintMenu } from '@/components/print/PrintMenu';
 import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { BackLink, PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 function naira(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -26,12 +26,13 @@ export default async function RefundsRegisterPage({ searchParams }: { searchPara
 
   return (
     <div className="p-8">
-      <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
-      <PageTitle icon="refund">Refunds</PageTitle>
-      <p className="mt-1 mb-6 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-        Every refund paid back to a customer after a cancelled Job Card or Vehicle Service — authorised by a Manager&apos;s approval,
-        paid and recorded by Finance, each with its own RF receipt.
-      </p>
+      <PageHeader
+        icon="refund"
+        back={{ href: "/workshop", label: "Back to Workshop" }}
+        title="Refunds"
+        description={<>Every refund paid back to a customer after a cancelled Job Card or Vehicle Service — authorised by a Manager&apos;s approval,
+        paid and recorded by Finance, each with its own RF receipt.</>}
+      />
 
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4">

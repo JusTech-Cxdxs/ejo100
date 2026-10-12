@@ -14,7 +14,7 @@ import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { ComplaintListInput } from '@/components/ComplaintListInput';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { BackLink, PageHeader, StatusChip } from '@/components/ui';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -58,12 +58,11 @@ export default async function WorkshopJobCardsPage({
         <FormFeedbackBanner kind="success" message="Job Card deleted." />
       ) : null}
       {error ? <FormFeedbackBanner kind="error" message={error} /> : null}
-      <div className="mb-6">
-        <PageTitle icon="clipboard">Job Cards</PageTitle>
-        <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
-          <OrgTrail area="Workshop" />
-        </p>
-      </div>
+      <PageHeader
+        icon="clipboard"
+        title="Job Cards"
+        description={<><OrgTrail area="Workshop" /></>}
+      />
 
       <CategoryFilterTabs basePath="/workshop/job-cards" currentType={vehicleType} preserveParams={{ q }} />
       <OutcomeFilterTabs basePath="/workshop/job-cards" current={outcomeFilter} preserveParams={{ q, type: vehicleType }} counts={outcomeCounts} />

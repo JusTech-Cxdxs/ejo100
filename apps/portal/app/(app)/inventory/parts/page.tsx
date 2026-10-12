@@ -14,7 +14,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { BackLink, PageTitle } from '@/components/ui';
+import { EmptyState, PageHeader } from '@/components/ui';
 
 const TRACKING_TYPE_LABEL: Record<string, string> = {
   QUANTITY: 'Quantity',
@@ -42,13 +42,12 @@ export default async function InventoryPartsPage({
 
   return (
     <div className="p-8">
-      <BackLink href="/inventory" label="Back to Inventory" className="mb-4" />
-      <div className="mb-2">
-        <PageTitle icon="package">Parts Catalog</PageTitle>
-      </div>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        <OrgTrail area="Store" />
-      </p>
+      <PageHeader
+        icon="package"
+        back={{ href: "/inventory", label: "Back to Inventory" }}
+        title="Parts Catalog"
+        description={<><OrgTrail area="Store" /></>}
+      />
 
       {error ? (
         <div className="mb-6">
@@ -87,7 +86,7 @@ export default async function InventoryPartsPage({
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div>
           {parts.length === 0 ? (
-            <p className="text-sm text-[var(--ejo-text-muted)]">No parts in the catalog yet.</p>
+            <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="package" title="No parts in the catalog yet." /></div>
           ) : (
             <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
               <table className="w-full text-sm">

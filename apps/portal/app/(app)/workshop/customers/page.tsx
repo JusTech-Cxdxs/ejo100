@@ -8,7 +8,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { BackLink, PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 const STATUS_MESSAGES: Record<string, { kind: 'success' | 'warning'; message: string }> = {
   customer_existing: { kind: 'success', message: 'That email already had a customer record — reused it, no duplicate created.' },
@@ -28,15 +28,12 @@ export default async function WorkshopCustomersPage({
 
   return (
     <div className="p-8">
-      <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <PageTitle icon="users">Customers</PageTitle>
-          <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
-            <OrgTrail area="Workshop" />
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon="users"
+        back={{ href: "/workshop", label: "Back to Workshop" }}
+        title="Customers"
+        description={<><OrgTrail area="Workshop" /></>}
+      />
 
       {statusInfo ? <FormFeedbackBanner kind={statusInfo.kind} message={statusInfo.message} /> : null}
       {error ? <FormFeedbackBanner kind="error" message={error} /> : null}

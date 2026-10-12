@@ -12,7 +12,7 @@ import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
 import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { BackLink, PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 export default async function WorkshopVehiclesPage({
   searchParams,
@@ -29,13 +29,12 @@ export default async function WorkshopVehiclesPage({
 
   return (
     <div className="p-8">
-      <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
-      <div className="mb-6">
-        <PageTitle icon="car">Vehicles</PageTitle>
-        <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
-          <OrgTrail area="Workshop" />
-        </p>
-      </div>
+      <PageHeader
+        icon="car"
+        back={{ href: "/workshop", label: "Back to Workshop" }}
+        title="Vehicles"
+        description={<><OrgTrail area="Workshop" /></>}
+      />
 
       {status === 'vehicle_created' ? (
         <FormFeedbackBanner kind="success" message="Vehicle registered successfully." />

@@ -8,7 +8,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { ServiceComplaintListInput } from '@/components/ServiceComplaintListInput';
 import { formatDateOnly } from '@/lib/utils/format-date';
-import { BackLink, PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 /**
  * "Customer is back" — book a known vehicle straight in for its next
@@ -31,12 +31,13 @@ export default async function BookVehicleServicePage({ searchParams }: { searchP
 
   return (
     <div className="p-8">
-      <BackLink href="/workshop/service-tracker" label="Back to Service Tracker" className="mb-4" />
-      <PageTitle icon="calendar" className="mb-1">Book in for service</PageTitle>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        {description}
-        {vehicle.plateNumber ? ` — ${vehicle.plateNumber}` : ''} · {vehicle.customer.fullName}
-      </p>
+      <PageHeader
+        icon="calendar"
+        back={{ href: "/workshop/service-tracker", label: "Back to Service Tracker" }}
+        title="Book in for service"
+        description={<>{description}
+        {vehicle.plateNumber ? ` — ${vehicle.plateNumber}` : ''} · {vehicle.customer.fullName}</>}
+      />
 
       {health?.inWorkshop ? (
         <div className="max-w-xl rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/10 p-5 text-sm text-[var(--ejo-text)]">

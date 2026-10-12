@@ -5,7 +5,7 @@ import { recordGoodsReceiptFormAction } from '@/lib/actions/store-form-handlers'
 import { GoodsReceiptForm } from '@/components/GoodsReceiptForm';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
-import { BackLink, PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 /**
  * Records one delivery of one part arriving into the store. The actual
@@ -31,13 +31,12 @@ export default async function NewGoodsReceiptPage({
 
   return (
     <div className="p-8">
-      <BackLink href="/inventory/goods-receipts" label="Back to Goods Receipts" className="mb-4" />
-      <div className="mb-2">
-        <PageTitle icon="receipt">Record Goods Receipt</PageTitle>
-      </div>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        <OrgTrail area="Store" />
-      </p>
+      <PageHeader
+        icon="receipt"
+        back={{ href: "/inventory/goods-receipts", label: "Back to Goods Receipts" }}
+        title="Record Goods Receipt"
+        description={<><OrgTrail area="Store" /></>}
+      />
 
       {error ? (
         <div className="mb-6 max-w-xl">
