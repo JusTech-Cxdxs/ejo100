@@ -109,18 +109,34 @@ test.describe('passwords', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Check your email' })).toBeVisible();
   });
 
-  test('change password from Profile, then sign in with the new one', async ({ page }) => {
-    const next = `Changed-${uniq()}-Pw!`;
-    await customerSignedIn(page, PASSWORD_CUSTOMER);
+  /** Profile → Change password (whatever the page does next). */
+  async function changePassword(page: import('@playwright/test').Page, from: string, to: string) {
     await open(page, portal('/dashboard/profile'));
     const form = page.locator('form').filter({ has: page.getByRole('button', { name: 'Change password' }) });
-    await form.getByLabel('Current password', { exact: true }).fill(PASSWORD_CUSTOMER.password);
-    await form.getByLabel('New password', { exact: true }).fill(next);
-    await form.getByLabel('Type the new password again', { exact: true }).fill(next);
+    await form.getByLabel('Current password', { exact: true }).fill(from);
+    await form.getByLabel('New password', { exact: true }).fill(to);
+    await form.getByLabel('Type the new password again', { exact: true }).fill(to);
     await form.getByRole('button', { name: 'Change password' }).click();
-    // The form's own answer (an error would show here instead).
+    return form;
+  }
+
+  test('change password: the confirmation shows and the customer stays signed in', async ({ page }) => {
+    test.fail(true, 'E2E-12: apps/website/lib/customer-portal/actions.ts:189-192 calls changePassword with revokeOtherSessions: true, which revokes EVERY session including the current one and issues a new cookie; the re-render of the same request still carries the old cookie, so the dashboard layout (lib/customer-portal/session.ts requireCustomer) sends the customer to /customer-portal/session-ended, which signs out the new session too — the customer lands on "Your session ended. Please sign in again." instead of the confirmation');
+    await customerSignedIn(page, PASSWORD_CUSTOMER);
+    const form = await changePassword(page, PASSWORD_CUSTOMER.password, `Changed-${uniq()}-Pw!`);
     await visibleOrExplain(page, form.getByRole('status').filter({ hasText: 'Your password is changed. Other devices have been signed out.' }), 'the confirmation "Your password is changed"');
-    await customerSignOut(page);
+    await page.goto(portal('/dashboard'));
+    await expect(page.getByRole('heading', { level: 1, name: `Welcome back, ${PASSWORD_CUSTOMER.name.split(' ')[0]}` })).toBeVisible();
+  });
+
+  test('after changing the password only the new one signs in', async ({ page, context }) => {
+    const next = `Changed-${uniq()}-Pw!`;
+    await customerSignedIn(page, PASSWORD_CUSTOMER);
+    await changePassword(page, PASSWORD_CUSTOMER.password, next);
+    // Either the confirmation, or (E2E-12) signed out — the password change itself is what is checked here.
+    await expect(page.getByText('Your password is changed. Other devices have been signed out.').or(page.getByText('Your session ended. Please sign in again.')).first()).toBeVisible();
+    await context.clearCookies();
+    await page.goto(portal());
     await submitSignIn(page, PASSWORD_CUSTOMER.email, PASSWORD_CUSTOMER.password);
     await expect(page.getByTestId('customer-sign-in-form').getByRole('alert')).toBeVisible();
     await submitSignIn(page, PASSWORD_CUSTOMER.email, next);

@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { E2E_PASSWORD, OTHER_BRANCH_TECH, SWITCHABLE, who } from './people';
 import { db, freshVehicle, journalDiagnosis } from './db';
 import { openJobCard, suggestion } from './workflows';
-import { as, open, expectAuditEntry, signIn, urlOrExplain, visitHealthy, waitOutcome } from './helpers';
+import { as, open, expectAuditEntry, signIn, urlOrExplain, visibleOrExplain, visitHealthy, waitOutcome } from './helpers';
 
 /**
  * Administration: give and take away a role (the person's menu follows),
@@ -53,7 +53,7 @@ test('switching an account off signs the person out at once; switching on lets t
   await test.step('the switched-off person is out on their next click', async () => {
     await sola.goto('/notifications');
     await urlOrExplain(sola, /\/login/);
-    await expect(sola.getByText(/switched off|session ended/i)).toBeVisible();
+    await visibleOrExplain(sola, sola.getByText(/switched off|session ended/i).first(), 'a message saying why they were signed out');
   });
   await test.step('and cannot sign back in', async () => {
     await sola.getByLabel('Work email').fill(SWITCHABLE.email);
