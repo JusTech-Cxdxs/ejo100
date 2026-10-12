@@ -3,8 +3,8 @@
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { navigationFor } from '@/lib/authz/navigation';
-import { getPrincipal, orgOwned, orgWhere, reachWhere } from '@/lib/authz/server';
-import { decide } from '@/lib/authz/catalogue';
+import { firstReach, getPrincipal, orgOwned, orgWhere, reachWhere } from '@/lib/authz/server';
+import { decide, STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
 import { getSchedulingAccess } from './scheduling';
 
 export type SearchHit = { label: string; sub?: string; href: string };
@@ -52,7 +52,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const lower = q.toLowerCase();
   const PAGE_NEEDS: Record<string, Parameters<typeof decide>[1]> = {
     '/workshop/job-cards': 'workshop.view', '/workshop/vehicle-service': 'workshop.view', '/workshop/vehicles': 'workshop.view', '/workshop/customers': 'workshop.view', '/workshop/custody': 'workshop.view',
-    '/inventory/parts': 'store.view', '/inventory/goods-receipts': 'store.view', '/inventory/analytics': 'analytics.inventory.view', '/workshop/parts-requests': 'store.view', '/workshop/external-procurement': 'store.view',
+    '/inventory/parts': 'store.view', '/inventory/goods-receipts': 'store.grn.record', '/inventory/analytics': 'analytics.inventory.view', '/workshop/parts-requests': 'store.view', '/workshop/external-procurement': 'store.view',
     '/warranty/claims': 'warranty.view', '/security/visitors': 'security.view', '/security/road-tests': 'security.view', '/security/incidents': 'security.view', '/security/deliveries': 'security.view', '/security/contractors': 'security.view',
     '/schedule/calendar': 'schedule.view', '/schedule/appointments': 'schedule.view', '/notifications/broadcasts': 'notifications.broadcast.send',
   };
@@ -80,7 +80,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     safe(prisma.part.findMany({ where: { ...storeReach, OR: [m('partNumber'), m('name')] }, take, select: { id: true, partNumber: true, name: true } })),
     !refLike ? Promise.resolve([]) : safe(prisma.partRequestSlip.findMany({ where: { ...storeReach, ...m('referenceNumber') }, take, orderBy: { createdAt: 'desc' }, select: { id: true, referenceNumber: true, status: true } })),
     !refLike ? Promise.resolve([]) : safe(prisma.externalProcurementRequest.findMany({ where: { ...storeReach, ...m('referenceNumber') }, take, orderBy: { createdAt: 'desc' }, select: { id: true, referenceNumber: true, status: true } })),
-    safe(prisma.goodsReceipt.findMany({ where: { ...storeReach, OR: [m('referenceNumber'), m('supplierName')] }, take, orderBy: { receivedAt: 'desc' }, select: { id: true, referenceNumber: true, supplierName: true } })),
+    safe(prisma.goodsReceipt.findMany({ where: { ...(await firstReach(STORE_COST_PERMISSIONS)), OR: [m('referenceNumber'), m('supplierName')] }, take, orderBy: { receivedAt: 'desc' }, select: { id: true, referenceNumber: true, supplierName: true } })),
     canWarranty && refLike ? safe(prisma.warranty.findMany({ where: { customer: mineOrg, ...m('warrantyNumber') }, take, select: { id: true, warrantyNumber: true } })) : Promise.resolve([]),
     canWarranty && refLike ? safe(prisma.warrantyClaim.findMany({ where: { customer: mineOrg, ...m('claimNumber') }, take, select: { id: true, claimNumber: true, status: true } })) : Promise.resolve([]),
     safe(prisma.visit.findMany({ where: { ...securityReach, OR: [m('visitNumber'), m('visitorName'), m('company')] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, visitNumber: true, visitorName: true } })),

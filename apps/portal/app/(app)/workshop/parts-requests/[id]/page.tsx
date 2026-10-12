@@ -1,4 +1,6 @@
 import { guardAnyPage, allows } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
+import { GrnRef } from '@/components/GrnRef';
 import { notFound } from 'next/navigation';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
 import { WarrantyList } from '@/components/WarrantyList';
@@ -60,6 +62,8 @@ export default async function PartRequestSlipDetailPage({
   if (!slip) notFound();
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
+  // Goods receipts show delivery costs: a link only for those who may open them.
+  const canSeeGrn = (await Promise.all(STORE_COST_PERMISSIONS.map((k) => allows(k)))).some(Boolean);
   // Who usually collects: the job's assigned technician.
   const receiver = (slip.jobCard?.assignedTechnician ?? slip.vehicleService?.assignedTechnician) ?? null;
 
@@ -216,9 +220,7 @@ export default async function PartRequestSlipDetailPage({
                                   <>
                                     {' '}
                                     — from{' '}
-                                    <LoadingLink href={`/inventory/goods-receipts/${s.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
-                                      {s.goodsReceiptLine.goodsReceipt.referenceNumber}
-                                    </LoadingLink>
+                                    <GrnRef id={s.goodsReceiptLine.goodsReceipt.id} label={s.goodsReceiptLine.goodsReceipt.referenceNumber} link={canSeeGrn} />
                                   </>
                                 ) : null}
                               </div>
@@ -235,9 +237,7 @@ export default async function PartRequestSlipDetailPage({
                                   <>
                                     {' '}
                                     (
-                                    <LoadingLink href={`/inventory/goods-receipts/${c.batch.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
-                                      {c.batch.goodsReceiptLine.goodsReceipt.referenceNumber}
-                                    </LoadingLink>
+                                    <GrnRef id={c.batch.goodsReceiptLine.goodsReceipt.id} label={c.batch.goodsReceiptLine.goodsReceipt.referenceNumber} link={canSeeGrn} />
                                     )
                                   </>
                                 ) : null}
@@ -252,9 +252,7 @@ export default async function PartRequestSlipDetailPage({
                                 {src.goodsReceiptId ? (
                                   <>
                                     From{' '}
-                                    <LoadingLink href={`/inventory/goods-receipts/${src.goodsReceiptId}`} className="text-[var(--ejo-primary)] hover:underline">
-                                      {src.referenceNumber}
-                                    </LoadingLink>{' '}
+                                    <GrnRef id={src.goodsReceiptId} label={src.referenceNumber ?? 'Goods receipt'} link={canSeeGrn} />{' '}
                                     — {src.quantity} {pluralizeWord(src.quantity, line.part.baseUnitOfMeasure)}
                                   </>
                                 ) : (

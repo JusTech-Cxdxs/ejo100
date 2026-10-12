@@ -1,4 +1,5 @@
 import { getSecurityRoles, listExitPasses } from '@/lib/actions/security';
+import { allows } from '@/lib/authz/server';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { EXIT_PASS_STATUS_LABEL } from '@/lib/security-rules';
@@ -8,31 +9,34 @@ import { HeaderAction, PageHeader, StatusChip } from '@/components/ui';
 
 export default async function ExitPassesPage({ searchParams }: { searchParams: Promise<{ tab?: string; q?: string }> }) {
   const { tab, q } = await searchParams;
-  const roles = await getSecurityRoles();
-  const canSeeAll = roles.isGate || roles.isManager || roles.isMaster;
+  const [roles, desk, approver] = await Promise.all([getSecurityRoles(), allows('security.view'), allows('security.pass.approve')]);
+  // The whole list is the Security desk's; everyone else sees their own passes
+  // and the ones waiting for their decision.
+  const canSeeAll = desk || roles.isMaster;
   const scope = tab === 'to_decide' ? 'to_decide' : tab === 'all' && canSeeAll ? 'all' : 'mine';
   const [passes, mine, toDecide, everything] = await Promise.all([listExitPasses(scope, q), listExitPasses('mine', q), listExitPasses('to_decide', q), canSeeAll ? listExitPasses('all', q) : Promise.resolve([])]);
-  const tabs = [['mine', 'My passes', mine.length], ['to_decide', 'To decide', toDecide.length], ...(canSeeAll ? [['all', 'All passes', everything.length]] : [])] as [string, string, number][];
+  const showDecide = desk || approver || roles.isManager || roles.isMaster || toDecide.length > 0;
+  const tabs = [['mine', 'My passes', mine.length], ...(showDecide ? [['to_decide', 'To decide', toDecide.length]] : []), ...(canSeeAll ? [['all', 'All passes', everything.length]] : [])] as [string, string, number][];
   return (
     <div className="p-4 sm:p-8">
       <PageHeader
         icon="exit"
-        title="Employee exit passes"
-        description="Security will not permit any employee on duty to go out during working hours without an approved exit pass."
+        title={desk ? 'Employee exit passes' : 'My exit passes'}
+        description={desk ? 'Security will not permit any employee on duty to go out during working hours without an approved exit pass.' : 'Going out during working hours needs an approved exit pass. Request one here and follow it from your Department Head to the Manager and the gate.'}
         actions={<HeaderAction href="/security/exit-passes/new">+ Request an exit pass</HeaderAction>}
       />
       <SecurityNav active="/security/exit-passes" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {tabs.map(([k, l, n]) => (
-          <LoadingLink key={k} href={`/security/exit-passes?tab=${k}${q ? `&q=${encodeURIComponent(q)}` : ''}`} className={`rounded-full px-3 py-1 text-xs font-medium ${scope === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l} ({n})</LoadingLink>
+          <LoadingLink key={k} href={`/security/exit-passes?tab=${k}${q ? `&q=${encodeURIComponent(q)}` : ''}`} className={`inline-flex min-h-9 items-center rounded-full px-3 py-1 text-xs font-medium ${scope === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l} ({n})</LoadingLink>
         ))}
         <form className="flex w-full gap-2 sm:ml-auto sm:w-auto">
           <input type="hidden" name="tab" value={scope} />
           <LiveSearchInput name="q" defaultValue={q ?? ''} placeholder="Search pass number, name, reason…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)]" />
         </form>
       </div>
-      <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-        {passes.length === 0 ? <p className="text-sm text-[var(--ejo-text-muted)]">{scope === 'to_decide' ? 'Nothing is waiting for your decision.' : 'No exit passes yet.'}</p> : (
+      <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">
+        {passes.length === 0 ? <p className="text-sm text-[var(--ejo-text-muted)]">{scope === 'to_decide' ? 'Nothing is waiting for your decision.' : scope === 'mine' ? 'You have not requested an exit pass yet.' : 'No exit passes yet.'}</p> : (
           <ul className="divide-y divide-[var(--ejo-border)]">
             {passes.map((p) => (
               <li key={p.id} className="flex flex-wrap items-start justify-between gap-2 py-3 text-sm">

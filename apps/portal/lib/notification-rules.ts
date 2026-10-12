@@ -14,10 +14,11 @@ export const AREAS: Record<string, string[]> = {
   SCHEDULING: ['Appointment', 'MeetingRoom', 'CalendarDelegate'],
 };
 
-/** Heads see EVERYTHING in their area; administrators see everything. */
+/** Heads see EVERYTHING in their area; administrators see everything.
+ * Everyone else (supervisors and technicians included) hears about the
+ * records they are part of — their own jobs, requests and passes. */
 export const ROLE_AREAS: Record<string, string[]> = {
   'workshop-manager': ['WORKSHOP'],
-  'workshop-supervisor': ['WORKSHOP'],
   'store-manager': ['STORE'],
   'warranty-hod': ['WARRANTY'],
   'chief-security-officer': ['SECURITY'],

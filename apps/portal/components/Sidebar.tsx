@@ -9,10 +9,12 @@ import { PoweredByEjo } from './PoweredByEjo';
 import { ROADMAP } from '@/lib/roadmap';
 import { RoadmapIcon } from './RoadmapIcon';
 import { Icon, MODULE_ICON } from './ui/Icon';
+import { useNotifications } from './NotificationProvider';
+import { isApproval } from '@/lib/approvals';
 
 /** The menu's sections. A module not listed here goes under "Operations". */
 const GROUPS: { title: string; keys: string[] }[] = [
-  { title: 'Overview', keys: ['dashboard', 'notifications', 'analytics'] },
+  { title: 'Overview', keys: ['dashboard', 'approvals', 'notifications', 'analytics'] },
   { title: 'Operations', keys: [] },
   { title: 'Administration', keys: ['organisation', 'structure', 'branches', 'users', 'roles', 'permissions', 'audit-logs', 'settings'] },
 ];
@@ -47,6 +49,9 @@ export function Sidebar({
   variant?: 'desktop' | 'drawer';
 }) {
   const pathname = usePathname();
+  // Decisions waiting on this person — the same live list as the bell.
+  const { summary } = useNotifications();
+  const waiting = summary.actions.filter(isApproval).length;
   const mini = collapsed && variant === 'desktop';
   const linkBase = 'group relative flex items-center rounded-[var(--ejo-radius-md)] text-sm font-medium transition-colors';
 
@@ -93,6 +98,9 @@ export function Sidebar({
                       <Icon name={MODULE_ICON[mod.key] ?? 'grid'} size={mini ? 20 : 18} />
                     </span>
                     <span className={mini ? 'sr-only' : 'min-w-0 flex-1 truncate'}>{mod.name}</span>
+                    {mod.key === 'approvals' && waiting > 0 ? (
+                      <span className={mini ? 'absolute right-2 top-1 h-2 w-2 rounded-full bg-[var(--ejo-warning)]' : 'shrink-0 rounded-full bg-[var(--ejo-warning)]/15 px-2 py-px text-[11px] font-semibold text-[var(--ejo-warning-text)]'}>{mini ? null : waiting}</span>
+                    ) : null}
                     {!mini && mod.status !== 'LIVE' ? <ModuleStatusBadge status={mod.status as never} /> : null}
                   </Link>
                 );

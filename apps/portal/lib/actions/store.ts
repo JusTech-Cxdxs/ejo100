@@ -25,7 +25,8 @@ import { markupToMargin, marginToMarkup, actualMargin, actualMarkup, MARGIN_TOLE
 import { requireUser, currentUserIsMasterAdmin } from './workshop';
 import { branchInMyOrganisationOrSystem, getStoreBranchIdForMe } from '@/lib/workshop-core';
 import { writeAuditLog } from '@/lib/workshop-core';
-import { authorize, branchWithinReach, canSeeRecord, orgOwned, refuse, seeBranch, seeJobCard, seePart } from '@/lib/authz/server';
+import { allows, authorize, branchWithinReach, canSeeRecord, orgOwned, refuse, seeBranch, seeJobCard, seePart } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
 import { sendEmail } from '@/lib/email';
 import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
 import { renderPricingAlertRaisedEmail } from '@/lib/email-templates/pricing-alert-raised';
@@ -1941,12 +1942,20 @@ export type PricingAlertSummary = {
   partsWithMultipleOpenAlerts: { partId: string; partName: string; openCount: number }[];
 };
 
+/** The permission that lets this person see delivery costs and margins
+ * (goods receipts, pricing alerts) — the first they hold, or one they do not
+ * hold, so the check refuses. */
+async function costKey(): Promise<PermissionKey> {
+  for (const k of STORE_COST_PERMISSIONS) if (await allows(k)) return k;
+  return STORE_COST_PERMISSIONS[0]!;
+}
+
 /** The real, honest analysis behind the Pricing Command Center's own
  * dashboard — computed fresh from whatever's genuinely open right
  * now, never a stored, potentially-stale snapshot. */
 export async function getPricingAlertSummary(branchId: string): Promise<PricingAlertSummary> {
   await requireUser();
-  branchId = await branchWithinReach('store.view', branchId);
+  branchId = await branchWithinReach(await costKey(), branchId);
   const openAlerts = await prisma.pricingAlert.findMany({
     where: { status: 'OPEN', part: { branchId } },
     select: {
@@ -1998,7 +2007,7 @@ export async function getPricingAlertSummary(branchId: string): Promise<PricingA
 
 export async function listPricingAlerts(branchId: string, filter?: { severity?: string; status?: string }) {
   await requireUser();
-  branchId = await branchWithinReach('store.view', branchId);
+  branchId = await branchWithinReach(await costKey(), branchId);
   return prisma.pricingAlert.findMany({
     where: {
       part: { branchId },
@@ -2141,7 +2150,7 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
 
 export async function listGoodsReceipts(branchId: string) {
   await requireUser();
-  branchId = await branchWithinReach('store.view', branchId);
+  branchId = await branchWithinReach(await costKey(), branchId);
   return prisma.goodsReceipt.findMany({
     take: 500, // newest 500; search reaches older records
     where: { branchId },
@@ -2198,7 +2207,7 @@ export async function getGoodsReceipt(id: string) {
     },
   });
   if (!receipt) return null;
-  if (!(await canSeeRecord('store.view', { branchId: receipt.branchId }, `GoodsReceipt:${id}`))) return null;
+  if (!(await canSeeRecord(await costKey(), { branchId: receipt.branchId }, `GoodsReceipt:${id}`))) return null;
   // Forward trace, QUANTITY parts — the same FIFO engine as releases.
   const quantityTraces = await loadQuantityTraces(
     receipt.lines.filter((l: (typeof receipt.lines)[number]) => l.part.trackingType === 'QUANTITY').map((l: (typeof receipt.lines)[number]) => l.partId),
@@ -2210,7 +2219,7 @@ export async function getGoodsReceiptAuditTrail(goodsReceiptId: string) {
   await requireUser();
   const owner = await prisma.goodsReceipt.findUnique({ where: { id: goodsReceiptId }, select: { branchId: true } });
   if (!owner) return [];
-  await seeBranch('store.view', owner.branchId, 'getGoodsReceiptAuditTrail');
+  await seeBranch(await costKey(), owner.branchId, 'getGoodsReceiptAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'GoodsReceipt', entityId: goodsReceiptId },
     orderBy: { createdAt: 'desc' },
