@@ -204,7 +204,8 @@ body {
 
 /* Tables in the working area: quiet header, gentle row hover. */
 .ejo-page table thead tr { background: color-mix(in srgb, var(--ejo-bg) 55%, transparent); }
-.ejo-page table thead th { font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; color: var(--ejo-text-muted); white-space: nowrap; }
+.ejo-page table thead th { font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; color: var(--ejo-text-muted); }
+.ejo-page table:not(.table-fixed) thead th { white-space: nowrap; }
 .ejo-page table tbody tr { transition: background-color 120ms ease; }
 .ejo-page table tbody tr:hover { background: color-mix(in srgb, var(--ejo-primary) 4%, transparent); }
 
