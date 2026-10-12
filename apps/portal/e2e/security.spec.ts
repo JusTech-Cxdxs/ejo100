@@ -27,7 +27,7 @@ test('a visitor arrives at the gate, is received, appears on the boards and is c
   const name = `Visitor ${uniq()}`;
   await as(page, 'security-officer');
   await page.goto('/security/visitors');
-  const form = page.locator('form').filter({ has: page.locator('select[name="mode"]') });
+  const form = page.locator('form').filter({ has: page.locator('select[name="mode"]') }).first();
   await form.locator('select[name="mode"]').selectOption('ARRIVED');
   await form.locator('select[name="party"]').selectOption('ONE');
   await form.locator('select[name="affiliation"]').selectOption('INDIVIDUAL');
@@ -64,7 +64,7 @@ test('a contractor team: requested, approved by the Manager, signed in and out a
   const company = `Bright Electricals ${uniq()}`;
   await as(page, 'receptionist');
   await page.goto('/security/contractors/new');
-  const form = page.locator('form').filter({ has: page.locator('input[name="company"]') });
+  const form = page.locator('form').filter({ has: page.locator('input[name="company"]') }).first();
   await form.locator('input[name="company"]').fill(company);
   await form.locator('textarea[name="work"]').fill('Rewire workshop bay 2');
   await form.locator('input[name="workArea"]').fill('Workshop bay 2');
@@ -100,7 +100,7 @@ test('a delivery at the gate is received by the Store and the vehicle leaves', a
   const supplier = `ABC Auto Parts ${uniq()}`;
   await as(page, 'security-officer');
   await page.goto('/security/deliveries/new');
-  const form = page.locator('form').filter({ has: page.locator('select[name="mode"]') });
+  const form = page.locator('form').filter({ has: page.locator('select[name="mode"]') }).first();
   await form.locator('select[name="mode"]').selectOption('ARRIVED');
   await form.locator('input[name="supplierName"]').fill(supplier);
   await form.locator('input[name="reference"]').fill('PO-E2E-0031');
@@ -132,7 +132,7 @@ test('a delivery at the gate is received by the Store and the vehicle leaves', a
 test('an exit pass: requested, authorised by the Department Head, approved by the Manager, out and back', async ({ page }) => {
   await as(page, 'technician');
   await page.goto('/security/exit-passes/new');
-  const form = page.locator('form').filter({ has: page.locator('select[name="who"]') });
+  const form = page.locator('form').filter({ has: page.locator('select[name="who"]') }).first();
   await form.locator('select[name="who"]').selectOption('ME');
   await form.locator('textarea[name="reason"]').fill('Bank errand for the workshop');
   await form.locator('select[name="leaveWhen"]').selectOption('NOW');

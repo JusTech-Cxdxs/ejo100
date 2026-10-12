@@ -10,7 +10,7 @@ import { as, expectAuditEntry, signIn, visitHealthy, waitOutcome } from './helpe
  * in) and on again, and every administration page opens cleanly — with the
  * Audit Logs filters working.
  */
-test.describe.configure({ mode: 'serial', timeout: 120_000 });
+// Each test stands alone (no cascade of skips when one fails).
 
 const card = (page: Page) => page.getByRole('listitem', { name: SWITCHABLE.name });
 

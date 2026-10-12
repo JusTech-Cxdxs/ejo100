@@ -197,7 +197,7 @@ test.describe('Vehicle Service — the full visit', () => {
     await page.goto('/workshop/service-tracker');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await page.goto(`/workshop/vehicle-service?q=${encodeURIComponent(S.number)}`);
-    await expect(page.getByRole('link', { name: S.number })).toBeVisible();
+    await expect(page.getByRole('link', { name: S.number }).first()).toBeVisible();
     const stock = await readStock(page, S.partUrl);
     expect(stock.onHand).toBeGreaterThan(0);
   });

@@ -93,7 +93,7 @@ test('accents, emoji and markup in a name are kept as typed and never run', asyn
   const name = `Ọlá Àdébáyọ̀ 🚗 <b>bold</b> ${uniq()}`;
   await as(page, 'security-officer');
   await page.goto('/security/visitors');
-  const form = page.locator('form').filter({ has: page.locator('select[name="mode"]') });
+  const form = page.locator('form').filter({ has: page.locator('select[name="mode"]') }).first();
   await form.locator('select[name="mode"]').selectOption('EXPECTED');
   await form.locator('select[name="party"]').selectOption('ONE');
   await form.locator('select[name="affiliation"]').selectOption('INDIVIDUAL');

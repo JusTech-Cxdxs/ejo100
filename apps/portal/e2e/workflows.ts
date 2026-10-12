@@ -143,9 +143,12 @@ export async function requestStoreMatching(page: Page) {
 export async function storeMatchesAll(page: Page, jobCardId: string, matcher: Person = who('store-manager')) {
   await test.step('Store matches the Store Part lines', async () => {
     await as(page, matcher);
-    await page.goto(`/inventory/estimate-matching/${jobCardId}`);
+    await open(page, `/inventory/estimate-matching/${jobCardId}`);
+    const done = page.getByText('Every requested line for this Job Card is matched.');
     for (let i = 0; i < 5; i++) {
       const match = page.getByRole('button', { name: 'Match', exact: true });
+      // The page streams in: wait until it shows either a line to match or "all matched".
+      await expect(match.first().or(done)).toBeVisible();
       if ((await match.count()) === 0) break;
       await match.first().click();
       await waitOutcome(page, /status=line_matched|error=/);
