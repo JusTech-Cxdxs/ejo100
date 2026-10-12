@@ -38,8 +38,10 @@ export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen 
     return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', esc); };
   }, [account]);
 
+  // (No backdrop-filter on the header: it would make the header the containing
+  // block of the phone search sheet and menus, which are position: fixed.)
   return (
-    <header className="relative z-40 flex h-16 shrink-0 items-center gap-2 border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)]/80 px-3 backdrop-blur-xl backdrop-saturate-150 supports-[backdrop-filter]:bg-[var(--ejo-bg)]/70 sm:gap-3 sm:px-5">
+    <header className="relative z-40 flex h-16 shrink-0 items-center gap-2 border-b border-[var(--ejo-border)] bg-[color-mix(in_srgb,var(--ejo-bg)_92%,var(--ejo-primary))] px-3 shadow-[0_1px_0_0_rgba(0,0,0,0.02)] sm:gap-3 sm:px-5">
       {/* Phones and tablets: the menu button and the logo. */}
       <button
         type="button"

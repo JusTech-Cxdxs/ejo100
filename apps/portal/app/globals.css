@@ -208,10 +208,13 @@ body {
 .ejo-page table tbody tr { transition: background-color 120ms ease; }
 .ejo-page table tbody tr:hover { background: color-mix(in srgb, var(--ejo-primary) 4%, transparent); }
 
-/* Keyboard focus: a clear green ring everywhere. */
-:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--ejo-primary) 70%, transparent);
-  outline-offset: 2px;
+/* Keyboard focus: a clear green ring everywhere (in the base layer, so a
+   component's own focus style still wins). */
+@layer base {
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--ejo-primary) 70%, transparent);
+    outline-offset: 2px;
+  }
 }
 
 /* Shell: the drawer and menus. */

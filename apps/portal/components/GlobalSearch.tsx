@@ -78,8 +78,9 @@ export function GlobalSearch() {
       if (e.key === '/' && !typing) { e.preventDefault(); focusSearch(); }
     };
     document.addEventListener('mousedown', outside);
-    document.addEventListener('keydown', keys);
-    return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', keys); };
+    // Capture phase, so nothing else on the page can swallow Ctrl/⌘ K first.
+    window.addEventListener('keydown', keys, true);
+    return () => { document.removeEventListener('mousedown', outside); window.removeEventListener('keydown', keys, true); };
   }, [focusSearch]);
 
   useEffect(() => {
