@@ -166,9 +166,11 @@ p95 1669 ms; live pulse (50 concurrent) p50 289 ms / p95 383 ms; 0 errors.
 ## Latest CI run
 
 * Draft PR **#12** "[CI only — do not merge] e2e adaptation" (`work/e2e` → `platform/customer-portal-crm`).
-* Workflow **E2E**, run **38263113864** @ `0baf78e` — both shards **success**: shard 1/2 70 as expected (3 of them
-  known defects: E2E-09, E2E-10, E2E-12) · 0 unexpected · 0 flaky · 1 skipped (the Store-refusal test retired in
-  the next commit); shard 2/2 66 as expected · 0 unexpected · 0 flaky. E2E-11 was recorded 4 times (shard 1).
+* Workflow **E2E**, run **38265594872** @ `e89356b` — both shards **success**: shard 1/2 69 as expected (3 of them
+  known defects: E2E-09, E2E-10, E2E-12) · 0 unexpected · 1 flaky · 0 skipped; shard 2/2 66 as expected · 0
+  unexpected · 0 flaky. E2E-11 was recorded twice. The flaky one (CRM switch-off: the page briefly held two copies of
+  the access controls) is fixed in the next commit by scoping them to the page's `#main`.
+* Previous green run: 38263113864 @ `0baf78e` (0 flaky, E2E-11 recorded 4 times).
 * Before it, on the merged branch: 38251673571 (shell adaptation: 4 failing), 38254109730 (7), 38257626020 (1),
   38260101304 (1) — each failure diagnosed from its annotation and fixed (test) or marked (product defect).
 * Read any run's results: `gh api repos/JusTech-Cxdxs/ejo100/actions/runs/<run>/jobs --jq '.jobs[].id'`, then

@@ -88,7 +88,7 @@ test.describe('portal access, from the front desk', () => {
   test('"Send set-password link": the email arrives; the customer sets a password and signs in', async ({ page, request }) => {
     await as(page, 'receptionist');
     S.url = await openCustomer(page, SWITCH_CUSTOMER.name);
-    await page.getByRole('button', { name: 'Send set-password link' }).click();
+    await page.locator('#main').getByRole('button', { name: 'Send set-password link' }).first().click();
     await urlOrExplain(page, /status=link_sent/);
     await expect(page.getByText('Set-password link sent').first()).toBeVisible();
     const mail = await latestMail(request, SWITCH_CUSTOMER.email, /set your customer portal password/);
@@ -108,9 +108,11 @@ test.describe('portal access, from the front desk', () => {
 
     await as(page, 'receptionist');
     await page.goto(S.url);
-    await page.getByText('Switch portal access off…').click();
-    await page.getByRole('textbox', { name: 'Reason for switching off' }).fill('Asked to close the account (E2E)');
-    await page.getByRole('button', { name: 'Switch off and sign out' }).click();
+    // The page's own copy (#main) — the shell can briefly hold a second one while the page streams in.
+    const main = page.locator('#main');
+    await main.getByText('Switch portal access off…').first().click();
+    await main.getByRole('textbox', { name: 'Reason for switching off' }).first().fill('Asked to close the account (E2E)');
+    await main.getByRole('button', { name: 'Switch off and sign out' }).first().click();
     await urlOrExplain(page, /status=access_off/);
     await expect(page.getByText('Portal access switched off').first()).toBeVisible();
 
@@ -124,8 +126,8 @@ test.describe('portal access, from the front desk', () => {
       });
     }
 
-    await page.getByText('Switch portal access on…').click();
-    await page.getByRole('button', { name: 'Switch on' }).click();
+    await page.locator('#main').getByText('Switch portal access on…').first().click();
+    await page.locator('#main').getByRole('button', { name: 'Switch on' }).first().click();
     await urlOrExplain(page, /status=access_on/);
     await expect(page.getByText('Portal access switched on').first()).toBeVisible();
     if (up) await customerSignedIn(customer, SWITCH_CUSTOMER, S.password);
