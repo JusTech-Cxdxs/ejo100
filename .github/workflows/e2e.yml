@@ -72,6 +72,15 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Real-browser tests
         run: npx playwright test --config=apps/portal/e2e/playwright.config.ts
+      - name: Load test (p50 / p95 / p99 against this CI instance)
+        run: npx tsx apps/portal/e2e/load.ts
+        env:
+          LOAD_SECONDS: '30'
+      - if: always()
+        name: Dependency audit (production dependencies, summary only)
+        run: |
+          npm audit --omit=dev --json > audit.json 2>/dev/null || true
+          node -e "const a=require('./audit.json');const v=(a.metadata||{}).vulnerabilities||{};console.log('::notice title=npm audit::'+JSON.stringify(v));for(const [n,x] of Object.entries(a.vulnerabilities||{})){if(['high','critical'].includes(x.severity))console.log('::warning title=npm audit '+x.severity+'::'+n+' via '+[].concat(x.via).map(y=>typeof y==='string'?y:y.title).join('; ').slice(0,300))}" || true
       # Failures as annotations (readable from the API, not only the web page).
       - if: failure()
         name: Report failures
