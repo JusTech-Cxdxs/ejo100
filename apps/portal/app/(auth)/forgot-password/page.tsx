@@ -2,37 +2,35 @@
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
 import { authClient } from '@/lib/auth-client';
-import { portalConfig } from '@/lib/site-config';
 import { AuthShell } from '@/components/AuthShell';
+import { AuthNotice, authButton, authInput } from '@/components/AuthNotice';
 import { EjoSpinner } from '@/components/EjoSpinner';
 
+/**
+ * Ask for a set-password link. The answer is always the same ("if an account
+ * exists…") — this page never reveals whether an email has an account.
+ */
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (loading) return;
     setError(null);
+    const clean = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) { setError('Enter a valid work email address.'); return; }
     setLoading(true);
-
     try {
-      const { error: reqError } = await authClient.requestPasswordReset({
-        email,
-        redirectTo: '/reset-password',
-      });
-
-      if (reqError) {
-        setError(reqError.message ?? 'Something went wrong. Please try again.');
-        return;
-      }
-
-      setSent(true);
+      const { error: reqError } = await authClient.requestPasswordReset({ email: clean, redirectTo: '/reset-password' });
+      if (reqError && reqError.status === 429) { setError('Too many requests. Wait a few minutes, then try again.'); return; }
+      // Any other answer reads the same, so nobody can test which emails have accounts.
+      setSentTo(clean);
     } catch {
-      setError('Could not reach the server. Please check your connection and try again.');
+      setError('Could not reach the server. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -40,55 +38,30 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthShell
-      eyebrow={portalConfig.poweredBy}
-      title="Forgot your password?"
-      subtitle="Enter your work email and we'll send you a reset link."
-      footer={
-        <Link
-          href="/login"
-          className="block text-center text-sm font-medium text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)]"
-        >
-          Back to sign in
-        </Link>
-      }
+      title={sentTo ? 'Check your email' : 'Reset your password'}
+      subtitle={sentTo ? undefined : 'Enter your work email and we’ll send you a link to set a new password.'}
+      footer={<Link href="/login" className="block text-center text-sm font-medium text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)]">← Back to sign in</Link>}
     >
-      {sent ? (
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)]/10 px-3 py-3 text-center text-sm text-[var(--ejo-success)]"
-        >
-          If an account exists for that email, a reset link is on its way.
-        </motion.p>
+      {sentTo ? (
+        <div className="space-y-4">
+          <AuthNotice kind="success">
+            If an account exists for <strong className="break-all">{sentTo}</strong>, a link to set a new password is on its way. It works once and expires in 1 hour.
+          </AuthNotice>
+          <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--ejo-text-muted)]">
+            <li>Check your spam or junk folder.</li>
+            <li>Nothing after 10 minutes? Try again, or ask your administrator to send your welcome email again.</li>
+          </ul>
+          <button type="button" onClick={() => { setSentTo(null); setEmail(''); }} className="text-sm font-medium text-[var(--ejo-primary)] hover:underline">Use a different email</button>
+        </div>
       ) : (
-        <form className="space-y-4" onSubmit={handleSubmit}>
+        <form className="space-y-5" onSubmit={handleSubmit} noValidate>
           <div>
-            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-[var(--ejo-text)]">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@kewalram.com"
-              className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-4 py-3 text-sm text-[var(--ejo-text)] outline-none focus:border-[var(--ejo-primary)] focus:ring-2 focus:ring-[var(--ejo-primary)]/20"
-            />
+            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-[var(--ejo-text)]">Work email</label>
+            <input id="email" type="email" inputMode="email" autoComplete="username" autoCapitalize="off" spellCheck={false} required maxLength={200} autoFocus value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" aria-invalid={Boolean(error) || undefined} className={authInput} />
           </div>
-
-          {error && (
-            <p className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)]/10 px-3 py-2.5 text-sm text-[var(--ejo-error)]">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-[var(--ejo-primary)] py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[1.01] hover:opacity-90 disabled:scale-100 disabled:opacity-60"
-          >
-            {loading && <EjoSpinner />}
+          {error ? <AuthNotice kind="error">{error}</AuthNotice> : null}
+          <button type="submit" disabled={loading} className={authButton}>
+            {loading ? <EjoSpinner /> : null}
             {loading ? 'Sending…' : 'Send reset link'}
           </button>
         </form>

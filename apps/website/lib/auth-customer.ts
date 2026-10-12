@@ -56,6 +56,19 @@ export const customerAuth = betterAuth({
     requireEmailVerification: false,
   },
 
+  // A customer account switched off by the organisation cannot sign in
+  // (and the dashboard re-checks on every visit).
+  databaseHooks: {
+    session: {
+      create: {
+        before: async (session) => {
+          const c = await prisma.customer.findUnique({ where: { id: session.userId }, select: { isActive: true } });
+          return Boolean(c?.isActive);
+        },
+      },
+    },
+  },
+
   session: {
     modelName: 'customerSession',
     fields: { userId: 'customerId' },

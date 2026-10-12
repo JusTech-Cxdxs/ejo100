@@ -2,11 +2,13 @@ import { randomBytes } from 'node:crypto';
 import { prisma } from '@ejo/database';
 import { auth } from '@/lib/auth';
 import { sendEmail } from '@/lib/email';
+import { redact } from '@/lib/errors';
 import { PERMISSIONS, type PermissionKey, type Principal } from '@/lib/authz/catalogue';
 import { describeAccess, roleLabel } from '@/lib/authz/describe-access';
 import { renderStaffAccessEmail } from '@/lib/email-templates/staff-access';
 import { formatEmployeeId, uniqueBranchPrefixes } from '@/lib/employee-id';
 import { portalConfig } from '@/lib/site-config';
+import { portalBaseUrl } from '@/lib/portal-url';
 
 /**
  * Server-only (NOT a 'use server' file): staff onboarding — employee IDs,
@@ -15,9 +17,7 @@ import { portalConfig } from '@/lib/site-config';
 
 const SET_PASSWORD_HOURS = 72;
 
-function portalUrl(): string {
-  return (process.env.NEXT_PUBLIC_PORTAL_URL ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:3001').replace(/\/$/, '');
-}
+const portalUrl = portalBaseUrl;
 
 /** The next free employee ID for a branch (ORG-BRANCH-NNNN). The column is
  * unique, so two administrators adding people at the same moment can never
@@ -95,11 +95,19 @@ export async function sendStaffAccessEmail(userId: string, kind: 'welcome' | 'up
       logoUrl: `${base}/images/logo/logo.png`,
       changeNote,
     });
-    await sendEmail(a.user.email, subject, html);
+    let error: string | null = null;
+    try {
+      await sendEmail(a.user.email, subject, html);
+    } catch (err) {
+      error = redact(err instanceof Error ? err.message : String(err)).slice(0, 300);
+    }
+    // Always recorded (Settings → Email delivery shows failures and the reason).
+    await prisma.securityEmailLog.create({ data: { entityType: 'User', entityId: userId, recipient: `${a.user.fullName} <${a.user.email}>`, subject, sent: !error, error } }).catch(() => undefined);
+    if (error) throw new Error(error);
     return true;
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Staff access email failed', userId, kind, err);
+    console.error('Staff access email failed', userId, kind, redact(String((err as Error)?.message ?? err)));
     return false;
   }
 }

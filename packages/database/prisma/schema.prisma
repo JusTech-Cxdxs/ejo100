@@ -401,6 +401,9 @@ model User {
   externalProcurementRetired          ExternalProcurementRequest[] @relation("ExternalProcurementRetiredBy")
   externalProcurementSupplementaryLinesAdded ExternalProcurementSupplementaryLine[] @relation("ExternalProcurementSupplementaryLineAddedBy")
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([organisationId])
+  @@index([branchId])
   @@map("users")
   warrantyProvidersCreated WarrantyProvider[] @relation("WarrantyProviderCreatedBy")
   warrantyPoliciesCreated WarrantyPolicy[] @relation("WarrantyPolicyCreatedBy")
@@ -548,6 +551,8 @@ model UserRole {
   role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roleId])
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([roleId])
   @@map("user_roles")
 }
 
@@ -623,6 +628,8 @@ model Customer {
   jobCards        JobCard[]
   vehicleServices VehicleService[]
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([organisationId])
   @@map("customers")
   warranties      Warranty[]
   warrantyClaims WarrantyClaim[]
@@ -682,6 +689,8 @@ model CustomerVehicle {
   vehicleServices VehicleService[]
   reminderLogs ServiceReminderLog[]
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([customerId])
   @@map("customer_vehicles")
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]
@@ -881,6 +890,13 @@ model JobCard {
   // a Vehicle Service visit" when that's genuinely true, never hidden.
   escalatedFromVehicleService VehicleService? @relation("VehicleServiceEscalatedJobCard")
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([branchId, status])
+  @@index([branchId, createdAt])
+  @@index([customerId])
+  @@index([vehicleId])
+  @@index([assignedTechnicianId])
+  @@index([supervisorId])
   @@map("job_cards")
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]
@@ -1099,6 +1115,8 @@ model EstimateLineItem {
   partType    PartType? @relation(fields: [partTypeId], references: [id])
   matchedPart Part?     @relation("EstimateLineItemMatchedPart", fields: [matchedPartId], references: [id])
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([estimateId])
   @@map("estimate_line_items")
   // Who pays for this line. CUSTOMER (default) counts towards what the
   // customer owes; WARRANTY lines are covered by a specific warranty (and
@@ -1145,6 +1163,10 @@ model Payment {
   vehicleService VehicleService? @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
   recordedBy    User    @relation(fields: [recordedById], references: [id])
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([jobCardId])
+  @@index([vehicleServiceId])
+  @@index([recordedAt])
   @@map("payments")
 }
 
@@ -1215,6 +1237,8 @@ model CancellationRequest {
   requestedBy User    @relation("CancellationRequestedBy", fields: [requestedById], references: [id])
   decidedBy   User?   @relation("CancellationDecidedBy", fields: [decidedById], references: [id])
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([jobCardId, status])
   @@map("cancellation_requests")
 }
 
@@ -1242,6 +1266,8 @@ model CloseRequest {
   requestedBy User    @relation("CloseRequestedBy", fields: [requestedById], references: [id])
   decidedBy   User?   @relation("CloseDecidedBy", fields: [decidedById], references: [id])
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([jobCardId, status])
   @@map("close_requests")
 }
 
@@ -1414,6 +1440,13 @@ model VehicleService {
   closeRequests VehicleServiceCloseRequest[]
   cancellationRequests VehicleServiceCancellationRequest[]
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([branchId, status])
+  @@index([branchId, createdAt])
+  @@index([customerId])
+  @@index([vehicleId])
+  @@index([assignedTechnicianId])
+  @@index([supervisorId])
   @@map("vehicle_services")
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]
@@ -1678,6 +1711,8 @@ model ServiceEstimateLineItem {
   matchedPart Part?         @relation(fields: [matchedPartId], references: [id])
   partRequestSlipLines PartRequestSlipLine[]
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([estimateId])
   @@map("service_estimate_line_items")
 }
 
@@ -1795,6 +1830,11 @@ model Verification {
   value      String
   expiresAt  DateTime
   createdAt  DateTime @default(now())
+  // v27 — Better Auth writes updatedAt on every verification (password-reset
+  // and set-password links); without this column every such link failed.
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@index([identifier])
 
   @@map("verifications")
 }
@@ -2084,6 +2124,10 @@ model PartBatchConsumption {
   batch    PartBatch           @relation(fields: [batchId], references: [id], onDelete: Cascade)
   slipLine PartRequestSlipLine @relation(fields: [slipLineId], references: [id], onDelete: Cascade)
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([batchId])
+  @@index([slipLineId])
+  @@index([consumedAt])
   @@map("part_batch_consumptions")
 }
 
@@ -2115,6 +2159,9 @@ model PartQuantityConsumption {
 
   @@index([partId])
   @@index([goodsReceiptLineId])
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([slipLineId])
+  @@index([consumedAt])
   @@map("part_quantity_consumptions")
 }
 
@@ -2154,6 +2201,10 @@ model PartSerial {
   // real physical unit across the entire catalog, not just within
   // whichever Part it happens to be filed under.
   @@unique([serialNumber])
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([partId, status])
+  @@index([issuedToSlipLineId])
+  @@index([goodsReceiptLineId])
   @@map("part_serials")
   warranties Warranty[]
 }
@@ -2179,6 +2230,8 @@ model GoodsReceipt {
   receivedBy User               @relation("GoodsReceiptReceivedBy", fields: [receivedById], references: [id])
   lines      GoodsReceiptLine[]
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([branchId, receivedAt])
   @@map("goods_receipts")
   gateDeliveries GateDelivery[]
 }
@@ -2232,6 +2285,9 @@ model GoodsReceiptLine {
   quantityConsumptions PartQuantityConsumption[]
   pricingAlert PricingAlert?
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([goodsReceiptId])
+  @@index([partId])
   @@map("goods_receipt_lines")
 }
 
@@ -2318,6 +2374,8 @@ model PricingAlert {
   goodsReceiptLine GoodsReceiptLine @relation(fields: [goodsReceiptLineId], references: [id], onDelete: Cascade)
   resolvedBy      User?            @relation("PricingAlertResolvedBy", fields: [resolvedById], references: [id])
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([partId, status])
   @@map("pricing_alerts")
 }
 
@@ -2420,6 +2478,10 @@ model PartRequestSlip {
   rejectedBy     User?    @relation("PartRequestSlipRejectedBy", fields: [rejectedById], references: [id])
   lines          PartRequestSlipLine[]
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([branchId, status])
+  @@index([jobCardId])
+  @@index([vehicleServiceId])
   @@map("part_request_slips")
 }
 
@@ -2453,6 +2515,9 @@ model PartRequestSlipLine {
   issuedSerials     PartSerial[]
   quantityConsumptions PartQuantityConsumption[]
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([slipId])
+  @@index([partId])
   @@map("part_request_slip_lines")
   warranties Warranty[]
 }
@@ -2561,6 +2626,9 @@ model ExternalProcurementRequest {
   // stays in description/estimatedAmount above exactly as before.
   lines              ExternalProcurementRequestLine[]
 
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([branchId, status])
+  @@index([jobCardId])
   @@map("external_procurement_requests")
 }
 
@@ -3450,6 +3518,8 @@ model Appointment {
 
   @@index([ownerId, startsAt])
   @@index([roomId, startsAt])
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([branchId, startsAt])
   @@map("appointments")
 }
 
@@ -3462,6 +3532,8 @@ model AppointmentParticipant {
   user        User        @relation("AppointmentParticipantUser", fields: [userId], references: [id])
 
   @@unique([appointmentId, userId])
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([userId])
   @@map("appointment_participants")
 }
 
@@ -3687,6 +3759,8 @@ model Broadcast {
   stoppedBy    User?        @relation("BroadcastStoppedBy", fields: [stoppedById], references: [id])
 
   @@index([isActive, startsAt])
+  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
+  @@index([organisationId, updatedAt])
   @@map("broadcasts")
 }
 

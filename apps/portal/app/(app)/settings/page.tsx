@@ -60,7 +60,7 @@ export default async function SettingsPage() {
             {emails7d.sent} sent · <span className={emails7d.failed ? 'text-[var(--ejo-error)]' : ''}>{emails7d.failed} failed</span>
           </p>
           {emails7d.lastError ? <p className="mt-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)]/10 p-3 text-xs text-[var(--ejo-error)]">Last error: {emails7d.lastError}</p> : null}
-          <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Failures usually mean the mail settings (SMTP_HOST, SMTP_USER, SMTP_PASS, SMTP_FROM) are missing or wrong in Vercel.</p>
+          <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Failures usually mean the mail settings (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM) are missing or wrong in Vercel.</p>
         </section>
       ) : null}
     </div>

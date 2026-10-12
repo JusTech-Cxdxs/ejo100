@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Runs every scripts/predeploy/*.sql file, in name order, against the
- * production database — just before `prisma db push`.
+ * production database — just before `prisma db push` — and every
+ * scripts/postdeploy/*.sql file just after it.
  *
  * Why: `db push` (rightly, without --accept-data-loss) stops a deploy on any
  * change it cannot prove harmless — including adding a UNIQUE index to a new,
@@ -18,15 +19,15 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-function applyPredeploySql() {
-  const dir = path.resolve(__dirname, 'predeploy');
+function applySqlDir(name) {
+  const dir = path.resolve(__dirname, name);
   if (!fs.existsSync(dir)) return;
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
   // A direct (non-pooled) connection when one is configured — DDL through a
   // transaction pooler works, but a direct connection is the safe choice.
   const url = process.env.DIRECT_URL || process.env.DATABASE_URL;
   for (const f of files) {
-    console.log(`[predeploy] ${f}`);
+    console.log(`[${name}] ${f}`);
     execSync(`npx prisma db execute --file="${path.join(dir, f)}" --url="$PREDEPLOY_URL"`, {
       stdio: 'inherit',
       env: { ...process.env, PREDEPLOY_URL: url },
@@ -34,4 +35,15 @@ function applyPredeploySql() {
   }
 }
 
-module.exports = { applyPredeploySql };
+/** Before `prisma db push`: additive changes the push would otherwise refuse. */
+function applyPredeploySql() {
+  applySqlDir('predeploy');
+}
+
+/** After `prisma db push`: protections that must cover every table, including
+ * tables the push has just created (e.g. row-level security, default deny). */
+function applyPostdeploySql() {
+  applySqlDir('postdeploy');
+}
+
+module.exports = { applyPredeploySql, applyPostdeploySql };

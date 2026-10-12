@@ -21,6 +21,7 @@ import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach, s
  */
 
 import { prisma, getAuditActor } from '@ejo/database';
+import { assertJobStillOpen } from '@/lib/sourcing-lifecycle';
 import { claimed as claimedOrStale, lockExisting, lockRows, StaleStateError } from '@/lib/integrity';
 import { retryOnNumberClash } from '@/lib/integrity-core';
 import { issuePartWarrantiesForSlip } from './warranty';
@@ -988,6 +989,8 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
     throw new SourcingActionError('This request is not awaiting HOD approval.');
   }
   const user = await requireEligibleManager(slip.branchId, 'store.prs.approve_hod');
+  // Nothing more is approved for a job that is cancelled or finished.
+  await assertJobStillOpen(prisma, slip);
   const claimed = await prisma.partRequestSlip.updateMany({
     where: { id: slipId, status: 'PENDING_HOD_APPROVAL' },
     data: { status: 'PENDING_STORE_APPROVAL', hodApprovedById: user.id, hodApprovedAt: new Date(), hodNotes: notes?.trim() || undefined },
@@ -1153,6 +1156,10 @@ export async function approvePartRequestSlipByStore(slipId: string, notes?: stri
   }
 
   await prisma.$transaction(async (tx) => {
+    // The request first, then the job's state, then stock (the same order a
+    // cancellation uses — see lib/sourcing-lifecycle.ts — so they queue, never deadlock).
+    await lockRows(tx, 'partRequestSlip', [slipId]);
+    await assertJobStillOpen(tx, slip);
     // Two storekeepers approving different requests for the same part at
     // once: the check above is only a fast answer. Lock the stock rows and
     // decide again against what is on hand and reserved at this instant.
@@ -1286,6 +1293,8 @@ export async function releasePartRequestSlip(
         receivedByName: receivedBy.receivedByName?.trim() || undefined,
       },
     }), 'This was just released by someone else — refresh to see the latest.');
+    // Never release parts to a job that is cancelled or finished.
+    await assertJobStillOpen(tx, slip);
     await lockRows(tx, 'partStockByPart', slip.lines.map((l: (typeof slip.lines)[number]) => l.partId));
     for (const line of slip.lines) {
       const qty = Number(line.quantityRequested);
@@ -1395,8 +1404,11 @@ export async function releasePartRequestSlip(
   try {
     await issuePartWarrantiesForSlip(slipId);
   } catch (err) {
+    // Never silent: the failure is in the audit trail (Warranty can issue
+    // the missing warranties from the slip) as well as the server log.
     // eslint-disable-next-line no-console
     console.error('Failed to issue part warranties for released slip', slipId, err);
+    await writeAuditLog({ userId: user.id, action: 'part_warranty.issue_failed', entityType: 'PartRequestSlip', entityId: slipId, metadata: { error: String((err as Error)?.message ?? err).slice(0, 300) } }).catch(() => undefined);
   }
   await writeAuditLog({
     userId: user.id,
@@ -1888,6 +1900,8 @@ export async function approveExternalProcurementRequest(requestId: string, notes
     throw new SourcingActionError('This request is not awaiting approval.');
   }
   const user = await requireEligibleManager(request.branchId, 'procurement.epr.approve');
+  // Nothing is approved or paid out for a Job Card that is cancelled or finished.
+  await assertJobStillOpen(prisma, { jobCardId: request.jobCardId });
   // Locked in right here, at the exact moment of approval — never
   // recomputed later, so nothing that happens afterward could ever
   // silently change what the Manager actually approved.
@@ -1964,6 +1978,8 @@ export async function disburseExternalProcurementRequest(
     throw new SourcingActionError('Payment method is required.');
   }
   const user = await requireEligibleFinance(request.branchId, 'procurement.epr.disburse');
+  // Nothing is approved or paid out for a Job Card that is cancelled or finished.
+  await assertJobStillOpen(prisma, { jobCardId: request.jobCardId });
   const disbursedAmount = request.approvedTotal;
   const claimed = await prisma.externalProcurementRequest.updateMany({
     where: { id: requestId, status: 'APPROVED' },

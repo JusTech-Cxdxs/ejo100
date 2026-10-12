@@ -25,7 +25,7 @@
  */
 const { execSync } = require('child_process');
 const path = require('path');
-const { applyPredeploySql } = require('./apply-predeploy-sql');
+const { applyPredeploySql, applyPostdeploySql } = require('./apply-predeploy-sql');
 
 if (!process.env.VERCEL) {
   console.log('[db-push] Skipping — not running on Vercel.');
@@ -57,4 +57,7 @@ console.log('[db-push] Pushing Prisma schema to the database...');
 execSync(`npx prisma db push --schema="${schemaPath}" --skip-generate`, {
   stdio: 'inherit',
 });
+// Then the protections that must cover every table — including any the push
+// just created: row-level security on, no access for Supabase's public roles.
+applyPostdeploySql();
 console.log('[db-push] Done.');

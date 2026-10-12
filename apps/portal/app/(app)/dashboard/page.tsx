@@ -4,7 +4,7 @@ import { getWorkshopDashboardCounts } from '@/lib/actions/workshop';
 import { getDashboardTrend, getDashboardNotifications, getPlatformGlance } from '@/lib/actions/dashboard';
 import { getMyBroadcasts, canBroadcast } from '@/lib/actions/notifications';
 import { BROADCAST_CATEGORY } from '@/lib/notification-rules';
-import { DashboardTrendChart } from '@/components/DashboardTrendChart';
+import { DashboardTrendChart } from '@/components/LazyCharts';
 import { LoadingLink } from '@/components/LoadingLink';
 
 /**

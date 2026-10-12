@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronRequest } from '@/lib/cron-auth';
 import { setAuditActor } from '@ejo/database';
 import { recordJobRun } from '@/lib/job-runs';
-import { getOpenPricingAlertsForDigest } from '@/lib/actions/store';
+import { getOpenPricingAlertsForDigest } from '@/lib/pricing-digest';
 import { sendEmail } from '@/lib/email';
 import { renderPricingAlertsDigestEmail } from '@/lib/email-templates/pricing-alerts-digest';
 
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
   // Scheduled job: any write it makes is journaled as the system.
   setAuditActor(null, 'cron:pricing-alerts');
   const authHeader = request.headers.get('authorization');
-  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isCronRequest(authHeader)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

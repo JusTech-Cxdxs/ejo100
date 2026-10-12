@@ -94,7 +94,10 @@ export default async function CustomerDashboardPage() {
           estimate: {
             select: {
               customerNotifiedAt: true,
-              lineItems: { orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true } },
+              // Only what the CUSTOMER pays — lines billed to a warranty
+              // provider, given as goodwill or internal never reach (or
+              // inflate) the customer's view.
+              lineItems: { where: { billTo: 'CUSTOMER' }, orderBy: { createdAt: 'asc' }, select: { type: true, description: true, quantity: true, amount: true } },
             },
           },
         },
@@ -118,9 +121,8 @@ export default async function CustomerDashboardPage() {
     },
   });
 
-  if (!customer) {
-    // The session resolved to a customer id that no longer exists —
-    // shouldn't happen in normal use, but fail safely rather than crash.
+  if (!customer || !customer.isActive) {
+    // Gone, or switched off by the organisation: no access, at once.
     redirect('/customer-portal');
   }
 

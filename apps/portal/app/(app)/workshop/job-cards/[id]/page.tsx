@@ -25,7 +25,7 @@ import { EstimateLineItemForm } from '@/components/EstimateLineItemForm';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { requestStoreMatchingFormAction } from '@/lib/actions/store-form-handlers';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
-import { assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction, requestJobCardCloseFormAction, approveCloseRequestFormAction, declineCloseRequestFormAction, updateJobCardStatusFormAction } from '@/lib/actions/workshop-form-handlers';
+import { assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, returnEstimateForChangesFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction, requestJobCardCloseFormAction, approveCloseRequestFormAction, declineCloseRequestFormAction, updateJobCardStatusFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
@@ -497,6 +497,11 @@ export default async function JobCardDetailPage({
         </div>
       ) : null}
 
+      {status === 'estimate_returned' ? (
+        <div className="mb-6 mt-4 max-w-xl">
+          <FormFeedbackBanner kind="success" message="Sent back to the supervisor. The estimate can be edited again and needs the supervisor's approval before it returns to you." />
+        </div>
+      ) : null}
       {status === 'bill_to_set' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Who pays for that line is updated — the customer's total, deposit and balance follow it." />
@@ -1135,6 +1140,16 @@ export default async function JobCardDetailPage({
                   className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
                 />
               </form>
+            ) : null}
+            {estimate?.status === 'APPROVED' && isEligibleManager ? (
+              <details className="mt-3">
+                <summary className="cursor-pointer text-xs font-medium text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">Needs changes? Send it back to the supervisor…</summary>
+                <form action={returnEstimateForChangesFormAction} className="mt-2 flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="jobCardId" value={jobCard.id} />
+                  <input name="reason" required minLength={3} maxLength={500} placeholder="What needs to change" className="min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)]" />
+                  <SubmitButton label="Send back" pendingLabel="Sending…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/50 px-3 py-1.5 text-sm font-medium text-[var(--ejo-warning)]" />
+                </form>
+              </details>
             ) : null}
 
             {estimate?.status === 'MANAGER_APPROVED' && !estimate.customerNotifiedAt && isCreator ? (

@@ -14,12 +14,15 @@ const PULSE_WHEN_IDLE_MS = 60000;
 const IDLE_AFTER_MS = 5 * 60000;
 /** On a push ping: refresh soon, coalesced. */
 const PING_GAP_MS = 2000;
-/** At most one full notification summary fetch per 10 seconds. */
-const MIN_LOAD_GAP_MS = 10000;
-/** Open pages update themselves when something changes — at most every 10 s,
- * and heavy analytics pages at most once a minute (they recompute a lot). */
-const PAGE_REFRESH_GAP_MS = 10000;
-const HEAVY_PAGE_REFRESH_GAP_MS = 60000;
+/** At most one full notification summary fetch per 30 seconds (the change
+ * that came in meanwhile is never lost — the next check picks it up). */
+const MIN_LOAD_GAP_MS = 30000;
+/** Open pages update themselves when something changes in the organisation —
+ * at most every 30 s, and heavy analytics pages at most every 2 minutes
+ * (they recompute a lot). Measured: refreshing every open tab on every
+ * change was the single biggest server cost (performance audit, Oct 2026). */
+const PAGE_REFRESH_GAP_MS = 30000;
+const HEAVY_PAGE_REFRESH_GAP_MS = 120000;
 /** /analytics, /inventory/analytics, /warranty/analytics, … */
 const HEAVY_PAGE = /\/analytics(\/|$)/;
 const refreshGapFor = (path: string) => (HEAVY_PAGE.test(path) ? HEAVY_PAGE_REFRESH_GAP_MS : PAGE_REFRESH_GAP_MS);

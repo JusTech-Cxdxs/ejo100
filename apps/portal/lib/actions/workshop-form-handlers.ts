@@ -45,6 +45,7 @@ import {
   submitEstimateForValidation,
   approveEstimate,
   approveEstimateAsManager,
+  returnEstimateForChanges,
   notifyCustomerOfApprovedEstimate,
   recordPayment,
   requestJobCardCancellation,
@@ -350,6 +351,18 @@ export async function approveEstimateAsManagerFormAction(formData: FormData) {
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
+}
+
+export async function returnEstimateForChangesFormAction(formData: FormData) {
+  const jobCardId = str(formData, 'jobCardId');
+  try {
+    await returnEstimateForChanges(jobCardId, str(formData, 'reason'));
+  } catch (err) {
+    const message = friendlyError(err, 'Could not send the estimate back.', 'workshop-form-handlers');
+    redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/workshop/job-cards/${jobCardId}`);
+  redirect(`/workshop/job-cards/${jobCardId}?status=estimate_returned`);
 }
 
 export async function notifyCustomerOfApprovedEstimateFormAction(formData: FormData) {

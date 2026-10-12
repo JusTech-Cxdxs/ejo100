@@ -10,24 +10,24 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "next": "^15.4.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@ejo/ui": "*",
+    "@ejo/database": "*",
     "@ejo/types": "*",
+    "@ejo/ui": "*",
     "@ejo/utils": "*",
-    "framer-motion": "^11.11.0",
     "better-auth": "^1.2.0",
-    "@ejo/database": "*"
+    "framer-motion": "^11.11.0",
+    "next": "^15.5.27",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.7.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "5.6.3",
-    "tailwindcss": "^4.0.0",
-    "@tailwindcss/postcss": "^4.0.0",
     "eslint": "^8.57.0",
-    "eslint-config-next": "^15.5.0"
+    "eslint-config-next": "^15.5.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "5.6.3"
   }
 }

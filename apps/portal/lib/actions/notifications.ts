@@ -153,9 +153,10 @@ export type NotificationSummary = {
 
 // Per-user summary cache (per server instance): if nothing has changed since
 // this person's last summary (same change signal) and it is under a minute old,
-// return it instantly instead of recomputing ~25 queries. Own read / unread /
+// return it instantly instead of recomputing (~70–100 queries). Own read / unread /
 // mute actions clear it; the minute limit covers time-based items (overdue…).
 const SUMMARY_TTL_MS = 60_000;
+const SUMMARY_MIN_AGE_MS = 20_000;
 const summaryCache = new Map<string, { pulse: string; at: number; value: NotificationSummary }>();
 function forgetSummary(userId: string) { summaryCache.delete(userId); }
 
@@ -164,7 +165,10 @@ export async function getNotificationSummary(): Promise<NotificationSummary> {
     const m = await me();
     const pulse = await livePulse(m.organisationId).catch(() => '');
     const hit = summaryCache.get(m.id);
-    if (hit && pulse && hit.pulse === pulse && Date.now() - hit.at < SUMMARY_TTL_MS) return hit.value;
+    // Unchanged organisation → the cached summary (up to a minute). Changed →
+    // recomputed, but never more than once every 20 s per person: one busy
+    // organisation can't make every open tab recompute on every click.
+    if (hit && pulse && ((hit.pulse === pulse && Date.now() - hit.at < SUMMARY_TTL_MS) || Date.now() - hit.at < SUMMARY_MIN_AGE_MS)) return hit.value;
     const value = await computeSummary(m);
     if (pulse) {
       if (summaryCache.size > 2000) summaryCache.clear();

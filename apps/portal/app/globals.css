@@ -5,6 +5,8 @@
    globals.css comment for the full explanation. */
 :root {
   --ejo-primary: #16a34a;
+  /* The exact green of the organisation's logo — the wordmark rule. */
+  --ejo-brand: #22983f;
   --ejo-secondary: #0f172a;
   --ejo-accent: #22c55e;
   --ejo-success: #16a34a;
@@ -58,11 +60,22 @@ html.ejo-theme-switching, html.ejo-theme-switching * {
   transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease !important;
 }
 
-/* Native controls follow the theme (date pickers, selects, scrollbars). */
-input, select, textarea { color: inherit; }
 
-* {
-  border-color: var(--ejo-border);
+/* Base layer: utilities (border-[…], text-[…]) must always win over these.
+   Unlayered rules beat every Tailwind utility in v4 — which is exactly why
+   coloured borders (the green rule under the wordmark, red error borders)
+   were all showing grey before. */
+@layer base {
+  *, ::before, ::after {
+    border-color: var(--ejo-border);
+  }
+  /* Native controls follow the theme (date pickers, selects, scrollbars). */
+  input, select, textarea {
+    color: inherit;
+  }
+  input[type='checkbox'], input[type='radio'], input[type='range'], progress {
+    accent-color: var(--ejo-primary);
+  }
 }
 
 body {
@@ -118,4 +131,20 @@ body {
 .ejo-core { animation: ejo-core 2.4s ease-in-out infinite; transform-origin: 50% 50%; transform-box: fill-box; }
 @media (prefers-reduced-motion: reduce) {
   .ejo-orbit, .ejo-core { animation: none; }
+}
+
+/* Loading mark (EjoMarkSpinner) — CSS only. */
+@keyframes ejo-spin { to { transform: rotate(360deg); } }
+@keyframes ejo-glow { 0%, 100% { transform: scale(0.85); opacity: 0.15; } 50% { transform: scale(1.15); opacity: 0.3; } }
+.ejo-spin { animation: ejo-spin 2.2s linear infinite; }
+.ejo-glow { animation: ejo-glow 1.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .ejo-spin, .ejo-glow { animation: none; }
+}
+
+/* Sign-in pages: content rises in gently. */
+@keyframes ejo-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.ejo-rise { animation: ejo-rise 520ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .ejo-rise { animation: none; }
 }

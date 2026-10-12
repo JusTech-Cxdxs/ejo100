@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ModuleStatusBadge } from '@ejo/ui';
 import type { NavItem } from '@/lib/authz/navigation';
-import { SidebarBrand } from './SidebarBrand';
+import { Wordmark } from './Wordmark';
 import { PoweredByEjo } from './PoweredByEjo';
 
 /**
@@ -17,10 +17,10 @@ export function Sidebar({ items, organisationName }: { items: NavItem[]; organis
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
       <div className="border-b border-[var(--ejo-border)] px-5 py-5">
-        <SidebarBrand organisationName={organisationName} />
+        <Wordmark name={organisationName} />
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+      <nav aria-label="Main" className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {items.map((mod) => {
           const active = pathname === mod.href || pathname.startsWith(`${mod.href}/`);
           return (

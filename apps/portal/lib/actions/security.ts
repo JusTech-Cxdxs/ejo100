@@ -430,8 +430,11 @@ async function headApproversFor(requesterId: string): Promise<Person[]> {
 }
 /** The Manager step — the branch's managers (the same people Warranty
  * uses as Branch Manager); a quiet fallback so a pass is never stuck. */
-async function managerApprovers(excludeId: string | null): Promise<Person[]> {
-  const m = await listEligibleManagersForBranch(await getWorkshopBranchId());
+/** The Managers who decide for a branch — the RECORD's branch when one is
+ * given (a pass or permit is decided by its own branch's Manager, never by
+ * a Manager of another branch). */
+async function managerApprovers(excludeId: string | null, branchId?: string | null): Promise<Person[]> {
+  const m = await listEligibleManagersForBranch(branchId ?? (await getWorkshopBranchId()));
   const list = (m.usingFallback ? await masterAdmins() : (m.supervisors as Person[])).filter((x) => x.id !== excludeId);
   return list.length ? list : (await masterAdmins()).filter((x) => x.id !== excludeId);
 }
@@ -485,14 +488,14 @@ export async function decideExitPass(passId: string, approve: boolean, reason: s
   const user = await requireUser();
   await inMyOrganisation('exitPass', passId);
   const roles = await getSecurityRoles();
-  const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, passNumber: true, requestedById: true, reason: true, requestedBy: { select: { id: true, fullName: true, email: true } } } });
+  const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, branchId: true, passNumber: true, requestedById: true, reason: true, requestedBy: { select: { id: true, fullName: true, email: true } } } });
   if (!p) throw new SecurityError('Exit pass not found.');
   if (p.requestedById === user.id && !roles.isMaster) throw new SecurityError('You cannot approve your own exit pass.');
   if (p.status === 'PENDING_HEAD') {
     const heads = await headApproversFor(p.requestedById);
     if (!heads.some((h) => h.id === user.id) && !roles.isMaster) throw new SecurityError('This pass is waiting for the Department Head.');
   } else if (p.status === 'PENDING_MANAGER') {
-    if (!roles.isMaster && !(await managerApprovers(p.requestedById)).some((h) => h.id === user.id)) throw new SecurityError('This pass is waiting for the Manager.');
+    if (!roles.isMaster && !(await managerApprovers(p.requestedById, p.branchId)).some((h) => h.id === user.id)) throw new SecurityError('This pass is waiting for the Manager.');
   } else {
     throw new SecurityError('This pass is not waiting for a decision.');
   }
@@ -505,7 +508,7 @@ export async function decideExitPass(passId: string, approve: boolean, reason: s
     await sendLogged('ExitPass', passId, [p.requestedBy], `Exit pass ${p.passNumber} declined`, 'Your exit pass was declined', [p.passNumber, `Reason: ${reason.trim()}`], `/security/exit-passes/${passId}`, user.id);
     return;
   }
-  const managers = await managerApprovers(p.requestedById);
+  const managers = await managerApprovers(p.requestedById, p.branchId);
   // A Department Head who is also a Manager approves both steps at once.
   const alsoManager = atHead && managers.some((m) => m.id === user.id);
   if (atHead && !alsoManager) {
@@ -1155,11 +1158,11 @@ export async function decideRoadTest(id: string, approve: boolean, reason: strin
   const user = await requireUser();
   await inMyOrganisation('roadTestPermit', id);
   const roles = await getSecurityRoles();
-  const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, requestedById: true, jobCardId: true, vehicleServiceId: true, requestedBy: { select: { id: true, fullName: true, email: true } } } });
+  const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, branchId: true, permitNumber: true, requestedById: true, jobCardId: true, vehicleServiceId: true, requestedBy: { select: { id: true, fullName: true, email: true } } } });
   if (!p) throw new SecurityError('Road test not found.');
   if (p.status !== 'PENDING_MANAGER') throw new SecurityError('This road test is not waiting for a decision.');
   if (p.requestedById === user.id && !roles.isMaster) throw new SecurityError('You cannot approve your own road test.');
-  if (!roles.isMaster && !(await managerApprovers(p.requestedById)).some((m) => m.id === user.id)) throw new SecurityError('Only the Manager can decide a road test.');
+  if (!roles.isMaster && !(await managerApprovers(p.requestedById, p.branchId)).some((m) => m.id === user.id)) throw new SecurityError('Only the Manager can decide a road test.');
   if (!approve && !reason.trim()) throw new SecurityError('Give a reason for declining.');
   const now = new Date();
   claimed(await prisma.roadTestPermit.updateMany({ where: { id, status: 'PENDING_MANAGER' }, data: approve ? { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: now } : { status: 'DECLINED', declinedById: user.id, declinedAt: now, declineReason: reason.trim() } }));
@@ -1174,7 +1177,7 @@ export async function cancelRoadTest(id: string, reason: string): Promise<void> 
   const user = await requireUser();
   await inMyOrganisation('roadTestPermit', id);
   const roles = await getSecurityRoles();
-  const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, permitNumber: true, requestedById: true, jobCardId: true, vehicleServiceId: true } });
+  const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, branchId: true, permitNumber: true, requestedById: true, jobCardId: true, vehicleServiceId: true } });
   if (!p) throw new SecurityError('Road test not found.');
   if (p.requestedById !== user.id && !roles.isManager && !roles.isMaster) throw new SecurityError('Only the requester or the Manager can cancel.');
   if (!['PENDING_MANAGER', 'APPROVED'].includes(p.status)) throw new SecurityError('A road test already out cannot be cancelled — record its return.');
@@ -1289,10 +1292,10 @@ export async function getRoadTest(id: string) {
 export async function canDecideRoadTest(id: string): Promise<boolean> {
   const user = await requireUser();
   const roles = await getSecurityRoles();
-  const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, requestedById: true } });
+  const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, requestedById: true, branchId: true } });
   if (!p || p.status !== 'PENDING_MANAGER') return false;
   if (p.requestedById === user.id && !roles.isMaster) return false;
-  return roles.isMaster || (await managerApprovers(p.requestedById)).some((m) => m.id === user.id);
+  return roles.isMaster || (await managerApprovers(p.requestedById, p.branchId)).some((m) => m.id === user.id);
 }
 
 /** An exit's whole story: its own trail, plus — from its Job Card /
@@ -1624,7 +1627,7 @@ export async function requestContractorPass(input: ContractorInput): Promise<{ i
 }
 
 async function contractorPeople(passId: string) {
-  return prisma.contractorPass.findUnique({ where: { id: passId }, select: { passNumber: true, company: true, status: true, requestedById: true, hostUserId: true, validFrom: true, validUntil: true, teamSize: true, host: { select: { id: true, fullName: true, email: true } }, requestedBy: { select: { id: true, fullName: true, email: true } } } });
+  return prisma.contractorPass.findUnique({ where: { id: passId }, select: { passNumber: true, company: true, status: true, branchId: true, requestedById: true, hostUserId: true, validFrom: true, validUntil: true, teamSize: true, host: { select: { id: true, fullName: true, email: true } }, requestedBy: { select: { id: true, fullName: true, email: true } } } });
 }
 
 export async function decideContractorPass(id: string, approve: boolean, reason: string): Promise<void> {
@@ -1635,7 +1638,7 @@ export async function decideContractorPass(id: string, approve: boolean, reason:
   if (!p) throw new SecurityError('Contractor pass not found.');
   if (p.status !== 'PENDING_MANAGER') throw new SecurityError('This pass is not waiting for a decision.');
   if (p.requestedById === user.id && !roles.isMaster) throw new SecurityError('You cannot approve your own request.');
-  if (!roles.isMaster && !(await managerApprovers(p.requestedById)).some((m) => m.id === user.id)) throw new SecurityError('Only the Manager can decide a contractor pass.');
+  if (!roles.isMaster && !(await managerApprovers(p.requestedById, p.branchId)).some((m) => m.id === user.id)) throw new SecurityError('Only the Manager can decide a contractor pass.');
   if (!approve && !reason.trim()) throw new SecurityError('Give a reason for declining.');
   claimed(await prisma.contractorPass.updateMany({ where: { id, status: 'PENDING_MANAGER' }, data: approve ? { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: new Date() } : { status: 'DECLINED', declineReason: reason.trim() } }));
   await writeAuditLog({ userId: user.id, action: approve ? 'contractor.approved' : 'contractor.declined', entityType: 'ContractorPass', entityId: id, metadata: { passNumber: p.passNumber, reason: reason.trim() || undefined } });
@@ -1761,10 +1764,10 @@ export async function getContractorPass(id: string) {
 export async function canDecideContractorPass(id: string): Promise<boolean> {
   const user = await requireUser();
   const roles = await getSecurityRoles();
-  const p = await prisma.contractorPass.findUnique({ where: { id }, select: { status: true, requestedById: true } });
+  const p = await prisma.contractorPass.findUnique({ where: { id }, select: { status: true, requestedById: true, branchId: true } });
   if (!p || p.status !== 'PENDING_MANAGER') return false;
   if (p.requestedById === user.id && !roles.isMaster) return false;
-  return roles.isMaster || (await managerApprovers(p.requestedById)).some((m) => m.id === user.id);
+  return roles.isMaster || (await managerApprovers(p.requestedById, p.branchId)).some((m) => m.id === user.id);
 }
 
 
@@ -1788,10 +1791,10 @@ async function followUpEmail(kind: FollowUp, id: string, actorId: string | null)
       const who = `${v.visitorName}${v.company ? ` (${v.company})` : ''}${v.partySize > 1 ? ` + ${v.partySize - 1} more` : ''}`;
       await sendLogged('Visit', id, uniq([v.host]), kind === 'visit.arrived' ? `Your visitor has arrived — ${v.visitorName}` : `Your visitor is at reception — ${v.visitorName}`, kind === 'visit.arrived' ? 'Your visitor is at the gate' : 'Your visitor is at reception', [`${v.visitNumber} — ${who}`, kind === 'visit.arrived' ? 'Security has let them in; reception will receive them.' : 'Please come and receive them.'], `/security/visitors/${id}`, actorId);
     } else if (kind.startsWith('exit_pass.')) {
-      const p = await prisma.exitPass.findUnique({ where: { id }, select: { passNumber: true, requestedById: true, headApprovedAt: true, managerApprovedAt: true, expectedReturnAt: true, requestedBy: P } });
+      const p = await prisma.exitPass.findUnique({ where: { id }, select: { passNumber: true, branchId: true, requestedById: true, headApprovedAt: true, managerApprovedAt: true, expectedReturnAt: true, requestedBy: P } });
       if (!p) return;
       if (kind === 'exit_pass.cancelled') {
-        const deciding = p.managerApprovedAt ? await gateStaff() : p.headApprovedAt ? await managerApprovers(p.requestedById) : await headApproversFor(p.requestedById);
+        const deciding = p.managerApprovedAt ? await gateStaff() : p.headApprovedAt ? await managerApprovers(p.requestedById, p.branchId) : await headApproversFor(p.requestedById);
         await sendLogged('ExitPass', id, uniq(deciding), `Exit pass ${p.passNumber} was cancelled`, 'An exit pass was cancelled', [p.passNumber, p.managerApprovedAt ? 'Do not let anyone out on this pass.' : 'No decision is needed any more.'], `/security/exit-passes/${id}`, actorId);
       } else {
         const back = p.expectedReturnAt ? new Date(p.expectedReturnAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }) : null;
@@ -1805,10 +1808,10 @@ async function followUpEmail(kind: FollowUp, id: string, actorId: string | null)
       const number = x.jobCard?.jobNumber ?? x.vehicleService?.serviceNumber ?? '';
       await sendLogged('VehicleGateExit', id, uniq([rec.createdBy, rec.supervisor]), `Vehicle has left the premises — ${number}`, 'The vehicle has left through the gate', [`${x.exitNumber} — ${number}`, 'Security confirmed the vehicle left with the customer.'], `/security/vehicles/exits/${id}`, actorId);
     } else if (kind.startsWith('road_test.')) {
-      const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { permitNumber: true, requestedById: true, managerApprovedAt: true, expectedDurationMinutes: true, requestedBy: P } });
+      const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { permitNumber: true, branchId: true, requestedById: true, managerApprovedAt: true, expectedDurationMinutes: true, requestedBy: P } });
       if (!p) return;
       if (kind === 'road_test.cancelled') {
-        const to = p.managerApprovedAt ? await gateStaff() : await managerApprovers(p.requestedById);
+        const to = p.managerApprovedAt ? await gateStaff() : await managerApprovers(p.requestedById, p.branchId);
         await sendLogged('RoadTestPermit', id, uniq(to), `Road test ${p.permitNumber} was cancelled`, 'A road test was cancelled', [p.permitNumber, p.managerApprovedAt ? 'Do not let the vehicle out on this permit.' : 'No decision is needed any more.'], `/security/road-tests/${id}`, actorId);
       } else {
         await sendLogged('RoadTestPermit', id, uniq([p.requestedBy]), `Road test ${p.permitNumber} — more time given`, 'Your road test has more time', [p.permitNumber, `Now expected to take ${durationText(p.expectedDurationMinutes)} in total.`], `/security/road-tests/${id}`, actorId);
