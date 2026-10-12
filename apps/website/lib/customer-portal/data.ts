@@ -10,16 +10,15 @@ import {
 } from './format';
 
 /**
- * Every read the customer portal makes. Each query is fenced to ONE
- * customer — the signed-in customer's id from the session (never an id
- * from the URL without that fence) — and selects only the fields a
- * customer may see: no internal notes, technician findings, costs,
- * staff names or anything belonging to another customer.
+ * Every read the customer portal makes. Each query is fenced to one
+ * customer, the signed-in customer's id from the session (never an id from
+ * the URL without that fence), and selects only what a customer may see:
+ * no internal notes, technician findings, costs, staff names or anything of
+ * another customer.
  *
- * Estimate rule (unchanged from the first dashboard): an estimate is only
- * shown once the customer has been notified of it (customerNotifiedAt),
- * and on a Job Card only the lines billed to the CUSTOMER count — lines
- * covered by a warranty, goodwill or internal never reach this view.
+ * Estimates are shown only once the customer has been notified
+ * (customerNotifiedAt), and on a Job Card only lines billed to the customer
+ * count; warranty, goodwill and internal lines never reach this view.
  */
 
 const vehicleSelect = { id: true, make: true, model: true, year: true, plateNumber: true } as const;

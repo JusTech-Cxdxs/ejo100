@@ -22,8 +22,8 @@ const nextConfig: NextConfig = {
   // Don't advertise the framework.
   poweredByHeader: false,
   ...(serverActionOrigins.length > 0 ? { experimental: { serverActions: { allowedOrigins: serverActionOrigins } } } : {}),
-  // The same security headers as the staff portal: the customer sign-in can
-  // never be framed by another site (clickjacking), and so on.
+  // The same security headers as the staff portal, e.g. the customer sign-in
+  // page can never be framed by another site (clickjacking).
   async headers() {
     return [
       {
