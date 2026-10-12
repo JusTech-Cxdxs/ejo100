@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { who } from './people';
-import { as, bellText, countMail, latestMail, uniq, visitHealthy, waitOutcome } from './helpers';
+import { as, eventually, bellText, countMail, latestMail, uniq, visitHealthy, waitOutcome } from './helpers';
 import { jcForm } from './workflows';
 
 /**
@@ -42,9 +42,8 @@ test('an administrator publishes one broadcast to everyone and one to Workshop M
 
 test('a technician sees the one for everyone — never the managers’ one', async ({ page }) => {
   await as(page, 'technician');
-  const bell = await bellText(page);
-  expect(bell).toContain(S.all);
-  expect(bell).not.toContain(S.role);
+  await eventually(page, async () => expect(await bellText(page)).toContain(S.all));
+  expect(await bellText(page)).not.toContain(S.role);
   await page.goto('/notifications?tab=broadcasts');
   await expect(page.getByRole('heading', { name: S.all })).toBeVisible();
   await expect(page.getByRole('heading', { name: S.role })).toHaveCount(0);
@@ -53,8 +52,10 @@ test('a technician sees the one for everyone — never the managers’ one', asy
 test('a Workshop Manager sees both and marks one read', async ({ page }) => {
   await as(page, 'workshop-manager');
   await page.goto('/notifications?tab=broadcasts');
-  await expect(page.getByRole('heading', { name: S.all })).toBeVisible();
-  await expect(page.getByRole('heading', { name: S.role })).toBeVisible();
+  await eventually(page, async () => {
+    await expect(page.getByRole('heading', { name: S.all })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('heading', { name: S.role })).toBeVisible({ timeout: 5_000 });
+  });
   const cardOf = (title: string) => page.locator('div[id]').filter({ has: page.getByRole('heading', { name: title }) }).first();
   await cardOf(S.role).getByRole('button', { name: 'Mark read' }).click();
   await expect(cardOf(S.role).getByRole('button', { name: 'Mark unread' })).toBeVisible();

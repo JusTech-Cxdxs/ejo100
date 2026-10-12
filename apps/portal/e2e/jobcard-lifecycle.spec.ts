@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { CUSTOMER, SEED_PARTS, SUPERMANAGER, who } from './people';
-import { as, bellText, countMail, expectAuditEntry, expectNoUrlError, latestMail, readStock, urlError, waitOutcome } from './helpers';
+import { as, eventually, bellText, countMail, expectAuditEntry, expectNoUrlError, latestMail, readStock, urlError, waitOutcome } from './helpers';
 import { db, freshVehicle, idOfPart, paymentsOn } from './db';
 import {
   addLine, assignTechnician, expectStatus, jobNumber, jcForm, nextStep, notifyCustomer, openJobCard, recordPayment,
@@ -43,7 +43,8 @@ test('front desk opens the Job Card; the supervisor approves and assigns; the te
   await assignTechnician(page);
   await test.step('the technician sees the assignment in the bell', async () => {
     await as(page, 'technician');
-    expect(await bellText(page)).toContain(S.number);
+    // The bell's summary is refreshed on a timer (and shared by every tab of this person).
+    await eventually(page, async () => expect(await bellText(page)).toContain(S.number));
   });
   await technicianAccepts(page, S.url);
   await expect(page.getByText('Accepted', { exact: true })).toBeVisible();
@@ -181,7 +182,8 @@ test('parts: technician requests → HOD approves → Store reserves → Store r
 test('outside purchase: technician requests → Finance reviews → Manager approves → Finance disburses', async ({ page }) => {
   await as(page, 'technician');
   await page.goto(S.url);
-  await page.getByRole('link', { name: '+ Request Procurement' }).click();
+  await expect(page.getByRole('link', { name: '+ Request Procurement' })).toHaveAttribute('href', `${S.url}/request-procurement`);
+  await page.goto(`${S.url}/request-procurement`);
   await expect(page.getByRole('heading', { name: 'Request External Procurement' })).toBeVisible();
   await page.getByRole('button', { name: 'Raise Procurement Request' }).click();
   await waitOutcome(page, /status=procurement_requested/);

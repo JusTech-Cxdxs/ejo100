@@ -135,7 +135,10 @@ jobs:
           seen, out = set(), []
           for i, l in enumerate(lines):
               if re.search(r'Error:|Error \[|PrismaClient|Unhandled|"level":"error"', l):
-                  msg = ' ⏎ '.join(x.strip() for x in lines[i:i + 7] if x.strip())[:950]
+                  head = [x.strip() for x in lines[i:i + 4] if x.strip()]
+                  # Prisma validation errors name the offending argument far below the first line.
+                  why = [x.strip() for x in lines[i + 4:i + 120] if re.search(r'Argument|Unknown arg|Invalid value|Expected|is missing|Unique constraint|Foreign key', x)][:4]
+                  msg = ' ⏎ '.join(head + (['…'] if why else []) + why)[:950]
                   key = re.sub(r'[0-9a-f]{8,}|\d+', '#', msg[:140])
                   if key in seen:
                       continue

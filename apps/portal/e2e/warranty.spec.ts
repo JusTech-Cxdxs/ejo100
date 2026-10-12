@@ -44,6 +44,7 @@ test('the Warranty HOD adds a provider and a vehicle policy', async ({ page }) =
   await pol.locator('select[name="durationUnit"]').selectOption('MONTHS');
   await pol.locator('input[name="distanceLimit"]').fill('100000');
   await pol.locator('input[name="coverageItem"]').first().fill('Engine and gearbox');
+  await pol.locator('select[name="defaultRemedy"]').selectOption('REPAIR');
   await pol.getByRole('button', { name: 'Add policy' }).click();
   await waitOutcome(page, /status=policy_created/);
   await expect(page.getByRole('link', { name: S.policy })).toBeVisible();

@@ -33,6 +33,24 @@ export async function signOut(page: Page) {
   await page.waitForURL(/\/login/);
 }
 
+/** Open a page and wait until it is interactive (scripts loaded, quiet network). */
+export async function open(page: Page, url: string) {
+  await page.goto(url);
+  await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined);
+}
+
+/** Keep reloading until `check` passes — for live data refreshed on a timer (the bell). */
+export async function eventually(page: Page, check: () => Promise<void>, timeout = 60_000) {
+  const until = Date.now() + timeout;
+  for (;;) {
+    try { await check(); return; } catch (e) {
+      if (Date.now() > until) throw e;
+      await page.waitForTimeout(4_000);
+      await page.reload();
+    }
+  }
+}
+
 /** Become someone else in the same browser: drop the session, sign in as them. */
 export async function as(page: Page, roleOrPerson: string | Person) {
   const p = typeof roleOrPerson === 'string' ? who(roleOrPerson) : roleOrPerson;
