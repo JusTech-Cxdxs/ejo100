@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { after } from 'next/server';
 import { cookies, headers } from 'next/headers';
-import { prisma } from '@ejo/database';
+import { prisma, setAuditActor } from '@ejo/database';
 import { auth } from '@/lib/auth';
 import { PERMISSIONS, ROLE_LABELS, type PermissionKey, type Scope } from '@/lib/authz/catalogue';
 import { assistRefusal, assistSummary, type AssistParty, type AssistRefusal } from './rules';
@@ -191,6 +191,9 @@ export async function endAssistSessionRecord(id: string, reason: string): Promis
   const now = new Date();
   const s = await prisma.assistSession.findUnique({ where: { id }, select: { id: true, organisationId: true, branchId: true, startedAt: true, expiresAt: true, endedAt: true, reason: true, assistant: { select: { id: true, fullName: true } }, subject: { select: { id: true, fullName: true, email: true, isActive: true } } } });
   if (!s || s.endedAt) return false;
+  // Recorded as the assistant's own step, without asking the request who is
+  // acting (this also runs after the response, where the request is gone).
+  setAuditActor(s.assistant.id, 'portal', s.organisationId);
   // Expired sessions end at their expiry time, not whenever someone noticed.
   const endedAt = reason === 'expired' && s.expiresAt < now ? s.expiresAt : now;
   const { count } = await prisma.assistSession.updateMany({ where: { id, endedAt: null }, data: { endedAt, endedReason: reason } });
