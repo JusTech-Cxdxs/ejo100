@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getCrmHub, type CrmHubParams } from '@/lib/actions/crm';
-import { allows } from '@/lib/authz/server';
+import { allows, guardPage } from '@/lib/authz/server';
 import { profileGaps, naira, nairaShort } from '@/lib/crm';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { Avatar } from '@/components/Avatar';
@@ -24,6 +24,8 @@ const NOTICES: Record<string, Notice> = {
 };
 
 export default async function CrmHubPage({ searchParams }: { searchParams: Promise<SP> }) {
+  // Guarded here as well as in the layout: they render together, and the page's own reads must never run for someone refused.
+  await guardPage('crm.view', '/crm');
   const sp = await searchParams;
   const [hub, canBroadcast] = await Promise.all([getCrmHub(sp), allows('notifications.broadcast.send')]);
   const k = hub.kpis;
@@ -60,7 +62,7 @@ export default async function CrmHubPage({ searchParams }: { searchParams: Promi
               </Link>
             ) : null}
             {hub.canRegister ? (
-              <a href="#register" className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95">
+              <a href="/crm?register=1#register" className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95">
                 <CrmIcon name="plus" size={16} /> Register customer
               </a>
             ) : null}
@@ -75,7 +77,7 @@ export default async function CrmHubPage({ searchParams }: { searchParams: Promi
         <Kpi icon="users" label="Customers" value={k.total} hint={`${k.portalOff} with portal access off`} delay={0} />
         <Kpi icon="activity" label="Active · 90 days" value={k.active90} hint="Visited in the last 90 days" href={qs({ sort: 'last_visit', page: undefined })} delay={40} />
         <Kpi icon="spark" label="New this month" value={k.newThisMonth} hint="Registered since the 1st" href={qs({ sort: 'recent', page: undefined })} delay={80} />
-        <Kpi icon="key" label="Portal access" value={k.withPortal} hint={`${k.signedIn} have signed in`} href={qs({ portal: 'never', page: undefined })} delay={120} />
+        <Kpi icon="key" label="Portal access" value={k.withPortal} hint={`${k.signedIn} have signed in`} href={qs({ portal: 'signed_in', page: undefined })} delay={120} />
         <Kpi icon="alert" label="Profile gaps" value={k.profileGaps} tone={k.profileGaps ? 'warning' : undefined} hint="Missing primary address or phone" href={qs({ gaps: 'yes', page: undefined })} delay={160} />
         <Kpi icon="wallet" label="Spend this year" value={k.spendThisYear} format="naira" hint="Paid, net of refunds" href={qs({ sort: 'spend', page: undefined })} delay={200} />
       </div>

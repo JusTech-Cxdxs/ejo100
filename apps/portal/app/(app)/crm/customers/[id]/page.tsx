@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { guardPage } from '@/lib/authz/server';
 import { getCustomer360, getCustomerActivity } from '@/lib/actions/crm';
 import {
   setCustomerPortalAccessFormAction, sendCustomerSetPasswordLinkFormAction, customerAddressFormAction, customerContactFormAction, customerNoteFormAction,
@@ -60,6 +61,7 @@ const STATUS: Record<string, Notice> = {
 const METHOD: Record<string, string> = { BANK_TRANSFER: 'Bank transfer', CASH: 'Cash' };
 
 export default async function Customer360Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; edit?: string; status?: string; error?: string }> }) {
+  await guardPage('crm.view', '/crm');
   const { id } = await params;
   const sp = await searchParams;
   const data = await getCustomer360(id);
@@ -140,8 +142,8 @@ export default async function Customer360Page({ params, searchParams }: { params
       {data.scope.branchOnly ? <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Visits, jobs and money show {data.scope.branchName} only — the branch you work in.</p> : null}
 
       {/* Tabs */}
-      <nav aria-label="Customer sections" className="mt-6 -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-        <ul className="flex w-max gap-1 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-1 sm:w-auto sm:flex-wrap">
+      <nav aria-label="Customer sections" className="mt-6">
+        <ul className="flex flex-wrap gap-1 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-1">
           {TABS.map((t) => (
             <li key={t.key}>
               <Link href={t.key === 'overview' ? base : `${base}?tab=${t.key}`} scroll={false} aria-current={tab === t.key ? 'page' : undefined} className={`flex items-center gap-1.5 whitespace-nowrap rounded-[var(--ejo-radius-md)] px-3 py-1.5 text-sm font-medium transition ${tab === t.key ? 'bg-[var(--ejo-primary)] text-white shadow-sm' : 'text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-text)]'}`}>
