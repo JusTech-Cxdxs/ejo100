@@ -55,6 +55,7 @@ for (const st of Object.keys(STAGES)) {
 thresholds['http_req_duration{stage:write,kind:write}'] = ['p(95)<2000'];
 thresholds['ejo_errors{stage:write}'] = ['rate<0.05'];
 thresholds['ejo_errors{stage:write,kind:write}'] = ['rate<0.05'];
+thresholds['http_reqs{stage:write}'] = ['count>=0'];
 
 export const options = {
   scenarios,
