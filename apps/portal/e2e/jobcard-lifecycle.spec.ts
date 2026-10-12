@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { CUSTOMER, SEED_PARTS, SUPERMANAGER, who } from './people';
-import { as, bellText, countMail, expectAuditEntry, expectNoUrlError, latestMail, readStock, urlError } from './helpers';
+import { as, bellText, countMail, expectAuditEntry, expectNoUrlError, latestMail, readStock, urlError, waitOutcome } from './helpers';
 import { db, freshVehicle, idOfPart, paymentsOn } from './db';
 import {
   addLine, assignTechnician, expectStatus, jobNumber, jcForm, nextStep, notifyCustomer, openJobCard, recordPayment,
@@ -141,7 +141,7 @@ test('parts: technician requests → HOD approves → Store reserves → Store r
   await page.getByRole('link', { name: '+ Request Store Parts' }).click();
   await expect(page.getByRole('heading', { name: 'Request Store Parts' })).toBeVisible();
   await page.getByRole('button', { name: 'Raise Parts Request' }).click();
-  await page.waitForURL(/status=parts_requested/);
+  await waitOutcome(page, /status=parts_requested/);
   await expectStatus(page, 'Awaiting Parts');
   await page.getByRole('link', { name: /^PRS-/ }).first().click();
   await page.waitForURL(/\/workshop\/parts-requests\//);
@@ -184,7 +184,7 @@ test('outside purchase: technician requests → Finance reviews → Manager appr
   await page.getByRole('link', { name: '+ Request Procurement' }).click();
   await expect(page.getByRole('heading', { name: 'Request External Procurement' })).toBeVisible();
   await page.getByRole('button', { name: 'Raise Procurement Request' }).click();
-  await page.waitForURL(/status=procurement_requested/);
+  await waitOutcome(page, /status=procurement_requested/);
   await expectStatus(page, 'Awaiting Parts');
   await page.getByRole('link', { name: /^EPR-/ }).first().click();
   await page.waitForURL(/\/workshop\/external-procurement\//);
@@ -266,7 +266,7 @@ test('Security lets the collected vehicle out through the gate', async ({ page }
   await expect(page.locator('input[name="collectedBy"]')).toHaveValue(CUSTOMER.name);
   await page.locator('input[name="notes"]').fill('Plate and VIN checked');
   await page.getByRole('button', { name: 'Confirm exit' }).click();
-  await page.waitForURL(/\/security\/vehicles\/exits\/[^/?]+\?status=vehicle_out/);
+  await waitOutcome(page, /\/security\/vehicles\/exits\/[^/?]+\?status=vehicle_out/);
   await expect(page.getByText(/Exit recorded/)).toBeVisible();
 });
 

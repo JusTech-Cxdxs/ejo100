@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { CUSTOMER, SEED_PARTS } from './people';
-import { as, expectNoUrlError, latestMail, readStock } from './helpers';
+import { as, expectNoUrlError, latestMail, readStock, waitOutcome } from './helpers';
 import { freshVehicle, idOfPart } from './db';
 import { card, expectStatus, jcForm, jobCardInProgress, openJobCard } from './workflows';
 
@@ -34,7 +34,7 @@ test('a Job Card is paid (70%) and Store reserves its parts', async ({ page }) =
   await as(page, 'technician');
   await page.goto(`${S.url}/request-parts`);
   await page.getByRole('button', { name: 'Raise Parts Request' }).click();
-  await page.waitForURL(/status=parts_requested/);
+  await waitOutcome(page, /status=parts_requested/);
   await page.getByRole('link', { name: /^PRS-/ }).first().click();
   await page.waitForURL(/\/workshop\/parts-requests\//);
   S.prsUrl = new URL(page.url()).pathname;
@@ -99,7 +99,7 @@ test('the vehicle cannot be handed back until Finance refunds the deposit', asyn
   await form.locator('select[name="method"]').selectOption('BANK_TRANSFER');
   await form.locator('input[name="notes"]').fill('TRF-E2E-REFUND');
   await form.getByRole('button', { name: 'Record refund' }).click();
-  await page.waitForURL(/status=refund_recorded/);
+  await waitOutcome(page, /status=refund_recorded/);
   S.refund = new URL(page.url()).searchParams.get('ref') ?? '';
   expect(S.refund).toMatch(/^RF-/);
   await expect(page.getByText('Refund recorded — the customer has been emailed their receipt.')).toBeVisible();

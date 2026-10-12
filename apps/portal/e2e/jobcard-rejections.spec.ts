@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { SUPERMANAGER, who } from './people';
-import { as, expectNoUrlError, latestMail } from './helpers';
+import { as, expectNoUrlError, latestMail, waitOutcome } from './helpers';
 import { freshVehicle } from './db';
 import { addLine, assignTechnician, card, jcForm, jobNumber, openJobCard, submitEstimate, supervisorApprovesEstimate } from './workflows';
 
@@ -68,7 +68,12 @@ test('a technician turns the assignment down; it is reassigned and accepted', as
   const respond = page.locator('#technician-response');
   await respond.locator('input[name="reason"]').fill('On leave tomorrow');
   await respond.getByRole('button', { name: 'Reject' }).click();
-  await expect(page.getByText('Rejected — On leave tomorrow')).toBeVisible();
+  await expect(page.locator('#technician-response')).toHaveCount(0);
+  // The assignment is handed back (the reason is kept on the trail).
+  await expect(page.getByText('Assigned technician').locator('..')).toContainText('Unassigned');
+  const trail = page.getByRole('heading', { name: 'Audit trail' }).locator('..');
+  await expect(trail).toContainText('Technician rejected assignment');
+  await expect(trail).toContainText('Reason: On leave tomorrow');
 
   await as(page, SUPERMANAGER);
   await page.goto(S.url);
@@ -92,7 +97,7 @@ test('the Manager sends the estimate back for changes; the supervisor fixes and 
   const back = jcForm(page, 'Send back');
   await back.locator('input[name="reason"]').fill('Add the tyre rotation as agreed');
   await back.getByRole('button', { name: 'Send back' }).click();
-  await page.waitForURL(/status=estimate_returned/);
+  await waitOutcome(page, /status=estimate_returned/);
   await expect(page.getByText(/Sent back to the supervisor/)).toBeVisible();
   await expect(card(page, 'Estimate')).toContainText('Awaiting supervisor validation');
   await expect(page.getByRole('button', { name: 'Approve as Manager' })).toHaveCount(0);

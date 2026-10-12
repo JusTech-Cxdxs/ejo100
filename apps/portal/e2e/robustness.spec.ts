@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
-import { as, expectHealthy, uniq } from './helpers';
+import { as, expectHealthy, uniq, waitOutcome } from './helpers';
 import { db } from './db';
-import { jcForm } from './workflows';
+import { jcForm, suggestion } from './workflows';
 
 /**
  * How it behaves when people are people: double clicks, Back / Refresh
@@ -33,7 +33,7 @@ test('a double click on a submit button records ONE incident', async ({ page }) 
   await as(page, 'security-officer');
   const form = await fillIncident(page, location);
   await form.getByRole('button', { name: 'Report incident' }).dblclick();
-  await page.waitForURL(/\/security\/incidents\/[^/?]+\?status=reported/);
+  await waitOutcome(page, /\/security\/incidents\/[^/?]+\?status=reported/);
   await page.waitForTimeout(1500);
   expect(await incidentsAt(location)).toBe(1);
 });
@@ -43,7 +43,7 @@ test('Back and Refresh after saving never save it again', async ({ page }) => {
   await as(page, 'security-officer');
   const form = await fillIncident(page, location);
   await form.getByRole('button', { name: 'Report incident' }).click();
-  await page.waitForURL(/status=reported/);
+  await waitOutcome(page, /status=reported/);
   await page.reload();
   await expectHealthy(page);
   await page.goBack();
@@ -93,7 +93,7 @@ test('accents, emoji and markup in a name are kept as typed and never run', asyn
   const name = `Ọlá Àdébáyọ̀ 🚗 <b>bold</b> ${uniq()}`;
   await as(page, 'security-officer');
   await page.goto('/security/visitors');
-  const form = jcForm(page, /Register and issue pass|Book the visit/);
+  const form = page.locator('form').filter({ has: page.locator('select[name="mode"]') });
   await form.locator('select[name="mode"]').selectOption('EXPECTED');
   await form.locator('select[name="party"]').selectOption('ONE');
   await form.locator('select[name="affiliation"]').selectOption('INDIVIDUAL');
@@ -101,12 +101,12 @@ test('accents, emoji and markup in a name are kept as typed and never run', asyn
   await form.locator('input[name="purpose"]').fill('Delivery of documents');
   await form.getByPlaceholder('Search staff by name or ID…').click();
   await form.getByPlaceholder('Search staff by name or ID…').fill('Mary');
-  await page.getByRole('option', { name: /Mary Manager/ }).first().click();
+  await suggestion(page, 'Mary Manager').click();
   const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' });
   await form.locator('input[name="expectedAt"]').fill(`${tomorrow}T10:00`);
   await form.locator('select[name="expectedMinutes"]').selectOption('60');
   await form.getByRole('button', { name: 'Book the visit' }).click();
-  await page.waitForURL(/\/security\/visitors\/[^/?]+\?status=registered/);
+  await waitOutcome(page, /\/security\/visitors\/[^/?]+\?status=registered/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
   await expect(page.locator('main b', { hasText: 'bold' })).toHaveCount(0);
   await page.goto(`/security/visitors?q=${encodeURIComponent('Àdébáyọ̀')}`);

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { who } from './people';
-import { as, bellText, countMail, latestMail, uniq, visitHealthy } from './helpers';
+import { as, bellText, countMail, latestMail, uniq, visitHealthy, waitOutcome } from './helpers';
 import { jcForm } from './workflows';
 
 /**
@@ -25,7 +25,7 @@ async function publish(page: Page, opts: { category: RegExp; title: string; mess
   await form.locator('select[name="duration"]').selectOption('h4');
   await form.locator('select[name="sendEmail"]').selectOption(opts.email ? 'yes' : 'no');
   await form.getByRole('button', { name: 'Publish broadcast' }).click();
-  await page.waitForURL(/\/notifications\/broadcasts\/[^/?]+\?status=created/);
+  await waitOutcome(page, /\/notifications\/broadcasts\/[^/?]+\?status=created/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^BC-/);
   return new URL(page.url()).pathname;
 }

@@ -19,8 +19,12 @@ export async function signIn(page: Page, email: string, password: string) {
  * page's own heading has rendered.
  */
 export async function gotoSettled(page: Page, url: string) {
-  const res = await page.goto(url, { waitUntil: 'load' });
-  await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined);
+  const res = await page.goto(url);
+  // Rendered (its own h1 — the loading shell has none) or refused (access denied).
+  await Promise.race([
+    page.waitForURL(/\/access-denied|\/login/, { timeout: 25_000 }),
+    page.locator('main h1').first().waitFor({ state: 'visible', timeout: 25_000 }),
+  ]).catch(() => undefined);
   return res;
 }
 
@@ -33,6 +37,9 @@ export async function signOut(page: Page) {
 export async function as(page: Page, roleOrPerson: string | Person) {
   const p = typeof roleOrPerson === 'string' ? who(roleOrPerson) : roleOrPerson;
   await test.step(`sign in as ${p.name} (${p.role})`, async () => {
+    // Leave the app first: a page still running could react to the dropped
+    // session (e.g. a refresh → /login?redirect=…) and race this sign-in.
+    await page.goto('about:blank');
     await page.context().clearCookies();
     await signIn(page, p.email, E2E_PASSWORD);
   });
@@ -89,6 +96,15 @@ export function errorBanner(page: Page): Locator {
 /** Where a server action put us back, with its ?error= message (or null). */
 export function urlError(page: Page): string | null {
   return new URL(page.url()).searchParams.get('error');
+}
+
+/**
+ * Wait for a server action's redirect: the success URL, or ?error= — in
+ * which case fail with the server's own message (the most useful clue).
+ */
+export async function waitOutcome(page: Page, ok: RegExp, timeout = 45_000) {
+  await page.waitForURL((u) => ok.test(u.toString()) || u.searchParams.has('error'), { timeout });
+  expect(urlError(page), `the server answered with an error instead of ${ok}`).toBeNull();
 }
 
 /** Fails with the server's own message if the last action redirected with ?error=. */

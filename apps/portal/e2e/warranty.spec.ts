@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { SEED_WARRANTY } from './people';
-import { as, expectNoUrlError, uniq, visitHealthy } from './helpers';
+import { as, expectNoUrlError, uniq, visitHealthy, waitOutcome } from './helpers';
 import { freshVehicle } from './db';
 import { jcForm, pickSearchable } from './workflows';
 
@@ -30,7 +30,7 @@ test('the Warranty HOD adds a provider and a vehicle policy', async ({ page }) =
   await prov.locator('input[name="email"]').fill('claims@oem.e2e.test');
   await prov.locator('input[name="claimSubmissionDays"]').fill('30');
   await prov.getByRole('button', { name: 'Add provider' }).click();
-  await page.waitForURL(/status=provider_created/);
+  await waitOutcome(page, /status=provider_created/);
   await expect(page.getByRole('link', { name: S.provider })).toBeVisible();
 
   await page.goto('/warranty/policies');
@@ -45,7 +45,7 @@ test('the Warranty HOD adds a provider and a vehicle policy', async ({ page }) =
   await pol.locator('input[name="distanceLimit"]').fill('100000');
   await pol.locator('input[name="coverageItem"]').first().fill('Engine and gearbox');
   await pol.getByRole('button', { name: 'Add policy' }).click();
-  await page.waitForURL(/status=policy_created/);
+  await waitOutcome(page, /status=policy_created/);
   await expect(page.getByRole('link', { name: S.policy })).toBeVisible();
 });
 
@@ -61,7 +61,7 @@ test('a Warranty Officer registers the vehicle warranty; the HOD verifies it', a
   await form.locator('input[name="startReading"]').fill('12');
   await form.locator('textarea[name="evidenceNote"]').fill('Sales invoice INV-E2E-0098; delivery note DN-0431');
   await form.getByRole('button', { name: 'Register warranty' }).click();
-  await page.waitForURL(/\/warranty\/[^/?]+\?status=registered/);
+  await waitOutcome(page, /\/warranty\/[^/?]+\?status=registered/);
   S.warrantyUrl = new URL(page.url()).pathname;
   S.warrantyNumber = ((await page.getByRole('heading', { level: 1 }).textContent()) ?? '').trim();
   // The person who registered it cannot verify it.
@@ -71,7 +71,7 @@ test('a Warranty Officer registers the vehicle warranty; the HOD verifies it', a
   await as(page, 'warranty-hod');
   await page.goto(S.warrantyUrl);
   await page.getByRole('button', { name: 'Evidence checked — verify' }).click();
-  await page.waitForURL(/status=verified/);
+  await waitOutcome(page, /status=verified/);
   expectNoUrlError(page);
 });
 
@@ -90,37 +90,37 @@ test('a claim is drafted, approved by the HOD and the Branch Manager, submitted,
   await form.locator('input[name="labourAmount"]').fill('15000');
   await form.locator('input[name="partsAmount"]').fill('45000');
   await form.getByRole('button', { name: 'Save draft claim' }).click();
-  await page.waitForURL(/\/warranty\/claims\/[^/?]+\?status=created/);
+  await waitOutcome(page, /\/warranty\/claims\/[^/?]+\?status=created/);
   S.claimUrl = new URL(page.url()).pathname;
   await page.getByRole('button', { name: 'Send for approval' }).click();
-  await page.waitForURL(/status=sent_for_approval/);
+  await waitOutcome(page, /status=sent_for_approval/);
   await expect(page.getByText('Waiting on the Warranty HOD.')).toBeVisible();
 
   await as(page, 'warranty-hod');
   await page.goto(S.claimUrl);
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
-  await page.waitForURL(/status=approved/);
+  await waitOutcome(page, /status=approved/);
   await expect(page.getByText('Waiting on the Branch Manager.')).toBeVisible();
 
   await as(page, 'workshop-manager');
   await page.goto(S.claimUrl);
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
-  await page.waitForURL(/status=approved/);
+  await waitOutcome(page, /status=approved/);
 
   await as(page, 'warranty-officer');
   await page.goto(S.claimUrl);
   await page.locator('input[name="providerReference"]').fill(`OEM-${tag}`);
   await page.getByRole('button', { name: 'Record as submitted' }).click();
-  await page.waitForURL(/status=submitted/);
+  await waitOutcome(page, /status=submitted/);
 
   await as(page, 'warranty-hod');
   await page.goto(S.claimUrl);
   await page.locator('select[name="decision"]').selectOption('ACCEPTED');
   await page.getByRole('button', { name: 'Record decision' }).click();
-  await page.waitForURL(/status=decision_recorded/);
+  await waitOutcome(page, /status=decision_recorded/);
   await page.locator('input[name="reference"]').fill(`CN-${tag}`);
   await page.getByRole('button', { name: 'Record settlement' }).click();
-  await page.waitForURL(/status=settled/);
+  await waitOutcome(page, /status=settled/);
   await expect(page.getByText('Settlement recorded — the claim is closed.')).toBeVisible();
 });
 

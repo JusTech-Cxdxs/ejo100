@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { CUSTOMER, SEED_PARTS, who } from './people';
-import { as, expectNoUrlError, latestMail, readStock } from './helpers';
+import { as, expectNoUrlError, latestMail, readStock, waitOutcome } from './helpers';
 import { freshVehicle, idOfPart } from './db';
 import { card, jcForm, pickSearchable } from './workflows';
 
@@ -56,18 +56,18 @@ async function approveAssignAccept(page: Page, url: string) {
   const sel = assign.locator('select[name="technicianId"]');
   await sel.selectOption((await sel.locator('option', { hasText: who('technician').name }).first().getAttribute('value'))!);
   await assign.getByRole('button', { name: 'Assign' }).click();
-  await expect(page.getByText(`Currently: ${who('technician').name}`).or(page.getByText(who('technician').name).first())).toBeVisible();
+  await expect(page.getByText(`Currently: ${who('technician').name}`)).toBeVisible();
   await as(page, 'technician');
   await page.goto(url);
   await page.getByRole('button', { name: 'Accept', exact: true }).click();
-  await page.waitForURL(/status=assignment_accepted/);
+  await waitOutcome(page, /status=assignment_accepted/);
 }
 
 async function skipInspection(page: Page, url: string) {
   await page.goto(`${url}/inspection`);
   await page.locator('input[name="reason"]').fill('Routine service — customer declined a full inspection');
   await page.getByRole('button', { name: 'Skip Inspection' }).click();
-  await page.waitForURL(/status=skipped|\/vehicle-service\/[^/]+(\?|$)/);
+  await waitOutcome(page, /status=skipped|\/vehicle-service\/[^/]+(\?|$)/);
   expectNoUrlError(page);
 }
 
@@ -95,14 +95,14 @@ test.describe('Vehicle Service — the full visit', () => {
     await skipInspection(page, S.url);
     await page.goto(S.url);
     await page.getByRole('button', { name: 'Continue with Normal Service' }).click();
-    await page.waitForURL(/status=estimate_started/);
+    await waitOutcome(page, /status=estimate_started/);
 
     const form = page.locator('form').filter({ has: page.locator('select[name="type"]') });
     await form.locator('select[name="type"]').selectOption('STORE_PART');
     await pickSearchable(form, page, SEED_PARTS.sparkPlug.type, new RegExp(SEED_PARTS.sparkPlug.type), 'Search Part Types…');
     await form.locator('input[name="quantity"]').fill('4');
     await form.getByRole('button', { name: 'Add', exact: true }).click();
-    await page.waitForURL(/status=line_added/);
+    await waitOutcome(page, /status=line_added/);
 
     await as(page, 'workshop-supervisor');
     await page.goto(S.url);
@@ -111,14 +111,14 @@ test.describe('Vehicle Service — the full visit', () => {
     await f2.locator('input[name="description"]').fill('Service labour');
     await f2.locator('input[name="unitPrice"]').fill('6000');
     await f2.getByRole('button', { name: 'Add', exact: true }).click();
-    await page.waitForURL(/status=line_added/);
+    await waitOutcome(page, /status=line_added/);
     await page.getByRole('button', { name: /Request Store Matching/ }).click();
-    await page.waitForURL(/status=matching_requested/);
+    await waitOutcome(page, /status=matching_requested/);
 
     await as(page, 'store-manager');
     await page.goto(`/inventory/service-estimate-matching/${S.id}`);
     await page.getByRole('button', { name: 'Match', exact: true }).first().click();
-    await page.waitForURL(/status=line_matched/);
+    await waitOutcome(page, /status=line_matched/);
     await page.goto(`/inventory/service-estimate-matching/${S.id}`);
     await expect(page.getByText('Every requested line for this Vehicle Service is matched.')).toBeVisible();
   });
@@ -129,19 +129,19 @@ test.describe('Vehicle Service — the full visit', () => {
     // 4 × 2,500 + 6,000 = 16,000
     await expect(card(page, 'Service Estimate')).toContainText('₦16,000.00');
     await page.getByRole('button', { name: 'Submit for validation' }).click();
-    await page.waitForURL(/status=estimate_submitted/);
+    await waitOutcome(page, /status=estimate_submitted/);
     await page.getByRole('button', { name: 'Approve estimate' }).click();
-    await page.waitForURL(/status=estimate_approved/);
+    await waitOutcome(page, /status=estimate_approved/);
 
     await as(page, 'workshop-manager');
     await page.goto(S.url);
     await page.getByRole('button', { name: 'Approve as manager' }).click();
-    await page.waitForURL(/status=estimate_manager_approved/);
+    await waitOutcome(page, /status=estimate_manager_approved/);
 
     await as(page, 'receptionist');
     await page.goto(S.url);
     await page.getByRole('button', { name: 'Notify customer' }).click();
-    await page.waitForURL(/status=customer_notified/);
+    await waitOutcome(page, /status=customer_notified/);
     await latestMail(request, CUSTOMER.email, new RegExp(`Your estimate for Vehicle Service ${S.number} has been approved`));
 
     await as(page, 'finance-officer');
@@ -174,12 +174,12 @@ test.describe('Vehicle Service — the full visit', () => {
     await as(page, 'receptionist');
     await page.goto(S.url);
     await page.getByRole('button', { name: 'Request close' }).click();
-    await page.waitForURL(/status=close_requested/);
+    await waitOutcome(page, /status=close_requested/);
 
     await as(page, 'workshop-manager');
     await page.goto(S.url);
     await page.getByRole('button', { name: 'Approve close' }).click();
-    await page.waitForURL(/status=close_approved/);
+    await waitOutcome(page, /status=close_approved/);
     await expect(vsStatus(page)).toHaveText('Closed');
 
     await as(page, 'workshop-supervisor');
@@ -187,7 +187,7 @@ test.describe('Vehicle Service — the full visit', () => {
     const out = jcForm(page, 'Check Out Vehicle');
     await expect(out.locator('input[name="collectedByName"]')).toHaveValue(CUSTOMER.name);
     await out.getByRole('button', { name: 'Check Out Vehicle' }).click();
-    await page.waitForURL(/status=checked_out/);
+    await waitOutcome(page, /status=checked_out/);
     await expect(vsStatus(page)).toHaveText('Checked Out');
     await expect(page.getByRole('heading', { name: 'Next Service Due' })).toBeVisible();
   });
@@ -208,21 +208,22 @@ test.describe('Vehicle Service — cancelled and escalated', () => {
     const plate = (await freshVehicle('VSC')).plate;
     const { url } = await bookService(page, plate, 'Air-con check');
     await checkIn(page, url);
+    await page.locator('summary', { hasText: 'Request cancellation' }).click();
     const cancel = jcForm(page, 'Request cancellation');
     await cancel.locator('textarea[name="reason"]').fill('Customer rescheduled to next month');
     await cancel.getByRole('button', { name: 'Request cancellation' }).click();
-    await page.waitForURL(/status=cancellation_requested/);
+    await waitOutcome(page, /status=cancellation_requested/);
 
     await as(page, 'workshop-manager');
     await page.goto(url);
     await page.locator('#cancellation-request').getByRole('button', { name: 'Approve cancellation' }).click();
-    await page.waitForURL(/status=cancellation_approved/);
+    await waitOutcome(page, /status=cancellation_approved/);
     await expect(vsStatus(page)).toHaveText('Cancelled');
 
     await as(page, 'receptionist');
     await page.goto(url);
     await page.getByRole('button', { name: 'Hand vehicle back' }).click();
-    await page.waitForURL(/status=handed_back/);
+    await waitOutcome(page, /status=handed_back/);
   });
 
   test('a service that turns into a repair becomes a Job Card', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { who } from './people';
-import { as, expectNoUrlError, latestMail, uniq, visitHealthy } from './helpers';
+import { as, expectNoUrlError, latestMail, uniq, visitHealthy, waitOutcome } from './helpers';
 import { jcForm, pickSearchable } from './workflows';
 
 /**
@@ -23,7 +23,7 @@ test('the scheduling admin adds a meeting room', async ({ page }) => {
   await form.locator('input[name="location"]').fill('Admin block, 1st floor');
   await form.locator('input[name="capacity"]').fill('8');
   await form.getByRole('button', { name: 'Add room' }).click();
-  await page.waitForURL(/status=room_saved/);
+  await waitOutcome(page, /status=room_saved/);
   await expect(page.getByText(S.room).first()).toBeVisible();
 });
 
@@ -43,7 +43,7 @@ test('a calendar user books the room with a colleague, who is emailed', async ({
   await pickSearchable(form, page, 'Mary', new RegExp(who('workshop-manager').name), 'Search staff by name…');
   await form.locator('select[name="hasVisitors"]').selectOption('no');
   await form.getByRole('button', { name: 'Book appointment' }).click();
-  await page.waitForURL(/\/schedule\/[^/?]+\?status=created/);
+  await waitOutcome(page, /\/schedule\/[^/?]+\?status=created/);
   S.url = new URL(page.url()).pathname;
   await expect(page.getByRole('heading', { name: S.title, level: 1 })).toBeVisible();
   await expect(page.locator('main')).toContainText(S.room);
@@ -65,7 +65,7 @@ test('an outside visitor is added — Security will expect them', async ({ page 
   await form.locator('input[name="phone"]').fill('08035550000');
   await form.locator('input[name="purpose"]').fill('Meeting');
   await form.getByRole('button', { name: 'Add visitors' }).click();
-  await page.waitForURL(/status=visitors_added/);
+  await waitOutcome(page, /status=visitors_added/);
   await expect(page.getByRole('link', { name: /^VIS-/ }).first()).toBeVisible();
 
   await as(page, 'security-officer');
@@ -81,13 +81,13 @@ test('the meeting is rescheduled, then cancelled', async ({ page }) => {
   const form = jcForm(page, 'Save changes');
   await form.locator('input[name="time"]').fill('14:30');
   await form.getByRole('button', { name: 'Save changes' }).click();
-  await page.waitForURL(/status=changed/);
+  await waitOutcome(page, /status=changed/);
   await expect(page.locator('main')).toContainText(/2:30|14:30/);
 
   const cancel = jcForm(page, 'Cancel appointment');
   await cancel.locator('input[name="reason"]').fill('Supplier postponed');
   await cancel.getByRole('button', { name: 'Cancel appointment' }).click();
-  await page.waitForURL(/status=cancel/);
+  await waitOutcome(page, /status=cancel/);
   await expect(page.getByText('Appointment cancelled — everyone involved has been emailed.')).toBeVisible();
   expectNoUrlError(page);
 });

@@ -5,7 +5,7 @@
  * of the business broke.
  */
 import { expect, test, type Page, type Locator } from '@playwright/test';
-import { as, expectNoUrlError } from './helpers';
+import { as, expectNoUrlError, waitOutcome } from './helpers';
 import { CUSTOMER, who, type Person } from './people';
 
 export const jcForm = (page: Page, button: string | RegExp): Locator =>
@@ -23,8 +23,14 @@ export async function pickSearchable(scope: Locator | Page, page: Page, text: st
   const box = placeholder ? scope.getByPlaceholder(placeholder) : scope.getByRole('combobox').first();
   await box.click();
   await box.fill(text);
-  await page.getByRole('option', { name: option }).first().click();
+  // The dropdown's own <button role="option"> — never a native <option> of
+  // some other <select> on the page (e.g. a multi-select of staff).
+  await suggestion(page, option).click();
 }
+
+/** A suggestion in a SearchableSelect / FilterSelect dropdown. */
+export const suggestion = (page: Page, option: RegExp | string): Locator =>
+  page.locator('button[role="option"]').filter({ hasText: option }).first();
 
 /** Front desk opens a Job Card for a vehicle; returns its path. */
 export async function openJobCard(page: Page, opts: { plate: string; customer?: string; supervisor?: Person; complaint?: string; mileage?: number }): Promise<string> {
@@ -43,7 +49,7 @@ export async function openJobCard(page: Page, opts: { plate: string; customer?: 
     await form.locator('input[name="mileageAtCheckIn"]').fill(String(opts.mileage ?? 50100));
     await form.locator('input[name="complaints"]').first().fill(opts.complaint ?? 'Brakes squeal when stopping');
     await form.getByRole('button', { name: 'Open Job Card' }).click();
-    await page.waitForURL(/\/workshop\/job-cards\/[^/?]+\?status=job_card_created/);
+    await waitOutcome(page, /\/workshop\/job-cards\/[^/?]+\?status=job_card_created/);
     await expect(page.getByText('Job Card successfully created.')).toBeVisible();
     return new URL(page.url()).pathname;
   });
@@ -120,7 +126,7 @@ export async function addLine(page: Page, line: Line) {
 export async function requestStoreMatching(page: Page) {
   await test.step('request Store matching', async () => {
     await page.getByRole('button', { name: /Request Store Matching/ }).click();
-    await page.waitForURL(/status=matching_requested/);
+    await waitOutcome(page, /status=matching_requested/);
   });
 }
 
@@ -133,7 +139,7 @@ export async function storeMatchesAll(page: Page, jobCardId: string, matcher: Pe
       const match = page.getByRole('button', { name: 'Match', exact: true });
       if ((await match.count()) === 0) break;
       await match.first().click();
-      await page.waitForURL(/status=line_matched|error=/);
+      await waitOutcome(page, /status=line_matched|error=/);
       expectNoUrlError(page);
       if (!/estimate-matching\//.test(page.url())) break;
     }

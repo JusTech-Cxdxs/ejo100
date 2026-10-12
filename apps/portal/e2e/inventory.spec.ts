@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { as, expectHealthy, expectNoUrlError, readStock, uniq, visitHealthy } from './helpers';
+import { as, expectHealthy, expectNoUrlError, readStock, uniq, visitHealthy, waitOutcome } from './helpers';
 import { jcForm, pickSearchable } from './workflows';
 
 /**
@@ -26,14 +26,14 @@ test('a store manager adds a category, a part type and a part', async ({ page })
   await cat.locator('input[name="name"]').fill(S.category);
   await cat.locator('input[name="code"]').fill(S.code);
   await cat.getByRole('button', { name: 'Add Category' }).click();
-  await page.waitForURL(/status=category_created/);
+  await waitOutcome(page, /status=category_created/);
   await expect(page.getByText('Part Category created.')).toBeVisible();
 
   const type = jcForm(page, 'Add Type');
   await pickSearchable(type, page, S.category, new RegExp(S.category), 'Search Categories…');
   await type.locator('input[name="name"]').fill(S.type);
   await type.getByRole('button', { name: 'Add Type' }).click();
-  await page.waitForURL(/status=type_created/);
+  await waitOutcome(page, /status=type_created/);
   await expect(page.getByText(S.type)).toBeVisible();
 
   await page.goto('/inventory/parts');
@@ -45,7 +45,7 @@ test('a store manager adds a category, a part type and a part', async ({ page })
   await part.locator('input[name="baseUnitOfMeasure"]').fill('Piece');
   await part.locator('input[name="reorderPoint"]').fill('5');
   await part.getByRole('button', { name: 'Add Part' }).click();
-  await page.waitForURL(/status=part_created/);
+  await waitOutcome(page, /status=part_created/);
   expectNoUrlError(page);
   await page.goto(`/inventory/parts?q=${encodeURIComponent(S.part)}`);
   await page.getByRole('link', { name: S.part }).first().click();
@@ -69,7 +69,7 @@ test('a goods receipt with its cost puts the stock on the shelf', async ({ page 
   await form.locator('input[name="totalCost"]').fill('36000');
   await form.locator('textarea[name="notes"]').fill('Delivery note DN-E2E-1');
   await form.getByRole('button', { name: 'Record Goods Receipt' }).click();
-  await page.waitForURL(/\/inventory\/goods-receipts\?status=receipt_recorded/);
+  await waitOutcome(page, /\/inventory\/goods-receipts\?status=receipt_recorded/);
   expectNoUrlError(page);
   await expect(page.getByText('E2E Wipers Ltd').first()).toBeVisible();
 
@@ -89,7 +89,7 @@ test('the selling price is set; pricing, matching and analytics pages show real 
   const price = jcForm(page, /^(Set|Save)$/).filter({ has: page.locator('input[name="sellingPrice"]') });
   await price.locator('input[name="sellingPrice"]').fill('4500');
   await price.getByRole('button', { name: 'Set' }).click();
-  await page.waitForURL(/status=selling_price_set/);
+  await waitOutcome(page, /status=selling_price_set/);
   await expect(page.getByText('Selling price updated.')).toBeVisible();
   await expect(page.getByText('₦4,500.00').first()).toBeVisible();
 

@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { E2E_PASSWORD, SWITCHABLE } from './people';
-import { as, expectAuditEntry, signIn, visitHealthy } from './helpers';
+import { suggestion } from './workflows';
+import { as, expectAuditEntry, signIn, visitHealthy, waitOutcome } from './helpers';
 
 /**
  * Administration: give and take away a role (the person's menu follows),
@@ -18,9 +19,9 @@ test('an administrator gives a role; the person’s menu follows; the role is ta
   await expect(card(page)).toBeVisible();
   await card(page).getByRole('textbox', { name: `Give ${SWITCHABLE.name} a role` }).click();
   await card(page).getByRole('textbox', { name: `Give ${SWITCHABLE.name} a role` }).fill('Technician');
-  await page.getByRole('option', { name: 'Technician', exact: true }).first().click();
+  await suggestion(page, 'Technician').click();
   await card(page).getByRole('button', { name: 'Give' }).click();
-  await page.waitForURL(/status=saved/);
+  await waitOutcome(page, /status=saved/);
   await expect(card(page).getByRole('button', { name: `Remove the role Technician from ${SWITCHABLE.name}` })).toBeVisible();
 
   const other = await browser.newContext();
@@ -30,7 +31,7 @@ test('an administrator gives a role; the person’s menu follows; the role is ta
   await other.close();
 
   await card(page).getByRole('button', { name: `Remove the role Technician from ${SWITCHABLE.name}` }).click();
-  await page.waitForURL(/status=/);
+  await waitOutcome(page, /status=/);
   await expect(card(page).getByRole('button', { name: `Remove the role Technician from ${SWITCHABLE.name}` })).toHaveCount(0);
 });
 
@@ -43,7 +44,7 @@ test('switching an account off signs the person out at once; switching on lets t
   await page.goto(`/users?q=${encodeURIComponent(SWITCHABLE.email)}`);
   await card(page).getByRole('textbox', { name: 'Reason for switching off' }).fill('Left the company (E2E)');
   await card(page).getByRole('button', { name: 'Switch off and sign out' }).click();
-  await page.waitForURL(/status=/);
+  await waitOutcome(page, /status=/);
   await expect(card(page)).toContainText('Switched off');
 
   await test.step('the switched-off person is out on their next click', async () => {
@@ -60,7 +61,7 @@ test('switching an account off signs the person out at once; switching on lets t
   });
 
   await card(page).getByRole('button', { name: 'Switch on' }).click();
-  await page.waitForURL(/status=/);
+  await waitOutcome(page, /status=/);
   await expect(card(page)).toContainText('Active');
   await signIn(sola, SWITCHABLE.email, E2E_PASSWORD);
   await other.close();
