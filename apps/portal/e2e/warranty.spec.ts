@@ -92,6 +92,7 @@ test('a claim is drafted, approved by the HOD and the Branch Manager, submitted,
   await form.locator('textarea[name="correction"]').fill('Replaced the water pump and coolant; road tested OK');
   await form.locator('input[name="causalPart"]').fill('Water pump');
   await form.locator('input[name="causalPartNumber"]').fill('WP-16100');
+  await form.locator('input[name="failureDate"]').fill(lagosDay(-1));
   await form.locator('input[name="failureReading"]').fill('900');
   await form.locator('input[name="labourAmount"]').fill('15000');
   await form.locator('input[name="partsAmount"]').fill('45000');
@@ -159,4 +160,24 @@ test('the person who registered a warranty is not offered the Verify button', as
   await form.getByRole('button', { name: 'Register warranty' }).click();
   await waitOutcome(page, /\/warranty\/[^/?]+\?status=registered/);
   await expect(page.getByRole('button', { name: 'Evidence checked — verify' })).toHaveCount(0);
+});
+
+test('a claim for a failure that happened today can be sent the same morning', async ({ page }) => {
+  // Before 13:00 in Lagos the defect bites; in the afternoon it does not.
+  const morning = new Date().getUTCHours() < 12;
+  test.fail(morning, 'E2E-07: lib/actions/warranty-claims-form-handlers.ts:44 stores the failure date as `${date}T12:00:00Z` (13:00 Lagos), so a failure dated today is "in the future" until 1 pm — the readiness check (lib/warranty-claim-readiness.ts:48) blocks "Send for approval" all morning, and the form defaults the date to today');
+  await as(page, 'warranty-officer');
+  await page.goto(S.warrantyUrl);
+  await page.getByRole('link', { name: 'Start a claim' }).click();
+  const form = jcForm(page, 'Save draft claim');
+  await expect(form.locator('input[name="failureDate"]')).toHaveValue(lagosDay());
+  await form.locator('textarea[name="complaint"]').fill('Gearbox whine in third gear since this morning');
+  await form.locator('textarea[name="cause"]').fill('Third gear synchro worn — confirmed on teardown');
+  await form.locator('textarea[name="correction"]').fill('Replaced the synchro ring; road tested OK');
+  await form.locator('input[name="causalPart"]').fill('Synchro ring');
+  await form.locator('input[name="failureReading"]').fill('950');
+  await form.locator('input[name="labourAmount"]').fill('10000');
+  await form.getByRole('button', { name: 'Save draft claim' }).click();
+  await waitOutcome(page, /\/warranty\/claims\/[^/?]+\?status=created/);
+  await expect(page.getByRole('button', { name: 'Send for approval' })).toBeVisible();
 });

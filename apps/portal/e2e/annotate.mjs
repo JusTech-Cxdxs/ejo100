@@ -31,7 +31,7 @@ function walk(suite, trail) {
         errors.push(`::error title=${title}::${where(spec)} ${msg.replace(/[\r\n]/g, ' ')}`);
       } else if (t.status === 'flaky') {
         const first = t.results?.[0];
-        warnings.push(`::warning title=FLAKY ${title}::${where(spec)} passed on retry; first attempt: ${clean(first?.error?.message ?? '').split('\n')[0].slice(0, 400)}`);
+        warnings.push(`::warning title=FLAKY ${title}::${where(spec)} passed on retry; first attempt: ${clean(first?.error?.message ?? '').split('\n').filter(Boolean).slice(0, 4).join(' | ').slice(0, 600)}`);
       } else if (t.status === 'expected' && knownDefect) {
         notices.push(`::notice title=Known defect ${title}::${(knownDefect.description ?? '').slice(0, 400)}`);
       }

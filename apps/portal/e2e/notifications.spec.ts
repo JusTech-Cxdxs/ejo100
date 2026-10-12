@@ -61,8 +61,8 @@ test('a Workshop Manager sees both and marks one read', async ({ page }) => {
   await expect(cardOf(S.role).getByRole('button', { name: 'Mark unread' })).toBeVisible();
   await page.reload();
   await expect(cardOf(S.role).getByRole('button', { name: 'Mark unread' })).toBeVisible();
-  const bell = await bellText(page);
-  expect(bell).not.toContain(S.role);
+  // The bell follows (its summary is cached briefly on the server).
+  await eventually(page, async () => expect(await bellText(page)).not.toContain(S.role), 75_000);
 });
 
 test('the reads are counted; broadcast analytics open', async ({ page }) => {
