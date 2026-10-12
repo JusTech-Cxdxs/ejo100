@@ -580,7 +580,7 @@ export function htmlToText(input: string): string {
   s = s.replace(/<\/(p|div|table|ul|ol|h2|h3)>/gi, '\n\n');
   s = s.replace(/<[^>]+>/g, '');
   s = decodeEntities(s);
-  s = s.replace(/[͏ ‌]/g, '');
-  const lines = s.split('\n').map((l) => l.replace(/[ \t ]+/g, ' ').trim());
+  s = s.replace(/[\u034f\u2007\u200c]/g, '');
+  const lines = s.split('\n').map((l) => l.replace(/[ \t\u00a0]+/g, ' ').trim());
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
 }
