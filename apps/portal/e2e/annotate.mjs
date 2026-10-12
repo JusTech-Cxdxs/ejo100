@@ -1,23 +1,51 @@
-// Turns failed Playwright tests into GitHub annotations (::error), so a
-// failure's reason is readable from the checks API as well as the web page.
+// Turns the Playwright results into GitHub annotations, so every outcome is
+// readable from the checks API as well as the web page:
+//   ::error   — a test that failed (or a known-defect test that unexpectedly passed)
+//   ::warning — a test that only passed on retry (flaky)
+//   ::notice  — a known product defect (test.fail) still reproducing, and the totals
 import { readFileSync, existsSync } from 'node:fs';
 
 const file = new URL('./report/results.json', import.meta.url);
 if (!existsSync(file)) { console.log('::error title=e2e::No results file — the test run did not start.'); process.exit(0); }
 const data = JSON.parse(readFileSync(file, 'utf8'));
-const out = [];
+const errors = [];
+const warnings = [];
+const notices = [];
+const clean = (s) => String(s ?? '').replace(/\u001b\[[0-9;]*m/g, '');
+const titleOf = (trail, spec) => [...trail, spec.title].filter(Boolean).join(' › ').replace(/[\n:,]/g, ' ').slice(0, 180);
+const where = (spec) => (spec.file ? `${spec.file}:${spec.line}` : '');
 function walk(suite, trail) {
   for (const s of suite.suites ?? []) walk(s, [...trail, s.title]);
   for (const spec of suite.specs ?? []) {
     for (const t of spec.tests ?? []) {
       const last = t.results?.[t.results.length - 1];
-      if (last && last.status !== 'passed' && last.status !== 'skipped') {
-        const msg = (last.error?.message ?? last.status).replace(/\u001b\[[0-9;]*m/g, '').split('\n').slice(0, 6).join(' | ').slice(0, 900);
-        out.push(`::error title=${[...trail, spec.title].filter(Boolean).join(' › ').replace(/[\n:,]/g, ' ').slice(0, 180)}::${msg.replace(/[\r\n]/g, ' ')}`);
+      const title = titleOf(trail, spec);
+      const knownDefect = (t.annotations ?? []).find((a) => a.type === 'fail');
+      if (t.status === 'unexpected') {
+        const msg = knownDefect && last?.status === 'passed'
+          ? `Marked as a known defect (${knownDefect.description ?? ''}) but it PASSED — the defect looks fixed; remove test.fail.`
+          : clean(last?.error?.message ?? last?.status).split('\n').slice(0, 6).join(' | ').slice(0, 900);
+        errors.push(`::error title=${title}::${where(spec)} ${msg.replace(/[\r\n]/g, ' ')}`);
+      } else if (t.status === 'flaky') {
+        const first = t.results?.[0];
+        warnings.push(`::warning title=FLAKY ${title}::${where(spec)} passed on retry; first attempt: ${clean(first?.error?.message ?? '').split('\n')[0].slice(0, 400)}`);
+      } else if (t.status === 'expected' && knownDefect) {
+        notices.push(`::notice title=Known defect ${title}::${(knownDefect.description ?? '').slice(0, 400)}`);
       }
     }
   }
 }
 for (const s of data.suites ?? []) walk(s, [s.title]);
-for (const line of out.slice(0, 40)) console.log(line);
-console.log(`${out.length} failing test(s).`);
+// GitHub keeps at most 10 annotations of each kind per step — the workflow
+// runs this several times with PART=0,1,2… and each prints its own slice.
+const part = Number(process.env.PART ?? 0);
+const start = part === 0 ? 0 : 9 + (part - 1) * 10;
+const slice = (list) => list.slice(start, part === 0 ? 9 : start + 10);
+for (const line of slice(errors)) console.log(line);
+for (const line of slice(warnings)) console.log(line);
+for (const line of slice(notices)) console.log(line);
+if (part === 0) {
+  const st = data.stats ?? {};
+  console.log(`::notice title=e2e totals::expected ${st.expected ?? '?'} · unexpected ${st.unexpected ?? '?'} · flaky ${st.flaky ?? '?'} · skipped ${st.skipped ?? '?'} · ${Math.round((st.duration ?? 0) / 1000)} s · ${errors.length} failing, ${warnings.length} flaky, ${notices.length} known defects`);
+}
+console.log(`${errors.length} failing test(s), ${warnings.length} flaky, ${notices.length} known defect(s).`);

@@ -1,7 +1,11 @@
 /** The test accounts (throwaway test database only). */
 export const E2E_PASSWORD = 'E2e-Test-Pass-2026!';
 export const MASTER = { email: 'master@e2e.test', password: 'E2e-Master-Pass-2026!' };
-export const PEOPLE = [
+
+export type Person = { email: string; name: string; role: string; dept?: string; extraRoles?: string[] };
+
+/** One account per role (the FIRST person with a role is the one `who(role)` returns). */
+export const PEOPLE: readonly Person[] = [
   { email: 'admin@e2e.test', name: 'Hannah Admin', role: 'administrator' },
   { email: 'branchadmin@e2e.test', name: 'Bola Branchadmin', role: 'branch-administrator' },
   { email: 'frontdesk@e2e.test', name: 'Funmi Frontdesk', role: 'receptionist' },
@@ -11,8 +15,46 @@ export const PEOPLE = [
   { email: 'finance@e2e.test', name: 'Femi Finance', role: 'finance-officer' },
   { email: 'store@e2e.test', name: 'Stella Store', role: 'store-manager', dept: 'store' },
   { email: 'security@e2e.test', name: 'Sule Security', role: 'security-officer' },
-  // Only for the forgot-password test (its password changes during the run).
-  { email: 'reset@e2e.test', name: 'Rita Reset', role: 'calendar-user' },
-] as const;
+  { email: 'storeofficer@e2e.test', name: 'Oscar Storeofficer', role: 'store-officer', dept: 'store' },
+  { email: 'chiefsecurity@e2e.test', name: 'Chika Chiefsecurity', role: 'chief-security-officer' },
+  { email: 'warrantyhod@e2e.test', name: 'Wale Warrantyhod', role: 'warranty-hod' },
+  { email: 'warrantyofficer@e2e.test', name: 'Wura Warrantyofficer', role: 'warranty-officer' },
+  { email: 'depthead@e2e.test', name: 'Dayo Depthead', role: 'department-head', dept: 'workshop-passenger' },
+  { email: 'calendar@e2e.test', name: 'Cora Calendar', role: 'calendar-user' },
+  { email: 'scheduler@e2e.test', name: 'Sade Scheduler', role: 'scheduling-admin' },
+  { email: 'broadcaster@e2e.test', name: 'Bimbo Broadcaster', role: 'broadcaster' },
+  // Holds BOTH Workshop Supervisor and Workshop Manager — for the
+  // segregation-of-duties checks (approves as supervisor, so may not also
+  // give the Manager's final approval).
+  { email: 'supermanager@e2e.test', name: 'Mike Supermanager', role: 'workshop-supervisor', dept: 'workshop-passenger', extraRoles: ['workshop-manager'] },
+  // Only for user-administration tests (given roles / switched off during the run).
+  { email: 'switchable@e2e.test', name: 'Sola Switchable', role: 'calendar-user' },
+];
+/** Only for the forgot-password test (its password changes during the run). */
+export const RESET: Person = { email: 'reset@e2e.test', name: 'Rita Reset', role: 'calendar-user' };
+export const SUPERMANAGER = PEOPLE.find((p) => p.email === 'supermanager@e2e.test')!;
+export const SWITCHABLE = PEOPLE.find((p) => p.email === 'switchable@e2e.test')!;
 export const OTHER_ORG_ADMIN = { email: 'other-admin@e2e.test', name: 'Olu Otheradmin' };
-export const who = (role: string) => PEOPLE.find((p) => p.role === role)!;
+export const who = (role: string): Person => {
+  const p = PEOPLE.find((x) => x.role === role);
+  if (!p) throw new Error(`No seeded person for role ${role}`);
+  return p;
+};
+
+/** Customers. */
+export const CUSTOMER = { email: 'customer@e2e.test', name: 'Ada Customer' };
+/** Customers who use the customer portal (known passwords). */
+export const PORTAL_CUSTOMER = { email: 'portal-customer@e2e.test', name: 'Kemi Portal', password: 'Portal-Pass-2026!', plate: 'E2E-PORTAL-1' };
+export const OTHER_PORTAL_CUSTOMER = { email: 'portal-other@e2e.test', name: 'Lanre Otherportal', password: 'Portal-Other-2026!', plate: 'E2E-PORTAL-2' };
+
+/** Store data seeded for the workflow specs (each spec uses its own part, so stock numbers never collide). */
+export const SEED_PARTS = {
+  /** Job Card lifecycle — carries the seeded part warranty. */
+  brakePads: { type: 'E2E Brake Pads', name: 'E2E Brake Pad Set', number: 'E2ES-001', price: 15000, stock: 100 },
+  /** Cancellation — reserved, then returned when the Job Card is cancelled. */
+  oilFilter: { type: 'E2E Oil Filter', name: 'E2E Oil Filter Unit', number: 'E2ES-002', price: 4000, stock: 40 },
+  /** Vehicle Service. */
+  sparkPlug: { type: 'E2E Spark Plug', name: 'E2E Spark Plug', number: 'E2ES-003', price: 2500, stock: 60 },
+} as const;
+export const SEED_CATEGORY = { name: 'E2E Seed Parts', code: 'E2ES' };
+export const SEED_WARRANTY = { provider: 'E2E Parts Warranty Co', policyCode: 'E2E-PART-12', policyName: 'E2E 12-month part warranty' };
