@@ -12,7 +12,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from 'better-auth/crypto';
-import { E2E_PASSWORD, PEOPLE, RESET, OTHER_ORG_ADMIN, OTHER_BRANCH_TECH, SECOND_BRANCH, CUSTOMER, PORTAL_CUSTOMER, OTHER_PORTAL_CUSTOMER, SEED_PARTS, SEED_CATEGORY, SEED_WARRANTY, type Person } from './people';
+import { E2E_PASSWORD, PEOPLE, RESET, OTHER_ORG_ADMIN, OTHER_BRANCH_TECH, SECOND_BRANCH, CUSTOMER, PORTAL_CUSTOMERS, SEED_PARTS, SEED_CATEGORY, SEED_WARRANTY, type Person } from './people';
 
 const prisma = new PrismaClient();
 
@@ -70,7 +70,7 @@ async function main() {
     update: {},
     create: { customerId: customer.id, make: 'Honda', model: 'Accord', year: 2019, vehicleType: 'PASSENGER', plateNumber: 'E2E-002-BB', mileage: 61000, createdById: frontDesk.id },
   });
-  for (const [i, c] of [PORTAL_CUSTOMER, OTHER_PORTAL_CUSTOMER].entries()) {
+  for (const [i, c] of PORTAL_CUSTOMERS.entries()) {
     const row = await prisma.customer.upsert({
       where: { email: c.email },
       update: { isActive: true },
@@ -80,7 +80,7 @@ async function main() {
     await prisma.customerVehicle.upsert({
       where: { plateNumber: c.plate },
       update: {},
-      create: { customerId: row.id, make: i === 0 ? 'Kia' : 'Nissan', model: i === 0 ? 'Rio' : 'Almera', year: 2021, vehicleType: 'PASSENGER', plateNumber: c.plate, mileage: 15000 + i, createdById: frontDesk.id },
+      create: { customerId: row.id, make: ['Kia', 'Nissan', 'Hyundai', 'Peugeot'][i]!, model: ['Rio', 'Almera', 'Accent', '301'][i]!, year: 2021, vehicleType: 'PASSENGER', plateNumber: c.plate, mileage: 15000 + i, createdById: frontDesk.id },
     });
   }
 
@@ -94,6 +94,12 @@ async function main() {
     where: { code: SEED_WARRANTY.policyCode },
     update: {},
     create: { code: SEED_WARRANTY.policyCode, name: SEED_WARRANTY.policyName, kind: 'PART', providerId: provider.id, durationMonths: 12, durationUnit: 'MONTHS', coverageSummary: 'Manufacturing defects', exclusions: 'Wear and tear', organisationId: org.id, createdById: store.id },
+  });
+  // A vehicle (asset) policy — the customer-portal spec registers a warranty with it.
+  await prisma.warrantyPolicy.upsert({
+    where: { code: SEED_WARRANTY.vehiclePolicyCode },
+    update: {},
+    create: { code: SEED_WARRANTY.vehiclePolicyCode, name: SEED_WARRANTY.vehiclePolicyName, kind: 'ASSET', providerId: provider.id, durationMonths: 24, durationUnit: 'MONTHS', distanceLimit: 100000, coverageSummary: 'Engine and gearbox', exclusions: 'Wear and tear', organisationId: org.id, createdById: store.id },
   });
 
   // ── Store: category, part types, priced parts with real stock layers ──

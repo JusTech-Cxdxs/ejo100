@@ -43,3 +43,37 @@ export async function jobCardIdFromUrl(url: string): Promise<string> {
 export async function paymentsOn(jobCardId: string): Promise<number> {
   return db().payment.count({ where: { jobCardId } });
 }
+
+/** Where the data-change journal's rows went: by organisation stamp, actor and transaction — for a clear failure message. */
+export async function journalDiagnosis(userEmail: string): Promise<string> {
+  const prisma = db();
+  const me = await prisma.user.findUniqueOrThrow({ where: { email: userEmail }, select: { organisationId: true } });
+  const rows = await prisma.auditLog.findMany({
+    where: { entityType: { startsWith: 'db:' } },
+    select: { organisationId: true, userId: true, metadata: true },
+    orderBy: { createdAt: 'desc' },
+    take: 2000,
+  });
+  const tally = new Map<string, number>();
+  for (const r of rows) {
+    const meta = (r.metadata ?? {}) as Record<string, unknown>;
+    const key = `org=${r.organisationId === null ? 'NULL' : r.organisationId === me.organisationId ? 'mine' : 'other'} user=${r.userId ? 'set' : 'NULL'} tx=${meta.inTransaction ? 'yes' : 'no'} source=${String(meta.source ?? '?')}`;
+    tally.set(key, (tally.get(key) ?? 0) + 1);
+  }
+  const orgs = await prisma.organisation.count();
+  const kinds = await prisma.auditLog.groupBy({ by: ['entityType', 'action'], where: { entityType: { startsWith: 'db:' } }, _count: { _all: true } });
+  const business = await prisma.auditLog.count({ where: { NOT: [{ entityType: { startsWith: 'db:' } }, { entityType: { startsWith: 'api:' } }] } });
+  const businessMine = await prisma.auditLog.count({ where: { organisationId: me.organisationId, NOT: [{ entityType: { startsWith: 'db:' } }, { entityType: { startsWith: 'api:' } }] } });
+  const [jobCards, warranties, payments] = await Promise.all([prisma.jobCard.count(), prisma.warranty.count(), prisma.payment.count()]);
+  return `${rows.length} data-change rows (latest 2000), ${orgs} organisations: ${[...tally.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n}× ${k}`).join('; ') || 'none'}` +
+    ` · journaled: ${kinds.map((k) => `${k.entityType} ${k.action}×${k._count._all}`).join(', ') || 'nothing'}` +
+    ` · business events: ${business} (${businessMine} stamped with this organisation) · written meanwhile: ${jobCards} job cards, ${warranties} warranties, ${payments} payments`;
+}
+
+/** Fixture: put a portal customer's password back to a known value and their access on (so a retry starts clean). */
+export async function resetCustomerAccount(email: string, password: string): Promise<void> {
+  const { hashPassword } = await import('better-auth/crypto');
+  const prisma = db();
+  const c = await prisma.customer.update({ where: { email }, data: { isActive: true }, select: { id: true } });
+  await prisma.customerAccount.updateMany({ where: { customerId: c.id, providerId: 'credential' }, data: { password: await hashPassword(password) } });
+}

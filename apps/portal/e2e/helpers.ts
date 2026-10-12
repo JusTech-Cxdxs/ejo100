@@ -3,14 +3,46 @@ import { E2E_PASSWORD, who, type Person } from './people';
 
 const MAIL = process.env.E2E_MAIL_URL ?? 'http://localhost:8025';
 
+/** What a person would see right now: the address, messages (alerts, statuses), the form, else the page text. */
+export async function describePage(page: Page): Promise<string> {
+  const grab = async (sel: string) => (await page.locator(sel).allInnerTexts().catch(() => [] as string[])).join(' | ').replace(/\s+/g, ' ').trim();
+  const messages = await grab('[role="alert"], [role="status"]');
+  const form = await grab('form');
+  const body = messages || form ? '' : await grab('main, body');
+  return `${page.url()}${messages ? ` — messages: ${messages.slice(0, 300)}` : ''}${form ? ` — form: ${form.slice(0, 300)}` : ''}${body ? ` — page: ${body.slice(0, 400)}` : ''}`;
+}
+
+/** Wait for the URL; on a timeout say where the page actually is and what it shows. */
+export async function urlOrExplain(page: Page, url: RegExp, timeout = 30_000) {
+  try {
+    await page.waitForURL(url, { timeout });
+  } catch {
+    throw new Error(`Expected the URL to match ${url} within ${timeout / 1000}s, but the page is at ${await describePage(page)}`);
+  }
+}
+
+/** Expect a locator to be visible; on failure say what the page shows instead. */
+export async function visibleOrExplain(page: Page, locator: Locator, what: string, timeout = 20_000) {
+  try {
+    await expect(locator).toBeVisible({ timeout });
+  } catch {
+    throw new Error(`Expected ${what} within ${timeout / 1000}s; the page is at ${await describePage(page)}`);
+  }
+}
+
+/** The signed-in shell is up: the account menu sits in the header at every screen size. */
+export async function expectSignedIn(page: Page) {
+  await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible({ timeout: 30_000 });
+}
+
 export async function signIn(page: Page, email: string, password: string) {
   await page.goto('/login');
   await page.getByLabel('Work email').fill(email);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
+  await urlOrExplain(page, /\/dashboard/);
   // The URL changes before the signed-in layout has rendered (client-side push).
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible({ timeout: 30_000 });
+  await expectSignedIn(page);
 }
 
 /**
@@ -28,9 +60,20 @@ export async function gotoSettled(page: Page, url: string) {
   return res;
 }
 
+/** Sign out the way a person does: the header button on desktops, the account menu below 1024 px. */
 export async function signOut(page: Page) {
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  const header = page.getByRole('button', { name: 'Sign out' });
+  if (await header.isVisible()) await header.click();
+  else {
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByRole('button', { name: 'Sign out' }).click();
+  }
   await page.waitForURL(/\/login/);
+}
+
+/** The module links of the main menu (grouped under Overview / Operations / Administration — not the roadmap). */
+export function menuLinks(page: Page): Locator {
+  return page.getByRole('navigation', { name: 'Main' }).locator(':scope > div a');
 }
 
 /** Open a page and wait until it is interactive (scripts loaded, quiet network). */
@@ -145,14 +188,16 @@ export async function submit(page: Page, button: Locator) {
   await page.waitForLoadState('networkidle').catch(() => undefined);
 }
 
-/** The bell's panel text (opens and closes it). */
+/** The bell's panel text (opens and closes it): Needs you / Broadcasts / Today / Earlier. */
 export async function bellText(page: Page): Promise<string> {
   const bell = page.getByRole('button', { name: /^Notifications/ });
   await bell.click();
-  const panel = page.getByRole('link', { name: 'Open the Notification Center →' }).first().locator('..');
-  await expect(panel).toBeVisible();
+  await expect(bell).toHaveAttribute('aria-expanded', 'true');
+  // The bell's own wrapper holds the button and its open panel.
+  const panel = bell.locator('xpath=..');
+  await expect(panel.getByRole('link', { name: /Open the Notification Center/ })).toBeVisible();
   await expect(panel).not.toContainText('Loading your notifications…');
-  const text = (await panel.textContent()) ?? '';
+  const text = (await panel.innerText()) ?? '';
   await bell.click();
   return text;
 }
@@ -170,7 +215,8 @@ export async function expectAuditEntry(page: Page, q: string, mustContain?: RegE
 /** On Hand / reserved figures from a part's page. */
 export async function readStock(page: Page, partUrl: string): Promise<{ onHand: number; reserved: number }> {
   await page.goto(partUrl);
-  const card = page.getByText('On Hand', { exact: true }).locator('..');
+  // The stock card: "On Hand" followed by its figure (not a table heading of the same words).
+  const card = page.getByText('On Hand', { exact: true }).locator('..').filter({ hasText: /On Hand\s*[\d,.]+/ }).first();
   await expect(card).toBeVisible();
   const text = (await card.textContent()) ?? '';
   const num = (s: string | undefined) => Number((s ?? '0').replace(/,/g, ''));

@@ -15,7 +15,8 @@ import { card, jcForm, pickSearchable } from './workflows';
  * Job Card.
  */
 
-const vsStatus = (page: Page) => page.getByRole('heading', { level: 1 }).locator('xpath=following-sibling::span[1]');
+// The status chip beside the title (PageTitle wraps the h1; the chip is the title block's next sibling).
+const vsStatus = (page: Page) => page.getByRole('heading', { level: 1 }).locator('xpath=parent::div/following-sibling::span[1]');
 
 async function bookService(page: Page, plate: string, reason: string): Promise<{ url: string; number: string }> {
   return test.step(`front desk books ${plate} in for service`, async () => {

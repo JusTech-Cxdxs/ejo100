@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { CUSTOMER, SEED_PARTS, SUPERMANAGER, who } from './people';
 import { as, open, eventually, bellText, countMail, expectAuditEntry, expectNoUrlError, latestMail, readStock, urlError, waitOutcome } from './helpers';
-import { db, freshVehicle, idOfPart, paymentsOn } from './db';
+import { db, freshVehicle, idOfPart, journalDiagnosis, paymentsOn } from './db';
 import {
   addLine, assignTechnician, expectStatus, jobNumber, jcForm, nextStep, notifyCustomer, openJobCard, recordPayment,
   requestStoreMatching, statusPanel, storeMatchesAll, submitEstimate, supervisorApproves, supervisorApprovesEstimate, technicianAccepts,
@@ -182,8 +182,15 @@ test('parts: technician requests → HOD approves → Store reserves → Store r
 test('the data-change journal records the part warranty issued with the release', async () => {
   const warranties = await db().warranty.findMany({ where: { jobCardId: S.id }, select: { id: true } });
   expect(warranties.length, 'a part warranty was issued').toBeGreaterThan(0);
-  const journal = await db().auditLog.count({ where: { entityType: 'db:Warranty', entityId: { in: warranties.map((w) => w.id) } } });
-  expect(journal, 'journal entries for the issued warranties').toBeGreaterThan(0);
+  const rows = await db().auditLog.count({ where: { entityType: 'db:Warranty', action: 'data.create', metadata: { path: ['after', 'jobCardId'], equals: S.id } } });
+  expect(rows, `journal rows for the warranties created for this Job Card${rows ? '' : ` — ${await journalDiagnosis(who('administrator').email)}`}`).toBe(warranties.length);
+});
+
+test('each journal row names the record it changed (the issued warranty)', async () => {
+  test.fail(true, 'E2E-10: packages/database/src/audit-journal.ts:266/293 takes entityId from the query result\'s id; apps/portal/lib/actions/warranty.ts:564/568 create warranties with select: { warrantyNumber: true }, so the result has no id and the journal row\'s entityId is NULL — the change cannot be traced to its record (the same for every create/update that selects without id)');
+  const warranties = await db().warranty.findMany({ where: { jobCardId: S.id }, select: { id: true } });
+  const linked = await db().auditLog.count({ where: { entityType: 'db:Warranty', entityId: { in: warranties.map((w) => w.id) } } });
+  expect(linked, 'journal rows that name the issued warranties').toBe(warranties.length);
 });
 
 test('outside purchase: technician requests → Finance reviews → Manager approves → Finance disburses', async ({ page }) => {

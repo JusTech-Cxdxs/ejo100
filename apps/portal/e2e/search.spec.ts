@@ -13,12 +13,16 @@ test.describe.configure({ mode: 'serial' });
 
 const S = { plate: '', number: '', url: '' };
 
+/** Type into the header search (desktop) and return its results popup once the answer is in. */
 async function search(page: Page, q: string) {
-  const box = page.getByRole('searchbox', { name: 'Search everything' }).or(page.getByLabel('Search everything')).first();
+  const box = page.getByRole('combobox', { name: 'Search everything' });
   await box.fill(q);
-  const panel = box.locator('xpath=following-sibling::div[1]');
-  await expect(panel).toBeVisible();
-  await expect(panel).not.toContainText(/Searching…/);
+  // The field's wrapper holds the field and, once results arrive, the popup.
+  const panel = box.locator('xpath=ancestor::div[2]');
+  const answered = panel.getByRole('listbox', { name: 'Search results' }).or(panel.getByText(/^Nothing found for/)).or(panel.getByText(/Search isn’t available/));
+  await expect(answered.first()).toBeVisible();
+  await expect(panel.getByRole('status', { name: 'Searching' })).toHaveCount(0);
+  await expect(panel, 'the search must answer, not fail').not.toContainText('Search isn’t available');
   return panel;
 }
 
@@ -30,22 +34,22 @@ test('front desk finds the Job Card, the customer, the vehicle; Store finds the 
   S.number = await jobNumber(page);
 
   let panel = await search(page, S.number);
-  await expect(panel.getByRole('button', { name: new RegExp(S.number) })).toBeVisible();
-  await panel.getByRole('button', { name: new RegExp(S.number) }).first().click();
+  await expect(panel.getByRole('option', { name: new RegExp(S.number) })).toBeVisible();
+  await panel.getByRole('option', { name: new RegExp(S.number) }).first().click();
   await page.waitForURL(new RegExp(S.url));
 
   panel = await search(page, CUSTOMER.name);
-  await expect(panel.getByRole('button', { name: new RegExp(CUSTOMER.name) }).first()).toBeVisible();
+  await expect(panel.getByRole('option', { name: new RegExp(CUSTOMER.name) }).first()).toBeVisible();
 
   panel = await search(page, S.plate);
-  await expect(panel.getByRole('button', { name: /Mazda CX-5/ }).first()).toBeVisible();
-  await panel.getByRole('button', { name: /Mazda CX-5/ }).first().click();
+  await expect(panel.getByRole('option', { name: /Mazda CX-5/ }).first()).toBeVisible();
+  await panel.getByRole('option', { name: /Mazda CX-5/ }).first().click();
   await page.waitForURL(/\/workshop\/vehicles\/[^/]+\/edit/);
   await expectHealthy(page);
 
   await as(page, 'store-manager');
   panel = await search(page, SEED_PARTS.brakePads.name);
-  await expect(panel.getByRole('button', { name: new RegExp(SEED_PARTS.brakePads.number) }).first()).toBeVisible();
+  await expect(panel.getByRole('option', { name: new RegExp(SEED_PARTS.brakePads.number) }).first()).toBeVisible();
 });
 
 test('special characters and emoji in the search never break it', async ({ page }) => {
