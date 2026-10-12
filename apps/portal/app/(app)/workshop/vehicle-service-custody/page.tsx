@@ -24,15 +24,9 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
- * "Vehicles In Custody — Vehicle Service", the real Vehicle Service
- * equivalent of Job Card's own custody page. Genuinely different
- * categories, since this is about routine servicing rather than
- * physical-custody/collection deadlines: what's currently in
- * service, what's done and waiting on the customer, and — this is
- * the one real place a future reminder job would read from — which
- * real vehicles are coming due or already overdue for their next
- * service, reusing listVehiclesDueForService directly rather than a
- * second, separately-maintained calculation.
+ * Vehicle Service custody: what is in service, what is done and waiting for
+ * the customer, and which vehicles are due or overdue for their next service
+ * (from listVehiclesDueForService).
  */
 const REMINDER_STAGE_LABEL: Record<number, string> = { 1: '1st — Friendly', 2: '2nd — Follow-up', 3: '3rd — Due', 4: 'Overdue' };
 

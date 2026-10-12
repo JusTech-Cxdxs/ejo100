@@ -8,12 +8,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
 import { EmptyState, HeaderAction, PageHeader } from '@/components/ui';
 
-/**
- * A complete, permanent record of every delivery received into the
- * store — the Goods Receipt half of the standard Goods Receipt/Goods
- * Issue pair that gives this whole system a real, auditable stock
- * ledger.
- */
+/** Every delivery received into the Store (the goods receipt side of the stock ledger). */
 export default async function GoodsReceiptsPage({
   searchParams,
 }: {
@@ -69,8 +64,7 @@ export default async function GoodsReceiptsPage({
                   </td>
                   <td className="px-4 py-2 text-[var(--ejo-text)]">{receipt.supplierName}</td>
                   <td className="px-4 py-2 text-[var(--ejo-text-muted)]">
-                    {/* Destination — each Part this delivery was received into,
-                        the reverse of each Part's own "Source GRN" link. */}
+                    {/* The parts this delivery was received into. */}
                     <div className="flex flex-wrap gap-x-2 gap-y-0.5">
                       {receipt.lines.map((l: (typeof receipt.lines)[number], i: number) => (
                         <span key={l.id}>

@@ -10,7 +10,7 @@ import { PageHeader, PageTitle } from '@/components/ui';
 import { Icon } from '@/components/ui/Icon';
 
 const KINDS: [string, string][] = [['all', 'Everything'], ['business', 'Business events'], ['data', 'Data changes'], ['api', 'API requests'], ['system', 'Scheduled jobs']];
-const AREA_DOT: Record<string, string> = { Workshop: 'bg-[var(--ejo-primary)]', Store: 'bg-[var(--ejo-info)]', Warranty: 'bg-[var(--ejo-warning)]', Security: 'bg-[var(--ejo-error)]', Scheduling: 'bg-purple-500', System: 'bg-[var(--ejo-text-muted)]' };
+const AREA_DOT: Record<string, string> = { Workshop: 'bg-[var(--ejo-primary)]', Store: 'bg-[var(--ejo-info)]', Warranty: 'bg-[var(--ejo-warning)]', Security: 'bg-[var(--ejo-error)]', Scheduling: 'bg-teal-500', System: 'bg-[var(--ejo-text-muted)]' };
 const timeOf = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' });
 function groupByDay<T extends { at: Date }>(rows: T[]): [string, T[]][] {
   const ymd = (d: Date) => new Date(new Date(d).getTime() + 3600000).toISOString().slice(0, 10);

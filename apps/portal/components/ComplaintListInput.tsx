@@ -5,18 +5,9 @@ import { useRef, useState } from 'react';
 type ComplaintRow = { key: string; value: string };
 
 /**
- * A dynamic, numbered list of complaints for Job Card creation —
- * "Fan not working" and "AC not working" as two separate, clearly
- * numbered entries rather than mixed together in one paragraph.
- *
- * Every row is a real, separately-submitted <input name="complaints">
- * — the server action reads them all via `formData.getAll('complaints')`,
- * so this needs no hidden JSON-encoding or index-based field names.
- *
- * Uses a stable generated key per row (not the array index) — removing
- * a row from the middle of an index-keyed list can cause React to mix
- * up which DOM input holds which value/focus state, a well-known React
- * list pitfall worth avoiding here since rows are genuinely removable.
+ * Numbered complaint list for a new Job Card. Each row is its own
+ * <input name="complaints">, read with formData.getAll('complaints').
+ * Rows use stable keys, not the index, because rows can be removed.
  */
 export function ComplaintListInput() {
   const [rows, setRows] = useState<ComplaintRow[]>([{ key: 'c0', value: '' }]);

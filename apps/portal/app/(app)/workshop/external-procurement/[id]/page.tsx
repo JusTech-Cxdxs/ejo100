@@ -61,18 +61,12 @@ export default async function ExternalProcurementDetailPage({
   ]);
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
-  // Every real move Finance has made on their own supplementary
-  // lines — added, edited, removed — shown right on the Timeline
-  // alongside the request's own bigger milestones, so a removed line
-  // (which no longer exists to display anywhere else) still has a
-  // real, visible record of what happened and when.
+  // Finance's changes to supplementary lines go on the timeline, so a
+  // removed line still has a record.
   const supplementaryLineEvents = auditTrail.filter((e: (typeof auditTrail)[number]) => e.action.startsWith('external_procurement.supplementary_line_'));
 
-  // The real running total as it stands right now — the technician's
-  // own original figure plus every real supplementary line Finance has
-  // added so far. Shown throughout review, but never itself the
-  // number that gets locked in — that only happens once, explicitly,
-  // at the Manager's own approval (request.approvedTotal below).
+  // Running total during review (original figure plus Finance's lines).
+  // The figure is fixed only at Manager approval (request.approvedTotal).
   const supplementaryTotal = request.supplementaryLines.reduce(
     (sum: number, line: (typeof request.supplementaryLines)[number]) => sum + Number(line.amount),
     0,
@@ -210,9 +204,7 @@ export default async function ExternalProcurementDetailPage({
               </tfoot>
             </table>
           ) : (
-            // A legacy, single-line request from before this model
-            // gained real multi-line support — its one real fact
-            // stays exactly as it always was.
+            // Older single-line request.
             <div>
               <p className="text-sm text-[var(--ejo-text)]">{request.description}</p>
               {request.estimateLineItem ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">From estimate: {request.estimateLineItem.description}</p> : null}
@@ -270,7 +262,7 @@ export default async function ExternalProcurementDetailPage({
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/30 bg-[var(--ejo-info)]/5 p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Finance Review</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Add any real supplementary cost (transport, logistics) — the technician&apos;s own figure above can never be changed here, only added to.
+                Add any extra costs (transport, logistics). The technician&apos;s figure above can&apos;t be changed, only added to.
               </p>
               <form action={addExternalProcurementSupplementaryLineFormAction} className="mt-3 flex flex-wrap items-end gap-2">
                 <FormPendingOverlay />

@@ -16,23 +16,10 @@ function formatPercent(value: number | null): string {
 }
 
 /**
- * The real "how much did we pay, how much do we charge, what's the
- * real profitability" picture — kept genuinely separate the whole way
- * through: Total Bulk Cost is what was actually paid for the most
- * recent real delivery (a permanent Goods Receipt record, untouched
- * here), Selling Price is a deliberate, editable decision Store makes
- * on this Part specifically, and every figure in the insight panel
- * below is purely a live, client-side calculation — never stored
- * anywhere, recomputed fresh from whatever's currently typed.
- *
- * Confirmed directly, from a real, live case: showing only "Markup"
- * here, next to a Target Margin field that means something
- * genuinely different, was a real, live source of confusion — a real
- * 41.9% Markup was mistakenly entered as a 41.9% Target Margin,
- * quietly asking for a materially higher real profitability than
- * intended. This panel now shows Margin and Markup side by side,
- * always both, always clearly labeled, so neither number is ever the
- * only one on screen.
+ * Cost, selling price and profitability for a part. The cost comes from the
+ * latest goods receipt; the selling price is set by the Store; the insight
+ * figures are calculated in the browser and never stored. Margin and markup
+ * are always shown together so one isn't mistaken for the other.
  */
 export function SellingPriceCalculator({
   partId,
@@ -58,34 +45,22 @@ export function SellingPriceCalculator({
 }) {
   const [sellingPriceInput, setSellingPriceInput] = useState(currentSellingPrice !== null ? String(currentSellingPrice) : '');
   const sellingPrice = Number(sellingPriceInput) || 0;
-  // Starts already editing only when there's genuinely nothing set
-  // yet — once a real price is on record, the default view is the
-  // clear, styled status, not an input box sitting open by default.
+  // Open in edit mode only when no price is set yet.
   const [isEditingPrice, setIsEditingPrice] = useState(currentSellingPrice === null);
 
-  // The real, exact amount actually paid — read directly from the
-  // Goods Receipt's own stored totalCost, never recomputed by
-  // multiplying the (necessarily imprecise) per-base-unit cost back
-  // out. That round-trip is exactly what produced a real bug before:
-  // a genuine ₦650,000 payment for 205 Liters showing as ₦649,999.65,
-  // since 650,000 ÷ 205 has no exact 2-decimal answer.
+  // Use the stored totalCost, not unit cost × quantity, which can be off by
+  // rounding (₦650,000 ÷ 205 has no exact 2-decimal answer).
   const totalBulkCost = lastReceipt?.totalCost ?? null;
   const unitCost = lastReceipt?.unitCostInBaseUnit ?? null;
   const expectedRevenue = lastReceipt ? sellingPrice * lastReceipt.quantityInBaseUnit : null;
   const grossProfit = totalBulkCost !== null && expectedRevenue !== null ? expectedRevenue - totalBulkCost : null;
 
-  // Real, current profitability at whatever price is currently
-  // showing (typed or saved) against the most recent real cost —
-  // Margin and Markup always shown together, on purpose, never one
-  // without the other.
+  // Profitability at the price showing (typed or saved) against the latest cost.
   const currentMarginPercent = unitCost !== null && sellingPrice > 0 ? actualMargin(unitCost, sellingPrice) : null;
   const currentMarkupPercent = unitCost !== null && sellingPrice > 0 ? actualMarkup(unitCost, sellingPrice) : null;
 
-  // The real target this Part is actually held to, and what it would
-  // recommend right now against the most recent real cost — shown
-  // even while just viewing, not only when a Pricing Alert has
-  // already been raised, so the real gap is always visible, not just
-  // after the fact.
+  // The part's target margin and the price it implies at the latest cost,
+  // shown even when no pricing alert has been raised.
   const equivalentTargetMarkup = targetMarginPercent !== null ? marginToMarkup(targetMarginPercent) : null;
   const marginGap = currentMarginPercent !== null && targetMarginPercent !== null ? currentMarginPercent - targetMarginPercent : null;
   const recommendedPrice = unitCost !== null && targetMarginPercent !== null ? roundedPriceForTargetMargin(unitCost, targetMarginPercent) : null;
@@ -93,7 +68,7 @@ export function SellingPriceCalculator({
 
   return (
     <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-      <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Purchase &amp; Selling</h2>
+      <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Purchase &amp; selling</h2>
 
       {lastReceipt ? (
         <div className="mt-3">
@@ -123,13 +98,12 @@ export function SellingPriceCalculator({
             </p>
           ) : null}
           <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
-            This is the most recent delivery, shown here purely as pricing reference — the real, permanent record for
-            {' '}{lastReceipt.referenceNumber} itself lives on its own Goods Receipt page. If another batch arrives
-            later, this section updates to reflect that new delivery instead.
+            The most recent delivery, shown for reference. The full record is on goods receipt
+            {' '}{lastReceipt.referenceNumber}. This updates when the next delivery is recorded.
           </p>
         </div>
       ) : (
-        <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No Goods Receipt recorded yet — record one to see the real purchase cost here.</p>
+        <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No goods receipt recorded yet. Record one to see the purchase cost here.</p>
       )}
 
       <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
@@ -230,8 +204,8 @@ export function SellingPriceCalculator({
             </div>
           </dl>
           <p className="mt-1 text-[10px] text-[var(--ejo-text-muted)]">
-            A real projection using the current Selling Price and current stock — not actual historical revenue.
-            What was genuinely charged on a past sale may have differed if the price has changed since.
+            A projection from the current selling price and stock, not past revenue. Earlier sales may have been
+            at a different price.
           </p>
 
           <dl className="mt-3 space-y-1 border-t border-[var(--ejo-success)]/20 pt-2 text-sm">
@@ -275,12 +249,8 @@ export function SellingPriceCalculator({
                     <button
                       type="button"
                       onClick={() => {
-                        // Pre-fills the real, existing Selling Price
-                        // form with the recommended figure — the
-                        // actual save still goes through the same
-                        // real setPartSellingPrice action (and its
-                        // own real notification email) as any manual
-                        // edit, never a separate, parallel path.
+                        // Fills the form with the recommended price; saving
+                        // still goes through setPartSellingPrice.
                         setSellingPriceInput(String(Math.round(recommendedPrice * 100) / 100));
                         setIsEditingPrice(true);
                       }}
@@ -294,14 +264,14 @@ export function SellingPriceCalculator({
             </dl>
           ) : (
             <p className="mt-3 border-t border-[var(--ejo-success)]/20 pt-2 text-[11px] text-[var(--ejo-text-muted)]">
-              Set a Target below to see the real gap against this Part&apos;s own current pricing.
+              Set a target below to compare it with the current price.
             </p>
           )}
 
           <p className="mt-3 text-[11px] text-[var(--ejo-text-muted)]">
             <span className="font-medium text-[var(--ejo-text)]">Margin</span> — profit compared with selling
             price. <span className="font-medium text-[var(--ejo-text)]">Markup</span> — profit compared with
-            cost. Same real profit, two real ways to measure it.
+            cost.
           </p>
         </div>
       ) : null}

@@ -4,12 +4,8 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { EmptyState, HeaderAction, PageHeader } from '@/components/ui';
 
 /**
- * Every real physical facility — each with its own real address and
- * hotlines, since a real Job Card letterhead shows the branch's own
- * contact details separately from the Organisation's general ones
- * (confirmed directly from a real printed Kewalram Job Card: VI's own
- * hotlines and Isolo Workshop's own hotlines are two genuinely
- * different blocks on the same document).
+ * Branches, each with its own address and hotlines: printed documents show
+ * the branch contact block alongside the organisation's.
  */
 export default async function BranchesPage() {
   await guardPage('admin.structure.manage', '/branches');
@@ -20,7 +16,7 @@ export default async function BranchesPage() {
       <PageHeader
         icon="branch"
         title="Branches"
-        description="Every real physical facility this platform operates from, and the real address and hotlines each one prints on its own documents."
+        description="Each branch's address and hotlines, as printed on its documents."
         actions={<HeaderAction href="/structure" icon="sitemap" variant="secondary">Organisation structure · open a branch →</HeaderAction>}
       />
 

@@ -13,12 +13,7 @@ import { DepartmentsPanel } from '@/components/DepartmentsPanel';
 import { STRUCTURE_STATUS } from '@/lib/structure-messages';
 import { BackLink, PageTitle } from '@/components/ui';
 
-/**
- * A branch's own real, printed identity — the same view/edit toggle
- * pattern as /organisation: plain read-only detail view by default,
- * an explicit Edit action reveals the form, saving or cancelling
- * returns to the read-only view.
- */
+/** A branch's printed details. Read-only until Edit is chosen, as on /organisation. */
 export default async function BranchEditPage({
   params,
   searchParams,

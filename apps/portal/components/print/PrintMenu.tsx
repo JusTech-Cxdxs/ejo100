@@ -13,19 +13,10 @@ export function PrintMenu({
   orgHref: string;
   clientHref: string;
   clientLabel?: string;
-  /** Which edge of the button the dropdown itself hangs from. Left
-   * (the default) extends the menu rightward from the button's own
-   * left edge — fine when the button sits away from the screen's
-   * right edge. A button placed at the far right of its own
-   * container needs 'right' instead, or the real menu width pushes
-   * part of it off-screen, exactly what was reported on the
-   * inspection page's own header. */
+  /** Edge the menu aligns to. Use 'right' for a button at the right of its
+   * container, or the menu runs off-screen. */
   align?: 'left' | 'right';
-  /** 'compact' matches the small, plain-text action links this
-   * project already uses inline in cards and tables (text-xs,
-   * py-1.5, border instead of a solid fill) — for a spot that
-   * genuinely needs the print menu without pulling in the larger,
-   * bolder default button used on a document's own dedicated page. */
+  /** 'compact' matches the small outlined action buttons used in cards and tables. */
   size?: 'default' | 'compact';
 }) {
   const [open, setOpen] = useState(false);

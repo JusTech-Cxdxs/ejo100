@@ -21,9 +21,7 @@ const STATUS_LABEL: Record<string, string> = {
   REJECTED: 'Rejected',
 };
 
-/** One label-above-value pair — tight spacing between the two, since
- * a label sitting far from its own value was the single most common
- * complaint about the first version of this document. */
+/** A label above its value, kept close together. */
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -33,18 +31,7 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-/**
- * A real, standalone printable document — deliberately outside the
- * app's own dashboard layout entirely (no sidebar, no nav, no other
- * page chrome to accidentally print along with it), so the browser's
- * own print dialog only ever sees this one document, not a
- * screenshot of the whole portal.
- *
- * Only ever reachable once the slip is genuinely RELEASED — this is
- * the final stage for a Store Parts Request, the point where there's
- * a real, complete story to document and hand over, not a
- * work-in-progress snapshot.
- */
+/** Printed parts request, outside the app layout. Only available once the slip is RELEASED. */
 export default async function PrintPartRequestSlipPage({
   params,
   searchParams,
@@ -68,9 +55,8 @@ export default async function PrintPartRequestSlipPage({
     return sum + (amount !== null && amount !== undefined ? Number(amount) : 0);
   }, 0);
   const collectorName = slip.receivedByUser?.fullName ?? slip.receivedByName ?? null;
-  // Resolves to whichever real record this slip was actually sourced
-  // from — a Job Card or a Vehicle Service's own Service Estimate.
-  // Exactly one of the two is ever set; this never guesses which.
+  // A slip comes from either a Job Card or a Vehicle Service estimate;
+  // exactly one of the two is set.
   const source = slip.jobCard ?? slip.vehicleService;
   const sourceLabel = slip.jobCard ? 'JOB CARD' : 'VEHICLE SERVICE';
   const sourceNumber = slip.jobCard ? slip.jobCard.jobNumber : slip.vehicleService?.serviceNumber;
@@ -123,10 +109,7 @@ export default async function PrintPartRequestSlipPage({
               <td style={{ padding: '6px 4px' }}>{line.part.partNumber ?? '—'}</td>
               <td style={{ padding: '6px 4px' }}>
                 {line.part.name}
-                {/* Traceability — exactly what this line was fulfilled with,
-                    so the paper copy is a complete warranty/recall record:
-                    the batch, the individual serial, or the delivery (GRN)
-                    each unit came from. */}
+                {/* What the line was fulfilled from (batch, serial or GRN), for warranty and recall. */}
                 {line.batchConsumptions.map((c: (typeof line.batchConsumptions)[number], j: number) => (
                   <div key={`b${j}`} style={{ fontSize: '10px', color: '#64748B', marginTop: '2px' }}>
                     Batch {c.batch.batchNumber} — {Number(c.quantityTaken)} {pluralizeWord(Number(c.quantityTaken), line.part.baseUnitOfMeasure)}
@@ -152,8 +135,7 @@ export default async function PrintPartRequestSlipPage({
               </td>
               <td style={{ padding: '6px 4px', textAlign: 'right' }}>
                 {(() => {
-                  // Exactly one of the two is ever set — read whichever this
-                  // slip actually has, the same way totalAmount above does.
+                  // Exactly one of the two is set.
                   const amount = (line.estimateLineItem ?? line.serviceEstimateLineItem)?.amount;
                   return amount !== null && amount !== undefined ? formatNaira(Number(amount)) : '—';
                 })()}

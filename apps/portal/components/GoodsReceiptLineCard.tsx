@@ -12,7 +12,7 @@ function formatNaira(value: number | null): string {
   return value === null ? '—' : `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/** Where this delivery's stock went — computed server-side from the real
+/** Where this delivery's stock went — computed server-side from the
  * batch / serial / FIFO-layer records, for every tracking type. */
 export type GoodsReceiptLineStockTrace = {
   trackingType: 'QUANTITY' | 'BATCH' | 'SERIALIZED';

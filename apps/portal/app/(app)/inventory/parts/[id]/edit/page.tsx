@@ -9,16 +9,8 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { BackLink, PageTitle } from '@/components/ui';
 
 /**
- * Edits an existing part's safe-to-change fields and its full
- * alternative-unit list in one form — deliberately never tracking type
- * or base unit of measure, since changing either on a part with real
- * stock already recorded in that unit would leave existing stock
- * records silently disagreeing with a changed unit.
- *
- * This is the real correction path for the drum-size fix (208L→205L,
- * confirmed against a real carton photo) and the new Carton unit for
- * Brake Fluid (12 Bottles, also from a real carton photo) — nothing
- * else needed to build for those corrections beyond this page.
+ * Edits a part and its alternative units. Tracking type and base unit are
+ * not editable: existing stock is recorded in that unit.
  */
 export default async function EditPartPage({
   params,
@@ -33,14 +25,8 @@ export default async function EditPartPage({
   const part = await getPart(id);
   if (!part) notFound();
 
-  // Always at least one row shown, even with zero existing alternative
-  // units, so there's somewhere to type a first one in — the same
-  // pattern as the create form's own optional-unit section. Rendered
-  // as a real, separate empty row in JSX below rather than folded into
-  // this array, since the fallback and the real PartUnitOfMeasure rows
-  // don't share the same shape (no partId on a row that doesn't exist
-  // yet) — mixing them into one array risked a real type mismatch for
-  // no real benefit.
+  // An empty row is rendered separately below so there is always somewhere
+  // to add a first alternative unit.
   const hasExistingUnits = part.alternativeUnits.length > 0;
 
   return (

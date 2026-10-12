@@ -13,19 +13,9 @@ import {
 type AsyncState = 'idle' | 'loading' | 'success' | 'error';
 
 /**
- * Real, permanent server-backed Customer → Vehicle → Supervisor
- * selection for Job Card creation — three cascading levels now, not
- * two. The third level (Supervisor) exists specifically to enforce the
- * multi-department Workshop routing rule: the moment a vehicle is
- * chosen, its Passenger/Commercial type is already known (returned
- * alongside the vehicle itself, no extra round trip), and that's used
- * to fetch only the supervisors eligible for THAT vehicle's Workshop
- * department — never a flat list of every staff member. It's
- * structurally impossible to see a Commercial-side supervisor while a
- * Passenger vehicle is selected, or vice versa.
- *
- * Customer and Vehicle levels: unchanged from before, still real Server
- * Actions called directly, not a pre-loaded/capped list.
+ * Customer → Vehicle → Supervisor picker for new Job Cards and Vehicle
+ * Services. The vehicle's Passenger/Commercial type decides which
+ * department's supervisors are listed.
  */
 export function CustomerVehiclePicker() {
   const [customerId, setCustomerId] = useState('');
@@ -133,8 +123,7 @@ export function CustomerVehiclePicker() {
           </select>
         )}
         <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
-          Only vehicles belonging to the selected customer are shown — fetched fresh each time, not a filtered
-          local list.
+          Only this customer&apos;s vehicles are listed.
         </p>
       </div>
 
@@ -178,8 +167,8 @@ export function CustomerVehiclePicker() {
           )}
           {supervisorsState === 'success' && usingFallbackSupervisors ? (
             <p className="mt-1 text-[11px] text-[var(--ejo-warning)]">
-              No one is placed in this vehicle&apos;s Workshop department as a Supervisor yet — showing Master
-              Administrators as a stand-in until that&apos;s set up.
+              No supervisor is set up for this vehicle&apos;s workshop department yet, so Master Administrators
+              are listed instead.
             </p>
           ) : (
             <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">

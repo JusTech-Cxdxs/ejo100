@@ -9,12 +9,9 @@ interface FooterBadgeProps {
 }
 
 /**
- * One badge in the footer's badge row. Fixed-size container (56px tall,
- * 128px wide) so the row never shifts layout whether the image is present
- * or not — object-contain keeps each badge's own aspect ratio inside that
- * box without stretching. Until the real file is uploaded to
- * public/images/footer-badges/, the badge simply doesn't render (no
- * broken-image icon) rather than reserving visible empty space.
+ * One footer badge in a fixed 128 × 56 box (object-contain), so the row
+ * never shifts. If the file is missing from public/images/footer-badges/,
+ * the badge is not rendered.
  */
 export function FooterBadge({ src, alt }: FooterBadgeProps) {
   const [failed, setFailed] = useState(false);

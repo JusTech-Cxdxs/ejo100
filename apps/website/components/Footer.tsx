@@ -54,8 +54,7 @@ export function Footer() {
 
   function handleSubscribe(e: FormEvent) {
     e.preventDefault();
-    // No newsletter backend wired up yet — this just confirms the intent
-    // was captured client-side so the form isn't a dead end.
+    // There is no newsletter service yet; this only acknowledges the sign-up.
     setSubscribed(true);
     setEmail('');
   }

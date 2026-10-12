@@ -8,16 +8,8 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { PageHeader } from '@/components/ui';
 
 /**
- * Records one delivery of one part arriving into the store. The actual
- * form (GoodsReceiptForm, a client component) responds to which part is
- * selected — showing its real base/alternative units immediately, and
- * only the one field its tracking type genuinely needs.
- *
- * One part per submission for this first version — the underlying
- * recordGoodsReceipt() action already accepts multiple line items per
- * receipt, for a future multi-line form once that's worth the added
- * complexity; a delivery with several different parts is recorded as
- * one receipt per part for now.
+ * Records a delivery into the Store. GoodsReceiptForm shows the selected
+ * part's units and the field its tracking type needs (batch or serials).
  */
 export default async function NewGoodsReceiptPage({
   searchParams,

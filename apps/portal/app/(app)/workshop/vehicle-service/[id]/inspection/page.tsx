@@ -7,11 +7,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { getApplicableTemplate } from '@/lib/vehicle-inspection-template';
 import { BackLink } from '@/components/ui';
 
-/**
- * Server-side data fetch only — everything interactive (the live
- * severity counter across every section, before anything is even
- * saved) lives in InspectionWorkspace, a real client component.
- */
+/** Loads the data; the interactive checklist is InspectionWorkspace. */
 export default async function VehicleInspectionPage({
   params,
   searchParams,
@@ -21,7 +17,7 @@ export default async function VehicleInspectionPage({
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { id: vehicleServiceId } = await params;
-  // A stale, mistyped or out-of-reach id is simply "not found".
+  // An id the viewer can't see is a 404.
   if (!(await serviceVisible(vehicleServiceId, 'page'))) notFound();
   const { error, status } = await searchParams;
   const [service, inspection] = await Promise.all([

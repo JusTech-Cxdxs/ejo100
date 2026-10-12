@@ -18,10 +18,8 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 /**
- * Printable estimate for a Vehicle Service — the exact same document
- * Job Card prints (shared EstimatePrintDocument). Organisation Copy by
- * default, Customer Copy with ?variant=client. Only exists once the
- * Manager has given final approval.
+ * Printable Vehicle Service estimate (shared EstimatePrintDocument).
+ * Customer copy with ?variant=client. Available after Manager approval.
  */
 export default async function PrintVehicleServiceEstimatePage({
   params,
@@ -32,7 +30,7 @@ export default async function PrintVehicleServiceEstimatePage({
 }) {
   const { id } = await params;
   const { variant } = await searchParams;
-  // A stale, mistyped or out-of-reach id is simply "not found".
+  // An id the viewer can't see is a 404.
   if (!(await serviceVisible(id, 'estimate'))) notFound();
   const [service, estimate, payments, auditTrail, organisation] = await Promise.all([
     getVehicleService(id),

@@ -4,15 +4,8 @@ import { SearchableSelect } from './SearchableSelect';
 import { searchCustomers, listRecentCustomers } from '@/lib/actions/workshop';
 
 /**
- * The reusable "pick a customer by searching" field — every place that
- * just needs a customer selected (Vehicle registration's Owner field,
- * and the customer half of CustomerVehiclePicker's cascading picker)
- * uses this one component, rather than each wiring up SearchableSelect
- * + searchCustomers + the option-mapping shape separately.
- *
- * Shows the most recently registered customers by default before
- * anyone types — the common case (the same customer as earlier today)
- * needs zero typing.
+ * Search-and-pick a customer (vehicle owner, CustomerVehiclePicker). Shows
+ * the most recently registered customers before anything is typed.
  */
 export function CustomerSearchField({
   name = 'customerId',

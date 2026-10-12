@@ -35,13 +35,9 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
- * Reception opens the visit; a supervisor decides what work it
- * actually needs after inspecting the vehicle, from the service's own
- * detail page. This screen only ever records who came in, which
- * vehicle, the mileage, and why — the same real shape as Open Job
- * Card, on purpose. CustomerVehiclePicker already includes the real
- * supervisor picker, tied to the vehicle's own Passenger/Commercial
- * type — the exact same component Job Card creation uses.
+ * Reception opens the visit (customer, vehicle, mileage, reason); the
+ * supervisor decides the work after inspection. CustomerVehiclePicker
+ * includes the supervisor picker, filtered by vehicle type, as on Job Cards.
  */
 export default async function VehicleServicePage({
   searchParams,
@@ -133,8 +129,8 @@ export default async function VehicleServicePage({
         ) : null}
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Routine maintenance and minor customer requests — oil, filters, brake adjustment, AC top-up. If a
-        technician finds a repair job along the way, send it to Job Card from the service page instead of
+        Routine maintenance and minor customer requests: oil, filters, brake adjustment, AC top-up. If a
+        technician finds a repair job, escalate it to a Job Card from the service page instead of
         handling it here.
       </p>
 
@@ -157,7 +153,7 @@ export default async function VehicleServicePage({
       {dueVehicles.length > 0 ? (
         <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicles Due for Service</h2>
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicles due for service</h2>
             <LoadingLink href="/workshop/service-tracker" className="text-xs text-[var(--ejo-primary)] hover:underline">
               Open Service Tracker
             </LoadingLink>
@@ -170,7 +166,7 @@ export default async function VehicleServicePage({
                 className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2.5 text-sm hover:opacity-80"
               >
                 <div className="flex items-center gap-1.5">
-                  <span>{v.status === 'OVERDUE' ? '🔴' : '🟡'}</span>
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${v.status === 'OVERDUE' ? 'bg-[var(--ejo-error)]' : 'bg-[var(--ejo-warning)]'}`} aria-hidden="true" />
                   <span className="font-medium text-[var(--ejo-text)]">{v.vehicleDescription}</span>
                   {v.plateNumber ? <span className="text-xs text-[var(--ejo-text-muted)]">— {v.plateNumber}</span> : null}
                 </div>

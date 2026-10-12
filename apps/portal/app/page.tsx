@@ -3,10 +3,8 @@ import { headers } from 'next/headers';
 import { auth } from '@/lib/auth';
 
 /**
- * Root of the portal has no content of its own. Checks the real session
- * server-side (not just cookie presence) so an already-authenticated
- * employee/admin lands on /dashboard directly instead of bouncing
- * through /login.
+ * The root has no content. It checks the session on the server (not just
+ * the cookie) so a signed-in user goes straight to /dashboard.
  */
 export default async function RootPage() {
   const session = await auth.api.getSession({ headers: await headers() });

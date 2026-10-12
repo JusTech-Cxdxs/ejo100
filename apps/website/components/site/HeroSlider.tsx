@@ -25,7 +25,7 @@ interface Slide {
   secondaryCtaKey?: TranslationKey;
   primaryHref: string;
   secondaryHref: string;
-  // Slide 3 only — left hardcoded per "leave slide three exactly as it is".
+  // Slide 3 uses fixed (untranslated) copy instead of translation keys.
   hardcoded?: { eyebrow: string; headline: string; subheading: string; primaryCta: string; secondaryCta: string };
 }
 

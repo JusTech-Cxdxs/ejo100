@@ -12,12 +12,8 @@ const PULSE_DURATION = 1.8;
 const GLOW_COLOR = 'var(--ejo-accent)';
 
 /**
- * Full-screen loading experience for the EJO 100 Enterprise Platform
- * (Employee Portal / Customer Portal / Admin) — uses the EJO 100 mark
- * rather than the client organisation's logo, so it stays consistent across
- * every organisation this platform is ever deployed for. Reusable: drop
- * <EjoLoader /> into app/loading.tsx (route-level, automatic) or render
- * manually around any async boundary.
+ * Full-screen loader with the EJO 100 mark (not the organisation's logo, so
+ * it is the same for every deployment). Used by app/loading.tsx.
  */
 export function EjoLoader() {
   return (

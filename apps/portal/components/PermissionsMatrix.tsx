@@ -6,7 +6,7 @@ export type MatrixRow = { key: string; module: string; label: string; cells: (st
 const SCOPE_LABEL: Record<string, string> = { ALL: 'All branches', BRANCH: 'Their branch', DEPARTMENT: 'Their department', ASSIGNED: 'Jobs assigned to them', OWN: 'Their own' };
 const SCOPE_TONE: Record<string, string> = {
   ALL: 'bg-[var(--ejo-primary)]/15 text-[var(--ejo-primary)]', BRANCH: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
-  DEPARTMENT: 'bg-purple-500/15 text-purple-600', ASSIGNED: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]', OWN: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+  DEPARTMENT: 'bg-teal-500/15 text-teal-600', ASSIGNED: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]', OWN: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
 };
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]';
 

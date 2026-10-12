@@ -3,12 +3,7 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { VehicleVisitMonth } from '@/lib/actions/vehicle-service';
 
-/**
- * Real counts per real month — Vehicle Service visits and Job Card
- * repairs shown side by side so the real balance between routine
- * maintenance and actual repair work is visible at a glance, not
- * blended into one number.
- */
+/** Vehicle Service visits and Job Card repairs per month, side by side. */
 export function VehicleVisitHistoryChart({ data }: { data: VehicleVisitMonth[] }) {
   return (
     <ResponsiveContainer width="100%" height={220}>

@@ -23,13 +23,9 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
 };
 
 /**
- * Every Parts Request Slip raised across this branch's Job Cards —
- * Workshop HOD, Store, and Storekeeper all work from this same list,
- * each seeing the action relevant to whichever stage a given slip is
- * actually at once they open it. Searchable by reference number or
- * Job Card number, matching the standing rule that every list in this
- * project gets a real search — this one wasn't originally built with
- * it, since the very first version had nothing yet to search through.
+ * Parts requests across the branch. Workshop HOD, Store and Storekeeper all
+ * work from this list; each slip shows the action for its current stage.
+ * Searchable by reference or Job Card number.
  */
 export default async function PartsRequestsPage({
   searchParams,
@@ -40,9 +36,8 @@ export default async function PartsRequestsPage({
   const { q, type } = await searchParams;
   const branchId = await getStoreBranchId();
   const allSlips = await listPartRequestSlips(branchId, q);
-  // Same real type filter as the Estimate Matching page — counts always
-  // reflect the current search, across both kinds, so switching tabs
-  // never hides how many are waiting on the other side.
+  // Same type filter as Estimate Matching. Counts follow the search for
+  // both tabs, so the other tab's count stays visible.
   const jcCount = allSlips.filter((sl: (typeof allSlips)[number]) => Boolean(sl.jobCard)).length;
   const svCount = allSlips.filter((sl: (typeof allSlips)[number]) => Boolean(sl.vehicleService)).length;
   const slips =

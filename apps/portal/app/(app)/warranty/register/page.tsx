@@ -13,11 +13,8 @@ import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { PageHeader } from '@/components/ui';
 
 /**
- * Register a vehicle (asset) warranty — the manual bridge until the sales
- * branch (e.g. Afprint) feeds warranties directly. Find the vehicle by
- * VIN or plate, pick the policy, enter the delivery date and odometer, and
- * record the evidence (invoice / delivery note). A second person verifies
- * it before it covers anything.
+ * Register a vehicle warranty by hand (until sales systems feed them in).
+ * A second person must verify it before it covers anything.
  */
 export default async function RegisterWarrantyPage({ searchParams }: { searchParams: Promise<{ vehicleId?: string; q?: string; error?: string }> }) {
   await guardAnyPage(['warranty.view'], '/warranty');

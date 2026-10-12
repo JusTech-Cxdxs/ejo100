@@ -7,14 +7,8 @@ import { listEligibleSupervisorsForVehicleType, type EligibleSupervisor } from '
 type AsyncState = 'idle' | 'loading' | 'success' | 'error';
 
 /**
- * The same real logic CustomerVehiclePicker already proved — fetch
- * eligible supervisors for a real vehicle's own Passenger/Commercial
- * type, Master Admin standing in only when nobody's genuinely placed
- * into that department yet. Deliberately its own standalone
- * component rather than reused inline: this one takes vehicleType as
- * a fixed, already-known prop (the vehicle itself was chosen
- * somewhere else entirely), not something cascading from a Customer
- * selection the way CustomerVehiclePicker's own version is.
+ * Supervisor picker for a known vehicle type (as in CustomerVehiclePicker).
+ * Falls back to the Master Admin when the department has no supervisor.
  */
 export function SupervisorPicker({ vehicleType, defaultSupervisorId }: { vehicleType: 'PASSENGER' | 'COMMERCIAL' | null; defaultSupervisorId?: string }) {
   const [supervisors, setSupervisors] = useState<EligibleSupervisor[]>([]);
@@ -82,8 +76,8 @@ export function SupervisorPicker({ vehicleType, defaultSupervisorId }: { vehicle
       )}
       {state === 'success' && usingFallback ? (
         <p className="mt-1 text-[11px] text-[var(--ejo-warning)]">
-          No one is placed in this vehicle&apos;s Workshop department as a Supervisor yet — showing Master
-          Administrators as a stand-in until that&apos;s set up.
+          No supervisor is set up for this vehicle&apos;s workshop department yet, so Master Administrators
+          are listed instead.
         </p>
       ) : null}
     </div>

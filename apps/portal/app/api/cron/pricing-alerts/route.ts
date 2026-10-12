@@ -10,23 +10,12 @@ import { sendEmail } from '@/lib/email';
 import { renderPricingAlertsDigestEmail } from '@/lib/email-templates/pricing-alerts-digest';
 
 /**
- * The real, decoupled "microservice" piece of the Pricing Command
- * Center — genuinely separate from the synchronous recordGoodsReceipt
- * flow, which already sends its own real, immediate per-delivery
- * notification. This route runs entirely on its own independent
- * schedule (see vercel.json's own `crons` entry), looking only at
- * whatever pricing alerts are genuinely still OPEN the moment it
- * runs — never a queue of "unsent" alerts that could double-send or
- * silently drop one, since it has no memory between runs at all, by
- * design. One real digest email per branch, per real eligible
- * recipient — never one email per alert.
+ * Pricing alert digest (scheduled in vercel.json). Reads the alerts that are
+ * OPEN at run time and sends one digest per branch per eligible recipient.
+ * It keeps no state between runs, so nothing can be sent twice or skipped.
+ * Goods receipts send their own immediate notification separately.
  *
- * Authenticated the standard, documented Vercel Cron way: Vercel
- * itself sends a real `Authorization: Bearer <CRON_SECRET>` header on
- * every real scheduled invocation, checked against the same secret
- * set in this project's own environment variables. Nothing else can
- * trigger a real send by hitting this URL directly without knowing
- * that secret.
+ * Requires `Authorization: Bearer <CRON_SECRET>`, which Vercel Cron sends.
  */
 export async function GET(request: NextRequest) {
   // Scheduled job: any write it makes is journaled as the system.
@@ -56,11 +45,7 @@ export async function GET(request: NextRequest) {
 
     for (const recipient of group.recipients) {
       try {
-        // Rendered once per real recipient, not once per branch with
-        // a name spliced in afterward — a genuine per-person greeting
-        // every time, never a fragile string-replace that could
-        // silently leave a broken email if this template's own
-        // wording ever changes later.
+        // Rendered per recipient so the greeting uses their name.
         const html = renderPricingAlertsDigestEmail({
           recipientName: recipient.fullName,
           items: digestItems,

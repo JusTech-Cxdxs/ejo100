@@ -18,19 +18,11 @@ export function JobCardStatusForm({
   selectableStatuses: readonly string[];
   statusLabels: Record<string, string>;
 }) {
-  // Real bug this fixes: when the only selectable status is different
-  // from the Job Card's own current one (a cancelled Job Card, where
-  // the dropdown's only real option is CHECKED_OUT but currentStatus
-  // is still CANCELLED), initializing state to currentStatus left the
-  // form silently believing CANCELLED was still selected even though
-  // the dropdown visually showed CHECKED_OUT as the only choice — so
-  // the Collected By field never appeared. Default to the real
-  // selectable option whenever currentStatus itself isn't one.
+  // Start on the first selectable status when the current one isn't
+  // selectable (e.g. Cancelled, where only Checked Out is offered), so the
+  // "Collected by" field shows.
   const [selected, setSelected] = useState(selectableStatuses.includes(currentStatus) ? currentStatus : selectableStatuses[0]);
-  // Rework — the one deliberate, named exception to "never move
-  // backward" in this system's own real status rules. Requires a real
-  // reason, same as requesting a cancellation already does, so it's
-  // always genuinely auditable rather than a silent loophole.
+  // Rework is the only backward move allowed and needs a reason for the audit trail.
   const isReworkTransition = isReworkMove(currentStatus, selected ?? '');
 
   return (
@@ -60,8 +52,7 @@ export function JobCardStatusForm({
             className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
           <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
-            This Job Card is being sent back to In Progress for rework — logged as its own real entry in the
-            audit trail, not a generic status change.
+            The Job Card goes back to In Progress, and the rework and its reason are recorded in the audit trail.
           </p>
         </div>
       ) : null}
@@ -75,8 +66,7 @@ export function JobCardStatusForm({
             className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
           <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
-            The real name of whoever is physically collecting the vehicle right now — this is what prints on the
-            Vehicle Collection Receipt.
+            The full name of the person collecting the vehicle. It is printed on the Vehicle Collection Receipt.
           </p>
         </div>
       ) : null}

@@ -15,16 +15,9 @@ function formatNaira(value: number): string {
 }
 
 /**
- * Deliberately nothing to pick, type, or search here — every real Store
- * Part line on this estimate was already matched to a real catalog Part,
- * priced, and approved long before this page exists to be visited at
- * all. This is a real, read-only preview of exactly what's about to be
- * requested, and one single action to actually raise it — the same
- * "everything's already decided, just confirm and go" shape as, say,
- * reviewing a cart before checkout, never a form asking you to re-enter
- * facts the system already knows. The header carries the same real Job
- * Card/vehicle context as the request's own detail page, so this reads
- * as one standard document family, not two different styles.
+ * Read-only review before raising a parts request. Every Store Part line is
+ * already matched, priced and approved, so there is nothing to enter; the
+ * header matches the request's detail page.
  */
 export default async function RequestPartsPage({
   params,
@@ -51,8 +44,7 @@ export default async function RequestPartsPage({
       <BackLink href={`/workshop/job-cards/${id}`} label={<>Back to Job Card {jobCard.jobNumber}</>} className="mb-4" />
       <PageTitle icon="package" className="mb-2">Request Store Parts</PageTitle>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
-        Every Part below was already matched and priced by Store. Nothing here needs editing; raising the request
-        simply sends this exact list forward for approval.
+        These parts have been matched and priced by the Store. Check the list, then raise the request for approval.
       </p>
 
       {error ? (

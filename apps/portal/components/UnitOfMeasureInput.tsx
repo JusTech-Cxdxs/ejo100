@@ -4,22 +4,9 @@ import { useId } from 'react';
 import { UNIT_OF_MEASURE_OPTIONS } from '@/lib/data/unit-of-measure-catalog';
 
 /**
- * Real, curated Unit of Measure suggestions (Piece, Set, Liter, Drum,
- * Hour, Job, and the rest of the actual Nigerian auto-parts framework)
- * — built on the same native `<datalist>` approach already proven for
- * vehicle Make/Model/Engine, since a unit's real submitted value
- * genuinely is the text itself ("Liter", not an opaque ID), unlike
- * PartType/PartCategory which need SearchableSelect's ID-resolving
- * behavior instead. Never a restriction: anything typed that isn't in
- * the list still submits exactly as typed.
- *
- * The datalist's own id comes from useId(), not from the `name` prop
- * — this component can genuinely render more than once on the same
- * page with the same field `name` (e.g. an estimate line's own Add
- * form and its Edit-row form both use `name="unitOfMeasure"`, and
- * both can be visible at once) — deriving the datalist id from `name`
- * would collide in that case; useId() is guaranteed unique per real
- * rendered instance regardless.
+ * Unit of measure with suggestions (Piece, Set, Litre, Drum, Hour…) through a
+ * native <datalist>; any other text is accepted. The datalist id comes from
+ * useId() because two inputs with the same `name` can be on one page.
  */
 export function UnitOfMeasureInput({
   name,

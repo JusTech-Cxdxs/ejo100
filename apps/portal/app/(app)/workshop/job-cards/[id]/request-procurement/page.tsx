@@ -20,12 +20,9 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 /**
- * One real document for the whole Job Card, not a separate one-off
- * click for every single line — a Lathe job and a Bushing both
- * needed for the same repair are one real trip to Finance for cash,
- * never two unconnected ones. Same shape as the Store Parts request:
- * a real header carrying the Job Card's own facts, a real table,
- * and exactly one action at the bottom.
+ * One procurement request covers every external line on the Job Card, so
+ * Finance handles a single cash advance per repair. Same layout as the
+ * Store parts request.
  */
 export default async function RequestProcurementPage({
   params,
@@ -52,8 +49,7 @@ export default async function RequestProcurementPage({
       <BackLink href={`/workshop/job-cards/${id}`} label={<>Back to Job Card {jobCard.jobNumber}</>} className="mb-4" />
       <PageTitle icon="cart" className="mb-2">Request External Procurement</PageTitle>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
-        Every line below is already priced on the approved estimate. Nothing here needs editing; raising the request
-        sends this exact list forward as a cash advance request.
+        These lines are priced on the approved estimate. Check the list, then raise the cash advance request.
       </p>
 
       {error ? (

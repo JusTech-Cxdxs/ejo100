@@ -1,13 +1,11 @@
 import Link from 'next/link';
 import { portalConfig } from '@/lib/site-config';
 import { AuthShell } from '@/components/AuthShell';
+import { Icon } from '@/components/ui/Icon';
 
 /**
- * Informational landing page shown right after signup. The actual
- * verification link in the email points at Better Auth's own
- * /api/auth/verify-email endpoint (see lib/auth.ts's
- * emailVerification.sendVerificationEmail) — this page never handles a
- * token itself.
+ * Shown after sign-up. The emailed link goes to Better Auth's
+ * /api/auth/verify-email (see lib/auth.ts); this page never handles a token.
  */
 export default function VerifyEmailPage() {
   return (
@@ -25,8 +23,8 @@ export default function VerifyEmailPage() {
       }
     >
       <div className="flex justify-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--ejo-primary)]/10 text-3xl">
-          ✉️
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]">
+          <Icon name="mail" size={28} />
         </div>
       </div>
     </AuthShell>

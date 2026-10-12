@@ -10,17 +10,9 @@ import { EditIcon, BuildingIcon } from '@/components/icons';
 import { EmptyState, PageTitle } from '@/components/ui';
 
 /**
- * The organisation's own real, printed identity — name, legal name,
- * hotlines, HQ address, PO Box, RC number, email. This is deliberately
- * the one real source every printable document in the system pulls
- * its header from, so a real letterhead detail only ever needs to be
- * entered once, in one place, to be correct everywhere it's printed.
- *
- * Standard view/edit toggle: plain read-only detail view by default,
- * an explicit Edit action reveals the form (`?edit=true`), and saving
- * or cancelling returns to the read-only view — the same real pattern
- * already proven on the Job Card status form, so a field is never
- * sitting open and editable by accident.
+ * The organisation's printed identity (name, legal name, hotlines, address,
+ * RC number, email). Every printed document takes its header from here.
+ * Read-only by default; `?edit=true` shows the form.
  */
 export default async function OrganisationPage({ searchParams }: { searchParams: Promise<{ error?: string; status?: string; edit?: string }> }) {
   await guardPage('admin.organisation.manage', '/organisation');
@@ -35,8 +27,8 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
         <PageTitle icon="building">Organisation</PageTitle>
       </div>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
-        Organisation profile, legal name, and the real contact and registration details every printed document — Job
-        Cards, Store Parts Requests, External Procurement, Payment receipts — carries in its own header.
+        The organisation&apos;s name, legal name, contact and registration details. These appear in the header of
+        every printed document (Job Cards, parts requests, external procurement, receipts).
       </p>
 
       {error ? (

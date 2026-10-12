@@ -39,13 +39,9 @@ function formatNaira(value: number): string {
 }
 
 /**
- * The real document this whole request always was — a standard,
- * non-editable slip, exactly like a real printed store requisition:
- * who/what/where it's for at the top, every real Part in a proper
- * numbered table underneath, a real total, and a genuine approval
- * chain below that. Nothing on this page asks anyone to fill
- * anything in, because there's genuinely nothing left to decide —
- * Store already matched and priced every line back at estimate time.
+ * The parts request slip, laid out like a printed store requisition: header,
+ * numbered parts table, total, then the approval chain. Lines were matched
+ * and priced at estimate time, so nothing here is editable.
  */
 export default async function PartRequestSlipDetailPage({
   params,
@@ -80,9 +76,8 @@ export default async function PartRequestSlipDetailPage({
     eligibleStoreManagers.staff.some((s) => s.id === viewerId) ||
     eligibleStoreOfficers.staff.some((s) => s.id === viewerId);
   const serializedLines = slip.lines.filter((l: (typeof slip.lines)[number]) => l.part.trackingType === 'SERIALIZED');
-  // Resolves to whichever real record this slip was actually sourced
-  // from — a Job Card or a Vehicle Service's own Service Estimate.
-  // Exactly one of the two is ever set; this never guesses which.
+  // A slip comes from either a Job Card or a Vehicle Service estimate;
+  // exactly one of the two is set.
   const source = slip.jobCard ?? slip.vehicleService;
   const sourceLabel = slip.jobCard ? 'Job Card' : 'Vehicle Service';
   const sourceNumber = slip.jobCard ? slip.jobCard.jobNumber : slip.vehicleService?.serviceNumber;
@@ -126,9 +121,7 @@ export default async function PartRequestSlipDetailPage({
         </div>
       ) : null}
 
-      {/* The real slip — printable on its own, everything else on
-          this page (the approval actions, the timeline) is workflow
-          UI that has no business appearing on a printed copy. */}
+      {/* The slip prints on its own; approval actions and the timeline don't. */}
       <div className="max-w-4xl rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-8 print:border-0 print:p-0 print:shadow-none">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--ejo-border)] pb-4">
           <div>
@@ -200,9 +193,7 @@ export default async function PartRequestSlipDetailPage({
                   </td>
                   <td className="px-3 py-2 text-right text-[var(--ejo-text)]">
                     {(() => {
-                      // A slip is linked to exactly one kind of estimate line — Job
-                      // Card's own, or Vehicle Service's own — so read whichever one
-                      // it actually has, the same way totalAmount above already does.
+                      // Each line links to either a Job Card or a Vehicle Service estimate line.
                       const amount = (line.estimateLineItem ?? line.serviceEstimateLineItem)?.amount;
                       return amount !== null && amount !== undefined ? formatNaira(Number(amount)) : '—';
                     })()}

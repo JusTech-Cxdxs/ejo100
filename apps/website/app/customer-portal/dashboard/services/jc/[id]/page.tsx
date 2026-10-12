@@ -11,7 +11,7 @@ const branchSelect = { name: true, address: true, hotlines: true, email: true, b
 
 /**
  * One Job Card. Found by id AND the signed-in customer's id — someone
- * else's Job Card is simply "not found". The estimate shows only once the
+ * else's Job Card is "not found". The estimate shows only once the
  * customer has been notified of it, and only the lines billed to the
  * customer. No internal notes, diagnosis, costs or staff names.
  */

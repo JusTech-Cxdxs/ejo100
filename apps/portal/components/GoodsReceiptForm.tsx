@@ -13,37 +13,17 @@ type PartOption = {
   name: string;
   trackingType: string;
   baseUnitOfMeasure: string;
-  // Prisma's real Decimal fields aren't plain `number` — a hand-typed
-  // `number` here looked reasonable (since Number(...) is how it's
-  // actually used below) but doesn't match what's genuinely passed in,
-  // the exact class of mismatch already caught once before in this
-  // project. Number|string|Decimal-with-toString all coerce correctly
-  // through Number(...), which is the only thing this ever does with it.
+  // Prisma Decimals arrive as objects; this value is only ever passed to Number().
   alternativeUnits: { unitName: string; conversionFactor: number | string | { toString(): string } }[];
 };
 
 type SerialRow = { key: string; value: string };
 
 /**
- * A goods receipt form that responds to which part is actually
- * selected — the same real gap this was built to close: a Server
- * Component page can't show or hide fields based on a selection made
- * in the browser, so the earlier version showed every field for every
- * part regardless of whether it applied. This version only shows the
- * one field the selected part's tracking type genuinely needs (Batch
- * Number, or the serial list — never both, never neither when one's
- * required), and shows the part's real base unit and any recognized
- * alternative units immediately, so whoever's filling this in doesn't
- * have to leave the page to check.
- *
- * Serial numbers use the exact same numbered-list pattern as
- * ComplaintListInput on Job Card creation — "Serial 1," "Serial 2,"
- * each its own real <input name="serialNumbers">, not one field that
- * has to be split apart later — with a live count against the
- * quantity entered, since a serialized part's real quantity IS its
- * serial count, not a separately-typed number that could disagree
- * with it. The server enforces this match independently; this is a
- * genuine help, not the actual guarantee.
+ * Goods receipt form. Shows the selected part's units and only the field its
+ * tracking type needs: a batch number, or one <input name="serialNumbers">
+ * per unit with a live count against the quantity. The server checks the
+ * count again.
  */
 export function GoodsReceiptForm({
   branchId,
@@ -64,21 +44,13 @@ export function GoodsReceiptForm({
 
   function selectPart(partId: string) {
     setSelectedPartId(partId);
-    // Alternative unit first, base unit only when there isn't one —
-    // Store almost always receives a delivery of Engine Oil by the
-    // Drum, not counted out in Liters, so that's the real, useful
-    // default to start from. A plain `defaultValue` here would only
-    // apply on first mount, not when the selection actually changes,
-    // the same class of bug already caught once before in this
-    // project on a status dropdown. Still freely editable afterward.
+    // Default to the alternative unit (deliveries usually come by the drum
+    // or carton). Set on every part change; defaultValue would only apply once.
     const newPart = parts.find((p) => p.id === partId);
     setUnitUsed(newPart?.alternativeUnits[0]?.unitName ?? newPart?.baseUnitOfMeasure ?? '');
   }
 
-  // Every real Part is already loaded via the `parts` prop — no
-  // server round-trip needed to search it, just a plain client-side
-  // filter wrapped as a Promise to match SearchableSelect's own
-  // (query) => Promise<SearchableOption[]> shape.
+  // Parts are already loaded, so search filters on the client.
   const allPartOptions: SearchableOption[] = parts.map((p) => ({ value: p.id, label: p.name }));
   async function searchPartsLocal(query: string): Promise<SearchableOption[]> {
     const q = query.trim().toLowerCase();
@@ -101,11 +73,8 @@ export function GoodsReceiptForm({
     setSerials((prev) => prev.map((r) => (r.key === key ? { ...r, value } : r)));
   }
 
-  // Tracks whether each serial row currently has a real problem (a
-  // duplicate within this same form, or one already recorded
-  // elsewhere in the catalog) — submission stays blocked while any
-  // row does, the same "don't allow recording that" the real
-  // production system needs, not just a warning shown after the fact.
+  // Serial rows with a problem (duplicate here or already recorded).
+  // Submission is blocked while any remain.
   const [serialValidity, setSerialValidity] = useState<Record<string, boolean>>({});
   const hasInvalidSerial = Object.values(serialValidity).some(Boolean);
 
@@ -113,11 +82,7 @@ export function GoodsReceiptForm({
   const parsedQuantity = Number(quantity);
   const serialCountMatches = Number.isFinite(parsedQuantity) && parsedQuantity > 0 && filledSerialCount === parsedQuantity;
 
-  // Live-calculated the moment enough is filled in — the real point
-  // of asking for Total Cost instead of a per-unit price nobody wants
-  // to hand-calculate first: Store already knows what the whole
-  // delivery cost, and everything else (cost per Carton, cost per
-  // Bottle) should be worked out for them, not the other way around.
+  // The Store enters the delivery's total cost; unit costs are worked out here.
   const parsedTotalCost = Number(totalCost);
   const hasLiveCalc = Number.isFinite(parsedQuantity) && parsedQuantity > 0 && Number.isFinite(parsedTotalCost) && parsedTotalCost > 0;
   const costPerUnitUsed = hasLiveCalc ? parsedTotalCost / parsedQuantity : null;
@@ -198,11 +163,7 @@ export function GoodsReceiptForm({
             placeholder="e.g. Liter, or Drum"
             className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
-          {/* Exactly the real units this specific Part actually uses
-              — its alternative unit (if it has one) and its base unit
-              — never the full generic catalog, so clearing this by
-              mistake still leads straight back to a genuinely correct
-              choice, not a wall of unrelated suggestions. */}
+          {/* Only this part's own units (alternative and base). */}
           <datalist id="goods-receipt-unit-suggestions">
             {selectedPart?.alternativeUnits.map((u) => (
               <option key={u.unitName} value={u.unitName} />

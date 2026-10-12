@@ -24,12 +24,8 @@ const SEVERITY_BADGE_CLASS: Record<string, string> = {
 };
 
 /**
- * The real "Pricing Action Advisor" — every alert here was raised
- * automatically, the moment a real Goods Receipt line made it true
- * (see recordGoodsReceipt), never a manual entry. The summary above
- * the list is real, honest analysis computed fresh from whatever's
- * genuinely open right now — never a stored snapshot that could go
- * stale the moment an alert gets resolved elsewhere.
+ * Pricing alerts, raised automatically by recordGoodsReceipt. The summary is
+ * computed from the alerts open right now, not stored.
  */
 export default async function PricingCommandCenterPage({
   searchParams,
@@ -55,8 +51,8 @@ export default async function PricingCommandCenterPage({
         back={{ href: '/inventory', label: 'Back to Inventory' }}
         eyebrow="Store"
         title="Pricing Command Center"
-        description="Every real delivery cost, auto-compared against each Part's own target margin the moment it's recorded."
-        actions={<HeaderAction href="/inventory/analytics" icon="chart" variant="secondary">See profitability, margins and reorder intelligence in Inventory Analytics →</HeaderAction>}
+        description="Each delivery cost is checked against the part's target margin as soon as it is recorded."
+        actions={<HeaderAction href="/inventory/analytics" icon="chart" variant="secondary">Profitability and reorder levels in Inventory analytics →</HeaderAction>}
       />
 
       {params.error ? (
@@ -96,9 +92,9 @@ export default async function PricingCommandCenterPage({
 
       {summary.partsWithMultipleOpenAlerts.length > 0 ? (
         <div className="mt-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Worth a real, deliberate look</h2>
+          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Recurring alerts</h2>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-            These Parts haven&apos;t just had one odd delivery — they keep coming up.
+            These parts have raised alerts on more than one delivery.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {summary.partsWithMultipleOpenAlerts.map((p) => (

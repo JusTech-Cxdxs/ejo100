@@ -21,11 +21,7 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
   REJECTED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
-/**
- * Every External Procurement (cash advance) request raised across this
- * branch's Job Cards — Workshop Manager and Finance both work from this
- * same list. Searchable by reference number or Job Card number.
- */
+/** External procurement (cash advance) requests across the branch, for the Workshop Manager and Finance. */
 export default async function ExternalProcurementPage({
   searchParams,
 }: {

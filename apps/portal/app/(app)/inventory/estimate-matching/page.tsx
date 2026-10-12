@@ -27,13 +27,8 @@ type MatchingGroup = {
 };
 
 /**
- * Store's own real, single starting point — every real Job Card AND
- * every real Vehicle Service currently waiting on Store, merged into
- * one queue. Store shouldn't have to check two different places to
- * see everything waiting on them; the real matching work itself
- * still lives on each one's own dedicated page, kept separate since
- * a Job Card and a Vehicle Service are genuinely different real
- * records underneath.
+ * One queue of Job Cards and Vehicle Services waiting on the Store. Matching
+ * itself happens on each record's own page.
  */
 export default async function EstimateMatchingPage({ searchParams }: { searchParams: Promise<{ type?: string; q?: string }> }) {
   await guardAnyPage(['store.view'], '/inventory');

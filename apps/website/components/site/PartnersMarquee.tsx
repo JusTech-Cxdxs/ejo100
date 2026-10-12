@@ -4,12 +4,8 @@ import { useI18n } from '@/lib/i18n';
 import { PartnerLogo } from '@/components/PartnerLogo';
 
 /**
- * Renders real logo images only (no text/monogram fallback rendering at
- * this layer — PartnerLogo itself handles the not-yet-uploaded case).
- * Order and filenames match exactly what was requested; drop the
- * corresponding file into public/images/partners/ to make each one
- * appear — no code change needed. To add a new partner later: add one
- * entry to the PARTNERS array below and upload its matching image file.
+ * Scrolling partner logos. To add a partner, add an entry to PARTNERS and
+ * upload the image to public/images/partners/ (PartnerLogo handles a missing file).
  */
 const PARTNERS = [
   { name: 'SOUEAST', filename: 'soueast-img.png' },

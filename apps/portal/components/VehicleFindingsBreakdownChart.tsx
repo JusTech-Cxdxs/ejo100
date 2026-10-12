@@ -3,9 +3,7 @@
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { VehicleFindingsBreakdown } from '@/lib/actions/vehicle-service';
 
-// Same real severity colors already used on the inspection workspace
-// and print documents — never a different palette for the same real
-// meaning.
+// Same severity colours as the inspection workspace and prints.
 const SEVERITY_COLORS = {
   Good: '#16A34A',
   Attention: '#CA8A04',

@@ -23,8 +23,7 @@ const SEVERITY_COLOR: Record<string, string> = {
 
 type InspectionItem = { id: string; section: string; name: string; condition: string | null; severity: string | null; action: string | null; notes: string | null };
 
-/** One label-above-value pair — same real spacing convention every
- * other printable document in this project already uses. */
+/** A label above its value. */
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -34,12 +33,8 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** One real zone — Reviewed or Not Reviewed — grouped by category
- * inside it, matching the exact same real structure the inspection
- * workspace itself uses on-screen, so a printed copy never looks
- * like a different, unrelated document from what staff actually see
- * while working. showNotes is only ever true for the organisation
- * copy. */
+/** Reviewed or Not Reviewed items, grouped by category as on screen.
+ * showNotes is true only for the organisation copy. */
 function ItemsZone({
   title,
   backgroundColor,
@@ -98,16 +93,8 @@ function ItemsZone({
 }
 
 /**
- * A real, standalone printable document — outside the app's own
- * dashboard layout entirely, same as every other print route in this
- * project. Renders straight from the live database on every real
- * request, never a cached or pre-generated snapshot, so an edited,
- * added, or removed inspection item shows up on the very next print.
- *
- * A skipped inspection has no real technical findings to hand
- * anyone — nothing to print, by design; the Vehicle Service page's
- * own audit trail already records that it was skipped, which is the
- * real, honest record for that case.
+ * Printed vehicle inspection, rendered from the database on each request.
+ * A skipped inspection has nothing to print; the audit trail records the skip.
  */
 export default async function PrintVehicleInspectionPage({
   params,
@@ -120,7 +107,7 @@ export default async function PrintVehicleInspectionPage({
   const { variant } = await searchParams;
   const isOrgCopy = variant !== 'client';
 
-  // A stale, mistyped or out-of-reach id is simply "not found".
+  // An id the viewer can't see is a 404.
   if (!(await serviceVisible(id, '[id]'))) notFound();
   const [service, inspection, organisation] = await Promise.all([
     getVehicleService(id),
@@ -169,7 +156,7 @@ export default async function PrintVehicleInspectionPage({
       </div>
 
       {reviewedItems.length > 0 ? (
-        <ItemsZone title="✅ Reviewed" backgroundColor="#F0FDF4" borderColor="#BBF7D0" items={reviewedItems} showNotes={isOrgCopy} />
+        <ItemsZone title="Reviewed" backgroundColor="#F0FDF4" borderColor="#BBF7D0" items={reviewedItems} showNotes={isOrgCopy} />
       ) : (
         <div style={{ marginTop: '20px', padding: '14px 16px', border: '1px solid #E2E8F0', borderRadius: '8px', backgroundColor: '#F8FAFC', fontSize: '12px', color: '#475569' }}>
           No items have been reviewed on this inspection yet.
@@ -177,7 +164,7 @@ export default async function PrintVehicleInspectionPage({
       )}
 
       {isOrgCopy && notReviewedItems.length > 0 ? (
-        <ItemsZone title="⚪ Not Reviewed" backgroundColor="#FFFBEB" borderColor="#FDE68A" items={notReviewedItems} showNotes />
+        <ItemsZone title="Not Reviewed" backgroundColor="#FFFBEB" borderColor="#FDE68A" items={notReviewedItems} showNotes />
       ) : null}
 
       {inspection.notes ? (

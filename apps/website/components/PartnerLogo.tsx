@@ -8,17 +8,9 @@ interface PartnerLogoProps {
 }
 
 /**
- * Renders a real logo image from public/images/partners/<filename> — pass
- * only the bare filename (e.g. "soueast-img.png"), never a path with
- * "/public/" or "/images/partners/" already in it; this component adds
- * that prefix itself, so including it again produces a broken (doubled)
- * path. Until the real file is uploaded, `onError` swaps to a neutral
- * text fallback instead of the browser's default broken-image icon.
- *
- * Logos render in their original colours at all times — no grayscale
- * filter, on hover or otherwise — and each fills most of its card via a
- * large fixed-height box with object-contain, so proportions are never
- * distorted regardless of each logo's original aspect ratio.
+ * A partner logo from public/images/partners/. Pass only the file name
+ * (e.g. "soueast-img.png"); the folder is added here. A missing file shows
+ * a text fallback. Logos keep their own colours and proportions.
  */
 export function PartnerLogo({ name, filename }: PartnerLogoProps) {
   const [errored, setErrored] = useState(false);

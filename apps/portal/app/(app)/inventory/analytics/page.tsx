@@ -103,14 +103,14 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
         icon="chart"
         eyebrow="Analytics · Store"
         title="Inventory analytics"
-        description={<>Stock health, reorder intelligence, demand and profitability — from real movements: true costs traced to each goods receipt, and the
-            prices actually charged on Job Cards and Vehicle Services. Every figure says how it is worked out.</>}
+        description={<>Stock health, reorder levels, demand and profitability, worked out from stock movements: costs from each goods
+            receipt and the prices charged on Job Cards and Vehicle Services. Each figure says how it is calculated.</>}
         actions={<>
           <HeaderAction href="/inventory/pricing" icon="tag" variant="secondary">Pricing Command Center</HeaderAction>
           <HeaderAction href="/inventory/parts" icon="package" variant="secondary">Parts catalogue</HeaderAction>
         </>}
       />
-      {params.status === 'levels_set' ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message="Stock levels updated — the parts list indicators follow them straight away." /></div> : null}
+      {params.status === 'levels_set' ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message="Stock levels updated. The parts list indicators now use them." /></div> : null}
       {params.error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={params.error} /></div> : null}
 
       <form action="/inventory/analytics" className={`${card} mb-8 flex flex-wrap items-end gap-4 text-sm`}>
@@ -130,7 +130,7 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
         </p>
       </form>
 
-      <Section icon="bolt" title="What to do now" subtitle="Prescriptive — prioritised actions, each linked to the part or tool that fixes it.">
+      <Section icon="bolt" title="What to do now" subtitle="Actions in priority order, each linked to the part or page where it is done.">
         {a.prescriptive.actions.length === 0 ? <div className={card}><EmptyState compact icon="check-circle" title="Nothing needs attention right now." /></div> : (
           <>
             <PriorityActions actions={a.prescriptive.actions.slice(0, 25)} title="Prioritised" note={null} />
@@ -142,8 +142,8 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
       <Section icon="activity" title="Descriptive" subtitle="What you hold and what it earned — last 365 days.">
         <div className="ejo-stagger mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <Kpi icon="boxes" label="Stock value (FIFO, at receipt cost)" value={naira(d.stockValue)} hint={`${pluralize(d.parts, 'part')} · ${d.unitsOnHand.toLocaleString('en-NG')} on hand${d.uncostedUnits > 0 ? ` · ${d.uncostedUnits.toLocaleString('en-NG')} units on ${pluralize(d.partsWithUncostedStock, 'part')} have no recorded cost (valued at average)` : ''}`} />
-          <Kpi icon="money" label="Revenue from parts" value={naira(d.revenue365)} hint={st.estimatedRevenueShare > 0 ? `${Math.round(st.estimatedRevenueShare * 100)}% at current price (no estimate price)` : 'Prices actually charged'} />
-          <Kpi icon="receipt" label="Cost of parts issued" value={naira(d.cogs365)} hint="True cost from each goods receipt" />
+          <Kpi icon="money" label="Revenue from parts" value={naira(d.revenue365)} hint={st.estimatedRevenueShare > 0 ? `${Math.round(st.estimatedRevenueShare * 100)}% at current price (no estimate price)` : 'Prices charged on jobs'} />
+          <Kpi icon="receipt" label="Cost of parts issued" value={naira(d.cogs365)} hint="Cost from each goods receipt" />
           <Kpi icon="trend-up" label="Gross profit" value={naira(d.grossProfit)} tone={d.grossProfit >= 0 ? 'text-[var(--ejo-success)]' : 'text-[var(--ejo-error)]'} />
           <Kpi icon="percent" label="Margin / markup" value={`${pct(d.marginPercent)} / ${pct(d.markupPercent)}`} hint="Profit ÷ revenue / profit ÷ cost" />
           <Kpi icon="alert" label="Needing attention" value={String(d.statusCounts.OUT_OF_STOCK + d.statusCounts.BELOW_SAFETY + d.statusCounts.BELOW_REORDER)} hint="Out of stock, below safety or reorder" tone="text-[var(--ejo-warning)]" />
@@ -189,7 +189,7 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
           <div className={card}>
-            <CardTitle icon="star">ABC — where the money moves (share of yearly consumption value)</CardTitle>
+            <CardTitle icon="star">ABC analysis (share of yearly consumption value)</CardTitle>
             <Donut centre="ABC" slices={[
               { label: `A — top 80% of value (${pluralize(st.abcCount.A, 'part')})`, value: st.abcValue.A, colour: '#15803D', note: naira(st.abcValue.A) },
               { label: `B — next 15% (${pluralize(st.abcCount.B, 'part')})`, value: st.abcValue.B, colour: '#4ADE80', note: naira(st.abcValue.B) },
@@ -208,7 +208,7 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
         </div>
       </Section>
 
-      <Section icon="search" title="Diagnostic" subtitle="Why — what earns, what doesn't, and where costs are moving.">
+      <Section icon="search" title="Diagnostic" subtitle="What earns, what doesn't, and where costs are rising.">
         <div className="grid gap-4 lg:grid-cols-2">
           {([['Top revenue parts', g.topRevenue, (r: (typeof g.topRevenue)[number]) => `${naira(r.revenue365)} · ${pct(r.marginPercent)}`], ['Top profit parts', g.topProfit, (r: (typeof g.topProfit)[number]) => `${naira(r.grossProfit)} · ${pct(r.marginPercent)}`], ['Lowest margins', g.lowestMargin, (r: (typeof g.lowestMargin)[number]) => `${pct(r.marginPercent)} on ${naira(r.revenue365)}`], ['Cost rising (last receipt vs average)', g.costInflation, (r: (typeof g.costInflation)[number]) => `+${r.costInflation}% · now ${naira(r.lastCost)}`]] as const).map(([title, list, note]) => (
             <div key={title} className={card}>
@@ -242,10 +242,10 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
         </div>
       </Section>
 
-      <Section icon="sparkles" title="Predictive" subtitle="What's coming at the current pace of demand.">
+      <Section icon="trend-up" title="Predictive" subtitle="What's coming at the current pace of demand.">
         <div className="ejo-stagger mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
           <Kpi icon="clock" label="Will run out in 14 / 30 days" value={`${p.stockoutIn14} / ${p.stockoutIn30}`} hint="Parts in stock today" tone="text-[var(--ejo-warning)]" />
-          <Kpi icon="sparkles" label="Next 30 days' demand (at cost)" value={naira(p.demand30Cost)} hint={`≈ ${naira(p.demand30Revenue)} at current prices`} />
+          <Kpi icon="trend-up" label="Next 30 days' demand (at cost)" value={naira(p.demand30Cost)} hint={`≈ ${naira(p.demand30Revenue)} at current prices`} />
           <Kpi icon="cart" label="Spend to reorder now" value={naira(p.reorderSpend)} hint="Suggested quantities at latest cost, for parts needing it" />
         </div>
         <div className={card}>

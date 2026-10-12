@@ -37,12 +37,13 @@ const SEVERITY_LABEL: Record<Severity, string> = {
   SERVICE_REQUIRED: 'Service Required',
   CRITICAL: 'Critical',
 };
-const SEVERITY_ICON: Record<Severity, string> = {
-  GOOD: '🟢',
-  ATTENTION: '🟡',
-  SERVICE_REQUIRED: '🟠',
-  CRITICAL: '🔴',
+const SEVERITY_DOT: Record<Severity, string> = {
+  GOOD: 'bg-[var(--ejo-success)]',
+  ATTENTION: 'bg-[var(--ejo-warning)]',
+  SERVICE_REQUIRED: 'bg-orange-500',
+  CRITICAL: 'bg-[var(--ejo-error)]',
 };
+const Dot = ({ className }: { className: string }) => <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full align-middle ${className}`} aria-hidden="true" />;
 
 export function InspectionWorkspace({
   vehicleServiceId,
@@ -62,10 +63,7 @@ export function InspectionWorkspace({
   inspection: InspectionRecord;
 }) {
   const [search, setSearch] = useState('');
-  // Which reviewed items are currently expanded back into edit mode —
-  // a reviewed item stays a compact summary row by default; clicking
-  // Edit reveals its real fields again. Not-reviewed items are always
-  // shown open, since they need to be filled in the first place.
+  // Reviewed items show as a summary row until Edit is clicked.
   const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
 
   const itemById = useMemo(() => {
@@ -74,11 +72,8 @@ export function InspectionWorkspace({
     return map;
   }, [inspection]);
 
-  // Live, cross-page state — every select anywhere writes here on
-  // change, so the summary bar updates immediately. Does NOT decide
-  // which zone (Reviewed/Not Reviewed) an item displays in — that
-  // stays tied to the real, last-saved severity, so an item never
-  // jumps zones mid-edit before it's actually saved.
+  // Unsaved severities, for the live summary bar. The zone an item sits in
+  // follows its saved severity, so items don't jump while being edited.
   const [liveSeverities, setLiveSeverities] = useState<Record<string, Severity | ''>>(() => {
     const initial: Record<string, Severity | ''> = {};
     inspection?.items.forEach((i) => {
@@ -100,10 +95,8 @@ export function InspectionWorkspace({
   const isSkipped = inspection?.status === 'SKIPPED';
   const searchLower = search.trim().toLowerCase();
 
-  // Every section's rows, real-filtered by search, split into its own
-  // reviewed/not-reviewed rows. Built once here so both zones below
-  // read from the exact same real per-section breakdown — never two
-  // slightly different derivations that could quietly disagree.
+  // Each section's rows after the search filter, split into reviewed and
+  // not reviewed. Both zones read from this one breakdown.
   const sectionsWithRows = useMemo(() => {
     return template
       .map((section) => {
@@ -129,7 +122,7 @@ export function InspectionWorkspace({
     <div>
       <div className="mb-6 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-[var(--ejo-text)] sm:text-2xl">Vehicle Inspection</h1>
+          <h1 className="text-xl font-bold text-[var(--ejo-text)] sm:text-2xl">Vehicle inspection</h1>
           <p className="mt-1 text-sm">
             <LoadingLink href={`/workshop/vehicle-service/${vehicleServiceId}`} className="text-[var(--ejo-primary)] hover:underline">
               {serviceNumber}
@@ -189,7 +182,7 @@ export function InspectionWorkspace({
           </div>
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Skip this inspection</h2>
-            <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">Recorded who skipped it and when — this is never silent.</p>
+            <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">Who skipped it, when and why are recorded.</p>
             <form action={skipVehicleInspectionFormAction} className="mt-4 space-y-2">
               <FormPendingOverlay />
               <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
@@ -203,12 +196,12 @@ export function InspectionWorkspace({
           <div className="mb-4 flex flex-wrap gap-2">
             {(['GOOD', 'ATTENTION', 'SERVICE_REQUIRED', 'CRITICAL'] as const).map((s) => (
               <span key={s} className="rounded-full border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-1.5 text-sm text-[var(--ejo-text)]">
-                {SEVERITY_ICON[s]} {SEVERITY_LABEL[s]} — {summary[s]}
+                <Dot className={SEVERITY_DOT[s]} /> {SEVERITY_LABEL[s]} — {summary[s]}
               </span>
             ))}
             {summary.NOT_REVIEWED > 0 ? (
               <span className="rounded-full border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-1.5 text-sm text-[var(--ejo-text-muted)]">
-                ⚪ Not Reviewed — {summary.NOT_REVIEWED}
+                <Dot className="border border-[var(--ejo-text-muted)]" /> Not Reviewed — {summary.NOT_REVIEWED}
               </span>
             ) : null}
           </div>
@@ -227,12 +220,10 @@ export function InspectionWorkspace({
             <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
             <input type="hidden" name="itemIds" value={allItemIds.join(',')} />
 
-            {/* REVIEWED ZONE — every category that has at least one
-                reviewed item, all together, never mixed with anything
-                not yet reviewed. Its own distinct background. */}
+            {/* Reviewed items, by category. */}
             {sectionsWithRows.some((s) => s.reviewed.length > 0) ? (
               <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 p-4 sm:p-5">
-                <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">✅ Reviewed</h2>
+                <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Reviewed</h2>
                 <div className="space-y-4">
                   {sectionsWithRows.map(({ section, reviewed }) =>
                     reviewed.length === 0 ? null : (
@@ -265,7 +256,7 @@ export function InspectionWorkspace({
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-sm font-medium text-[var(--ejo-text)]">{record.name}</span>
                                     <span className="text-xs">
-                                      {SEVERITY_ICON[record.severity as Severity]} {SEVERITY_LABEL[record.severity as Severity]}
+                                      <Dot className={SEVERITY_DOT[record.severity as Severity]} /> {SEVERITY_LABEL[record.severity as Severity]}
                                     </span>
                                   </div>
                                   {record.condition || record.action || record.notes ? (
@@ -273,10 +264,7 @@ export function InspectionWorkspace({
                                       {[record.condition, record.action, record.notes].filter(Boolean).join(' — ')}
                                     </p>
                                   ) : null}
-                                  {/* Preserves this item's real saved values in the whole
-                                      inspection's submit even while it's collapsed to a summary
-                                      row — never left out of the form just because it isn't
-                                      visually being edited right now. */}
+                                  {/* Keeps the saved values in the form while the item is collapsed. */}
                                   <input type="hidden" name={`condition-${record.id}`} value={record.condition ?? ''} />
                                   <input type="hidden" name={`severity-${record.id}`} value={record.severity ?? ''} />
                                   <input type="hidden" name={`action-${record.id}`} value={record.action ?? ''} />
@@ -300,14 +288,10 @@ export function InspectionWorkspace({
               </div>
             ) : null}
 
-            {/* NOT REVIEWED ZONE — every category that still has at
-                least one unreviewed item, all together, kept fully
-                apart from the Reviewed zone above. Its own distinct
-                background so the two are never mistaken for one
-                continuous list. */}
+            {/* Items not yet reviewed, by category, on a different background. */}
             {sectionsWithRows.some((s) => s.notReviewed.length > 0) ? (
               <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-4 sm:p-5">
-                <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">⚪ Not Reviewed</h2>
+                <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Not Reviewed</h2>
                 <div className="space-y-4">
                   {sectionsWithRows.map(({ section, notReviewed }) =>
                     notReviewed.length === 0 ? null : (
@@ -347,8 +331,8 @@ export function InspectionWorkspace({
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{isCompleted ? 'Update completion' : 'Complete this inspection'}</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
                 {isCompleted
-                  ? 'Already marked complete — items above stay fully editable, and saving here just updates the notes below.'
-                  : "Marks this inspection done for now. Items you haven't reviewed just stay Not Reviewed — that's fine, this doesn't lock anything."}
+                  ? 'Already marked complete. The items above can still be edited; saving here updates the notes below.'
+                  : "Marks the inspection as done. Items you haven't reviewed stay Not Reviewed, and nothing is locked."}
               </p>
               <input type="hidden" name="inspectionId" value={inspection.id} />
               <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
@@ -373,7 +357,7 @@ export function InspectionWorkspace({
                     href={`/workshop/vehicle-service/${vehicleServiceId}`}
                     className="mt-2 inline-block text-xs font-medium text-[var(--ejo-primary)] hover:underline"
                   >
-                    Found something that needs an estimate? Go create it →
+                    Back to the Vehicle Service to prepare the estimate →
                   </LoadingLink>
                 </>
               ) : null}
@@ -396,8 +380,7 @@ export function InspectionWorkspace({
   );
 }
 
-/** One item's real inputs, condition/action datalist-driven, severity
- * select feeding the live summary via onSeverityChange. */
+/** One item's inputs. Severity changes feed the summary via onSeverityChange. */
 function FieldSet({
   itemId,
   templateItem,
@@ -438,10 +421,10 @@ function FieldSet({
           className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
         >
           <option value="">Not reviewed</option>
-          <option value="GOOD">🟢 Good</option>
-          <option value="ATTENTION">🟡 Attention</option>
-          <option value="SERVICE_REQUIRED">🟠 Service Required</option>
-          <option value="CRITICAL">🔴 Critical</option>
+          <option value="GOOD">Good</option>
+          <option value="ATTENTION">Attention</option>
+          <option value="SERVICE_REQUIRED">Service Required</option>
+          <option value="CRITICAL">Critical</option>
         </select>
         <div>
           <input
