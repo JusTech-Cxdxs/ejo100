@@ -17,7 +17,7 @@ import { Icon } from '@/components/ui/Icon';
  * search front and centre, live status, theme, notifications and the
  * person's own menu (profile, theme, sign out).
  */
-export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen = false }: { userName: string; roleName: string; organisationName?: string; onMenu?: () => void; menuOpen?: boolean }) {
+export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen = false, assisting = false }: { userName: string; roleName: string; organisationName?: string; onMenu?: () => void; menuOpen?: boolean; assisting?: boolean }) {
   const router = useRouter();
   const [account, setAccount] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -26,7 +26,7 @@ export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen 
   async function handleSignOut() {
     setLeaving(true);
     // An assisted session never outlives the assistant's sign-in.
-    await endAssistSession().catch(() => undefined);
+    if (assisting) await endAssistSession().catch(() => undefined);
     await authClient.signOut();
     router.push('/login');
     router.refresh();

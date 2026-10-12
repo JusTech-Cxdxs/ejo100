@@ -63,7 +63,7 @@ export type StartAssistResult = { ok: true } | { ok: false; error: string };
  */
 export async function startAssistSession(input: { colleagueId: string; password: string; reason?: string }): Promise<StartAssistResult> {
   const ctx = await signedInContext();
-  if (!ctx) return { ok: false, error: 'Your session has ended. Sign in again.' };
+  if (!ctx) throw new Error('Not authenticated.');
   if (ctx.assist) return { ok: false, error: `You are already helping ${ctx.assist.subject.name}. End that session first.` };
   const p = await authorizeAsSignedIn('support.assist', undefined, 'assist.start', NOT_ASSISTANT);
   const colleagueId = typeof input?.colleagueId === 'string' ? input.colleagueId.slice(0, 64) : '';
@@ -158,9 +158,12 @@ export async function startAssistSession(input: { colleagueId: string; password:
  */
 export async function endAssistSession(): Promise<void> {
   const ctx = await signedInContext();
-  if (ctx?.assist && ctx.assist.assistant.id === ctx.userId) await endAssistSessionRecord(ctx.assist.sessionId, 'ended_by_assistant');
-  (await cookies()).set(ASSIST_COOKIE, '', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: 0 });
-  revalidatePath('/', 'layout');
+  const jar = await cookies();
+  if (ctx?.assist && ctx.assist.assistant.id === ctx.userId) {
+    await endAssistSessionRecord(ctx.assist.sessionId, 'ended_by_assistant');
+    revalidatePath('/', 'layout');
+  }
+  if (jar.has(ASSIST_COOKIE)) jar.set(ASSIST_COOKIE, '', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: 0 });
 }
 
 export type AssistSessionRow = {

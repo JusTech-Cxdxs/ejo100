@@ -109,7 +109,7 @@ export function AppShell({
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Topbar userName={userName} roleName={roleName} organisationName={organisationName} onMenu={openDrawer} menuOpen={drawer} />
+        <Topbar userName={userName} roleName={roleName} organisationName={organisationName} onMenu={openDrawer} menuOpen={drawer} assisting={Boolean(banner)} />
         {banner}
         <Marquee />
         <main id="main" tabIndex={-1} className="ejo-scroll flex min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--ejo-bg)] focus:outline-none">
