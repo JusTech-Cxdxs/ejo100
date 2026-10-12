@@ -21,6 +21,9 @@ const EXACT: Record<string, Tone> = {
   DENIED: 'error', LOST: 'error', DEAD: 'neutral', OUT_OF_STOCK: 'error', CRITICAL: 'error', REFUSED: 'error', NO_SHOW: 'error',
   CLOSED: 'neutral', CHECKED_OUT: 'neutral', EXPIRED: 'neutral', ARCHIVED: 'neutral', INACTIVE: 'neutral', ENDED: 'neutral', LEFT: 'neutral',
   SIGNED_OUT: 'neutral', STOPPED: 'neutral', SUPERSEDED: 'neutral', WITHDRAWN: 'neutral',
+  IN_STOCK: 'success', DISBURSED: 'success', MANAGER_APPROVED: 'success', COVERED: 'success', LIVE: 'success',
+  PARTIALLY_ACCEPTED: 'warning', APPROVED_TO_SUBMIT: 'warning', AT_GATE: 'warning', UNDER_REVIEW: 'warning', SUSPENDED: 'warning', EXPIRING_SOON: 'warning',
+  EXPECTED: 'info', NOT_STARTED: 'neutral', SKIPPED: 'neutral', DISMISSED: 'neutral', TRANSFERRED: 'neutral', REVOKED: 'error',
 };
 
 export function statusTone(status: string | null | undefined): Tone {

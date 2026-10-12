@@ -91,3 +91,28 @@ export function HeaderAction({ href, children, icon = 'plus', variant = 'primary
     </LoadingLink>
   );
 }
+
+/** "← Back to …" above a page (the same look everywhere). */
+export function BackLink({ href, label, className = 'mb-4' }: { href: string; label: ReactNode; className?: string }) {
+  return (
+    <LoadingLink href={href} className={`group inline-flex items-center gap-1.5 text-sm text-[var(--ejo-text-muted)] transition-colors hover:text-[var(--ejo-primary)] ${className}`}>
+      <span aria-hidden="true" className="inline-flex transition-transform group-hover:-translate-x-0.5"><Icon name="arrow-left" size={15} /></span>
+      {label}
+    </LoadingLink>
+  );
+}
+
+/**
+ * Just the title with its icon tile — a drop-in for a page's <h1> where the
+ * header around it carries its own controls (record pages, admin forms).
+ */
+export function PageTitle({ icon, children, className = '', size = 'md' }: { icon: IconName; children: ReactNode; className?: string; size?: 'md' | 'lg' }) {
+  return (
+    <div className={`flex min-w-0 items-center gap-3 ${className}`}>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)] ring-1 ring-[var(--ejo-primary)]/15">
+        <Icon name={icon} size={20} />
+      </span>
+      <h1 className={`min-w-0 break-words font-bold leading-tight text-[var(--ejo-text)] ${size === 'lg' ? 'text-2xl sm:text-3xl' : 'text-xl sm:text-2xl'}`}>{children}</h1>
+    </div>
+  );
+}
