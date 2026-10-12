@@ -91,7 +91,7 @@ export async function sendServiceReminder(need: VehicleNeedingReminder, trigger?
 
   await sendEmail(
     vehicle.customer.email,
-    serviceReminderSubject(need.nextStage),
+    serviceReminderSubject(need.nextStage, vehicle.plateNumber ? `${vehicleDescription} (${vehicle.plateNumber})` : vehicleDescription),
     renderServiceReminderEmail({
       stage: need.nextStage,
       customerName: vehicle.customer.fullName,
@@ -108,7 +108,7 @@ export async function sendServiceReminder(need: VehicleNeedingReminder, trigger?
       reminderCount: sentThisCycle + 1,
       // The customer's own account — never a staff-portal page they can't open.
       vehicleUrl: `${websiteUrl}/customer-portal/dashboard`,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: branchContext?.businessUnit.organisation.name ?? 'EJO 100',
       branchName: branchContext?.name ?? '',
     }),

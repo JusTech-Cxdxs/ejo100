@@ -172,7 +172,7 @@ async function sendLogged(entityType: string, entityId: string, recipients: Pers
     let sent = true;
     let error: string | null = null;
     try {
-      await sendEmail(r.email, subject, renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portal}${path}`, logoUrl: `${portal}/images/logo/logo.png`, companyName: org.companyName, branchName: org.branchName }));
+      await sendEmail(r.email, subject, renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portal}${path}`, logoUrl: `${portal}/images/logo/email-logo.png`, companyName: org.companyName, branchName: org.branchName }));
     } catch (err) {
       sent = false;
       error = err instanceof Error ? cleanForLog(err.message).slice(0, 300) : 'Unknown error';

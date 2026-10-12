@@ -1,6 +1,4 @@
-// Vehicle Service parallel of cancellation-requested.ts — kept separate so Job Card's own
-// email is never touched (project standing rule).
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details, callout } from './layout';
 
 export type ServiceCancellationRequestedEmailOptions = {
   managerName: string;
@@ -14,45 +12,26 @@ export type ServiceCancellationRequestedEmailOptions = {
   branchName: string;
 };
 
-/**
- * Sent to every eligible Workshop Manager for the branch the moment a
- * cancellation is requested — same "notify every eligible manager,
- * one send each" pattern already used for estimate manager-review.
- * The Vehicle Service's own status is never touched at this point; this is
- * purely "someone is asking, here's why, please decide."
- */
-export function renderServiceCancellationRequestedEmail(opts: ServiceCancellationRequestedEmailOptions): string {
-  const { managerName, serviceNumber, customerName, requestedByName, reason, serviceUrl, logoUrl, companyName, branchName } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(managerName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      ${escapeHtml(requestedByName)} has requested cancellation of Vehicle Service ${escapeHtml(serviceNumber)} for
-      ${escapeHtml(customerName)}. Please review and approve or decline.
-    </p>
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Vehicle Service</p>
-          <p style="margin: 0 0 16px 0; font-size: 15px; color: #0F172A; font-weight: bold;">${escapeHtml(serviceNumber)}</p>
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Reason</p>
-          <p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(reason)}</p>
-        </td>
-      </tr>
-    </table>
-  `;
-
+export function renderServiceCancellationRequestedEmail(o: ServiceCancellationRequestedEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.managerName)}
+    ${para(`${o.requestedByName} has asked to cancel Vehicle Service ${o.serviceNumber} for ${o.customerName}. Please review the request and approve or decline it.`)}
+    ${details([
+      ['Vehicle Service', o.serviceNumber],
+      ['Customer', o.customerName],
+      ['Requested by', o.requestedByName],
+    ])}
+    ${o.reason?.trim() ? callout(o.reason.trim(), 'warning', 'Reason given') : ''}`;
   return renderEmailLayout({
-    previewText: `Cancellation requested on Vehicle Service ${serviceNumber} — needs your review.`,
-    companyName,
-    orgContext: [companyName, branchName],
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    heading: 'Cancellation requested — needs your review',
+    previewText: `${o.requestedByName} asked to cancel Vehicle Service ${o.serviceNumber}. Your decision is needed.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName],
+    status: { label: 'Decision needed', tone: 'warning' },
+    heading: `Cancellation request for ${o.serviceNumber}`,
     bodyHtml,
     ctaLabel: 'Review request',
-    ctaUrl: serviceUrl,
-    logoUrl,
+    ctaUrl: o.serviceUrl,
+    audience: 'staff',
   });
 }

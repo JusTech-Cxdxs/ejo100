@@ -86,7 +86,7 @@ export async function sendCustomerAccessEmail(customerId: string, kind: 'welcome
     const setPasswordUrl = await issueCustomerSetPasswordLink(customer.id);
     const branch = await branchDetails();
     const website = websiteBaseUrl();
-    const companyName = branch?.businessUnit.organisation.name ?? (await prisma.organisation.findUnique({ where: { id: customer.organisationId }, select: { name: true } }))?.name ?? 'Kewalram';
+    const companyName = branch?.businessUnit.organisation.name ?? (await prisma.organisation.findUnique({ where: { id: customer.organisationId }, select: { name: true } }))?.name ?? '';
     const rendered = renderCustomerWelcomeEmail({
       kind,
       customerName: customer.fullName,
@@ -94,7 +94,7 @@ export async function sendCustomerAccessEmail(customerId: string, kind: 'welcome
       setPasswordUrl,
       setPasswordHours: CUSTOMER_SET_PASSWORD_HOURS,
       signInUrl: `${website}/customer-portal`,
-      logoUrl: `${website}/images/logo/logo.png`,
+      logoUrl: `${website}/images/logo/email-logo.png`,
       companyName,
       branchName: branch?.name ?? '',
       branchContact: branch ? { address: branch.address, phones: branch.hotlines, email: branch.email } : undefined,

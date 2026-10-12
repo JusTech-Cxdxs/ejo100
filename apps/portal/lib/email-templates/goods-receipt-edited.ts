@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details, callout } from './layout';
 
 export type GoodsReceiptEditedEmailOptions = {
   recipientName: string;
@@ -12,41 +12,25 @@ export type GoodsReceiptEditedEmailOptions = {
   departmentName: string;
 };
 
-/**
- * Deliberately sent to every Store Officer/Manager, not just logged
- * quietly — a Goods Receipt is a real, permanent financial record,
- * and every edit to one should be genuinely visible to the whole
- * team, not something only discovered later by reading an audit
- * trail nobody thought to check.
- */
-export function renderGoodsReceiptEditedEmail(opts: GoodsReceiptEditedEmailOptions): string {
-  const { recipientName, editedByName, referenceNumber, changeSummary, goodsReceiptUrl, logoUrl, companyName, branchName, departmentName } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      ${escapeHtml(editedByName)} just edited Goods Receipt ${escapeHtml(referenceNumber)}.
-    </p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 16px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">What changed</p>
-          <p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(changeSummary)}</p>
-        </td>
-      </tr>
-    </table>
-  `;
-
+export function renderGoodsReceiptEditedEmail(o: GoodsReceiptEditedEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.recipientName)}
+    ${para(`${o.editedByName} edited goods receipt ${o.referenceNumber}. Stock and costs have been updated to match.`)}
+    ${callout(o.changeSummary, 'warning', 'What changed')}
+    ${details([
+      ['Goods receipt', o.referenceNumber],
+      ['Edited by', o.editedByName],
+    ])}`;
   return renderEmailLayout({
-    previewText: `${editedByName} edited Goods Receipt ${referenceNumber}.`,
-    companyName,
-    orgContext: [companyName, branchName, departmentName],
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    heading: 'Goods Receipt edited',
+    previewText: `${o.editedByName} edited goods receipt ${o.referenceNumber}.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName, o.departmentName],
+    status: { label: 'Edited', tone: 'warning' },
+    heading: `Goods receipt ${o.referenceNumber} edited`,
     bodyHtml,
-    ctaLabel: 'View Goods Receipts',
-    ctaUrl: goodsReceiptUrl,
-    logoUrl,
+    ctaLabel: 'View goods receipts',
+    ctaUrl: o.goodsReceiptUrl,
+    audience: 'staff',
   });
 }

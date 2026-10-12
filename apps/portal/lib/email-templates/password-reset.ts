@@ -1,28 +1,28 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, list, strong } from './layout';
 
-/** "Forgot password" — the branded email with a one-time link (1 hour). */
-export function renderPasswordResetEmail(o: { fullName: string; url: string; companyName: string; logoUrl: string }): { subject: string; html: string } {
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(o.fullName || 'there')},</p>
-    <p style="margin: 0 0 16px 0;">Someone — hopefully you — asked to set a new password for your EJO 100 account. Press the button below to choose one.</p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 8px 0 16px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr><td style="padding: 14px 18px; font-size: 13px; color: #334155; line-height: 1.6;">
-        • The link works <strong>once</strong> and expires in <strong>1 hour</strong>.<br />
-        • Nobody from IT or administration will ever ask you for your password.<br />
-        • Didn’t ask for this? Ignore this email — your password stays as it is.
-      </td></tr>
-    </table>`;
-  const html = renderEmailLayout({
-    previewText: 'Your link to set a new EJO 100 password (expires in 1 hour).',
-    companyName: o.companyName,
-    iconGlyph: '⚿',
-    iconTone: 'neutral',
-    heading: 'Set a new password',
-    bodyHtml,
-    ctaLabel: 'Set a new password',
-    ctaUrl: o.url,
-    footerNote: 'For your security this link can only be used once.',
-    logoUrl: o.logoUrl,
-  });
-  return { subject: 'Set a new EJO 100 password', html };
+/** Staff "forgot password": a one-time link to choose a new password (valid for 1 hour). */
+export function renderPasswordResetEmail(o: { fullName: string; email?: string; url: string; companyName: string; logoUrl: string }): { subject: string; html: string } {
+  const bodyHtml = html`
+    ${greeting(o.fullName)}
+    ${para(html`We received a request to reset the password for your EJO 100 account${o.email ? html` (${strong(o.email)})` : ''}. Use the button below to choose a new one.`)}
+    ${list([
+      html`The link works once and expires in ${strong('1 hour')}.`,
+      'Nobody from IT or administration will ever ask you for your password.',
+    ])}
+    ${para('If you did not ask for this, ignore this email: your password will not change. If you receive several of these without asking, tell your administrator.', 'small')}`;
+  return {
+    subject: 'Reset your EJO 100 password',
+    html: renderEmailLayout({
+      previewText: 'Use this link within 1 hour to choose a new password.',
+      companyName: o.companyName,
+      logoUrl: o.logoUrl,
+      status: { label: 'Security', tone: 'info' },
+      heading: 'Reset your password',
+      bodyHtml,
+      ctaLabel: 'Choose a new password',
+      ctaUrl: o.url,
+      showLinkFallback: true,
+      reason: 'You are receiving this because a password reset was requested for your EJO 100 account.',
+    }),
+  };
 }

@@ -132,7 +132,7 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
               heading: 'The branch bank account was changed',
               lines: [`Branch: ${trimmedName}`, `From: ${from}`, `To: ${to}`, `Changed by: ${actor?.fullName ?? 'an administrator'}`, 'Customers are told to pay into this account on every estimate. If you did not expect this change, report it immediately.'],
               actionUrl: `${portal}/branches/${branchId}`,
-              logoUrl: `${portal}/images/logo/logo.png`,
+              logoUrl: `${portal}/images/logo/email-logo.png`,
               companyName: 'EJO 100',
               branchName: trimmedName,
             }),

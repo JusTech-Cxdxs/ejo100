@@ -1,9 +1,9 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details, highlight } from './layout';
 
 export type CustomerRefundReceiptEmailOptions = {
   customerName: string;
   referenceNumber: string;
-  /** "Job Card" or "Vehicle Service". */
+  /** "Job Card" or "Vehicle Service" */
   recordLabel: string;
   recordNumber: string;
   vehicleDescription: string;
@@ -11,7 +11,6 @@ export type CustomerRefundReceiptEmailOptions = {
   method: string;
   paidToName: string;
   totalRefunded: string;
-  /** Still owed back, when the refund is being paid in parts. */
   remaining: string | null;
   dashboardUrl: string;
   logoUrl: string;
@@ -19,45 +18,31 @@ export type CustomerRefundReceiptEmailOptions = {
   branchName: string;
 };
 
-/**
- * Sent the moment Finance records a refund — the customer's own written
- * receipt for money returned, with its RF-number, how it was paid and to
- * whom, and (if paying in parts) what is still to come.
- */
-export function renderCustomerRefundReceiptEmail(opts: CustomerRefundReceiptEmailOptions): string {
-  const { customerName, referenceNumber, recordLabel, recordNumber, vehicleDescription, amount, method, paidToName, totalRefunded, remaining, dashboardUrl, logoUrl, companyName, branchName } = opts;
-  const row = (label: string, value: string) =>
-    `<tr><td style="padding: 4px 0; color: #64748B; font-size: 13px;">${escapeHtml(label)}</td><td style="padding: 4px 0; text-align: right; color: #0F172A; font-size: 13px; font-weight: bold;">${escapeHtml(value)}</td></tr>`;
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      We have refunded ${escapeHtml(amount)} for your ${escapeHtml(vehicleDescription)} (${escapeHtml(recordLabel)} ${escapeHtml(recordNumber)}).
-      Please keep this email as your receipt.
-    </p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 16px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr><td style="padding: 16px 20px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          ${row('Refund receipt', referenceNumber)}
-          ${row('Amount refunded', amount)}
-          ${row('Paid by', method)}
-          ${row('Received by', paidToName)}
-          ${row('Total refunded so far', totalRefunded)}
-          ${remaining ? row('Still to be refunded', remaining) : ''}
-        </table>
-      </td></tr>
-    </table>
-    ${remaining ? '<p style="margin: 0; font-size: 13px; color: #64748B;">The remaining balance will be refunded shortly — you will receive a receipt for each payment.</p>' : ''}
-  `;
+/** The customer's receipt for each refund payment. */
+export function renderCustomerRefundReceiptEmail(o: CustomerRefundReceiptEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.customerName)}
+    ${para(`We have refunded ${o.amount} relating to ${o.recordLabel} ${o.recordNumber} for your ${o.vehicleDescription}. Please keep this email as your receipt.`)}
+    ${highlight('Amount refunded', o.amount, o.remaining ? `Still to be refunded: ${o.remaining}` : 'Your refund is complete.', 'success')}
+    ${details([
+      ['Refund receipt', o.referenceNumber],
+      [o.recordLabel, o.recordNumber],
+      ['Refunded by', o.method],
+      ['Received by', o.paidToName],
+      ['Total refunded so far', o.totalRefunded],
+      ['Still to be refunded', o.remaining],
+    ])}
+    ${o.remaining ? para('The rest of the refund will follow. You will receive a receipt like this one for each payment.', 'small') : ''}`;
   return renderEmailLayout({
-    previewText: `Refund receipt ${referenceNumber} — ${amount} refunded.`,
-    companyName,
-    orgContext: [companyName, branchName],
-    iconGlyph: '✓',
-    iconTone: 'positive',
+    previewText: `Refund receipt ${o.referenceNumber}: ${o.amount} refunded.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName],
+    status: { label: o.remaining ? 'Part refund' : 'Refund complete', tone: 'success' },
     heading: 'Your refund receipt',
     bodyHtml,
-    ctaLabel: 'View in your account',
-    ctaUrl: dashboardUrl,
-    logoUrl,
+    ctaLabel: 'View in customer portal',
+    ctaUrl: o.dashboardUrl,
+    audience: 'customer',
   });
 }

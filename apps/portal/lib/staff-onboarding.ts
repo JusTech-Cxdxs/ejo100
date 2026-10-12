@@ -93,7 +93,7 @@ export async function sendStaffAccessEmail(userId: string, kind: 'welcome' | 'up
       setPasswordUrl,
       setPasswordHours: SET_PASSWORD_HOURS,
       signInUrl: `${base}/login`,
-      logoUrl: `${base}/images/logo/logo.png`,
+      logoUrl: `${base}/images/logo/email-logo.png`,
       changeNote,
     });
     let error: string | null = null;

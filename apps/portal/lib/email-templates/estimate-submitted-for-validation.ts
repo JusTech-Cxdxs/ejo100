@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details } from './layout';
 
 export type EstimateSubmittedEmailOptions = {
   supervisorName: string;
@@ -13,45 +13,27 @@ export type EstimateSubmittedEmailOptions = {
   departmentName: string;
 };
 
-/**
- * Sent to the supervisor the moment an estimate is submitted for their
- * validation — a real, previously-missing notification for a real
- * two-party event, matching the same pattern already used for every
- * other assignment/decision in this workflow.
- */
-export function renderEstimateSubmittedEmail(opts: EstimateSubmittedEmailOptions): string {
-  const { supervisorName, jobNumber, customerName, submittedByName, totalAmount, jobCardUrl, logoUrl, companyName, branchName, departmentName } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(supervisorName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      ${escapeHtml(submittedByName)} has finished the estimate on Job Card ${escapeHtml(jobNumber)} for
-      ${escapeHtml(customerName)} and submitted it for your validation. Please review it, correct anything
-      needed, and approve it when ready.
-    </p>
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Job Card</p>
-          <p style="margin: 0 0 16px 0; font-size: 15px; color: #0F172A; font-weight: bold;">${escapeHtml(jobNumber)}</p>
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Total Estimate</p>
-          <p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(totalAmount)}</p>
-        </td>
-      </tr>
-    </table>
-  `;
-
+/** The technician finished the estimate; the supervisor checks and validates it. */
+export function renderEstimateSubmittedEmail(o: EstimateSubmittedEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.supervisorName)}
+    ${para(`${o.submittedByName} has finished the estimate on Job Card ${o.jobNumber} for ${o.customerName} and sent it to you. Please check it, correct anything that needs it, and validate it.`)}
+    ${details([
+      ['Job Card', o.jobNumber],
+      ['Customer', o.customerName],
+      ['Prepared by', o.submittedByName],
+      ['Estimate total', o.totalAmount],
+    ])}`;
   return renderEmailLayout({
-    previewText: `Estimate for Job Card ${jobNumber} needs your validation.`,
-    companyName,
-    orgContext: [companyName, branchName, departmentName],
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    heading: 'Estimate needs your validation',
+    previewText: `${o.submittedByName} sent you the estimate on Job Card ${o.jobNumber} (${o.totalAmount}).`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName, o.departmentName],
+    status: { label: 'Validation needed', tone: 'warning' },
+    heading: `Estimate for ${o.jobNumber} needs your validation`,
     bodyHtml,
     ctaLabel: 'Review estimate',
-    ctaUrl: jobCardUrl,
-    logoUrl,
+    ctaUrl: o.jobCardUrl,
+    audience: 'staff',
   });
 }

@@ -1,5 +1,5 @@
-import { renderEmailLayout, escapeHtml } from './layout';
-import { pluralize } from '@/lib/utils/pluralize';
+import { renderEmailLayout, html, greeting, para, details, sectionTitle, callout, plural } from './layout';
+import { storeMatchLines } from './store-matching-status';
 
 export type ServiceStoreMatchingRequestedEmailOptions = {
   recipientName: string;
@@ -14,52 +14,27 @@ export type ServiceStoreMatchingRequestedEmailOptions = {
   branchName: string;
 };
 
-/**
- * The real Vehicle Service equivalent of Job Card's own
- * renderStoreMatchingRequestedEmail — to Store specifically, the one
- * audience that actually acts on it, so this is the one that carries
- * real line-level detail.
- */
-export function renderServiceStoreMatchingRequestedEmail(opts: ServiceStoreMatchingRequestedEmailOptions): string {
-  const { recipientName, requestedByName, serviceNumber, customerName, lines, note, matchingUrl, logoUrl, companyName, branchName } = opts;
-
-  const lineItems = lines
-    .map((l) => `<li style="margin-bottom: 4px;">${escapeHtml(l.description)} — ${l.unit ? escapeHtml(pluralize(l.quantity, l.unit)) : `x${l.quantity}`}</li>`)
-    .join('');
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      ${escapeHtml(requestedByName)} has asked Store to match the following parts for Vehicle Service ${escapeHtml(serviceNumber)} for
-      ${escapeHtml(customerName)}:
-    </p>
-    <ul style="margin: 0 0 16px 0; padding-left: 20px;">${lineItems}</ul>
-    <p style="margin: 0 0 16px 0;">Match each to a real, vehicle-fitting Part from the catalog — the price fills in automatically from the Part's own current selling price.</p>
-    ${note?.trim()
-      ? `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Note</p>
-          <p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(note.trim())}</p>
-        </td>
-      </tr>
-    </table>
-    `
-      : ''}
-  `;
-
+/** To Store: match Vehicle Service estimate lines to catalogue parts. */
+export function renderServiceStoreMatchingRequestedEmail(o: ServiceStoreMatchingRequestedEmailOptions): string {
+  const note = o.note?.trim();
+  const bodyHtml = html`
+    ${greeting(o.recipientName)}
+    ${para(`${o.requestedByName} has asked Store to match ${plural(o.lines.length, 'part')} on the estimate for Vehicle Service ${o.serviceNumber} (${o.customerName}).`)}
+    ${sectionTitle('Parts to match')}
+    ${storeMatchLines(o.lines)}
+    ${note ? callout(note, 'info', `Note from ${o.requestedByName}`) : ''}
+    ${para("Match each line to a catalogue part that fits the vehicle. The price fills in from the part's current selling price.", 'small')}`;
   return renderEmailLayout({
-    previewText: `${requestedByName} has asked Store to match parts for Vehicle Service ${serviceNumber}.`,
-    companyName,
-    orgContext: [companyName, branchName],
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    heading: 'Store matching requested',
+    previewText: `${o.requestedByName} asked Store to match ${plural(o.lines.length, 'part')} for Vehicle Service ${o.serviceNumber}.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName],
+    status: { label: 'Matching needed', tone: 'warning' },
+    heading: `Match parts for ${o.serviceNumber}`,
     bodyHtml,
-    ctaLabel: 'Open Service Estimate Matching',
-    ctaUrl: matchingUrl,
-    logoUrl,
+    ctaLabel: 'Open estimate matching',
+    ctaUrl: o.matchingUrl,
+    audience: 'staff',
   });
 }
 
@@ -75,48 +50,30 @@ export type ServiceStoreMatchingStatusEmailOptions = {
   branchName: string;
 };
 
-/**
- * The real Vehicle Service equivalent of Job Card's own
- * renderStoreMatchingStatusEmail — to the supervisor/technician,
- * status only, same one shared template for both real moments.
- */
-export function renderServiceStoreMatchingStatusEmail(opts: ServiceStoreMatchingStatusEmailOptions): string {
-  const { recipientName, kind, serviceNumber, customerName, note, vehicleServiceUrl, logoUrl, companyName, branchName } = opts;
-
-  const statusLine =
-    kind === 'awaiting'
-      ? 'This estimate now has Store Part lines awaiting a match — Store has been notified. Submission is on hold until matching is done.'
-      : 'Store has finished matching every Store Part line on this estimate — pricing is complete and you can now proceed with submission.';
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      Vehicle Service ${escapeHtml(serviceNumber)} for ${escapeHtml(customerName)}: ${statusLine}
-    </p>
-    ${note?.trim()
-      ? `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Note</p>
-          <p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(note.trim())}</p>
-        </td>
-      </tr>
-    </table>
-    `
-      : ''}
-  `;
-
+export function renderServiceStoreMatchingStatusEmail(o: ServiceStoreMatchingStatusEmailOptions): string {
+  const awaiting = o.kind === 'awaiting';
+  const note = o.note?.trim();
+  const line = awaiting
+    ? 'The estimate has store part lines waiting to be matched. Store has been told, and the estimate cannot be submitted until matching is done.'
+    : 'Store has matched every store part line on the estimate. Pricing is complete and the estimate can be submitted.';
+  const bodyHtml = html`
+    ${greeting(o.recipientName)}
+    ${para(`Vehicle Service ${o.serviceNumber} for ${o.customerName}: ${line}`)}
+    ${note ? callout(note, 'info', 'Note') : ''}
+    ${details([
+      ['Vehicle Service', o.serviceNumber],
+      ['Customer', o.customerName],
+    ])}`;
   return renderEmailLayout({
-    previewText: statusLine,
-    companyName,
-    orgContext: [companyName, branchName],
-    iconGlyph: kind === 'complete' ? '\u2713' : '!',
-    iconTone: kind === 'complete' ? 'positive' : 'neutral',
-    heading: kind === 'awaiting' ? 'Awaiting Store match' : 'Store matching complete',
+    previewText: `Vehicle Service ${o.serviceNumber}: ${awaiting ? 'waiting for Store to match parts.' : 'Store matching is complete.'}`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName],
+    status: awaiting ? { label: 'Waiting for Store', tone: 'warning' } : { label: 'Matching complete', tone: 'success' },
+    heading: awaiting ? `Waiting for Store to match parts on ${o.serviceNumber}` : `Store matching complete on ${o.serviceNumber}`,
     bodyHtml,
     ctaLabel: 'Open Vehicle Service',
-    ctaUrl: vehicleServiceUrl,
-    logoUrl,
+    ctaUrl: o.vehicleServiceUrl,
+    audience: 'staff',
   });
 }

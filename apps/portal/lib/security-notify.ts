@@ -43,7 +43,7 @@ export async function notifyGateOfRelease(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', 
           heading: 'A vehicle has been released to leave',
           lines,
           actionUrl: `${portal}/security/vehicles/release/${kind === 'JOB_CARD' ? 'job-card' : 'vehicle-service'}/${recordId}`,
-          logoUrl: `${portal}/images/logo/logo.png`,
+          logoUrl: `${portal}/images/logo/email-logo.png`,
           companyName: rec.branch.businessUnit?.organisation?.name ?? 'EJO 100',
           branchName: rec.branch.name,
         }));

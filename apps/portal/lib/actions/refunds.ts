@@ -343,7 +343,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
         totalRefunded: `₦${after.refunded.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         remaining: after.remaining > 0 ? `₦${after.remaining.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#${t.portalAnchor}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),

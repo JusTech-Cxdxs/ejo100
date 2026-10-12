@@ -1,9 +1,10 @@
 import nodemailer from 'nodemailer';
+import { htmlToText } from './email-templates/layout';
 
 /**
- * Single outbound-email helper used by Better Auth's callbacks (password
- * reset, email verification) in lib/auth.ts. Reads SMTP settings from
- * env (see .env.example) — no credentials are ever hardcoded.
+ * The one outbound-email helper. SMTP settings come from the environment
+ * (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD or SMTP_PASS, SMTP_FROM);
+ * nothing is hard-coded.
  */
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -20,12 +21,25 @@ export type EmailAttachment = {
   contentType?: string;
 };
 
-export async function sendEmail(to: string, subject: string, html: string, attachments?: EmailAttachment[]) {
+export type SendEmailOptions = {
+  /** Plain-text part. Derived from the HTML when omitted. */
+  text?: string;
+  /** Extra headers, e.g. List-Unsubscribe on announcement emails. */
+  headers?: Record<string, string>;
+};
+
+/**
+ * Sends one email as multipart/alternative (HTML and plain text), so
+ * text-only clients and spam filters both get a proper version.
+ */
+export async function sendEmail(to: string, subject: string, html: string, attachments?: EmailAttachment[], options: SendEmailOptions = {}) {
   await transporter.sendMail({
-    from: process.env.SMTP_FROM ?? 'EJO 100 Platform <no-reply@example.com>',
+    from: process.env.SMTP_FROM ?? 'EJO 100 <no-reply@example.com>',
     to,
     subject,
     html,
+    text: options.text ?? htmlToText(html),
+    headers: options.headers,
     attachments,
   });
 }

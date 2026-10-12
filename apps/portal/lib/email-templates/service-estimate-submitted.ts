@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details } from './layout';
 
 export type ServiceEstimateSubmittedEmailOptions = {
   recipientName: string;
@@ -13,45 +13,26 @@ export type ServiceEstimateSubmittedEmailOptions = {
   departmentName: string;
 };
 
-/**
- * Sent to the supervisor the moment a Service Estimate is submitted
- * for their approval — the real Vehicle Service equivalent of
- * renderEstimateSubmittedEmail, entirely its own file rather than a
- * branch inside that one, since that template's own copy is written
- * specifically around Job Card.
- */
-export function renderServiceEstimateSubmittedEmail(opts: ServiceEstimateSubmittedEmailOptions): string {
-  const { recipientName, serviceNumber, customerName, submittedByName, totalAmount, serviceUrl, logoUrl, companyName, branchName, departmentName } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      ${escapeHtml(submittedByName)} has finished the estimate on Vehicle Service ${escapeHtml(serviceNumber)} for
-      ${escapeHtml(customerName)} and submitted it for your approval.
-    </p>
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Vehicle Service</p>
-          <p style="margin: 0 0 16px 0; font-size: 15px; color: #0F172A; font-weight: bold;">${escapeHtml(serviceNumber)}</p>
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Total Estimate</p>
-          <p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(totalAmount)}</p>
-        </td>
-      </tr>
-    </table>
-  `;
-
+export function renderServiceEstimateSubmittedEmail(o: ServiceEstimateSubmittedEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.recipientName)}
+    ${para(`${o.submittedByName} has finished the estimate on Vehicle Service ${o.serviceNumber} for ${o.customerName} and sent it to you for approval.`)}
+    ${details([
+      ['Vehicle Service', o.serviceNumber],
+      ['Customer', o.customerName],
+      ['Prepared by', o.submittedByName],
+      ['Estimate total', o.totalAmount],
+    ])}`;
   return renderEmailLayout({
-    previewText: `${submittedByName} submitted the estimate on ${serviceNumber} for your approval.`,
-    companyName,
-    orgContext: [companyName, branchName, departmentName],
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    heading: 'Estimate needs your approval',
+    previewText: `${o.submittedByName} sent you the estimate on ${o.serviceNumber} (${o.totalAmount}).`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName, o.departmentName],
+    status: { label: 'Approval needed', tone: 'warning' },
+    heading: `Estimate for ${o.serviceNumber} needs your approval`,
     bodyHtml,
-    ctaLabel: 'Review Estimate',
-    ctaUrl: serviceUrl,
-    logoUrl,
+    ctaLabel: 'Review estimate',
+    ctaUrl: o.serviceUrl,
+    audience: 'staff',
   });
 }

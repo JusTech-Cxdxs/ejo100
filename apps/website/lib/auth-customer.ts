@@ -81,7 +81,7 @@ export const customerAuth = betterAuth({
     sendResetPassword: async ({ user, token }) => {
       const customer = await prisma.customer.findUnique({
         where: { id: user.id },
-        select: { id: true, fullName: true, email: true, isActive: true, organisationId: true },
+        select: { id: true, fullName: true, email: true, isActive: true, organisationId: true, organisation: { select: { name: true } } },
       });
       if (!customer || !customer.isActive) {
         await prisma.customerVerification.deleteMany({ where: { identifier: `reset-password:${token}` } });
@@ -95,9 +95,11 @@ export const customerAuth = betterAuth({
       const url = `${base}/customer-portal/reset-password?token=${encodeURIComponent(token)}`;
       const { subject, html } = renderCustomerPasswordResetEmail({
         fullName: customer.fullName,
+        email: customer.email,
         url,
-        companyName: siteConfig.companyShortName,
-        logoUrl: `${base}/images/logo/logo.png`,
+        expiresInMinutes: RESET_LINK_SECONDS / 60,
+        companyName: customer.organisation?.name || siteConfig.companyShortName,
+        logoUrl: `${base}/images/logo/email-logo.png`,
       });
       await sendEmail(customer.email, subject, html);
       await writeCustomerAudit({ customerId: customer.id, organisationId: customer.organisationId, verb: 'password_reset_requested' });
