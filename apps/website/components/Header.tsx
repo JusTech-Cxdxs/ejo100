@@ -169,8 +169,7 @@ export function Header() {
         </div>
       </header>
 
-      {/* ---- Mobile off-canvas menu (unchanged structure — only adding
-           search / language / theme controls per this update's scope) ---- */}
+      {/* Mobile off-canvas menu */}
       <AnimatePresence>
         {mobileOpen && (
           <>

@@ -71,7 +71,7 @@ function ResetPasswordForm() {
 
   if (expired) {
     return (
-      <CustomerAuthShell title="This link can’t be used" subtitle="It has expired or was already used — it happens. Ask for a fresh one below." footer={backLink}>
+      <CustomerAuthShell title="This link can’t be used" subtitle="It has expired or has already been used. Ask for a new one below." footer={backLink}>
         <div className="space-y-5" data-testid="reset-link-expired">
           <AuthNotice kind="error">Links to set a password work once — 1 hour for “forgot password”, 72 hours for a welcome email.</AuthNotice>
           <Link href="/customer-portal/forgot-password" className={authButton}>Send me a new link</Link>

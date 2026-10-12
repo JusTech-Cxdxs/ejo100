@@ -14,13 +14,8 @@ interface MediaBoxProps {
 }
 
 /**
- * Renders a real photo from `src` with the site's signature gradient
- * automatically showing through as a fallback for any image that hasn't
- * been uploaded yet. Works via CSS's multi-layer background-image: the
- * gradient is always painted; the photo layer sits on top and, if it
- * 404s, is simply transparent — so the gradient shows through with zero
- * "broken image" icons anywhere on the site. Once the real file exists
- * at `src`, it displays automatically — no code change required.
+ * A photo from `src` over the site gradient (two background-image layers).
+ * If the photo is missing, the gradient shows instead of a broken image.
  */
 export function MediaBox({ src, alt, className, style }: MediaBoxProps) {
   return (

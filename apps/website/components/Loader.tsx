@@ -3,23 +3,12 @@
 import { motion } from 'framer-motion';
 import { BrandLogo } from './BrandLogo';
 
-/**
- * ============================================================================
- * LOADER CONFIGURATION — edit these to change speed, glow colour, or ring
- * animation duration. See README_CHANGES.md for the full explanation.
- * ============================================================================
- */
+/** Loader settings: speed, glow colour and ring animation duration. */
 const RING_DURATION = 2.2; // seconds per full orbit rotation
 const PULSE_DURATION = 1.8; // seconds per glow pulse cycle
 const GLOW_COLOR = 'var(--ejo-accent)';
 
-/**
- * Full-screen loading experience for the public website. Automatically
- * uses whatever logo is configured via BrandLogo (public/images/logo/) —
- * no separate logo wiring needed here. Reusable: drop <Loader /> into
- * app/loading.tsx (route-level, automatic) or render it manually around
- * any async boundary that needs a premium loading state.
- */
+/** Full-screen loader for the public website, using the BrandLogo logo. Used by app/loading.tsx. */
 export function Loader() {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[var(--ejo-secondary)]">

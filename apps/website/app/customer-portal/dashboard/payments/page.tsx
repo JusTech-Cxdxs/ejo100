@@ -63,7 +63,7 @@ export default async function PaymentsPage() {
             ) : (
               <Card className="flex items-center gap-3 p-4">
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ejo-success)]/12 text-[var(--ejo-success)]"><Icon name="checkCircle" size={19} /></span>
-                <p className="text-sm text-[var(--ejo-text)]">You’re fully paid up. Thank you!</p>
+                <p className="text-sm text-[var(--ejo-text)]">You’re fully paid up. Thank you.</p>
               </Card>
             )}
           </section>

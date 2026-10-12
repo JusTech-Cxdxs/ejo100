@@ -8,12 +8,7 @@ interface BrandLogoProps {
   size?: number;
 }
 
-/**
- * Single shared logo component used by both Header and Footer — PNG is
- * the primary, production organisation logo (public/images/logo/logo.png).
- * directly, with exactly one fallback state (a one-letter monogram) if the
- * PNG genuinely isn't there yet.
- */
+/** Organisation logo (public/images/logo/logo.png) for the header and footer, or a one-letter monogram if it is missing. */
 export function BrandLogo({ transparent = false, size = 44 }: BrandLogoProps) {
   const [failed, setFailed] = useState(false);
 
