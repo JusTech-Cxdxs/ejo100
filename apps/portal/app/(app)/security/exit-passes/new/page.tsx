@@ -1,6 +1,5 @@
 import { getMe, searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { createExitPassFormAction } from '@/lib/actions/security-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { ExitPassForm } from '@/components/ExitPassForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';

@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import { getSchedulingAccess, getAppointment, listRooms } from '@/lib/actions/scheduling';
 import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { updateAppointmentFormAction } from '@/lib/actions/scheduling-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
 import { AppointmentForm } from '@/components/AppointmentForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';

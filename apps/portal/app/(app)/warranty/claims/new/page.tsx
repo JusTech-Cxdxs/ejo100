@@ -5,7 +5,6 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { prisma } from '@ejo/database';
 import { getWarranty } from '@/lib/actions/warranty';
 import { createWarrantyClaimFormAction } from '@/lib/actions/warranty-claims-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';

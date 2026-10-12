@@ -7,7 +7,6 @@ import { getGoodsReceipt, getGoodsReceiptAuditTrail } from '@/lib/actions/store'
 import { updateGoodsReceiptFormAction } from '@/lib/actions/store-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { GoodsReceiptLineCard, type GoodsReceiptLineStockTrace } from '@/components/GoodsReceiptLineCard';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';

@@ -510,24 +510,17 @@ export default async function JobCardDetailPage({
         </div>
       ) : null}
 
-      <div className="mt-3 mb-6 flex flex-wrap items-center gap-3">
-        <PageTitle icon="clipboard">{jobCard.jobNumber}</PageTitle>
+      <div className="ejo-hero relative mt-3 mb-6 flex flex-wrap items-center gap-3 overflow-hidden rounded-[var(--ejo-radius-xl)] border border-[var(--ejo-border)] p-4 sm:p-5">
+        <div className="ejo-orb pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-[var(--ejo-primary)]/15 blur-3xl" aria-hidden="true" />
+        <PageTitle icon="clipboard" className="relative mr-1">{jobCard.jobNumber}</PageTitle>
         <StatusChip status={jobCard.status} label={STATUS_LABEL[jobCard.status]} />
-        <span
-          className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            jobCard.approvalStatus === 'APPROVED'
-              ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
-              : jobCard.approvalStatus === 'REJECTED'
-                ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]'
-                : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
-          }`}
-        >
+        <StatusChip tone={jobCard.approvalStatus === 'APPROVED' ? 'success' : jobCard.approvalStatus === 'REJECTED' ? 'error' : 'warning'} className="max-w-full whitespace-normal">
           {jobCard.approvalStatus === 'APPROVED'
             ? `Approved by ${jobCard.approvedBy?.fullName ?? 'supervisor'}`
             : jobCard.approvalStatus === 'REJECTED'
               ? `Rejected — ${jobCard.rejectionReason}`
               : 'Awaiting Supervisor Approval'}
-        </span>
+        </StatusChip>
         {payments.length > 0 || jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYMENT_STATUS_COLOR[paymentStatus]}`}>
             {PAYMENT_STATUS_LABEL[paymentStatus]}

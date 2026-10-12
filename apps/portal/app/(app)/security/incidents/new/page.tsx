@@ -1,6 +1,5 @@
 import { guardAnyPage } from '@/lib/authz/server';
 import { reportIncidentFormAction } from '@/lib/actions/security-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';

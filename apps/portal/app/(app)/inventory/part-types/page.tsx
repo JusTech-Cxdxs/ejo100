@@ -1,7 +1,6 @@
 import { guardAnyPage } from '@/lib/authz/server';
 import { listPartCategories, listPartTypes, getStoreBranchId, searchPartCategoriesForSelect, listAllPartCategoriesForSelect } from '@/lib/actions/store';
 import { createPartCategoryFormAction, createPartTypeFormAction } from '@/lib/actions/store-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';

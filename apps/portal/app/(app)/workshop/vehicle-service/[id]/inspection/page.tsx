@@ -3,7 +3,6 @@ import { serviceVisible, guardAnyPage } from '@/lib/authz/server';
 import { getVehicleInspection } from '@/lib/actions/vehicle-inspection';
 import { getVehicleService } from '@/lib/actions/vehicle-service';
 import { InspectionWorkspace } from '@/components/InspectionWorkspace';
-import { LoadingLink } from '@/components/LoadingLink';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { getApplicableTemplate } from '@/lib/vehicle-inspection-template';
 import { BackLink } from '@/components/ui';

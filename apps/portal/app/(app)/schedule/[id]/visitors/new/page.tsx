@@ -2,7 +2,6 @@ import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getAppointment } from '@/lib/actions/scheduling';
 import { addVisitorGroupFormAction } from '@/lib/actions/scheduling-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
 import { VisitorGroupFields } from '@/components/VisitorGroupFields';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';

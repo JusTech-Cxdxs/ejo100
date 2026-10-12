@@ -2,7 +2,6 @@ import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getPart } from '@/lib/actions/store';
 import { updatePartFormAction } from '@/lib/actions/store-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { pluralizeWord } from '@/lib/utils/pluralize';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';

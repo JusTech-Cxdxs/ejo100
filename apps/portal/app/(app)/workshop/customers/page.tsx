@@ -1,6 +1,5 @@
 import { guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
-import { LoadingLink } from '@/components/LoadingLink';
 import { listCustomers } from '@/lib/actions/workshop';
 import { createCustomerFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';

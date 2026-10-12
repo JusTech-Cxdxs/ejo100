@@ -1,6 +1,5 @@
 import { guardPage } from '@/lib/authz/server';
 import { canSeeMasterAnalytics, getMasterAnalytics } from '@/lib/actions/master-analytics';
-import { LoadingLink } from '@/components/LoadingLink';
 import { pluralize } from '@/lib/utils/pluralize';
 import { PageHeader, StatTile, PriorityActions, BarRow, PeriodPills, Icon, CHART, type IconName } from '@/components/ui';
 

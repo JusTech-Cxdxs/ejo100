@@ -2,7 +2,6 @@ import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getVisit, getSecurityRoles, searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { updateBookingFormAction } from '@/lib/actions/security-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { VisitorRegisterForm } from '@/components/VisitorRegisterForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';

@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getAppointment } from '@/lib/actions/scheduling';
 import { updateVisitorGroupFormAction } from '@/lib/actions/scheduling-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
 import { VisitorGroupFields } from '@/components/VisitorGroupFields';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';

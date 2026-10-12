@@ -1,6 +1,5 @@
 import { listAudienceOptions, canBroadcast } from '@/lib/actions/notifications';
 import { createBroadcastFormAction } from '@/lib/actions/notification-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { BroadcastForm } from '@/components/BroadcastForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { PageHeader } from '@/components/ui';

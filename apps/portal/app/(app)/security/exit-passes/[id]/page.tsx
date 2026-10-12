@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation';
 import { getExitPass, getSecurityRoles, getSecurityHistory, canDecideExitPass } from '@/lib/actions/security';
 import { exitPassActionFormAction, extendExitPassFormAction, securityFollowUpFormAction } from '@/lib/actions/security-form-handlers';
 import { PrintMenu } from '@/components/print/PrintMenu';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityHistory } from '@/components/SecurityHistory';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
