@@ -5,16 +5,9 @@ import { useDebouncedValue } from '@/lib/hooks/useDebouncedValue';
 import { checkSerialNumberExists } from '@/lib/actions/store';
 
 /**
- * Two genuinely different problems, checked two genuinely different
- * ways: a duplicate against another box on this SAME form is a pure
- * client-side fact (no serial number in the real world can ever be
- * the same as another), checked instantly on every keystroke with no
- * server round-trip needed. A serial already recorded somewhere else
- * in the real catalog is checked against the real database, debounced
- * so it fires once the operator actually pauses, not on every single
- * keystroke — the same real-time feedback recordGoodsReceipt's own
- * server-side rejection already guaranteed, just surfaced the moment
- * it's typed instead of only after the whole form is submitted.
+ * Serial number box. Duplicates within the form are checked instantly;
+ * serials already in the database are checked after a pause in typing.
+ * recordGoodsReceipt rejects both on the server as well.
  */
 export function SerialNumberInput({
   index,
@@ -36,9 +29,7 @@ export function SerialNumberInput({
   const [catalogState, setCatalogState] = useState<'idle' | 'checking' | 'ok' | 'exists'>('idle');
 
   useEffect(() => {
-    // A within-form duplicate is already the real, more urgent
-    // problem — no need to also spend a real server call confirming
-    // whether it happens to exist in the catalog too.
+    // Already a duplicate here: skip the server check.
     if (!debouncedValue || duplicateInForm) {
       setCatalogState('idle');
       return;
@@ -61,20 +52,9 @@ export function SerialNumberInput({
 
   const hasError = duplicateInForm || catalogState === 'exists';
 
-  // The real, exact cause of a genuine browser freeze the moment this
-  // section renders — confirmed directly, not guessed at. The parent
-  // form passes onValidityChange as a fresh inline arrow function on
-  // every one of its own renders (it has to — a stable one would need
-  // useCallback called inside a .map() loop, which breaks React's own
-  // rules of hooks). A useEffect that depends on that unstable
-  // reference re-fires every render, calls back into the parent,
-  // triggers a parent state update, and the parent re-renders with yet
-  // another new reference — a real, genuine infinite loop, not a
-  // one-off glitch. A ref sidesteps this at the root: the effect
-  // itself only ever depends on the real value that matters
-  // (hasError), and always calls whatever the latest real callback
-  // happens to be via the ref, without that callback's own identity
-  // ever being part of the dependency array at all.
+  // The parent passes a new onValidityChange on every render (it is created
+  // in a .map()). Keeping it in a ref, and depending only on hasError,
+  // avoids an infinite render loop.
   const onValidityChangeRef = useRef(onValidityChange);
   onValidityChangeRef.current = onValidityChange;
 

@@ -17,10 +17,10 @@ export const CHART = {
   error: 'var(--ejo-error)',
 } as const;
 
-const PRIORITY: Record<number, { chip: string; icon: 'alert' | 'clock' | 'sparkles'; bar: string }> = {
+const PRIORITY: Record<number, { chip: string; icon: 'alert' | 'clock' | 'info'; bar: string }> = {
   1: { chip: 'bg-[var(--ejo-error)]/12 text-[var(--ejo-error)] ring-[var(--ejo-error)]/25', icon: 'alert', bar: 'before:bg-[var(--ejo-error)]' },
   2: { chip: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning-text)] ring-[var(--ejo-warning)]/30', icon: 'clock', bar: 'before:bg-[var(--ejo-warning)]' },
-  3: { chip: 'bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)] ring-[var(--ejo-primary)]/20', icon: 'sparkles', bar: 'before:bg-[var(--ejo-primary)]' },
+  3: { chip: 'bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)] ring-[var(--ejo-primary)]/20', icon: 'info', bar: 'before:bg-[var(--ejo-primary)]' },
 };
 
 export type PriorityItem = { priority: number; title: string; detail?: string; href: string; items?: { href: string; label: string }[] };

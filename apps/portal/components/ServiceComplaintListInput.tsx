@@ -5,14 +5,8 @@ import { useRef, useState } from 'react';
 type ComplaintRow = { key: string; value: string };
 
 /**
- * The same real, proven pattern as Job Card's own ComplaintListInput
- * — each row a real, separately-submitted <input name="customerComplaints">,
- * read server-side via formData.getAll('customerComplaints'), no
- * hidden JSON-encoding needed. Deliberately its own component rather
- * than reused directly: every row here is genuinely optional (Job
- * Card's own version requires its first row; a Vehicle Service
- * visit that's purely the primary periodic service, with nothing
- * else requested, is a real, valid case this module has to support).
+ * Like ComplaintListInput (each row is an <input name="customerComplaints">),
+ * but every row is optional: a visit can be just the periodic service.
  */
 export function ServiceComplaintListInput() {
   const [rows, setRows] = useState<ComplaintRow[]>([{ key: 'c0', value: '' }]);
@@ -62,8 +56,7 @@ export function ServiceComplaintListInput() {
         + Add another request
       </button>
       <p className="text-[11px] text-[var(--ejo-text-muted)]">
-        Genuinely optional — leave empty if this visit is purely the primary service, with nothing else
-        requested.
+        Optional. Leave empty if the visit is only for the periodic service.
       </p>
     </div>
   );

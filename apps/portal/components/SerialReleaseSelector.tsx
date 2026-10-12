@@ -7,16 +7,9 @@ import { formatDateOnly } from '@/lib/utils/format-date';
 export type AvailableSerial = { serialNumber: string; receivedAt: string | Date };
 
 /**
- * Every box shares one real source of truth: the Part's own currently
- * in-stock serials, in real FIFO order (earliest received first — the
- * same order Store's batch-tracked stock already follows). Nothing is
- * ever pre-filled — the field stays genuinely empty until the operator
- * actually picks something, exactly as asked; the FIFO order is only
- * ever offered as a clear, written-up suggestion alongside the box,
- * never silently chosen on their behalf. The moment a serial is picked
- * in one box, it's gone from every other box's own options — genuinely
- * impossible to release the same physical unit twice under two
- * different boxes by accident.
+ * Pick the serials to release from the part's in-stock serials (oldest
+ * first). Nothing is pre-filled; the FIFO choice is shown as a suggestion.
+ * A serial picked in one box is removed from the others.
  */
 export function SerialReleaseSelector({
   lineId,
@@ -34,11 +27,8 @@ export function SerialReleaseSelector({
     return availableSerials.filter((s) => !pickedElsewhere.has(s.serialNumber)).map((s) => ({ value: s.serialNumber, label: s.serialNumber }));
   }
 
-  // The suggestion is genuinely a live recommendation, not a fixed
-  // assignment — box one's suggestion is always the earliest-received
-  // serial not already picked anywhere else, so if the operator picks
-  // something different for an earlier box, every later box's own
-  // suggestion updates to reflect what's really still next in line.
+  // Each box suggests the oldest serial not picked elsewhere, so the
+  // suggestions update as boxes are filled.
   function fifoSuggestionFor(boxIndex: number): AvailableSerial | undefined {
     const pickedElsewhere = new Set(picked.filter((_, i) => i !== boxIndex && Boolean(picked[i])));
     return availableSerials.find((s) => !pickedElsewhere.has(s.serialNumber));

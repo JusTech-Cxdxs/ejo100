@@ -69,37 +69,16 @@ export function DocumentHeader({
               {/* Flex, not table cells, so the 4px gap beside the logo
                   matches the 4px gap between the two wordmark lines. */}
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                {/* A hard-coded width AND height, both matching the real
-                    cropped logo file's own exact aspect ratio, not
-                    width:'auto' — some print/PDF rendering engines
-                    don't reliably preserve an image's natural aspect
-                    ratio the way a normal browser window does, which is
-                    exactly what squashed the logo flat on the actual
-                    printed output despite rendering correctly
-                    everywhere this was checked on screen. Height is
-                    set to the wordmark stack's own real measured
-                    height (rendered and measured directly, not
-                    estimated) — equal to it, not larger, so the logo
-                    reads as matched to the text rather than dominating
-                    it. */}
+                {/* Fixed width and height (the logo's aspect ratio): some PDF engines
+                    squash an image with width:auto. Height equals the wordmark's. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={logoUrl} alt={organisation.name} style={{ width: '39px', height: '47px', display: 'block', marginRight: '4px' }} />
                 <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch' }}>
                   <div style={{ fontSize: '26px', fontWeight: 800, color: '#0F172A', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>{wordmarkTop}</div>
                   {wordmarkBottom ? (
                     <div style={{ display: 'flex', alignItems: 'center', marginTop: '4px' }}>
-                      {/* The rule itself is a real border, not a
-                          background color — browsers suppress
-                          background-color by default when printing
-                          unless the person manually enables
-                          "Background graphics" in their print dialog,
-                          which is off by default. Borders always print
-                          regardless of that setting, so this is the
-                          only reliable way to guarantee the line
-                          actually shows up on a real printed page, not
-                          just on screen. flex:1 automatically grows it
-                          to fill the leftover space, so the second line
-                          ends flush with the first on any name. */}
+                      {/* A border, not a background: backgrounds don't print by default.
+                          flex:1 makes it end flush with the line above. */}
                       <div style={{ flex: 1, borderBottom: `1.25px solid ${accentColor}`, marginRight: '6px' }} />
                       <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{wordmarkBottom}</span>
                     </div>
@@ -138,13 +117,7 @@ export function DocumentHeader({
   );
 }
 
-/**
- * Two real signature lines — the person who issued the document, and
- * the person who's collecting whatever it represents. A blank line
- * plus their own real name printed underneath, so both sides have a
- * clear place to actually sign in pen, and it's obvious who's
- * expected to sign where.
- */
+/** Two signature lines (issued by, collected by), each with the name printed underneath. */
 export function SignatureBlock({ issuerLabel, issuerName, collectorLabel, collectorName }: { issuerLabel: string; issuerName: string | null; collectorLabel: string; collectorName: string | null }) {
   return (
     <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '48px' }}>
@@ -169,10 +142,8 @@ export function SignatureBlock({ issuerLabel, issuerName, collectorLabel, collec
   );
 }
 
-/** The real, quiet footer on every printed document — the organisation
- * identity once more (so a physically loose page still traces back to
- * where it came from), plus a small, faint platform credit at the very
- * bottom — deliberately the smallest, quietest text on the page. */
+/** Footer on every printed document: the organisation's details again (so a
+ * loose page can be traced) and a small platform credit. */
 export function DocumentFooter({ organisation }: { organisation: OrganisationInfo }) {
   return (
     <div style={{ marginTop: '32px', paddingTop: '8px', borderTop: '1px solid #E2E8F0', textAlign: 'center' }}>

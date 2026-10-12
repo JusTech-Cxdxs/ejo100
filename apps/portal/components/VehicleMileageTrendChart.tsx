@@ -5,11 +5,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 export type MileageChartPoint = { label: string; mileage: number; dateLabel: string; source: 'VEHICLE_SERVICE' | 'JOB_CARD' };
 
 /**
- * Every point here is a real, recorded odometer reading at an actual
- * visit — never smoothed, never interpolated. The one predicted
- * point (the next service due odometer, if known) is drawn as a
- * distinct hollow marker past the real data, clearly a projection
- * rather than another real reading.
+ * Odometer readings recorded at visits (not interpolated). The next service
+ * due point, if known, is drawn as a hollow marker to show it is a projection.
  */
 export function VehicleMileageTrendChart({ data, predictedMileage, predictedLabel }: { data: MileageChartPoint[]; predictedMileage?: number | null; predictedLabel?: string }) {
   const chartData = predictedMileage != null ? [...data, { label: predictedLabel ?? 'Predicted', mileage: predictedMileage, dateLabel: 'Estimated', source: 'VEHICLE_SERVICE' as const }] : data;

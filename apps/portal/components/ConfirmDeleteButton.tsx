@@ -3,14 +3,7 @@
 import { useFormStatus } from 'react-dom';
 import { EjoSpinner } from './EjoSpinner';
 
-/**
- * A destructive-action submit button — like SubmitButton (same pending/
- * spinner behavior, same useFormStatus mechanism), but gated behind a
- * native browser confirm() before the form is allowed to actually
- * submit. Kept as its own small component rather than adding a confirm
- * option onto SubmitButton itself, since SubmitButton is used in many
- * non-destructive places and shouldn't need to carry that concern.
- */
+/** Submit button for destructive actions: like SubmitButton, but asks confirm() first. */
 export function ConfirmDeleteButton({
   confirmMessage,
   label = 'Delete',

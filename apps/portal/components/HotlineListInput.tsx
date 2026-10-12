@@ -5,13 +5,8 @@ import { useRef, useState } from 'react';
 type HotlineRow = { key: string; value: string };
 
 /**
- * A real business commonly has more than one hotline — Hotline 1,
- * Hotline 2, and so on, each its own real, separately-submitted
- * `<input name="hotlines">` (the server reads them all via
- * `formData.getAll('hotlines')`), the same proven shape as a Job
- * Card's own Complaints list. Uses a stable generated key per row,
- * not the array index, so removing a row from the middle never
- * confuses which input holds which value or focus.
+ * List of hotlines, each its own <input name="hotlines"> (read with
+ * formData.getAll). Stable row keys because rows can be removed.
  */
 export function HotlineListInput({ initialValues }: { initialValues: string[] }) {
   const [rows, setRows] = useState<HotlineRow[]>(() => (initialValues.length > 0 ? initialValues.map((v, i) => ({ key: `h${i}`, value: v })) : [{ key: 'h0', value: '' }]));

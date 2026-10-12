@@ -14,15 +14,10 @@ type PartCategoryWithTypes = {
 };
 
 /**
- * Store Part lines and every other line type genuinely need different
- * fields, not just different validation — a Store Part line picks a
- * PartType (grouped by its real parent PartCategory) and never sees a
- * price field at all, since that price can only ever come from
- * Store's own later match. Every other type keeps the existing
- * free-text description, with a price field shown only when the
- * current viewer actually has pricing authority for that type
- * (mirrors requirePricingAuthority server-side — this is just the
- * matching, honest UI for it, not a substitute for that real check).
+ * A Store Part line picks a Part Type and has no price (the Store prices it
+ * when matching). Other types take a description, and a price only when the
+ * viewer may price that type. requirePricingAuthority enforces this on the
+ * server; hiding the field here is only for clarity.
  */
 export function EstimateLineItemForm({
   jobCardId,
@@ -39,26 +34,15 @@ export function EstimateLineItemForm({
 }) {
   const [type, setType] = useState('STORE_PART');
   const isStorePart = type === 'STORE_PART';
-  // A real preview of the unit a technician's about to be working
-  // with — genuinely looked up from what's already in the catalog for
-  // this Part Type, never guessed, and never the value that actually
-  // gets submitted (that's still set only by Store's own match on
-  // matching, exactly as before). This exists purely so a technician
-  // never has to type a quantity blind — "1" meaning one whole Set is
-  // a very different thing from "1" meaning one loose piece, and
-  // they should be able to see which one they're dealing with.
+  // Display only: the Part Type's typical unit, so the technician knows
+  // whether "1" means a set or a single piece. The Store sets the real unit.
   const [selectedPartTypeId, setSelectedPartTypeId] = useState('');
   const selectedPartType = categories.flatMap((c) => c.types).find((t) => t.id === selectedPartTypeId);
-  // A technician only ever has pricing authority for what they
-  // personally sourced outside the workshop — everything else is
-  // priced by the supervisor. Store Part never gets a price field at
-  // all, regardless of viewer, since that's Store's own job now.
+  // Technicians price only what they sourced outside; the supervisor prices
+  // the rest. Store Part lines never have a price field.
   const canShowPriceField = !isStorePart && (!isTechnicianOnly || type === 'EXTERNAL_PART' || type === 'EXTERNAL_JOB');
 
-  // Every Part Type is already loaded via the `categories` prop — no
-  // server round-trip needed to search it, just a plain client-side
-  // filter wrapped as a Promise to match SearchableSelect's own
-  // (query) => Promise<SearchableOption[]> shape.
+  // Part Types are already loaded, so search filters on the client.
   const allPartTypeOptions: SearchableOption[] = categories.flatMap((category) =>
     category.types.map((t) => ({ value: t.id, label: t.name, sublabel: category.name })),
   );

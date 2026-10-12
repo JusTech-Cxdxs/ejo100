@@ -9,14 +9,8 @@ const STYLES: Record<FeedbackKind, string> = {
 };
 
 /**
- * Small shared success/warning/error banner, driven by a `?status=` /
- * `?error=` query param a Server Action redirects to after finishing —
- * Server Actions bound to a plain `<form action={...}>` can't hand a
- * result back to the client directly, so a redirect-with-query-param
- * carrying the outcome is the idiomatic App Router way to show one
- * without turning the whole page into a client component. Deliberately
- * one shared component rather than a bespoke banner per page — every
- * Workshop create-form should look and behave the same way.
+ * Success, warning or error banner. Form actions redirect with `?status=` or
+ * `?error=`, and the page shows the outcome with this component.
  */
 export function FormFeedbackBanner({ kind, message }: { kind: FeedbackKind; message: string }) {
   // Last line of defence: technical text that slipped past friendlyError is never shown.

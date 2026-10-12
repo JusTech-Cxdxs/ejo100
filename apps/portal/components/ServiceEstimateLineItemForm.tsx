@@ -14,17 +14,9 @@ type PartCategoryWithTypes = {
 };
 
 /**
- * The real Vehicle Service equivalent of Job Card's own
- * EstimateLineItemForm — same exact real UX (Store Part picks a real
- * PartType, grouped by its real parent PartCategory, and never sees
- * a price field; every other type keeps free-text description with
- * a price field). The one genuine difference: Vehicle Service has no
- * External Part/Job concept at all, so there's no case where the
- * technician ever has real pricing authority here — every priced
- * line (Internal Job, Labour, Sundry) is supervisor-only, matching
- * requireServicePricingAuthority server-side exactly. This is just
- * the matching, honest UI for that real rule, not a substitute for
- * the real check.
+ * Vehicle Service version of EstimateLineItemForm. There are no external
+ * lines, so only the supervisor prices lines (requireServicePricingAuthority
+ * enforces this on the server).
  */
 export function ServiceEstimateLineItemForm({
   vehicleServiceId,
@@ -43,15 +35,10 @@ export function ServiceEstimateLineItemForm({
 }) {
   const [type, setType] = useState('STORE_PART');
   const isStorePart = type === 'STORE_PART';
-  // Same real preview-only purpose as Job Card's own version — looked
-  // up from what's already in the catalog for this Part Type, never
-  // guessed, and never the value that actually gets submitted; that
-  // still only ever comes from Store's own real match.
+  // Display only: the Part Type's typical unit. The Store sets the real unit.
   const [selectedPartTypeId, setSelectedPartTypeId] = useState('');
   const selectedPartType = categories.flatMap((c) => c.types).find((t) => t.id === selectedPartTypeId);
-  // No External Part/Job here at all — the technician never has real
-  // pricing authority on any Vehicle Service line, unlike Job Card's
-  // own real exception for what a technician personally sourced.
+  // Technicians never price Vehicle Service lines.
   const canShowPriceField = !isStorePart && !isTechnicianOnly;
 
   const allPartTypeOptions: SearchableOption[] = categories.flatMap((category) =>

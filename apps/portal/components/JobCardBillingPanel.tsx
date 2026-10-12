@@ -15,7 +15,7 @@ const CHIP: Record<BillTo, string> = {
 };
 
 /**
- * Who pays for each estimate line — only shown when it has a real job to do:
+ * Who pays for each estimate line — shown only when there is something to decide:
  *  • nothing on the estimate → nothing;
  *  • settled (paid in full or job closed) and all customer-paid → nothing;
  *  • settled with covered lines → a read-only summary (+ "Start a claim");

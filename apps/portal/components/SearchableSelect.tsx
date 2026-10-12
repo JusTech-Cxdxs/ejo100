@@ -12,26 +12,9 @@ export type SearchableOption = {
 type SearchState = 'idle' | 'loading' | 'success' | 'error';
 
 /**
- * A real server-backed searchable dropdown — the permanent replacement
- * for a plain <select> anywhere the option list is too large to load in
- * full (customers, vehicles, and later technicians/parts/estimates).
- * Deliberately built as the ONLY foundation for this pattern going
- * forward: every keystroke (after a debounce) queries the real database
- * through a passed-in Server Action, so results are always complete and
- * current — never a filtered slice of some earlier, capped snapshot.
- *
- * No new dependency added — plain React state + the project's existing
- * Server Action → Prisma pattern. The selected value is carried by a
- * real hidden <input>, so any <form action={someServerAction}> this
- * sits inside submits exactly the same FormData shape a native <select>
- * would.
- *
- * Reusable by design: `search` (and the optional `loadDefaultOptions`)
- * are the only things that change between uses (searchCustomers, a
- * future searchTechnicians, searchParts, etc.) — everything else
- * (debouncing, loading/empty/error states, keyboard navigation,
- * accessibility, race-condition handling) is common and shouldn't need
- * to be rebuilt per entity type.
+ * Searchable dropdown for lists too large to load in full. Each (debounced)
+ * query calls the `search` server action. The chosen value is submitted
+ * through a hidden <input>, like a native <select>.
  */
 export function SearchableSelect({
   name,
@@ -49,11 +32,8 @@ export function SearchableSelect({
 }: {
   name: string;
   search: (query: string) => Promise<SearchableOption[]>;
-  /** Optional: shown before the person has typed anything — e.g. the
-   * most recently registered customers, so the common case ("the same
-   * customer as earlier today") needs zero typing. If omitted, the
-   * dropdown simply stays closed until there's a real query, same as
-   * before this existed. */
+  /** Optional options shown before anything is typed (e.g. recent
+   * customers). Without it the dropdown stays closed until a query. */
   loadDefaultOptions?: () => Promise<SearchableOption[]>;
   defaultOptionsLabel?: string;
   placeholder?: string;
@@ -78,13 +58,8 @@ export function SearchableSelect({
   const listboxId = useId();
   const debouncedQuery = useDebouncedValue(query, debounceMs);
 
-  // Run the actual search whenever the debounced query changes. A
-  // request-generation counter means that if the user types quickly
-  // enough to fire two searches, and the FIRST one's network response
-  // happens to arrive after the SECOND's, the stale first response is
-  // discarded instead of overwriting the correct, newer results. Below
-  // minQueryLength, either show loadDefaultOptions() (if provided) or
-  // fall back to the original "nothing until you type" behavior.
+  // Search when the debounced query changes. The request counter discards
+  // a slower, older response so it can't overwrite newer results.
   useEffect(() => {
     const trimmed = debouncedQuery.trim();
     const requestId = ++requestIdRef.current;
