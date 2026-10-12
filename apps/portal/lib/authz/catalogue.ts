@@ -76,6 +76,8 @@ export const PERMISSIONS = {
   'schedule.view': { module: 'Scheduling', label: 'Keep a calendar and book appointments (own calendar, or as an aide)' },
   'schedule.manage': { module: 'Scheduling', label: 'Manage meeting rooms and aides, and book on any calendar' },
   'notifications.broadcast.send': { module: 'Notifications', label: 'Send broadcasts' },
+  // Support
+  'support.assist': { module: 'Support', label: 'Help colleagues with their tasks (assisted session)' },
 } as const;
 export type PermissionKey = keyof typeof PERMISSIONS;
 
@@ -174,6 +176,11 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   'calendar-user': { 'schedule.view': 'OWN' },
   'scheduling-admin': { 'schedule.view': A, 'schedule.manage': A },
   broadcaster: { 'notifications.broadcast.send': A },
+  // ── Support ──────────────────────────────────────────────────────
+  // Sits with a colleague who is not at ease with computers and works on
+  // their behalf, with their password as consent. Nothing else: while
+  // assisting, what can be done is exactly what the colleague can do.
+  'branch-assistant': { 'support.assist': B },
 };
 
 /** Steps only the platform team may take — never grantable to organisation roles. */
@@ -239,6 +246,7 @@ export const ROLE_LABELS: Record<string, string> = {
   'finance-officer': 'Finance Officer', 'store-manager': 'Store Manager', 'store-officer': 'Store Officer', 'warranty-hod': 'Warranty HOD',
   'warranty-officer': 'Warranty Officer', 'department-head': 'Department Head', 'chief-security-officer': 'Chief Security Officer',
   'security-officer': 'Security Officer', receptionist: 'Front Desk (Receptionist)', 'calendar-user': 'Calendar User', 'scheduling-admin': 'Scheduling Admin', broadcaster: 'Broadcaster',
+  'branch-assistant': 'Branch Assistant (IT support)',
 };
 
 /**

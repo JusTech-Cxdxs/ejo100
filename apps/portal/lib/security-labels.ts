@@ -63,6 +63,10 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'road_test.gate_out': 'Out on road test',
   'road_test.gate_in': 'Back from road test',
   'road_test.extended': 'Road test extended',
+  'assist.started': 'Assisted session started',
+  'assist.ended': 'Assisted session ended',
+  'assist.consent_failed': 'Assisted session: wrong password typed',
+  'assist.refused': 'Assisted session refused',
 };
 
 export function securityActionLabel(action: string): string {
@@ -74,6 +78,13 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
   if (!meta) return null;
   const s = (k: string) => (typeof meta[k] === 'string' ? (meta[k] as string) : null);
   switch (action) {
+    case 'assist.ended':
+      return s('summary');
+    case 'assist.started':
+      return `${s('assistant') ?? 'A Branch Assistant'} is helping ${s('colleague') ?? 'a colleague'}${s('reason') ? ` — ${s('reason')}` : ''}`;
+    case 'assist.consent_failed':
+    case 'assist.refused':
+      return [s('colleague'), s('reason')].filter(Boolean).join(' — ') || null;
     case 'security.email_sent':
     case 'security.email_failed':
       return `To ${s('to') ?? 'recipient'} — ${s('subject') ?? ''}${s('error') ? ` (${s('error')})` : ''}`;

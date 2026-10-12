@@ -1,3 +1,4 @@
+import { actorLabel } from '@/lib/assist/rules';
 import { canRequestRoadTestOn } from '@/lib/actions/security';
 import { jobCardVisible, guardAnyPage, can, allows } from '@/lib/authz/server';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
@@ -1915,7 +1916,7 @@ export default async function JobCardDetailPage({
             entries={auditTrail.map((entry) => ({
               id: entry.id,
               actionLabel: AUDIT_ACTION_LABEL[entry.action] ?? humanizeAction(entry.action),
-              userName: entry.user?.fullName ?? null,
+              userName: actorLabel(entry.user?.fullName ?? null, entry.metadata),
               detail: formatAuditDetail(entry),
               dateLabel: formatDateTime(entry.createdAt),
             }))}

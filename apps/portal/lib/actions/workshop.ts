@@ -38,7 +38,6 @@ import { unstable_cache } from 'next/cache';
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal, isCustomerLine, coveredLabel } from '@/lib/estimate-billing';
-import { headers } from 'next/headers';
 import { prisma, JobCardStatus, setAuditActor, setAuditActorResolver } from '@ejo/database';
 import { claimed, lockExisting } from '@/lib/integrity';
 import { exceedsBalance, NUMBER_CLASH_TRIES, numberClashPause } from '@/lib/integrity-core';
@@ -51,7 +50,7 @@ import { anchorEscalatedServiceFromJobCard } from '@/lib/vehicle-service-cycle';
 import { custodyReminderState, notDueYetMessage, type CustodyReminderKind } from '@/lib/custody-reminders';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
-import { auth } from '@/lib/auth';
+import { activeAssistFor, signedInSession, type ActiveAssist } from '@/lib/assist/server';
 import { sendEmail } from '@/lib/email';
 import { renderSupervisorJobCardAssignedEmail } from '@/lib/email-templates/supervisor-job-card-assigned';
 import { renderCustomerJobCardAcknowledgmentEmail } from '@/lib/email-templates/customer-job-card-acknowledgment';
@@ -102,7 +101,7 @@ class WorkshopActionError extends Error {}
  * this change should guess at. */
 /** The signed-in session — looked up once per request, then reused. */
 const sessionForRequest = cache(async () => {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await signedInSession();
   if (!session?.user?.id) return null;
   // A deactivated person is signed out everywhere, at once — an open session
   // (or a 5-minute session cookie cache) never outlives the deactivation.
@@ -115,23 +114,39 @@ const sessionForRequest = cache(async () => {
 // Outside a request (scheduled jobs, after()) there is no one: null.
 setAuditActorResolver(async () => {
   try {
-    const session = await sessionForRequest();
-    if (!session?.user?.id) return null;
-    return { userId: session.user.id, source: 'portal', organisationId: (session.user as { organisationId?: string | null }).organisationId ?? null };
+    const acting = await actingForRequest();
+    if (!acting) return null;
+    const actor = { userId: acting.id, source: 'portal', organisationId: acting.organisationId, assistedBy: acting.assist ? { id: acting.assist.assistant.id, name: acting.assist.assistant.name } : null, assistSessionId: acting.assist?.sessionId ?? null };
+    return actor;
   } catch {
     return null;
   }
 });
 
-export async function requireUser(): Promise<{ id: string }> {
+/**
+ * Who the business rules run as in this request. Normally the signed-in
+ * person. During an assisted session (lib/assist) it is the colleague being
+ * helped, so "only the assigned technician" checks see the technician; the
+ * assistant is carried alongside and named in every audit entry.
+ */
+const actingForRequest = cache(async (): Promise<{ id: string; organisationId: string | null; assist: ActiveAssist | null } | null> => {
   const session = await sessionForRequest();
-  if (!session?.user?.id) {
+  if (!session?.user?.id) return null;
+  const organisationId = (session.user as { organisationId?: string | null }).organisationId ?? null;
+  const assist = await activeAssistFor(session.user.id, session.session.id);
+  if (assist) return { id: assist.subject.id, organisationId: assist.subject.organisationId, assist };
+  return { id: session.user.id, organisationId, assist: null };
+});
+
+export async function requireUser(): Promise<{ id: string }> {
+  const acting = await actingForRequest();
+  if (!acting) {
     throw new WorkshopActionError('Not authenticated.');
   }
   // Every database write for the rest of this request is attributed to
   // this user in the audit journal (see @ejo/database audit-journal).
-  setAuditActor(session.user.id, 'portal', (session.user as { organisationId?: string | null }).organisationId ?? null);
-  return { id: session.user.id };
+  setAuditActor(acting.id, 'portal', acting.organisationId, acting.assist ? { assistedBy: { id: acting.assist.assistant.id, name: acting.assist.assistant.name }, assistSessionId: acting.assist.sessionId } : null);
+  return { id: acting.id };
 }
 
 /** Whether the current user holds any role with isSuperAdmin=true — the

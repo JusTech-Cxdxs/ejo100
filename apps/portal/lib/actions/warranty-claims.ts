@@ -1,4 +1,5 @@
 'use server';
+import { actorLabel } from '@/lib/assist/rules';
 import { logFailure } from '@/lib/log';
 
 import { claimed as stillAsSeen } from '@/lib/integrity';
@@ -494,7 +495,7 @@ export async function getWarrantyClaimAuditTrail(claimId: string) {
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null }));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null }));
 }
 
 /** Claims waiting on this viewer (for the dashboard) — at their step in

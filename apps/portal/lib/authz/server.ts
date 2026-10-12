@@ -5,6 +5,7 @@ import { prisma } from '@ejo/database';
 import { requireUser } from '@/lib/actions/workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { decide, type Decision, type PermissionKey, type Principal, type RecordContext, PERMISSIONS } from './catalogue';
+import { signedInContext, type ActiveAssist } from '@/lib/assist/server';
 
 /**
  * Server-side enforcement of the Authorization Catalogue. Server-only (NOT a
@@ -29,11 +30,10 @@ const soleOrganisationId = unstable_cache(
   { revalidate: 300, tags: ['org-structure'] },
 );
 
-/** The signed-in person, loaded once per request. */
-export const getPrincipal = cache(async (): Promise<Principal> => {
-  const user = await requireUser();
+/** A person's principal, loaded once per request. */
+const principalFor = cache(async (userId: string): Promise<Principal> => {
   const u = await prisma.user.findUnique({
-    where: { id: user.id },
+    where: { id: userId },
     select: { id: true, branchId: true, departmentId: true, organisationId: true, roles: { select: { role: { select: { slug: true, isSuperAdmin: true, permissions: { select: { permission: { select: { key: true } } } } } } } } },
   });
   const isSuperAdmin = (u?.roles ?? []).some((r: { role: { isSuperAdmin: boolean } }) => r.role.isSuperAdmin);
@@ -49,7 +49,7 @@ export const getPrincipal = cache(async (): Promise<Principal> => {
   const extra: Partial<Record<PermissionKey, 'BRANCH'>> = {};
   for (const r of roles) for (const rp of r.role.permissions) if (rp.permission.key in PERMISSIONS) extra[rp.permission.key as PermissionKey] = 'BRANCH';
   return {
-    userId: user.id,
+    userId,
     isSuperAdmin,
     organisationId,
     orgBranchIds,
@@ -59,6 +59,53 @@ export const getPrincipal = cache(async (): Promise<Principal> => {
     extraGrants: extra,
   };
 });
+
+/**
+ * The person the business rules run as, loaded once per request. During an
+ * assisted session this is the colleague being helped (see requireUser), so
+ * every check below applies the colleague's own permissions, never more.
+ */
+export const getPrincipal = cache(async (): Promise<Principal> => {
+  const user = await requireUser();
+  return principalFor(user.id);
+});
+
+/**
+ * The person who actually signed in — the assistant during an assisted
+ * session. Only for starting, ending and listing assisted sessions.
+ */
+export const getSignedInPrincipal = cache(async (): Promise<Principal> => {
+  const ctx = await signedInContext();
+  if (!ctx) throw new Error('Not authenticated.');
+  return principalFor(ctx.userId);
+});
+
+/** authorize(), checked against the signed-in person rather than the colleague being assisted. */
+export async function authorizeAsSignedIn(key: PermissionKey, record: RecordContext | undefined, where: string, message = 'You do not have permission to do this.'): Promise<Principal> {
+  const p = await getSignedInPrincipal();
+  const d = decide(p, key, record);
+  if (!d.allowed) {
+    await logDenied(p.userId, key, where, d.reason);
+    throw new Error(message);
+  }
+  return p;
+}
+
+/** The assisted session running in this browser, if any (null when working alone). */
+export async function currentAssist(): Promise<ActiveAssist | null> {
+  return (await signedInContext())?.assist ?? null;
+}
+
+/** Pages and actions that only make sense for one's own account (password,
+ * profile, notification settings) refuse during an assisted session. */
+export const NOT_DURING_ASSIST = 'This is not available during an assisted session. End the session first.';
+export async function refuseDuringAssist(where: string): Promise<void> {
+  const a = await currentAssist();
+  if (a) {
+    await writeAuditLog({ userId: a.subject.id, action: 'access.denied', entityType: 'Access', entityId: where.slice(0, 120), metadata: { reason: 'Not available during an assisted session' } }).catch(() => undefined);
+    throw new Error(NOT_DURING_ASSIST);
+  }
+}
 
 export async function can(key: PermissionKey, record?: RecordContext): Promise<Decision> {
   return decide(await getPrincipal(), key, record);

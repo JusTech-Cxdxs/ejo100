@@ -1,4 +1,5 @@
 'use server';
+import { actorLabel } from '@/lib/assist/rules';
 import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
@@ -671,7 +672,7 @@ export async function getWarrantyAuditTrail(warrantyId: string) {
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null }));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null }));
 }
 
 // ── Policy detail, edit and the deletion approval chain ──────────────
@@ -705,7 +706,7 @@ export async function getWarrantyPolicyAuditTrail(policyId: string) {
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null }));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null }));
 }
 
 export type UpdateWarrantyPolicyInput = Omit<WarrantyPolicyInput, 'code' | 'isSample'>;
@@ -983,7 +984,7 @@ export async function getWarrantyProviderAuditTrail(providerId: string) {
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null }));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null }));
 }
 
 const PROVIDER_FIELD_LABEL: Record<string, string> = {

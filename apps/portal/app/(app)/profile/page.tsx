@@ -1,18 +1,34 @@
 import { prisma } from '@ejo/database';
-import { getPrincipal } from '@/lib/authz/server';
+import { currentAssist, getPrincipal } from '@/lib/authz/server';
+import { listAssistSessionsForMe } from '@/lib/actions/assist';
+import { AssistSessionList } from '@/components/AssistSessionList';
 import { describeAccess, roleLabel } from '@/lib/authz/describe-access';
 import { STAFF_RULES } from '@/lib/email-templates/staff-access';
 import { Avatar } from '@/components/Avatar';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ChangePasswordForm } from '@/components/ChangePasswordForm';
-import { PageTitle } from '@/components/ui';
+import { EmptyState, PageTitle } from '@/components/ui';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6';
 const label = 'text-[11px] font-medium uppercase tracking-wide text-[var(--ejo-text-muted)]';
 
 /** My profile — who I am in the organisation, exactly what I can do, and my own settings. */
 export default async function ProfilePage() {
+  // A colleague's own account settings are theirs alone, even during an assisted session.
+  const assist = await currentAssist();
+  if (assist) {
+    return (
+      <div className="w-full max-w-3xl p-4 sm:p-8">
+        <section className={card}>
+          <EmptyState icon="lock" title="Not available during an assisted session">
+            {assist.subject.name}&apos;s profile, password and settings are only for {assist.subject.name.split(/\s+/)[0]}. End the session to see your own profile.
+          </EmptyState>
+        </section>
+      </div>
+    );
+  }
   const p = await getPrincipal();
+  const heldForMe = await listAssistSessionsForMe().catch(() => []);
   const u = await prisma.user.findUnique({
     where: { id: p.userId },
     select: { fullName: true, email: true, phone: true, employeeId: true, isActive: true, createdAt: true, organisation: { select: { name: true } }, branch: { select: { name: true } }, department: { select: { name: true } }, roles: { select: { role: { select: { name: true, slug: true, isSuperAdmin: true } } } } },
@@ -77,6 +93,14 @@ export default async function ProfilePage() {
           </div>
         )}
       </section>
+
+      {heldForMe.length ? (
+        <section id="assisted" className={`${card} mt-6`}>
+          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Sessions held for me</h2>
+          <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Times a Branch Assistant worked on your behalf, after you typed your password. Everything they did is in the records under your name, with theirs beside it.</p>
+          <div className="mt-2"><AssistSessionList rows={heldForMe} show="colleague" /></div>
+        </section>
+      ) : null}
 
       <section className={`${card} mt-6`}>
         <h2 className="text-sm font-semibold text-[var(--ejo-text)]">The rules</h2>

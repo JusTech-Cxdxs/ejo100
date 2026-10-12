@@ -1,4 +1,5 @@
 'use server';
+import { actorLabel } from '@/lib/assist/rules';
 import { logFailure } from '@/lib/log';
 
 import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach, seeBranchAnyOf, seeJobCard, seeService } from '@/lib/authz/server';
@@ -1769,7 +1770,7 @@ export async function getExternalProcurementRequestAuditTrail(requestId: string)
   const userIds = [...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id)))];
   const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } });
   const userById = new Map(users.map((u: (typeof users)[number]) => [u.id, u.fullName]));
-  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? (userById.get(e.userId) ?? 'Unknown') : 'System' }));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(userById.get(e.userId) ?? 'Unknown', e.metadata) : 'System' }));
 }
 
 /** Finance's own deliberate checkpoint — explicitly passing the

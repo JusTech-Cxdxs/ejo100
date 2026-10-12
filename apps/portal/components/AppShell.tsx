@@ -22,6 +22,7 @@ export function AppShell({
   userName,
   roleName,
   initialCollapsed,
+  banner,
   children,
 }: {
   items: NavItem[];
@@ -29,6 +30,8 @@ export function AppShell({
   userName: string;
   roleName: string;
   initialCollapsed: boolean;
+  /** Shown under the header on every page (the assisted-session banner). */
+  banner?: ReactNode;
   children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(initialCollapsed);
@@ -106,7 +109,8 @@ export function AppShell({
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Topbar userName={userName} roleName={roleName} organisationName={organisationName} onMenu={openDrawer} menuOpen={drawer} />
+        <Topbar userName={userName} roleName={roleName} organisationName={organisationName} onMenu={openDrawer} menuOpen={drawer} assisting={Boolean(banner)} />
+        {banner}
         <Marquee />
         <main id="main" tabIndex={-1} className="ejo-scroll flex min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--ejo-bg)] focus:outline-none">
           <NavigationLoadingProvider>{children}</NavigationLoadingProvider>

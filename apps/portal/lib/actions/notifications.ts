@@ -7,7 +7,8 @@ import { after } from 'next/server';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
-import { authorize, allows, getPrincipal } from '@/lib/authz/server';
+import { authorize, allows, currentAssist, getPrincipal, refuseDuringAssist } from '@/lib/authz/server';
+import { actorLabel } from '@/lib/assist/rules';
 import { scopeFor } from '@/lib/authz/catalogue';
 import { getDashboardNotifications, type DashboardNotification } from './dashboard';
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
@@ -52,17 +53,19 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
   // the supervisor, the person who opened the Job Card / service, and the
   // person who raised a parts request or outside purchase.
   const recent = new Date(Date.now() - 90 * 86400000);
-  const [mine, jcs, svs, prss, eprs] = await Promise.all([
+  const [mine, jcs, svs, prss, eprs, assisted] = await Promise.all([
     prisma.auditLog.findMany({ where: { userId: m.id, createdAt: { gte: recent }, NOT: { entityType: { startsWith: 'db:' } } }, distinct: ['entityType', 'entityId'], select: { entityType: true, entityId: true }, take: 2000 }),
     prisma.jobCard.findMany({ where: { updatedAt: { gte: recent }, OR: [{ assignedTechnicianId: m.id }, { supervisorId: m.id }, { createdById: m.id }] }, select: { id: true }, take: 500 }),
     prisma.vehicleService.findMany({ where: { createdAt: { gte: new Date(Date.now() - 180 * 86400000) }, OR: [{ assignedTechnicianId: m.id }, { supervisorId: m.id }, { createdById: m.id }] }, select: { id: true }, take: 500 }),
     prisma.partRequestSlip.findMany({ where: { updatedAt: { gte: recent }, requestedById: m.id }, select: { id: true }, take: 500 }),
     prisma.externalProcurementRequest.findMany({ where: { updatedAt: { gte: recent }, requestedById: m.id }, select: { id: true }, take: 500 }),
+    // Sessions a Branch Assistant held on my behalf ("… helped you with your work").
+    prisma.assistSession.findMany({ where: { subjectId: m.id, startedAt: { gte: recent } }, select: { id: true }, take: 200 }),
   ]);
   const byType = new Map<string, string[]>();
   for (const r of mine) if (r.entityId) byType.set(r.entityType, [...(byType.get(r.entityType) ?? []), r.entityId]);
   const add = (t: string, ids: { id: string }[]) => { if (ids.length) byType.set(t, [...new Set([...(byType.get(t) ?? []), ...ids.map((x) => x.id)])]); };
-  add('JobCard', jcs); add('VehicleService', svs); add('PartRequestSlip', prss); add('ExternalProcurementRequest', eprs);
+  add('JobCard', jcs); add('VehicleService', svs); add('PartRequestSlip', prss); add('ExternalProcurementRequest', eprs); add('AssistSession', assisted);
   // Finance hears about every payment, refund, customer notification and
   // outside purchase — so they know when money is expected or moves.
   const financeWatch = m.roleSlugs.includes('finance-officer') ? [{ action: { contains: 'payment' } }, { action: { contains: 'refund' } }, { action: { contains: 'customer_notified' } }, { entityType: 'ExternalProcurementRequest' }] : [];
@@ -113,7 +116,7 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
       detail: securityActionDetail(r.action, meta),
       area: areaOf(r.entityType),
       url: r.entityId ? resolved.get(`${r.entityType}:${r.entityId}`)?.url ?? recordUrl(r.entityType, r.entityId) : '/audit-logs',
-      actor: r.userId ? name.get(r.userId) ?? null : 'System',
+      actor: r.userId ? actorLabel(name.get(r.userId) ?? null, meta) : 'System',
       at: r.createdAt,
       read: read.has(`audit:${r.id}`),
     }];
@@ -200,6 +203,8 @@ async function computeSummary(m: Me): Promise<NotificationSummary> {
 }
 
 export async function markNotificationsRead(keys: string[]): Promise<void> {
+  // An assistant looking at a colleague's notifications leaves them unread for the colleague.
+  if (await currentAssist()) return;
   const m = await me();
   forgetSummary(m.id);
   const clean = [...new Set(keys.filter((k) => /^(audit|bc):[A-Za-z0-9_-]+$/.test(k)))].slice(0, 500);
@@ -208,6 +213,7 @@ export async function markNotificationsRead(keys: string[]): Promise<void> {
 
 /** Undo "read" — removes only THIS person's own read markers. */
 export async function markNotificationsUnread(keys: string[]): Promise<void> {
+  if (await currentAssist()) return;
   const m = await me();
   forgetSummary(m.id);
   const clean = [...new Set(keys.filter((k) => /^(audit|bc):[A-Za-z0-9_-]+$/.test(k)))].slice(0, 500);
@@ -223,6 +229,7 @@ export async function markAllRead(kind: 'activity' | 'broadcasts' | 'all'): Prom
 }
 
 export async function setNotificationsMuted(muted: boolean): Promise<void> {
+  await refuseDuringAssist('notifications.mute');
   const m = await me();
   forgetSummary(m.id);
   await prisma.notificationPreference.upsert({ where: { userId: m.id }, create: { userId: m.id, muted }, update: { muted } });

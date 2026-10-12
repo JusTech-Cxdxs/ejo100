@@ -2,7 +2,7 @@ import { logFailure } from '@/lib/log';
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 import { after } from 'next/server';
-import { prisma, type Prisma } from '@ejo/database';
+import { prisma, currentAuditActor, type Prisma } from '@ejo/database';
 import { announceChange } from '@/lib/realtime-ping';
 import { headers } from 'next/headers';
 import { auth } from '@/lib/auth';
@@ -78,6 +78,11 @@ export async function writeAuditLog(params: {
   organisationId?: string | null;
 }): Promise<void> {
   try {
+    // During an assisted session the entry is the colleague's, with the
+    // assistant named beside it ("Musa Ibrahim (assisted by Ada Okafor)").
+    const actor = params.userId ? await currentAuditActor().catch(() => null) : null;
+    const assisted = actor?.assistedBy && actor.userId === params.userId ? { assistedBy: actor.assistedBy, assistSessionId: actor.assistSessionId ?? null } : null;
+    const metadata = assisted ? { ...(params.metadata ?? {}), ...assisted } : params.metadata;
     await prisma.auditLog.create({
       data: {
         ...(params.organisationId ? { organisationId: params.organisationId } : {}),
@@ -95,7 +100,7 @@ export async function writeAuditLog(params: {
         // caught by a real build — exactly what happened. Narrow,
         // deliberate cast at the one point it's actually needed, not a
         // blanket `any` on the function's own signature.
-        metadata: params.metadata as Prisma.InputJsonValue | undefined,
+        metadata: metadata as Prisma.InputJsonValue | undefined,
       },
     });
     // Tell every open browser "something changed" — sent after the response,

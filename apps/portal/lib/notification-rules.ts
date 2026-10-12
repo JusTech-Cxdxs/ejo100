@@ -72,6 +72,7 @@ export function recordUrl(entityType: string, id: string): string {
     Announcement: '/notifications/broadcasts',
     Organisation: '/organisation',
     Branch: '/branches',
+    AssistSession: '/profile#assisted',
   };
   return map[entityType] ?? '/audit-logs';
 }

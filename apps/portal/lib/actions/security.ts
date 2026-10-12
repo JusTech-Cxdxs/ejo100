@@ -1,5 +1,6 @@
 'use server';
 import { cleanForLog } from '@/lib/errors';
+import { actorLabel } from '@/lib/assist/rules';
 import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
@@ -800,7 +801,7 @@ export async function getSecurityHistory(entityType: 'Visit' | 'ExitPass' | 'Veh
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return { entries: entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null })), emails };
+  return { entries: entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null })), emails };
 }
 
 /** Staff for pickers (hosts, people on a pass). */
@@ -1330,7 +1331,7 @@ export async function getVehicleExitHistory(exitId: string) {
   const ids = [...new Set(unique.map((e: { userId: string | null }) => e.userId).filter((v: string | null): v is string => Boolean(v)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return { entries: unique.map((e: (typeof unique)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null })), emails };
+  return { entries: unique.map((e: (typeof unique)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null })), emails };
 }
 
 // ── Security incidents ────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 'use server';
+import { actorLabel } from '@/lib/assist/rules';
 import { logFailure } from '@/lib/log';
 
 import { claimed, lockRows } from '@/lib/integrity';
@@ -346,7 +347,7 @@ export async function getAppointmentHistory(id: string) {
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((v: string | null): v is string => Boolean(v)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return { entries: entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null })), emails };
+  return { entries: entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null })), emails };
 }
 
 // ── Rooms ─────────────────────────────────────────────────────────────
