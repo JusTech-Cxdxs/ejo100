@@ -29,7 +29,7 @@ export function PageHeader({
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
-  back?: { href: string; label: string };
+  back?: { href: string; label: ReactNode };
   eyebrow?: ReactNode;
   meta?: ReactNode;
   hero?: boolean;
@@ -86,7 +86,8 @@ export function HeaderAction({ href, children, icon = 'plus', variant = 'primary
         ? 'ejo-press inline-flex items-center gap-1.5 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white shadow-sm shadow-[var(--ejo-primary)]/20 transition hover:brightness-110'
         : 'ejo-press inline-flex items-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] transition hover:border-[var(--ejo-primary)]/60 hover:text-[var(--ejo-primary)]'}
     >
-      <Icon name={icon} size={16} />
+      {/* A label that already starts with "+" needs no second plus. */}
+      {typeof children === 'string' && children.startsWith('+') && icon === 'plus' ? null : <Icon name={icon} size={16} />}
       {children}
     </LoadingLink>
   );
