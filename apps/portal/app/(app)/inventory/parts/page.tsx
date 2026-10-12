@@ -14,6 +14,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const TRACKING_TYPE_LABEL: Record<string, string> = {
   QUANTITY: 'Quantity',
@@ -41,14 +42,9 @@ export default async function InventoryPartsPage({
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/inventory"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Inventory
-      </LoadingLink>
+      <BackLink href="/inventory" label="Back to Inventory" className="mb-4" />
       <div className="mb-2">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Parts Catalog</h1>
+        <PageTitle icon="package">Parts Catalog</PageTitle>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         <OrgTrail area="Store" />

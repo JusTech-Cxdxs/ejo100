@@ -2,7 +2,7 @@ import { guardAnyPage } from '@/lib/authz/server';
 import type { ReactNode } from 'react';
 import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
-import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS } from '@/lib/warranty-claim-status';
+import { CLAIM_STATUS_LABEL } from '@/lib/warranty-claim-status';
 import { notFound } from 'next/navigation';
 import { getWarranty, getWarrantyAuditTrail, getWarrantyRoles, getWarrantyEmailState } from '@/lib/actions/warranty';
 import { EXPIRY_REMINDER_STAGES } from '@/lib/warranty-reminders';
@@ -13,8 +13,9 @@ import { AuditTrail } from '@/components/AuditTrail';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
-import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL, splitLines } from '@/lib/warranty-state';
+import { warrantyCoverage, WARRANTY_STATE_LABEL, splitLines } from '@/lib/warranty-state';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 
 const ACTION_LABEL: Record<string, string> = {
   'warranty.covers_job_card_line': 'Covers a Job Card line',
@@ -58,21 +59,19 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
 
   return (
     <div className="p-8">
-      <LoadingLink href="/warranty" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Warranty
-      </LoadingLink>
+      <BackLink href="/warranty" label="Back to Warranty" className="mb-4" />
       {status && STATUS_BANNER[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={STATUS_BANNER[status]} /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{w.warrantyNumber}</h1>
+          <PageTitle icon="shield-check">{w.warrantyNumber}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
             {w.kind === 'ASSET' ? 'Vehicle warranty' : 'Part warranty'} — {w.subjectDescription}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`rounded-full px-3 py-1 text-sm font-medium ${WARRANTY_STATE_CLASS[cov.state]}`}>{WARRANTY_STATE_LABEL[cov.state]}</span>
+          <StatusChip status={cov.state} label={WARRANTY_STATE_LABEL[cov.state]} className="px-3 py-1 text-sm" />
           <PrintMenu orgHref={`/print/warranty/${w.id}`} clientHref={`/print/warranty/${w.id}?variant=client`} clientLabel="Customer Copy" />
         </div>
       </div>
@@ -207,7 +206,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
                 {claims.map((cl: (typeof claims)[number]) => (
                   <li key={cl.id} className="flex items-center justify-between gap-2">
                     <LoadingLink href={`/warranty/claims/${cl.id}`} className="text-[var(--ejo-primary)] hover:underline">{cl.claimNumber} — {cl.causalPart}</LoadingLink>
-                    <span className={`rounded-full px-2 py-0.5 font-medium ${CLAIM_STATUS_CLASS[cl.status]}`}>{CLAIM_STATUS_LABEL[cl.status]}</span>
+                    <StatusChip status={cl.status} label={CLAIM_STATUS_LABEL[cl.status]} />
                   </li>
                 ))}
               </ul>

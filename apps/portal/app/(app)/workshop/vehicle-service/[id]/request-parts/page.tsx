@@ -8,6 +8,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
+import { BackLink, PageTitle } from '@/components/ui';
 
 function formatNaira(value: number): string {
   return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -41,13 +42,8 @@ export default async function VehicleServiceRequestPartsPage({
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href={`/workshop/vehicle-service/${id}`}
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Vehicle Service {service.serviceNumber}
-      </LoadingLink>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Request Store Parts</h1>
+      <BackLink href={`/workshop/vehicle-service/${id}`} label={<>Back to Vehicle Service {service.serviceNumber}</>} className="mb-4" />
+      <PageTitle icon="package" className="mb-2">Request Store Parts</PageTitle>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
         Every Part below was already matched and priced by Store. Nothing here needs editing; raising the request
         simply sends this exact list forward for approval.

@@ -18,6 +18,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { pluralize } from '@/lib/utils/pluralize';
 import { PROVIDER_TYPE_LABEL } from '@/lib/warranty-claim-status';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const ACTION_LABEL: Record<string, string> = {
   'warranty_provider.created': 'Provider created',
@@ -59,12 +60,12 @@ export default async function WarrantyProviderPage({ params, searchParams }: { p
 
   return (
     <div className="p-8">
-      <LoadingLink href="/warranty/providers" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Providers</LoadingLink>
+      <BackLink href="/warranty/providers" label="Back to Providers" className="mb-4" />
       {status && BANNER[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={BANNER[status]} /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{p.name}</h1>
+          <PageTitle icon="building">{p.name}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{PROVIDER_TYPE_LABEL[p.type] ?? p.type}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

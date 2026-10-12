@@ -6,6 +6,7 @@ import { InspectionWorkspace } from '@/components/InspectionWorkspace';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { getApplicableTemplate } from '@/lib/vehicle-inspection-template';
+import { BackLink } from '@/components/ui';
 
 /**
  * Server-side data fetch only — everything interactive (the live
@@ -35,12 +36,7 @@ export default async function VehicleInspectionPage({
 
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink
-        href={`/workshop/vehicle-service/${vehicleServiceId}`}
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to {service.serviceNumber}
-      </LoadingLink>
+      <BackLink href={`/workshop/vehicle-service/${vehicleServiceId}`} label={<>Back to {service.serviceNumber}</>} className="mb-4" />
 
       {error ? (
         <div className="mb-6 max-w-xl">

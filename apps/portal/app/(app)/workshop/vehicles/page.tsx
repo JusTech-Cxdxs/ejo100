@@ -12,6 +12,7 @@ import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
 import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { BackLink, PageTitle } from '@/components/ui';
 
 export default async function WorkshopVehiclesPage({
   searchParams,
@@ -28,14 +29,9 @@ export default async function WorkshopVehiclesPage({
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/workshop"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Workshop
-      </LoadingLink>
+      <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Vehicles</h1>
+        <PageTitle icon="car">Vehicles</PageTitle>
         <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
           <OrgTrail area="Workshop" />
         </p>

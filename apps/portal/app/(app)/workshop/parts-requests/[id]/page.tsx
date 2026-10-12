@@ -21,6 +21,7 @@ import { PrintMenu } from '@/components/print/PrintMenu';
 import { SerialReleaseSelector } from '@/components/SerialReleaseSelector';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
+import { PageTitle } from '@/components/ui';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_HOD_APPROVAL: 'Awaiting HOD approval',
@@ -124,7 +125,7 @@ export default async function PartRequestSlipDetailPage({
       <div className="max-w-4xl rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-8 print:border-0 print:p-0 print:shadow-none">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--ejo-border)] pb-4">
           <div>
-            <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Store Parts Request</h1>
+            <PageTitle icon="package">Store Parts Request</PageTitle>
             <p className="text-sm text-[var(--ejo-text-muted)]">{slip.referenceNumber}</p>
           </div>
           <span className="rounded-full bg-[var(--ejo-info)]/15 px-3 py-1 text-xs font-medium text-[var(--ejo-info)] print:hidden">

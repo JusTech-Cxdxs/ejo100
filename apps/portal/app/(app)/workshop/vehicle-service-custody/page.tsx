@@ -11,6 +11,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { ordinal } from '@/lib/custody-reminders';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -137,10 +138,8 @@ export default async function VehicleServiceCustodyPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/workshop" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Workshop
-      </LoadingLink>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Vehicles In Custody — Vehicle Service</h1>
+      <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
+      <PageTitle icon="key" className="mb-2">Vehicles In Custody — Vehicle Service</PageTitle>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         <OrgTrail area="Workshop" />
       </p>

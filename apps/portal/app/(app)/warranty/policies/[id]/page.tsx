@@ -21,6 +21,7 @@ import { LineItemsInput } from '@/components/LineItemsInput';
 import { pluralize } from '@/lib/utils/pluralize';
 import { splitLines, durationLabel } from '@/lib/warranty-state';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const ACTION_LABEL: Record<string, string> = {
   'warranty_policy.created': 'Policy created',
@@ -84,13 +85,13 @@ export default async function WarrantyPolicyPage({ params, searchParams }: { par
 
   return (
     <div className="p-8">
-      <LoadingLink href="/warranty/policies" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Policies</LoadingLink>
+      <BackLink href="/warranty/policies" label="Back to Policies" className="mb-4" />
       {status && BANNER[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={BANNER[status]} /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{policy.name}</h1>
+          <PageTitle icon="file">{policy.name}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
             {policy.code} · {policy.kind === 'ASSET' ? `Vehicle${policy.brand ? ` — ${[policy.brand, policy.model].filter(Boolean).join(' ')}` : ''}` : 'Part'} · {policy.provider.name}
           </p>

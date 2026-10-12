@@ -2,10 +2,10 @@ import { allows, guardAnyPage } from '@/lib/authz/server';
 import { listWarranties, listWarrantyIdsWithReminderDue } from '@/lib/actions/warranty';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
-import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL, type WarrantyCoverageState } from '@/lib/warranty-state';
+import { warrantyCoverage, WARRANTY_STATE_LABEL, type WarrantyCoverageState } from '@/lib/warranty-state';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { PageHeader, HeaderAction, EmptyState, Icon, type IconName } from '@/components/ui';
+import { EmptyState, HeaderAction, Icon, PageHeader, StatusChip, type IconName } from '@/components/ui';
 
 type Filter = 'all' | 'covered' | 'expiring' | 'pending' | 'expired' | 'inactive' | 'asset' | 'part' | 'reminder';
 
@@ -150,7 +150,7 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
                     {w.distanceLimit !== null && w.startReading !== null ? <div>or {(w.startReading + w.distanceLimit).toLocaleString('en-NG')} km</div> : null}
                   </td>
                   <td className="px-3 py-2">
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${WARRANTY_STATE_CLASS[cov.state]}`}>{WARRANTY_STATE_LABEL[cov.state]}</span>
+                    <StatusChip status={cov.state} label={WARRANTY_STATE_LABEL[cov.state]} />
                   </td>
                   <td className="px-3 py-2 text-right">
                     <PrintMenu orgHref={`/print/warranty/${w.id}`} clientHref={`/print/warranty/${w.id}?variant=client`} clientLabel="Customer Copy" size="compact" align="right" />

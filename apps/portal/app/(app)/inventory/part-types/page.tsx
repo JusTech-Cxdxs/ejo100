@@ -6,6 +6,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SearchableSelect } from '@/components/SearchableSelect';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const FOLDER_ICON = (
   <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-primary)]">
@@ -57,10 +58,8 @@ export default async function PartTypesPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/inventory" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Inventory
-      </LoadingLink>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Part Categories & Types</h1>
+      <BackLink href="/inventory" label="Back to Inventory" className="mb-4" />
+      <PageTitle icon="layers" className="mb-2">Part Categories & Types</PageTitle>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         The generic classification a technician picks from when requesting a Store Part on an estimate — Store then
         matches each request to the real, vehicle-fitting catalog Part.

@@ -7,6 +7,7 @@ import { VISIT_STATUS_LABEL, EXIT_PASS_STATUS_LABEL, ROAD_TEST_STATUS_LABEL, INC
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageTitle } from '@/components/ui';
 
 const TYPES = [['', 'Everything'], ['VISIT', 'Visits'], ['EXIT_PASS', 'Exit passes'], ['ROAD_TEST', 'Road tests'], ['VEHICLE_EXIT', 'Vehicle exits'], ['DELIVERY', 'Deliveries'], ['CONTRACTOR', 'Contractors'], ['INCIDENT', 'Incidents']] as const;
 const TYPE_LABEL: Record<string, string> = { VISIT: 'Visit', EXIT_PASS: 'Exit pass', ROAD_TEST: 'Road test', VEHICLE_EXIT: 'Vehicle exit', DELIVERY: 'Delivery', CONTRACTOR: 'Contractor', INCIDENT: 'Incident' };
@@ -20,7 +21,7 @@ export default async function SecurityRegisterPage({ searchParams }: { searchPar
   const statusLabel = (r: (typeof rows)[number]) => (r.type === 'VISIT' ? VISIT_STATUS_LABEL[r.status] : r.type === 'EXIT_PASS' ? EXIT_PASS_STATUS_LABEL[r.status] : r.type === 'ROAD_TEST' ? ROAD_TEST_STATUS_LABEL[r.status] : r.type === 'INCIDENT' ? INCIDENT_STATUS_LABEL[r.status] : r.type === 'DELIVERY' ? DELIVERY_STATUS_LABEL[r.status] : r.type === 'CONTRACTOR' ? CONTRACTOR_STATUS_LABEL[r.status] : 'Left');
   return (
     <div className="p-4 sm:p-8">
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Security register</h1>
+      <PageTitle icon="list">Security register</PageTitle>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Every visit (VIS / VP), exit pass (EP), road test (RT), vehicle exit (VX), delivery (DLV), contractor pass (CTR) and incident (INC) — search by any number, name or plate.</p>
       <SecurityNav active="/security/register" />
       <form className="mb-4 flex flex-wrap gap-2">

@@ -10,6 +10,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { StopTrackingDialog } from '@/components/StopTrackingDialog';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const STAGE_LABEL: Record<number, string> = { 1: '1st — Friendly', 2: '2nd — Follow-up', 3: '3rd — Due', 4: 'Overdue' };
 
@@ -86,12 +87,10 @@ export default async function ServiceTrackerPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/workshop" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Workshop
-      </LoadingLink>
+      <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
       <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Service Tracker</h1>
+          <PageTitle icon="gauge">Service Tracker</PageTitle>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
             Aftercare for every vehicle once it has left the workshop — when it&apos;s next due (by mileage or date,
             whichever comes first), where it stands now, and every reminder sent. Vehicles still with us are on{' '}

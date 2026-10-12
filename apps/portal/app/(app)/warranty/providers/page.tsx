@@ -8,6 +8,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { pluralize } from '@/lib/utils/pluralize';
 import { PROVIDER_TYPE_LABEL } from '@/lib/warranty-claim-status';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { BackLink, PageTitle } from '@/components/ui';
 
 
 const BANNER: Record<string, string> = {
@@ -38,8 +39,8 @@ export default async function WarrantyProvidersPage({ searchParams }: { searchPa
 
   return (
     <div className="p-8">
-      <LoadingLink href="/warranty" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Warranty</LoadingLink>
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Warranty providers</h1>
+      <BackLink href="/warranty" label="Back to Warranty" className="mb-4" />
+      <PageTitle icon="building">Warranty providers</PageTitle>
       <p className="mt-1 mb-6 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
         The manufacturers, distributors, component makers and suppliers that stand behind warranties — and the claim rules each one sets
         (how long to submit a claim, how long to keep a failed part).

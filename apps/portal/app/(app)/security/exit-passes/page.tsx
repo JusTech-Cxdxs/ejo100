@@ -1,9 +1,10 @@
 import { getSecurityRoles, listExitPasses } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
-import { EXIT_PASS_STATUS_LABEL, STATUS_CHIP } from '@/lib/security-rules';
+import { EXIT_PASS_STATUS_LABEL } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageTitle, StatusChip } from '@/components/ui';
 
 export default async function ExitPassesPage({ searchParams }: { searchParams: Promise<{ tab?: string; q?: string }> }) {
   const { tab, q } = await searchParams;
@@ -16,7 +17,7 @@ export default async function ExitPassesPage({ searchParams }: { searchParams: P
     <div className="p-4 sm:p-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Employee exit passes</h1>
+          <PageTitle icon="exit">Employee exit passes</PageTitle>
           <p className="mt-1 max-w-2xl text-sm text-[var(--ejo-text-muted)]">Security will not permit any employee on duty to go out during working hours without an approved exit pass.</p>
         </div>
         <LoadingLink href="/security/exit-passes/new" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">+ Request an exit pass</LoadingLink>
@@ -46,7 +47,7 @@ export default async function ExitPassesPage({ searchParams }: { searchParams: P
                     {p.gateOutAt ? `Out ${formatDateTimeCompact(p.gateOutAt)}` : ''}{p.gateInAt ? ` · in ${formatDateTimeCompact(p.gateInAt)}` : ''}
                   </span>
                 </span>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_CHIP[p.status]}`}>{EXIT_PASS_STATUS_LABEL[p.status]}</span>
+                <StatusChip status={p.status} label={EXIT_PASS_STATUS_LABEL[p.status]} />
               </li>
             ))}
           </ul>

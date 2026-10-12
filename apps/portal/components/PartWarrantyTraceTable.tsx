@@ -1,8 +1,9 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
-import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL } from '@/lib/warranty-state';
+import { warrantyCoverage, WARRANTY_STATE_LABEL } from '@/lib/warranty-state';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { StatusChip } from '@/components/ui';
 
 type Row = {
   id: string;
@@ -85,7 +86,7 @@ export function PartWarrantyTraceTable({ rows }: { rows: Row[] }) {
                       {w.startReading !== null && w.distanceLimit !== null ? <div>or {(w.startReading + w.distanceLimit).toLocaleString('en-NG')} km</div> : null}
                     </td>
                     <td className="px-3 py-2">
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${WARRANTY_STATE_CLASS[cov.state]}`}>{WARRANTY_STATE_LABEL[cov.state]}</span>
+                      <StatusChip status={cov.state} label={WARRANTY_STATE_LABEL[cov.state]} />
                     </td>
                   </tr>
                 );

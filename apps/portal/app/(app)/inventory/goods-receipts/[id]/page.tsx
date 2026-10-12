@@ -12,6 +12,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
   'goods_receipt.recorded': 'Goods Receipt recorded',
@@ -125,10 +126,8 @@ export default async function GoodsReceiptDetailPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/inventory/goods-receipts" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Goods Receipts
-      </LoadingLink>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">{receipt.referenceNumber}</h1>
+      <BackLink href="/inventory/goods-receipts" label="Back to Goods Receipts" className="mb-4" />
+      <PageTitle icon="receipt" className="mb-2">{receipt.referenceNumber}</PageTitle>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
         Received by {receipt.receivedBy.fullName} on {formatDateTime(new Date(receipt.receivedAt))}
       </p>

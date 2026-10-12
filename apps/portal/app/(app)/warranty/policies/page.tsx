@@ -12,6 +12,7 @@ import { LineItemsInput } from '@/components/LineItemsInput';
 import { pluralize } from '@/lib/utils/pluralize';
 import { splitLines, durationLabel } from '@/lib/warranty-state';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const BANNER: Record<string, string> = {
   policy_created: 'Policy added.',
@@ -63,8 +64,8 @@ export default async function WarrantyPoliciesPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/warranty" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Warranty</LoadingLink>
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Warranty policies</h1>
+      <BackLink href="/warranty" label="Back to Warranty" className="mb-4" />
+      <PageTitle icon="file">Warranty policies</PageTitle>
       <p className="mt-1 mb-6 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
         What each provider promises: duration, distance limit (whichever comes first), what is covered and not covered, and the
         conditions. Warranties already issued keep the terms they were issued with — editing a policy never rewrites history.

@@ -5,6 +5,7 @@ import { formatDateOnly } from '@/lib/utils/format-date';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
+import { BackLink, PageTitle } from '@/components/ui';
 
 /**
  * A complete, permanent record of every delivery received into the
@@ -24,14 +25,9 @@ export default async function GoodsReceiptsPage({
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/inventory"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Inventory
-      </LoadingLink>
+      <BackLink href="/inventory" label="Back to Inventory" className="mb-4" />
       <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Goods Receipts</h1>
+        <PageTitle icon="receipt">Goods Receipts</PageTitle>
         <LoadingLink
           href="/inventory/goods-receipts/new"
           className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"

@@ -4,6 +4,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
 import { pluralize } from '@/lib/utils/pluralize';
 import { dayKind, WORK_START_HOUR, WORK_END_HOUR } from '@/lib/nigeria-calendar';
+import { PageTitle } from '@/components/ui';
 
 const STATUS: Record<string, [string, string]> = {
   SCHEDULED: ['Scheduled', 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]'],
@@ -24,7 +25,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   if (!access.canUse) {
     return (
       <div className="p-4 sm:p-8">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Scheduling</h1>
+        <PageTitle icon="calendar">Scheduling</PageTitle>
         <p className="mt-3 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
           You do not have a calendar yet. An administrator can give you the <span className="font-medium">Calendar User</span> role (your own calendar), or an official can add you as their <span className="font-medium">aide</span> so you can book for them.
         </p>
@@ -49,7 +50,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     <div className="p-4 sm:p-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Calendar</h1>
+          <PageTitle icon="calendar">Calendar</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{pluralize(rows.filter((r) => r.status !== 'CANCELLED').length, 'appointment')} {isWeek ? 'in this week' : 'on this day'} · working days Monday–Friday, {WORK_START_HOUR} am – {WORK_END_HOUR - 12} pm.</p>
         </div>
         <LoadingLink href="/schedule/new" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">+ New appointment</LoadingLink>

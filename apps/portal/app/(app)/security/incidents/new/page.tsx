@@ -6,6 +6,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { INCIDENT_TYPES, SEVERITY_LABEL } from '@/lib/security-rules';
+import { BackLink, PageTitle } from '@/components/ui';
 
 export default async function ReportIncidentPage({ searchParams }: { searchParams: Promise<{ error?: string; related?: string }> }) {
   await guardAnyPage(['security.view'], '/security/incidents');
@@ -14,8 +15,8 @@ export default async function ReportIncidentPage({ searchParams }: { searchParam
   const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/security/incidents" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Incidents</LoadingLink>
-      <h1 className="mb-4 text-2xl font-bold text-[var(--ejo-text)]">Report an incident</h1>
+      <BackLink href="/security/incidents" label="Back to Incidents" className="mb-4" />
+      <PageTitle icon="alert" className="mb-4">Report an incident</PageTitle>
       <SecurityNav active="/security/incidents" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       <form action={reportIncidentFormAction} className="max-w-2xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">

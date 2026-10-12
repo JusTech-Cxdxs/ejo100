@@ -3,10 +3,11 @@ import { listIncidents } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityTable } from '@/components/SecurityTable';
-import { INCIDENT_STATUS_LABEL, SEVERITY_LABEL, SEVERITY_CHIP, STATUS_CHIP } from '@/lib/security-rules';
+import { INCIDENT_STATUS_LABEL, SEVERITY_LABEL, SEVERITY_CHIP } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageTitle, StatusChip } from '@/components/ui';
 
 const TABS: [string, string][] = [['open', 'Open'], ['under_review', 'Under review'], ['closed', 'Closed'], ['all', 'All']];
 
@@ -19,7 +20,7 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Pr
     <div className="p-4 sm:p-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Security incidents</h1>
+          <PageTitle icon="alert">Security incidents</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">Anything abnormal at the gate or on site — reported, followed up and closed by the Chief Security Officer.</p>
         </div>
         <LoadingLink href="/security/incidents/new" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">+ Report an incident</LoadingLink>
@@ -48,7 +49,7 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Pr
             <td className="text-xs">{r.location}</td>
             <td className="text-xs">{r.relatedNumber ?? '—'}</td>
             <td className="text-xs">Reported by {r.reportedBy.fullName}{r.assignedTo ? <span className="block text-[var(--ejo-text-muted)]">Assigned to {r.assignedTo.fullName}</span> : null}</td>
-            <td><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_CHIP[r.status] ?? ''}`}>{INCIDENT_STATUS_LABEL[r.status]}</span></td>
+            <td><StatusChip status={r.status} label={INCIDENT_STATUS_LABEL[r.status]} className="text-[11px]" /></td>
           </tr>
         ))}
       </SecurityTable>

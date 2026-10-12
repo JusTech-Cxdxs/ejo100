@@ -4,14 +4,15 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { ExitPassForm } from '@/components/ExitPassForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { BackLink, PageTitle } from '@/components/ui';
 
 export default async function NewExitPassPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
   const me = await getMe();
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/security/exit-passes" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Exit passes</LoadingLink>
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Request an exit pass</h1>
+      <BackLink href="/security/exit-passes" label="Back to Exit passes" className="mb-4" />
+      <PageTitle icon="exit">Request an exit pass</PageTitle>
       <p className="mb-4 mt-1 max-w-2xl text-sm text-[var(--ejo-text-muted)]">Authorised by the Department Head, then approved by the Manager. Security records the actual time out and time in.</p>
       <SecurityNav active="/security/exit-passes" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}

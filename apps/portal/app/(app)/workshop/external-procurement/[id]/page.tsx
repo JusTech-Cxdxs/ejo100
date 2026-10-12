@@ -17,6 +17,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SupplementaryLineRow } from '@/components/SupplementaryLineRow';
 import { pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_FINANCE_REVIEW: 'Awaiting Finance review',
@@ -77,11 +78,9 @@ export default async function ExternalProcurementDetailPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/workshop/external-procurement" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to External Procurement
-      </LoadingLink>
+      <BackLink href="/workshop/external-procurement" label="Back to External Procurement" className="mb-4" />
       <div className="mb-2 flex items-center gap-2">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">External Procurement Request</h1>
+        <PageTitle icon="cart">External Procurement Request</PageTitle>
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">{request.referenceNumber}</p>
 

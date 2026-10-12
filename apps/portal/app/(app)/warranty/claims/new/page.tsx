@@ -12,6 +12,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { WarrantyClaimFields } from '@/components/WarrantyClaimFields';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { coverageLabel } from '@/lib/warranty-claim-status';
+import { BackLink, PageTitle } from '@/components/ui';
 
 /** Start a claim against one warranty. A draft can be incomplete — the
  * readiness check on the claim page says what's still needed. */
@@ -33,8 +34,8 @@ export default async function NewWarrantyClaimPage({ searchParams }: { searchPar
 
   return (
     <div className="p-8">
-      <LoadingLink href={`/warranty/${w.id}`} className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to {w.warrantyNumber}</LoadingLink>
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Start a warranty claim</h1>
+      <BackLink href={`/warranty/${w.id}`} label={<>Back to {w.warrantyNumber}</>} className="mb-4" />
+      <PageTitle icon="file">Start a warranty claim</PageTitle>
       <p className="mt-1 mb-6 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
         Against {w.warrantyNumber} — {w.subjectDescription} ({w.provider.name}). Covered {formatDateOnly(w.startsAt)} – {formatDateOnly(w.endsAt)}
         {w.startReading !== null && w.distanceLimit !== null ? ` or ${(w.startReading + w.distanceLimit).toLocaleString('en-NG')} km` : ''}.

@@ -4,6 +4,7 @@ import { getStoreBranchId } from '@/lib/actions/store';
 import { LoadingLink } from '@/components/LoadingLink';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_HOD_APPROVAL: 'Awaiting HOD approval',
@@ -54,10 +55,8 @@ export default async function PartsRequestsPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/workshop" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Workshop
-      </LoadingLink>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Parts Requests</h1>
+      <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
+      <PageTitle icon="package" className="mb-2">Parts Requests</PageTitle>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">Every Store Parts request raised across active Job Cards and Vehicle Services.</p>
 
       <div className="mb-4 flex flex-wrap gap-2">

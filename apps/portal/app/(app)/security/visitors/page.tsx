@@ -5,10 +5,11 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { VisitorRegisterForm } from '@/components/VisitorRegisterForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
-import { VISIT_STATUS_LABEL, STATUS_CHIP, VEHICLE_TYPE_LABEL, durationText, minutesBetween } from '@/lib/security-rules';
+import { VISIT_STATUS_LABEL, VEHICLE_TYPE_LABEL, durationText, minutesBetween } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageTitle, StatusChip } from '@/components/ui';
 
 
 export default async function VisitorsPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; status?: string }> }) {
@@ -18,7 +19,7 @@ export default async function VisitorsPage({ searchParams }: { searchParams: Pro
   const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
   return (
     <div className="p-4 sm:p-8">
-      <h1 className="mb-4 text-2xl font-bold text-[var(--ejo-text)]">Visitors</h1>
+      <PageTitle icon="badge" className="mb-4">Visitors</PageTitle>
       <SecurityNav active="/security/visitors" />
       {status === 'booking_cancelled' ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message="Booking cancelled and removed — the cancellation is kept on the audit log." /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
@@ -48,7 +49,7 @@ export default async function VisitorsPage({ searchParams }: { searchParams: Pro
                         {stayed !== null ? ` · stayed ${durationText(stayed)}` : ''}
                       </span>
                     </span>
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_CHIP[v.status]}`}>{VISIT_STATUS_LABEL[v.status]}</span>
+                    <StatusChip status={v.status} label={VISIT_STATUS_LABEL[v.status]} />
                   </li>
                 );
               })}

@@ -14,6 +14,7 @@ import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { ComplaintListInput } from '@/components/ComplaintListInput';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -28,18 +29,6 @@ const STATUS_LABEL: Record<string, string> = {
   CANCELLED: 'Cancelled',
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  CHECKED_IN: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
-  IN_PROGRESS: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  AWAITING_PARTS: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  QUALITY_CHECK: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  AWAITING_CUSTOMER_APPROVAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
-  READY_FOR_COLLECTION: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
-  CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
-  CHECKED_OUT: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
-  CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
-};
 
 export default async function WorkshopJobCardsPage({
   searchParams,
@@ -64,18 +53,13 @@ export default async function WorkshopJobCardsPage({
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/workshop"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Workshop
-      </LoadingLink>
+      <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
       {status === 'job_card_deleted' ? (
         <FormFeedbackBanner kind="success" message="Job Card deleted." />
       ) : null}
       {error ? <FormFeedbackBanner kind="error" message={error} /> : null}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Job Cards</h1>
+        <PageTitle icon="clipboard">Job Cards</PageTitle>
         <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
           <OrgTrail area="Workshop" />
         </p>
@@ -150,9 +134,7 @@ export default async function WorkshopJobCardsPage({
                       {jc.assignedTechnician?.fullName ?? 'Unassigned'}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[jc.status]}`}>
-                        {STATUS_LABEL[jc.status]}
-                      </span>
+                      <StatusChip status={jc.status} label={STATUS_LABEL[jc.status]} />
                     </td>
                     <td className="px-4 py-3">
                       {(() => {

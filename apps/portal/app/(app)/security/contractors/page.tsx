@@ -7,6 +7,7 @@ import { CONTRACTOR_STATUS_LABEL, STATUS_CHIP, durationText, lagosDay } from '@/
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageTitle } from '@/components/ui';
 
 export default async function ContractorsPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string }> }) {
   // The list and new passes: the Security desk and the heads / manager who approve them.
@@ -19,7 +20,7 @@ export default async function ContractorsPage({ searchParams }: { searchParams: 
     <div className="p-4 sm:p-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Contractors</h1>
+          <PageTitle icon="hardhat">Contractors</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">Outside teams working on site — approved by the Manager, signed in and out at the gate every day.</p>
         </div>
         <LoadingLink href="/security/contractors/new" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">+ Request a pass</LoadingLink>

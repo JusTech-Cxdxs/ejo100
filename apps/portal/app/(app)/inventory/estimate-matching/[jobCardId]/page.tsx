@@ -8,6 +8,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const WRENCH_ICON = (
   <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-warning)]">
@@ -62,11 +63,9 @@ export default async function JobCardMatchingPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/inventory/estimate-matching" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Estimate Matching
-      </LoadingLink>
+      <BackLink href="/inventory/estimate-matching" label="Back to Estimate Matching" className="mb-4" />
       <div className="mb-2 flex items-center gap-2">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Match — {jobCard.jobNumber}</h1>
+        <PageTitle icon="match">Match — {jobCard.jobNumber}</PageTitle>
         <LoadingLink href={`/workshop/job-cards/${jobCard.id}`} className="text-xs text-[var(--ejo-primary)] hover:underline">
           Open Job Card
         </LoadingLink>

@@ -7,6 +7,7 @@ import { SecurityTable } from '@/components/SecurityTable';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageTitle } from '@/components/ui';
 
 export default async function ClearedToLeavePage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string }> }) {
   await guardAnyPage(['security.view'], '/security/vehicles');
@@ -22,7 +23,7 @@ export default async function ClearedToLeavePage({ searchParams }: { searchParam
     <div className="p-4 sm:p-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Vehicles cleared to leave</h1>
+          <PageTitle icon="car">Vehicles cleared to leave</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{pluralize(all.length, 'vehicle')} released by the Workshop and waiting at the gate. A vehicle not on this list has not been released.</p>
         </div>
         <LoadingLink href="/security/vehicles/exits" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Exit history</LoadingLink>

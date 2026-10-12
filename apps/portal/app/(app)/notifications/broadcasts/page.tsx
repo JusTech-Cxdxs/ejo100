@@ -5,9 +5,9 @@ import { BROADCAST_CATEGORY, BROADCAST_STATE_LABEL } from '@/lib/notification-ru
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 
 const TABS: [string, string][] = [['live', 'Live'], ['scheduled', 'Scheduled'], ['ended', 'Ended'], ['all', 'All']];
-const STATE_CHIP: Record<string, string> = { LIVE: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]', SCHEDULED: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]', ENDED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]', STOPPED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' };
 const AUDIENCE: Record<string, string> = { ALL: 'Everyone', BRANCH: 'Branches', DEPARTMENT: 'Departments', ROLE: 'Roles' };
 
 export default async function BroadcastsPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string; category?: string; status?: string }> }) {
@@ -18,8 +18,8 @@ export default async function BroadcastsPage({ searchParams }: { searchParams: P
     <div className="w-full p-4 sm:p-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <LoadingLink href="/notifications" className="mb-2 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Notification Center</LoadingLink>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Broadcasts</h1>
+          <BackLink href="/notifications" label="Notification Center" className="mb-2" />
+          <PageTitle icon="megaphone">Broadcasts</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">News, announcements, alerts, maintenance notices and greetings — on dashboards, the scrolling bar, notifications and email.</p>
         </div>
         <span className="flex flex-wrap gap-2">
@@ -50,7 +50,7 @@ export default async function BroadcastsPage({ searchParams }: { searchParams: P
             <td className="text-xs">{AUDIENCE[b.audience]}{b.audience !== 'ALL' ? ` (${b.audienceIds.length})` : ''}</td>
             <td className="text-xs">{formatDateTimeCompact(b.startsAt)}<span className="block text-[var(--ejo-text-muted)]">{b.endsAt ? `to ${formatDateTimeCompact(b.endsAt)}` : 'until stopped'}{b.durationLabel ? ` · ${b.durationLabel}` : ''}</span></td>
             <td className="text-xs">{b.sendEmail ? (b.emailedAt ? 'Sent' : 'Pending') : '—'}</td>
-            <td><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATE_CHIP[b.state]}`}>{BROADCAST_STATE_LABEL[b.state]}</span></td>
+            <td><StatusChip status={b.state} label={BROADCAST_STATE_LABEL[b.state]} className="text-[11px]" /></td>
           </tr>
         ))}
       </SecurityTable>

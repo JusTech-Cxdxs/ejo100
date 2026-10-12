@@ -7,6 +7,7 @@ import { VisitorGroupFields } from '@/components/VisitorGroupFields';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
+import { BackLink, PageTitle } from '@/components/ui';
 
 /** Change one visitor group before they arrive. */
 export default async function EditVisitorsPage({ params, searchParams }: { params: Promise<{ id: string; visitId: string }>; searchParams: Promise<{ error?: string }> }) {
@@ -17,8 +18,8 @@ export default async function EditVisitorsPage({ params, searchParams }: { param
   if (!a || !v) notFound();
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href={`/schedule/${a.id}`} className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to {a.appointmentNumber}</LoadingLink>
-      <h1 className="mb-4 text-2xl font-bold text-[var(--ejo-text)]">Change visitors {v.visitNumber}</h1>
+      <BackLink href={`/schedule/${a.id}`} label={<>Back to {a.appointmentNumber}</>} className="mb-4" />
+      <PageTitle icon="calendar" className="mb-4">Change visitors {v.visitNumber}</PageTitle>
       <ScheduleNav active="/schedule/appointments" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       {v.status !== 'EXPECTED' ? (

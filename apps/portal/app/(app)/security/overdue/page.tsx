@@ -10,6 +10,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { durationText } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageTitle } from '@/components/ui';
 
 const EXTRA = [15, 30, 60, 90, 120, 180, 240];
 const DONE: Record<string, string> = { extend: 'Time extended.', extended: 'Return time extended.', follow_up: 'Follow-up saved on the record.' };
@@ -58,7 +59,7 @@ export default async function OverduePage({ searchParams }: { searchParams: Prom
   );
   return (
     <div className="p-4 sm:p-8">
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Overdue</h1>
+      <PageTitle icon="clock">Overdue</PageTitle>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Visitors past their expected stay and people past their return time. Follow up, extend their time, or check them out / in at the gate.</p>
       <SecurityNav active="/security/overdue" />
       {status && DONE[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={DONE[status]!} /></div> : null}

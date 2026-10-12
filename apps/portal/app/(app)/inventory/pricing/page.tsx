@@ -5,6 +5,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle } from '@/components/ui';
 
 function formatNaira(amount: number): string {
   return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -46,14 +47,9 @@ export default async function PricingCommandCenterPage({
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/inventory"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Inventory
-      </LoadingLink>
+      <BackLink href="/inventory" label="Back to Inventory" className="mb-4" />
       <div className="mb-2">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Pricing Command Center</h1>
+        <PageTitle icon="tag">Pricing Command Center</PageTitle>
         <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
           Every real delivery cost, auto-compared against each Part&apos;s own target margin the moment it&apos;s
           recorded.

@@ -7,6 +7,7 @@ import { BROADCAST_CATEGORY, AREA_LABEL } from '@/lib/notification-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageTitle } from '@/components/ui';
 
 const AREAS = ['WORKSHOP', 'STORE', 'WARRANTY', 'SECURITY', 'SCHEDULING', 'SYSTEM'];
 
@@ -37,7 +38,7 @@ export default async function NotificationCenter({ searchParams }: { searchParam
     <div className="w-full p-4 sm:p-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Notification Center</h1>
+          <PageTitle icon="bell">Notification Center</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{summary.total === 0 ? "You're all caught up." : `${pluralize(summary.total, 'item')} waiting for you.`} Sounds are {summary.muted ? 'off 🔕' : 'on 🔔'} — change it from the bell.</p>
         </div>
         {broadcaster ? <LoadingLink href="/notifications/broadcasts" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Manage broadcasts →</LoadingLink> : null}

@@ -63,6 +63,7 @@ import { formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { IdempotencyKey } from '@/components/IdempotencyKey';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -425,12 +426,7 @@ export default async function VehicleServiceDetailPage({
   const canRoadTest = await canRequestRoadTestOn('VEHICLE_SERVICE', service.id);
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/workshop/vehicle-service"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Vehicle Service
-      </LoadingLink>
+      <BackLink href="/workshop/vehicle-service" label="Back to Vehicle Service" className="mb-4" />
 
       {error ? (
         <div className="mb-6 max-w-xl">
@@ -572,7 +568,7 @@ export default async function VehicleServiceDetailPage({
 
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{service.serviceNumber}</h1>
+          <PageTitle icon="droplet">{service.serviceNumber}</PageTitle>
           <span
             className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
               service.escalatedToJobCard ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]' : STATUS_CLASS[service.status]
