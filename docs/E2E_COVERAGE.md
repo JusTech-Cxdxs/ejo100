@@ -16,7 +16,7 @@ _Status of this document: see "Latest CI run" at the bottom._
 | Services | Postgres 16, Mailpit (SMTP :1025, API :8025) |
 | Apps | portal `next start` :3001; website (customer portal) `next start` :3002 — the website build/start is `continue-on-error`, its specs skip when it is down |
 | Seed | `packages/database/prisma/seed.ts` → `scripts/v24-roles.sql` → `apps/portal/e2e/seed.ts` (run **twice** in CI to prove it is idempotent) |
-| Config | `apps/portal/e2e/playwright.config.ts` — 2 workers (files in parallel, tests in a file in order), 1 retry in CI, 38-minute global cap so results are always written |
+| Config | `apps/portal/e2e/playwright.config.ts` — the job runs as **2 shards** (`--shard=n/2`, each with its own Postgres, Mailpit and apps), each with 2 workers (files in parallel, tests in a file in order; 3 workers measured slower on the runner); 1 retry in CI (a test that only passes on retry is annotated FLAKY, never hidden); 150 s per test; 38-minute global cap so results are always written |
 | Results | `apps/portal/e2e/annotate.mjs` turns results into check-run annotations: `failure` = a failing test (or a known-defect test that unexpectedly passed), `warning` = flaky (passed on retry), `notice` = a known product defect still reproducing + totals. Server errors from the portal/website logs are annotated with the Prisma argument that caused them. Read with `gh api repos/{owner}/{repo}/check-runs/<job id>/annotations`. |
 
 ### Test data (seed + per-spec fixtures)

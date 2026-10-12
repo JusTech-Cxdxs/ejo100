@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { who } from './people';
-import { as, eventually, bellText, countMail, latestMail, uniq, visitHealthy, waitOutcome } from './helpers';
+import { as, open, eventually, bellText, countMail, latestMail, uniq, visitHealthy, waitOutcome } from './helpers';
 import { jcForm } from './workflows';
 
 /**
@@ -51,7 +51,7 @@ test('a technician sees the one for everyone — never the managers’ one', asy
 
 test('a Workshop Manager sees both and marks one read', async ({ page }) => {
   await as(page, 'workshop-manager');
-  await page.goto('/notifications?tab=broadcasts');
+  await open(page, '/notifications?tab=broadcasts');
   await eventually(page, async () => {
     await expect(page.getByRole('heading', { name: S.all })).toBeVisible({ timeout: 5_000 });
     await expect(page.getByRole('heading', { name: S.role })).toBeVisible({ timeout: 5_000 });

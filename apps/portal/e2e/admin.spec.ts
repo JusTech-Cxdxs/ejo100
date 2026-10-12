@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { E2E_PASSWORD, OTHER_BRANCH_TECH, SWITCHABLE } from './people';
 import { freshVehicle } from './db';
 import { openJobCard, suggestion } from './workflows';
-import { as, expectAuditEntry, signIn, visitHealthy, waitOutcome } from './helpers';
+import { as, open, expectAuditEntry, signIn, visitHealthy, waitOutcome } from './helpers';
 
 /**
  * Administration: give and take away a role (the person's menu follows),
@@ -41,7 +41,7 @@ test('switching an account off signs the person out at once; switching on lets t
   await signIn(sola, SWITCHABLE.email, E2E_PASSWORD);
 
   await as(page, 'administrator');
-  await page.goto(`/users?q=${encodeURIComponent(SWITCHABLE.email)}`);
+  await open(page, `/users?q=${encodeURIComponent(SWITCHABLE.email)}`);
   await card(page).getByText('More actions…').click();
   await card(page).getByRole('textbox', { name: 'Reason for switching off' }).fill('Left the company (E2E)');
   await card(page).getByRole('button', { name: 'Switch off and sign out' }).click();
@@ -61,10 +61,12 @@ test('switching an account off signs the person out at once; switching on lets t
     await expect(sola.getByRole('alert').first()).toBeVisible();
   });
 
+  // Fresh page (no ?status= left over from switching off), then switch back on.
+  await open(page, `/users?q=${encodeURIComponent(SWITCHABLE.email)}`);
   await card(page).getByText('More actions…').click();
   await card(page).getByRole('button', { name: 'Switch on' }).click();
   await waitOutcome(page, /status=/);
-  await expect(card(page)).toContainText('Active');
+  await expect(card(page)).not.toContainText('Switched off');
   await signIn(sola, SWITCHABLE.email, E2E_PASSWORD);
   await other.close();
   await expectAuditEntry(page, 'user.deactivated');

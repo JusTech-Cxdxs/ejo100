@@ -136,7 +136,7 @@ test('a claim is drafted, approved by the HOD and the Branch Manager, submitted,
 test('the register, claims, analytics and part warranties are all visible', async ({ page }) => {
   await as(page, 'warranty-hod');
   await page.goto(`/warranty?q=${encodeURIComponent(S.warrantyNumber)}`);
-  await expect(page.getByRole('link', { name: S.warrantyNumber })).toBeVisible();
+  await expect(page.getByRole('link', { name: S.warrantyNumber }).first()).toBeVisible();
   await visitHealthy(page, '/warranty/claims');
   await visitHealthy(page, '/warranty/analytics');
   await expect(page.locator('main')).toContainText(/₦[\d,]+/);
