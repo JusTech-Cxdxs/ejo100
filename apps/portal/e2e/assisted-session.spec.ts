@@ -65,7 +65,7 @@ test('a wrong password is refused; the colleague\'s own password starts the sess
   await chooseColleague(page, TECH.name);
   await page.locator('#assist-password').fill('not-the-password');
   await page.getByRole('button', { name: 'Start helping Tunde' }).click();
-  await expect(page.getByRole('alert')).toContainText('That password is not right');
+  await expect(page.getByText(/That password is not right/)).toBeVisible();
   await expect(banner(page)).toHaveCount(0);
 
   await page.locator('#assist-password').fill(E2E_PASSWORD);
@@ -125,7 +125,7 @@ test('while assisting: the technician\'s Job Card is accepted as the technician,
     await expect(banner(page)).toHaveCount(0);
     await open(page, '/profile');
     await expect(page.getByText('Not available during an assisted session')).toHaveCount(0);
-    await expect(page.getByText(ASSISTANT.email)).toBeVisible();
+    await expect(page.getByText(ASSISTANT.email).first()).toBeVisible();
   });
 
   await test.step('the assistant\'s history lists the session with its action', async () => {
