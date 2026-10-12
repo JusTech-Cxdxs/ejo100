@@ -254,6 +254,7 @@ export type TrackedVehicle = {
   vehicleDescription: string;
   plateNumber: string | null;
   currentMileage: number | null;
+  customerId?: string;
   customerName: string;
   customerEmail: string | null;
   /** The completed visit whose prediction is current. */
@@ -301,7 +302,7 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
       primaryServiceMileage: true,
       nextServiceDueOdometer: true,
       nextServiceDueDate: true,
-      customer: { select: { fullName: true, email: true } },
+      customer: { select: { id: true, fullName: true, email: true } },
       vehicle: { select: { make: true, model: true, year: true, plateNumber: true, mileage: true, vehicleType: true } },
       escalatedToJobCard: { select: { id: true, jobNumber: true } },
     },
@@ -344,6 +345,7 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
       vehicleDescription: [s.vehicle.year, s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
       plateNumber: s.vehicle.plateNumber,
       currentMileage: s.vehicle.mileage,
+      customerId: s.customer.id,
       customerName: s.customer.fullName,
       customerEmail: s.customer.email,
       lastService: { id: s.id, serviceNumber: s.serviceNumber, date: s.primaryServiceDate, mileage: s.primaryServiceMileage },

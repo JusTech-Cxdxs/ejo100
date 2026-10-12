@@ -11,6 +11,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { ordinal } from '@/lib/custody-reminders';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -37,7 +38,7 @@ const REMINDER_STAGE_LABEL: Record<number, string> = { 1: '1st — Friendly', 2:
 /** One Due Soon / Overdue vehicle — shared by both sections. A vehicle
  * back in the workshop is still shown, named with the visit it's in on,
  * and is never offered a reminder (the customer is already here). */
-function DueEntryCard({ entry }: { entry: VehicleDueForService }) {
+function DueEntryCard({ entry, canSeeCustomers = false }: { entry: VehicleDueForService; canSeeCustomers?: boolean }) {
   const overdue = entry.status === 'OVERDUE';
   const remaining = [
     entry.kmRemaining !== null ? (entry.kmRemaining <= 0 ? `${Math.abs(entry.kmRemaining).toLocaleString('en-NG')} km over` : `${entry.kmRemaining.toLocaleString('en-NG')} km left`) : null,
@@ -50,7 +51,7 @@ function DueEntryCard({ entry }: { entry: VehicleDueForService }) {
           <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="font-medium text-[var(--ejo-primary)] hover:underline">
             {entry.vehicleDescription}{entry.plateNumber ? ` — ${entry.plateNumber}` : ''}
           </LoadingLink>
-          <p className="text-sm text-[var(--ejo-text)]">{entry.customerName}</p>
+          <p className="text-sm text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></p>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
             Due {entry.nextServiceDueOdometer ? `${entry.nextServiceDueOdometer.toLocaleString('en-NG')} km` : ''}
             {entry.nextServiceDueOdometer && entry.nextServiceDueDate ? ' or ' : ''}
@@ -116,6 +117,8 @@ export default async function VehicleServiceCustodyPage({
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { filter, q, status, error, type: rawType } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const vehicleType = rawType === 'PASSENGER' || rawType === 'COMMERCIAL' ? rawType : null;
   const branchId = await getWorkshopBranchId();
   const [summary, canNotify] = await Promise.all([getVehicleServiceCustodySummary(branchId, q), allows('workshop.customer.notify')]);
@@ -276,7 +279,7 @@ export default async function VehicleServiceCustodyPage({
                           {entry.serviceNumber}
                         </LoadingLink>
                       </td>
-                      <td className="px-4 py-2 text-[var(--ejo-text)]">{entry.customerName}</td>
+                      <td className="px-4 py-2 text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></td>
                       <td className="px-4 py-2">
                         <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-primary)] hover:underline">
                           {entry.vehicleDescription}
@@ -316,7 +319,7 @@ export default async function VehicleServiceCustodyPage({
                           {entry.serviceNumber}
                         </LoadingLink>
                       </td>
-                      <td className="px-4 py-2 text-[var(--ejo-text)]">{entry.customerName}</td>
+                      <td className="px-4 py-2 text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></td>
                       <td className="px-4 py-2">
                         <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-primary)] hover:underline">
                           {entry.vehicleDescription}
@@ -347,7 +350,7 @@ export default async function VehicleServiceCustodyPage({
                         {entry.serviceNumber}
                       </LoadingLink>
                       <p className="text-sm text-[var(--ejo-text)]">
-                        {entry.customerName} —{' '}
+                        <CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /> —{' '}
                         <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-primary)] hover:underline">
                           {entry.vehicleDescription}
                         </LoadingLink>
@@ -422,7 +425,7 @@ export default async function VehicleServiceCustodyPage({
                       {entry.serviceNumber}
                     </LoadingLink>
                     <p className="text-sm text-[var(--ejo-text)]">
-                      {entry.customerName} · {entry.vehicleDescription}
+                      <CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /> · {entry.vehicleDescription}
                       {entry.plateNumber ? ` — ${entry.plateNumber}` : ''}
                     </p>
                   </div>
@@ -472,7 +475,7 @@ export default async function VehicleServiceCustodyPage({
           ) : (
             <div className="space-y-3">
               {summary.dueSoon.map((entry: (typeof summary.dueSoon)[number]) => (
-                <DueEntryCard key={entry.vehicleId} entry={entry} />
+                <DueEntryCard key={entry.vehicleId} entry={entry} canSeeCustomers={canSeeCustomers} />
               ))}
             </div>
           )}
@@ -487,7 +490,7 @@ export default async function VehicleServiceCustodyPage({
           ) : (
             <div className="space-y-3">
               {summary.overdue.map((entry: (typeof summary.overdue)[number]) => (
-                <DueEntryCard key={entry.vehicleId} entry={entry} />
+                <DueEntryCard key={entry.vehicleId} entry={entry} canSeeCustomers={canSeeCustomers} />
               ))}
             </div>
           )}

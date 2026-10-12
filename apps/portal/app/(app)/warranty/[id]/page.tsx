@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import type { ReactNode } from 'react';
 import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
@@ -15,6 +15,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL, splitLines } from '@/lib/warranty-state';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const ACTION_LABEL: Record<string, string> = {
   'warranty.covers_job_card_line': 'Covers a Job Card line',
@@ -52,6 +53,8 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
   const { status, error } = await searchParams;
   const [w, trail, claims, roles, emails] = await Promise.all([getWarranty(id), getWarrantyAuditTrail(id), listWarrantyClaims({ warrantyId: id }), getWarrantyRoles(), getWarrantyEmailState(id)]);
   if (!w) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const cov = warrantyCoverage(w, w.vehicle?.mileage ?? null);
   const distanceEnd = w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null;
   const canChange = w.status !== 'VOID' && w.status !== 'TRANSFERRED';
@@ -117,7 +120,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
             <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Traceability</h2>
             <dl className="grid gap-4 sm:grid-cols-2">
               <Field label="Customer">
-                {w.customer.fullName}
+                <CustomerLink id={w.customerId} name={w.customer.fullName} canView={canSeeCustomers} />
                 <span className="block text-xs text-[var(--ejo-text-muted)]">{[w.customer.email, w.customer.phone].filter(Boolean).join(' · ')}</span>
               </Field>
               {w.vehicle ? (

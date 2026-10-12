@@ -1383,8 +1383,8 @@ export async function getPart(id: string) {
                     select: {
                       id: true,
                       referenceNumber: true,
-                      jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
-                      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
+                      jobCard: { select: { id: true, jobNumber: true, customer: { select: { id: true, fullName: true } } } },
+                      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { id: true, fullName: true } } } },
                     },
                   },
                 },
@@ -1410,8 +1410,8 @@ export async function getPart(id: string) {
                 select: {
                   id: true,
                   referenceNumber: true,
-                  jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
-                  vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
+                  jobCard: { select: { id: true, jobNumber: true, customer: { select: { id: true, fullName: true } } } },
+                  vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { id: true, fullName: true } } } },
                 },
               },
             },
@@ -1443,8 +1443,8 @@ export async function getPart(id: string) {
                 select: {
                   id: true,
                   referenceNumber: true,
-                  jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
-                  vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
+                  jobCard: { select: { id: true, jobNumber: true, customer: { select: { id: true, fullName: true } } } },
+                  vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { id: true, fullName: true } } } },
                 },
               },
             },
@@ -2138,8 +2138,8 @@ export async function listGoodsReceipts(branchId: string) {
 const SLIP_DESTINATION_SELECT = {
   id: true,
   referenceNumber: true,
-  jobCard: { select: { jobNumber: true, customer: { select: { fullName: true } } } },
-  vehicleService: { select: { serviceNumber: true, customer: { select: { fullName: true } } } },
+  jobCard: { select: { jobNumber: true, customer: { select: { id: true, fullName: true } } } },
+  vehicleService: { select: { serviceNumber: true, customer: { select: { id: true, fullName: true } } } },
 } as const;
 
 export async function getGoodsReceipt(id: string) {

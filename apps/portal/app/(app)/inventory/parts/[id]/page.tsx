@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { durationLabel } from '@/lib/warranty-state';
 import { isPolicyId, policyAuditLabel } from '@/lib/audit-policy-label';
@@ -20,6 +20,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { formatDateTimeCompact, formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const TRACKING_TYPE_LABEL: Record<string, string> = {
   QUANTITY: 'Quantity',
@@ -67,6 +68,8 @@ export default async function PartDetailPage({
   const part = await getPart(id);
   const [partWarrantyPolicies, partWarrantyTrace, warrantyRoles] = await Promise.all([listWarrantyPolicies('PART'), getPartWarrantyTrace(id), getWarrantyRoles()]);
   if (!part) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const [lastEdit, auditTrail] = await Promise.all([getLastEditInfo('Part', id, 'part.updated'), getPartAuditTrail(id)]);
   // Older warranty-change entries stored a policy id — show its name.
   const policyIdsInTrail = auditTrail
@@ -275,7 +278,7 @@ export default async function PartDetailPage({
                               <div key={c.id} className="flex items-center justify-between text-xs">
                                 <span className="text-[var(--ejo-text)]">
                                   {formatQty(Number(c.quantityTaken))} {pluralizeWord(Number(c.quantityTaken), part.baseUnitOfMeasure)} from{' '}
-                                  <span className="font-medium">{batch.batchNumber}</span> — {source?.customer.fullName ?? '—'}
+                                  <span className="font-medium">{batch.batchNumber}</span> — {source ? <CustomerLink id={source.customer.id} name={source.customer.fullName} canView={canSeeCustomers} /> : '—'}
                                 </span>
                                 <IssuedToLinks slip={c.slipLine.slip} />
                               </div>
@@ -342,7 +345,7 @@ export default async function PartDetailPage({
                             </td>
                             <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {serial.issuedToSlipLine ? (
-                                <IssuedToLinks slip={serial.issuedToSlipLine.slip} showCustomer />
+                                <IssuedToLinks slip={serial.issuedToSlipLine.slip} showCustomer canSeeCustomers={canSeeCustomers} />
                               ) : (
                                 '—'
                               )}
@@ -406,7 +409,7 @@ export default async function PartDetailPage({
                             // customer — plus the one thing only a serial
                             // has: the exact physical unit.
                             const slip = x.issuedToSlipLine!.slip;
-                            const customerName = slip.jobCard?.customer.fullName ?? slip.vehicleService?.customer.fullName ?? '—';
+                            const owner = slip.jobCard?.customer ?? slip.vehicleService?.customer ?? null;
                             return (
                               <div key={x.id} className="flex items-center justify-between gap-3 text-xs">
                                 <span className="text-[var(--ejo-text)]">
@@ -418,7 +421,7 @@ export default async function PartDetailPage({
                                   ) : (
                                     <span className="font-medium">no Goods Receipt on record</span>
                                   )}{' '}
-                                  — {customerName}
+                                  — {owner ? <CustomerLink id={owner.id} name={owner.fullName} canView={canSeeCustomers} /> : '—'}
                                 </span>
                                 <span className="shrink-0"><IssuedToLinks slip={slip} /></span>
                               </div>
@@ -589,7 +592,7 @@ export default async function PartDetailPage({
                                   );
                                 })
                               : `${formatQty(Number(c.quantityTaken))} ${pluralizeWord(Number(c.quantityTaken), part.baseUnitOfMeasure)}`}{' '}
-                            — {source?.customer.fullName ?? '—'}
+                            — {source ? <CustomerLink id={source.customer.id} name={source.customer.fullName} canView={canSeeCustomers} /> : '—'}
                           </span>
                           <span className="shrink-0"><IssuedToLinks slip={c.slipLine.slip} /></span>
                         </div>
@@ -866,7 +869,7 @@ export default async function PartDetailPage({
               </div>
             );
           })()}
-          {part.warrantyPolicyId || partWarrantyTrace.length > 0 ? <PartWarrantyTraceTable rows={partWarrantyTrace} /> : null}
+          {part.warrantyPolicyId || partWarrantyTrace.length > 0 ? <PartWarrantyTraceTable rows={partWarrantyTrace} canSeeCustomers={canSeeCustomers} /> : null}
         </div>
 
         <div className="h-fit space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6">

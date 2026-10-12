@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { CustomerLink } from '@/components/CustomerLink';
 import Link from 'next/link';
 import { updateGoodsReceiptLineCostFormAction } from '@/lib/actions/store-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -28,6 +29,7 @@ export type GoodsReceiptLineStockTrace = {
     referenceNumber: string;
     sourceNumber: string | null;
     customerName: string | null;
+    customerId?: string | null;
     quantity: number;
     /** e.g. "Serial SN-0042" for a serialized unit. */
     detail: string | null;
@@ -48,7 +50,10 @@ export function GoodsReceiptLineCard({
   batchNumber,
   totalCost,
   unitCost,
+  canSeeCustomers = false,
 }: {
+  /** Customer names link to their Customers (CRM) page — decided once by the page. */
+  canSeeCustomers?: boolean;
   goodsReceiptId: string;
   lineId: string;
   /** The Part this delivery was received into — the GRN's destination link. */
@@ -115,7 +120,7 @@ export function GoodsReceiptLineCard({
                   <div key={i} className="flex items-center justify-between gap-3">
                     <span className="text-[var(--ejo-text)]">
                       {d.detail ? `${d.detail} — ` : `${unit(d.quantity)} — `}
-                      {d.customerName ?? '—'}
+                      {d.customerName ? <CustomerLink id={d.customerId} name={d.customerName} canView={canSeeCustomers} /> : '—'}
                     </span>
                     <Link href={`/workshop/parts-requests/${d.slipId}`} className="shrink-0 text-[var(--ejo-primary)] hover:underline">
                       {d.referenceNumber}

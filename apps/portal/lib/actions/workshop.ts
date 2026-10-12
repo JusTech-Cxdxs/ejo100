@@ -4206,6 +4206,7 @@ export type WorkshopCustodyEntry = {
   vehicleId: string;
   vehicleType: string | null;
   jobNumber: string;
+  customerId?: string;
   customerName: string;
   vehicleDescription: string;
   status: string;
@@ -4289,7 +4290,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       jobNumber: true,
       status: true,
       readyForCollectionAt: true,
-      customer: { select: { fullName: true } },
+      customer: { select: { id: true, fullName: true } },
       vehicle: { select: { id: true, make: true, model: true, vehicleType: true } },
       estimate: { select: { customerNotifiedAt: true } },
       // Every request, not just approved ones — the same array
@@ -4321,7 +4322,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
     jobNumber: string;
     status: string;
     readyForCollectionAt: Date | null;
-    customer: { fullName: string };
+    customer: { id: string; fullName: string };
     vehicle: { id: string; make: string | null; model: string | null; vehicleType: string | null };
     estimate: { customerNotifiedAt: Date | null } | null;
     cancellationRequests: { id: string; status: string; reason: string; decidedAt: Date | null; requestedBy: { fullName: string } }[];
@@ -4332,6 +4333,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       vehicleId: jc.vehicle.id,
       vehicleType: jc.vehicle.vehicleType ?? null,
       jobNumber: jc.jobNumber,
+      customerId: jc.customer.id,
       customerName: jc.customer.fullName,
       vehicleDescription,
       status: jc.status,

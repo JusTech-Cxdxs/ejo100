@@ -768,6 +768,7 @@ export type VehicleDueForService = {
   status: 'DUE_SOON' | 'OVERDUE';
   vehicleDescription: string;
   plateNumber: string | null;
+  customerId?: string;
   customerName: string;
   nextServiceDueOdometer: number | null;
   nextServiceDueDate: Date | null;
@@ -804,6 +805,7 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
       status: t.status as 'DUE_SOON' | 'OVERDUE',
       vehicleDescription: t.vehicleDescription,
       plateNumber: t.plateNumber,
+      customerId: t.customerId,
       customerName: t.customerName,
       nextServiceDueOdometer: t.nextServiceDueOdometer,
       nextServiceDueDate: t.nextServiceDueDate,
@@ -854,6 +856,7 @@ export type VehicleServiceCustodyEntry = {
   vehicleId: string;
   vehicleType: string | null;
   serviceNumber: string;
+  customerId?: string;
   customerName: string;
   vehicleDescription: string;
   status: string;
@@ -914,6 +917,7 @@ export type VehicleServiceCancelledEntry = {
   vehicleId: string;
   vehicleType: string | null;
   serviceNumber: string;
+  customerId?: string;
   customerName: string;
   vehicleDescription: string;
   plateNumber: string | null;
@@ -953,7 +957,7 @@ async function listCancelledAwaitingHandBack(branchId: string, search?: string):
       id: true,
       serviceNumber: true,
       cancelledAt: true,
-      customer: { select: { fullName: true } },
+      customer: { select: { id: true, fullName: true } },
       vehicle: { select: { id: true, make: true, model: true, plateNumber: true, vehicleType: true } },
       payments: { select: { amount: true } },
       refunds: { select: { amount: true } },
@@ -983,6 +987,7 @@ async function listCancelledAwaitingHandBack(branchId: string, search?: string):
       vehicleId: x.vehicle.id,
       vehicleType: x.vehicle.vehicleType ?? null,
       serviceNumber: x.serviceNumber,
+      customerId: x.customer.id,
       customerName: x.customer.fullName,
       vehicleDescription: [x.vehicle.make, x.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
       plateNumber: x.vehicle.plateNumber,
@@ -1036,7 +1041,7 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
       createdAt: true,
       completedAt: true,
       readyForCollectionAt: true,
-      customer: { select: { fullName: true } },
+      customer: { select: { id: true, fullName: true } },
       vehicle: { select: { id: true, make: true, model: true, plateNumber: true, vehicleType: true } },
     },
   });
@@ -1085,6 +1090,7 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
             };
           })()
         : undefined,
+    customerId: s.customer.id,
     customerName: s.customer.fullName,
     vehicleDescription: [s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || s.vehicle.plateNumber || 'Vehicle',
   }));
@@ -1121,6 +1127,7 @@ export async function listVehicleServices(branchId: string, search?: string, veh
       status: true,
       createdAt: true,
       escalatedToJobCard: { select: { id: true, jobNumber: true } },
+      customerId: true,
       customer: { select: { fullName: true } },
       vehicle: { select: { id: true, make: true, model: true, plateNumber: true, vehicleType: true } },
     },

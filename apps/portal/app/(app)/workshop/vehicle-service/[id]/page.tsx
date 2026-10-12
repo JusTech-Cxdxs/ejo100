@@ -1,5 +1,5 @@
 import { canRequestRoadTestOn } from '@/lib/actions/security';
-import { serviceVisible, guardAnyPage, can } from '@/lib/authz/server';
+import { serviceVisible, guardAnyPage, can, allows } from '@/lib/authz/server';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
 import { listRoadTestsFor } from '@/lib/actions/security';
 import { securityActionDetail } from '@/lib/security-labels';
@@ -63,6 +63,7 @@ import { formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { IdempotencyKey } from '@/components/IdempotencyKey';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -337,6 +338,8 @@ export default async function VehicleServiceDetailPage({
     getVehicleServiceCancellationRequests(id),
   ]);
   if (!service) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
 
   const isApprover = isMasterAdmin || service.supervisor?.id === viewerId;
   const isAssignedTechnician = isMasterAdmin || service.assignedTechnician?.id === viewerId;
@@ -609,7 +612,7 @@ export default async function VehicleServiceDetailPage({
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Customer</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
-                  {service.customer.fullName}
+                  <CustomerLink id={service.customerId} name={service.customer.fullName} canView={canSeeCustomers} />
                   {service.customer.customerType === 'ORGANIZATION' ? (
                     <span className="ml-2 rounded-full bg-[var(--ejo-info)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--ejo-info)]">
                       Organization

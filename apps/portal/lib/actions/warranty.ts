@@ -1398,7 +1398,7 @@ export async function getPartWarrantyTrace(partId: string) {
     orderBy: { issuedAt: 'desc' },
     select: {
       id: true, warrantyNumber: true, status: true, startsAt: true, endsAt: true, startReading: true, distanceLimit: true, statusReason: true, quantity: true, issuedAt: true,
-      customer: { select: { fullName: true } },
+      customer: { select: { id: true, fullName: true } },
       vehicle: { select: { id: true, make: true, model: true, plateNumber: true, mileage: true } },
       jobCard: { select: { id: true, jobNumber: true } },
       vehicleService: { select: { id: true, serviceNumber: true } },

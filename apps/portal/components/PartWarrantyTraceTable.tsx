@@ -1,4 +1,5 @@
 import { LoadingLink } from '@/components/LoadingLink';
+import { CustomerLink } from '@/components/CustomerLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
 import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL } from '@/lib/warranty-state';
 import { formatDateOnly } from '@/lib/utils/format-date';
@@ -14,7 +15,7 @@ type Row = {
   distanceLimit: number | null;
   statusReason: string | null;
   quantity: unknown;
-  customer: { fullName: string };
+  customer: { id?: string; fullName: string };
   vehicle: { id: string; make: string | null; model: string | null; plateNumber: string | null; mileage: number | null } | null;
   jobCard: { id: string; jobNumber: string } | null;
   vehicleService: { id: string; serviceNumber: string } | null;
@@ -29,7 +30,7 @@ type Row = {
  * or batch) and its destination (Parts Request → Job Card / Vehicle
  * Service → customer and vehicle), each number opening its exact record.
  */
-export function PartWarrantyTraceTable({ rows }: { rows: Row[] }) {
+export function PartWarrantyTraceTable({ rows, canSeeCustomers = false }: { rows: Row[]; canSeeCustomers?: boolean }) {
   const link = 'text-[var(--ejo-primary)] hover:underline';
   return (
     <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
@@ -73,7 +74,7 @@ export function PartWarrantyTraceTable({ rows }: { rows: Row[] }) {
                       {w.vehicleService ? <LoadingLink href={`/workshop/vehicle-service/${w.vehicleService.id}`} className={`block ${link}`}>{w.vehicleService.serviceNumber}</LoadingLink> : null}
                     </td>
                     <td className="px-3 py-2 text-xs text-[var(--ejo-text)]">
-                      {w.customer.fullName}
+                      <CustomerLink id={w.customer.id} name={w.customer.fullName} canView={canSeeCustomers} />
                       {w.vehicle ? (
                         <LoadingLink href={`/workshop/vehicles/${w.vehicle.id}/edit`} className={`block ${link}`}>
                           {[w.vehicle.make, w.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}{w.vehicle.plateNumber ? ` — ${w.vehicle.plateNumber}` : ''}

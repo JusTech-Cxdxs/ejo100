@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { LoadingLink } from '@/components/LoadingLink';
 import { getJobCardOutcomes } from '@/lib/actions/visit-outcomes';
@@ -14,6 +14,7 @@ import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { ComplaintListInput } from '@/components/ComplaintListInput';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -48,6 +49,8 @@ export default async function WorkshopJobCardsPage({
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { q, type, status, error, outcome: rawOutcome } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const outcomeFilter = parseOutcomeFilter(rawOutcome);
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   const [jobCards, isMasterAdmin] = await Promise.all([
@@ -140,7 +143,7 @@ export default async function WorkshopJobCardsPage({
                         </LoadingLink>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{jc.customer.fullName}</td>
+                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]"><CustomerLink id={jc.customerId} name={jc.customer.fullName} canView={canSeeCustomers} /></td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       <LoadingLink href={`/workshop/vehicles/${jc.vehicle.id}/edit`} className="hover:underline hover:text-[var(--ejo-text)]">
                         {jc.vehicle.plateNumber || [jc.vehicle.make, jc.vehicle.model].filter(Boolean).join(' ') || '—'}

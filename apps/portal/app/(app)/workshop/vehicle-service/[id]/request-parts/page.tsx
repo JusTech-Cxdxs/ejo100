@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getVehicleService } from '@/lib/actions/vehicle-service';
 import { getVehicleServiceSourcingNeeds, getRequestableServiceEstimatePartRequestLines } from '@/lib/actions/sourcing';
@@ -8,6 +8,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
+import { CustomerLink } from '@/components/CustomerLink';
 
 function formatNaira(value: number): string {
   return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -32,6 +33,8 @@ export default async function VehicleServiceRequestPartsPage({
   const { error } = await searchParams;
   const service = await getVehicleService(id);
   if (!service) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
 
   const sourcingNeeds = await getVehicleServiceSourcingNeeds(id);
   const requestableLines = sourcingNeeds.serviceEstimateId ? await getRequestableServiceEstimatePartRequestLines(sourcingNeeds.serviceEstimateId) : [];
@@ -78,7 +81,7 @@ export default async function VehicleServiceRequestPartsPage({
             </div>
             <div>
               <dt className="text-xs text-[var(--ejo-text-muted)]">Customer</dt>
-              <dd className="text-sm font-medium text-[var(--ejo-text)]">{service.customer.fullName}</dd>
+              <dd className="text-sm font-medium text-[var(--ejo-text)]"><CustomerLink id={service.customerId} name={service.customer.fullName} canView={canSeeCustomers} /></dd>
             </div>
             <div>
               <dt className="text-xs text-[var(--ejo-text-muted)]">Vehicle</dt>

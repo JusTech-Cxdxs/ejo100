@@ -1012,8 +1012,8 @@ export async function listVehicleExits(q?: string) {
       id: true, exitNumber: true, exitedAt: true, driverName: true, notes: true,
       exitedBy: { select: { fullName: true } },
       vehicle: { select: { id: true, make: true, model: true, plateNumber: true } },
-      jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
-      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
+      jobCard: { select: { id: true, jobNumber: true, customer: { select: { id: true, fullName: true } } } },
+      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { id: true, fullName: true } } } },
     },
   });
 }
@@ -1280,8 +1280,8 @@ export async function getRoadTest(id: string) {
     where: { id },
     include: {
       branch: true,
-      jobCard: { select: { id: true, jobNumber: true, customer: { select: { fullName: true } } } },
-      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { fullName: true } } } },
+      jobCard: { select: { id: true, jobNumber: true, customer: { select: { id: true, fullName: true } } } },
+      vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { id: true, fullName: true } } } },
       vehicle: { select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, mileage: true } },
       requestedBy: { select: { id: true, fullName: true } }, driver: { select: { fullName: true, phone: true } }, people: { select: { id: true, name: true, employeeId: true, userId: true } },
       managerApprovedBy: { select: { fullName: true } }, declinedBy: { select: { fullName: true } }, gateOutBy: { select: { fullName: true } }, gateInBy: { select: { fullName: true } },

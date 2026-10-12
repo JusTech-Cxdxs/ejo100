@@ -1,7 +1,8 @@
-import { guardPage } from '@/lib/authz/server';
+import { guardPage, allows } from '@/lib/authz/server';
 import { canSeeMasterAnalytics, getMasterAnalytics } from '@/lib/actions/master-analytics';
 import { LoadingLink } from '@/components/LoadingLink';
 import { pluralize } from '@/lib/utils/pluralize';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5';
 const naira = (n: number | null) => (n === null ? '—' : `₦${n.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`);
@@ -21,6 +22,8 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
     );
   }
   const a = await getMasterAnalytics(period, { from, to });
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const e = a.current.earnings;
   const earnedTotal = Math.max(1, a.current.sales);
   const c = a.current;
@@ -203,7 +206,7 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
           <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Top customers in the period</h2>
           {a.diagnostic.topCustomers.length === 0 ? <p className="text-sm text-[var(--ejo-text-muted)]">No completed jobs in this period.</p> : (
             <div className="space-y-1.5">{a.diagnostic.topCustomers.map((m) => (
-              <div key={m.name} className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-2 text-xs"><span className="truncate text-[var(--ejo-text)]" title={m.name}>{m.name}</span><div className="h-3 rounded bg-[var(--ejo-bg)]"><div className="h-3 rounded bg-[var(--ejo-info)]" style={{ width: `${(m.value / maxCust) * 100}%` }} /></div><span className="text-[var(--ejo-text-muted)]">{naira(m.value)}</span></div>
+              <div key={m.name} className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-2 text-xs"><span className="truncate text-[var(--ejo-text)]" title={m.name}><CustomerLink id={m.id} name={m.name} canView={canSeeCustomers} /></span><div className="h-3 rounded bg-[var(--ejo-bg)]"><div className="h-3 rounded bg-[var(--ejo-info)]" style={{ width: `${(m.value / maxCust) * 100}%` }} /></div><span className="text-[var(--ejo-text-muted)]">{naira(m.value)}</span></div>
             ))}</div>
           )}
         </div>
