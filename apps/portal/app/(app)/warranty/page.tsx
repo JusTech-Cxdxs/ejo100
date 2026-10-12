@@ -5,6 +5,7 @@ import { PrintMenu } from '@/components/print/PrintMenu';
 import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL, type WarrantyCoverageState } from '@/lib/warranty-state';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageHeader, HeaderAction, EmptyState, Icon, type IconName } from '@/components/ui';
 
 type Filter = 'all' | 'covered' | 'expiring' | 'pending' | 'expired' | 'inactive' | 'asset' | 'part' | 'reminder';
 
@@ -33,56 +34,46 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
   const shown = rows.filter((r) =>
     filter === 'all' ? true : filter === 'reminder' ? reminderDue.has(r.w.id) : filter === 'asset' ? r.w.kind === 'ASSET' : filter === 'part' ? r.w.kind === 'PART' : FILTER_STATES[filter].includes(r.cov.state),
   );
-  const card = (key: Filter, label: string, value: number, tone: string) => (
+  const card = (key: Filter, label: string, value: number, tone: string, icon: IconName) => (
     <LoadingLink
       href={`/warranty?${[key === 'all' ? null : `filter=${key}`, q ? `q=${encodeURIComponent(q)}` : null].filter(Boolean).join('&')}`}
-      className={`rounded-[var(--ejo-radius-lg)] border p-4 ${filter === key ? 'border-[var(--ejo-primary)] ring-1 ring-[var(--ejo-primary)]' : 'border-[var(--ejo-border)]'} bg-[var(--ejo-surface)] hover:border-[var(--ejo-primary)]`}
+      aria-current={filter === key ? 'true' : undefined}
+      className={`ejo-lift group rounded-[var(--ejo-radius-lg)] border p-4 ${filter === key ? 'border-[var(--ejo-primary)] bg-[var(--ejo-primary)]/5 ring-1 ring-[var(--ejo-primary)]' : 'border-[var(--ejo-border)] bg-[var(--ejo-surface)]'} hover:border-[var(--ejo-primary)]`}
     >
+      <span className={`flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--ejo-bg)] ring-1 ring-[var(--ejo-border)] ${tone === 'text-[var(--ejo-text)]' ? 'text-[var(--ejo-primary)]' : tone}`}><Icon name={icon} size={16} /></span>
+      <p className={`mt-2 text-2xl font-bold tabular-nums ${tone}`}>{value}</p>
       <p className="text-xs text-[var(--ejo-text-muted)]">{label}</p>
-      <p className={`mt-1 text-2xl font-bold ${tone}`}>{value}</p>
     </LoadingLink>
   );
 
   return (
-    <div className="p-8">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Warranty</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-            Every warranty number issued — vehicles registered by the warranty team, and parts warranted automatically the moment
-            they are released to a customer&apos;s Job Card or Vehicle Service. Coverage is worked out live from dates and odometer.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <LoadingLink href="/warranty/register" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-            Register vehicle warranty
-          </LoadingLink>
-          <LoadingLink href="/warranty/claims" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
-            Claims
-          </LoadingLink>
-          {canAnalytics ? (
-            <LoadingLink href="/warranty/analytics" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
-              Analytics
-            </LoadingLink>
-          ) : null}
-          <LoadingLink href="/warranty/policies" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
-            Policies
-          </LoadingLink>
-          <LoadingLink href="/warranty/providers" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
-            Providers
-          </LoadingLink>
-        </div>
-      </div>
+    <div className="w-full p-4 sm:p-8">
+      <PageHeader
+        hero
+        live
+        icon="shield-check"
+        eyebrow="Module"
+        title="Warranty"
+        description={<>Every warranty number issued — vehicles registered by the warranty team, and parts warranted automatically the moment
+            they are released to a customer&apos;s Job Card or Vehicle Service. Coverage is worked out live from dates and odometer.</>}
+        actions={<>
+          <HeaderAction href="/warranty/register">Register vehicle warranty</HeaderAction>
+          <HeaderAction href="/warranty/claims" icon="file" variant="secondary">Claims</HeaderAction>
+          {canAnalytics ? <HeaderAction href="/warranty/analytics" icon="chart" variant="secondary">Analytics</HeaderAction> : null}
+          <HeaderAction href="/warranty/policies" icon="list" variant="secondary">Policies</HeaderAction>
+          <HeaderAction href="/warranty/providers" icon="building" variant="secondary">Providers</HeaderAction>
+        </>}
+      />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-8">
-        {card('all', 'All warranties', rows.length, 'text-[var(--ejo-text)]')}
-        {card('covered', 'Covered', count(['COVERED', 'EXPIRING_SOON']), 'text-[var(--ejo-success)]')}
-        {card('expiring', 'Expiring in 30 days', count(['EXPIRING_SOON']), 'text-[var(--ejo-warning)]')}
-        {card('pending', 'Pending verification', count(['PENDING_VERIFICATION']), 'text-[var(--ejo-info)]')}
-        {card('expired', 'Expired', count(['EXPIRED']), 'text-[var(--ejo-text-muted)]')}
-        {card('asset', 'Vehicle warranties', rows.filter((r) => r.w.kind === 'ASSET').length, 'text-[var(--ejo-text)]')}
-        {card('part', 'Part warranties', rows.filter((r) => r.w.kind === 'PART').length, 'text-[var(--ejo-text)]')}
-        {card('reminder', 'Expiry reminders due', rows.filter((r) => reminderDue.has(r.w.id)).length, 'text-[var(--ejo-warning)]')}
+      <div className="ejo-stagger mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
+        {card('all', 'All warranties', rows.length, 'text-[var(--ejo-text)]', 'shield-check')}
+        {card('covered', 'Covered', count(['COVERED', 'EXPIRING_SOON']), 'text-[var(--ejo-success)]', 'check-circle')}
+        {card('expiring', 'Expiring in 30 days', count(['EXPIRING_SOON']), 'text-[var(--ejo-warning-text)]', 'clock')}
+        {card('pending', 'Pending verification', count(['PENDING_VERIFICATION']), 'text-[var(--ejo-info)]', 'eye')}
+        {card('expired', 'Expired', count(['EXPIRED']), 'text-[var(--ejo-text-muted)]', 'history')}
+        {card('asset', 'Vehicle warranties', rows.filter((r) => r.w.kind === 'ASSET').length, 'text-[var(--ejo-text)]', 'car')}
+        {card('part', 'Part warranties', rows.filter((r) => r.w.kind === 'PART').length, 'text-[var(--ejo-text)]', 'package')}
+        {card('reminder', 'Expiry reminders due', rows.filter((r) => reminderDue.has(r.w.id)).length, 'text-[var(--ejo-warning-text)]', 'bell')}
       </div>
 
       <form className="mb-4 flex gap-2" action="/warranty">
@@ -99,9 +90,11 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
       </form>
 
       {shown.length === 0 ? (
-        <p className="text-sm text-[var(--ejo-text-muted)]">
-          {rows.length === 0 ? 'No warranties yet. Register a vehicle warranty, or set a warranty policy on a part so it is warranted when released.' : 'No warranties match this view.'}
-        </p>
+        <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+          <EmptyState icon="shield-check" title={rows.length === 0 ? 'No warranties yet' : 'Nothing in this view'}>
+            {rows.length === 0 ? 'No warranties yet. Register a vehicle warranty, or set a warranty policy on a part so it is warranted when released.' : 'No warranties match this view.'}
+          </EmptyState>
+        </div>
       ) : (
         <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
