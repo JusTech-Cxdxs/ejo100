@@ -19,9 +19,8 @@ export async function signIn(page: Page, email: string, password: string) {
  * page's own heading has rendered.
  */
 export async function gotoSettled(page: Page, url: string) {
-  const res = await page.goto(url);
-  await page.locator('main h1').first().waitFor({ state: 'visible', timeout: 20_000 }).catch(() => undefined);
-  await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
+  const res = await page.goto(url, { waitUntil: 'load' });
+  await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined);
   return res;
 }
 

@@ -54,6 +54,9 @@ const EVERYONE = ['/dashboard', '/profile', '/notifications', '/security/exit-pa
 const principalFor = (roles: string[]): Principal => ({ userId: 'x', isSuperAdmin: false, roleSlugs: roles, branchId: 'b', departmentId: null });
 const mayOpen = (roles: string[], needs: PermissionKey[]) => needs.some((k) => decide(principalFor(roles), k).allowed);
 
+// Each role is independent — spread them over the workers.
+test.describe.configure({ mode: 'parallel' });
+
 const ACCOUNTS = [
   ...PEOPLE.filter((p) => p !== SWITCHABLE).map((p) => ({ label: p === SUPERMANAGER ? 'workshop-supervisor + workshop-manager' : p.role, email: p.email, password: E2E_PASSWORD, roles: [p.role, ...(p.extraRoles ?? [])] })),
   { label: 'master-administrator', email: MASTER.email, password: MASTER.password, roles: [] as string[], master: true },

@@ -256,12 +256,26 @@ test('quality check → completed → ready; balance paid; close approved; vehic
   await expect(page.getByRole('button', { name: 'Request cancellation' })).toHaveCount(0);
 });
 
+test('Security lets the collected vehicle out through the gate', async ({ page }) => {
+  await as(page, 'security-officer');
+  await page.goto(`/security/vehicles?q=${encodeURIComponent(S.plate)}`);
+  await expect(page.getByRole('heading', { name: 'Vehicles cleared to leave' })).toBeVisible();
+  await page.getByRole('row').filter({ hasText: S.plate }).getByRole('link', { name: 'Confirm exit' }).click();
+  await page.waitForURL(/\/security\/vehicles\/release\/job-card\//);
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(S.plate);
+  await expect(page.locator('input[name="collectedBy"]')).toHaveValue(CUSTOMER.name);
+  await page.locator('input[name="notes"]').fill('Plate and VIN checked');
+  await page.getByRole('button', { name: 'Confirm exit' }).click();
+  await page.waitForURL(/\/security\/vehicles\/exits\/[^/?]+\?status=vehicle_out/);
+  await expect(page.getByText(/Exit recorded/)).toBeVisible();
+});
+
 test('the whole story is on the audit trail and in the Audit Logs', async ({ page }) => {
   await as(page, 'workshop-manager');
   await page.goto(S.url);
   const trail = page.getByRole('heading', { name: 'Audit trail' }).locator('..');
   await trail.getByRole('button', { name: /^Show all/ }).click();
-  for (const label of ['Job Card created', 'Job Card approved', 'Technician accepted assignment', 'Estimate submitted for validation', 'Estimate approved by manager', 'Customer notified of approved estimate', 'Payment recorded', 'Parts request released', 'Close requested']) {
+  for (const label of ['Job Card created', 'Job Card approved', 'Technician accepted assignment', 'Estimate submitted for validation', 'Estimate approved by manager', 'Customer notified of approved estimate', 'Payment recorded', 'Parts request released', 'Close requested', 'Left through the gate']) {
     await expect(trail.getByText(label).first(), label).toBeVisible();
   }
   await as(page, 'administrator');
