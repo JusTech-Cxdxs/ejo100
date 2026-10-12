@@ -141,7 +141,6 @@ test('Audit Logs: each tab shows only its kind of entry', async ({ page }) => {
 });
 
 test('Audit Logs: an organisation administrator sees the data-change journal', async ({ page }) => {
-  test.fail(true, 'E2E-09: no data-change row is ever attributed — apps/portal/lib/actions/workshop.ts:119 sets the actor with AsyncLocalStorage.enterWith inside requireUser() after an await, which does not reach the caller\'s later Prisma calls, so packages/database/src/audit-journal.ts:214 sees no store and every journal row has userId NULL, source "unknown"/"unattributed"; stampOrganisation (:83-101) then falls back to the sole organisation, which is NULL once a second organisation exists — organisation administrators see no data changes, and nobody sees who made one');
   await as(page, 'administrator');
   await page.goto('/audit-logs?kind=data');
   await expect(page.getByRole('heading', { name: 'Audit Logs', level: 1 })).toBeVisible();

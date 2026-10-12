@@ -2,7 +2,7 @@
 
 import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { customerAuthClient } from '@/lib/auth-customer-client';
 import { CustomerAuthShell } from '@/components/customer/CustomerAuthShell';
 import { AuthNotice, authButton, authInput } from '@/components/customer/AuthNotice';
@@ -39,7 +39,6 @@ function explain(err: { status?: number; code?: string; message?: string }): str
 }
 
 function CustomerLoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
   // Only ever return to a page on THIS site's customer area — never an
   // outside address (blocks "…?redirect=https://fake-site" phishing links).
@@ -70,8 +69,9 @@ function CustomerLoginForm() {
         return;
       }
       setState('success');
-      router.replace(redirectTo);
-      router.refresh();
+      // A full page load carries the new session cookie everywhere at once —
+      // a client-side replace + refresh could stall on "Opening…" (E2E-11).
+      window.location.assign(redirectTo);
     } catch {
       setError('We couldn’t reach the server. Check your internet connection and try again.');
       setState('idle');

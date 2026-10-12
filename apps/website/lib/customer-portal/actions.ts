@@ -186,10 +186,12 @@ export async function changePassword(_prev: ActionState, fd: FormData): Promise<
   if (Object.keys(fieldErrors).length) return { ok: false, error: 'Please check the highlighted fields.', fieldErrors };
 
   try {
-    await customerAuth.api.changePassword({
-      body: { currentPassword, newPassword, revokeOtherSessions: true },
-      headers: await headers(),
-    });
+    const h = await headers();
+    // Keep THIS session (revoking inside changePassword issues a new cookie a
+    // server action can't set, which signed the customer out — E2E-12), then
+    // end every other device's session.
+    await customerAuth.api.changePassword({ body: { currentPassword, newPassword, revokeOtherSessions: false }, headers: h });
+    await customerAuth.api.revokeOtherSessions({ headers: h });
   } catch (e) {
     const err = e as { status?: string | number; statusCode?: number; body?: { code?: string } };
     const code = err.body?.code ?? '';

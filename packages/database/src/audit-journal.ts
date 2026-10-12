@@ -59,6 +59,29 @@ export function setAuditActor(userId: string | null, source: string, organisatio
   context.enterWith({ userId, source, organisationId, pending: existing?.pending ?? [], tx: existing?.tx ?? null });
 }
 
+/**
+ * How the app finds "who is acting" when no actor was recorded in this async
+ * context. `setAuditActor` uses AsyncLocalStorage.enterWith, which does NOT
+ * flow back out of an awaited async function — so an actor set inside
+ * requireUser() was lost to its caller and every journal row came out
+ * unattributed (E2E-09). The app registers a resolver that reads its
+ * per-request (cached) session instead; it is only ever called OUTSIDE a
+ * database transaction, so it can never wait on its own connection.
+ */
+let actorResolver: (() => Promise<AuditActor | null>) | null = null;
+export function setAuditActorResolver(fn: () => Promise<AuditActor | null>): void {
+  actorResolver = fn;
+}
+async function resolveActor(store: AuditContext | undefined): Promise<AuditActor | null> {
+  if (store && (store.userId || store.organisationId)) return store;
+  if (!actorResolver) return store ?? null;
+  try {
+    return (await actorResolver()) ?? store ?? null;
+  } catch {
+    return store ?? null;
+  }
+}
+
 /** The actor recorded for the current request, if any. */
 export function getAuditActor(): AuditActor | null {
   const store = context.getStore();
@@ -87,6 +110,12 @@ async function stampOrganisation(client: PrismaClient, row: Record<string, unkno
     return;
   }
   if (inTx) return;
+  const actor = await resolveActor(store);
+  if (actor?.organisationId) {
+    row.organisationId = actor.organisationId;
+    return;
+  }
+  if (!row.userId && actor?.userId) row.userId = actor.userId;
   const userId = typeof row.userId === 'string' ? row.userId : null;
   try {
     if (userId) row.organisationId = await organisationOf(client, userId);
@@ -181,9 +210,12 @@ export function installAuditJournal(client: PrismaClient): void {
   (client as unknown as { $transaction: (arg: unknown, options?: unknown) => Promise<unknown> }).$transaction = (arg: unknown, options?: unknown) => {
     const outer = context.getStore();
     const token = Symbol('tx');
-    const inner: AuditContext = outer
-      ? { ...outer, tx: token }
-      : { userId: null, source: 'unattributed', organisationId: null, pending: [], tx: token };
+    const begin = (actor: AuditActor | null) => {
+      const inner: AuditContext = outer
+        ? { ...outer, ...(actor && !outer.userId && !outer.organisationId ? { userId: actor.userId, source: actor.source, organisationId: actor.organisationId ?? null } : {}), tx: token }
+        : { userId: actor?.userId ?? null, source: actor?.source ?? 'unattributed', organisationId: actor?.organisationId ?? null, pending: [], tx: token };
+      return inner;
+    };
     const settle = async (committed: boolean) => {
       const list = inner.pending;
       const done: PendingEntry[] = [];
@@ -204,7 +236,12 @@ export function installAuditJournal(client: PrismaClient): void {
         }
       }
     };
-    return context.run(inner, () => original(arg, options)).then(
+    // Who is acting is worked out BEFORE the transaction opens (never inside it).
+    let inner: AuditContext = begin(null);
+    return resolveActor(outer).then((actor) => {
+      inner = begin(actor);
+      return context.run(inner, () => original(arg, options));
+    }).then(
       async (value) => { await settle(true); return value; },
       async (err) => { await settle(false); throw err; },
     );
@@ -249,6 +286,14 @@ export function installAuditJournal(client: PrismaClient): void {
       && Boolean(args.where && typeof args.where === 'object' && typeof (args.where as { id?: unknown }).id === 'string');
     const single = params.action === 'update' || params.action === 'delete' || params.action === 'upsert' || oneRecord;
 
+    // The journal names the record by the id the write returns: a create with
+    // a narrow select (e.g. only the warranty number) must still return it (E2E-10).
+    const sel = (params.args as { select?: Record<string, unknown> } | undefined)?.select;
+    if ((params.action === 'create' || params.action === 'update' || params.action === 'upsert' || params.action === 'delete') && sel && typeof sel === 'object' && !('id' in sel)) {
+      (params.args as { select: Record<string, unknown> }).select = { ...sel, id: true };
+    }
+    const actor = params.runInTransaction ? store ?? null : await resolveActor(store);
+
     let before: Record<string, unknown> | null = null;
     if (single && args.where && !params.runInTransaction) {
       try {
@@ -286,12 +331,12 @@ export function installAuditJournal(client: PrismaClient): void {
             : { where: args.where, data: args.data, count };
       }
       const entry: PendingEntry = {
-        userId: store?.userId ?? null,
-        organisationId: store?.organisationId ?? null,
+        userId: actor?.userId ?? null,
+        organisationId: actor?.organisationId ?? null,
         action: `data.${params.action}`,
         entityType: `db:${params.model}`,
         entityId: resultId ?? whereId,
-        metadata: capped({ ...metadata, source: store?.source ?? 'unknown', ...(params.runInTransaction ? { inTransaction: true } : {}) }),
+        metadata: capped({ ...metadata, source: actor?.source ?? 'unknown', ...(params.runInTransaction ? { inTransaction: true } : {}) }),
       };
       if (params.runInTransaction) {
         // Held for this request; written by its next ordinary query. With

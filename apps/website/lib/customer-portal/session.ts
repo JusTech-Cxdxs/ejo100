@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { prisma } from '@ejo/database';
+import { prisma, setAuditActorResolver } from '@ejo/database';
 import { customerAuth } from '@/lib/auth-customer';
 import { markCustomerActor } from '@/lib/customer-audit';
 
@@ -67,3 +67,15 @@ export async function currentCustomer(): Promise<SignedInCustomer | null> {
   const r = await lookupCustomer();
   return r.state === 'ok' ? r.customer : null;
 }
+
+// Data-journal rows written while a customer is signed in belong to the
+// customer's organisation (actor: the customer portal). Resolved from this
+// request's cached lookup; null outside a request (E2E-09).
+setAuditActorResolver(async () => {
+  try {
+    const r = await lookupCustomer();
+    return r.state === 'ok' ? { userId: null, source: 'customer-portal', organisationId: r.customer.organisationId } : null;
+  } catch {
+    return null;
+  }
+});

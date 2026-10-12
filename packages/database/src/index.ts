@@ -25,5 +25,5 @@ if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 
-export { setAuditActor, getAuditActor, redactForJournal } from './audit-journal';
+export { setAuditActor, getAuditActor, setAuditActorResolver, redactForJournal } from './audit-journal';
 export * from '@prisma/client';

@@ -39,7 +39,7 @@ import { unstable_cache } from 'next/cache';
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal, isCustomerLine, coveredLabel } from '@/lib/estimate-billing';
 import { headers } from 'next/headers';
-import { prisma, JobCardStatus, setAuditActor } from '@ejo/database';
+import { prisma, JobCardStatus, setAuditActor, setAuditActorResolver } from '@ejo/database';
 import { claimed, lockExisting } from '@/lib/integrity';
 import { exceedsBalance, NUMBER_CLASH_TRIES, numberClashPause } from '@/lib/integrity-core';
 import { MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
@@ -107,6 +107,19 @@ const sessionForRequest = cache(async () => {
   // (or a 5-minute session cookie cache) never outlives the deactivation.
   const u = await prisma.user.findUnique({ where: { id: session.user.id }, select: { isActive: true } });
   return u?.isActive ? session : null;
+});
+
+// The data journal asks "who is acting?" from this request's cached session:
+// an actor set inside requireUser() does not flow back to its caller (E2E-09).
+// Outside a request (scheduled jobs, after()) there is no one: null.
+setAuditActorResolver(async () => {
+  try {
+    const session = await sessionForRequest();
+    if (!session?.user?.id) return null;
+    return { userId: session.user.id, source: 'portal', organisationId: (session.user as { organisationId?: string | null }).organisationId ?? null };
+  } catch {
+    return null;
+  }
 });
 
 export async function requireUser(): Promise<{ id: string }> {

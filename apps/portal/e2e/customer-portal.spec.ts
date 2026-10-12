@@ -121,7 +121,6 @@ test.describe('passwords', () => {
   }
 
   test('change password: the confirmation shows and the customer stays signed in', async ({ page }) => {
-    test.fail(true, 'E2E-12: apps/website/lib/customer-portal/actions.ts:189-192 calls changePassword with revokeOtherSessions: true, which revokes EVERY session including the current one and issues a new cookie; the re-render of the same request still carries the old cookie, so the dashboard layout (lib/customer-portal/session.ts requireCustomer) sends the customer to /customer-portal/session-ended, which signs out the new session too — the customer lands on "Your session ended. Please sign in again." instead of the confirmation');
     await customerSignedIn(page, PASSWORD_CUSTOMER);
     const form = await changePassword(page, PASSWORD_CUSTOMER.password, `Changed-${uniq()}-Pw!`);
     await visibleOrExplain(page, form.getByRole('status').filter({ hasText: 'Your password is changed. Other devices have been signed out.' }), 'the confirmation "Your password is changed"');
