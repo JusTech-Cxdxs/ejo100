@@ -9,6 +9,20 @@ export async function signIn(page: Page, email: string, password: string) {
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
+  // The URL changes before the signed-in layout has rendered (client-side push).
+  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible({ timeout: 30_000 });
+}
+
+/**
+ * Open a page and let it settle: guards redirect from inside the streamed
+ * page (after the loading shell), so the final URL is only known once the
+ * page's own heading has rendered.
+ */
+export async function gotoSettled(page: Page, url: string) {
+  const res = await page.goto(url);
+  await page.locator('main h1').first().waitFor({ state: 'visible', timeout: 20_000 }).catch(() => undefined);
+  await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
+  return res;
 }
 
 export async function signOut(page: Page) {
@@ -63,9 +77,8 @@ export async function expectHealthy(page: Page, where = page.url()) {
 
 /** Open a page and check it rendered properly (status < 500, no error text). */
 export async function visitHealthy(page: Page, url: string) {
-  const res = await page.goto(url);
+  const res = await gotoSettled(page, url);
   expect(res?.status() ?? 0, `${url} answered ${res?.status()}`).toBeLessThan(500);
-  await page.waitForLoadState('domcontentloaded');
   await expectHealthy(page, url);
 }
 
@@ -94,8 +107,9 @@ export async function submit(page: Page, button: Locator) {
 export async function bellText(page: Page): Promise<string> {
   const bell = page.getByRole('button', { name: /^Notifications/ });
   await bell.click();
-  const panel = page.getByRole('link', { name: 'Open the Notification Center →' }).locator('..');
+  const panel = page.getByRole('link', { name: 'Open the Notification Center →' }).first().locator('..');
   await expect(panel).toBeVisible();
+  await expect(panel).not.toContainText('Loading your notifications…');
   const text = (await panel.textContent()) ?? '';
   await bell.click();
   return text;

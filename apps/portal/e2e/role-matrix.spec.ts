@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { decide, type PermissionKey, type Principal } from '../lib/authz/catalogue';
 import { E2E_PASSWORD, MASTER, PEOPLE, SUPERMANAGER, SWITCHABLE } from './people';
-import { expectHealthy, signIn, watchServerErrors } from './helpers';
+import { expectHealthy, gotoSettled, signIn, watchServerErrors } from './helpers';
 
 /**
  * Every role × every page: the menu's pages all open cleanly, and the
@@ -21,6 +21,7 @@ const AREAS: { url: string; needs: PermissionKey[] }[] = [
   { url: '/branches', needs: ['admin.structure.manage'] },
   { url: '/audit-logs', needs: ['audit.view'] },
   { url: '/analytics', needs: ['analytics.business.view'] },
+  { url: '/workshop', needs: ['workshop.view'] },
   { url: '/workshop/job-cards', needs: ['workshop.view'] },
   { url: '/workshop/vehicle-service', needs: ['workshop.view'] },
   { url: '/workshop/customers', needs: ['workshop.view'] },
@@ -65,12 +66,13 @@ for (const acct of ACCOUNTS) {
     await signIn(page, acct.email, acct.password);
 
     const menu = page.getByRole('navigation', { name: 'Main' }).locator(':scope > a');
+    await expect(menu.first()).toBeVisible();
     const hrefs = [...new Set(await menu.evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? '')))];
     expect(hrefs.length, 'menu entries').toBeGreaterThan(1);
 
     await test.step('every menu page opens cleanly', async () => {
       for (const href of hrefs) {
-        const res = await page.goto(href);
+        const res = await gotoSettled(page, href);
         expect(res?.status() ?? 0, `${href} status`).toBeLessThan(500);
         await expect(page, `${href} is in the menu, so it must not be refused`).not.toHaveURL(/\/access-denied/);
         await expectHealthy(page, href);
@@ -79,7 +81,7 @@ for (const acct of ACCOUNTS) {
 
     await test.step('pages for everyone open cleanly', async () => {
       for (const url of EVERYONE) {
-        const res = await page.goto(url);
+        const res = await gotoSettled(page, url);
         expect(res?.status() ?? 0, `${url} status`).toBeLessThan(500);
         await expect(page, url).not.toHaveURL(/\/access-denied|\/login/);
         await expectHealthy(page, url);
@@ -90,7 +92,7 @@ for (const acct of ACCOUNTS) {
       const problems: string[] = [];
       for (const area of AREAS) {
         const allowed = 'master' in acct || mayOpen(acct.roles, area.needs);
-        const res = await page.goto(area.url);
+        const res = await gotoSettled(page, area.url);
         if ((res?.status() ?? 0) >= 500) { problems.push(`${area.url}: HTTP ${res?.status()}`); continue; }
         const denied = /\/access-denied/.test(page.url());
         if (allowed && denied) problems.push(`${area.url}: refused, but the role grants ${area.needs.join(' or ')}`);
@@ -106,16 +108,3 @@ for (const acct of ACCOUNTS) {
     expect(serverErrors(), 'document responses ≥ 500').toEqual([]);
   });
 }
-
-/**
- * E2E-01: the Workshop landing page has no server-side guard — anyone
- * signed in can open /workshop by typing it, though the menu hides it.
- * (Its sub-pages are guarded; the landing only shows links.)
- */
-test('a role without the Workshop is refused /workshop when typing the address', async ({ page }) => {
-  test.fail(true, 'E2E-01: app/(app)/workshop/page.tsx has no guardAnyPage([\'workshop.view\'])');
-  const calendar = PEOPLE.find((p) => p.role === 'calendar-user')!;
-  await signIn(page, calendar.email, E2E_PASSWORD);
-  await page.goto('/workshop');
-  await expect(page).toHaveURL(/\/access-denied/);
-});
