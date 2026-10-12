@@ -6,7 +6,7 @@ real schema, and Mailpit catching every email. It is independent of the people w
 selector was read from the pages' TSX, and every expectation is the documented rule (the Authorization
 Catalogue, the workflow rules in the actions), not "whatever the page does today".
 
-_Status of this document: see "Latest CI run" at the bottom._
+_Status: green — 117 tests, all as expected: 110 pass and 7 known-defect tests (`test.fail`) reproduce their defect; 0 flaky (see "Latest CI run" at the bottom)._
 
 ## How it runs
 
@@ -52,8 +52,8 @@ _Status of this document: see "Latest CI run" at the bottom._
 | `schedule.spec.ts` | Scheduling admin adds a room → calendar user books it with a colleague (emailed) → adds an outside visitor (Security sees the booking) → reschedules → cancels; calendar/rooms/availability/aides/appointments pages |
 | `notifications.spec.ts` | Admin publishes a broadcast to everyone and one to Workshop Managers (emailed only to them) → technician's bell/centre shows only the first → manager sees both, marks one read (persists) → read counted → broadcast analytics |
 | `search.spec.ts` | Header search finds a Job Card by number (and opens it), a customer by name, a vehicle by plate (opens it), a part by name; special characters / emoji / 300 chars never break it; another organisation's admin finds none of it |
-| `role-matrix.spec.ts` | For **every seeded role** (and the Master Administrator): every menu page opens with no error boundary / Next overlay / HTTP ≥ 500, pages for everyone open, and 35 protected areas are open exactly when the Authorization Catalogue grants the permission and "Access denied" otherwise |
-| `admin.spec.ts` | Give a role (the person's menu follows) and remove it; switch an account off → signed out on the next click, can't sign in → switch on → can sign in; admin pages; Audit Logs kinds/date/search filters; a Manager is refused the full trail |
+| `role-matrix.spec.ts` | For **every seeded role** (18 accounts incl. the Supervisor+Manager) and the Master Administrator: every menu page opens with no error boundary ("Something went wrong"), Next error overlay, "Application error" or HTTP ≥ 500 for the document; pages for everyone open; nothing in the menu is refused; every one of 35 protected addresses the Authorization Catalogue does **not** grant is refused when typed in (one shown in the browser as "Access denied", all checked over HTTP with the person's session) |
+| `admin.spec.ts` | Give a role (the person's menu follows) and remove it; switch an account off → signed out on the next click, can't sign in → switch on → can sign in (audit entries for both); admin pages; Audit Logs kinds/date/search filters; a Manager is refused the full trail; **branch fences** (second branch of the same organisation) |
 | `robustness.spec.ts` | Double click → one record; Back/Refresh after saving → no duplicate; session expired while a form is open → sent to sign in, nothing saved; very long input saved or refused politely; accents/emoji/markup kept literally, never rendered as HTML, searchable |
 | `mobile.spec.ts` | 375 × 812 smoke of key pages per role (no sideways scroll, no error) and the menu-drawer expectation |
 | `customer-portal.spec.ts` | (website :3002) staff open a Job Card for the portal customer → the customer signs in and sees their own vehicle and that Job Card, never another customer's; wrong password refused; the other customer sees only theirs; the dashboard needs a session — **extend after merging the new portal** |
@@ -76,15 +76,15 @@ _Status of this document: see "Latest CI run" at the bottom._
 | Scheduling | — | — | — | ✓ invited | — | — | ✓ sees booking | — | — | ✓ | — | — | — |
 | Notifications / broadcasts | — | — | ✓ sees / R | ✓ sees, marks read | — | — | — | — | — | — | ✓ publish | — | — |
 | Global search | ✓ | — | — | — | — | ✓ | — | — | — | — | R other org | — | — |
-| Administration | — | — | — | R audit | — | — | — | — | — | ✓ (Sola) | ✓ | — | — |
+| Administration | — | — | R other branch | R audit | — | — | — | — | — | ✓ (Sola) | ✓ | R branch fence | — |
 | Role matrix (every page) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | Customer portal | ✓ opens JC | — | — | — | — | — | — | — | — | — | — | — | ✓ |
 
 ### Not covered (and why)
 
-* **Branch administrator's own workflows** beyond the role matrix (managing only their branch's people) — the
-  seed has one branch per organisation; a second branch in the same organisation is needed to prove the
-  branch fence. Next step: seed a second branch + people and add to `admin.spec.ts`.
+* **Branch administrator changing people** (giving roles / switching off within their own branch) — only the
+  fence is asserted (`admin.spec.ts` › branch fences: a second-branch technician is invisible to the branch
+  administrator and cannot open the first branch's Job Cards).
 * **Serialized / batch parts** (serial-number release, batch FIFO) — the seeded parts are quantity-tracked.
 * **Warranty claim send-back, rejection, partial acceptance, replacement/repair remedies; provider/policy
   deletion approvals** — only the happy path is driven.
@@ -96,8 +96,9 @@ _Status of this document: see "Latest CI run" at the bottom._
 
 ## Defects found
 
-See the table below (each one is asserted by a test marked `test.fail()` that cites its id, so CI stays green
-while it reproduces and turns red the day it is fixed).
+Each one except E2E-08 (seen in the server log only) is asserted by a test marked `test.fail()` that cites its
+id, so CI stays green while it reproduces and turns red ("known defect … PASSED — remove test.fail") the day it is
+fixed. The tests assert the correct behaviour, never the bug.
 
 | Id | Severity | Where (cause) | Repro | Expected | Actual | Asserted by |
 |---|---|---|---|---|---|---|
@@ -113,4 +114,47 @@ while it reproduces and turns red the day it is fixed).
 
 ## CI timings
 
-<!-- TIMINGS -->
+Measured on the green run below (GitHub-hosted `ubuntu-latest`, two shards in parallel):
+
+| | Shard 1/2 | Shard 2/2 |
+|---|---|---|
+| Containers, install, schema, seed (×2) | ~1.2 min | ~1.4 min |
+| `next build` portal / website | 74 s / 28 s | 142 s / 50 s |
+| Playwright install | 25 s | 26 s |
+| **Real-browser tests** | **7.0 min** (59 tests) | **10.2 min** (58 tests) |
+| Load test (shard 1 only) | 62 s | — |
+| **Job total** | **11.7 min** | **15.6 min** |
+
+**Wall-clock for the whole suite: ~15.6 min** (target < 25 min). Test time per file (both shards, incl. any
+retries): role matrix 471 s · Job Card lifecycle 227 s · Vehicle Service 223 s · Security 161 s · Job Card
+cancellation 137 s · Warranty 135 s · rejections 106 s · admin 86 s · notifications 61 s · inventory 61 s ·
+schedule 54 s · search 44 s · robustness 37 s · mobile 26 s · customer portal 15 s · existing specs ~150 s.
+
+How the time came down while the suite grew: one worker → 2 workers (3 measured slower: CPU-bound runner);
+forbidden addresses in the role matrix checked over HTTP with the person's session (one of them in the browser);
+each page opened once per role; two shards with their own database. Each annotation run also prints the
+per-file times (`e2e time per file`), so a slow spec is visible immediately.
+
+Load test on the same run (shard 1): sign-in p50 231 ms / p95 317 ms; pages (10 concurrent) p50 262 ms /
+p95 881 ms; live pulse (50 concurrent) p50 140 ms / p95 185 ms; 0 errors.
+
+## Latest CI run
+
+* Workflow **E2E**, run **38232582051** on `work/e2e` @ `7b3c417` — both shards **success**:
+  shard 1/2 59 as expected (5 of them known defects) · 0 unexpected · 0 flaky; shard 2/2 58 as expected (2 known
+  defects) · 0 unexpected · 0 flaky (E2E-07 is asserted as a known defect only before 12:00 UTC, when it reproduces).
+* Read any run's results: `gh api repos/JusTech-Cxdxs/ejo100/actions/runs/<run>/jobs --jq '.jobs[].id'`, then
+  `gh api repos/JusTech-Cxdxs/ejo100/check-runs/<job id>/annotations`.
+
+## Extending
+
+* A new workflow spec: use `as(page, role)` to switch people, `open()` before acting on a page,
+  `waitOutcome(page, /status=…/)` after a server action (it fails with the server's own `?error=` message or,
+  when nothing happened, with the invalid fields and page text), `freshVehicle()` for a vehicle of its own, and
+  the step helpers in `workflows.ts` (Job Card estimate/approval/payment chain, Store matching, pickers).
+* A product defect: keep the test asserting the right behaviour, add `test.fail(true, 'E2E-NN: file:line — …')`,
+  add a row above. When the defect is fixed the test "unexpectedly passes" and CI says so — remove the mark.
+* Customer portal: extend `customer-portal.spec.ts` after merging the new portal (the website already runs on
+  :3002 with `NEXT_PUBLIC_WEBSITE_URL=http://localhost:3002` and SMTP to Mailpit; the two portal customers have
+  known passwords).
+
