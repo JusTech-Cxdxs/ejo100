@@ -104,23 +104,6 @@ test('the selling price is set; pricing, matching and analytics pages show real 
   await visitHealthy(page, '/inventory/goods-receipts');
 });
 
-test('a technician (read-only Store) is refused when trying to add a part', async ({ page }) => {
-  await as(page, 'technician');
-  await page.goto('/inventory/parts');
-  const part = jcForm(page, 'Add Part');
-  test.skip((await part.count()) === 0, 'the form is (correctly) not offered');
-  const name = `Should Not Exist ${uniq()}`;
-  await part.locator('input[name="name"]').fill(name);
-  await pickSearchable(part, page, S.type, new RegExp(S.type), 'Search Part Types…');
-  await part.locator('select[name="trackingType"]').selectOption('QUANTITY');
-  await part.locator('select[name="warrantyChoice"]').selectOption('NO');
-  await part.locator('input[name="baseUnitOfMeasure"]').fill('Piece');
-  await part.getByRole('button', { name: 'Add Part' }).click();
-  await page.waitForURL(/error=/);
-  await page.goto(`/inventory/parts?q=${encodeURIComponent(name)}`);
-  await expect(page.getByRole('link', { name })).toHaveCount(0);
-});
-
 test('read-only Store viewers are not offered the Store’s forms', async ({ page }) => {
   await as(page, 'technician');
   await page.goto('/inventory/parts');

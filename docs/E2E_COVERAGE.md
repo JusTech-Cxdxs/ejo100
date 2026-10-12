@@ -49,7 +49,7 @@ _Status: see "Latest CI run" at the bottom. Adapted to the new portal shell (gro
 | `jobcard-rejections.spec.ts` | One open Job Card per vehicle; supervisor rejects with a reason (creator emailed) → front desk reassigns supervisor; technician turns the assignment down (reason on the trail) → reassigned → accepted; Manager **returnEstimateForChanges** → supervisor edits the line and re-approves → Manager approves; a cancellation request is declined and can be asked again |
 | `jobcard-cancellation.spec.ts` | Paid (70%) Job Card with stock **reserved** for it → front desk asks to cancel → Manager sees the refund it authorises → cancelled → the open parts request is withdrawn and the reserved stock is back (part page) → hand-back blocked until refunded → front desk can't refund → Finance records the refund (receipt emailed, `/workshop/refunds` lists it) → hand back → the vehicle can open a new Job Card |
 | `vehicle-service.spec.ts` | Book → check in (**front desk only** — technician has no button) → approve/assign/accept → inspection skipped with a reason → normal service estimate (Store part + labour) → Store matching → approvals → customer emailed → 70% deposit moves it In Service → complete (notes) → ready → balance → close → collected; service tracker; a cancelled booking handed back; a service escalated to a Job Card (findings + trail carried over, service read-only) |
-| `inventory.spec.ts` | Store manager creates category + part type + part (part number from the category code) → GRN with cost (stock 0 → 12, receipt traceable from the part, unit cost shown) → selling price → pricing, estimate matching, analytics (with ₦ figures), goods-receipt pages; a technician is refused when submitting the Add Part form |
+| `inventory.spec.ts` | Store manager creates category + part type + part (part number from the category code) → GRN with cost (stock 0 → 12, receipt traceable from the part, unit cost shown) → selling price → pricing, estimate matching, analytics (with ₦ figures), goods-receipt pages; read-only Store viewers (technician) are not offered the Store's forms (E2E-01, fixed) |
 | `warranty.spec.ts` | HOD adds a provider and a vehicle policy → officer registers a vehicle warranty with evidence → the registrar can't verify it; the HOD does → claim drafted (3C, amounts, odometer) → sent for approval → HOD → Branch Manager → recorded as submitted → provider decision → settlement; register search, claims, warranty analytics, seeded part policy |
 | `security.spec.ts` | Visitor at the gate (ID, on foot, host) → received at reception → on-premises/register/desk boards → checked out; contractor team requested → Manager approves → signed in/out; delivery at the gate → Store confirms receipt → vehicle leaves; exit pass (technician) → Department Head → Manager → time out (people-out board) → time in; road test on a Job Card → Manager approves → out/in with odometer → Job Card trail; incident reported by an officer (can't close it) → CSO assigns and closes |
 | `schedule.spec.ts` | Scheduling admin adds a room → calendar user books it with a colleague (emailed) → adds an outside visitor (Security sees the booking) → reschedules → cancels; calendar/rooms/availability/aides/appointments pages |
@@ -99,6 +99,8 @@ _Status: see "Latest CI run" at the bottom. Adapted to the new portal shell (gro
 * **Customer portal: approving an estimate online, vehicle service (SV) detail, warranty claims seen by the
   customer, AI support (only its "coming soon" card exists)**; the CRM's contacts / addresses tabs and tags filters.
 * **Cron routes** (reminders, digests) — not user workflows; covered by the existing unit tests.
+* **The server refusing a Store write from a read-only role** — since E2E-01 was fixed the form is no longer offered,
+  so the browser cannot submit it; the refusal (`requireStoreStaff`) would need an action-level test.
 
 ## Defects found
 
@@ -136,39 +138,39 @@ its session is being ended (switched off, signed out) throws `Not authenticated.
 
 ## CI timings
 
-Measured on the green run below (GitHub-hosted `ubuntu-latest`, two shards in parallel):
+Measured on the green run below (GitHub-hosted `ubuntu-latest`, two shards in parallel, each with its own
+Postgres, Mailpit, portal and website):
 
 | | Shard 1/2 | Shard 2/2 |
 |---|---|---|
-| Containers, install, schema, seed (×2) | ~1.2 min | ~1.4 min |
-| `next build` portal / website | 74 s / 28 s | 142 s / 50 s |
-| Playwright install | 25 s | 26 s |
-| **Real-browser tests** | **7.0 min** (59 tests) | **10.2 min** (58 tests) |
-| Load test (shard 1 only) | 62 s | — |
-| **Job total** | **11.7 min** | **15.6 min** |
+| Containers, install, schema, seed (×2), `next build` portal + website, Playwright install | ~5.8 min | ~5.8 min |
+| **Real-browser tests** | **11.3 min** (71 tests) | **12.2 min** (66 tests) |
+| Load test (shard 1 only) | ~1 min | — |
+| **Job total** | **18.2 min** | **18.1 min** |
 
-**Wall-clock for the whole suite: ~15.6 min** (target < 25 min). Test time per file (both shards, incl. any
-retries): role matrix 471 s · Job Card lifecycle 227 s · Vehicle Service 223 s · Security 161 s · Job Card
-cancellation 137 s · Warranty 135 s · rejections 106 s · admin 86 s · notifications 61 s · inventory 61 s ·
-schedule 54 s · search 44 s · robustness 37 s · mobile 26 s · customer portal 15 s · existing specs ~150 s.
+**Wall-clock for the whole suite: ~18.2 min** (target < 25 min). Test time per file (incl. any retries):
+role matrix 566 s · Job Card lifecycle 282 s · customer portal 274 s · Vehicle Service 251 s · Security 192 s ·
+Job Card cancellation 171 s · rejections 162 s · admin 146 s · CRM 141 s · Warranty 108 s · schedule 61 s ·
+robustness 54 s · inventory 47 s · mobile 46 s · notifications 42 s · search 41 s · existing specs ~190 s.
+The customer-portal and CRM specs added ~7 min of test time; the wall-clock grew ~2.6 min because they run on
+shard 1 beside the Job Card specs.
 
 How the time came down while the suite grew: one worker → 2 workers (3 measured slower: CPU-bound runner);
 forbidden addresses in the role matrix checked over HTTP with the person's session (one of them in the browser);
 each page opened once per role; two shards with their own database. Each annotation run also prints the
 per-file times (`e2e time per file`), so a slow spec is visible immediately.
 
-Load test on the same run (shard 1): sign-in p50 231 ms / p95 317 ms; pages (10 concurrent) p50 262 ms /
-p95 881 ms; live pulse (50 concurrent) p50 140 ms / p95 185 ms; 0 errors.
+Load test on the same run (shard 1): sign-in p50 338 ms / p95 404 ms; pages (10 concurrent) p50 569 ms /
+p95 1669 ms; live pulse (50 concurrent) p50 289 ms / p95 383 ms; 0 errors.
 
 ## Latest CI run
 
-* Workflow **E2E**, run **38240477342** on `work/e2e` @ `7b9b980` — both shards **success**:
-  shard 1/2 59 as expected (5 of them known defects) · 0 unexpected · 0 flaky (job 15.5 min, tests 9.1 min);
-  shard 2/2 58 as expected (2 known defects) · 0 unexpected · 0 flaky (job 15.1 min, tests 9.8 min).
-  E2E-07 is asserted as a known defect only before 12:00 UTC, when it reproduces.
-* Earlier green runs: 38232582051 @ `7b3c417` (0 flaky); 38236189680 @ `06192a4` and 38238553106 @ `d2bd06b`
-  each had one flaky test (passed on retry), fixed in the next commit: Job Card checkout clicked before hydration
-  (now re-opens the page), and the contractor check read the visitors board (now reads the contractors On-site tab).
+* Draft PR **#12** "[CI only — do not merge] e2e adaptation" (`work/e2e` → `platform/customer-portal-crm`).
+* Workflow **E2E**, run **38263113864** @ `0baf78e` — both shards **success**: shard 1/2 70 as expected (3 of them
+  known defects: E2E-09, E2E-10, E2E-12) · 0 unexpected · 0 flaky · 1 skipped (the Store-refusal test retired in
+  the next commit); shard 2/2 66 as expected · 0 unexpected · 0 flaky. E2E-11 was recorded 4 times (shard 1).
+* Before it, on the merged branch: 38251673571 (shell adaptation: 4 failing), 38254109730 (7), 38257626020 (1),
+  38260101304 (1) — each failure diagnosed from its annotation and fixed (test) or marked (product defect).
 * Read any run's results: `gh api repos/JusTech-Cxdxs/ejo100/actions/runs/<run>/jobs --jq '.jobs[].id'`, then
   `gh api repos/JusTech-Cxdxs/ejo100/check-runs/<job id>/annotations`.
 

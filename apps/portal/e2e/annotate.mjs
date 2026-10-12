@@ -27,6 +27,7 @@ const titleOf = (trail, spec) => [...trail, spec.title].filter(Boolean).join(' �
 const where = (spec) => (spec.file ? `${spec.file}:${spec.line}` : '');
 const perFile = new Map();
 const intermittent = [];
+const skipped = [];
 function walk(suite, trail) {
   for (const s of suite.suites ?? []) walk(s, [...trail, s.title]);
   for (const spec of suite.specs ?? []) {
@@ -48,6 +49,9 @@ function walk(suite, trail) {
       } else if (t.status === 'flaky') {
         const first = t.results?.[0];
         warnings.push(`::warning title=FLAKY ${title}::${where(spec)} passed on retry; first attempt: ${locOf(first)}${msgOf(first).split('\n').filter(Boolean).slice(0, 4).join(' | ').slice(0, 600)}`);
+      } else if (t.status === 'skipped') {
+        const why = (t.annotations ?? []).find((a) => a.type === 'skip')?.description ?? '';
+        skipped.push(`${title}${why ? ` — ${why}` : ''}`);
       } else if (t.status === 'expected' && knownDefect) {
         notices.push(`::notice title=Known defect ${title}::${(knownDefect.description ?? '').slice(0, 400)}`);
       }
@@ -67,6 +71,7 @@ if (part === 0) {
   const st = data.stats ?? {};
   const files = [...perFile.entries()].sort((a, b) => b[1] - a[1]).map(([f, ms]) => `${f.replace(/\.spec\.ts$/, '')} ${Math.round(ms / 1000)}s`).join(' · ');
   console.log(`::notice title=e2e time per file (test time incl. retries)::${files}`);
+  if (skipped.length) console.log(`::notice title=Skipped tests (${skipped.length})::${skipped.slice(0, 8).join(' ⏎ ').replace(/[\r\n]/g, ' ').slice(0, 2000)}`);
   const seen = [...new Set(intermittent)];
   if (seen.length) console.log(`::notice title=Intermittent known defects (${seen.length})::${seen.slice(0, 4).join(' ⏎ ').replace(/[\r\n]/g, ' ').slice(0, 3500)}`);
   console.log(`::notice title=e2e totals::expected ${st.expected ?? '?'} · unexpected ${st.unexpected ?? '?'} · flaky ${st.flaky ?? '?'} · skipped ${st.skipped ?? '?'} · ${Math.round((st.duration ?? 0) / 1000)} s · ${errors.length} failing, ${warnings.length} flaky, ${notices.length} known defects`);
