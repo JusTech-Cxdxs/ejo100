@@ -246,7 +246,7 @@ test('quality check → completed → ready; balance paid; close approved; vehic
   await as(page, 'receptionist');
   await page.goto(S.url);
   await page.getByRole('button', { name: 'Request close' }).click();
-  await expect(page.getByText('Close requested — waiting on a Manager’s approval.')).toBeVisible();
+  await expect(page.getByText(/Close requested — waiting on a Manager.s approval\./)).toBeVisible();
 
   await as(page, 'workshop-manager');
   await page.goto(S.url);

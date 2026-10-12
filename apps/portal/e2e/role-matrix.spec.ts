@@ -73,7 +73,7 @@ for (const acct of ACCOUNTS) {
     const hrefs = [...new Set(await menu.evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? '')))];
     expect(hrefs.length, 'menu entries').toBeGreaterThan(1);
 
-    // Each address is opened once: protected areas are checked in the last step.
+    // Each address is opened once: protected areas (menu or forbidden) are checked in the last step.
     const areaUrls = new Set(AREAS.map((a) => a.url));
     await test.step('every menu page opens cleanly', async () => {
       for (const href of hrefs.filter((h) => !areaUrls.has(h))) {
@@ -97,6 +97,9 @@ for (const acct of ACCOUNTS) {
       const problems: string[] = [];
       for (const area of AREAS) {
         const allowed = 'master' in acct || mayOpen(acct.roles, area.needs);
+        // Allowed pages are opened when they are in this person's menu (the
+        // workflow specs open the rest); every forbidden address is typed in.
+        if (allowed && !hrefs.includes(area.url)) continue;
         const res = await gotoSettled(page, area.url);
         if ((res?.status() ?? 0) >= 500) { problems.push(`${area.url}: HTTP ${res?.status()}`); continue; }
         const denied = /\/access-denied/.test(page.url());

@@ -14,7 +14,7 @@ test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
 const card = (page: Page) => page.getByRole('listitem', { name: SWITCHABLE.name });
 
-test('an administrator gives a role; the person’s menu follows; the role is taken away again', async ({ page, browser }) => {
+test('an administrator gives a role; the person’s menu follows; the role is taken away again', async ({ page }) => {
   await as(page, 'administrator');
   await page.goto(`/users?q=${encodeURIComponent(SWITCHABLE.email)}`);
   await expect(card(page)).toBeVisible();
@@ -25,12 +25,11 @@ test('an administrator gives a role; the person’s menu follows; the role is ta
   await waitOutcome(page, /status=saved/);
   await expect(card(page).getByRole('button', { name: `Remove the role Technician from ${SWITCHABLE.name}` })).toBeVisible();
 
-  const other = await browser.newContext();
-  const sola = await other.newPage();
-  await signIn(sola, SWITCHABLE.email, E2E_PASSWORD);
-  await expect(sola.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Workshop', exact: true })).toBeVisible();
-  await other.close();
+  await as(page, SWITCHABLE);
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Workshop', exact: true })).toBeVisible();
 
+  await as(page, 'administrator');
+  await page.goto(`/users?q=${encodeURIComponent(SWITCHABLE.email)}`);
   await card(page).getByRole('button', { name: `Remove the role Technician from ${SWITCHABLE.name}` }).click();
   await waitOutcome(page, /status=/);
   await expect(card(page).getByRole('button', { name: `Remove the role Technician from ${SWITCHABLE.name}` })).toHaveCount(0);
