@@ -109,7 +109,7 @@ export default async function WorkshopVehiclesPage({
                     </td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]"><CustomerLink id={v.customerId} name={v.customer.fullName} canView={canSeeCustomers} /></td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
-                      {v.mileage != null ? `${v.mileage.toLocaleString()} km` : '—'}
+                      {v.mileage != null ? `${v.mileage.toLocaleString('en-NG')} km` : '—'}
                     </td>
                     <td className="px-4 py-3 text-xs text-[var(--ejo-text-muted)]">
                       {formatDateTimeCompact(v.createdAt)}

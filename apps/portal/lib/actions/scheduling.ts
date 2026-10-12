@@ -14,6 +14,7 @@ import { decide, ROLE_GRANTS } from '@/lib/authz/catalogue';
 import { sendLoggedEmail, type Recipient } from '@/lib/logged-email';
 import { sendDueAppointmentReminders } from '@/lib/appointment-reminders';
 import { computeSchedulingAnalytics } from '@/lib/scheduling-analytics';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class SchedulingError extends Error {}
 
@@ -73,7 +74,7 @@ async function requireBookFor(ownerId: string): Promise<SchedulingAccess> {
 // ── Numbering ─────────────────────────────────────────────────────────
 
 async function nextNumber(prefix: 'APT' | 'VIS'): Promise<string> {
-  const start = `${prefix}-${new Date().getFullYear()}-`;
+  const start = `${prefix}-${lagosYear()}-`;
   const latest =
     prefix === 'APT'
       ? (await prisma.appointment.findFirst({ where: { appointmentNumber: { startsWith: start } }, orderBy: { appointmentNumber: 'desc' }, select: { appointmentNumber: true } }))?.appointmentNumber

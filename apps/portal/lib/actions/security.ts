@@ -1,4 +1,5 @@
 'use server';
+import { cleanForLog } from '@/lib/errors';
 import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
@@ -15,6 +16,7 @@ import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { visitOverdueMinutes, exitPassOverdueMinutes, roadTestOverdueMinutes, durationText, INCIDENT_TYPES, contractorState, contractorAfterHoursMinutes, lagosDay } from '@/lib/security-rules';
 import { customerTotal } from '@/lib/estimate-billing';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class SecurityError extends Error {}
 
@@ -136,7 +138,7 @@ async function visibleOrNull<T extends { branchId?: string | null }>(rec: T | nu
 // ── Numbering & logged emails ─────────────────────────────────────────
 
 async function nextNumber(prefix: 'VIS' | 'VP' | 'EP' | 'VX' | 'RT' | 'INC' | 'DLV' | 'CTR'): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = lagosYear();
   const start = `${prefix}-${year}-`;
   const latest =
     prefix === 'VIS'
@@ -172,7 +174,7 @@ async function sendLogged(entityType: string, entityId: string, recipients: Pers
       await sendEmail(r.email, subject, renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portal}${path}`, logoUrl: `${portal}/images/logo/logo.png`, companyName: org.companyName, branchName: org.branchName }));
     } catch (err) {
       sent = false;
-      error = err instanceof Error ? err.message.slice(0, 300) : 'Unknown error';
+      error = err instanceof Error ? cleanForLog(err.message).slice(0, 300) : 'Unknown error';
     }
     await prisma.securityEmailLog.create({ data: { entityType, entityId, recipient: `${r.fullName} <${r.email}>`, subject, sent, error } });
     await writeAuditLog({ userId: actorId, action: sent ? 'security.email_sent' : 'security.email_failed', entityType, entityId, metadata: { to: r.fullName, subject, ...(error ? { error } : {}) } });

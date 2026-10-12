@@ -34,17 +34,19 @@ export function fmtShortDate(d: Date): string {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: TZ });
 }
 
-/** "just now", "5 min ago", "3 h ago", "2 days ago", else the date. */
+/** "just now", "5 min ago", "3 h ago", "yesterday", "2 days ago", else the
+ * date. Whole units rounded down, so 59 minutes never reads "1 h ago". */
 export function timeAgo(d: Date, now = new Date()): string {
-  const s = Math.max(0, Math.round((now.getTime() - d.getTime()) / 1000));
-  if (s < 60) return 'just now';
-  const m = Math.round(s / 60);
+  const s = Math.floor((now.getTime() - new Date(d).getTime()) / 1000);
+  if (!Number.isFinite(s) || s < 60) return 'just now';
+  const m = Math.floor(s / 60);
   if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
+  const h = Math.floor(m / 60);
   if (h < 24) return `${h} h ago`;
-  const days = Math.round(h / 24);
-  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
-  return fmtDate(d);
+  const days = Math.floor(h / 24);
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days} days ago`;
+  return fmtDate(new Date(d));
 }
 
 export const DAY_MS = 86_400_000;

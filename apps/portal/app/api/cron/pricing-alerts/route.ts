@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isCronRequest } from '@/lib/cron-auth';
 import { setAuditActor } from '@ejo/database';
 import { recordJobRun } from '@/lib/job-runs';
+import { purgeOldErrorEvents } from '@/lib/error-events';
 import { getOpenPricingAlertsForDigest } from '@/lib/pricing-digest';
 import { sendEmail } from '@/lib/email';
 import { renderPricingAlertsDigestEmail } from '@/lib/email-templates/pricing-alerts-digest';
@@ -82,6 +83,9 @@ export async function GET(request: NextRequest) {
   }
 
   await recordJobRun('pricing-alerts', { branchesWithOpenAlerts: groups.length, emailsSent, emailsFailed });
+  // Error references are kept for 90 days (data inventory: ErrorEvent).
+  const purged = await purgeOldErrorEvents(90).catch((err) => { logFailure('Error log clean-up failed', err); return null; });
+  if (purged !== null) await recordJobRun('error-log-cleanup', { errorReferencesRemoved: purged });
   return NextResponse.json({
     branchesWithOpenAlerts: groups.length,
     emailsSent,

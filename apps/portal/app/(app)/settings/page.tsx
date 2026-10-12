@@ -1,21 +1,13 @@
 import { jobStatuses } from '@/lib/job-runs';
 import { getPrincipal, guardPage } from '@/lib/authz/server';
-import { formatDateTime } from '@/lib/utils/format-date';
+import { formatDateTime, formatRelative } from '@/lib/utils/format-date';
 import { PageHeader } from '@/components/ui';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6';
 
-function ago(d: Date | null): string {
-  if (!d) return 'Never yet';
-  const m = Math.round((Date.now() - d.getTime()) / 60000);
-  if (m < 60) return `${m} ${m === 1 ? 'minute' : 'minutes'} ago`;
-  const h = Math.round(m / 60);
-  if (h < 48) return `${h} ${h === 1 ? 'hour' : 'hours'} ago`;
-  const days = Math.round(h / 24);
-  return `${days} days ago`;
-}
+const ago = (d: Date | null): string => (d ? formatRelative(d) : 'Never yet');
 
-const LABEL: Record<string, string> = { remindersSent: 'reminders sent', broadcastEmailsSent: 'broadcast emails sent', digestsSent: 'digests sent', branchesWithOpenAlerts: 'branches with open alerts', emailsSent: 'emails sent', emailsFailed: 'emails failed', rolesChanged: 'roles changed' };
+const LABEL: Record<string, string> = { remindersSent: 'reminders sent', broadcastEmailsSent: 'broadcast emails sent', digestsSent: 'digests sent', branchesWithOpenAlerts: 'branches with open alerts', emailsSent: 'emails sent', emailsFailed: 'emails failed', rolesChanged: 'roles changed', errorReferencesRemoved: 'old error references removed' };
 
 /** Settings — the health of everything that runs on its own. */
 export default async function SettingsPage() {

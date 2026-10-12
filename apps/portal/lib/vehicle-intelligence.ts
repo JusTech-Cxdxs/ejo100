@@ -1,3 +1,4 @@
+import { pluralizeWord } from './utils/pluralize';
 /**
  * Vehicle intelligence — one vehicle's descriptive, diagnostic, predictive
  * and prescriptive picture, from facts already recorded (odometer
@@ -20,7 +21,7 @@ export type VIAction = { priority: 1 | 2 | 3; title: string; detail: string; hre
 
 const DAY = 86400000;
 const fmtDate = (d: Date) => d.toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Lagos' });
-const plural = (n: number, w: string) => `${n.toLocaleString('en-NG')} ${n === 1 ? w : `${w}s`}`;
+const plural = (n: number, w: string) => `${n.toLocaleString('en-NG')} ${pluralizeWord(n, w)}`;
 
 export function computeVehicleIntelligence(input: VIInput) {
   const now = input.now ?? new Date();

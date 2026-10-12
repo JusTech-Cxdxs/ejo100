@@ -38,6 +38,7 @@ import { sendEmail } from '@/lib/email';
 import { renderPartRequestApprovalNeededEmail, renderPartRequestStatusEmail } from '@/lib/email-templates/part-request-status';
 import { renderExternalProcurementApprovalNeededEmail, renderExternalProcurementStatusEmail } from '@/lib/email-templates/external-procurement-status';
 import { renderServiceEstimatePartRequestApprovalNeededEmail, renderServiceEstimatePartRequestStatusEmail } from '@/lib/email-templates/service-estimate-part-request-status';
+import { lagosYear } from '@/lib/utils/format-date';
 
 /** Mirrors getStoreOrgContext()/getWorkshopOrgContext() exactly, but
  * scoped directly to a real branchId rather than a fixed department
@@ -250,7 +251,7 @@ const SOURCEABLE_STATUSES = ['IN_PROGRESS', 'AWAITING_PARTS', 'QUALITY_CHECK', '
 /** PRS-2026-000001 — same year-prefixed, zero-padded sequence as
  * JC-/GRN- numbering elsewhere in this project. */
 async function generatePartRequestSlipNumber(db: Pick<typeof prisma, 'partRequestSlip'> = prisma): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = lagosYear();
   const prefix = `PRS-${year}-`;
   const latest = await db.partRequestSlip.findFirst({
     where: { referenceNumber: { startsWith: prefix } },
@@ -263,7 +264,7 @@ async function generatePartRequestSlipNumber(db: Pick<typeof prisma, 'partReques
 
 /** EPR-2026-000001 */
 async function generateExternalProcurementRequestNumber(db: Pick<typeof prisma, 'externalProcurementRequest'> = prisma): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = lagosYear();
   const prefix = `EPR-${year}-`;
   const latest = await db.externalProcurementRequest.findFirst({
     where: { referenceNumber: { startsWith: prefix } },
@@ -1762,7 +1763,7 @@ export async function getExternalProcurementRequestAuditTrail(requestId: string)
   await seeBranchAnyOf(['workshop.job_card.view', 'store.view', 'procurement.epr.review'], owner.branchId, 'getExternalProcurementRequestAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'ExternalProcurementRequest', entityId: requestId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: 50,
   });
   const userIds = [...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id)))];

@@ -11,6 +11,7 @@ import { writeAuditLog, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { sendEmail } from '@/lib/email';
 import { renderCustomerRefundReceiptEmail } from '@/lib/email-templates/customer-refund-receipt';
 import { customerTotal } from '@/lib/estimate-billing';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class RefundActionError extends Error {}
 
@@ -173,7 +174,7 @@ export async function getRefund(id: string) {
 
 /** RF-2026-000001 */
 async function generateRefundNumber(db: Pick<typeof prisma, 'refund'> = prisma): Promise<string> {
-  const prefix = `RF-${new Date().getFullYear()}-`;
+  const prefix = `RF-${lagosYear()}-`;
   const latest = await db.refund.findFirst({
     where: { referenceNumber: { startsWith: prefix } },
     orderBy: { referenceNumber: 'desc' },

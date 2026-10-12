@@ -1,23 +1,54 @@
 /**
- * The standard, project-wide way to phrase any count-dependent noun —
- * "1 day" / "2 days", never the placeholder "day(s)" form. Applies
- * everywhere a count and a noun appear together: dashboard messages,
- * emails, audit entries, anywhere else added later.
+ * The one way to phrase a count with its noun: "1 day" / "2 days",
+ * "1 person" / "3 people", never "day(s)" or "1 jobs". Used by pages,
+ * audit entries and dashboards alike.
  *
- * Irregular plurals (e.g. "child" → "children") aren't handled by the
- * default "+s" rule — pass the real plural explicitly when the noun
- * needs one.
+ * The plural follows English rules for the LAST word of the phrase
+ * ("serial number" → "serial numbers", "entry" → "entries", "pass" →
+ * "passes", "person" → "people") and keeps its letter case ("REF" →
+ * "REFS", "Job Card" → "Job Cards"). Pass the plural yourself for anything
+ * unusual; an explicit plural always wins.
  */
-export function pluralize(count: number, singular: string, plural?: string): string {
-  const word = count === 1 ? singular : (plural ?? `${singular}s`);
-  return `${count} ${word}`;
+const IRREGULAR: Record<string, string> = {
+  person: 'people', child: 'children', man: 'men', woman: 'women', foot: 'feet', tooth: 'teeth', mouse: 'mice',
+  // Same in the plural.
+  staff: 'staff', equipment: 'equipment', information: 'information', feedback: 'feedback', series: 'series', sheep: 'sheep',
+  km: 'km', kg: 'kg', min: 'min', h: 'h', ms: 'ms',
+  // Units of measure typed on parts.
+  each: 'each', ea: 'ea', pc: 'pcs', l: 'l', ml: 'ml', ltr: 'ltr', g: 'g', m: 'm', mm: 'mm', cm: 'cm', ft: 'ft',
+  // Words ending in -o and -f that take -es / -ves.
+  hero: 'heroes', potato: 'potatoes', tomato: 'tomatoes', echo: 'echoes', leaf: 'leaves', half: 'halves', shelf: 'shelves', life: 'lives', knife: 'knives', wife: 'wives',
+};
+
+function matchCase(word: string, model: string): string {
+  if (model.length > 1 && model === model.toUpperCase() && /[A-Z]/.test(model)) return word.toUpperCase();
+  if (model[0] && model[0] === model[0].toUpperCase() && /[A-Z]/.test(model[0])) return word.charAt(0).toUpperCase() + word.slice(1);
+  return word;
 }
 
-/** The word alone, no count prefix — for the real cases where a count
- * and its unit already live in two separate places (a table's own
- * Qty and Unit columns, for instance) and gluing them back into one
- * "5 Liters" string would be wrong there. Same "+s" default rule as
- * pluralize() above; pass the real plural for anything irregular. */
+/** The plural of a noun or noun phrase (only its last word changes). */
+export function pluralOf(singular: string): string {
+  const m = /^(.*?)([A-Za-z]+)$/.exec(singular);
+  if (!m) return `${singular}s`;
+  const head = m[1]!;
+  const word = m[2]!;
+  const lower = word.toLowerCase();
+  let plural: string;
+  if (IRREGULAR[lower] !== undefined) plural = IRREGULAR[lower]!;
+  // Already plural ("Pcs", "Litres", "chassis"): left as it is. A singular in -ss/-us ("pass", "bus") still changes.
+  else if (/[^su]s$/.test(lower)) plural = lower;
+  else if (/[^aeiou]y$/.test(lower)) plural = `${lower.slice(0, -1)}ies`;
+  else if (/(s|x|z|ch|sh)$/.test(lower)) plural = `${lower}es`;
+  else plural = `${lower}s`;
+  return head + matchCase(plural, word);
+}
+
+export function pluralize(count: number, singular: string, plural?: string): string {
+  return `${count} ${pluralizeWord(count, singular, plural)}`;
+}
+
+/** The word alone, no count: for a table whose Qty and Unit sit in separate columns. */
 export function pluralizeWord(count: number, singular: string, plural?: string): string {
-  return count === 1 ? singular : (plural ?? `${singular}s`);
+  // Only exactly one is singular: "0 jobs", "1 job", "1.5 days", "-1 days".
+  return count === 1 ? singular : (plural ?? pluralOf(singular));
 }

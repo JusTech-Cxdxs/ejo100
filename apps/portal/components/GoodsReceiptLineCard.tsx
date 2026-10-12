@@ -6,13 +6,10 @@ import Link from 'next/link';
 import { updateGoodsReceiptLineCostFormAction } from '@/lib/actions/store-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
+import { pluralizeWord } from '@/lib/utils/pluralize';
 
 function formatNaira(value: number | null): string {
   return value === null ? '—' : `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function pluralizeWord(count: number, singular: string, plural?: string): string {
-  return count === 1 ? singular : (plural ?? `${singular}s`);
 }
 
 /** Where this delivery's stock went — computed server-side from the real

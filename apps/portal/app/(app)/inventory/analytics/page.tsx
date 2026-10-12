@@ -126,7 +126,7 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
         </div>
         <button type="submit" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-1.5 text-sm font-medium text-white hover:opacity-90">Recalculate</button>
         <p className="basis-full text-[11px] text-[var(--ejo-text-muted)]">
-          What-if: suggestions use demand over the last {a.settings.demandWindowDays} days. Safety stock = z ({a.z.toFixed(2)}) × daily-demand spread × √{lead} days; reorder point = daily demand × {lead} days + safety stock; suggested order covers the reorder point plus {a.settings.reviewDays} days. Calculated {formatDateTime(a.generatedAt)}.
+          What-if: suggestions use demand over the last {pluralize(a.settings.demandWindowDays, 'day')}. Safety stock = z ({a.z.toFixed(2)}) × daily-demand spread × √{pluralize(lead, 'day')}; reorder point = daily demand × {pluralize(lead, 'day')} + safety stock; suggested order covers the reorder point plus {pluralize(a.settings.reviewDays, 'day')}. Calculated {formatDateTime(a.generatedAt)}.
         </p>
       </form>
 
@@ -286,7 +286,7 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
                     <span className="text-[var(--ejo-text-muted)]">Suggested</span><span className="font-medium">{r.avgDaily > 0 ? `reorder ${r.suggestedReorder} · safety ${r.suggestedSafety}` : 'needs demand history'}</span>
                   </div>
                   <div className="space-y-2 text-xs">
-                    {r.idleAtLevel ? <p className="text-[var(--ejo-warning-text)]">Unused for {a.settings.demandWindowDays} days while at its reorder level — consider lowering the level.</p> : null}
+                    {r.idleAtLevel ? <p className="text-[var(--ejo-warning-text)]">Unused for {pluralize(a.settings.demandWindowDays, 'day')} while at its reorder level — consider lowering the level.</p> : null}
                     {r.suggestedOrderQty > 0 ? <p className="text-[var(--ejo-text)]">Order about <span className="font-semibold">{qty(r.suggestedOrderQty, r.unit)}</span>{r.lastCost !== null || r.avgCost !== null ? ` (≈ ${naira(r.reorderCost)})` : ''}</p> : <p className="text-[var(--ejo-text-muted)]">No order needed now.</p>}
                     {r.avgDaily > 0 ? (
                       <form action={setPartStockLevelsFormAction} className="flex flex-wrap items-end gap-2">

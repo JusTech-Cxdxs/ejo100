@@ -361,7 +361,7 @@ export default async function WorkshopCustodyPage({
                     </span>
                     {entry.dueDate ? (
                       <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                        Due {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        Due {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' })}
                       </p>
                     ) : null}
                   </div>
@@ -457,7 +457,7 @@ export default async function WorkshopCustodyPage({
                     </span>
                     {entry.dueDate ? (
                       <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                        Expected collection by {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        Expected collection by {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' })}
                       </p>
                     ) : null}
                   </div>
@@ -533,7 +533,7 @@ export default async function WorkshopCustodyPage({
                     </span>
                     {entry.dueDate ? (
                       <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                        Expected collection by {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        Expected collection by {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' })}
                       </p>
                     ) : null}
                   </div>

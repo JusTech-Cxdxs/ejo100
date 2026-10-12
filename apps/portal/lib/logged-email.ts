@@ -1,3 +1,4 @@
+import { cleanForLog } from '@/lib/errors';
 import { prisma } from '@ejo/database';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { sendEmail } from '@/lib/email';
@@ -26,7 +27,7 @@ export async function sendLoggedEmail(opts: { entityType: string; entityId: stri
       await sendEmail(r.email, opts.subject, renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading: opts.heading, lines: opts.lines, actionUrl: `${portal}${opts.path}`, logoUrl: `${portal}/images/logo/logo.png`, companyName: branch?.businessUnit?.organisation?.name ?? 'EJO 100', branchName: branch?.name ?? '' }));
     } catch (err) {
       sent = false;
-      error = err instanceof Error ? err.message.slice(0, 300) : 'Unknown error';
+      error = err instanceof Error ? cleanForLog(err.message).slice(0, 300) : 'Unknown error';
     }
     await prisma.securityEmailLog.create({ data: { entityType: opts.entityType, entityId: opts.entityId, recipient: `${r.fullName} <${r.email}>`, subject: opts.subject, sent, error } });
     await prisma.auditLog.create({ data: { userId: opts.actorId, organisationId: branch?.businessUnit?.organisationId ?? null, action: sent ? 'security.email_sent' : 'security.email_failed', entityType: opts.entityType, entityId: opts.entityId, metadata: { to: r.fullName, subject: opts.subject, ...(error ? { error } : {}) } } });

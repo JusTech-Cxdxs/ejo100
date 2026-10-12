@@ -28,11 +28,11 @@ function timelineFor(i: ServiceItem): TimelineEntry[] {
   if (i.phase === 'cancelled') {
     e.push({ label: 'Cancelled', at: i.cancelledAt, icon: 'ban', tone: 'danger', text: i.info.explain });
     for (const r of i.refunds) e.push({ label: `Refund recorded — ${naira(r.amount)}`, at: r.recordedAt, icon: 'refund', text: `Reference ${r.reference}` });
-    return e.sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0));
+    return inTimeOrder(e);
   }
   if (i.linked?.relation === 'continued-as') {
     e.push({ label: `Moved to Job Card ${i.linked.number}`, at: i.escalatedAt, icon: 'route', text: 'We found something that needs a fuller repair, so the work continues on a Job Card.' });
-    return e.sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0));
+    return inTimeOrder(e);
   }
   const working = i.status === 'IN_PROGRESS' || i.status === 'AWAITING_PARTS' || i.status === 'QUALITY_CHECK' || i.status === 'IN_SERVICE';
   e.push({ label: i.status === 'AWAITING_PARTS' ? 'Work started — now waiting for parts' : 'Work started', at: i.workStartedAt, icon: 'wrench', tone: current(working && !i.completedAt), text: i.status === 'AWAITING_PARTS' ? i.info.explain : undefined });
@@ -41,7 +41,11 @@ function timelineFor(i: ServiceItem): TimelineEntry[] {
   if (i.closedAt) e.push({ label: 'Signed off', at: i.closedAt, icon: 'checkCircle', tone: current(i.waitingForCollection) });
   e.push({ label: 'Collected', at: i.collectedAt, icon: 'thumb' });
   for (const r of i.refunds) e.push({ label: `Refund recorded — ${naira(r.amount)}`, at: r.recordedAt, icon: 'refund', text: `Reference ${r.reference}` });
-  // Dated events in time order; steps still to come keep their natural order at the end.
+  return inTimeOrder(e);
+}
+
+/** Dated events in time order; steps without a date yet keep their natural order at the end. */
+function inTimeOrder(e: TimelineEntry[]): TimelineEntry[] {
   return e
     .map((x, idx) => ({ x, idx }))
     .sort((a, b) => (a.x.at ? a.x.at.getTime() : Number.MAX_SAFE_INTEGER) - (b.x.at ? b.x.at.getTime() : Number.MAX_SAFE_INTEGER) || a.idx - b.idx)

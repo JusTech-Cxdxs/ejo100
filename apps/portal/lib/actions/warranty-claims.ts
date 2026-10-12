@@ -11,6 +11,7 @@ import { authorize, orgWhere } from '@/lib/authz/server';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { claimReadiness } from '@/lib/warranty-claim-readiness';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class WarrantyClaimError extends Error {}
 
@@ -63,7 +64,7 @@ async function notify(recipients: { fullName: string; email: string }[], subject
 
 /** WC-2026-000001 */
 async function nextClaimNumber(): Promise<string> {
-  const prefix = `WC-${new Date().getFullYear()}-`;
+  const prefix = `WC-${lagosYear()}-`;
   const latest = await prisma.warrantyClaim.findFirst({ where: { claimNumber: { startsWith: prefix } }, orderBy: { claimNumber: 'desc' }, select: { claimNumber: true } });
   const next = latest ? parseInt(latest.claimNumber.slice(prefix.length), 10) + 1 : 1;
   return `${prefix}${String(next).padStart(6, '0')}`;
@@ -489,7 +490,7 @@ export async function getWarrantyClaimAuditTrail(claimId: string) {
   await requireUser();
   // Only as visible as the record itself (its organisation).
   const visibleId = (await prisma.warrantyClaim.findFirst({ where: { ...({ customer: await orgWhere() }), id: claimId }, select: { id: true } }))?.id ?? '__no_access__';
-  const entries = await prisma.auditLog.findMany({ where: { entityType: 'WarrantyClaim', entityId: visibleId }, orderBy: { createdAt: 'asc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } });
+  const entries = await prisma.auditLog.findMany({ where: { entityType: 'WarrantyClaim', entityId: visibleId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, action: true, createdAt: true, metadata: true, userId: true } });
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));

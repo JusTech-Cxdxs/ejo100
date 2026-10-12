@@ -1,4 +1,5 @@
 import { WORK_START_HOUR, WORK_END_HOUR, lagosYmd } from '@/lib/nigeria-calendar';
+import { pluralize } from './utils/pluralize';
 
 /**
  * Scheduling analytics — pure functions over plain rows, so every figure is
@@ -94,7 +95,7 @@ export function computeSchedulingAnalytics(input: { appts: SAppt[]; rooms: SRoom
   // ── What to do now
   type Action = { priority: 1 | 2 | 3; title: string; detail: string; href: string };
   const actions: Action[] = [];
-  const plural = (n: number, w: string, p = `${w}s`) => `${n} ${n === 1 ? w : p}`;
+  const plural = pluralize;
   const pending = input.appts.filter((a) => a.status === 'SCHEDULED' && +a.endsAt <= +now);
   if (pending.length) actions.push({ priority: 1, title: `${plural(pending.length, 'meeting')} waiting for an outcome`, detail: 'Mark each as completed or a no-show so the records and statistics stay true.', href: '/schedule/appointments?show=awaiting' });
   const visitorsToday = todayAppts.filter((a) => a.visitors > 0 && a.status === 'SCHEDULED');

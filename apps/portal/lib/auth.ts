@@ -20,6 +20,9 @@ import { portalBaseUrl } from './portal-url';
  * is closed. A deactivated account can never start a session (hook
  * below), and every request re-checks it (requireUser, the app layout).
  */
+/** Staff "forgot password" links: one hour. */
+export const RESET_LINK_SECONDS = 60 * 60;
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
 
@@ -36,7 +39,11 @@ export const auth = betterAuth({
     // Nobody can create a staff account from the internet.
     disableSignUp: true,
     requireEmailVerification: false, // set true once verification is confirmed working end-to-end
-    sendResetPassword: async ({ user, url }) => {
+    // "Forgot password" links work for one hour; welcome links (72 hours) are issued by lib/staff-onboarding.ts.
+    resetPasswordTokenExpiresIn: RESET_LINK_SECONDS,
+    sendResetPassword: async ({ user, url, token }) => {
+      // Only the newest link works: earlier reset or set-password links for this person are withdrawn.
+      await prisma.verification.deleteMany({ where: { value: user.id, identifier: { startsWith: 'reset-password:', not: `reset-password:${token}` } } }).catch(() => undefined);
       // The branded "set a new password" email (lib/email-templates/password-reset.ts).
       const name = (user as { fullName?: string; name?: string }).fullName ?? user.name ?? '';
       const base = portalBaseUrl();

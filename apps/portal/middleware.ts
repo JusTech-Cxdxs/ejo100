@@ -22,7 +22,9 @@ const AUTH_PAGES = ['/login', '/forgot-password', '/reset-password', '/verify-em
 // Scheduled jobs carry no sign-in cookie — they are protected by CRON_SECRET
 // inside each route (a missing or wrong secret is refused there).
 // /signed-out clears a session the server refused (switched-off account).
-const ALWAYS_PUBLIC = ['/api/auth', '/api/cron', '/api/health', '/signed-out'];
+// /api/error-report stores the reference a browser-side failure shows, even
+// on the sign-in pages; it checks the origin and limits itself.
+const ALWAYS_PUBLIC = ['/api/auth', '/api/cron', '/api/health', '/api/error-report', '/signed-out'];
 
 // Flood protection for submissions (form posts / server actions): at most
 // 120 a minute per person (1,500 per shared address), per server instance. Reading pages is never

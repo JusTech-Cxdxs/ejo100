@@ -1,4 +1,5 @@
 import { dayKind, lagosYmd } from './nigeria-calendar';
+import { pluralize } from './utils/pluralize';
 
 /**
  * Master analytics — pure functions over plain rows (tested against
@@ -255,7 +256,7 @@ export function computeMasterAnalytics(input: { jobs: Job[]; purchases: Purchase
   const item = (j: Job, extra?: string) => ({ label: `${j.number}${extra ? ` (${extra})` : ''}`, href: j.kind === 'JC' ? `/workshop/job-cards/${j.id}` : `/workshop/vehicle-service/${j.id}` });
   const actions: Action[] = [];
   const money = (n: number) => `₦${n.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
-  const plural = (n: number, w: string, p = `${w}s`) => `${n} ${n === 1 ? w : p}`;
+  const plural = pluralize;
   const href = (j: Job) => (j.kind === 'JC' ? `/workshop/job-cards/${j.id}` : `/workshop/vehicle-service/${j.id}`);
   const chase = finishedOwing.sort((a, b) => b.m.owed - a.m.owed);
   if (chase.length) actions.push({ priority: 1, title: `${money(position.receivables)} owed on ${plural(chase.length, 'finished job')}`, detail: 'Collect the balance from each customer.', href: chase.length === 1 ? href(chase[0]!.j) : '/workshop/custody', items: chase.slice(0, 12).map((x) => item(x.j, money(x.m.owed))) });

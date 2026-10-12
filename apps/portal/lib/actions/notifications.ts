@@ -18,6 +18,7 @@ import {
 import { deliverDueBroadcastEmails } from '@/lib/broadcast-delivery';
 import { resolveRecords } from '@/lib/record-resolver';
 import { livePulse } from '@/lib/live-pulse';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class NotificationError extends Error {}
 
@@ -256,7 +257,7 @@ export async function canBroadcast(): Promise<boolean> {
 }
 
 async function nextBroadcastNumber(): Promise<string> {
-  const start = `BC-${new Date().getFullYear()}-`;
+  const start = `BC-${lagosYear()}-`;
   const last = await prisma.broadcast.findFirst({ where: { broadcastNumber: { startsWith: start } }, orderBy: { broadcastNumber: 'desc' }, select: { broadcastNumber: true } });
   return `${start}${String(last ? parseInt(last.broadcastNumber.slice(start.length), 10) + 1 : 1).padStart(6, '0')}`;
 }

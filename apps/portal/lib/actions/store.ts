@@ -33,6 +33,7 @@ import { renderPartTargetMarginSetEmail } from '@/lib/email-templates/part-targe
 import { renderStoreMatchingRequestedEmail, renderStoreMatchingStatusEmail } from '@/lib/email-templates/store-matching-status';
 import { renderGoodsReceiptEditedEmail } from '@/lib/email-templates/goods-receipt-edited';
 import { renderPartSellingPriceSetEmail } from '@/lib/email-templates/part-selling-price-set';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class StoreActionError extends Error {}
 
@@ -136,7 +137,7 @@ export async function requireStoreStaff(branchId: string, key: StorePermission =
  * descending sort on a fixed-width zero-padded sequence correctly
  * matches numeric order). */
 async function generateGoodsReceiptNumber(): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = lagosYear();
   const prefix = `GRN-${year}-`;
   const latest = await prisma.goodsReceipt.findFirst({
     where: { referenceNumber: { startsWith: prefix } },
@@ -2213,7 +2214,7 @@ export async function getGoodsReceiptAuditTrail(goodsReceiptId: string) {
   await seeBranch('store.view', owner.branchId, 'getGoodsReceiptAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'GoodsReceipt', entityId: goodsReceiptId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: 50,
   });
   const userIds = [...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id)))];
@@ -2232,7 +2233,7 @@ export async function getPartAuditTrail(partId: string) {
   await seePart(partId, 'getPartAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'Part', entityId: partId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: 50,
   });
   const userIds = [...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id)))];

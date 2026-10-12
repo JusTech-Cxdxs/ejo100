@@ -641,7 +641,7 @@ export default async function JobCardDetailPage({
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Mileage at check-in</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
-                  {jobCard.mileageAtCheckIn != null ? `${jobCard.mileageAtCheckIn.toLocaleString()} km` : '—'}
+                  {jobCard.mileageAtCheckIn != null ? `${jobCard.mileageAtCheckIn.toLocaleString('en-NG')} km` : '—'}
                 </dd>
               </div>
               <div>

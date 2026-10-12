@@ -1,4 +1,4 @@
-import { pluralizeWord } from './utils/pluralize';
+import { pluralize, pluralizeWord } from './utils/pluralize';
 
 /**
  * Inventory analytics & reorder intelligence — pure functions over plain
@@ -316,10 +316,10 @@ export function computeInventoryAnalytics(input: { parts: IPart[]; receipts: IRe
     .filter((r) => r.avgDaily > 0 && r.reorderPoint !== null && r.reorderPoint > 0 && Math.abs(r.reorderPoint - r.suggestedReorder) / r.reorderPoint > 0.3)
     .forEach((r) => actions.push({ priority: 3, title: `Review ${r.name}'s reorder point`, detail: `Set at ${u(r.reorderPoint!, r.unit)}; recent demand suggests ${u(r.suggestedReorder, r.unit)}.`, href: `/inventory/analytics?lead=${s.leadTimeDays}&service=${s.serviceLevel}&focus=${r.id}#planner` }));
   rows.filter((r) => r.idleAtLevel).forEach((r) =>
-    actions.push({ priority: 3, title: `Review ${r.name}'s stock levels`, detail: `At its reorder level (${u(r.onHand, r.unit)}) but unused for ${s.demandWindowDays} days — no order suggested; consider lowering the level.`, href: `/inventory/analytics?lead=${s.leadTimeDays}&service=${s.serviceLevel}&focus=${r.id}#planner` }),
+    actions.push({ priority: 3, title: `Review ${r.name}'s stock levels`, detail: `At its reorder level (${u(r.onHand, r.unit)}) but unused for ${pluralize(s.demandWindowDays, 'day')} — no order suggested; consider lowering the level.`, href: `/inventory/analytics?lead=${s.leadTimeDays}&service=${s.serviceLevel}&focus=${r.id}#planner` }),
   );
   diagnostic.deadStock.slice(0, 10).forEach((r) =>
-    actions.push({ priority: 3, title: `Dead stock: ${r.name}`, detail: `No movement for over ${s.deadDays} days — ₦${r.stockValue.toLocaleString('en-NG')} tied up. Consider a promotion, return to supplier or write-off.`, href: `/inventory/parts/${r.id}` }),
+    actions.push({ priority: 3, title: `Dead stock: ${r.name}`, detail: `No movement for over ${pluralize(s.deadDays, 'day')} — ₦${r.stockValue.toLocaleString('en-NG')} tied up. Consider a promotion, return to supplier or write-off.`, href: `/inventory/parts/${r.id}` }),
   );
   diagnostic.overstock.slice(0, 10).forEach((r) =>
     actions.push({ priority: 3, title: `Overstocked: ${r.name}`, detail: `About ${coverText(r.daysOfCover ?? 0)} of cover — pause purchasing.`, href: `/inventory/parts/${r.id}` }),
