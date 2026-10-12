@@ -303,12 +303,14 @@ test('profile: save contact details, add and remove an address, switch announcem
     const was = (await toggle().getAttribute('aria-checked')) === 'true';
     await toggle().click();
     await expect(toggle()).toHaveAttribute('aria-checked', String(!was));
-    await expect(page.getByRole('status').filter({ hasText: was ? 'Announcement emails are off' : 'You’ll get announcements by email too.' })).toBeVisible();
+    // (If this ever fails, the message it shows instead is in the error — e.g. "Saved." would mean the switch's
+    // hidden field was sent before it changed, i.e. nothing was saved.)
+    await visibleOrExplain(page, page.getByRole('status').filter({ hasText: was ? 'Announcement emails are off' : 'You’ll get announcements by email too.' }), 'the confirmation that the email preference changed');
     await page.reload();
     await expect(toggle()).toHaveAttribute('aria-checked', String(!was));
     await toggle().click();
     await expect(toggle()).toHaveAttribute('aria-checked', String(was));
-    await expect(page.getByRole('status').filter({ hasText: was ? 'You’ll get announcements by email too.' : 'Announcement emails are off' })).toBeVisible();
+    await visibleOrExplain(page, page.getByRole('status').filter({ hasText: was ? 'You’ll get announcements by email too.' : 'Announcement emails are off' }), 'the confirmation that the email preference changed back');
   });
 });
 

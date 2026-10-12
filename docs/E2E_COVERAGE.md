@@ -166,11 +166,13 @@ p95 1669 ms; live pulse (50 concurrent) p50 289 ms / p95 383 ms; 0 errors.
 ## Latest CI run
 
 * Draft PR **#12** "[CI only — do not merge] e2e adaptation" (`work/e2e` → `platform/customer-portal-crm`).
-* Workflow **E2E**, run **38265594872** @ `e89356b` — both shards **success**: shard 1/2 69 as expected (3 of them
+* Workflow **E2E**, run **38268092019** @ `cbf5f58` — both shards **success**: shard 1/2 69 as expected (3 of them
   known defects: E2E-09, E2E-10, E2E-12) · 0 unexpected · 1 flaky · 0 skipped; shard 2/2 66 as expected · 0
-  unexpected · 0 flaky. E2E-11 was recorded twice. The flaky one (CRM switch-off: the page briefly held two copies of
-  the access controls) is fixed in the next commit by scoping them to the page's `#main`.
-* Previous green run: 38263113864 @ `0baf78e` (0 flaky, E2E-11 recorded 4 times).
+  unexpected · 0 flaky. The flaky one: the customer's announcement-email switch flipped but its confirmation did not
+  appear on the first attempt (passed on retry); the next commit makes that assertion report the message shown
+  instead, to tell a test race from the switch saving nothing.
+* Earlier green runs on the merged branch: 38263113864 @ `0baf78e` (0 flaky; E2E-11 recorded 4 times),
+  38265594872 @ `e89356b` (1 flaky — CRM access controls duplicated while streaming, fixed by scoping to `#main`).
 * Before it, on the merged branch: 38251673571 (shell adaptation: 4 failing), 38254109730 (7), 38257626020 (1),
   38260101304 (1) — each failure diagnosed from its annotation and fixed (test) or marked (product defect).
 * Read any run's results: `gh api repos/JusTech-Cxdxs/ejo100/actions/runs/<run>/jobs --jq '.jobs[].id'`, then
