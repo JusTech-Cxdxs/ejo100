@@ -9,7 +9,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { formatDateOnly } from '@/lib/utils/format-date';
-import { PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 const DONE: Record<string, string> = { aide_added: 'Aide added — they have been emailed.', aide_removed: 'Aide removed.' };
 
@@ -24,7 +24,10 @@ export default async function AidesPage({ searchParams }: { searchParams: Promis
   const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
   return (
     <div className="p-4 sm:p-8">
-      <PageTitle icon="users">Aides</PageTitle>
+      <PageHeader
+        icon="users"
+        title="Aides"
+      />
       <p className="mb-4 mt-1 max-w-2xl text-sm text-[var(--ejo-text-muted)]">An aide (PA, secretary or assistant) can book, change and cancel appointments on an official&apos;s calendar. Officials add their own aides; a Scheduling Admin can add any.</p>
       <ScheduleNav active="/schedule/aides" />
       {status && DONE[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={DONE[status]!} /></div> : null}

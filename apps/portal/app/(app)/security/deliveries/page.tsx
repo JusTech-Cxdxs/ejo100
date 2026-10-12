@@ -7,7 +7,7 @@ import { DELIVERY_STATUS_LABEL } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { PageTitle, StatusChip } from '@/components/ui';
+import { HeaderAction, PageHeader, StatusChip } from '@/components/ui';
 
 const TABS: [string, string][] = [['at_gate', 'At the gate'], ['expected', 'Expected'], ['received', 'Received'], ['left', 'Left'], ['cancelled', 'Cancelled'], ['all', 'All']];
 
@@ -17,13 +17,12 @@ export default async function DeliveriesPage({ searchParams }: { searchParams: P
   const { tab: current, counts, rows } = await listDeliveries(q, tab);
   return (
     <div className="p-4 sm:p-8">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <PageTitle icon="truck">Deliveries</PageTitle>
-          <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">Suppliers at the gate: Security records arrival and departure; the Store confirms what it received.</p>
-        </div>
-        <LoadingLink href="/security/deliveries/new" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">+ Delivery</LoadingLink>
-      </div>
+      <PageHeader
+        icon="truck"
+        title="Deliveries"
+        description={<>Suppliers at the gate: Security records arrival and departure; the Store confirms what it received.</>}
+        actions={<HeaderAction href="/security/deliveries/new">+ Delivery</HeaderAction>}
+      />
       <SecurityNav active="/security/deliveries" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {TABS.map(([k, l]) => <LoadingLink key={k} href={`/security/deliveries?tab=${k}${q ? `&q=${encodeURIComponent(q)}` : ''}`} className={`rounded-full px-3 py-1 text-xs font-medium ${current === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l} ({counts[k as keyof typeof counts]})</LoadingLink>)}

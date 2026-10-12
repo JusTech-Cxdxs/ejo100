@@ -6,7 +6,7 @@ import { SecurityTable } from '@/components/SecurityTable';
 import { VEHICLE_TYPE_LABEL } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
-import { PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 const TABS = [['all', 'All'], ['visitor', 'Visitor vehicles'], ['workshop', 'Workshop vehicles'], ['cleared', 'Cleared, not yet out'], ['delivery', 'Deliveries']] as const;
 const STAGE: Record<string, string> = { VISITOR: 'Visitor', WORKSHOP: 'In the workshop', CLEARED: 'Cleared to leave', DELIVERY: 'Delivery' };
@@ -19,8 +19,11 @@ export default async function VehiclesInsidePage({ searchParams }: { searchParam
   const rows = all.filter((r) => t === 'all' || r.stage === t.toUpperCase());
   return (
     <div className="p-4 sm:p-8">
-      <PageTitle icon="garage">Vehicles in the compound</PageTitle>
-      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">{pluralize(all.length, 'vehicle')} inside right now.</p>
+      <PageHeader
+        icon="garage"
+        title="Vehicles in the compound"
+        description={<>{pluralize(all.length, 'vehicle')} inside right now.</>}
+      />
       <SecurityNav active="/security" />
       <div className="mb-4 flex flex-wrap gap-2">
         {TABS.map(([k, l]) => {

@@ -12,7 +12,7 @@ import { LineItemsInput } from '@/components/LineItemsInput';
 import { pluralize } from '@/lib/utils/pluralize';
 import { splitLines, durationLabel } from '@/lib/warranty-state';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { BackLink, PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 const BANNER: Record<string, string> = {
   policy_created: 'Policy added.',
@@ -64,12 +64,13 @@ export default async function WarrantyPoliciesPage({
 
   return (
     <div className="p-8">
-      <BackLink href="/warranty" label="Back to Warranty" className="mb-4" />
-      <PageTitle icon="file">Warranty policies</PageTitle>
-      <p className="mt-1 mb-6 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-        What each provider promises: duration, distance limit (whichever comes first), what is covered and not covered, and the
-        conditions. Warranties already issued keep the terms they were issued with — editing a policy never rewrites history.
-      </p>
+      <PageHeader
+        icon="file"
+        back={{ href: "/warranty", label: "Back to Warranty" }}
+        title="Warranty policies"
+        description={<>What each provider promises: duration, distance limit (whichever comes first), what is covered and not covered, and the
+        conditions. Warranties already issued keep the terms they were issued with — editing a policy never rewrites history.</>}
+      />
       {status === 'samples_loaded' ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={`Sample policies loaded (${pluralize(Number(created ?? 0), 'new item')}). They are clearly marked "Sample" — replace them with real terms.`} /></div> : null}
       {status && BANNER[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={BANNER[status]} /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}

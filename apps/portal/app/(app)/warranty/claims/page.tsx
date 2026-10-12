@@ -4,7 +4,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { CLAIM_STATUS_LABEL, CLAIM_GROUPS, REMEDY_LABEL, PART_RETURN_LABEL } from '@/lib/warranty-claim-status';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { PageHeader, StatusChip } from '@/components/ui';
 
 function naira(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -50,16 +50,13 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
 
   return (
     <div className="p-8">
-      <BackLink href="/warranty" label="Back to Warranty" className="mb-4" />
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <PageTitle icon="file">Warranty claims</PageTitle>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-            Every claim from draft to money received: staff draft it, the Warranty HOD and the Branch Manager approve it, it goes to
-            the provider, and the decision and settlement are recorded. Start a claim from the warranty it is made against.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon="file"
+        back={{ href: "/warranty", label: "Back to Warranty" }}
+        title="Warranty claims"
+        description={<>Every claim from draft to money received: staff draft it, the Warranty HOD and the Branch Manager approve it, it goes to
+            the provider, and the decision and settlement are recorded. Start a claim from the warranty it is made against.</>}
+      />
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4"><p className="text-xs text-[var(--ejo-text-muted)]">Claimed (excl. cancelled)</p><p className="mt-1 text-xl font-bold text-[var(--ejo-text)]">{naira(claimed)}</p></div>

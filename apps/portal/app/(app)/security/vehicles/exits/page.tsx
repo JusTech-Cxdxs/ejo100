@@ -6,7 +6,7 @@ import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityTable } from '@/components/SecurityTable';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 export default async function VehicleExitsPage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string }> }) {
   await guardAnyPage(['security.view'], '/security/vehicles');
@@ -17,7 +17,10 @@ export default async function VehicleExitsPage({ searchParams }: { searchParams:
   const link = 'text-[var(--ejo-primary)] hover:underline';
   return (
     <div className="p-4 sm:p-8">
-      <PageTitle icon="car" className="mb-4">Vehicle exit history</PageTitle>
+      <PageHeader
+        icon="car"
+        title="Vehicle exit history"
+      />
       <SecurityNav active="/security/vehicles" />
       <div className="mb-3 flex flex-wrap gap-2">
         {tabs.map(([key, l, n]) => (

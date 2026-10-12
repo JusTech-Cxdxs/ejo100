@@ -5,7 +5,7 @@ import { BROADCAST_CATEGORY, BROADCAST_STATE_LABEL } from '@/lib/notification-ru
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { HeaderAction, PageHeader, StatusChip } from '@/components/ui';
 
 const TABS: [string, string][] = [['live', 'Live'], ['scheduled', 'Scheduled'], ['ended', 'Ended'], ['all', 'All']];
 const AUDIENCE: Record<string, string> = { ALL: 'Everyone', BRANCH: 'Branches', DEPARTMENT: 'Departments', ROLE: 'Roles' };
@@ -16,17 +16,16 @@ export default async function BroadcastsPage({ searchParams }: { searchParams: P
   const keep = (k: string) => `/notifications/broadcasts?tab=${k}${q ? `&q=${encodeURIComponent(q)}` : ''}${category ? `&category=${category}` : ''}`;
   return (
     <div className="w-full p-4 sm:p-8">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <BackLink href="/notifications" label="Notification Center" className="mb-2" />
-          <PageTitle icon="megaphone">Broadcasts</PageTitle>
-          <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">News, announcements, alerts, maintenance notices and greetings — on dashboards, the scrolling bar, notifications and email.</p>
-        </div>
-        <span className="flex flex-wrap gap-2">
-          <LoadingLink href="/notifications/broadcasts/analytics" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Analytics</LoadingLink>
-          {allowed ? <LoadingLink href="/notifications/broadcasts/new" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">+ New broadcast</LoadingLink> : null}
-        </span>
-      </div>
+      <PageHeader
+        icon="megaphone"
+        back={{ href: '/notifications', label: 'Notification Center' }}
+        title="Broadcasts"
+        description="News, announcements, alerts, maintenance notices and greetings — on dashboards, the scrolling bar, notifications and email."
+        actions={<>
+          <HeaderAction href="/notifications/broadcasts/analytics" icon="chart" variant="secondary">Analytics</HeaderAction>
+          {allowed ? <HeaderAction href="/notifications/broadcasts/new">+ New broadcast</HeaderAction> : null}
+        </>}
+      />
       {status === 'deleted' ? <p className="mb-4 text-sm text-[var(--ejo-success)]">Broadcast deleted.</p> : null}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {TABS.map(([k, l]) => <LoadingLink key={k} href={keep(k)} className={`rounded-full px-3 py-1 text-xs font-medium ${current === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l} ({counts[k as keyof typeof counts]})</LoadingLink>)}

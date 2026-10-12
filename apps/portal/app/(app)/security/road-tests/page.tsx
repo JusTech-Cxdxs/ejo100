@@ -7,7 +7,7 @@ import { SecurityTable } from '@/components/SecurityTable';
 import { ROAD_TEST_STATUS_LABEL, durationText, roadTestOverdueMinutes } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { PageTitle, StatusChip } from '@/components/ui';
+import { PageHeader, StatusChip } from '@/components/ui';
 
 const TABS = [['out', 'Out now'], ['approved', 'Approved — ready to go'], ['to_decide', 'To approve'], ['all', 'All']] as const;
 
@@ -22,8 +22,11 @@ export default async function RoadTestsPage({ searchParams }: { searchParams: Pr
   const link = 'text-[var(--ejo-primary)] hover:underline';
   return (
     <div className="p-4 sm:p-8">
-      <PageTitle icon="road">Road tests</PageTitle>
-      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Workshop vehicles leaving for a road test — requested on the Job Card / Vehicle Service, approved by the Manager, timed and odometer-read out and back by Security.</p>
+      <PageHeader
+        icon="road"
+        title="Road tests"
+        description={<>Workshop vehicles leaving for a road test — requested on the Job Card / Vehicle Service, approved by the Manager, timed and odometer-read out and back by Security.</>}
+      />
       <SecurityNav active="/security/road-tests" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {TABS.filter(([k]) => k !== 'to_decide' || roles.isManager || roles.isMaster).map(([k, l]) => (

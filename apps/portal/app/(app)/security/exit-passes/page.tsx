@@ -4,7 +4,7 @@ import { SecurityNav } from '@/components/SecurityNav';
 import { EXIT_PASS_STATUS_LABEL } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { PageTitle, StatusChip } from '@/components/ui';
+import { HeaderAction, PageHeader, StatusChip } from '@/components/ui';
 
 export default async function ExitPassesPage({ searchParams }: { searchParams: Promise<{ tab?: string; q?: string }> }) {
   const { tab, q } = await searchParams;
@@ -15,13 +15,12 @@ export default async function ExitPassesPage({ searchParams }: { searchParams: P
   const tabs = [['mine', 'My passes', mine.length], ['to_decide', 'To decide', toDecide.length], ...(canSeeAll ? [['all', 'All passes', everything.length]] : [])] as [string, string, number][];
   return (
     <div className="p-4 sm:p-8">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <PageTitle icon="exit">Employee exit passes</PageTitle>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--ejo-text-muted)]">Security will not permit any employee on duty to go out during working hours without an approved exit pass.</p>
-        </div>
-        <LoadingLink href="/security/exit-passes/new" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">+ Request an exit pass</LoadingLink>
-      </div>
+      <PageHeader
+        icon="exit"
+        title="Employee exit passes"
+        description="Security will not permit any employee on duty to go out during working hours without an approved exit pass."
+        actions={<HeaderAction href="/security/exit-passes/new">+ Request an exit pass</HeaderAction>}
+      />
       <SecurityNav active="/security/exit-passes" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {tabs.map(([k, l, n]) => (

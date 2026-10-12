@@ -10,7 +10,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { WarrantyList } from '@/components/WarrantyList';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { BackLink, PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 /**
  * Register a vehicle (asset) warranty — the manual bridge until the sales
@@ -54,12 +54,13 @@ export default async function RegisterWarrantyPage({ searchParams }: { searchPar
 
   return (
     <div className="p-8">
-      <BackLink href="/warranty" label="Back to Warranty" className="mb-4" />
-      <PageTitle icon="plus">Register vehicle warranty</PageTitle>
-      <p className="mt-1 mb-6 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-        For a vehicle sold with a manufacturer&apos;s warranty. The warranty starts on the delivery date; a second person verifies the
-        evidence before it covers anything.
-      </p>
+      <PageHeader
+        icon="plus"
+        back={{ href: "/warranty", label: "Back to Warranty" }}
+        title="Register vehicle warranty"
+        description={<>For a vehicle sold with a manufacturer&apos;s warranty. The warranty starts on the delivery date; a second person verifies the
+        evidence before it covers anything.</>}
+      />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
 
       {!vehicle ? (

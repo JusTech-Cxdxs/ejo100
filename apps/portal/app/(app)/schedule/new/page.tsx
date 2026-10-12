@@ -5,7 +5,7 @@ import { createAppointmentFormAction } from '@/lib/actions/scheduling-form-handl
 import { ScheduleNav } from '@/components/ScheduleNav';
 import { AppointmentForm } from '@/components/AppointmentForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
-import { PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 export default async function NewAppointmentPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   // Calendars are for people who keep one (an appointment itself stays open to the people in it).
@@ -14,7 +14,10 @@ export default async function NewAppointmentPage({ searchParams }: { searchParam
   const [access, rooms] = await Promise.all([getSchedulingAccess(), listRooms()]);
   return (
     <div className="p-4 sm:p-8">
-      <PageTitle icon="calendar" className="mb-4">New appointment</PageTitle>
+      <PageHeader
+        icon="calendar"
+        title="New appointment"
+      />
       <ScheduleNav active="/schedule/new" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       {!access.canUse ? (

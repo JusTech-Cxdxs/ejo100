@@ -11,7 +11,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { durationText } from '@/lib/security-rules';
-import { BackLink, PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 
@@ -37,9 +37,12 @@ export default async function NewRoadTestPage({ searchParams }: { searchParams: 
   const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
   return (
     <div className="p-4 sm:p-8">
-      <BackLink href={rec.back} label={<>Back to {rec.number}</>} className="mb-4" />
-      <PageTitle icon="road">Request a road test</PageTitle>
-      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">{rec.number} · {[rec.vehicle.make, rec.vehicle.model].filter(Boolean).join(' ')}{rec.vehicle.plateNumber ? ` — ${rec.vehicle.plateNumber}` : ''} · {rec.customer}{rec.vehicle.mileage !== null ? ` · last odometer ${rec.vehicle.mileage.toLocaleString('en-NG')} km` : ''}</p>
+      <PageHeader
+        icon="road"
+        back={{ href: rec.back, label: <>Back to {rec.number}</> }}
+        title="Request a road test"
+        description={<>{rec.number} · {[rec.vehicle.make, rec.vehicle.model].filter(Boolean).join(' ')}{rec.vehicle.plateNumber ? ` — ${rec.vehicle.plateNumber}` : ''} · {rec.customer}{rec.vehicle.mileage !== null ? ` · last odometer ${rec.vehicle.mileage.toLocaleString('en-NG')} km` : ''}</>}
+      />
       <SecurityNav active="/security/road-tests" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       <form action={requestRoadTestFormAction} className="max-w-2xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">

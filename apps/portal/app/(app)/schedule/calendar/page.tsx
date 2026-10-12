@@ -4,7 +4,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
 import { pluralize } from '@/lib/utils/pluralize';
 import { dayKind, WORK_START_HOUR, WORK_END_HOUR } from '@/lib/nigeria-calendar';
-import { PageTitle } from '@/components/ui';
+import { PageHeader, PageTitle } from '@/components/ui';
 
 const STATUS: Record<string, [string, string]> = {
   SCHEDULED: ['Scheduled', 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]'],
@@ -25,7 +25,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   if (!access.canUse) {
     return (
       <div className="p-4 sm:p-8">
-        <PageTitle icon="calendar">Scheduling</PageTitle>
+        <PageHeader
+        icon="calendar"
+        title="Scheduling"
+      />
         <p className="mt-3 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
           You do not have a calendar yet. An administrator can give you the <span className="font-medium">Calendar User</span> role (your own calendar), or an official can add you as their <span className="font-medium">aide</span> so you can book for them.
         </p>

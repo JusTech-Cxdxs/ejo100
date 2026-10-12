@@ -7,7 +7,7 @@ import { CONTRACTOR_STATUS_LABEL, STATUS_CHIP, durationText, lagosDay } from '@/
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { PageTitle } from '@/components/ui';
+import { HeaderAction, PageHeader } from '@/components/ui';
 
 export default async function ContractorsPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string }> }) {
   // The list and new passes: the Security desk and the heads / manager who approve them.
@@ -18,13 +18,12 @@ export default async function ContractorsPage({ searchParams }: { searchParams: 
   const tabs: [string, string][] = [['on_site', 'On site'], ['active', 'Active'], ...(canDecide ? [['to_decide', 'To approve'] as [string, string]] : []), ['upcoming', 'Upcoming'], ['ended', 'Ended'], ['all', 'All']];
   return (
     <div className="p-4 sm:p-8">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <PageTitle icon="hardhat">Contractors</PageTitle>
-          <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">Outside teams working on site — approved by the Manager, signed in and out at the gate every day.</p>
-        </div>
-        <LoadingLink href="/security/contractors/new" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">+ Request a pass</LoadingLink>
-      </div>
+      <PageHeader
+        icon="hardhat"
+        title="Contractors"
+        description={<>Outside teams working on site — approved by the Manager, signed in and out at the gate every day.</>}
+        actions={<HeaderAction href="/security/contractors/new">+ Request a pass</HeaderAction>}
+      />
       <SecurityNav active="/security/contractors" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {tabs.map(([k, l]) => <LoadingLink key={k} href={`/security/contractors?tab=${k}${q ? `&q=${encodeURIComponent(q)}` : ''}`} className={`rounded-full px-3 py-1 text-xs font-medium ${current === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l} ({counts[k as keyof typeof counts]})</LoadingLink>)}

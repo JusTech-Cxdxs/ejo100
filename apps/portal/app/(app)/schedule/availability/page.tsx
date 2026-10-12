@@ -4,7 +4,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
 import { RoomGrid } from '@/components/RoomGrid';
 import { dayKind } from '@/lib/nigeria-calendar';
-import { PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 export default async function AvailabilityPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   // Calendars are for people who keep one (an appointment itself stays open to the people in it).
@@ -18,8 +18,11 @@ export default async function AvailabilityPage({ searchParams }: { searchParams:
   const btn = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]';
   return (
     <div className="p-4 sm:p-8">
-      <PageTitle icon="clock">Room availability</PageTitle>
-      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Which rooms are free or booked, hour by hour, across the working day — pick a free slot to avoid clashes.</p>
+      <PageHeader
+        icon="clock"
+        title="Room availability"
+        description={<>Which rooms are free or booked, hour by hour, across the working day — pick a free slot to avoid clashes.</>}
+      />
       <ScheduleNav active="/schedule/availability" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <LoadingLink href={`/schedule/availability?date=${shift(-1)}`} className={btn}>← Previous day</LoadingLink>

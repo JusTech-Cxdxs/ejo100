@@ -7,7 +7,7 @@ import { BROADCAST_CATEGORY, AREA_LABEL } from '@/lib/notification-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { PageTitle } from '@/components/ui';
+import { EmptyState, HeaderAction, PageHeader } from '@/components/ui';
 
 const AREAS = ['WORKSHOP', 'STORE', 'WARRANTY', 'SECURITY', 'SCHEDULING', 'SYSTEM'];
 
@@ -36,13 +36,14 @@ export default async function NotificationCenter({ searchParams }: { searchParam
   const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]';
   return (
     <div className="w-full p-4 sm:p-8">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <PageTitle icon="bell">Notification Center</PageTitle>
-          <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{summary.total === 0 ? "You're all caught up." : `${pluralize(summary.total, 'item')} waiting for you.`} Sounds are {summary.muted ? 'off 🔕' : 'on 🔔'} — change it from the bell.</p>
-        </div>
-        {broadcaster ? <LoadingLink href="/notifications/broadcasts" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Manage broadcasts →</LoadingLink> : null}
-      </div>
+      <PageHeader
+        hero
+        live
+        icon="bell"
+        title="Notification Center"
+        description={<>{summary.total === 0 ? "You're all caught up." : `${pluralize(summary.total, 'item')} waiting for you.`} Sounds are {summary.muted ? 'off' : 'on'} — change it from the bell.</>}
+        actions={broadcaster ? <HeaderAction href="/notifications/broadcasts" icon="megaphone" variant="secondary">Manage broadcasts →</HeaderAction> : null}
+      />
       {status === 'read' ? <div className="mb-4 max-w-2xl"><FormFeedbackBanner kind="success" message="Marked as read." /></div> : null}
       <div className="mb-5 flex flex-wrap items-center gap-2">
         {tabs.map(([k, l, n]) => <LoadingLink key={k} href={`/notifications?tab=${k}`} className={pill(current === k)}>{l} ({n})</LoadingLink>)}
@@ -58,7 +59,7 @@ export default async function NotificationCenter({ searchParams }: { searchParam
 
       {current === 'actions' ? (
         <div className={card}>
-          {summary.actions.length === 0 ? <p className="p-6 text-sm text-[var(--ejo-text-muted)]">Nothing is waiting for your decision.</p> : (
+          {summary.actions.length === 0 ? <EmptyState compact icon="check-circle" title="Nothing is waiting for your decision." /> : (
             <ul className="divide-y divide-[var(--ejo-border)]">
               {summary.actions.map((n) => (
                 <li key={n.id}>
@@ -117,7 +118,7 @@ export default async function NotificationCenter({ searchParams }: { searchParam
           {summary.unreadBroadcasts.length ? (
             <div className="mb-3"><MarkAllReadButton kind="broadcasts" /></div>
           ) : null}
-          {broadcasts.length === 0 ? <div className={card}><p className="p-6 text-sm text-[var(--ejo-text-muted)]">No broadcasts running for you right now.</p></div> : (
+          {broadcasts.length === 0 ? <div className={card}><EmptyState compact icon="check-circle" title="No broadcasts running for you right now." /></div> : (
             <div className="space-y-3">
               {broadcasts.map((b) => {
                 const m = BROADCAST_CATEGORY[b.category]!;

@@ -9,7 +9,7 @@ import { VISIT_STATUS_LABEL, VEHICLE_TYPE_LABEL, durationText, minutesBetween } 
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { PageTitle, StatusChip } from '@/components/ui';
+import { PageHeader, StatusChip } from '@/components/ui';
 
 
 export default async function VisitorsPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; status?: string }> }) {
@@ -19,7 +19,10 @@ export default async function VisitorsPage({ searchParams }: { searchParams: Pro
   const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
   return (
     <div className="p-4 sm:p-8">
-      <PageTitle icon="badge" className="mb-4">Visitors</PageTitle>
+      <PageHeader
+        icon="badge"
+        title="Visitors"
+      />
       <SecurityNav active="/security/visitors" />
       {status === 'booking_cancelled' ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message="Booking cancelled and removed — the cancellation is kept on the audit log." /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}

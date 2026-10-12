@@ -6,7 +6,7 @@ import { SecurityTable } from '@/components/SecurityTable';
 import { durationText, exitPassOverdueMinutes } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
-import { PageTitle } from '@/components/ui';
+import { PageHeader } from '@/components/ui';
 
 export default async function PeopleOutPage() {
   await guardAnyPage(['security.view'], '/security/people-out');
@@ -15,8 +15,11 @@ export default async function PeopleOutPage() {
   const people = rows.reduce((s, p) => s + p.people.length, 0);
   return (
     <div className="p-4 sm:p-8">
-      <PageTitle icon="walk">People out on exit passes</PageTitle>
-      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">{pluralize(people, 'person', 'people')} out on {pluralize(rows.length, 'pass', 'passes')}.</p>
+      <PageHeader
+        icon="walk"
+        title="People out on exit passes"
+        description={<>{pluralize(people, 'person', 'people')} out on {pluralize(rows.length, 'pass', 'passes')}.</>}
+      />
       <SecurityNav active="/security" />
       <SecurityTable headers={['Pass', 'People', 'Reason', 'Time out', 'Expected back', 'Status', '']} widths={['12%', '22%', '20%', '12%', '12%', '15%', '7%']} empty={rows.length ? null : 'Nobody is out on an exit pass.'}>
         {rows.map((p) => {
