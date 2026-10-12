@@ -4,7 +4,7 @@ These steps need account access (GitHub, Supabase, Vercel, Cloudflare); everythi
 do is already done and tested. Tick each box; record the date and who did it.
 
 ## 1. GitHub hardening  ☐
-1. Settings → General → Danger zone → **Change visibility → Private**.
+1. Settings → General → Danger zone → **Change visibility → Private** (done 6 Oct 2026; confirm it is still private).
 2. Settings → Code security → enable **Secret scanning** + **Push protection**, **Dependabot alerts**
    and **Dependabot security updates**.
 3. Settings → Branches → rule for `main`: require a pull request, require the **CI** check to pass,
@@ -33,8 +33,9 @@ timestamp — no table is published for Realtime (Database → Replication: no `
 
 ## 3. Staging environment  ☐
 1. Create a second Supabase project **"ejo100-staging"** (same region as production).
-2. Run every `EJO100_schema_sync_v*.sql` in order on it (all are additive and re-runnable), or
-   `prisma db push` from a developer machine pointed at staging.
+2. From a developer machine pointed at staging (`DIRECT_URL`): run `scripts/predeploy/*.sql`,
+   then `prisma db push` (never with `--accept-data-loss`), then `scripts/postdeploy/*.sql`, the same
+   order a production deploy uses (`scripts/apply-predeploy-sql.js`).
 3. Vercel → portal project → Settings → Environment Variables: give the **Preview** environment the
    staging `DATABASE_URL`, `DIRECT_URL`, `BETTER_AUTH_SECRET` (different from production),
    `BETTER_AUTH_URL`, `NEXT_PUBLIC_PORTAL_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,

@@ -9,7 +9,7 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ module: string }> }) {
   const m = roadmapByKey.get((await params).module);
-  return { title: m ? `${m.name} — coming next` : 'Roadmap' };
+  return { title: m ? `${m.name} · coming next` : 'Roadmap' };
 }
 
 /** One planned module: what it will do, in phases, and how it connects. */
@@ -32,7 +32,11 @@ export default async function RoadmapModulePage({ params }: { params: Promise<{ 
             <span className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ejo-surface)] text-[var(--ejo-primary)] shadow-sm"><RoadmapIcon icon={m.icon} size={28} /></span>
           </div>
           <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ejo-warning)]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--ejo-warning)]" />Coming next · planned</p>
+            {m.next ? (
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ejo-primary)]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--ejo-primary)]" />Next phase · built after Version 1</p>
+            ) : (
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ejo-warning-text)]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--ejo-warning)]" />Coming next · planned</p>
+            )}
             <h1 className="mt-2 text-3xl font-bold text-[var(--ejo-text)]">{m.name}</h1>
             <p className="mt-1 text-lg text-[var(--ejo-text)]">{m.tagline}</p>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--ejo-text-muted)]">{m.description}</p>
@@ -57,6 +61,20 @@ export default async function RoadmapModulePage({ params }: { params: Promise<{ 
           </li>
         ))}
       </ol>
+
+      {m.design?.length ? (
+        <section className="mt-10" aria-labelledby="how-it-works">
+          <h2 id="how-it-works" className="text-sm font-semibold uppercase tracking-[0.12em] text-[var(--ejo-text-muted)]">How it will work</h2>
+          <dl className="mt-4 grid gap-3 md:grid-cols-2">
+            {m.design.map((d, di) => (
+              <div key={d.label} className="ejo-rise rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4" style={{ animationDelay: `${di * 50}ms` }}>
+                <dt className="flex items-center gap-2 text-sm font-semibold text-[var(--ejo-text)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--ejo-primary)]" aria-hidden="true" />{d.label}</dt>
+                <dd className="mt-1.5 break-words text-sm leading-relaxed text-[var(--ejo-text-muted)]">{d.detail}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ) : null}
 
       {m.connects.length ? (
         <section className="mt-10 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">

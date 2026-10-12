@@ -1,0 +1,235 @@
+# EJO 100 — AI Readiness Assessment
+
+**Date:** 12 October 2026 · **Scope:** the data, controls and boundaries the AI
+phase (AI support centre, Intelligence) will build on · **Status:** assessment
+and plan; no AI feature is built.
+
+This document records what the platform already provides for a safe AI layer,
+what is missing, and the rules the AI phase must follow. Every statement points
+to the file it comes from. Where the code does not yet do something, it says
+**Gap** or **Planned**.
+
+---
+
+## 1. Summary
+
+| Question | Answer today |
+|---|---|
+| Is every table classified for AI use? | Yes. All 95 tables in `packages/database/prisma/schema.prisma` have an `ai` value in `apps/portal/lib/governance/data-inventory.ts`; `apps/portal/tests/data-inventory.test.ts` fails CI if a table is missing. |
+| Can AI reuse the existing permission checks? | Yes, if it runs as the asking person. `getPrincipal`, `decide`, `authorize` and `reachWhere` in `apps/portal/lib/authz/server.ts` already answer "may this person see this record / this list". |
+| Can AI actions be told apart in the audit trail? | Partly. `setAuditActor(userId, source, organisationId)` in `packages/database/src/audit-journal.ts` records a `source` per request; an AI source label and "suggested by" metadata are **Planned** (section 5). |
+| Is there a curated, read-only copy of the data for AI? | **Gap.** The AI service would have to read live tables. The Data warehouse & BI module (roadmap) provides the curated views. |
+| Is there a column-level "redacted" access level? | **Gap.** The inventory has `NEVER`, `AGGREGATE_ONLY` and `AUTHORISED_USER` per table. Masking of personal columns is **Planned** (section 2.4). |
+
+The baseline rule already binding on every change (`docs/ARCHITECTURE_BASELINE.md`
+§16): **AI is never an authorization authority.** It may observe, analyse,
+summarise, recommend and draft, always as the person using it; a human approves
+every action; SECRET data is never available to AI.
+
+---
+
+## 2. Data classification for AI
+
+The source of truth is `DATA_INVENTORY` in
+`apps/portal/lib/governance/data-inventory.ts`. Its `AiAccess` type has three
+values:
+
+- `NEVER`: AI may not read the table at all, not even in aggregate.
+- `AGGREGATE_ONLY`: AI may read counts, sums and trends, never individual rows.
+- `AUTHORISED_USER`: AI may read individual rows, but only the rows the person
+  it is acting for can already open in the portal.
+
+### 2.1 Never (13 tables)
+
+| Table | Why |
+|---|---|
+| `Session`, `Account`, `Verification` | Staff credentials and sessions (SECRET). |
+| `CustomerSession`, `CustomerAccount`, `CustomerVerification` | Customer credentials, sessions and one-time link tokens (SECRET). |
+| `EmployeeDocument` | Personal documents on the employee file. |
+| `NotificationRead`, `NotificationPreference`, `CustomerNotificationRead` | Screen state; no business value, and reveals personal reading habits. |
+| `SecurityEmailLog` | Who was emailed about a site-security event. |
+| `AssistSession` (v29) | The record of staff-assisted sessions; part of the security trail. |
+| `ErrorEvent` (v29) | Error references, messages and stacks; may contain fragments of input. |
+
+These tables must not appear in any view, export or prompt built for AI. A test
+that reads the curated views' source and fails on any of these names is
+**Planned** with the data warehouse.
+
+### 2.2 Aggregate only (2 tables)
+
+| Table | Allowed use |
+|---|---|
+| `EmployeeProfile` | Headcount and tenure counts per branch or department. Never one person's profile. |
+| `AuditLog` | Volumes and patterns (e.g. "refunds recorded per week", "refused access attempts per day") for anomaly detection. Never the content of one entry, which can hold before/after values of personal fields. |
+
+### 2.3 Authorised user (80 tables)
+
+Everything else: organisation structure, roles, users, customers and their
+vehicles, Job Cards and Vehicle Services with their estimates, payments and
+refunds, parts and stock, goods receipts, procurement, warranties and claims,
+security records, scheduling and broadcasts. The full list is the inventory
+file itself.
+
+"Authorised user" means the AI sees what the person sees, through the same
+fence. It does not mean every authorised user may send every row to a model; the
+minimisation rules in 2.4 still apply.
+
+### 2.4 Personal columns inside authorised tables
+
+Several `AUTHORISED_USER` tables hold personal data (classification `PERSONAL`):
+`User`, `Customer`, `CustomerCompany`, `CustomerAddress`, `CustomerContact`,
+`CustomerNote`, `CustomerVehicle`, `Visit`, `ExitPassPerson`, `RoadTestPerson`,
+`ContractorPass`, `Appointment`.
+
+Rules for the AI phase:
+
+1. **Minimise before sending.** A prompt carries only the fields the task needs.
+   A question about a Job Card's status sends the job number, status, dates and
+   line descriptions, not the customer's phone, email or address.
+2. **Mask by default.** Phone numbers, email addresses and street addresses are
+   replaced with placeholders (`[phone]`, `[email]`) before text leaves the
+   portal, and restored in the answer only for a person who may see them.
+3. **Free text is higher risk.** `CustomerNote.body`, complaint text and
+   incident descriptions can contain anything staff typed. They go to the model
+   only for the person who opened that record, never in bulk.
+
+**Recommendation (Gap):** add a fourth `AiAccess` value, `REDACTED` (row-level
+access with named personal columns masked), and move `CustomerNote`, `Visit`,
+`ContractorPass`, `ExitPassPerson` and `RoadTestPerson` to it. That is a change
+to `data-inventory.ts` and its test, reviewed like any baseline change.
+
+### 2.5 Future tables
+
+Each roadmap module must declare its tables with an AI value when it is built.
+Already decided on the roadmap pages (`apps/portal/lib/roadmap.ts`): informal
+chat messages are `NEVER`; customer feedback comments are `AGGREGATE_ONLY`;
+official messages follow the record they are attached to.
+
+---
+
+## 3. Tenant isolation for AI retrieval
+
+The AI layer must get exactly the isolation a person gets today, by reusing the
+same code rather than re-implementing it.
+
+| Fence | How it works today | What the AI layer must do |
+|---|---|---|
+| Organisation | `decide()` in `apps/portal/lib/authz/catalogue.ts` refuses any record whose branch is outside the person's organisation, before scope. `orgWhere` / `orgOwned` fence organisation-owned data. Audit rows carry `organisationId` (stamped in `audit-journal.ts`). | Every AI request carries one organisation id, taken from the server session, never from the request body. Retrieval runs through `reachWhere` / `orgWhere`. Any vector index or cache is partitioned per organisation (one index or one mandatory filter per organisation). |
+| Branch | Scope `BRANCH` limits a person to their branch; `reachWhere(key)` returns the branch filter for a permission. | The retrieval query for each permission uses that permission's `reachWhere`, so a technician's assistant never sees another branch's jobs. |
+| Department / assigned / own | Scopes `DEPARTMENT`, `ASSIGNED` (the job's supervisor, technician or opener) and `OWN` in the catalogue. | Same `decide()` call per record before it is put in a prompt. |
+| Customer | The customer portal queries by the session's customer id (`apps/website/lib/auth-customer.ts`, contract 1 and 3 in the brief), never by an id from the URL. | The customer assistant receives only records fetched by the customer portal's own loaders for the signed-in customer. It has no staff permissions at all. |
+| Permission-aware retrieval | `getPrincipal()` builds the person's roles, grants, branch and organisation once per request. | The AI service never holds a broader identity. The portal fetches context **as the user** and sends it; the service does not query the operational database. |
+
+Two consequences:
+
+- **No shared embeddings across organisations.** If retrieval over documents or
+  notes is added, the index key includes the organisation, and results are
+  re-checked with `decide()` before use (a stale index must not leak a record the
+  person lost access to).
+- **Results are re-fenced on the way out.** Anything the service returns that
+  names a record (a forecast for a part, an anomaly on a refund) is checked with
+  the same record check before it is shown.
+
+---
+
+## 4. The integration boundary
+
+```
+Portal (Next.js, Vercel)                          AI service (Python, separate host)
+  server action / route handler                     FastAPI
+   1. requireUser, authorize                         - verifies the service token
+   2. fetch context AS THE USER                      - checks request size and rate
+      (reachWhere / record checks, minimised)        - builds the prompt or runs the model
+   3. POST /v1/<task>  ─────────────────────────►    - returns a suggestion + reasons
+      Authorization: Bearer <service token>          - never writes to the database
+      { organisationId, userId, task, context }
+   4. re-fence the result, show it as a suggestion ◄─
+   5. a person accepts → the normal server action
+      runs (authorize, workflow, audit)
+```
+
+| Control | Rule |
+|---|---|
+| Separate service | Python (FastAPI; pandas, scikit-learn, statsmodels for Intelligence; an LLM client for the support assistant) on its own host. It has no `DATABASE_URL`. |
+| Service token | A long random token per environment, sent as a header, compared in constant time (the pattern in `apps/portal/lib/cron-auth.ts`). Rotated by changing the environment variable on both sides. Never a `NEXT_PUBLIC_*` value. |
+| Read path for Intelligence | Batch models read curated, tenant-stamped views produced by the data warehouse job (roadmap: Data warehouse & BI), or a read replica when one exists. Never the live primary, never tables marked `NEVER`. **Gap until the warehouse exists.** |
+| Write path | None. The service returns suggestions; only the portal's server actions write, after a person accepts. |
+| Prompt injection | Record text (notes, complaints, ticket messages, customer replies) is data, never instructions: it is passed in clearly delimited fields, the system prompt says so, and tools are not exposed to the model. The assistant has no tool that changes data, so an injected instruction cannot trigger an action. Output is rendered as text (React escaping), never as HTML. |
+| Rate limits | Per person and per organisation on the portal side (same approach as `apps/portal/middleware.ts`), and per token on the service. |
+| Cost limits | A monthly token / compute budget per organisation, checked before each call; when it is reached the feature says so and the rest of the portal is unaffected. |
+| Failure | AI is never on the critical path (`docs/PRODUCTION_READINESS.md` §7, principle 1). A timeout or error hides the suggestion; the page and the workflow work as before. |
+| Data residency | Today the database is in Supabase EU (Frankfurt) and the apps are hosted in the US (`docs/PRODUCTION_READINESS.md` §4). Any model provider adds another transfer. The provider, its region and its data-retention terms are recorded before go-live, and providers that train on submitted data are not used. |
+
+---
+
+## 5. Audit of AI involvement
+
+The AI never acts. When a person accepts a suggestion, the normal server action
+runs, so the existing audit applies: the data journal records the change under
+the person (`setAuditActor` in `requireUser`), and `writeAuditLog` records the
+business event.
+
+**Planned additions:**
+
+- The accepting action adds `metadata.suggestedBy = { service: 'ai', task, modelVersion, suggestionId }`
+  to its audit entry, so the trail reads "suggested by AI, done by <person>".
+  The `actor: 'staff' | 'customer'` convention used for customer records stays;
+  AI is never an actor.
+- The AI service keeps its own log per suggestion: organisation, user, task,
+  input size, model and version, latency, cost, and whether the person accepted,
+  edited or rejected it. It does not keep the prompt text beyond a short
+  debugging window, because the prompt can contain personal data.
+- A support reply drafted by the assistant records both the draft and the text
+  actually sent (`TicketMessage.aiSuggested`, `approvedBy` on the roadmap page).
+
+---
+
+## 6. Privacy (Nigeria Data Protection Act 2023)
+
+The inventory already classifies personal data and sets retention
+(`PERSONAL_RETENTION` in `data-inventory.ts`: "while the relationship is
+active; then as the retention policy allows (NDPA 2023, no longer than
+necessary)").
+
+For the AI phase:
+
+| Topic | Rule |
+|---|---|
+| Lawful basis and purpose | Staff help and analytics run under the organisation's legitimate interest in running its business; the purpose is stated in the staff and customer privacy notices before launch. Using customer data for a new purpose (e.g. training a model) is a further purpose and needs consent. |
+| Consent | No training or fine-tuning on customer or employee data without express consent. Forecasting models are fitted on aggregates (parts demand, workshop load) that contain no personal data. |
+| Automated decisions | No decision with legal or similarly significant effect on a person is made by AI alone. Every suggestion is reviewed by a person, which is also the platform's rule. |
+| Impact assessment | A data protection impact assessment is done before each AI feature goes live, recorded with the organisation's Data Protection Officer, covering the data used, the provider, cross-border transfer and risks to vulnerable people. The NDPC's General Application and Implementation Directive (GAID 2025) asks for this for emerging technologies. |
+| Cross-border transfer | Sending personal data to a model hosted outside Nigeria is a cross-border transfer. Minimise and mask first (section 2.4); record the transfer basis for the provider. |
+| Data subject rights | Access and erasure requests cover AI logs too; the AI service log is keyed by organisation and user so it can be searched and deleted. |
+| Retention | Prompt text: short debugging window only. Suggestion metadata: with the audit trail. Model artefacts: no personal data in them. |
+
+This section is an engineering position, not legal advice; the organisation's
+DPO signs off each feature.
+
+---
+
+## 7. Evaluation and monitoring
+
+| What | How |
+|---|---|
+| Forecast accuracy | Back-tests on history held out by time; error (MAPE / MAE) stored per model version and shown next to the forecast. A model replaces the current baseline only if it beats it. The baseline is the linear trend already in `lib/master-analytics.ts` (`linearFit`). |
+| Reproducible inputs | Forecast inputs are computed by the same pure functions the analytics tests check (`apps/portal/tests/analytics.test.ts`), so a number the model sees agrees with the number on the page. |
+| Assistant quality | A fixed question set per role, answered and graded before each release; a release that answers a question outside the asker's permission fails. Cross-organisation questions are part of the set, mirroring the existing Playwright cross-organisation tests. |
+| Live monitoring | Acceptance and edit rates per task; cost and latency per organisation; refusals; alerts when a suggestion type is mostly rejected. |
+| Red-team checks | Prompt-injection cases in notes and ticket text; requests for another organisation's or another branch's data; requests for credentials. Added to `security.yml` once the service exists. |
+
+---
+
+## 8. Phased plan
+
+| Phase | Delivers | Needs first |
+|---|---|---|
+| 0. Groundwork | `REDACTED` inventory level; AI source label and `suggestedBy` metadata in the audit helpers; service token and the Python service skeleton (health check only); curated views for jobs, stock and money in the data warehouse. | Data warehouse job; owner approval of the inventory change. |
+| 1. Support assistant (staff) | Ticketing without AI, then drafted answers to "how do I…" and "why can't I…" from guides and the permission catalogue (`lib/authz/catalogue.ts`, `lib/authz/describe-access.ts`). No customer data in prompts. | Phase 0. |
+| 2. Support assistant (customers) | Drafted replies about the customer's own vehicles, jobs, payments and warranties, from the customer portal's loaders. A person sends every reply. | Phase 1 measured; DPIA signed off. |
+| 3. Analytics insights | Plain-language summaries of Business, Inventory and Warranty Analytics, each linking to the records behind it; questions answered within the person's scope. | Curated views; evaluation set. |
+| 4. Forecasting and anomalies | Parts demand (feeding reorder points), workshop load, revenue; unusual refunds, discounts and stock adjustments sent to managers. | 12+ months of history per branch; back-test results beating the baseline. |
+
+Each phase ships as its own pull request with tests, the same CI gates as the
+rest of the platform, and a Playwright spec that proves a person from another
+organisation or branch cannot see the AI output.

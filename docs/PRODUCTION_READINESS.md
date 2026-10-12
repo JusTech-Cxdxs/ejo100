@@ -14,8 +14,8 @@ records what is verified, what was fixed, what is deliberately deferred, and wha
 | Database public API | **v20**: RLS on every table automatically; public roles have no table / sequence / function access; future tables locked by default |
 | Secrets | None in the repository; only Supabase URL + anon key are public (by design, used only for the change ping) |
 | Injection / XSS | Prisma parameterised queries only; React escaping; names escaped in emails |
-| Login | Rate-limited (5 / min); "redirect back" only to pages on this site (open redirect closed) |
-| Submissions | Per-address flood limit on form posts / actions (120 / min / instance) → friendly 429 |
+| Login | Rate-limited per instance (staff and customers: 20 sign-ins a minute, 5 reset requests per 5 minutes by default); "redirect back" only to pages on this site (open redirect closed) |
+| Submissions | Flood limit on form posts / actions per instance: 120 a minute per signed-in person, 1,500 per shared address, 120 per address when signed out → friendly 429 |
 | Double processing | PRS HOD / Store / Release and EPR Finance / Manager / Disburse use compare-and-set (second request refused, stock release rolled back); payments and refunds refuse an identical repeat within 20 s |
 | Errors | Users see plain words or "quote reference ABC123" — never technical text (116 handlers); error / not-found pages |
 | Logs | Structured JSON error lines with reference, route, time; secrets redacted; `instrumentation.ts` catches every server error |
@@ -23,7 +23,7 @@ records what is verified, what was fixed, what is deliberately deferred, and wha
 | Notifications | Every workflow step → action item (until done) + activity + email + audit trail; live updates with push + fallback |
 | Performance | Request / cross-request caching, parallel loading, indexes, cursor paging, search as you type |
 | CI | Install → database build → lint → typecheck → build → dependency vulnerability report |
-| Production build | Full `next build` passes (96 pages); every data page is dynamic (no frozen data) |
+| Production build | Full `next build` of portal and website on every pull request; every data page is dynamic (no frozen data) |
 | Durable idempotency | Payments and refunds carry a form operation id with a UNIQUE constraint (v21) — never recorded twice, even after a dropped connection |
 | Large data | Ever-growing lists (GRNs, PRS, EPR, services by status) capped at the newest 500, search reaches older; analytics all-history reads documented with a pre-computation trigger |
 | Runbooks | `docs/RUNBOOKS.md` — GitHub hardening, Supabase surface proof, staging, restore drill, load test, failure drills, infrastructure triggers |
@@ -42,7 +42,7 @@ records what is verified, what was fixed, what is deliberately deferred, and wha
 - **Database**: every schema change ships as additive, re-runnable SQL — no destructive migrations.
 - **Backups**: the Supabase free plan has limited backup coverage. Before go-live: upgrade to a plan
   with daily backups + point-in-time recovery, and do one **real restore test** into a new project.
-  Do NOT store database dumps as GitHub artifacts while the repository is public.
+  Do not store database dumps as GitHub artifacts.
 - **Targets to agree with the business**: RPO (data you can afford to lose) and RTO (time to recover).
 
 ## 4. Remaining risks (owned, not hidden)
@@ -67,7 +67,7 @@ exports, documents, notifications, realtime and analytics — with allowed AND d
 ## 6. Phase B — Authorization (status)
 | Piece | State |
 |---|---|
-| Catalogue (`lib/authz/catalogue.ts`) | 46 permissions, 16 roles, 5 scopes; pure `decide()`; `homeBranch` for approvals and money (the person must belong to the branch) |
+| Catalogue (`lib/authz/catalogue.ts`) | 49 permissions, 17 organisation roles, 5 scopes (12 Oct 2026); pure `decide()`; `homeBranch` for approvals and money (the person must belong to the branch) |
 | Enforcement (`lib/authz/server.ts`) | `guardPage` (pages), `authorize` / `authorizeOn…` (actions), `allows` (buttons — same rule), `refuse` (workflow refusals), `canSeeRecord` / `seeOrNull` (records), `reachWhere` / `branchWithinReach` (lists); every refusal audited as `access.denied` |
 | Actions | Every data-changing server action passes the catalogue or an audited workflow check — **locked by a CI test** (`tests/guard-coverage.test.ts`) |
 | Module checks on the catalogue | Store, Finance, Manager approvals, Warranty, Security gate, Scheduling, Broadcasts, Audit, Analytics, Organisation / Branch editing — a grant added on the Roles page now really works |

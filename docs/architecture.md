@@ -1,69 +1,63 @@
-# EJO 100 — Architecture Overview
+# EJO 100 — Architecture overview
 
-## Two systems, one platform
+A short orientation for engineers. The binding rules are in
+[ARCHITECTURE_BASELINE.md](ARCHITECTURE_BASELINE.md); this page explains how the
+pieces fit so the rules make sense.
 
-1. **apps/website** — the public corporate website. 100% client-branded
-   (Kewalram Nigeria for Phase One). No EJO branding is ever visible here.
-2. **apps/portal** — the EJO 100 Enterprise Platform. Employees log in here.
-   Carries a subtle "Powered by EJO 100 Enterprise Platform" credit only.
+## Three apps, one database
 
-Both are separate Next.js apps so they can be deployed, scaled, and cached
-independently, but they share the same design tokens (`packages/config`,
-mirrored CSS variables in each app's `globals.css`) and the same component
-library (`packages/ui`) so they read as one ecosystem.
+| App | Who uses it | What it is |
+|---|---|---|
+| `apps/portal` | Staff | The ERP. Next.js 15 App Router. Pages are server components; every write is a server action in `lib/actions/*` that authorises and then calls Prisma directly. |
+| `apps/website` | The public and customers | The organisation's own website (its brand, not EJO's) and the customer portal under `/customer-portal`, with a separate customer sign-in. |
+| `apps/api` | The platform team | NestJS. Health check and read-only platform routes. No business workflow depends on it. |
 
-`apps/api` is a NestJS service both apps eventually call for anything that
-needs the database — Phase 1 wires up the module structure only.
+All three use `@ejo/database` (`packages/database`): the Prisma schema, the
+shared client and the audit journal that records every write.
 
-## The "every route exists" rule
+The portal does not call the API for business work. That was the Phase 1 plan;
+in practice server actions gave one place to authorise, validate, write and
+audit, and the API stayed thin.
 
-Every page and every portal module listed in the project constitution exists
-in routing from Phase 1, even where it has no business logic yet. Instead of
-a 404 or a blank page, unbuilt routes render `<ComingSoon />` from
-`@ejo/ui`. This means:
-
-- The client sees the full shape of the product on day one.
-- Activating a module later is a status flip (`ModuleStatus` in
-  `packages/database/prisma/schema.prisma`, mirrored in
-  `apps/portal/lib/modules.ts`), not new page-building.
-
-## Module registry
-
-`apps/portal/lib/modules.ts` is the single source of truth the sidebar reads
-to decide what to show and how to badge it (Live / Coming Soon / Disabled).
-Once the API's `PlatformModule` / `CompanyModule` tables are wired up, this
-file becomes a client-side cache of that data rather than a hardcoded list.
-
-## Dynamic branding engine
-
-No component should ever import a hardcoded hex colour. Colours flow:
+## Organisation model
 
 ```
-Branding (Postgres, packages/database) --> BrandingTokens (packages/types)
-  --> CSS variables (--ejo-primary, etc. in each app's globals.css)
-  --> Tailwind utility classes reference the variables, e.g. bg-[var(--ejo-primary)]
+Platform team ─ Organisation ─ Business unit ─ Branch ─ Department ─ Team ─ People
+                            └─ customers, vehicles, warranty providers and policies (organisation-wide)
 ```
 
-`apps/website/lib/branding.ts` is a Phase 1 stub returning Kewalram's green
-theme; swapping it for a real API call is the only change needed to re-theme
-the whole site for a different client.
+Countries, states and cities are reference data that branches point to. Nothing
+in code assumes a particular organisation: Kewalram Nigeria, its Automobile
+Division and the Isolo branch are rows created by the seed. Each record is
+fenced to its organisation (and usually its branch); see the baseline §2 and §7.
 
-## Organization hierarchy
+## A request, end to end
 
-```
-Platform -> Company -> Business Unit -> Country -> State -> City -> Branch
-  -> Department -> Team -> Users
-```
+1. `middleware.ts` checks for a sign-in cookie, applies the submission flood
+   limit and lets public paths through.
+2. The page or server action calls `requireUser()` (session from the database,
+   switched-off accounts refused) and then `authorize(permission, record)` from
+   `lib/authz/server.ts`.
+3. Workflow changes use compare-and-set (`lib/integrity.ts`): the status the
+   person saw is part of the `where`, so a second click or a second person
+   changes nothing.
+4. Prisma writes are journalled with before/after values; `writeAuditLog`
+   records the business event in plain words.
+5. After the response: emails (`lib/email.ts`), a data-free realtime ping.
+   Their failure never undoes the action.
 
-Modeled in `packages/database/prisma/schema.prisma`. Nothing above is
-hardcoded — Kewalram Nigeria / Automobile Division / Nigeria / Lagos State /
-Isolo / Isolo Branch / Workshop is simply the first row set seeded into it.
+## Module registry and the roadmap
 
-## Phase 1 scope
+`apps/portal/lib/modules.ts` lists the live modules; `lib/authz/navigation.ts`
+builds each person's menu from it and the permission catalogue, so nobody sees
+a door they cannot open. Modules that are not built are not in the menu; they
+have a page under `/roadmap`, generated from `lib/roadmap.ts`, and their old
+addresses (`/hr`, `/payroll`, …) redirect there (`next.config.ts`).
 
-Foundation only: monorepo, routing skeletons for both apps, the NestJS
-module skeleton (no business logic), the core Prisma schema (hierarchy +
-identity/access + module registry + branding — no Workshop/Inventory/HR
-business tables yet), the shared design system primitives, and this
-documentation. See `docs/module-creation-guide.md` for how later phases
-extend this without reshaping the core.
+## Branding and theme
+
+Colours come from CSS variables (`--ejo-primary`, `--ejo-surface`, …) defined in
+each app's `globals.css`, with light and dark values. Components use the
+variables, never raw colours. The organisation's name and logo come from the
+database (`Organisation`, `Branding`) inside the portal; the website reads the
+organisation set by `NEXT_PUBLIC_ACTIVE_ORGANISATION_SLUG`.
