@@ -88,9 +88,9 @@ test('a contractor team: requested, approved by the Manager, signed in and out a
   await page.locator('select[name="workersPresent"]').selectOption('1');
   await page.getByRole('button', { name: 'Sign team in' }).click();
   await waitOutcome(page, /status=sign_in/);
-  await page.goto('/security/on-premises');
-  // The board is refreshed from live data — give it a moment.
-  await eventually(page, async () => expect(page.getByText(company).first()).toBeVisible({ timeout: 5_000 }), 45_000);
+  // The contractors board, "On site" tab, searched by company.
+  await open(page, `/security/contractors?tab=on_site&q=${encodeURIComponent(company)}`);
+  await eventually(page, async () => expect(page.locator('main').getByText(company).first()).toBeVisible({ timeout: 5_000 }), 30_000);
   await open(page, url);
   await page.getByRole('button', { name: 'Sign team out' }).click();
   await waitOutcome(page, /status=sign_out/);
