@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { who } from './people';
-import { as, open, expectHealthy, expectNoUrlError, uniq, waitOutcome } from './helpers';
+import { as, open, eventually, expectHealthy, expectNoUrlError, uniq, waitOutcome } from './helpers';
 import { freshVehicle } from './db';
 import { jcForm, openJobCard, pickSearchable } from './workflows';
 
@@ -89,7 +89,8 @@ test('a contractor team: requested, approved by the Manager, signed in and out a
   await page.getByRole('button', { name: 'Sign team in' }).click();
   await waitOutcome(page, /status=sign_in/);
   await page.goto('/security/on-premises');
-  await expect(page.getByText(company).first()).toBeVisible();
+  // The board is refreshed from live data — give it a moment.
+  await eventually(page, async () => expect(page.getByText(company).first()).toBeVisible({ timeout: 5_000 }), 45_000);
   await open(page, url);
   await page.getByRole('button', { name: 'Sign team out' }).click();
   await waitOutcome(page, /status=sign_out/);
