@@ -72,10 +72,14 @@ export async function writeAuditLog(params: {
   entityType: string;
   entityId: string;
   metadata?: Record<string, unknown>;
+  /** The organisation whose history this is (e.g. a customer's own
+   * organisation) — otherwise stamped from the person acting. */
+  organisationId?: string | null;
 }): Promise<void> {
   try {
     await prisma.auditLog.create({
       data: {
+        ...(params.organisationId ? { organisationId: params.organisationId } : {}),
         userId: params.userId,
         action: params.action,
         entityType: params.entityType,

@@ -51,6 +51,8 @@ const READ_FENCES = [
   'requireEligible', 'requireWarrantyStaff', 'requireWarrantyApprover', 'requireStaff', 'getSchedulingAccess', 'loadForChange',
   'loadForGroups', 'requireMasterAdmin', 'currentUserIsMasterAdmin', 'branchInMyOrganisationOrSystem', 'onMyDesk',
   'allows(', // with the record (branch / assignees) — e.g. canRequestRoadTestOn
+  // Customers (lib/actions/crm.ts): the customer — or its address / contact / note — looked up inside the person's organisation (orgWhere).
+  'fencedCustomer',
 ];
 
 /** Reads that need no record fence, with the reason. */

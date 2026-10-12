@@ -1,4 +1,5 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { redirect } from 'next/navigation';
+import { allows, guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { LoadingLink } from '@/components/LoadingLink';
 import { listCustomers } from '@/lib/actions/workshop';
@@ -11,8 +12,8 @@ import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 const STATUS_MESSAGES: Record<string, { kind: 'success' | 'warning'; message: string }> = {
   customer_existing: { kind: 'success', message: 'That email already had a customer record — reused it, no duplicate created.' },
-  customer_created_emailed: { kind: 'success', message: 'Customer added — a welcome email with their login details has been sent.' },
-  customer_created_no_email: { kind: 'warning', message: 'Customer added, but the welcome email could not be sent. Please share their login details manually, or try resending later.' },
+  customer_created_emailed: { kind: 'success', message: 'Customer added — a welcome email with a link to set their password has been sent.' },
+  customer_created_no_email: { kind: 'warning', message: 'Customer added, but the welcome email could not be sent. Send the set-password link again from their customer page once email is working.' },
 };
 
 export default async function WorkshopCustomersPage({
@@ -22,6 +23,14 @@ export default async function WorkshopCustomersPage({
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { q, status, error } = await searchParams;
+  // The Customers (CRM) hub is the home of customers now — this address leads there.
+  if (await allows('crm.view')) {
+    const qs = new URLSearchParams();
+    if (q) qs.set('q', q);
+    if (status) qs.set('status', status);
+    if (error) qs.set('error', error);
+    redirect(`/crm${qs.size ? `?${qs.toString()}` : ''}`);
+  }
   const customers = await listCustomers(q);
   const statusInfo = status ? STATUS_MESSAGES[status] : undefined;
 
@@ -102,7 +111,7 @@ export default async function WorkshopCustomersPage({
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Add customer</h2>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
             If the email already belongs to an existing customer, their existing record is reused —
-            no duplicate is created. A new customer receives a welcome email with login details.
+            no duplicate is created. A new customer receives a welcome email with a link to set their own password.
           </p>
           <form action={createCustomerFormAction} className="mt-4 space-y-3">
             <FormPendingOverlay />
@@ -127,9 +136,10 @@ export default async function WorkshopCustomersPage({
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Address (optional)</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Primary address</label>
               <input
                 name="address"
+                required
                 maxLength={80}
                 placeholder="e.g. Plot 3, Cheesebrough, Lagos"
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
@@ -151,6 +161,12 @@ export default async function WorkshopCustomersPage({
               <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Phone</label>
               <input
                 name="phone"
+                required
+                type="tel"
+                minLength={7}
+                maxLength={20}
+                pattern="\+?[0-9 ]{7,20}"
+                title="Digits, spaces and a leading + (7–20 characters)"
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
             </div>
