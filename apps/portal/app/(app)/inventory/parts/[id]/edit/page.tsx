@@ -27,7 +27,7 @@ export default async function EditPartPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string }>;
 }) {
-  await guardAnyPage(['store.view'], '/inventory');
+  await guardAnyPage(['store.parts.manage'], '/inventory/parts/edit');
   const { id } = await params;
   const { error } = await searchParams;
   const part = await getPart(id);

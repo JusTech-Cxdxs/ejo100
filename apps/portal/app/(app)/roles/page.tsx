@@ -1,8 +1,9 @@
 import { guardPage } from '@/lib/authz/server';
 import { listRolesForEditor } from '@/lib/actions/roles';
 import { grantRolePermissionFormAction, revokeRolePermissionFormAction } from '@/lib/actions/roles-form-handlers';
-import { PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
+import { APPROVAL_PERMISSIONS, PERMISSIONS, ROLE_DESCRIPTIONS, ROLE_GRANTS, SCOPE_WORDS, type PermissionKey } from '@/lib/authz/catalogue';
 import { SubmitButton } from '@/components/SubmitButton';
+import { plainLabel } from '@/lib/authz/describe-access';
 import { FilterSelect } from '@/components/FilterSelect';
 import { PageHeader } from '@/components/ui';
 
@@ -18,7 +19,7 @@ export default async function RolesPage({ searchParams }: { searchParams: Promis
       <PageHeader
         icon="shield"
         title="Roles"
-        description={<>Each role&apos;s permissions. <b>Included by default</b> comes from the platform catalogue; you can <b>add</b> more for your organisation (and remove what you added). Every change is recorded in the audit trail. The full picture is on the Permissions page.</>}
+        description={<>What each role is for, what it can do and what it can approve. <b>Included by default</b> comes from the platform catalogue; you can <b>add</b> more for your organisation (and remove what you added). Every change is recorded in the audit trail. The full picture is on the Permissions page.</>}
       />
       {error ? <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/40 bg-[var(--ejo-error)]/5 p-3 text-sm text-[var(--ejo-error)]">{error}</p> : null}
       {status === 'saved' ? <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-success)]/40 bg-[var(--ejo-success)]/5 p-3 text-sm text-[var(--ejo-text)]">Saved.</p> : null}
@@ -33,10 +34,26 @@ export default async function RolesPage({ searchParams }: { searchParams: Promis
               <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Platform team (the platform owner and their support staff). Holds every permission. Organisations cannot grant or change this role.</p>
             ) : (
               <>
-                <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Included by default</p>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {r.defaults.length ? r.defaults.map((k) => <span key={k} className={`${chip} bg-[var(--ejo-bg)] text-[var(--ejo-text)]`}>{PERMISSIONS[k].label}</span>) : <span className="text-xs text-[var(--ejo-text-muted)]">Everyday access only (open the modules, view work in their branch).</span>}
-                </div>
+                {ROLE_DESCRIPTIONS[r.slug] ? <p className="mt-2 text-sm text-[var(--ejo-text)]">{ROLE_DESCRIPTIONS[r.slug]}</p> : null}
+                {(() => {
+                  const scope = (k: PermissionKey) => { const sc = ROLE_GRANTS[r.slug]?.[k]; return sc ? SCOPE_WORDS[sc] : null; };
+                  const approves = r.defaults.filter((k) => APPROVAL_PERMISSIONS.includes(k));
+                  const does = r.defaults.filter((k) => !APPROVAL_PERMISSIONS.includes(k));
+                  const List = ({ title, keys }: { title: string; keys: PermissionKey[] }) => (keys.length ? (
+                    <>
+                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">{title}</p>
+                      <ul className="mt-1 space-y-1 text-xs text-[var(--ejo-text)]">
+                        {keys.map((k) => <li key={k} className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--ejo-primary)]" aria-hidden="true" /><span>{plainLabel(PERMISSIONS[k].label)}{scope(k) ? <span className="text-[var(--ejo-text-muted)]"> — {scope(k)}</span> : null}</span></li>)}
+                      </ul>
+                    </>
+                  ) : null);
+                  return r.defaults.length ? (
+                    <>
+                      <List title="Included by default — can do" keys={does} />
+                      <List title="Included by default — can approve" keys={approves} />
+                    </>
+                  ) : <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">No defaults. Everyone can request their own exit pass and see their own notifications.</p>;
+                })()}
                 <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Added for this organisation</p>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {r.added.length ? r.added.map((k) => (

@@ -1,19 +1,33 @@
 import { SubNav } from '@/components/ui/SubNav';
 import type { IconName } from '@/components/ui/Icon';
+import { decide, type PermissionKey } from '@/lib/authz/catalogue';
+import { getPrincipal } from '@/lib/authz/server';
 
-const TABS: { href: string; label: string; icon: IconName }[] = [
-  { href: '/security', label: 'Gate dashboard', icon: 'dashboard' },
-  { href: '/security/visitors', label: 'Visitors', icon: 'badge' },
-  { href: '/security/exit-passes', label: 'Exit passes', icon: 'exit' },
-  { href: '/security/vehicles', label: 'Vehicles leaving', icon: 'car' },
-  { href: '/security/road-tests', label: 'Road tests', icon: 'road' },
-  { href: '/security/deliveries', label: 'Deliveries', icon: 'truck' },
-  { href: '/security/contractors', label: 'Contractors', icon: 'hardhat' },
-  { href: '/security/incidents', label: 'Incidents', icon: 'alert' },
-  { href: '/security/overdue', label: 'Overdue', icon: 'clock' },
-  { href: '/security/register', label: 'Register', icon: 'list' },
+/** Each tab and the permissions (any of) its page needs — the same rule as the page guards. */
+const TABS: { href: string; label: string; icon: IconName; needs: PermissionKey[] | 'everyone' }[] = [
+  { href: '/security', label: 'Gate dashboard', icon: 'dashboard', needs: ['security.view'] },
+  { href: '/security/visitors', label: 'Visitors', icon: 'badge', needs: ['security.view'] },
+  { href: '/security/exit-passes', label: 'Exit passes', icon: 'exit', needs: 'everyone' },
+  { href: '/security/vehicles', label: 'Vehicles leaving', icon: 'car', needs: ['security.view'] },
+  { href: '/security/road-tests', label: 'Road tests', icon: 'road', needs: ['security.view', 'workshop.job_card.view'] },
+  { href: '/security/deliveries', label: 'Deliveries', icon: 'truck', needs: ['security.view', 'store.grn.record'] },
+  { href: '/security/contractors', label: 'Contractors', icon: 'hardhat', needs: ['security.view', 'security.pass.approve'] },
+  { href: '/security/incidents', label: 'Incidents', icon: 'alert', needs: ['security.view'] },
+  { href: '/security/overdue', label: 'Overdue', icon: 'clock', needs: ['security.view'] },
+  { href: '/security/register', label: 'Register', icon: 'list', needs: ['security.view'] },
 ];
 
-export function SecurityNav({ active }: { active: string }) {
-  return <SubNav tabs={TABS} active={active} label="Security" />;
+/**
+ * The Security tabs THIS person can open. Someone who is not on the
+ * Security desk sees their own exit passes (and the road tests, deliveries
+ * or contractor passes their job involves) — never the gate registers.
+ * With a single tab there is nothing to switch between, so no bar is shown.
+ */
+export async function SecurityNav({ active }: { active: string }) {
+  const p = await getPrincipal();
+  const desk = decide(p, 'security.view').allowed;
+  const tabs = TABS.filter((t) => t.needs === 'everyone' || t.needs.some((k) => decide(p, k).allowed))
+    .map(({ href, label, icon }) => ({ href, icon, label: href === '/security/exit-passes' && !desk ? 'My exit passes' : label }));
+  if (tabs.length < 2) return null;
+  return <SubNav tabs={tabs} active={active} label="Security" />;
 }

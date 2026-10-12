@@ -140,8 +140,10 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'workshop.job.work': MINE, 'workshop.estimate.edit': MINE, 'workshop.inspection.perform': MINE, 'sourcing.request': MINE,
   },
   // Approves and closes — never opens jobs.
+  // Approves for the branch (passes, road tests, contractors included) but does
+  // not run the gate: no Security desk registers.
   'workshop-manager': {
-    ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B,
+    ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B,
     'workshop.estimate.final_approve': B, 'workshop.close.approve': B, 'store.prs.approve_hod': B, 'procurement.epr.approve': B,
     'warranty.manage': B, 'warranty.claim.approve': B, 'security.pass.approve': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
@@ -237,4 +239,45 @@ export const ROLE_LABELS: Record<string, string> = {
   'finance-officer': 'Finance Officer', 'store-manager': 'Store Manager', 'store-officer': 'Store Officer', 'warranty-hod': 'Warranty HOD',
   'warranty-officer': 'Warranty Officer', 'department-head': 'Department Head', 'chief-security-officer': 'Chief Security Officer',
   'security-officer': 'Security Officer', receptionist: 'Front Desk (Receptionist)', 'calendar-user': 'Calendar User', 'scheduling-admin': 'Scheduling Admin', broadcaster: 'Broadcaster',
+};
+
+/**
+ * What each role is for, in plain words — shown on the Roles page so an
+ * administrator understands a role before giving it to someone.
+ */
+export const ROLE_DESCRIPTIONS: Record<string, string> = {
+  administrator: 'Sets up the organisation for every branch: people, roles, structure, settings and branding. Sees every module read-only, the audit trail and all analytics. Does not open jobs, approve money or record payments.',
+  'branch-administrator': 'Looks after one branch: adds people and gives them roles, and keeps an eye on the branch (workshop, store, warranty, security and analytics) without doing the departments\' work.',
+  receptionist: 'The front desk. Registers customers and vehicles, opens Job Cards and Vehicle Services, tells customers when estimates are approved, asks for jobs to be closed, and receives visitors.',
+  'workshop-supervisor': 'Runs the jobs given to them: accepts supervising a job, assigns the technician, checks and approves the estimate, and marks the work ready for collection.',
+  technician: 'Does the work on the jobs assigned to them: accepts or turns down a job, inspects the vehicle, writes the estimate and raises parts requests.',
+  'workshop-manager': 'The branch manager. Gives final approval to estimates, approves closing and cancelling jobs, parts requests, outside purchases, warranty claims, exit passes, road tests and contractor passes. Sees the branch analytics.',
+  'finance-officer': 'Handles money: records payments and refunds, reviews outside purchases and pays out the cash once approved.',
+  'store-manager': 'Runs the store: parts, prices, stock levels, goods receipts, matching estimate parts and releasing parts. Authorises exit passes for the store team.',
+  'store-officer': 'Works in the store: records goods receipts, matches estimate parts to stock, and approves, reserves and releases parts requests.',
+  'warranty-hod': 'Heads warranty: registers and verifies warranties, approves warranty claims and manages providers and policies. Authorises exit passes for the warranty team.',
+  'warranty-officer': 'Registers warranties and prepares warranty claims for the head of warranty to approve.',
+  'department-head': 'Authorises exit passes for the people in their department before the Manager approves them.',
+  'chief-security-officer': 'Runs the Security desk: the gate, visitors, vehicles, deliveries and contractors, and assigns, closes and reopens incidents.',
+  'security-officer': 'Works the gate: signs visitors, vehicles, deliveries and contractors in and out, records exit-pass times and reports incidents.',
+  'calendar-user': 'Keeps their own calendar and books appointments and meeting rooms.',
+  'scheduling-admin': 'Manages meeting rooms and calendar aides, and can book on anyone\'s calendar.',
+  broadcaster: 'Sends broadcasts (notices) to staff and customers.',
+};
+
+/** Permissions that DECIDE something (approve, authorise, release, pay) —
+ * listed separately on the Roles page and used for the Approvals menu. */
+export const APPROVAL_PERMISSIONS: PermissionKey[] = [
+  'workshop.job.supervise', 'workshop.estimate.approve', 'workshop.estimate.final_approve', 'workshop.close.approve', 'store.prs.approve_hod',
+  'store.prs.release', 'procurement.epr.review', 'procurement.epr.approve', 'procurement.epr.disburse', 'warranty.claim.approve', 'security.pass.approve',
+];
+
+/** Store pages that show purchase costs and margins (goods receipts, pricing
+ * alerts, cost per batch): the Store, Finance, management analytics and
+ * Warranty (which traces parts back to their receipts). Not the workshop floor. */
+export const STORE_COST_PERMISSIONS: PermissionKey[] = ['store.parts.manage', 'store.grn.record', 'analytics.inventory.view', 'warranty.view'];
+
+/** How a scope reads to people. */
+export const SCOPE_WORDS: Record<Scope, string> = {
+  ALL: 'everywhere in the organisation', BRANCH: 'in their branch', DEPARTMENT: 'for their department', ASSIGNED: 'on work assigned to them', OWN: 'their own',
 };

@@ -1,4 +1,5 @@
 import { guardAnyPage, allows } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
 import { notFound } from 'next/navigation';
 import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
@@ -119,7 +120,7 @@ export default async function GoodsReceiptDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string; status?: string }>;
 }) {
-  await guardAnyPage(['store.view'], '/inventory');
+  await guardAnyPage(STORE_COST_PERMISSIONS, '/inventory/goods-receipts');
   const { id } = await params;
   const { error, status } = await searchParams;
   const [receipt, auditTrail, grnWarranties] = await Promise.all([getGoodsReceipt(id), getGoodsReceiptAuditTrail(id), listWarrantiesFor({ goodsReceiptId: id })]);

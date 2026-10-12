@@ -4,10 +4,12 @@ import { logFailure } from '@/lib/log';
 import { prisma } from '@ejo/database';
 import { jobCardActive, serviceInside } from '@/lib/custody';
 import { allows, getPrincipal, myOrganisationId, orgWhere, reachWhere } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
 import { reaches } from '@/lib/notification-rules';
 import { getWarrantyDashboardItems } from './warranty';
 import { getSecurityDashboardItems } from './security';
 import { getWorkflowActionItems } from './workflow-actions';
+import { getMyWorkItems } from './my-work';
 import { getSchedulingDashboardItems } from './scheduling';
 import { getWarrantyClaimDashboardItems } from './warranty-claims';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
@@ -56,6 +58,7 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   const securityP = getSecurityDashboardItems().catch(() => []);
   const schedulingP = getSchedulingDashboardItems().catch(() => []);
   const workflowP = getWorkflowActionItems().catch(() => []);
+  const myWorkP = getMyWorkItems().catch(() => []);
   const isMasterAdmin = await currentUserIsMasterAdmin();
   const notifications: DashboardNotification[] = [];
 
@@ -248,6 +251,7 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
 
   // Scheduling: today's appointments (host or participant) still to come.
   for (const w of await workflowP) notifications.push({ ...w, kind: 'WORKFLOW' });
+  for (const w of await myWorkP) notifications.push({ ...w, kind: 'WORKFLOW' });
   for (const item of schedulingItems) {
     notifications.push({ id: item.id, kind: 'SCHEDULING', title: item.title, detail: item.detail, url: item.url, createdAt: item.createdAt });
   }
@@ -386,7 +390,7 @@ export async function getPlatformGlance(): Promise<GlanceTile[]> {
     reachWhere('workshop.job_card.view'),
     reachWhere('store.view'),
     reachWhere('security.view'),
-    requireUser().then((u) => prisma.user.findUnique({ where: { id: u.id }, select: { organisationId: true, branchId: true, departmentId: true, roles: { select: { role: { select: { slug: true } } } } } })),
+    requireUser().then((u) => prisma.user.findUnique({ where: { id: u.id }, select: { id: true, organisationId: true, branchId: true, departmentId: true, roles: { select: { role: { select: { slug: true } } } } } })),
   ]);
   const claimReach = typeof work.branchId === 'string' ? { OR: [{ jobCard: work }, { vehicleService: work }] } : { customer: await orgWhere() };
   const [jcActive, svActive, prsOpen, eprOpen, claimsOpen, visitors, incidents, apptsToday, broadcasts, grnsToday] = await Promise.all([
@@ -397,7 +401,8 @@ export async function getPlatformGlance(): Promise<GlanceTile[]> {
     n(prisma.warrantyClaim.count({ where: { ...claimReach, status: { in: ['DRAFT', 'PENDING_HOD', 'PENDING_MANAGER', 'APPROVED_TO_SUBMIT', 'SUBMITTED'] } } })),
     n(prisma.visit.count({ where: { ...gate, status: 'CHECKED_IN' } })),
     n(prisma.securityIncident.count({ where: { ...gate, status: { in: ['OPEN', 'UNDER_REVIEW'] } } })),
-    n(prisma.appointment.count({ where: { ...gate, status: 'SCHEDULED', startsAt: { gte: dayStart, lt: dayEnd } } })),
+    // The scheduling admin: every calendar in reach; everyone else: their own calendar.
+    n(allows('schedule.manage').then(async (all) => prisma.appointment.count({ where: { ...(all ? await reachWhere('schedule.manage') : { ownerId: me?.id ?? '__none__' }), status: 'SCHEDULED', startsAt: { gte: dayStart, lt: dayEnd } } }))),
     // Only the broadcasts addressed to this person (never customers' ones),
     // matching what their bell shows.
     n(prisma.broadcast.findMany({ where: { organisationId: me?.organisationId ?? '__none__', isActive: true, startsAt: { lte: new Date() }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] }, select: { audience: true, audienceIds: true }, take: 500 })
@@ -406,8 +411,8 @@ export async function getPlatformGlance(): Promise<GlanceTile[]> {
   ]);
   const p = (v: number, one: string, many: string) => `${v} ${v === 1 ? one : many}`;
   // Each tile only for the people whose work it is (same rule as its page).
-  const [cw, cs, cwa, csec, csch] = await Promise.all([allows('workshop.view'), allows('store.view'), allows('warranty.view'), allows('security.view'), allows('schedule.view')]);
-  const NEED: Record<string, boolean> = { '/workshop/custody': cw, '/workshop/vehicle-service-custody': cw, '/workshop/parts-requests': cs, '/workshop/external-procurement': cs, '/inventory/goods-receipts': cs, '/warranty/claims': cwa, '/security/on-premises': csec, '/security/incidents?tab=open': csec, '/schedule/appointments?show=today': csch, '/notifications?tab=broadcasts': true };
+  const [cw, cs, cwa, csec, csch, ccost] = await Promise.all([allows('workshop.view'), allows('store.view'), allows('warranty.view'), allows('security.view'), allows('schedule.view'), Promise.all(STORE_COST_PERMISSIONS.map((k) => allows(k))).then((xs) => xs.some(Boolean))]);
+  const NEED: Record<string, boolean> = { '/workshop/custody': cw, '/workshop/vehicle-service-custody': cw, '/workshop/parts-requests': cs, '/workshop/external-procurement': cs, '/inventory/goods-receipts': ccost, '/warranty/claims': cwa, '/security/on-premises': csec, '/security/incidents?tab=open': csec, '/schedule/appointments?show=today': csch, '/notifications?tab=broadcasts': true };
   const tiles: GlanceTile[] = [
     { label: 'Job Cards in progress', value: jcActive, hint: 'Open, not yet checked out', href: '/workshop/custody', tone: 'primary' },
     { label: 'Vehicle Services in custody', value: svActive, hint: 'Still in the workshop (cancelled ones awaiting hand-back included)', href: '/workshop/vehicle-service-custody', tone: 'info' },

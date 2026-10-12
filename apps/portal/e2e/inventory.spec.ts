@@ -109,7 +109,8 @@ test('read-only Store viewers are not offered the Store’s forms', async ({ pag
   await page.goto('/inventory/parts');
   await expect(page.getByRole('heading', { name: 'Parts Catalog' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add Part' })).toHaveCount(0);
+  // Goods receipts carry delivery costs: refused outright for the workshop floor (docs/ROLES_AND_ACCESS.md).
   await page.goto('/inventory/goods-receipts/new');
-  await expect(page.getByRole('heading', { name: 'Record Goods Receipt' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Record Goods Receipt' })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/access-denied/);
+  await expect(page.getByRole('heading', { name: /don.t have access/ })).toBeVisible();
 });

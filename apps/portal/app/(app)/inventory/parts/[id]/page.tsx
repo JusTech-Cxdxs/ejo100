@@ -1,4 +1,5 @@
 import { guardAnyPage, allows } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
 import { notFound } from 'next/navigation';
 import { durationLabel } from '@/lib/warranty-state';
 import { isPolicyId, policyAuditLabel } from '@/lib/audit-policy-label';
@@ -71,6 +72,8 @@ export default async function PartDetailPage({
   if (!part) notFound();
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
+  // Delivery costs and margins are for the Store, Finance, management and Warranty — not the workshop floor.
+  const [canSeeCosts, canManage] = await Promise.all([Promise.all(STORE_COST_PERMISSIONS.map((k) => allows(k, { branchId: part.branchId }))).then((xs) => xs.some(Boolean)), allows('store.parts.manage', { branchId: part.branchId })]);
   const [lastEdit, auditTrail] = await Promise.all([getLastEditInfo('Part', id, 'part.updated'), getPartAuditTrail(id)]);
   // Older warranty-change entries stored a policy id — show its name.
   const policyIdsInTrail = auditTrail
@@ -88,12 +91,14 @@ export default async function PartDetailPage({
         <span className="rounded-full bg-[var(--ejo-info)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-info)]">
           {TRACKING_TYPE_LABEL[part.trackingType] ?? part.trackingType}
         </span>
-        <LoadingLink
-          href={`/inventory/parts/${id}/edit`}
-          className="ml-auto text-xs font-medium text-[var(--ejo-primary)] hover:underline"
-        >
-          Edit
-        </LoadingLink>
+        {canManage ? (
+          <LoadingLink
+            href={`/inventory/parts/${id}/edit`}
+            className="ml-auto text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+          >
+            Edit
+          </LoadingLink>
+        ) : null}
       </div>
       {part.category ? <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">{part.category}</p> : null}
 
@@ -136,7 +141,12 @@ export default async function PartDetailPage({
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
-          {part.trackingType === 'BATCH' ? (
+          {!canSeeCosts ? (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Stock</h2>
+              <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">Stock on hand is shown alongside. Delivery costs, batches and profit are kept to the Store, Finance and management.</p>
+            </div>
+          ) : part.trackingType === 'BATCH' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Batches</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -644,6 +654,7 @@ export default async function PartDetailPage({
             </div>
           ) : null}
 
+          {canSeeCosts ? (<>
           <SellingPriceCalculator
             key={part.sellingPrice?.toString() ?? 'unset'}
             partId={part.id}
@@ -671,6 +682,7 @@ export default async function PartDetailPage({
             currentTargetMarginPercent={part.targetMarginPercent !== null ? Number(part.targetMarginPercent) : null}
             currentPricingMethod={part.pricingMethod}
           />
+          </>) : null}
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Fitment</h2>

@@ -24,7 +24,7 @@ export default async function NewGoodsReceiptPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  await guardAnyPage(['store.view'], '/inventory');
+  await guardAnyPage(['store.grn.record'], '/inventory/goods-receipts/new');
   const { error } = await searchParams;
   const branchId = await getStoreBranchId();
   const [parts, canRecord] = await Promise.all([listParts(branchId), allows('store.grn.record', { branchId })]);

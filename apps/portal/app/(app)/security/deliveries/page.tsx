@@ -1,4 +1,6 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { allows, guardAnyPage } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
+import { GrnRef } from '@/components/GrnRef';
 import { listDeliveries } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -14,7 +16,7 @@ const TABS: [string, string][] = [['at_gate', 'At the gate'], ['expected', 'Expe
 export default async function DeliveriesPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string }> }) {
   await guardAnyPage(['security.view', 'store.grn.record'], '/security/deliveries');
   const { q, tab } = await searchParams;
-  const { tab: current, counts, rows } = await listDeliveries(q, tab);
+  const [{ tab: current, counts, rows }, canSeeGrn] = await Promise.all([listDeliveries(q, tab), Promise.all(STORE_COST_PERMISSIONS.map((k) => allows(k))).then((xs) => xs.some(Boolean))]);
   return (
     <div className="p-4 sm:p-8">
       <PageHeader
@@ -44,7 +46,7 @@ export default async function DeliveriesPage({ searchParams }: { searchParams: P
               {d.receivedAt ? <span className="block">Received {formatDateTimeCompact(d.receivedAt)}</span> : null}
               {d.leftAt ? <span className="block">Left {formatDateTimeCompact(d.leftAt)}</span> : null}
             </td>
-            <td className="text-xs">{d.goodsReceipt ? <LoadingLink href={`/inventory/goods-receipts/${d.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">{d.goodsReceipt.referenceNumber}</LoadingLink> : '—'}</td>
+            <td className="text-xs">{d.goodsReceipt ? <GrnRef id={d.goodsReceipt.id} label={d.goodsReceipt.referenceNumber} link={canSeeGrn} /> : '—'}</td>
             <td><StatusChip status={d.status} label={DELIVERY_STATUS_LABEL[d.status]} className="text-[11px]" /></td>
           </tr>
         ))}

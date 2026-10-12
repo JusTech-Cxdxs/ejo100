@@ -1,4 +1,5 @@
 import { allows, guardAnyPage } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
 import { OrgTrail } from '@/components/OrgTrail';
 import { PageHeader, NavCard, type IconName } from '@/components/ui';
 
@@ -20,8 +21,9 @@ const sections: { name: string; href: string; desc: string; icon: IconName }[] =
 export default async function InventoryPage() {
   await guardAnyPage(['store.view'], '/inventory');
   // Show only what this person may open (the same rule the pages enforce).
-  const canAnalytics = await allows('analytics.inventory.view');
-  const visible = sections.filter((s) => s.href !== '/inventory/analytics' || canAnalytics);
+  const [canAnalytics, canSeeCosts] = await Promise.all([allows('analytics.inventory.view'), Promise.all(STORE_COST_PERMISSIONS.map((k) => allows(k))).then((xs) => xs.some(Boolean))]);
+  const COSTS = ['/inventory/goods-receipts', '/inventory/pricing'];
+  const visible = sections.filter((s) => (s.href !== '/inventory/analytics' || canAnalytics) && (!COSTS.includes(s.href) || canSeeCosts));
   return (
     <div className="w-full p-4 sm:p-8">
       <PageHeader

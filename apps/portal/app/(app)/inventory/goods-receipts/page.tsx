@@ -1,4 +1,5 @@
 import { allows, guardAnyPage } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
 import { OrgTrail } from '@/components/OrgTrail';
 import { listGoodsReceipts, getStoreBranchId } from '@/lib/actions/store';
 import { formatDateOnly } from '@/lib/utils/format-date';
@@ -18,7 +19,7 @@ export default async function GoodsReceiptsPage({
 }: {
   searchParams: Promise<{ status?: string; error?: string }>;
 }) {
-  await guardAnyPage(['store.view'], '/inventory');
+  await guardAnyPage(STORE_COST_PERMISSIONS, '/inventory/goods-receipts');
   const { status, error } = await searchParams;
   const branchId = await getStoreBranchId();
   const [receipts, canRecord] = await Promise.all([listGoodsReceipts(branchId), allows('store.grn.record', { branchId })]);
