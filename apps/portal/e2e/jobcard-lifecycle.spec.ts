@@ -4,7 +4,7 @@ import { as, open, eventually, bellText, countMail, expectAuditEntry, expectNoUr
 import { db, freshVehicle, idOfPart, paymentsOn } from './db';
 import {
   addLine, assignTechnician, expectStatus, jobNumber, jcForm, nextStep, notifyCustomer, openJobCard, recordPayment,
-  requestStoreMatching, storeMatchesAll, submitEstimate, supervisorApproves, supervisorApprovesEstimate, technicianAccepts,
+  requestStoreMatching, statusPanel, storeMatchesAll, submitEstimate, supervisorApproves, supervisorApprovesEstimate, technicianAccepts,
 } from './workflows';
 
 /**
@@ -255,11 +255,12 @@ test('quality check → completed → ready; balance paid; close approved; vehic
 
   // Collection: the supervisor, technician or a Manager checks the vehicle out
   // (WAITING_ON.CLOSED on the Job Card page) — here the Manager at the counter.
-  await page.reload();
+  // Re-open (not reload) so the form is hydrated before the click.
+  await open(page, S.url);
   const checkout = jcForm(page, 'Check out vehicle');
   await expect(checkout.locator('input[name="collectedByName"]')).toHaveValue(CUSTOMER.name);
   await checkout.getByRole('button', { name: 'Check out vehicle' }).click();
-  await expectStatus(page, 'Checked Out');
+  await expect(statusPanel(page).locator('span').first()).toHaveText('Checked Out', { timeout: 30_000 });
   await expect(page.getByText(`collected by ${CUSTOMER.name}`)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Vehicle Collection Receipt' })).toBeVisible();
   // Nothing left to do on a checked-out Job Card.
