@@ -271,6 +271,7 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
   'calendar-user': 'Keeps their own calendar and books appointments and meeting rooms.',
   'scheduling-admin': 'Manages meeting rooms and calendar aides, and can book on anyone\'s calendar.',
   broadcaster: 'Sends broadcasts (notices) to staff and customers.',
+  'branch-assistant': 'IT support at the branch. Helps colleagues who are not comfortable with computers: with the colleague\'s own password, works on their tasks for a limited time. Every action is recorded as done for that colleague, with the assistant named. Cannot help managers, supervisors, finance or administrators, and approves nothing.',
 };
 
 /** Permissions that DECIDE something (approve, authorise, release, pay) —
