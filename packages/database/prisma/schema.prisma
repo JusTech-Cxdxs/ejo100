@@ -463,6 +463,7 @@ model User {
   broadcastsCreated Broadcast[] @relation("BroadcastCreatedBy")
   broadcastsStopped Broadcast[] @relation("BroadcastStoppedBy")
   notificationReads NotificationRead[] @relation("NotificationReads")
+  customerNotes     CustomerNote[]     @relation("CustomerNoteAuthor")
   notificationPreference NotificationPreference? @relation("NotificationPreference")
 }
 
@@ -604,6 +605,14 @@ model Customer {
   emailVerified Boolean      @default(false)
   image         String?
   phone         String?
+  // v28 CRM — a second number (optional). The primary address and phone are
+  // required for every customer registered from v28 on (enforced in the app;
+  // older records may still be missing them and are flagged in the CRM).
+  altPhone      String?
+  // Free labels the organisation uses to group customers ("Fleet", "VIP").
+  tags          String[] @default([])
+  // The customer's own choice: also receive updates by email.
+  notifyByEmail Boolean  @default(true)
 
   isActive      Boolean  @default(true)
   lastLoginAt   DateTime?
@@ -633,6 +642,8 @@ model Customer {
   @@map("customers")
   warranties      Warranty[]
   warrantyClaims WarrantyClaim[]
+  notes           CustomerNote[]
+  notificationReads CustomerNotificationRead[]
 }
 
 // Optional: when the customer is a business (fleet account) rather than
@@ -1720,6 +1731,8 @@ model CustomerAddress {
   id         String   @id @default(cuid())
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  // v28 — when it was added (audit trail and CRM ordering).
+  createdAt  DateTime @default(now())
 
   label      String? // "Home", "Office"
   line1      String
@@ -1728,6 +1741,7 @@ model CustomerAddress {
   state      String?
   country    String?
 
+  @@index([customerId])
   @@map("customer_addresses")
 }
 
@@ -1740,7 +1754,9 @@ model CustomerContact {
   phone String?
   email String?
   role  String? // e.g. "Fleet Manager"
+  createdAt DateTime @default(now())
 
+  @@index([customerId])
   @@map("customer_contacts")
 }
 
@@ -1837,6 +1853,53 @@ model Verification {
   @@index([identifier])
 
   @@map("verifications")
+}
+
+/// v28 — the customer portal's own reset / set-password links. Kept apart
+/// from staff `verifications` so a customer link can never be redeemed on the
+/// staff portal (or the reverse), whatever the token.
+model CustomerVerification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@index([identifier])
+  @@map("customer_verifications")
+}
+
+/// v28 CRM — a note staff keep on a customer (calls, preferences, follow-ups).
+/// Never shown to the customer.
+model CustomerNote {
+  id         String   @id @default(cuid())
+  customerId String
+  authorId   String
+  body       String
+  pinned     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  author   User     @relation("CustomerNoteAuthor", fields: [authorId], references: [id])
+
+  @@index([customerId, createdAt])
+  @@map("customer_notes")
+}
+
+/// v28 — what a customer has read in their portal notifications
+/// ("bc:<broadcastId>", "jc:<id>:<event>", …).
+model CustomerNotificationRead {
+  id         String   @id @default(cuid())
+  customerId String
+  key        String
+  readAt     DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, key])
+  @@map("customer_notification_reads")
 }
 
 // ----------------------------------------------------------------------------
@@ -3726,6 +3789,10 @@ enum BroadcastAudience {
   BRANCH
   DEPARTMENT
   ROLE
+  // v28 — messages to customers (portal dashboard + optional email):
+  // every active customer of the organisation, or the customers in audienceIds.
+  CUSTOMERS_ALL
+  CUSTOMERS_SELECTED
 }
 
 /// A message to staff — dashboard, marquee, notification centre and
