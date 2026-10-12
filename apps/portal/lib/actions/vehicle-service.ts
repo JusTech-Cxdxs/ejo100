@@ -1658,6 +1658,7 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
   const paid = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
   // All-or-nothing, each step only from the state it was decided on — a
   // close approved at the same moment, or a second click, changes nothing.
+  let withdrawn: Awaited<ReturnType<typeof withdrawOpenSourcing>> | undefined;
   await prisma.$transaction(async (tx) => {
     // The service first, so a close and a cancellation queue rather than deadlock.
     await lockExisting(tx, 'vehicleService', [request.vehicleServiceId]);
@@ -1676,14 +1677,14 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
     });
     // Parts requests and outside purchases still in flight for it are withdrawn,
     // and stock reserved for them goes back on the shelf.
-    await withdrawOpenSourcing(tx, { vehicleServiceId: request.vehicleServiceId }, user.id, 'Withdrawn automatically — the Vehicle Service was cancelled.');
+    withdrawn = await withdrawOpenSourcing(tx, { vehicleServiceId: request.vehicleServiceId }, user.id, 'Withdrawn automatically — the Vehicle Service was cancelled.');
   });
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.cancellation_approved',
     entityType: 'VehicleService',
     entityId: request.vehicleServiceId,
-    metadata: { reason: request.reason, notes: decisionNotes?.trim() || undefined, ...(paid > 0 ? { refundAuthorised: Math.round(paid * 100) / 100 } : {}) },
+    metadata: { withdrawn: withdrawn && (withdrawn.slips.length || withdrawn.procurements.length) ? withdrawn : undefined,  reason: request.reason, notes: decisionNotes?.trim() || undefined, ...(paid > 0 ? { refundAuthorised: Math.round(paid * 100) / 100 } : {}) },
   });
   // Cancelling a service stops the vehicle's service tracking — the
   // customer isn't reminded until a service is next completed.
@@ -1998,6 +1999,7 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
   }
   const user = await requireEligibleManager(service.branchId, 'workshop.close.approve');
   const now = new Date();
+  let withdrawn: Awaited<ReturnType<typeof withdrawOpenSourcing>> | undefined;
   await prisma.$transaction(async (tx) => {
     // The service first, so a close and a cancellation queue rather than deadlock.
     await lockExisting(tx, 'vehicleService', [request.vehicleServiceId]);
@@ -2016,14 +2018,14 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
     });
     // Parts requests and outside purchases still in flight for it are withdrawn,
     // and stock reserved for them goes back on the shelf.
-    await withdrawOpenSourcing(tx, { vehicleServiceId: request.vehicleServiceId }, user.id, 'Withdrawn automatically — the Vehicle Service was closed.');
+    withdrawn = await withdrawOpenSourcing(tx, { vehicleServiceId: request.vehicleServiceId }, user.id, 'Withdrawn automatically — the Vehicle Service was closed.');
   });
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.status_updated',
     entityType: 'VehicleService',
     entityId: request.vehicleServiceId,
-    metadata: { serviceNumber: service.serviceNumber, from: 'READY_FOR_COLLECTION', to: 'CLOSED', notes: decisionNotes?.trim() || undefined },
+    metadata: { withdrawn: withdrawn && (withdrawn.slips.length || withdrawn.procurements.length) ? withdrawn : undefined,  serviceNumber: service.serviceNumber, from: 'READY_FOR_COLLECTION', to: 'CLOSED', notes: decisionNotes?.trim() || undefined },
   });
 
   try {

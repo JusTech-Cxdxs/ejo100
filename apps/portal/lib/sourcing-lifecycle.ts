@@ -50,6 +50,8 @@ export async function withdrawOpenSourcing(
   actorId: string,
   reason: string,
 ): Promise<{ slips: string[]; procurements: string[]; stockReturned: { partId: string; quantity: number }[] }> {
+  // Never an unfiltered withdrawal: Prisma would ignore an undefined filter.
+  if (!parent.jobCardId && !parent.vehicleServiceId) throw new Error('withdrawOpenSourcing needs a Job Card or a Vehicle Service.');
   const where = parent.jobCardId ? { jobCardId: parent.jobCardId } : { vehicleServiceId: parent.vehicleServiceId };
   const open = await tx.partRequestSlip.findMany({
     where: { ...where, status: { in: ['PENDING_HOD_APPROVAL', 'PENDING_STORE_APPROVAL', 'APPROVED'] } },

@@ -1,5 +1,5 @@
 import { canRequestRoadTestOn } from '@/lib/actions/security';
-import { serviceVisible, guardAnyPage } from '@/lib/authz/server';
+import { serviceVisible, guardAnyPage, can } from '@/lib/authz/server';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
 import { listRoadTestsFor } from '@/lib/actions/security';
 import { securityActionDetail } from '@/lib/security-labels';
@@ -391,8 +391,12 @@ export default async function VehicleServiceDetailPage({
   const isPaidInFull = paymentsTotal >= estimateTotal;
   const pendingCloseRequest = closeRequests.find((r: (typeof closeRequests)[number]) => r.status === 'PENDING') ?? null;
   // Who may take each step — mirrors requireVehicleServiceStepRole.
+  // Checking a vehicle in is a front-desk step (the server checks the same).
+  const canCheckIn = nextAction?.status === 'CHECKED_IN' ? (await can('workshop.job_card.create', { branchId: service.branchId })).allowed : false;
   const canTakeNextAction =
-    nextAction?.status === 'COMPLETED' || nextAction?.status === 'COLLECTED'
+    nextAction?.status === 'CHECKED_IN'
+      ? canCheckIn
+      : nextAction?.status === 'COMPLETED' || nextAction?.status === 'COLLECTED'
       ? isApprover || isAssignedTechnician || isEligibleManager
       : nextAction?.status === 'READY_FOR_COLLECTION'
         ? isApprover || isEligibleManager

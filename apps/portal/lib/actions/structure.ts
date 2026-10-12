@@ -4,6 +4,7 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import { prisma } from '@ejo/database';
 import { authorize, getPrincipal } from '@/lib/authz/server';
 import { writeAuditLog } from '@/lib/workshop-core';
+import { scopeFor } from '@/lib/authz/catalogue';
 import { SYSTEM_DEPARTMENTS, SYSTEM_DEPARTMENT_SLUGS } from '@/lib/structure-rules';
 
 /**
@@ -29,9 +30,17 @@ function cleanName(v: string, what: string): string {
   return n;
 }
 
-async function myOrg(): Promise<{ userId: string; organisationId: string | null; isPlatform: boolean }> {
+async function myOrg(): Promise<{ userId: string; organisationId: string | null; isPlatform: boolean; branchOnly: string | null }> {
   const p = await getPrincipal();
-  return { userId: p.userId, organisationId: p.organisationId ?? null, isPlatform: p.isSuperAdmin };
+  // Structure rights granted through a custom role reach one branch only.
+  const branchOnly = !p.isSuperAdmin && scopeFor(p, 'admin.structure.manage') !== 'ALL' ? (p.branchId ?? '__no_branch__') : null;
+  return { userId: p.userId, organisationId: p.organisationId ?? null, isPlatform: p.isSuperAdmin, branchOnly };
+}
+/** Business units and new branches change the whole organisation. */
+async function orgWide() {
+  const o = await myOrg();
+  if (o.branchOnly) throw new StructureError('Only organisation-wide administrators can change business units or open branches.');
+  return o;
 }
 const orgFence = (o: { organisationId: string | null; isPlatform: boolean }) => (o.isPlatform && !o.organisationId ? {} : { organisationId: o.organisationId ?? '__none__' });
 
@@ -51,11 +60,12 @@ export async function getStructure() {
   const [org, units, people] = await Promise.all([
     o.organisationId ? prisma.organisation.findUnique({ where: { id: o.organisationId }, select: { id: true, name: true, legalName: true } }) : Promise.resolve(null),
     prisma.businessUnit.findMany({
-      where: orgFence(o),
+      where: { ...orgFence(o), ...(o.branchOnly ? { branches: { some: { id: o.branchOnly } } } : {}) },
       orderBy: { name: 'asc' },
       select: {
         id: true, name: true, isActive: true,
         branches: {
+          where: o.branchOnly ? { id: o.branchOnly } : undefined,
           orderBy: { name: 'asc' },
           select: {
             id: true, name: true, code: true, isActive: true,
@@ -142,7 +152,7 @@ export async function setDepartmentActive(departmentId: string, active: boolean)
 
 export async function createBusinessUnit(name: string): Promise<void> {
   await authorize('admin.structure.manage', undefined, 'structure.businessUnit');
-  const o = await myOrg();
+  const o = await orgWide();
   if (!o.organisationId) throw new StructureError('Your account is not placed in an organisation.');
   const n = cleanName(name, 'business unit');
   const slug = slugify(n);
@@ -154,7 +164,7 @@ export async function createBusinessUnit(name: string): Promise<void> {
 
 export async function renameBusinessUnit(id: string, name: string): Promise<void> {
   await authorize('admin.structure.manage', undefined, 'structure.businessUnit');
-  const o = await myOrg();
+  const o = await orgWide();
   const u = await prisma.businessUnit.findFirst({ where: { id, ...orgFence(o) }, select: { id: true, name: true } });
   if (!u) throw new StructureError('That business unit no longer exists — refresh the page.');
   const n = cleanName(name, 'business unit');
@@ -171,7 +181,7 @@ export async function renameBusinessUnit(id: string, name: string): Promise<void
  */
 export async function createBranch(input: { businessUnitId: string; name: string; code?: string; city: string; state: string; standardDepartments: boolean }): Promise<{ id: string }> {
   await authorize('admin.structure.manage', undefined, 'structure.branch.create');
-  const o = await myOrg();
+  const o = await orgWide();
   const unit = await prisma.businessUnit.findFirst({ where: { id: input.businessUnitId, ...orgFence(o) }, select: { id: true, name: true, countries: { select: { countryId: true }, take: 1 } } });
   if (!unit) throw new StructureError('Choose a business unit of your organisation.');
   const name = cleanName(input.name, 'branch');

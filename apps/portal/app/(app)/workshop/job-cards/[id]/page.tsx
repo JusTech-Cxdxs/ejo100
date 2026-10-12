@@ -1,5 +1,5 @@
 import { canRequestRoadTestOn } from '@/lib/actions/security';
-import { jobCardVisible, guardAnyPage } from '@/lib/authz/server';
+import { jobCardVisible, guardAnyPage, can } from '@/lib/authz/server';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
 import { listRoadTestsFor } from '@/lib/actions/security';
 import { securityActionDetail } from '@/lib/security-labels';
@@ -468,8 +468,10 @@ export default async function JobCardDetailPage({
   const outstanding = Math.max(0, estimateTotal - paymentsTotal);
   // The real next steps for THIS viewer's role (Master Admin sees the
   // same normal steps; the raw override dropdown is separate).
+  // Handing a cancelled vehicle back is a front-desk step (the server checks the same).
+  const canFrontDesk = isCancelled ? (await can('workshop.job_card.create', { branchId: jobCard.branchId })).allowed : false;
   const nextSteps = isCancelled
-    ? (['CHECKED_OUT'] as string[])
+    ? (canFrontDesk ? ['CHECKED_OUT'] : [])
     : (getSelectableJobCardStatuses(jobCard.status, {
         isMasterAdmin: false,
         isSupervisor: isApprover,
@@ -477,7 +479,7 @@ export default async function JobCardDetailPage({
         isEligibleManager,
       }) as string[]);
   const selectableStatuses = isCancelled
-    ? (['CHECKED_OUT'] as const)
+    ? (canFrontDesk ? (['CHECKED_OUT'] as const) : ([] as const))
     : getSelectableJobCardStatuses(jobCard.status, {
         isMasterAdmin,
         isSupervisor: isApprover,

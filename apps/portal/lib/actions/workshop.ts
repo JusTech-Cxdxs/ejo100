@@ -3737,6 +3737,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
   // close approved at the same moment, or a second click, makes this stop
   // with nothing changed — a Job Card can never end up both closed and
   // cancelled.
+  let withdrawn: Awaited<ReturnType<typeof withdrawOpenSourcing>> | undefined;
   await prisma.$transaction(async (tx) => {
     // The Job Card first: a close and a cancellation decided at the same
     // moment queue on it instead of deadlocking on each other's requests.
@@ -3762,7 +3763,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
     });
     // Parts requests and outside purchases still in flight for it are withdrawn,
     // and stock reserved for them goes back on the shelf.
-    await withdrawOpenSourcing(tx, { jobCardId: request.jobCardId }, user.id, 'Withdrawn automatically — the Job Card was cancelled.');
+    withdrawn = await withdrawOpenSourcing(tx, { jobCardId: request.jobCardId }, user.id, 'Withdrawn automatically — the Job Card was cancelled.');
   });
 
   await writeAuditLog({
@@ -3770,7 +3771,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
     action: 'cancellation.approved',
     entityType: 'JobCard',
     entityId: request.jobCardId,
-    metadata: { reason: request.reason, notes: decisionNotes?.trim() || undefined },
+    metadata: { withdrawn: withdrawn && (withdrawn.slips.length || withdrawn.procurements.length) ? withdrawn : undefined,  reason: request.reason, notes: decisionNotes?.trim() || undefined },
   });
 
   try {
@@ -4066,6 +4067,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
   }
 
   // Same all-or-nothing, compare-and-set shape as approving a cancellation.
+  let withdrawn: Awaited<ReturnType<typeof withdrawOpenSourcing>> | undefined;
   await prisma.$transaction(async (tx) => {
     // The Job Card first: a close and a cancellation decided at the same
     // moment queue on it instead of deadlocking on each other's requests.
@@ -4090,7 +4092,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
     });
     // Parts requests and outside purchases still in flight for it are withdrawn,
     // and stock reserved for them goes back on the shelf.
-    await withdrawOpenSourcing(tx, { jobCardId: request.jobCardId }, user.id, 'Withdrawn automatically — the Job Card was closed.');
+    withdrawn = await withdrawOpenSourcing(tx, { jobCardId: request.jobCardId }, user.id, 'Withdrawn automatically — the Job Card was closed.');
   });
 
   await writeAuditLog({
@@ -4098,7 +4100,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
     action: 'job_card.status_updated',
     entityType: 'JobCard',
     entityId: request.jobCardId,
-    metadata: { from: 'READY_FOR_COLLECTION', to: 'CLOSED', notes: decisionNotes?.trim() || undefined },
+    metadata: { withdrawn: withdrawn && (withdrawn.slips.length || withdrawn.procurements.length) ? withdrawn : undefined,  from: 'READY_FOR_COLLECTION', to: 'CLOSED', notes: decisionNotes?.trim() || undefined },
   });
 
   try {
