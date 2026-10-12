@@ -155,7 +155,7 @@ export async function updateEmailPreference(_prev: ActionState, fd: FormData): P
   if (notifyByEmail === me.notifyByEmail) return { ok: true, message: 'Saved.', at: Date.now() };
   await prisma.customer.update({ where: { id: me.id }, data: { notifyByEmail } });
   await writeCustomerAudit({ customerId: me.id, organisationId: me.organisationId, verb: 'preferences_updated', changes: { notifyByEmail: { from: me.notifyByEmail, to: notifyByEmail } }, ipAddress: await ip() });
-  return done(notifyByEmail ? 'You’ll get updates by email too.' : 'Email updates are off. You’ll still see everything here.');
+  return done(notifyByEmail ? 'You’ll get announcements by email too.' : 'Announcement emails are off. Emails about your own vehicle still come, and you’ll see everything here.');
 }
 
 // ---------------------------------------------------------------- Password

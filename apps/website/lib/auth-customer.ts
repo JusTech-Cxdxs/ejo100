@@ -159,7 +159,9 @@ export const customerAuth = betterAuth({
     modelName: 'customerSession',
     fields: { userId: 'customerId' },
     expiresIn: 60 * 60 * 24 * 30, // customers stay signed in longer than staff
-    cookieCache: { enabled: true, maxAge: 5 * 60 },
+    // No cookie cache: signing out other devices (password change / reset,
+    // the organisation switching the account off) takes effect at once.
+    cookieCache: { enabled: false },
   },
 
   advanced: {

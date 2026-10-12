@@ -39,6 +39,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const canStructure = allowed('admin.structure.manage');
   // Customer, vehicle and warranty records only for the people whose pages show them.
   const canCustomers = allowed('workshop.view') || allowed('workshop.customer.manage');
+  const canCrm = allowed('crm.view');
   const canWarranty = allowed('warranty.view');
   const canBroadcasts = allowed('notifications.broadcast.send');
   // One letter: match beginnings only (cheap, relevant); two or more: anywhere.
@@ -102,7 +103,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     { group: 'Vehicle Services', hits: svs.map((r) => ({ label: r.serviceNumber, sub: `${r.customer.fullName} · ${words(r.status)}`, href: `/workshop/vehicle-service/${r.id}` })) },
     { group: 'Vehicles', hits: (vehicles as { id: string; make: string | null; model: string | null; plateNumber: string | null; customer: { fullName: string } | null }[]).map((r) => ({ label: [r.make, r.model].filter(Boolean).join(' ') || 'Vehicle', sub: [r.plateNumber, r.customer?.fullName].filter(Boolean).join(' · ') || undefined, href: `/workshop/vehicles/${r.id}/edit` })) },
     // The customer's 360° page (CRM).
-    { group: 'Customers', hits: (customers as { id: string; fullName: string; phone: string | null }[]).map((r) => ({ label: r.fullName, sub: r.phone ?? undefined, href: `/crm/customers/${r.id}` })) },
+    { group: 'Customers', hits: (customers as { id: string; fullName: string; phone: string | null }[]).map((r) => ({ label: r.fullName, sub: r.phone ?? undefined, href: canCrm ? `/crm/customers/${r.id}` : `/workshop/customers?q=${encodeURIComponent(r.fullName)}` })) },
     { group: 'Parts', hits: parts.map((r) => ({ label: r.partNumber ?? '—', sub: r.name, href: `/inventory/parts/${r.id}` })) },
     { group: 'Parts requests', hits: prs.map((r) => ({ label: r.referenceNumber, sub: words(r.status), href: `/workshop/parts-requests/${r.id}` })) },
     { group: 'External procurement', hits: eprs.map((r) => ({ label: r.referenceNumber, sub: words(r.status), href: `/workshop/external-procurement/${r.id}` })) },

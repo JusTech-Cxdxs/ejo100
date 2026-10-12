@@ -196,8 +196,8 @@ export function PreferencesForm({ notifyByEmail }: { notifyByEmail: boolean }) {
           checked={email}
           disabled={pending}
           onChange={(v) => { setEmail(v); setTimeout(() => formRef.current?.requestSubmit(), 0); }}
-          label="Email me updates too"
-          description="Estimates, ready-for-collection notices and receipts by email, as well as here."
+          label="Email me announcements too"
+          description="News, offers and notices from your branch by email, as well as here. Emails about your own vehicle (estimates, receipts, ready for collection) always come."
         />
       </form>
       <Toggle

@@ -43,6 +43,8 @@ const nextConfig: NextConfig = {
           { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
         ],
       },
+      // The logo is shown inside emails, which load it from another site.
+      { source: '/images/:path*', headers: [{ key: 'Cross-Origin-Resource-Policy', value: 'cross-origin' }] },
       // Customer portal pages and data are personal — never kept by a shared
       // cache or the back/forward cache (middleware.ts sets the same).
       ...['/customer-portal', '/customer-portal/:path*', '/api/customer/:path*'].map((source) => ({

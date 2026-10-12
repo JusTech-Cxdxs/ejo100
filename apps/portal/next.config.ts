@@ -55,6 +55,8 @@ const nextConfig: NextConfig = {
           { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
         ],
       },
+      // The logo is shown inside emails, which load it from another site.
+      { source: '/images/:path*', headers: [{ key: 'Cross-Origin-Resource-Policy', value: 'cross-origin' }] },
     ];
   },
   // This is an npm workspaces monorepo (apps/*, packages/*) — a

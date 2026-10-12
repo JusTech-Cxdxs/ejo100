@@ -211,7 +211,8 @@ export async function searchCrmCustomers(query: string): Promise<{ id: string; f
 
 /** Names for a set of customer ids (e.g. a broadcast's audience) — own organisation only. */
 export async function getCustomerNames(customerIds: string[]): Promise<{ id: string; fullName: string }[]> {
-  await requireUser();
+  // Broadcasters (choosing customers) or people who may see the CRM.
+  if (!(await allows('notifications.broadcast.send'))) await authorize('crm.view', undefined, 'getCustomerNames');
   const ids = [...new Set(customerIds.filter(Boolean))].slice(0, 1000);
   if (!ids.length) return [];
   return prisma.customer.findMany({ where: { id: { in: ids }, ...(await orgWhere()) }, select: { id: true, fullName: true }, orderBy: { fullName: 'asc' } });

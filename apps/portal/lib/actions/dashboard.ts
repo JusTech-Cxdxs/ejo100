@@ -4,6 +4,7 @@ import { logFailure } from '@/lib/log';
 import { prisma } from '@ejo/database';
 import { jobCardActive, serviceInside } from '@/lib/custody';
 import { allows, getPrincipal, myOrganisationId, orgWhere, reachWhere } from '@/lib/authz/server';
+import { reaches } from '@/lib/notification-rules';
 import { getWarrantyDashboardItems } from './warranty';
 import { getSecurityDashboardItems } from './security';
 import { getWorkflowActionItems } from './workflow-actions';
@@ -385,7 +386,7 @@ export async function getPlatformGlance(): Promise<GlanceTile[]> {
     reachWhere('workshop.job_card.view'),
     reachWhere('store.view'),
     reachWhere('security.view'),
-    requireUser().then((u) => prisma.user.findUnique({ where: { id: u.id }, select: { organisationId: true } })),
+    requireUser().then((u) => prisma.user.findUnique({ where: { id: u.id }, select: { organisationId: true, branchId: true, departmentId: true, roles: { select: { role: { select: { slug: true } } } } } })),
   ]);
   const claimReach = typeof work.branchId === 'string' ? { OR: [{ jobCard: work }, { vehicleService: work }] } : { customer: await orgWhere() };
   const [jcActive, svActive, prsOpen, eprOpen, claimsOpen, visitors, incidents, apptsToday, broadcasts, grnsToday] = await Promise.all([
@@ -397,7 +398,10 @@ export async function getPlatformGlance(): Promise<GlanceTile[]> {
     n(prisma.visit.count({ where: { ...gate, status: 'CHECKED_IN' } })),
     n(prisma.securityIncident.count({ where: { ...gate, status: { in: ['OPEN', 'UNDER_REVIEW'] } } })),
     n(prisma.appointment.count({ where: { ...gate, status: 'SCHEDULED', startsAt: { gte: dayStart, lt: dayEnd } } })),
-    n(prisma.broadcast.count({ where: { organisationId: me?.organisationId ?? '__none__', isActive: true, startsAt: { lte: new Date() }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] } })),
+    // Only the broadcasts addressed to this person (never customers' ones),
+    // matching what their bell shows.
+    n(prisma.broadcast.findMany({ where: { organisationId: me?.organisationId ?? '__none__', isActive: true, startsAt: { lte: new Date() }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] }, select: { audience: true, audienceIds: true }, take: 500 })
+      .then((list: { audience: string; audienceIds: string[] }[]) => list.filter((b) => reaches(b, { branchId: me?.branchId ?? null, departmentId: me?.departmentId ?? null, roleSlugs: (me?.roles ?? []).map((r: { role: { slug: string } }) => r.role.slug) })).length)),
     n(prisma.goodsReceipt.count({ where: { ...store, receivedAt: { gte: dayStart, lt: dayEnd } } })),
   ]);
   const p = (v: number, one: string, many: string) => `${v} ${v === 1 ? one : many}`;
