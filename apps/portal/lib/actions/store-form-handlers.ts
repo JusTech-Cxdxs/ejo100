@@ -318,7 +318,10 @@ export async function updateGoodsReceiptLineCostFormAction(formData: FormData) {
 
 export async function setPartStockLevelsFormAction(formData: FormData) {
   const partId = String(formData.get('partId') ?? '');
-  const back = String(formData.get('returnTo') ?? '') || `/inventory/parts/${partId}`;
+  // Only ever back to an Inventory page of this portal — never an address
+  // supplied by the form (https://…, //host, \host would be an open redirect).
+  const returnTo = String(formData.get('returnTo') ?? '');
+  const back = returnTo.startsWith('/inventory/') && !returnTo.includes('//') && !returnTo.includes('\\') ? returnTo : `/inventory/parts/${encodeURIComponent(partId)}`;
   const read = (k: string) => {
     const v = String(formData.get(k) ?? '').trim();
     return v === '' ? null : Number(v);
