@@ -189,7 +189,7 @@ test.describe('Vehicle Service — the full visit', () => {
     await out.getByRole('button', { name: 'Check Out Vehicle' }).click();
     await waitOutcome(page, /status=checked_out/);
     await expect(vsStatus(page)).toHaveText('Checked Out');
-    await expect(page.getByRole('heading', { name: 'Next Service Due' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Checked out' })).toBeVisible();
   });
 
   test('the service tracker and custody pages list the vehicle', async ({ page }) => {

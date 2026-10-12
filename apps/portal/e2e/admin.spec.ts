@@ -42,6 +42,7 @@ test('switching an account off signs the person out at once; switching on lets t
 
   await as(page, 'administrator');
   await page.goto(`/users?q=${encodeURIComponent(SWITCHABLE.email)}`);
+  await card(page).getByText('More actions…').click();
   await card(page).getByRole('textbox', { name: 'Reason for switching off' }).fill('Left the company (E2E)');
   await card(page).getByRole('button', { name: 'Switch off and sign out' }).click();
   await waitOutcome(page, /status=/);
@@ -60,6 +61,7 @@ test('switching an account off signs the person out at once; switching on lets t
     await expect(sola.getByRole('alert').first()).toBeVisible();
   });
 
+  await card(page).getByText('More actions…').click();
   await card(page).getByRole('button', { name: 'Switch on' }).click();
   await waitOutcome(page, /status=/);
   await expect(card(page)).toContainText('Active');

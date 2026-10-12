@@ -110,7 +110,7 @@ test('the Manager sends the estimate back for changes; the supervisor fixes and 
   await edit.locator('input[name="description"]').fill('Wheel alignment and tyre rotation');
   await edit.locator('input[name="unitPrice"]').fill('15000');
   await edit.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByText('Wheel alignment and tyre rotation')).toBeVisible();
+  await expect(card(page, 'Estimate').getByRole('cell', { name: 'Wheel alignment and tyre rotation' })).toBeVisible();
   await expect(page.getByText('Total Estimate').locator('..')).toContainText('₦15,000.00');
   await supervisorApprovesEstimate(page);
 

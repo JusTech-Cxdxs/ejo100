@@ -103,7 +103,16 @@ export function urlError(page: Page): string | null {
  * which case fail with the server's own message (the most useful clue).
  */
 export async function waitOutcome(page: Page, ok: RegExp, timeout = 45_000) {
-  await page.waitForURL((u) => ok.test(u.toString()) || u.searchParams.has('error'), { timeout });
+  try {
+    await page.waitForURL((u) => ok.test(u.toString()) || u.searchParams.has('error'), { timeout });
+  } catch (e) {
+    // Say WHY nothing happened: a field the browser refused, or what the page shows.
+    const why = await page.evaluate(() => ({
+      invalid: [...document.querySelectorAll('form :invalid')].map((el) => `${(el as HTMLInputElement).name || el.tagName}: ${(el as HTMLInputElement).validationMessage}`).slice(0, 5),
+      text: (document.querySelector('main')?.textContent ?? document.body.textContent ?? '').replace(/\s+/g, ' ').slice(0, 400),
+    })).catch(() => ({ invalid: [] as string[], text: '' }));
+    throw new Error(`No outcome ${ok} at ${page.url()} — invalid fields: [${why.invalid.join('; ')}] — page: ${why.text}`);
+  }
   expect(urlError(page), `the server answered with an error instead of ${ok}`).toBeNull();
 }
 

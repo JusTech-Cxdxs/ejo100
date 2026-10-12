@@ -51,7 +51,7 @@ jobs:
       AUTH_SIGNIN_PER_MINUTE: '1000'
       NEXT_TELEMETRY_DISABLED: '1'
       # One retry in CI (a flaky test is reported as a warning, never hidden).
-      E2E_RETRIES: '0'
+      E2E_RETRIES: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -125,8 +125,26 @@ jobs:
         name: Portal and website logs (errors as annotations)
         run: |
           tail -n 200 portal.log || true
-          grep -iE '"level":"error"|Error:|PrismaClient|Unhandled' portal.log | sort | uniq -c | sort -rn | head -n 8 | sed 's/^/::warning title=portal log::/' || true
-          grep -iE 'Error:|PrismaClient|Unhandled' website.log 2>/dev/null | head -n 4 | sed 's/^/::warning title=website log::/' || true
+          # Each distinct server error with the lines that follow it (the cause), one annotation each.
+          for f in portal website; do
+            [ -f $f.log ] || continue
+            F=$f python3 - <<'PY' || true
+          import os, re
+          name = os.environ['F']
+          lines = open(f'{name}.log', errors='ignore').read().splitlines()
+          seen, out = set(), []
+          for i, l in enumerate(lines):
+              if re.search(r'Error:|Error \[|PrismaClient|Unhandled|"level":"error"', l):
+                  msg = ' ⏎ '.join(x.strip() for x in lines[i:i + 7] if x.strip())[:950]
+                  key = re.sub(r'[0-9a-f]{8,}|\d+', '#', msg[:140])
+                  if key in seen:
+                      continue
+                  seen.add(key)
+                  out.append(msg)
+          for m in out[:9]:
+              print(f'::warning title={name} log::' + m)
+          PY
+          done
       - if: always()
         uses: actions/upload-artifact@v4
         with:

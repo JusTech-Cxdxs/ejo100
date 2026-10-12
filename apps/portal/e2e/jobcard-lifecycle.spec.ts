@@ -77,7 +77,7 @@ test('the estimate is drafted by the technician and the supervisor, and Store pr
 
   await as(page, SUPERMANAGER);
   await page.goto(S.url);
-  await expect(page.getByText(`Matched: ${SEED_PARTS.brakePads.name}`)).toBeVisible();
+  await expect(page.getByText(`Matched: ${SEED_PARTS.brakePads.name}`).first()).toBeVisible();
   // 2 × 15,000 + 8,000 + 20,000 + 1,500 = 59,500
   await expect(page.getByText('Total Estimate').locator('..')).toContainText('₦59,500.00');
 });
