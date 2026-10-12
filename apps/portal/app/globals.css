@@ -13,6 +13,8 @@
   --ejo-warning: #f59e0b;
   --ejo-error: #dc2626;
   --ejo-info: #2563eb;
+  /* Amber text that is readable on a light background (chips, hints). */
+  --ejo-warning-text: #b45309;
 
   --ejo-bg: #ffffff;
   --ejo-surface: #f8fafc;
@@ -39,6 +41,7 @@
   --ejo-border: #24324a;
   --ejo-text: #e8eef7;
   --ejo-text-muted: #94a3b8;
+  --ejo-warning-text: #fbbf24;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -51,6 +54,7 @@
   --ejo-border: #24324a;
   --ejo-text: #e8eef7;
   --ejo-text-muted: #94a3b8;
+  --ejo-warning-text: #fbbf24;
   color-scheme: dark;
   }
 }
@@ -156,3 +160,82 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ejo-orb { animation: none; }
 }
+
+/* ── Live pages: the same calm motion as the roadmap ─────────────────── */
+
+/* Page hero (components/ui/PageHeader): a faint green wash. */
+.ejo-hero {
+  background:
+    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--ejo-primary) 9%, transparent) 0%, transparent 55%),
+    linear-gradient(135deg, var(--ejo-surface) 0%, var(--ejo-bg) 75%);
+}
+.ejo-orb-slow { animation-duration: 14s; animation-direction: reverse; }
+
+/* Every page's top-level blocks rise in, one after another. */
+.ejo-page > :not(.fixed) > * { animation: ejo-rise 480ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ejo-page > :not(.fixed) > :nth-child(2) { animation-delay: 40ms; }
+.ejo-page > :not(.fixed) > :nth-child(3) { animation-delay: 80ms; }
+.ejo-page > :not(.fixed) > :nth-child(4) { animation-delay: 120ms; }
+.ejo-page > :not(.fixed) > :nth-child(5) { animation-delay: 160ms; }
+.ejo-page > :not(.fixed) > :nth-child(6) { animation-delay: 200ms; }
+.ejo-page > :not(.fixed) > :nth-child(n + 7) { animation-delay: 240ms; }
+/* Grids of cards: each card follows the one before. */
+.ejo-stagger > * { animation: ejo-rise 480ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ejo-stagger > :nth-child(2) { animation-delay: 50ms; }
+.ejo-stagger > :nth-child(3) { animation-delay: 100ms; }
+.ejo-stagger > :nth-child(4) { animation-delay: 150ms; }
+.ejo-stagger > :nth-child(5) { animation-delay: 200ms; }
+.ejo-stagger > :nth-child(6) { animation-delay: 250ms; }
+.ejo-stagger > :nth-child(7) { animation-delay: 300ms; }
+.ejo-stagger > :nth-child(n + 8) { animation-delay: 340ms; }
+
+/* Phones: pages breathe less at the edges (p-8 was written for desktops). */
+@media (max-width: 639px) {
+  .ejo-page > div.p-8, .ejo-page > div.p-6 { padding: 1rem; }
+}
+
+/* Cards that are links lift a little; buttons press. */
+.ejo-lift { transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
+.ejo-lift:hover { transform: translateY(-2px); box-shadow: 0 10px 28px -14px color-mix(in srgb, var(--ejo-primary) 45%, transparent); }
+.ejo-press { transition: transform 120ms ease, filter 150ms ease, border-color 150ms ease, color 150ms ease; }
+.ejo-press:active { transform: scale(0.97); }
+@keyframes ejo-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+.ejo-float { animation: ejo-float 3.2s ease-in-out infinite; }
+
+/* Tables in the working area: quiet header, gentle row hover. */
+.ejo-page table thead tr { background: color-mix(in srgb, var(--ejo-bg) 55%, transparent); }
+.ejo-page table thead th { font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; color: var(--ejo-text-muted); white-space: nowrap; }
+.ejo-page table tbody tr { transition: background-color 120ms ease; }
+.ejo-page table tbody tr:hover { background: color-mix(in srgb, var(--ejo-primary) 4%, transparent); }
+
+/* Keyboard focus: a clear green ring everywhere. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ejo-primary) 70%, transparent);
+  outline-offset: 2px;
+}
+
+/* Shell: the drawer and menus. */
+@keyframes ejo-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ejo-slide-in { from { transform: translateX(-100%); } to { transform: none; } }
+@keyframes ejo-pop { from { opacity: 0; transform: translateY(-6px) scale(0.98); } to { opacity: 1; transform: none; } }
+.ejo-fade { animation: ejo-fade 180ms ease both; }
+.ejo-slide-in { animation: ejo-slide-in 240ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ejo-pop { animation: ejo-pop 160ms cubic-bezier(0.2, 0.7, 0.2, 1) both; transform-origin: top right; }
+.ejo-scroll { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ejo-text-muted) 35%, transparent) transparent; }
+mark.ejo-hit { background: color-mix(in srgb, var(--ejo-primary) 22%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ejo-page > :not(.fixed) > *, .ejo-stagger > *, .ejo-float, .ejo-fade, .ejo-slide-in, .ejo-pop { animation: none; }
+  .ejo-lift:hover { transform: none; }
+  .ejo-press:active { transform: none; }
+}
+
+/* Bars in charts grow in from the left once. */
+@keyframes ejo-grow { from { transform: scaleX(0); } to { transform: none; } }
+.ejo-grow { transform-origin: left center; animation: ejo-grow 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes ejo-grow-up { from { transform: scaleY(0); } to { transform: none; } }
+.ejo-grow-up { transform-origin: bottom center; animation: ejo-grow-up 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) { .ejo-grow, .ejo-grow-up { animation: none; } }
+@keyframes ejo-spin-in { from { transform: rotate(-90deg) scale(0.9); opacity: 0; } to { transform: none; opacity: 1; } }
+.ejo-spin-in { animation: ejo-spin-in 800ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) { .ejo-spin-in { animation: none; } }
