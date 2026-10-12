@@ -148,3 +148,11 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ejo-rise { animation: none; }
 }
+
+/* Roadmap pages: a soft, slowly drifting glow behind the hero. */
+.ejo-roadmap-hero { background: linear-gradient(135deg, var(--ejo-surface) 0%, var(--ejo-bg) 70%); }
+@keyframes ejo-drift { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-24px, 18px) scale(1.08); } }
+.ejo-orb { animation: ejo-drift 9s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .ejo-orb { animation: none; }
+}

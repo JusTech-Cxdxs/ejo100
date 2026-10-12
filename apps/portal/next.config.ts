@@ -6,6 +6,15 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Don't advertise the framework.
   poweredByHeader: false,
+  // Addresses of modules planned next open their roadmap page.
+  async redirects() {
+    const planned = ['hr', 'payroll', 'finance', 'procurement', 'suppliers', 'warehouse', 'manufacturing', 'documents', 'reports', 'branding', 'help'];
+    return [
+      ...planned.map((k) => ({ source: `/${k}`, destination: `/roadmap/${k}`, permanent: false })),
+      { source: '/module-registry', destination: '/roadmap', permanent: false },
+      ...['business-units', 'departments', 'teams', 'countries', 'states', 'cities'].map((k) => ({ source: `/${k}`, destination: '/structure', permanent: false })),
+    ];
+  },
   // Security headers on every response.
   async headers() {
     return [

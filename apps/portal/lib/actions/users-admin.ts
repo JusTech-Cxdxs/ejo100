@@ -30,23 +30,36 @@ async function actorOrg() {
 const ADMIN_ROLE_SLUGS = ['administrator', 'branch-administrator'];
 
 /** Users of the person's organisation (search by name, email or employee ID). */
-export async function listUsersForAdmin(q?: string): Promise<{ users: AdminUserRow[]; roles: AssignableRole[]; isPlatformTeam: boolean; me: string }> {
+export type UserFilters = { status?: string; branchId?: string; roleId?: string };
+export type UserCounts = { total: number; active: number; off: number; withoutId: number };
+
+export async function listUsersForAdmin(q?: string, filters: UserFilters = {}): Promise<{ users: AdminUserRow[]; roles: AssignableRole[]; isPlatformTeam: boolean; me: string; counts: UserCounts }> {
   await authorize('admin.users.manage', undefined, 'users.list');
   const { p, organisationId, branchOnly } = await actorOrg();
   const term = q?.trim().slice(0, 80);
-  const [users, roles] = await Promise.all([
+  // Everyone this administrator manages (the platform team is invisible to organisations).
+  const scope = { ...(organisationId ? { organisationId } : {}), ...(branchOnly ? { branchId: branchOnly } : {}), ...(p.isSuperAdmin ? {} : { NOT: { roles: { some: { role: { isSuperAdmin: true } } } } }) };
+  const status = filters.status === 'active' ? { isActive: true } : filters.status === 'off' ? { isActive: false } : {};
+  const branch = filters.branchId && !branchOnly ? { branchId: filters.branchId.slice(0, 40) } : {};
+  const role = filters.roleId ? { roles: { some: { roleId: filters.roleId.slice(0, 40) } } } : {};
+  const [users, roles, byActive, withoutId] = await Promise.all([
     prisma.user.findMany({
       // The platform team is invisible to organisations.
-      where: { ...(organisationId ? { organisationId } : {}), ...(branchOnly ? { branchId: branchOnly } : {}), ...(p.isSuperAdmin ? {} : { NOT: { roles: { some: { role: { isSuperAdmin: true } } } } }), ...(term ? { OR: [{ fullName: { contains: term, mode: 'insensitive' } }, { email: { contains: term, mode: 'insensitive' } }, { employeeId: { contains: term, mode: 'insensitive' } }] } : {}) },
+      where: { ...scope, ...status, ...branch, ...role, ...(term ? { OR: [{ fullName: { contains: term, mode: 'insensitive' } }, { email: { contains: term, mode: 'insensitive' } }, { employeeId: { contains: term, mode: 'insensitive' } }] } : {}) },
       orderBy: { fullName: 'asc' },
       take: 300,
       select: { id: true, fullName: true, email: true, employeeId: true, isActive: true, branch: { select: { name: true } }, department: { select: { name: true } }, roles: { select: { role: { select: { id: true, name: true, isSuperAdmin: true } } } } },
     }),
     prisma.role.findMany({ where: { ...(organisationId ? { organisationId } : {}), ...(branchOnly ? { slug: { notIn: ADMIN_ROLE_SLUGS } } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true, isSuperAdmin: true } }),
+    prisma.user.groupBy({ by: ['isActive'], where: scope, _count: { _all: true } }),
+    prisma.user.count({ where: { ...scope, employeeId: null, branchId: { not: null } } }),
   ]);
+  const active = byActive.find((r: { isActive: boolean }) => r.isActive)?._count._all ?? 0;
+  const off = byActive.find((r: { isActive: boolean }) => !r.isActive)?._count._all ?? 0;
   return {
     me: p.userId,
     isPlatformTeam: p.isSuperAdmin,
+    counts: { total: active + off, active, off, withoutId },
     users: users.map((u: (typeof users)[number]) => ({ id: u.id, fullName: u.fullName, email: u.email, employeeId: u.employeeId, isActive: u.isActive, branch: u.branch?.name ?? null, department: u.department?.name ?? null, roles: u.roles.map((r: { role: { id: string; name: string; isSuperAdmin: boolean } }) => ({ id: r.role.id, name: r.role.name, isPlatform: r.role.isSuperAdmin })) })),
     // Organisation administrators never see the platform role as an option.
     roles: roles.filter((r: { isSuperAdmin: boolean }) => p.isSuperAdmin || !r.isSuperAdmin).map((r: { id: string; name: string; isSuperAdmin: boolean }) => ({ id: r.id, name: r.name, isPlatform: r.isSuperAdmin })),
@@ -141,7 +154,7 @@ export async function staffPlacementOptions(): Promise<StaffPlacement> {
   const { p, organisationId, branchOnly } = await actorOrg();
   const inOrg = p.isSuperAdmin && !organisationId ? {} : { businessUnit: { organisationId: organisationId ?? '__none__' } };
   const branches = await prisma.branch.findMany({ where: { ...inOrg, ...(branchOnly ? { id: branchOnly } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
-  const departments = await prisma.department.findMany({ where: { branchId: { in: branches.map((b: { id: string }) => b.id) } }, orderBy: { name: 'asc' }, select: { id: true, name: true, branchId: true } });
+  const departments = await prisma.department.findMany({ where: { branchId: { in: branches.map((b: { id: string }) => b.id) }, isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, branchId: true } });
   return { branches, departments, branchLocked: branchOnly };
 }
 
@@ -170,7 +183,7 @@ export async function createStaffMember(input: NewStaffInput): Promise<{ id: str
   if (!branch || (!p.isSuperAdmin && branchOrg !== organisationId)) throw new Error('Choose a branch of your organisation.');
   if (branchOnly && branch.id !== branchOnly) throw new Error('You can only add people to your own branch.');
   if (input.departmentId) {
-    const dept = await prisma.department.findFirst({ where: { id: input.departmentId, branchId: branch.id }, select: { id: true } });
+    const dept = await prisma.department.findFirst({ where: { id: input.departmentId, branchId: branch.id, isActive: true }, select: { id: true } });
     if (!dept) throw new Error('That department is not in the chosen branch.');
   }
   let role: { id: string; name: string; slug: string } | null = null;

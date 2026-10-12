@@ -7,6 +7,9 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { HotlineListInput } from '@/components/HotlineListInput';
 import { LoadingLink } from '@/components/LoadingLink';
 import { EditIcon } from '@/components/icons';
+import { getBranchDepartments } from '@/lib/actions/structure';
+import { DepartmentsPanel } from '@/components/DepartmentsPanel';
+import { STRUCTURE_STATUS } from '@/lib/structure-messages';
 
 /**
  * A branch's own real, printed identity — the same view/edit toggle
@@ -25,6 +28,7 @@ export default async function BranchEditPage({
   const { error, status, edit } = await searchParams;
   const branch = await getBranch(id);
   if (!branch) notFound();
+  const departments = await getBranchDepartments(branch.id);
   const isEditing = edit === 'true';
 
   return (
@@ -42,9 +46,9 @@ export default async function BranchEditPage({
           <FormFeedbackBanner kind="error" message={error} />
         </div>
       ) : null}
-      {status === 'updated' ? (
+      {status && STRUCTURE_STATUS[status] ? (
         <div className="mb-6 max-w-xl">
-          <FormFeedbackBanner kind="success" message="Branch details updated." />
+          <FormFeedbackBanner kind="success" message={STRUCTURE_STATUS[status]!} />
         </div>
       ) : null}
 
@@ -160,6 +164,12 @@ export default async function BranchEditPage({
           </LoadingLink>
         </div>
       )}
+
+      <section className="mt-10 max-w-3xl" aria-labelledby="departments-heading">
+        <h2 id="departments-heading" className="text-lg font-semibold text-[var(--ejo-text)]">Departments</h2>
+        <p className="mb-3 mt-1 text-sm text-[var(--ejo-text-muted)]">The departments of {branch.name} and the people in each. System departments carry the workflows and can be renamed, not switched off. People are placed in a department on the Users page.</p>
+        <DepartmentsPanel branchId={branch.id} departments={departments} returnTo={`/branches/${branch.id}`} />
+      </section>
     </div>
   );
 }

@@ -9,22 +9,17 @@ import type { PlatformModuleDescriptor } from '@ejo/types';
  * once the API is wired up, in the database) — no new routing or sidebar
  * code is needed.
  *
- * Version 1 scope: only LIVE modules appear anywhere. Everything marked
- * COMING_SOON (HR, Payroll, Finance, Procurement, Suppliers, Warehouse,
- * Manufacturing, Documents, Reports, and the location/structure editors) is
- * the next version — hidden from the menu, and its placeholder route removed
- * so it cannot be opened by typing the address. See docs/MASTER_PLAN.md.
+ * Version 1: the modules below are live. Everything planned next (HR,
+ * Payroll, Finance, Procurement, Suppliers, Warehouse, Manufacturing, CRM,
+ * Documents, Reports, …) is on the Roadmap (lib/roadmap.ts) — shown to
+ * everyone in its own "Coming next" menu section with a page describing what
+ * it will do, so nobody mistakes "not yet" for "never".
  */
 export const platformModules: PlatformModuleDescriptor[] = [
   { key: 'dashboard', name: 'Dashboard', status: 'LIVE', href: '/dashboard', icon: 'layout-dashboard' },
   { key: 'organisation', name: 'Organisation', status: 'LIVE', href: '/organisation', icon: 'building' },
-  { key: 'business-units', name: 'Business Units', status: 'COMING_SOON', href: '/business-units', icon: 'briefcase' },
-  { key: 'countries', name: 'Countries', status: 'COMING_SOON', href: '/countries', icon: 'globe' },
-  { key: 'states', name: 'States', status: 'COMING_SOON', href: '/states', icon: 'map' },
-  { key: 'cities', name: 'Cities', status: 'COMING_SOON', href: '/cities', icon: 'map-pin' },
+  { key: 'structure', name: 'Structure', status: 'LIVE', href: '/structure', icon: 'sitemap' },
   { key: 'branches', name: 'Branches', status: 'LIVE', href: '/branches', icon: 'network' },
-  { key: 'departments', name: 'Departments', status: 'COMING_SOON', href: '/departments', icon: 'sitemap' },
-  { key: 'teams', name: 'Teams', status: 'COMING_SOON', href: '/teams', icon: 'users' },
   { key: 'users', name: 'Users', status: 'LIVE', href: '/users', icon: 'user' },
   { key: 'roles', name: 'Roles', status: 'LIVE', href: '/roles', icon: 'shield' },
   { key: 'permissions', name: 'Permissions', status: 'LIVE', href: '/permissions', icon: 'key' },
@@ -34,19 +29,7 @@ export const platformModules: PlatformModuleDescriptor[] = [
   { key: 'security', name: 'Security', status: 'LIVE', href: '/security', icon: 'shield' },
   { key: 'scheduling', name: 'Scheduling', status: 'LIVE', href: '/schedule', icon: 'calendar' },
   { key: 'analytics', name: 'Business Analytics', status: 'LIVE', href: '/analytics', icon: 'bar-chart' },
-  { key: 'warehouse', name: 'Warehouse', status: 'COMING_SOON', href: '/warehouse', icon: 'warehouse' },
-  { key: 'suppliers', name: 'Suppliers', status: 'COMING_SOON', href: '/suppliers', icon: 'truck' },
-  { key: 'procurement', name: 'Procurement', status: 'COMING_SOON', href: '/procurement', icon: 'shopping-cart' },
-  { key: 'finance', name: 'Finance', status: 'COMING_SOON', href: '/finance', icon: 'wallet' },
-  { key: 'hr', name: 'HR', status: 'COMING_SOON', href: '/hr', icon: 'id-card' },
-  { key: 'payroll', name: 'Payroll', status: 'COMING_SOON', href: '/payroll', icon: 'banknote' },
-  { key: 'manufacturing', name: 'Manufacturing', status: 'COMING_SOON', href: '/manufacturing', icon: 'factory' },
-  { key: 'documents', name: 'Documents', status: 'COMING_SOON', href: '/documents', icon: 'file-text' },
-  { key: 'reports', name: 'Reports', status: 'COMING_SOON', href: '/reports', icon: 'bar-chart' },
   { key: 'notifications', name: 'Notifications', status: 'LIVE', href: '/notifications', icon: 'bell' },
   { key: 'audit-logs', name: 'Audit Logs', status: 'LIVE', href: '/audit-logs', icon: 'history' },
-  { key: 'module-registry', name: 'Module Registry', status: 'COMING_SOON', href: '/module-registry', icon: 'layout-grid' },
-  { key: 'branding', name: 'Branding Engine', status: 'COMING_SOON', href: '/branding', icon: 'palette' },
   { key: 'settings', name: 'Settings', status: 'LIVE', href: '/settings', icon: 'settings' },
-  { key: 'help', name: 'Help Center', status: 'COMING_SOON', href: '/help', icon: 'help-circle' },
 ];

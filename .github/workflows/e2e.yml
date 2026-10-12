@@ -24,8 +24,8 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       mail:
-        image: maildev/maildev:2.1.0
-        ports: ['1025:1025', '1080:1080']
+        image: axllent/mailpit:v1.21
+        ports: ['1025:1025', '8025:8025']
     env:
       DATABASE_URL: 'postgresql://postgres:e2e-test-only@localhost:5432/ejo_e2e'
       DIRECT_URL: 'postgresql://postgres:e2e-test-only@localhost:5432/ejo_e2e'
@@ -53,18 +53,6 @@ jobs:
           npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate
           for f in scripts/postdeploy/*.sql; do npx prisma db execute --file="$f" --url="$DIRECT_URL"; done
           npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate
-      - name: Schema SQL and engines (for local reproduction)
-        run: |
-          mkdir -p e2e-artifacts
-          npx prisma migrate diff --from-empty --to-schema-datamodel packages/database/prisma/schema.prisma --script > e2e-artifacts/schema.sql
-          cp node_modules/@prisma/engines/libquery_engine-*.so.node e2e-artifacts/ 2>/dev/null || cp node_modules/.prisma/client/libquery_engine-*.so.node e2e-artifacts/
-          cp node_modules/@prisma/engines/schema-engine-* e2e-artifacts/ 2>/dev/null || true
-          ls -la e2e-artifacts
-      - uses: actions/upload-artifact@v4
-        with:
-          name: e2e-artifacts
-          path: e2e-artifacts
-          retention-days: 7
       - name: Seed the test organisation (one account per role)
         env:
           MASTER_ADMIN_EMAIL: 'master@e2e.test'
@@ -82,11 +70,19 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Real-browser tests
         run: npx playwright test --config=apps/portal/e2e/playwright.config.ts
+      # Failures as annotations (readable from the API, not only the web page).
+      - if: failure()
+        name: Report failures
+        run: node apps/portal/e2e/annotate.mjs
       - if: always()
-        run: tail -n 200 portal.log || true
+        name: Portal log (errors as annotations)
+        run: |
+          tail -n 200 portal.log || true
+          grep -iE '"level":"error"|Error:|PrismaClient|Unhandled' portal.log | head -n 8 | sed 's/^/::warning title=portal log::/' || true
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: apps/portal/e2e/report
+          if-no-files-found: ignore
           retention-days: 7

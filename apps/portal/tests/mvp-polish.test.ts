@@ -12,7 +12,8 @@ import { describeAccess } from '../lib/authz/describe-access';
 import { PERMISSIONS, type Principal, type PermissionKey } from '../lib/authz/catalogue';
 import { renderStaffAccessEmail, STAFF_RULES } from '../lib/email-templates/staff-access';
 import { navigationFor } from '../lib/authz/navigation';
-import { platformModules } from '../lib/modules';
+import { ROADMAP } from '../lib/roadmap';
+import { SYSTEM_DEPARTMENT_SLUGS } from '../lib/structure-rules';
 import { parseTheme, THEME_BOOT_SCRIPT } from '../lib/theme';
 import { initialsOf, colourOf } from '../lib/avatar';
 
@@ -92,16 +93,32 @@ test('welcome email: employee ID, roles, branch, access, sign-in steps, the rule
   assert.ok(!upd.html.includes('Set my password'), 'an access-changed email carries no password link');
 });
 
-test('version 1 menu: nothing that is not live, for anyone — and no placeholder routes left', () => {
+test('version 1 menu: only live modules; everything planned is on the Roadmap, with a page each', () => {
   const admin = navigationFor(who(['administrator']));
   const master = navigationFor(who([], { isSuperAdmin: true }));
   for (const items of [admin, master]) for (const i of items) assert.equal(i.status, 'LIVE', `${i.key} is shown but not live`);
-  const hidden = platformModules.filter((m) => m.status !== 'LIVE').map((m) => m.key);
-  for (const k of ['hr', 'payroll', 'finance', 'procurement', 'suppliers', 'warehouse', 'manufacturing', 'documents', 'reports']) assert.ok(hidden.includes(k), `${k} must be next version`);
-  for (const m of platformModules.filter((x) => x.status !== 'LIVE')) {
-    assert.equal(existsSync(join(ROOT, 'app', '(app)', m.href.slice(1), 'page.tsx')), false, `${m.href} still has a page`);
+  assert.ok(admin.some((i) => i.key === 'structure'), 'the organisation structure is in the menu for administrators');
+  assert.ok(!navigationFor(who(['technician'])).some((i) => i.key === 'structure'), 'but not for a technician');
+  const keys = ROADMAP.map((m) => m.key);
+  for (const k of ['hr', 'payroll', 'finance', 'procurement', 'suppliers', 'warehouse', 'manufacturing', 'documents', 'reports']) assert.ok(keys.includes(k), `${k} is on the roadmap`);
+  assert.equal(new Set(keys).size, keys.length, 'roadmap keys are unique');
+  for (const m of ROADMAP) {
+    assert.ok(m.phases.length > 0 && m.phases.every((p) => p.items.length > 0), `${m.key} says what it will do`);
+    for (const c of m.connects) assert.match(c.href, /^\/[a-z]/, `${m.key} links inside the portal`);
   }
+  const hr = ROADMAP.find((m) => m.key === 'hr')!.phases.flatMap((p) => p.items).join(' ');
+  for (const must of ['clock', 'QR', 'Lateness', 'Overtime', 'vehicle', 'Leave']) assert.match(hr, new RegExp(must, 'i'), `HR plan covers ${must}`);
+  // Old addresses of planned modules lead to their roadmap page.
+  const cfg = read('next.config.ts');
+  for (const k of ['hr', 'payroll', 'finance']) assert.ok(cfg.includes(`'${k}'`), `/${k} redirects`);
   assert.equal(existsSync(join(ROOT, 'components', 'PagePlaceholder.tsx')), false);
+});
+
+test('organisation structure: workflow departments are protected', () => {
+  for (const slug of ['workshop', 'workshop-passenger', 'workshop-commercial', 'store']) assert.ok(SYSTEM_DEPARTMENT_SLUGS.has(slug), `${slug} is a system department`);
+  const src = read('lib/actions/structure.ts');
+  assert.match(src, /cannot be switched off/, 'system departments are never switched off');
+  assert.match(src, /move them to another department first/, 'a department with people is never switched off');
 });
 
 test('live check: a cheap organisation-scoped GET, never a page-posting server action on a 3-second loop', () => {
@@ -111,7 +128,9 @@ test('live check: a cheap organisation-scoped GET, never a page-posting server a
   const ms = (name: string) => Number(new RegExp(`const ${name} = ([0-9_]+)`).exec(provider)?.[1]?.replace(/_/g, ''));
   assert.ok(ms('PULSE_MS') >= 10000, 'checks no more often than every 10 seconds');
   assert.ok(ms('PULSE_WHEN_IDLE_MS') >= 60000);
-  assert.ok(ms('HEAVY_PAGE_REFRESH_GAP_MS') >= 60000, 'analytics pages recompute at most once a minute');
+  assert.ok(ms('PAGE_REFRESH_GAP_MS') >= 30000, 'pages refresh at most every 30 s on organisation changes');
+  assert.ok(ms('HEAVY_PAGE_REFRESH_GAP_MS') >= 120000, 'analytics pages recompute at most every 2 minutes');
+  assert.ok(ms('MIN_LOAD_GAP_MS') >= 30000, 'the notification summary is fetched at most every 30 s');
   assert.ok(provider.includes("visibilityState === 'hidden'"), 'hidden tabs never check');
   const route = read('app/api/live/pulse/route.ts');
   assert.ok(/isActive/.test(route) && /401/.test(route), 'signed-out or switched-off people get 401');
@@ -149,8 +168,16 @@ test('deploys: pre-deploy SQL is additive and re-runnable, and runs before every
     assert.doesNotMatch(sql, /\b(DROP|DELETE|TRUNCATE|RENAME)\b|ALTER\s+COLUMN[\s\S]*?\bTYPE\b/i, `${f} must be additive only`);
     for (const m of sql.matchAll(/\b(CREATE(?:\s+UNIQUE)?\s+INDEX|ADD\s+COLUMN|CREATE\s+TABLE)\b(?!\s+IF\s+NOT\s+EXISTS)/gi)) assert.fail(`${f}: "${m[0]}" must use IF NOT EXISTS`);
   }
+  for (const f of readdirSync(join(repo, 'scripts', 'postdeploy')).filter((x: string) => x.endsWith('.sql'))) {
+    const sql = readFileSync(join(repo, 'scripts', 'postdeploy', f), 'utf8').replace(/--.*$/gm, '');
+    assert.doesNotMatch(sql, /\b(DROP|DELETE|TRUNCATE)\b/i, `${f} must not remove anything`);
+  }
+  const rls = readFileSync(join(repo, 'scripts', 'postdeploy', '0001-rls-default-deny.sql'), 'utf8');
+  assert.match(rls, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(rls, /REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon/);
   for (const s of ['db-push-if-render.js', 'db-push-if-vercel.js']) {
     const src = readFileSync(join(repo, 'scripts', s), 'utf8');
+    assert.ok(src.indexOf('applyPostdeploySql();') > src.indexOf('execSync(`npx prisma db push'), `${s} applies row-level security after the push`);
     assert.ok(src.indexOf('applyPredeploySql();') > 0 && src.indexOf('applyPredeploySql();') < src.indexOf('execSync(`npx prisma db push'), `${s} runs the pre-deploy SQL first`);
     assert.doesNotMatch(src.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''), /--accept-data-loss/, `${s} never accepts data loss`);
   }

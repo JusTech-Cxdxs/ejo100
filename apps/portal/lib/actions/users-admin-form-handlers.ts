@@ -63,3 +63,21 @@ export async function assignMissingEmployeeIdsFormAction(formData: FormData): Pr
   try { n = await assignMissingEmployeeIds(); } catch (err) { error = friendlyError(err, 'Could not issue the employee IDs.', 'users-admin-form-handlers'); }
   back(formData, error, `ids_${n}`);
 }
+
+export type AddStaffState = { error: string | null; values: Record<string, string> };
+
+/** The Add-staff form keeps what was typed when something is wrong (useActionState). */
+export async function addStaffMemberAction(_prev: AddStaffState, formData: FormData): Promise<AddStaffState> {
+  const v = (k: string) => String(formData.get(k) ?? '').trim();
+  const values = { fullName: v('fullName'), email: v('email'), phone: v('phone'), branchId: v('branchId'), departmentId: v('departmentId'), roleId: v('roleId') };
+  let sent = true;
+  let employeeId = '';
+  try {
+    const r = await createStaffMember({ fullName: values.fullName, email: values.email, phone: values.phone || undefined, branchId: v('branchId'), departmentId: v('departmentId') || undefined, roleId: v('roleId') || undefined });
+    sent = r.emailSent;
+    employeeId = r.employeeId;
+  } catch (err) {
+    return { error: friendlyError(err, 'Could not add the person.', 'users-admin-form-handlers'), values };
+  }
+  redirect(`/users?q=${encodeURIComponent(values.email.toLowerCase())}&status=${sent ? 'added' : 'added_no_email'}&id=${encodeURIComponent(employeeId)}`);
+}
