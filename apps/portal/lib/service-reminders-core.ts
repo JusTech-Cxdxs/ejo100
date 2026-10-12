@@ -23,15 +23,9 @@ export type VehicleNeedingReminder = {
 };
 
 /**
- * The real, current decision for every vehicle with a genuine next-
- * service prediction — computed fresh each time from what's actually
- * true right now, never from a queue or a "pending" flag that could
- * drift out of date or double-send. Only reminder logs sent AFTER
- * the current real prediction was set actually count toward the
- * stage progression — once a vehicle is genuinely serviced again,
- * its next-service prediction changes, and any older reminders sent
- * against the previous cycle rightly stop influencing what's sent
- * next.
+ * The reminder due now for each vehicle with a next-service prediction,
+ * computed fresh each time (no queue or pending flag). Only reminders sent
+ * after the current prediction was set count toward the stage.
  */
 export async function getVehiclesNeedingServiceReminder(): Promise<VehicleNeedingReminder[]> {
   // Every vehicle whose reminder is due right now — straight from the
@@ -53,10 +47,8 @@ export async function getVehiclesNeedingServiceReminder(): Promise<VehicleNeedin
 }
 
 /**
- * Sends exactly one real reminder and logs it — the log is the one
- * real, permanent proof this happened, capturing the real facts as
- * they stood at this exact moment (never re-derivable later once the
- * vehicle's own mileage and the org's own interval keep moving).
+ * Sends one reminder and logs it. The log keeps the figures as they were
+ * at send time, since the vehicle's mileage and the interval change later.
  */
 export async function sendServiceReminder(need: VehicleNeedingReminder, trigger?: 'MANUAL', sentById?: string): Promise<void> {
   const vehicle = await prisma.customerVehicle.findUnique({

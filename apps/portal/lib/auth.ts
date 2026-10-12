@@ -9,17 +9,16 @@ import { portalConfig } from './site-config';
 import { portalBaseUrl } from './portal-url';
 
 /**
- * Employee/Admin authentication (Better Auth). Deliberately scoped to
- * User/Session/Account/Verification only — Customer auth is a separate
- * instance (apps/website/lib/auth-customer.ts) writing into
- * CustomerSession/CustomerAccount, so an employee session can never
- * resolve against the Customer table and vice versa (Phase 2 isolation
- * requirement), even though both share this exact database.
+ * Staff authentication (Better Auth), on User/Session/Account/Verification
+ * only. Customers use a separate instance (apps/website/lib/auth-customer.ts)
+ * on CustomerSession/CustomerAccount, so a staff session can never resolve
+ * against the Customer table, or the reverse, although both share one
+ * database.
  *
- * Employee accounts are created only by an administrator (Users →
- * "Add a staff member", lib/actions/users-admin.ts) — public self-sign-up
- * is closed. A deactivated account can never start a session (hook
- * below), and every request re-checks it (requireUser, the app layout).
+ * Staff accounts are created only by an administrator (Users → "Add a staff
+ * member", lib/actions/users-admin.ts); public sign-up is closed. A
+ * deactivated account cannot start a session (hook below), and every
+ * request re-checks it (requireUser, the app layout).
  */
 /** Staff "forgot password" links: one hour. */
 export const RESET_LINK_SECONDS = 60 * 60;

@@ -2,13 +2,12 @@ import { prisma } from '@ejo/database';
 import { replayQuantityFifo, type QuantityFifoResult } from './quantity-fifo';
 
 /**
- * Loads every delivery (Goods Receipt line) and every release for the
- * given QUANTITY-tracked Parts and runs the FIFO replay once per Part.
+ * Loads every delivery (goods receipt line) and release for the given
+ * QUANTITY-tracked parts and runs the FIFO replay once per part.
  *
- * Deliberately NOT a server action ('use server' is absent): it performs
- * no authorisation of its own and is only ever called from loaders that
- * already did. Shared by the Parts Request, Part and Goods Receipt pages
- * so all three always show the same, consistent trace.
+ * Not a 'use server' file: it does no authorisation and is only called from
+ * loaders that already did. Shared by the Parts Request, Part and Goods
+ * Receipt pages so all three show the same trace.
  */
 
 export type QuantityTraceRelease = {

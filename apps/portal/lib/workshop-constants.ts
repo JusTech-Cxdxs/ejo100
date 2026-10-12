@@ -1,23 +1,12 @@
 /**
- * Plain constants shared by Workshop UI and Server Actions — deliberately
- * NOT a 'use server' file, unlike workshop.ts. A 'use server' file may
- * only export async functions; this exact constant used to live in
- * workshop.ts and broke the build the moment it needed to be imported
- * by a page ("A 'use server' file can only export async functions,
- * found object" — an exported array is an object, not a function).
- * Anything that's plain data, not an action, belongs here instead.
+ * Constants shared by Workshop pages and server actions. Not a 'use server'
+ * file: those may only export async functions, so plain data lives here.
  */
 
-/** Common description suggestions for the estimate line-item description
- * field, shared across every type (Internal Job, Labour, etc.) since
- * the datalist can't dynamically swap based on which type is currently
- * selected without client JS — not a closed list, every field stays
- * free-text with a `<datalist>`, matching the same "suggest, don't
- * restrict" pattern already used for vehicle Make/Model. Kept here as
- * the one place this list is maintained, not duplicated between server
- * validation (there isn't any — free text is always allowed) and the
- * UI. The Labour entries match the workshop's paper estimate, which lists
- * "Labour for Service" and "Labour for Brake" as separate lines. */
+/** Suggestions for the estimate line description (a <datalist>; free text
+ * is always allowed). One list for every line type. The Labour entries
+ * follow the workshop's paper estimate ("Labour for Service", "Labour for
+ * Brake" as separate lines). */
 export const COMMON_ESTIMATE_LINE_DESCRIPTIONS = [
   'Wheel Alignment',
   'Wheel Balancing',
@@ -31,38 +20,24 @@ export const COMMON_ESTIMATE_LINE_DESCRIPTIONS = [
   'Labour for Brake',
 ];
 
-/** The minimum deposit required before work begins, as a fraction of
- * the total estimate — kept as one named constant so the 70% figure
- * (and the exact amount computed from it) is never duplicated or
- * allowed to drift between the email and the dashboard. */
+/** Minimum deposit before work begins, as a fraction of the estimate total.
+ * One constant so emails and dashboards always agree. */
 export const MINIMUM_DEPOSIT_FRACTION = 0.7;
 
 /** Working days after the customer is notified of an approved estimate
- * before it's due for automatic cancellation — 5 working days, a full
- * work week, chosen to give real room for a bank transfer to clear
- * without letting a vehicle sit indefinitely on an unmade decision.
- * A reminder is sent partway through, not right before the deadline —
- * see APPROVAL_REMINDER_WORKING_DAYS. */
+ * before it is overdue (enough time for a bank transfer to clear). A
+ * reminder goes out partway through; see APPROVAL_REMINDER_WORKING_DAYS. */
 export const APPROVAL_DEADLINE_WORKING_DAYS = 5;
 
-/** Working days after notification before the "action required"
- * reminder is sent — partway through the deadline window above, so
- * the customer gets a genuine nudge rather than a last-minute warning. */
+/** Working days after notification before the "action required" reminder. */
 export const APPROVAL_REMINDER_WORKING_DAYS = 3;
 
-/** Working days after a cancellation is approved before an
- * uncollected vehicle is surfaced for staff review — deliberately not
- * automatic (a Manager or HOD must review and choose to notify the
- * customer), just a bounded window so the workshop isn't left tracking
- * abandoned vehicles indefinitely. */
+/** Working days after a cancellation is approved before an uncollected
+ * vehicle is flagged for staff review. Not automatic: a Manager or HOD
+ * decides whether to notify the customer. */
 export const CANCELLED_COLLECTION_GRACE_WORKING_DAYS = 7;
 
-/** Working days a completed vehicle can stay in the workshop after
- * being marked Ready for Collection before charges may apply —
- * deliberately a separate, distinct constant from
- * CANCELLED_COLLECTION_GRACE_WORKING_DAYS even though the value is
- * currently the same: a happily-finished job and an abandoned
- * cancelled one are genuinely different business situations, and
- * naming each on its own terms means they can diverge later without
- * one accidentally changing the other. */
+/** Working days a finished vehicle can wait after Ready for Collection
+ * before charges may apply. Separate from
+ * CANCELLED_COLLECTION_GRACE_WORKING_DAYS so the two can differ later. */
 export const READY_FOR_COLLECTION_GRACE_WORKING_DAYS = 7;
