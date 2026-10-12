@@ -21,6 +21,7 @@ export type QuantityTraceRelease = {
     referenceNumber: string;
     sourceNumber: string | null;
     customerName: string | null;
+    customerId?: string | null;
   };
 };
 
@@ -66,8 +67,8 @@ export async function loadQuantityTraces(partIds: string[]): Promise<Map<string,
               select: {
                 id: true,
                 referenceNumber: true,
-                jobCard: { select: { jobNumber: true, customer: { select: { fullName: true } } } },
-                vehicleService: { select: { serviceNumber: true, customer: { select: { fullName: true } } } },
+                jobCard: { select: { jobNumber: true, customer: { select: { id: true, fullName: true } } } },
+                vehicleService: { select: { serviceNumber: true, customer: { select: { id: true, fullName: true } } } },
               },
             },
           },
@@ -104,6 +105,7 @@ export async function loadQuantityTraces(partIds: string[]): Promise<Map<string,
           referenceNumber: slip.referenceNumber,
           sourceNumber: slip.jobCard?.jobNumber ?? slip.vehicleService?.serviceNumber ?? null,
           customerName: slip.jobCard?.customer.fullName ?? slip.vehicleService?.customer.fullName ?? null,
+          customerId: slip.jobCard?.customer.id ?? slip.vehicleService?.customer.id ?? null,
         },
       };
     });

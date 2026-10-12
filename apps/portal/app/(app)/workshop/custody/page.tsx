@@ -12,6 +12,7 @@ import { ordinal } from '@/lib/custody-reminders';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { EmptyState, PageHeader } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -25,6 +26,7 @@ const STATUS_LABEL: Record<string, string> = {
 type CustodyEntry = {
   id: string;
   jobNumber: string;
+  customerId?: string;
   customerName: string;
   vehicleDescription: string;
   status: string;
@@ -154,6 +156,8 @@ export default async function WorkshopCustodyPage({
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { error, status, reminders, overdue, filter, q, type: rawType } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const vehicleType = rawType === 'PASSENGER' || rawType === 'COMMERCIAL' ? rawType : null;
   const showAwaiting = !filter || filter === 'awaiting';
   const showCancelled = !filter || filter === 'cancelled' || filter === 'overdue';
@@ -339,7 +343,7 @@ export default async function WorkshopCustodyPage({
                       {entry.jobNumber}
                     </LoadingLink>
                     <p className="text-sm text-[var(--ejo-text)]">
-                      {entry.customerName} —{' '}
+                      <CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /> —{' '}
                       <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="hover:underline">
                         {entry.vehicleDescription}
                       </LoadingLink>
@@ -435,7 +439,7 @@ export default async function WorkshopCustodyPage({
                       {entry.jobNumber}
                     </LoadingLink>
                     <p className="text-sm text-[var(--ejo-text)]">
-                      {entry.customerName} —{' '}
+                      <CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /> —{' '}
                       <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="hover:underline">
                         {entry.vehicleDescription}
                       </LoadingLink>
@@ -511,7 +515,7 @@ export default async function WorkshopCustodyPage({
                       {entry.jobNumber}
                     </LoadingLink>
                     <p className="text-sm text-[var(--ejo-text)]">
-                      {entry.customerName} —{' '}
+                      <CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /> —{' '}
                       <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="hover:underline">
                         {entry.vehicleDescription}
                       </LoadingLink>
@@ -578,7 +582,7 @@ export default async function WorkshopCustodyPage({
                         {entry.jobNumber}
                       </LoadingLink>
                     </td>
-                    <td className="px-4 py-2 text-[var(--ejo-text)]">{entry.customerName}</td>
+                    <td className="px-4 py-2 text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></td>
                     <td className="px-4 py-2">
                       <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-text)] hover:underline">
                         {entry.vehicleDescription}

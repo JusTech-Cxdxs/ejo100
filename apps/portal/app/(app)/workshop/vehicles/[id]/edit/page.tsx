@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { listPartsFittedToVehicle, getVehicleCoveredValue } from '@/lib/actions/vehicle-history';
 import { computeVehicleIntelligence } from '@/lib/vehicle-intelligence';
@@ -27,6 +27,7 @@ import { VehicleFindingsBreakdownChart } from '@/components/LazyCharts';
 import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateTime, formatDateTimeCompact, formatDateOnly } from '@/lib/utils/format-date';
 import { BackLink, PageTitle } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle.gate_exit': 'Left through the gate',
@@ -96,6 +97,8 @@ export default async function VehiclePage({
     getVehicleCoveredValue(id),
   ]);
   if (!vehicle) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   // One vehicle's descriptive / diagnostic / predictive / prescriptive picture.
   const intelligence = computeVehicleIntelligence({
     mileage: analytics.mileageTimeline.map((m: (typeof analytics.mileageTimeline)[number]) => ({ date: new Date(m.date), km: m.mileage })),
@@ -131,7 +134,7 @@ export default async function VehiclePage({
             {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}
           </PageTitle>
           <p className="text-sm text-[var(--ejo-text-muted)]">
-            {vehicle.plateNumber || vehicle.chassisNumber} — owned by {vehicle.customer.fullName}
+            {vehicle.plateNumber || vehicle.chassisNumber} — owned by <CustomerLink id={vehicle.customerId} name={vehicle.customer.fullName} canView={canSeeCustomers} />
           </p>
         </div>
         {!isEditing ? (
@@ -311,7 +314,7 @@ export default async function VehiclePage({
                 </div>
                 <div>
                   <dt className="text-xs text-[var(--ejo-text-muted)]">Owner</dt>
-                  <dd className="text-[var(--ejo-text)]">{vehicle.customer.fullName}</dd>
+                  <dd className="text-[var(--ejo-text)]"><CustomerLink id={vehicle.customerId} name={vehicle.customer.fullName} canView={canSeeCustomers} /></dd>
                 </div>
               </dl>
               <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">

@@ -1,13 +1,13 @@
 import { guardPage } from '@/lib/authz/server';
 import { getBroadcastAnalytics } from '@/lib/actions/notifications';
 import { LoadingLink } from '@/components/LoadingLink';
-import { BROADCAST_CATEGORY } from '@/lib/notification-rules';
+import { AUDIENCE_LABEL, BROADCAST_CATEGORY } from '@/lib/notification-rules';
 import { pluralize } from '@/lib/utils/pluralize';
 import { PageHeader, StatTile, PriorityActions, BarRow, EmptyState, Icon, type IconName } from '@/components/ui';
 import { CATEGORY_ICON } from '@/components/ui/notify-icons';
 
 const card = 'min-w-0 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5';
-const AUDIENCE: Record<string, string> = { ALL: 'Everyone', BRANCH: 'Branches', DEPARTMENT: 'Departments', ROLE: 'Roles' };
+const AUDIENCE = AUDIENCE_LABEL;
 const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 
 export default async function BroadcastAnalyticsPage() {

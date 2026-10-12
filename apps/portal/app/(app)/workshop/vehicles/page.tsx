@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { LoadingLink } from '@/components/LoadingLink';
 import { listAllVehicles } from '@/lib/actions/workshop';
@@ -13,6 +13,7 @@ import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { PageHeader } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 export default async function WorkshopVehiclesPage({
   searchParams,
@@ -21,6 +22,8 @@ export default async function WorkshopVehiclesPage({
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { q, type, status, error } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   // Delete now lives in its own Danger Zone on the Edit Vehicle page,
   // not here — this list no longer needs to know who's a Master Admin
@@ -104,7 +107,7 @@ export default async function WorkshopVehiclesPage({
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       {v.vehicleType === 'PASSENGER' ? 'Passenger' : v.vehicleType === 'COMMERCIAL' ? 'Commercial' : '—'}
                     </td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{v.customer.fullName}</td>
+                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]"><CustomerLink id={v.customerId} name={v.customer.fullName} canView={canSeeCustomers} /></td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       {v.mileage != null ? `${v.mileage.toLocaleString()} km` : '—'}
                     </td>

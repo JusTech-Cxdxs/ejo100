@@ -1,5 +1,5 @@
 import { canRequestRoadTestOn } from '@/lib/actions/security';
-import { jobCardVisible, guardAnyPage, can } from '@/lib/authz/server';
+import { jobCardVisible, guardAnyPage, can, allows } from '@/lib/authz/server';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
 import { listRoadTestsFor } from '@/lib/actions/security';
 import { securityActionDetail } from '@/lib/security-labels';
@@ -35,6 +35,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { IdempotencyKey } from '@/components/IdempotencyKey';
 import { PageTitle, StatusChip } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 
 const STATUS_LABEL: Record<string, string> = {
@@ -371,6 +372,8 @@ export default async function JobCardDetailPage({
     getJobCardBilling(id),
   ]);
   if (!jobCard) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   // Round 2 — what needs the Job Card's branch or its estimate, all at once.
   const [eligibleManagers, eligibleFinance, partCategories, partTypes, partWarrantyBadges] = await Promise.all([
     listEligibleManagersForBranch(jobCard.branchId),
@@ -591,7 +594,7 @@ export default async function JobCardDetailPage({
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Customer</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
-                  {jobCard.customer.fullName}
+                  <CustomerLink id={jobCard.customerId} name={jobCard.customer.fullName} canView={canSeeCustomers} />
                   {jobCard.customer.customerType === 'ORGANIZATION' ? (
                     <span className="ml-2 rounded-full bg-[var(--ejo-info)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--ejo-info)]">
                       Organization

@@ -1,10 +1,11 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
 import { LoadingLink } from '@/components/LoadingLink';
 import { CLAIM_STATUS_LABEL, CLAIM_GROUPS, REMEDY_LABEL, PART_RETURN_LABEL } from '@/lib/warranty-claim-status';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { PageHeader, StatusChip } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 function naira(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -26,6 +27,8 @@ const GROUP_LABEL: Record<string, string> = {
 export default async function WarrantyClaimsPage({ searchParams }: { searchParams: Promise<{ q?: string; group?: string; remedy?: string; part?: string }> }) {
   await guardAnyPage(['warranty.view'], '/warranty');
   const { q, group: rawGroup, remedy: rawRemedy, part: rawPart } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const remedy = rawRemedy && REMEDY_LABEL[rawRemedy] ? rawRemedy : null;
   const part = rawPart && PART_RETURN_LABEL[rawPart] ? rawPart : null;
   const group = rawGroup && CLAIM_GROUPS[rawGroup] ? rawGroup : null;
@@ -135,7 +138,7 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
                       <div className="text-xs text-[var(--ejo-text-muted)]">{REMEDY_LABEL[c.remedy]}{c.partReturnRequired ? ` · ${c.partReturnStatus === 'SENT' ? 'part sent' : c.partReturnStatus === 'RECEIVED_BY_PROVIDER' ? 'part received' : 'part to send'}` : ''}</div>
                     </td>
                     <td className="px-3 py-2 text-xs text-[var(--ejo-text)]">
-                      {c.customer.fullName}
+                      <CustomerLink id={c.customerId} name={c.customer.fullName} canView={canSeeCustomers} />
                       <div className="text-[var(--ejo-text-muted)]">{c.vehicle ? [c.vehicle.make, c.vehicle.model, c.vehicle.plateNumber].filter(Boolean).join(' ') : ''}</div>
                     </td>
                     <td className="px-3 py-2 text-xs text-[var(--ejo-text)]">

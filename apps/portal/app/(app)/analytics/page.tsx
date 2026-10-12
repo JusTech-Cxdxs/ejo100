@@ -1,7 +1,8 @@
-import { guardPage } from '@/lib/authz/server';
+import { guardPage, allows } from '@/lib/authz/server';
 import { canSeeMasterAnalytics, getMasterAnalytics } from '@/lib/actions/master-analytics';
 import { pluralize } from '@/lib/utils/pluralize';
 import { PageHeader, StatTile, PriorityActions, BarRow, PeriodPills, Icon, CHART, type IconName } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const card = 'min-w-0 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5';
 /** A card's title with its icon. */
@@ -27,6 +28,8 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
     );
   }
   const a = await getMasterAnalytics(period, { from, to });
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const e = a.current.earnings;
   const earnedTotal = Math.max(1, a.current.sales);
   const c = a.current;
@@ -195,7 +198,7 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
           <T as="h2" icon="star">Top customers in the period</T>
           {a.diagnostic.topCustomers.length === 0 ? <p className="flex items-center gap-2 text-sm text-[var(--ejo-text-muted)]"><Icon name="inbox" size={16} />No completed jobs in this period.</p> : (
             <div className="space-y-2">{a.diagnostic.topCustomers.map((m) => (
-              <BarRow key={m.name} label={m.name} value={m.value} max={maxCust} note={naira(m.value)} />
+              <BarRow key={m.id ?? m.name} label={<CustomerLink id={m.id} name={m.name} canView={canSeeCustomers} />} value={m.value} max={maxCust} note={naira(m.value)} />
             ))}</div>
           )}
         </div>

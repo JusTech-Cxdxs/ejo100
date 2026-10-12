@@ -12,6 +12,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { ROAD_TEST_STATUS_LABEL, durationText, minutesBetween, roadTestOverdueMinutes } from '@/lib/security-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const DONE: Record<string, string> = {
   requested: 'Road test requested — the Manager has been asked to approve it.',
@@ -30,10 +31,12 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
   const { status, error } = await searchParams;
   const [r, roles, history, canDecide] = await Promise.all([getRoadTest(id), getSecurityRoles(), getSecurityHistory('RoadTestPermit', id), canDecideRoadTest(id)]);
   if (!r) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const away = minutesBetween(r.gateOutAt, r.gateInAt);
   const km = r.startOdometer !== null && r.endOdometer !== null ? r.endOdometer - r.startOdometer : null;
   const over = roadTestOverdueMinutes(r);
-  const rec = r.jobCard ? { number: r.jobCard.jobNumber, href: `/workshop/job-cards/${r.jobCard.id}`, customer: r.jobCard.customer.fullName } : r.vehicleService ? { number: r.vehicleService.serviceNumber, href: `/workshop/vehicle-service/${r.vehicleService.id}`, customer: r.vehicleService.customer.fullName } : null;
+  const rec = r.jobCard ? { number: r.jobCard.jobNumber, href: `/workshop/job-cards/${r.jobCard.id}`, customer: r.jobCard.customer.fullName, customerId: r.jobCard.customer.id } : r.vehicleService ? { number: r.vehicleService.serviceNumber, href: `/workshop/vehicle-service/${r.vehicleService.id}`, customer: r.vehicleService.customer.fullName, customerId: r.vehicleService.customer.id } : null;
   const input = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
   const btn = 'rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90';
   const line = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]';
@@ -60,7 +63,7 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
         <dl className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
           <Row k="Record" val={rec?.number} />
-          <Row k="Customer" val={rec?.customer} />
+          {rec?.customer ? <div className="flex justify-between gap-3 py-1 text-sm"><dt className="text-[var(--ejo-text-muted)]">Customer</dt><dd className="text-right text-[var(--ejo-text)]"><CustomerLink id={rec.customerId} name={rec.customer} canView={canSeeCustomers} /></dd></div> : null}
           <Row k="Plate / VIN" val={[r.vehicle.plateNumber, r.vehicle.chassisNumber].filter(Boolean).join(' · ') || null} />
           <Row k="Driver" val={`${r.driver.fullName}${r.driver.phone ? ` · ${r.driver.phone}` : ''}`} />
           {r.people.length ? <Row k="Going along" val={r.people.map((x: { name: string; employeeId: string | null }) => `${x.name}${x.employeeId ? ` (${x.employeeId})` : ''}`).join(', ')} /> : null}

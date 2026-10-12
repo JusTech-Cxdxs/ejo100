@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getVehicle, listEligibleSupervisorsForVehicleType } from '@/lib/actions/workshop';
 import { getVehicleServiceHealth } from '@/lib/actions/vehicle-service';
@@ -9,6 +9,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { ServiceComplaintListInput } from '@/components/ServiceComplaintListInput';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { PageHeader } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 /**
  * "Customer is back" — book a known vehicle straight in for its next
@@ -23,6 +24,8 @@ export default async function BookVehicleServicePage({ searchParams }: { searchP
   if (!vehicleId) notFound();
   const vehicle = await getVehicle(vehicleId);
   if (!vehicle) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const [health, supervisorResult] = await Promise.all([
     getVehicleServiceHealth(vehicle.id),
     vehicle.vehicleType ? listEligibleSupervisorsForVehicleType(vehicle.vehicleType) : Promise.resolve(null),
@@ -36,7 +39,7 @@ export default async function BookVehicleServicePage({ searchParams }: { searchP
         back={{ href: "/workshop/service-tracker", label: "Back to Service Tracker" }}
         title="Book in for service"
         description={<>{description}
-        {vehicle.plateNumber ? ` — ${vehicle.plateNumber}` : ''} · {vehicle.customer.fullName}</>}
+        {vehicle.plateNumber ? ` — ${vehicle.plateNumber}` : ''} · <CustomerLink id={vehicle.customerId} name={vehicle.customer.fullName} canView={canSeeCustomers} /></>}
       />
 
       {health?.inWorkshop ? (

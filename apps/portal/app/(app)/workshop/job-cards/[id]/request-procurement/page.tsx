@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getJobCard } from '@/lib/actions/workshop';
 import { getJobCardSourcingNeeds, getRequestableExternalProcurementLines } from '@/lib/actions/sourcing';
@@ -8,6 +8,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { BackLink, PageTitle } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 function formatNaira(value: number): string {
   return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -38,6 +39,8 @@ export default async function RequestProcurementPage({
   const { error } = await searchParams;
   const jobCard = await getJobCard(id);
   if (!jobCard) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
 
   const [sourcingNeeds, requestableLines] = await Promise.all([getJobCardSourcingNeeds(id), getRequestableExternalProcurementLines(id)]);
   const totalAmount = requestableLines.reduce((sum: number, l: (typeof requestableLines)[number]) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
@@ -77,7 +80,7 @@ export default async function RequestProcurementPage({
             </div>
             <div>
               <dt className="text-xs text-[var(--ejo-text-muted)]">Customer</dt>
-              <dd className="text-sm font-medium text-[var(--ejo-text)]">{jobCard.customer.fullName}</dd>
+              <dd className="text-sm font-medium text-[var(--ejo-text)]"><CustomerLink id={jobCard.customerId} name={jobCard.customer.fullName} canView={canSeeCustomers} /></dd>
             </div>
             <div>
               <dt className="text-xs text-[var(--ejo-text-muted)]">Vehicle</dt>

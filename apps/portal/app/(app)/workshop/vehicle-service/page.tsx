@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { headers } from 'next/headers';
 import { getVehicleServiceOutcomes } from '@/lib/actions/visit-outcomes';
 import { OutcomeFilterTabs } from '@/components/OutcomeFilterTabs';
@@ -20,6 +20,7 @@ import { ServiceComplaintListInput } from '@/components/ServiceComplaintListInpu
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -49,6 +50,8 @@ export default async function VehicleServicePage({
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { q, type, error, status, editInterval, outcome: rawOutcome } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const outcomeFilter = parseOutcomeFilter(rawOutcome);
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   const [branchId, session] = await Promise.all([
@@ -235,7 +238,7 @@ export default async function VehicleServicePage({
                         </LoadingLink>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3 text-[var(--ejo-text)]">{s.customer.fullName}</td>
+                    <td className="px-4 py-3 text-[var(--ejo-text)]"><CustomerLink id={s.customerId} name={s.customer.fullName} canView={canSeeCustomers} /></td>
                     <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       <LoadingLink href={`/workshop/vehicles/${s.vehicle.id}/edit`} className="hover:underline hover:text-[var(--ejo-text)]">
                         {[s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || '—'}

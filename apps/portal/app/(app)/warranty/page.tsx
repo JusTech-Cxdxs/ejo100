@@ -6,6 +6,7 @@ import { warrantyCoverage, WARRANTY_STATE_LABEL, type WarrantyCoverageState } fr
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { EmptyState, HeaderAction, Icon, PageHeader, StatusChip, type IconName } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 type Filter = 'all' | 'covered' | 'expiring' | 'pending' | 'expired' | 'inactive' | 'asset' | 'part' | 'reminder';
 
@@ -26,6 +27,8 @@ const FILTER_STATES: Record<Exclude<Filter, 'all' | 'asset' | 'part' | 'reminder
 export default async function WarrantyRegisterPage({ searchParams }: { searchParams: Promise<{ q?: string; filter?: string }> }) {
   await guardAnyPage(['warranty.view'], '/warranty');
   const { q, filter: rawFilter } = await searchParams;
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
   const filter: Filter = (['covered', 'expiring', 'pending', 'expired', 'inactive', 'asset', 'part', 'reminder'] as const).includes(rawFilter as never) ? (rawFilter as Filter) : 'all';
   const [warranties, reminderDueIds, canAnalytics] = await Promise.all([listWarranties(q), listWarrantyIdsWithReminderDue(), allows('analytics.warranty.view')]);
   const reminderDue = new Set(reminderDueIds);
@@ -122,7 +125,7 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
                     </div>
                   </td>
                   <td className="px-3 py-2 text-[var(--ejo-text)]">{w.subjectDescription}</td>
-                  <td className="px-3 py-2 text-[var(--ejo-text)]">{w.customer.fullName}</td>
+                  <td className="px-3 py-2 text-[var(--ejo-text)]"><CustomerLink id={w.customerId} name={w.customer.fullName} canView={canSeeCustomers} /></td>
                   <td className="px-3 py-2 text-xs">
                     {w.jobCard ? (
                       <LoadingLink href={`/workshop/job-cards/${w.jobCard.id}`} className="block text-[var(--ejo-primary)] hover:underline">

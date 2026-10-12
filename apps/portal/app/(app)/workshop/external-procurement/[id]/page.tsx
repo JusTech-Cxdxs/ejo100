@@ -1,4 +1,4 @@
-import { guardAnyPage } from '@/lib/authz/server';
+import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getExternalProcurementRequest, getExternalProcurementRequestAuditTrail } from '@/lib/actions/sourcing';
 import { listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
@@ -18,6 +18,7 @@ import { SupplementaryLineRow } from '@/components/SupplementaryLineRow';
 import { pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { BackLink, PageTitle } from '@/components/ui';
+import { CustomerLink } from '@/components/CustomerLink';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_FINANCE_REVIEW: 'Awaiting Finance review',
@@ -48,6 +49,8 @@ export default async function ExternalProcurementDetailPage({
   const { error, status } = await searchParams;
   const request = await getExternalProcurementRequest(id);
   if (!request) notFound();
+  // Customer names link to their Customers (CRM) page for those who may open it.
+  const canSeeCustomers = await allows('crm.view');
 
   const [isMasterAdmin, viewerId, eligibleManagers, eligibleFinance, auditTrail] = await Promise.all([
     currentUserIsMasterAdmin(),
@@ -141,7 +144,7 @@ export default async function ExternalProcurementDetailPage({
           </div>
           <div>
             <dt className="text-xs text-[var(--ejo-text-muted)]">Customer</dt>
-            <dd className="text-sm font-medium text-[var(--ejo-text)]">{request.jobCard.customer.fullName}</dd>
+            <dd className="text-sm font-medium text-[var(--ejo-text)]"><CustomerLink id={request.jobCard.customer.id} name={request.jobCard.customer.fullName} canView={canSeeCustomers} /></dd>
           </div>
           <div>
             <dt className="text-xs text-[var(--ejo-text-muted)]">Vehicle</dt>

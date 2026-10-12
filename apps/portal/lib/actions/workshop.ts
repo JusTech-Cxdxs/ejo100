@@ -1,6 +1,8 @@
 'use server';
 
-import { authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE } from '@/lib/authz/server';
+import { allows, authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE } from '@/lib/authz/server';
+import { cleanEmail, cleanName, cleanPhone, cleanPrimaryAddress, normaliseTags } from '@/lib/crm';
+import { sendCustomerAccessEmail } from '@/lib/customer-access';
 import { withdrawOpenSourcing } from '@/lib/sourcing-lifecycle';
 import { ESCALATION_CLAIM_MS } from '@/lib/vehicle-service-cycle';
 import { jobCardActive, jobCardInside, serviceInside } from '@/lib/custody';
@@ -48,11 +50,8 @@ import { anchorEscalatedServiceFromJobCard } from '@/lib/vehicle-service-cycle';
 import { custodyReminderState, notDueYetMessage, type CustodyReminderKind } from '@/lib/custody-reminders';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
-import { hashPassword } from 'better-auth/crypto';
 import { auth } from '@/lib/auth';
 import { sendEmail } from '@/lib/email';
-import { generateSecurePassword } from '@/lib/utils/generate-password';
-import { renderCustomerWelcomeEmail } from '@/lib/email-templates/customer-welcome';
 import { renderSupervisorJobCardAssignedEmail } from '@/lib/email-templates/supervisor-job-card-assigned';
 import { renderCustomerJobCardAcknowledgmentEmail } from '@/lib/email-templates/customer-job-card-acknowledgment';
 import { renderJobCardDecisionEmail } from '@/lib/email-templates/job-card-decision';
@@ -425,27 +424,26 @@ export async function listRecentCustomers(): Promise<CustomerSearchResult[]> {
 export type CreateCustomerInput = {
   customerType: 'INDIVIDUAL' | 'ORGANIZATION';
   fullName: string;
-  address?: string;
+  /** Primary address — required from v28 on (one short line, ≤ 80 characters). */
+  address: string;
   email: string;
-  phone?: string;
+  /** Primary phone — required from v28 on. */
+  phone: string;
+  altPhone?: string;
+  tags?: string[];
 };
 
 /** Finds an existing customer by email first — per the project rule that
  * a returning customer must never get a duplicate record. Only creates a
- * new row when no existing customer has that email. */
+ * new row when no existing customer has that email. A new customer must
+ * have a primary address and phone; they get a welcome email with a
+ * one-time set-password link (never a password). Front desk registers
+ * customers; the CRM's managers and administrators may too. */
 export async function findOrCreateCustomer(input: CreateCustomerInput) {
-  await authorize('workshop.customer.manage', undefined, 'findOrCreateCustomer');
+  if (!(await allows('workshop.customer.manage'))) await authorize('crm.manage', undefined, 'findOrCreateCustomer', 'Only front desk, managers and administrators can register customers.');
   const currentUser = await requireUser();
-  const email = input.email.trim().toLowerCase();
-  if (!email || !input.fullName.trim()) {
-    throw new WorkshopActionError('Customer name and email are required.');
-  }
-  const address = input.address?.trim() || null;
-  // Enforced, not just a UI hint — kept brief on purpose (like a VIN)
-  // so it never stretches the Job Card layout it's displayed on.
-  if (address && address.length > 80) {
-    throw new WorkshopActionError('Address must be 80 characters or fewer — keep it brief, e.g. "Plot 3, Cheesebrough, Lagos".');
-  }
+  const email = cleanEmail(input.email);
+  const fullName = cleanName(input.fullName, input.customerType === 'ORGANIZATION' ? 'Organisation name' : 'Customer name');
 
   const existing = await prisma.customer.findUnique({ where: { email } });
   if (existing) {
@@ -455,6 +453,12 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
     }
     return { customer: existing, wasExisting: true, welcomeEmailSent: false };
   }
+
+  // Required for every new customer (older records may still lack them).
+  const address = cleanPrimaryAddress(input.address);
+  const phone = cleanPhone(input.phone, { required: true, label: 'Phone number' })!;
+  const altPhone = cleanPhone(input.altPhone, { required: false, label: 'Second phone number' });
+  const tags = normaliseTags(input.tags ?? []);
 
   const branchId = await getWorkshopBranchId();
   const branch = await prisma.branch.findUniqueOrThrow({
@@ -466,73 +470,28 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
     data: {
       organisationId: branch.businessUnit.organisationId,
       customerType: input.customerType,
-      fullName: input.fullName.trim(),
+      fullName,
       address,
       email,
-      phone: input.phone?.trim() || null,
+      phone,
+      altPhone,
+      tags,
       createdById: currentUser.id,
     },
   });
 
   await writeAuditLog({
     userId: currentUser.id,
+    organisationId: customer.organisationId,
     action: 'customer.created',
     entityType: 'Customer',
     entityId: customer.id,
-    metadata: { fullName: customer.fullName, email: customer.email, customerType: customer.customerType },
+    metadata: { actor: 'staff', fullName: customer.fullName, email: customer.email, customerType: customer.customerType, phone, address },
   });
 
-  const orgContext = await getWorkshopOrgContext();
-  const welcomeEmailSent = await provisionCustomerAccountAndWelcomeEmail(customer, orgContext);
+  const welcome = await sendCustomerAccessEmail(customer.id, 'welcome', currentUser.id);
 
-  return { customer, wasExisting: false, welcomeEmailSent };
-}
-
-/** Creates the customer's Better Auth credential row (a random temporary
- * password, hashed the same way seed.ts hashes the Master Administrator's)
- * and emails it via the branded welcome template.
- *
- * Deliberately never throws: a customer record is a real, valuable
- * business outcome on its own — an SMTP hiccup shouldn't roll that back
- * or block the staff member at the counter. Failure is caught, logged,
- * and reported back via the `welcomeEmailSent` flag instead, so the UI
- * can tell staff to relay the details manually if it ever happens. */
-async function provisionCustomerAccountAndWelcomeEmail(
-  customer: { id: string; fullName: string; email: string },
-  orgContext: { companyName: string; branchName: string; departmentName: string },
-): Promise<boolean> {
-  try {
-    const temporaryPassword = generateSecurePassword();
-    await prisma.customerAccount.create({
-      data: {
-        customerId: customer.id,
-        accountId: customer.id,
-        providerId: 'credential',
-        password: await hashPassword(temporaryPassword),
-      },
-    });
-
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-    await sendEmail(
-      customer.email,
-      'Your Kewalram customer account is ready',
-      renderCustomerWelcomeEmail({
-        customerName: customer.fullName,
-        email: customer.email,
-        temporaryPassword,
-        loginUrl: `${websiteUrl}/customer-portal`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
-        companyName: orgContext.companyName,
-        branchName: orgContext.branchName,
-        departmentName: orgContext.departmentName,
-      }),
-    );
-    return true;
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to provision customer account / send welcome email:', err);
-    return false;
-  }
+  return { customer, wasExisting: false, welcomeEmailSent: welcome.sent };
 }
 
 // ---------------------------------------------------------------------------
@@ -4247,6 +4206,7 @@ export type WorkshopCustodyEntry = {
   vehicleId: string;
   vehicleType: string | null;
   jobNumber: string;
+  customerId?: string;
   customerName: string;
   vehicleDescription: string;
   status: string;
@@ -4330,7 +4290,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       jobNumber: true,
       status: true,
       readyForCollectionAt: true,
-      customer: { select: { fullName: true } },
+      customer: { select: { id: true, fullName: true } },
       vehicle: { select: { id: true, make: true, model: true, vehicleType: true } },
       estimate: { select: { customerNotifiedAt: true } },
       // Every request, not just approved ones — the same array
@@ -4362,7 +4322,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
     jobNumber: string;
     status: string;
     readyForCollectionAt: Date | null;
-    customer: { fullName: string };
+    customer: { id: string; fullName: string };
     vehicle: { id: string; make: string | null; model: string | null; vehicleType: string | null };
     estimate: { customerNotifiedAt: Date | null } | null;
     cancellationRequests: { id: string; status: string; reason: string; decidedAt: Date | null; requestedBy: { fullName: string } }[];
@@ -4373,6 +4333,7 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       vehicleId: jc.vehicle.id,
       vehicleType: jc.vehicle.vehicleType ?? null,
       jobNumber: jc.jobNumber,
+      customerId: jc.customer.id,
       customerName: jc.customer.fullName,
       vehicleDescription,
       status: jc.status,

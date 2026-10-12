@@ -1,14 +1,14 @@
 import { listBroadcasts, canBroadcast } from '@/lib/actions/notifications';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityTable } from '@/components/SecurityTable';
-import { BROADCAST_CATEGORY, BROADCAST_STATE_LABEL } from '@/lib/notification-rules';
+import { AUDIENCE_LABEL, BROADCAST_CATEGORY, BROADCAST_STATE_LABEL } from '@/lib/notification-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { HeaderAction, PageHeader, StatusChip } from '@/components/ui';
 
 const TABS: [string, string][] = [['live', 'Live'], ['scheduled', 'Scheduled'], ['ended', 'Ended'], ['all', 'All']];
-const AUDIENCE: Record<string, string> = { ALL: 'Everyone', BRANCH: 'Branches', DEPARTMENT: 'Departments', ROLE: 'Roles' };
+const AUDIENCE = AUDIENCE_LABEL;
 
 export default async function BroadcastsPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string; category?: string; status?: string }> }) {
   const { q, tab, category, status } = await searchParams;
@@ -46,7 +46,7 @@ export default async function BroadcastsPage({ searchParams }: { searchParams: P
             <td><LoadingLink href={`/notifications/broadcasts/${b.id}`} className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">{b.broadcastNumber}</LoadingLink></td>
             <td><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${BROADCAST_CATEGORY[b.category]!.chip}`}>{BROADCAST_CATEGORY[b.category]!.icon} {BROADCAST_CATEGORY[b.category]!.label}</span></td>
             <td>{b.title}<span className="block text-xs text-[var(--ejo-text-muted)]">by {b.createdBy.fullName}</span></td>
-            <td className="text-xs">{AUDIENCE[b.audience]}{b.audience !== 'ALL' ? ` (${b.audienceIds.length})` : ''}</td>
+            <td className="text-xs">{AUDIENCE[b.audience] ?? b.audience}{b.audience !== 'ALL' && b.audience !== 'CUSTOMERS_ALL' ? ` (${b.audienceIds.length})` : ''}</td>
             <td className="text-xs">{formatDateTimeCompact(b.startsAt)}<span className="block text-[var(--ejo-text-muted)]">{b.endsAt ? `to ${formatDateTimeCompact(b.endsAt)}` : 'until stopped'}{b.durationLabel ? ` · ${b.durationLabel}` : ''}</span></td>
             <td className="text-xs">{b.sendEmail ? (b.emailedAt ? 'Sent' : 'Pending') : '—'}</td>
             <td><StatusChip status={b.state} label={BROADCAST_STATE_LABEL[b.state]} className="text-[11px]" /></td>
