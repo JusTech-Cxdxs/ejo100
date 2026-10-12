@@ -99,6 +99,8 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   CustomerVerification: { tenancy: 'VIA_PARENT', owner: 'value', classification: ['SECRET'], lifecycle: 'EXPIRES', retention: 'Until used or expired (72 hours / 1 hour)', ai: 'NEVER' },
   CustomerNote: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: PERSONAL_RETENTION, ai: 'AUTHORISED_USER' },
   CustomerNotificationRead: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'Life of the customer account', ai: 'NEVER' },
+  AssistSession: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['SECURITY', 'AUDIT'], lifecycle: 'IMMUTABLE', retention: 'Kept with the audit trail', ai: 'NEVER' },
+  ErrorEvent: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EXPIRES', retention: '90 days, then removed by the clean-up job', ai: 'NEVER' },
   CustomerVehicle: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['PERSONAL'], lifecycle: 'PLATFORM_DELETE', retention: OPS_RETENTION, ai: 'AUTHORISED_USER' },
   ServiceReminderLog: { tenancy: 'VIA_PARENT', owner: 'vehicleId', classification: ['INTERNAL'], lifecycle: 'IMMUTABLE', retention: OPS_RETENTION, ai: 'AUTHORISED_USER' },
 

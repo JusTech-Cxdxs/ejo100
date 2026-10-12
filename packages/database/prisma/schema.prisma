@@ -464,6 +464,8 @@ model User {
   broadcastsStopped Broadcast[] @relation("BroadcastStoppedBy")
   notificationReads NotificationRead[] @relation("NotificationReads")
   customerNotes     CustomerNote[]     @relation("CustomerNoteAuthor")
+  assistsGiven      AssistSession[]    @relation("AssistSessionAssistant")
+  assistsReceived   AssistSession[]    @relation("AssistSessionSubject")
   notificationPreference NotificationPreference? @relation("NotificationPreference")
 }
 
@@ -3870,3 +3872,60 @@ model RoadTestPerson {
   @@index([roadTestId])
   @@map("road_test_people")
 }
+
+/// v29 — Assisted sessions. A Branch Assistant (IT / support desk) helps a
+/// colleague who is not comfortable with computers (e.g. a technician): the
+/// colleague confirms with their own password on the assistant's screen, and
+/// for a limited time the assistant works on the colleague's tasks. Every
+/// action is recorded as done BY the assistant FOR the colleague. Only roles
+/// without approval, money or administration rights can be assisted.
+model AssistSession {
+  id             String    @id @default(cuid())
+  organisationId String
+  assistantId    String
+  subjectId      String
+  branchId       String?
+  reason         String?
+  consentMethod  String    @default("password")
+  startedAt      DateTime  @default(now())
+  expiresAt      DateTime
+  endedAt        DateTime?
+  endedReason    String?
+  ipAddress      String?
+  userAgent      String?
+
+  assistant User @relation("AssistSessionAssistant", fields: [assistantId], references: [id])
+  subject   User @relation("AssistSessionSubject", fields: [subjectId], references: [id])
+
+  @@index([assistantId, endedAt])
+  @@index([subjectId, startedAt])
+  @@index([organisationId, startedAt])
+  @@map("assist_sessions")
+}
+
+/// v29 — Every unexpected error a person sees carries a short reference
+/// ("quote reference 3553129217"). The reference, where it happened and a
+/// secret-free summary are kept here so IT can look it up on the Error log
+/// page instead of searching server logs.
+model ErrorEvent {
+  id             String   @id @default(cuid())
+  ref            String
+  app            String
+  organisationId String?
+  userId         String?
+  customerId     String?
+  method         String?
+  path           String?
+  route          String?
+  kind           String?
+  name           String?
+  message        String
+  stack          String?
+  createdAt      DateTime @default(now())
+
+  @@index([ref])
+  @@index([organisationId, createdAt])
+  @@index([createdAt])
+  @@map("error_events")
+}
+

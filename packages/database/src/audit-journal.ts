@@ -146,6 +146,8 @@ const WRITE_ACTIONS = new Set(['create', 'createMany', 'update', 'updateMany', '
 const SKIP_MODELS = new Set([
   'AuditLog', 'Session', 'Account', 'Verification', 'NotificationRead', 'NotificationPreference',
   'CustomerSession', 'CustomerAccount', 'CustomerVerification', 'CustomerNotificationRead',
+  // Error references are written by the error handler itself — never journaled.
+  'ErrorEvent',
 ]);
 const SENSITIVE_KEY = /password|token|secret|hash/i;
 const MAX_JSON = 6000;
