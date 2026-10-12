@@ -140,9 +140,13 @@ p95 881 ms; live pulse (50 concurrent) p50 140 ms / p95 185 ms; 0 errors.
 
 ## Latest CI run
 
-* Workflow **E2E**, run **38232582051** on `work/e2e` @ `7b3c417` — both shards **success**:
-  shard 1/2 59 as expected (5 of them known defects) · 0 unexpected · 0 flaky; shard 2/2 58 as expected (2 known
-  defects) · 0 unexpected · 0 flaky (E2E-07 is asserted as a known defect only before 12:00 UTC, when it reproduces).
+* Workflow **E2E**, run **38240477342** on `work/e2e` @ `7b9b980` — both shards **success**:
+  shard 1/2 59 as expected (5 of them known defects) · 0 unexpected · 0 flaky (job 15.5 min, tests 9.1 min);
+  shard 2/2 58 as expected (2 known defects) · 0 unexpected · 0 flaky (job 15.1 min, tests 9.8 min).
+  E2E-07 is asserted as a known defect only before 12:00 UTC, when it reproduces.
+* Earlier green runs: 38232582051 @ `7b3c417` (0 flaky); 38236189680 @ `06192a4` and 38238553106 @ `d2bd06b`
+  each had one flaky test (passed on retry), fixed in the next commit: Job Card checkout clicked before hydration
+  (now re-opens the page), and the contractor check read the visitors board (now reads the contractors On-site tab).
 * Read any run's results: `gh api repos/JusTech-Cxdxs/ejo100/actions/runs/<run>/jobs --jq '.jobs[].id'`, then
   `gh api repos/JusTech-Cxdxs/ejo100/check-runs/<job id>/annotations`.
 
