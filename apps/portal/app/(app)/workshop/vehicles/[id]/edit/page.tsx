@@ -67,12 +67,9 @@ function reminderSender(
 }
 
 /**
- * The vehicle's own real page — read-only by default, the same
- * standard view/edit toggle every other detail page in this project
- * uses, rather than opening straight into an editable form. Shows
- * real Service Health, this vehicle's own genuine mileage-interval
- * override (separate from the organisation's own default), and its
- * full real audit trail.
+ * Vehicle page, read-only until Edit is chosen. Shows service health, the
+ * vehicle's own mileage interval (if it overrides the organisation default)
+ * and the audit trail.
  */
 export default async function VehiclePage({
   params,
@@ -229,8 +226,8 @@ export default async function VehiclePage({
             <div className="border-t border-[var(--ejo-border)] pt-4">
               <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">This vehicle&apos;s own service interval</p>
               <p className="mb-3 text-[11px] text-[var(--ejo-text-muted)]">
-                Leave both blank to use the workshop&apos;s own default interval. Only set these if this
-                particular vehicle&apos;s manufacturer manual actually calls for something different.
+                Leave both blank to use the workshop&apos;s default interval. Set them only if the
+                manufacturer&apos;s manual for this vehicle says otherwise.
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -275,7 +272,7 @@ export default async function VehiclePage({
         ) : (
           <div className="space-y-6">
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Details</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle details</h2>
               <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <dt className="text-xs text-[var(--ejo-text-muted)]">Type</dt>
@@ -336,7 +333,7 @@ export default async function VehiclePage({
             </div>
 
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit Trail</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit trail</h2>
               {auditTrail.length === 0 ? (
                 <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No recorded activity yet.</p>
               ) : (
@@ -366,9 +363,9 @@ export default async function VehiclePage({
                     : 'border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5'
               }`}
             >
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Service Health</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Service health</h2>
               <p className="mt-2 flex items-center gap-2 text-sm font-medium text-[var(--ejo-text)]">
-                <span>{serviceHealth.status === 'OVERDUE' ? '🔴' : serviceHealth.status === 'DUE_SOON' ? '🟡' : '🟢'}</span>
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${serviceHealth.status === 'OVERDUE' ? 'bg-[var(--ejo-error)]' : serviceHealth.status === 'DUE_SOON' ? 'bg-[var(--ejo-warning)]' : 'bg-[var(--ejo-success)]'}`} aria-hidden="true" />
                 {serviceHealth.status === 'OVERDUE' ? 'Overdue' : serviceHealth.status === 'DUE_SOON' ? 'Due Soon' : 'Up to Date'}
               </p>
               <dl className="mt-3 space-y-2 text-xs">
@@ -550,7 +547,7 @@ export default async function VehiclePage({
       </div>
 
       <div className="mt-6 space-y-6">
-        <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Analytics</h2>
+        <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle analytics</h2>
         <VehicleIntelligenceCard vi={intelligence} />
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
@@ -648,7 +645,7 @@ export default async function VehiclePage({
                     {analytics.outstanding > 0 ? `Outstanding: ${naira(analytics.outstanding)}` : 'Nothing outstanding.'}
                   </p>
                   <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
-                    Approved = estimates with the Manager&apos;s final approval. Paid = payments actually recorded. Real figures, never a projection.
+                    Approved = estimates with the Manager&apos;s final approval. Paid = payments recorded.
                   </p>
                 </>
               );

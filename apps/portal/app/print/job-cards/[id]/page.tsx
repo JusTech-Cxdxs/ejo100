@@ -31,9 +31,7 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
   CHEQUE: 'Cheque',
 };
 
-/** One label-above-value pair — tight spacing between the two, since
- * a label sitting far from its own value was the single most common
- * complaint about the first version of this document. */
+/** A label above its value, kept close together. */
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -44,15 +42,8 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * A real, standalone printable document for a Job Card, outside the
- * app's own dashboard layout entirely — the same isolated-route
- * approach already proven for the Store Parts Request receipt.
- *
- * Gated on CHECKED_OUT, not CLOSED — the schema's own comments already
- * settle this: CLOSED is an administrative sign-off that can happen
- * while the vehicle is still sitting in the yard, CHECKED_OUT is the
- * real, physical moment it actually leaves. That's the genuine final
- * stage a Vehicle Collection Receipt belongs to.
+ * Vehicle Collection Receipt for a Job Card, outside the app layout. Only
+ * available once CHECKED_OUT: a CLOSED vehicle can still be in the yard.
  */
 export default async function PrintJobCardPage({
   params,
@@ -70,11 +61,8 @@ export default async function PrintJobCardPage({
   if (!jobCard || !organisation) notFound();
   if (jobCard.status !== 'CHECKED_OUT') notFound();
 
-  // Once a cancelled Job Card is checked out, its own status field
-  // becomes CHECKED_OUT too — identical to a normal completed one.
-  // The one real place "this was cancelled" still survives is an
-  // approved cancellation request against it, so that's the real
-  // signal this document's own cancelled variant is built on.
+  // A cancelled Job Card also ends as CHECKED_OUT; the approved
+  // cancellation request is what marks it as cancelled.
   const cancellation = jobCard.cancellationRequests[0] ?? null;
   const wasCancelled = Boolean(cancellation);
 
@@ -85,15 +73,8 @@ export default async function PrintJobCardPage({
   const totalPaid = jobCard.payments.reduce((sum: number, p: (typeof jobCard.payments)[number]) => sum + Number(p.amount), 0);
   const vehicleSummary = [jobCard.vehicle.year, jobCard.vehicle.make, jobCard.vehicle.model, jobCard.vehicle.engineType].filter(Boolean).join(' ') || 'No vehicle details on file';
   const accentColor = wasCancelled ? '#DC2626' : '#16A34A';
-  // Same real logic as the Job Card's own detail page — working days
-  // only (no Saturday/Sunday), ending at checkedOutAt specifically
-  // (the true physical-exit moment). This document only ever exists
-  // once a Job Card is genuinely CHECKED_OUT (see the notFound() gate
-  // above), so both figures are always the real, final, frozen count
-  // here — never the still-running version.
-  // One shared rule (lib/visit-durations) — identical to the Job Card
-  // page. In Service ends at whatever genuinely ended the work:
-  // completion, an approved cancellation, or check-out.
+  // Working days up to check-out (lib/visit-durations, as on the Job Card
+  // page). In Service ends at completion, cancellation or check-out.
   const durations = visitDurations({
     checkedInAt: jobCard.createdAt,
     workStartedAt: jobCard.workStartedAt,
@@ -200,11 +181,7 @@ export default async function PrintJobCardPage({
             <tr style={{ borderBottom: '1.5px solid #0F172A', textAlign: 'left' }}>
               <th style={{ padding: '6px 4px' }}>S/N</th>
               <th style={{ padding: '6px 4px' }}>Description</th>
-              {/* The internal type breakdown (Store Part / External
-                  Part / External Job / Internal Job / Labour / Sundry)
-                  is company-internal detail, never shown to a
-                  customer — the same real rule already applied to the
-                  customer estimate email. Organisation copy only. */}
+              {/* Line types are internal: organisation copy only. */}
               {isOrgCopy ? <th style={{ padding: '6px 4px' }}>Type</th> : null}
               <th style={{ padding: '6px 4px', textAlign: 'right' }}>Quantity</th>
               <th style={{ padding: '6px 4px', textAlign: 'right' }}>Amount</th>

@@ -42,14 +42,9 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Vehicle Collection Receipt for a Vehicle Service — the parallel of
- * Job Card's own collection receipt (print/job-cards/[id]). Organisation
- * Copy by default, Customer Copy with ?variant=client.
- *
- * Gated on COLLECTED (checked out) — the real physical-exit moment, the
- * same reasoning as Job Card's CHECKED_OUT gate: CLOSED is an
- * administrative sign-off that can happen while the vehicle is still in
- * the yard.
+ * Vehicle Collection Receipt for a Vehicle Service. Organisation copy by
+ * default, customer copy with ?variant=client. Only available once
+ * COLLECTED: a CLOSED vehicle can still be in the yard.
  */
 export default async function PrintVehicleServicePage({
   params,
@@ -62,7 +57,7 @@ export default async function PrintVehicleServicePage({
   const { variant } = await searchParams;
   const isOrgCopy = variant !== 'client';
 
-  // A stale, mistyped or out-of-reach id is simply "not found".
+  // An id the viewer can't see is a 404.
   if (!(await serviceVisible(id, '[id]'))) notFound();
   const [service, estimate, payments, closeRequests, sourcing, organisation] = await Promise.all([
     getVehicleService(id),
@@ -81,9 +76,7 @@ export default async function PrintVehicleServicePage({
   const totalEstimate = lineItems.reduce((sum: number, l: (typeof lineItems)[number]) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
   const totalPaid = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount), 0);
   const vehicleSummary = [service.vehicle.year, service.vehicle.make, service.vehicle.model, service.vehicle.engineType].filter(Boolean).join(' ') || 'No vehicle details on file';
-  // Working days only, ending at the real physical-exit moment — a
-  // final, frozen figure, since this document only exists once checked out.
-  // One shared rule (lib/visit-durations) — identical to Job Cards.
+  // Working days up to check-out (lib/visit-durations, as for Job Cards).
   const durations = visitDurations({
     checkedInAt: service.checkedInAt ?? service.createdAt,
     workStartedAt: service.workStartedAt,
@@ -161,8 +154,7 @@ export default async function PrintVehicleServicePage({
             <tr style={{ borderBottom: '1.5px solid #0F172A', textAlign: 'left' }}>
               <th style={{ padding: '6px 4px' }}>S/N</th>
               <th style={{ padding: '6px 4px' }}>Description</th>
-              {/* The internal type breakdown is company-internal — never
-                  shown to a customer. Organisation copy only. */}
+              {/* Line types are internal: organisation copy only. */}
               {isOrgCopy ? <th style={{ padding: '6px 4px' }}>Type</th> : null}
               <th style={{ padding: '6px 4px', textAlign: 'right' }}>Quantity</th>
               <th style={{ padding: '6px 4px', textAlign: 'right' }}>Amount</th>

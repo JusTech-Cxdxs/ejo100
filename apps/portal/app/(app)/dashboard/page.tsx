@@ -51,13 +51,8 @@ function greeting(): string {
 }
 
 /**
- * Real counts, real trend, and a real "needs your attention" summary
- * — no hardcoded numbers, no filler chart data. The revenue trend and
- * the announcement composer are only ever shown to Master Admin or a
- * real eligible Manager, matching how every other management-level
- * view already works in this system — everyone else still gets the
- * real Job Cards trend and the same real attention summary, since
- * those are genuinely everyone's business, not just management's.
+ * Counts, trends and the "needs your attention" summary. The revenue trend
+ * and announcement composer are for Master Admin and Managers only.
  */
 export default async function DashboardPage() {
   // What this person works with — the dashboard shows only their areas.
@@ -90,7 +85,7 @@ export default async function DashboardPage() {
     { label: 'Job Cards in custody', value: counts.inWorkshop, href: '/workshop/custody', icon: 'garage' },
     { label: 'Vehicle Services in custody', value: counts.servicesInWorkshop, href: '/workshop/vehicle-service-custody', icon: 'droplet' },
     { label: 'Total Customers', value: counts.totalCustomers, href: '/workshop/customers', icon: 'users' },
-    { label: 'Total Vehicles Registered', value: counts.totalVehicles, href: '/workshop/vehicles', icon: 'car' },
+    { label: 'Vehicles registered', value: counts.totalVehicles, href: '/workshop/vehicles', icon: 'car' },
   ];
 
   return (
@@ -179,7 +174,7 @@ export default async function DashboardPage() {
           icon="bolt"
           tone={notifications.length ? 'warning' : 'success'}
           title={<>Needs your attention {notifications.length ? <span className="ml-1 rounded-full bg-[var(--ejo-warning)]/15 px-2 py-0.5 text-xs text-[var(--ejo-warning-text)]">{notifications.length} {notifications.length === 1 ? 'thing' : 'things'}</span> : null}</>}
-          description="Each one stays here until it is done — open it to take care of it."
+          description="Each item stays here until it has been dealt with."
           actions={<LoadingLink href="/notifications" className="font-medium text-[var(--ejo-primary)] hover:underline">Open the Notification Center →</LoadingLink>}
         >
           {notifications.length > 0 ? (

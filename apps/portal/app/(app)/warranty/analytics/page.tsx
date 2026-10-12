@@ -75,7 +75,7 @@ export default async function WarrantyAnalyticsPage() {
             and claim. Each figure says how it is calculated.</>}
       />
 
-      <Section icon="bolt" title="What to do now" subtitle="Prescriptive — prioritised actions, each linked to its record. Priority 1 protects money at risk today.">
+      <Section icon="bolt" title="What to do now" subtitle="Actions in priority order, each linked to its record. Priority 1 is money at risk today.">
         {a.prescriptive.actions.length === 0 ? (
           <div className={card}><EmptyState compact icon="check-circle" title="Nothing needs attention right now." /></div>
         ) : (
@@ -222,10 +222,10 @@ export default async function WarrantyAnalyticsPage() {
         </div>
       </Section>
 
-      <Section icon="sparkles" title="Predictive" subtitle="What is coming — based on this organisation's own history (not guesses).">
+      <Section icon="trend-up" title="Predictive" subtitle="What is coming — based on this organisation's own history (not guesses).">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Kpi icon="clock" label="Expiring in 30 / 60 / 90 days" value={`${p.expiring30} / ${p.expiring60} / ${p.expiring90}`} hint="Warranties still covering that will end" tone="text-[var(--ejo-warning)]" />
-          <Kpi icon="sparkles" label="Expected claims, next 90 days" value={p.expectedClaims90 === null ? '—' : p.expectedClaims90.toFixed(1)} hint={p.claimRatePerWarrantyMonth === null ? 'Not enough history yet' : `${(p.claimRatePerWarrantyMonth * 100).toFixed(2)} claims per 100 warranty-months × ${p.basis.activeWarranties} covering × 3 months`} />
+          <Kpi icon="trend-up" label="Expected claims, next 90 days" value={p.expectedClaims90 === null ? '—' : p.expectedClaims90.toFixed(1)} hint={p.claimRatePerWarrantyMonth === null ? 'Not enough history yet' : `${(p.claimRatePerWarrantyMonth * 100).toFixed(2)} claims per 100 warranty-months × ${p.basis.activeWarranties} covering × 3 months`} />
           <Kpi icon="money" label="Expected claim cost, next 90 days" value={naira(p.expectedCost90)} hint="Expected claims × median claim value" />
           <Kpi icon="activity" label="In progress (not yet decided)" value={naira(p.pipelineValue)} hint={`Expected to be approved: ${naira(p.expectedPipelineRecovery)} (at the value-approval rate)`} />
           <Kpi label="Approved, awaiting settlement" value={naira(p.awaitingMoney)} hint="Money, replacements or repairs still to arrive"  icon="clock" />

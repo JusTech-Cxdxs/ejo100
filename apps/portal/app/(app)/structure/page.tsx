@@ -38,7 +38,7 @@ export default async function StructurePage({ searchParams }: { searchParams: Pr
     <div className="w-full max-w-6xl p-4 sm:p-8">
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--ejo-primary)]">{s.organisation?.name ?? 'Organisation'}</p>
       <PageTitle icon="sitemap" className="mt-1">Organisation structure</PageTitle>
-      <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">How the organisation is laid out — business units, the branches under each, and the departments in every branch — with the people in each. Staff are placed into a branch and department on the Users page. Every change here is recorded in the audit trail.</p>
+      <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">Business units, their branches and each branch&apos;s departments, with headcounts. Staff are placed in a branch and department on the Users page. Every change is recorded in the audit trail.</p>
 
       {error ? <div className="mt-4"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       {status && STRUCTURE_STATUS[status] ? <div className="mt-4"><FormFeedbackBanner kind="success" message={STRUCTURE_STATUS[status]!} /></div> : null}

@@ -23,16 +23,8 @@ const WRENCH_ICON = (
 );
 
 /**
- * One Job Card's own dedicated matching page — properly styled with
- * its real vehicle details, exactly like a real Job Card or Part
- * detail page gets its own page rather than everything for every Job
- * Card stacked together in one shared view. As each line is matched,
- * it disappears from here immediately (revalidation already reaches
- * the Job Card's own page too, so it shows there right away as well)
- * — and once nothing real is left unmatched, a real "Notify —
- * Matching Complete" action appears, the same one already proven on
- * the Job Card page itself, so Store can do the whole job from right
- * here without needing to jump elsewhere.
+ * Store matching for one Job Card. Matched lines drop off the list; when
+ * none are left, the Store can notify the workshop that matching is complete.
  */
 export default async function JobCardMatchingPage({
   params,
@@ -43,7 +35,7 @@ export default async function JobCardMatchingPage({
 }) {
   await guardAnyPage(['store.view'], '/inventory');
   const { jobCardId } = await params;
-  // A stale, mistyped or out-of-reach id is simply "not found".
+  // An id the viewer can't see is a 404.
   if (!(await jobCardVisible(jobCardId, 'page'))) notFound();
   const { error, status } = await searchParams;
   const [branchId, jobCard, lines] = await Promise.all([
@@ -96,8 +88,7 @@ export default async function JobCardMatchingPage({
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 p-6">
           <p className="text-sm font-medium text-[var(--ejo-text)]">Every requested line for this Job Card is matched.</p>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-            The Supervisor and Technician were notified automatically the moment the last line was matched — this
-            estimate is ready for submission.
+            The supervisor and technician have been notified. The estimate is ready to submit.
           </p>
         </div>
       ) : (

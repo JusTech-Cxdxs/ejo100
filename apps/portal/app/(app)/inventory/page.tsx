@@ -4,20 +4,15 @@ import { OrgTrail } from '@/components/OrgTrail';
 import { PageHeader, NavCard, type IconName } from '@/components/ui';
 
 const sections: { name: string; href: string; desc: string; icon: IconName }[] = [
-  { name: 'Parts Catalog', href: '/inventory/parts', icon: 'package', desc: 'Every part the store stocks — tracking type, unit of measure, and current stock on hand.' },
-  { name: 'Goods Receipts', href: '/inventory/goods-receipts', icon: 'receipt', desc: 'A complete record of every delivery received into the store.' },
-  { name: 'Part Categories & Types', href: '/inventory/part-types', icon: 'layers', desc: 'The generic classification technicians pick from when requesting Store Parts on an estimate.' },
-  { name: 'Estimate Matching', href: '/inventory/estimate-matching', icon: 'match', desc: 'Store Part lines awaiting a real, vehicle-fitting catalog Part and price.' },
-  { name: 'Inventory Analytics', href: '/inventory/analytics', icon: 'chart', desc: 'Stock health, reorder intelligence (suggested reorder points and safety stock), demand, ABC/XYZ, turnover and true profitability — with what to do next.' },
-  { name: 'Pricing Command Center', href: '/inventory/pricing', icon: 'tag', desc: 'Every delivery cost auto-compared against a Part\'s own target margin — real alerts, real analysis, one-click price sync.' },
+  { name: 'Parts Catalog', href: '/inventory/parts', icon: 'package', desc: 'Parts the Store stocks, with tracking type, unit and stock on hand.' },
+  { name: 'Goods Receipts', href: '/inventory/goods-receipts', icon: 'receipt', desc: 'Deliveries received into the Store.' },
+  { name: 'Part Categories & Types', href: '/inventory/part-types', icon: 'layers', desc: 'The categories and types technicians choose from on an estimate.' },
+  { name: 'Estimate Matching', href: '/inventory/estimate-matching', icon: 'match', desc: 'Store Part lines waiting to be matched to a catalogue part and priced.' },
+  { name: 'Inventory Analytics', href: '/inventory/analytics', icon: 'chart', desc: 'Stock health, suggested reorder points and safety stock, demand, ABC/XYZ, turnover and profitability.' },
+  { name: 'Pricing Command Center', href: '/inventory/pricing', icon: 'tag', desc: 'Delivery costs checked against each part\'s target margin, with alerts and price updates.' },
 ];
 
-/**
- * Inventory module landing page — Phase 1 of the Store system: the part
- * catalog and goods receipt. The Issue Slip workflow (requesting and
- * releasing stock to a Job Card) and External Procurement (cash-advance
- * sourcing) are their own later phases, not yet built.
- */
+/** Inventory landing page: links to each Store area the viewer may open. */
 export default async function InventoryPage() {
   await guardAnyPage(['store.view'], '/inventory');
   // Show only what this person may open (the same rule the pages enforce).

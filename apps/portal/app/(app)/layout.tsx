@@ -12,21 +12,9 @@ import { OfflineNotice } from '@/components/OfflineNotice';
 import { portalConfig } from '@/lib/site-config';
 
 /**
- * Fetches the logged-in user's real name/role server-side (via Prisma
- * directly, not Better Auth's session.user) and passes it to Topbar,
- * which previously showed a hardcoded "John Doe / Administrator".
- *
- * Deliberately queries Prisma for `fullName` rather than trusting Better
- * Auth's session.user.name: this project's User model has `fullName`,
- * not `name` — the same field-naming gap already found once this project
- * (Account.password) — so relying on Better Auth's own session shape
- * here would risk showing blank/wrong data. Querying Prisma directly
- * sidesteps that question entirely rather than assuming an answer to it.
- *
- * Notifications and the marquee's own real items are both fetched here,
- * once, at the real top of the authenticated layout — every page
- * underneath genuinely shares the same real header, not a per-page
- * re-fetch of the same data.
+ * Signed-in shell. The user's name and role come from Prisma (`fullName`),
+ * not Better Auth's session.user, whose `name` field our User model doesn't
+ * have. Notifications and the marquee are fetched once here for every page.
  */
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await auth.api.getSession({ headers: await headers() });

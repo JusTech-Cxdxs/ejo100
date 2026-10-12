@@ -275,7 +275,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Verify this warranty</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                The Warranty HOD or Branch Manager — not the person who registered it — checks the evidence, then verifies it. Until then it covers nothing.
+                The Warranty HOD or Branch Manager (not the person who registered it) checks the evidence and verifies it. Until then it covers nothing.
               </p>
               {canVerify ? (
                 <form action={verifyWarrantyFormAction} className="mt-3">

@@ -15,11 +15,8 @@ function formatNaira(value: number): string {
 }
 
 /**
- * The real Vehicle Service equivalent of Job Card's own request-parts
- * page — same read-only "review, then raise" preview, same header
- * context, same columns and total. Nothing here is re-entered: every
- * Store Part line was already matched, priced and approved before this
- * page can be reached at all.
+ * Vehicle Service version of the Job Card request-parts page: a read-only
+ * review of lines that are already matched, priced and approved.
  */
 export default async function VehicleServiceRequestPartsPage({
   params,
@@ -47,8 +44,7 @@ export default async function VehicleServiceRequestPartsPage({
       <BackLink href={`/workshop/vehicle-service/${id}`} label={<>Back to Vehicle Service {service.serviceNumber}</>} className="mb-4" />
       <PageTitle icon="package" className="mb-2">Request Store Parts</PageTitle>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
-        Every Part below was already matched and priced by Store. Nothing here needs editing; raising the request
-        simply sends this exact list forward for approval.
+        These parts have been matched and priced by the Store. Check the list, then raise the request for approval.
       </p>
 
       {error ? (

@@ -23,12 +23,9 @@ const TRACKING_TYPE_LABEL: Record<string, string> = {
 };
 
 /**
- * The part catalog — every item the store stocks, with its tracking
- * type (Quantity/Batch/Serialized — the real distinction behind how
- * each part's stock is actually represented) and current stock on
- * hand. Create form covers the base unit of measure and one optional
- * alternative unit with its conversion factor — the drum-of-oil
- * scenario this was designed around.
+ * Parts catalogue: every stocked item with its tracking type (Quantity,
+ * Batch, Serialized) and stock on hand. A part can have one alternative unit
+ * with a conversion factor (e.g. a drum of oil in litres).
  */
 export default async function InventoryPartsPage({
   searchParams,
@@ -174,7 +171,7 @@ export default async function InventoryPartsPage({
                 emptyMessage="No Part Type matches — add one under Part Categories & Types first."
               />
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Category and Part Number are both derived from this — nothing else to fill in for either.
+                The category and part number are set from this.
               </p>
             </div>
             <div>

@@ -17,11 +17,7 @@ const TYPE_LABEL: Record<string, string> = {
   SUNDRY: 'Sundry',
 };
 
-/**
- * Printable estimate for a Job Card — Organisation Copy by default,
- * Customer Copy with ?variant=client. Only exists once the Manager has
- * given final approval, the same moment the customer can be told.
- */
+/** Printable Job Card estimate. Customer copy with ?variant=client. Available after Manager approval. */
 export default async function PrintJobCardEstimatePage({
   params,
   searchParams,
@@ -31,7 +27,7 @@ export default async function PrintJobCardEstimatePage({
 }) {
   const { id } = await params;
   const { variant } = await searchParams;
-  // A stale, mistyped or out-of-reach id is simply "not found".
+  // An id the viewer can't see is a 404.
   if (!(await jobCardVisible(id, 'estimate'))) notFound();
   const [jobCard, estimate, payments, auditTrail, organisation] = await Promise.all([
     getJobCard(id),

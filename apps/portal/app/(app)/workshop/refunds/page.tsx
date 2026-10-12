@@ -12,12 +12,7 @@ function naira(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/**
- * Refunds register — every refund paid back to a customer, like the
- * Parts Requests list: the RF receipt, the Job Card or Vehicle Service it
- * belongs to, the customer, amount and method, who received the money,
- * who in Finance refunded it and when, and its printable receipt.
- */
+/** Refunds register: every refund paid to a customer, with its printable receipt. */
 export default async function RefundsRegisterPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { q } = await searchParams;
@@ -33,8 +28,8 @@ export default async function RefundsRegisterPage({ searchParams }: { searchPara
         icon="refund"
         back={{ href: "/workshop", label: "Back to Workshop" }}
         title="Refunds"
-        description={<>Every refund paid back to a customer after a cancelled Job Card or Vehicle Service — authorised by a Manager&apos;s approval,
-        paid and recorded by Finance, each with its own RF receipt.</>}
+        description={<>Refunds paid to customers after a cancelled Job Card or Vehicle Service. A Manager authorises each refund;
+        Finance pays and records it, with an RF receipt.</>}
       />
 
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">

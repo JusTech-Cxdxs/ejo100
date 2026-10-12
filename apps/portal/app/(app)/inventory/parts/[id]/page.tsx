@@ -150,8 +150,8 @@ export default async function PartDetailPage({
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Batches</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Revenue and Profit are estimates using the Part&apos;s current Selling Price — the real amount actually
-                charged for stock sold in the past may have differed if the price has changed since.
+                Revenue and profit are estimated from the part&apos;s current selling price; earlier sales may have
+                been at a different price.
               </p>
               {part.batches.length === 0 ? (
                 <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No batches recorded yet.</p>
@@ -172,14 +172,8 @@ export default async function PartDetailPage({
                     </thead>
                     <tbody>
                       {(() => {
-                        // The first real batch, in real FIFO order,
-                        // that still has stock left — the one
-                        // warehouse should genuinely be drawing from
-                        // right now, matching the exact same real
-                        // order actual issuance already draws from
-                        // (see requestStoreMatching's own FIFO logic).
-                        // Found once, outside the render loop itself,
-                        // so only ever one real batch gets the tag.
+                        // The oldest batch with stock left, which FIFO
+                        // issues next (see requestStoreMatching).
                         const activeBatchId = part.batches.find((b: (typeof part.batches)[number]) => Number(b.remainingQuantity) > 0)?.id ?? null;
                         return part.batches.map((batch: (typeof part.batches)[number]) => {
                         const received = Number(batch.receivedQuantity);
@@ -273,7 +267,7 @@ export default async function PartDetailPage({
                   {part.batches.some((b: (typeof part.batches)[number]) => b.consumptions.length > 0) ? (
                     <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
                       <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">
-                        Sold To — real trace of every real draw against a batch, for warranty or quality-defect reference
+                        Sold to: every issue from this batch, for warranty or defect tracing
                       </p>
                       <div className="space-y-1.5">
                         {part.batches
@@ -298,11 +292,10 @@ export default async function PartDetailPage({
             </div>
           ) : part.trackingType === 'SERIALIZED' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Serial Numbers</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Serial numbers</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Every real unit ever received, individually tracked — Profit is an estimate using the Part&apos;s current
-                Selling Price for each unit already issued out; a unit still In Stock has no profit yet since it
-                hasn&apos;t sold.
+                Every unit received, tracked individually. Profit is estimated from the part&apos;s current selling
+                price; units still in stock have no profit yet.
               </p>
               {part.serials.length === 0 ? (
                 <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No serial numbers recorded yet.</p>
@@ -404,16 +397,13 @@ export default async function PartDetailPage({
                   {part.serials.some((x: (typeof part.serials)[number]) => x.issuedToSlipLine) ? (
                     <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
                       <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">
-                        Sold To — real trace of every real draw against this Part, for warranty or quality-defect reference
+                        Sold to: every issue of this part, for warranty or defect tracing
                       </p>
                       <div className="space-y-1.5">
                         {part.serials
                           .filter((x: (typeof part.serials)[number]) => x.issuedToSlipLine)
                           .map((x: (typeof part.serials)[number]) => {
-                            // Same format as Batch and Quantity "Sold To":
-                            // what went out, from which delivery, to which
-                            // customer — plus the one thing only a serial
-                            // has: the exact physical unit.
+                            // Same as Batch "Sold To", plus the serial number.
                             const slip = x.issuedToSlipLine!.slip;
                             const owner = slip.jobCard?.customer ?? slip.vehicleService?.customer ?? null;
                             return (
@@ -441,16 +431,16 @@ export default async function PartDetailPage({
             </div>
           ) : (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Stock Summary</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Stock summary</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Tracked by quantity, with every delivery (GRN) kept as its own FIFO layer — stock is always issued
-                from the oldest delivery first, and every release records which delivery it came from. Revenue and
-                Profit are estimates using the Part&apos;s current Selling Price against each delivery&apos;s real cost.
+                Tracked by quantity. Each delivery (GRN) is a FIFO layer: stock is issued from the oldest delivery
+                first, and each release records the delivery it came from. Revenue and profit are estimated from the
+                current selling price against each delivery&apos;s cost.
               </p>
 
               {part.goodsReceiptLines.length > 0 ? (
                 <div className="mt-4">
-                  <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Deliveries — every real GRN this running total is built from</p>
+                  <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Deliveries (GRNs) that make up this total</p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
@@ -466,11 +456,9 @@ export default async function PartDetailPage({
                       </thead>
                       <tbody>
                         {(() => {
-                          // Each delivery (Goods Receipt line) is a FIFO
-                          // layer, exactly like a batch — sold / remaining
-                          // come from the same engine the release itself
-                          // uses (lib/inventory/quantity-fifo.ts), so this
-                          // table and every Parts Request always agree.
+                          // Each delivery is a FIFO layer. Sold/remaining
+                          // come from lib/inventory/quantity-fifo.ts, the
+                          // same code the release uses.
                           const trace = part.quantityTrace;
                           const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
                           const fifoLines = [...part.goodsReceiptLines].sort(
@@ -519,8 +507,7 @@ export default async function PartDetailPage({
                       </tbody>
                       <tfoot>
                         {(() => {
-                          // Summed per delivery — each layer's own real cost,
-                          // exactly how the Batches totals are built.
+                          // Summed per delivery, like the batch totals.
                           const trace = part.quantityTrace;
                           const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
                           let totalReceived = 0;
@@ -571,7 +558,7 @@ export default async function PartDetailPage({
               {part.quantityConsumptions.length > 0 ? (
                 <div className="mt-6 border-t border-[var(--ejo-border)] pt-4">
                   <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">
-                    Sold To — real trace of every real draw against this Part, for warranty or quality-defect reference
+                    Sold to: every issue of this part, for warranty or defect tracing
                   </p>
                   <div className="space-y-1.5">
                     {part.quantityConsumptions.map((c: (typeof part.quantityConsumptions)[number]) => {
@@ -612,16 +599,10 @@ export default async function PartDetailPage({
 
           {part.trackingType === 'SERIALIZED' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Units In Stock</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Units in stock</h2>
               {(() => {
-                // A real bug fixed here: getPart()'s own serials query
-                // was widened to fetch every unit ever received (for
-                // the fuller Serial Numbers history table below), not
-                // just the ones still in stock — this section still
-                // needs its own explicit filter now that the upstream
-                // query no longer does it, or an already-issued unit
-                // would keep showing here as if it were still
-                // available to hand out again.
+                // getPart() returns every serial ever received (for the
+                // history table), so filter to units still in stock.
                 const inStockSerials = part.serials.filter((s: (typeof part.serials)[number]) => s.status === 'IN_STOCK');
                 return inStockSerials.length === 0 ? (
                   <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No units currently in stock.</p>
@@ -643,7 +624,7 @@ export default async function PartDetailPage({
 
           {part.alternativeUnits.length > 0 ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Alternative Units</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Alternative units</h2>
               <ul className="mt-3 space-y-1 text-sm text-[var(--ejo-text)]">
                 {part.alternativeUnits.map((unit: (typeof part.alternativeUnits)[number]) => (
                   <li key={unit.id}>
@@ -685,10 +666,10 @@ export default async function PartDetailPage({
           </>) : null}
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Fitment</h2>
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle fitment</h2>
             <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
               {part.fitments.length === 0
-                ? "No fitment recorded — this part is treated as fitting every vehicle, which is correct for universal parts like fluids. Add a fitment only if this part genuinely varies by vehicle."
+                ? "No fitment recorded, so this part fits every vehicle (right for universal parts such as fluids). Add a fitment only if it depends on the vehicle."
                 : 'Only fits the vehicle configurations listed below.'}
             </p>
             {part.fitments.length > 0 ? (
@@ -933,7 +914,7 @@ export default async function PartDetailPage({
           </div>
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit Trail</h2>
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit trail</h2>
             {auditTrail.length === 0 ? (
               <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No edits recorded yet.</p>
             ) : (

@@ -25,9 +25,7 @@ export default async function WorkshopVehiclesPage({
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
-  // Delete now lives in its own Danger Zone on the Edit Vehicle page,
-  // not here — this list no longer needs to know who's a Master Admin
-  // at all.
+  // Deleting a vehicle is done from its own page (Danger zone).
   const vehicles = await listAllVehicles(q, vehicleType);
 
   return (

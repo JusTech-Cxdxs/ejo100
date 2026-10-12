@@ -24,10 +24,10 @@ export default async function PermissionsPage() {
       <PageHeader
         icon="key"
         title="Permissions"
-        description={<>Who can do what, and on which records. Each department does its own work and sees only what that work needs — Front Desk opens jobs, supervisors and
-        technicians do the work, the Manager approves and closes, Finance handles money, the Store handles stock, Security runs the gate. Every rule is checked on
-        the server for every page, action, list and search. A person with several roles (for example Front Desk and Broadcaster) gets what those roles allow together.
-        Headquarters can add a permission to a role on the Roles page.</>}
+        description={<>Who can do what, and on which records. Each department sees only what its work needs: Front Desk opens jobs, supervisors and
+        technicians do the work, the Manager approves and closes, Finance handles money, the Store handles stock and Security runs the gate. The server
+        checks every rule on every page, action, list and search. Someone with several roles gets what those roles allow together. Headquarters can add a
+        permission to a role on the Roles page.</>}
       />
       <PermissionsMatrix roles={slugs.map((s) => ROLE_LABELS[s] ?? s)} rows={rows} />
       <p className="mt-4 text-xs text-[var(--ejo-text-muted)]">{pluralize(keys.length, 'permission')} across {pluralize(new Set(keys.map((k) => PERMISSIONS[k].module)).size, 'area')} and {pluralize(slugs.length, 'role')}.</p>

@@ -31,12 +31,9 @@ const TAG_ICON = (
 );
 
 /**
- * The real, two-level Part Category / Part Type hierarchy — Filter
- * containing Oil Filter/Fuel Filter, Fluid containing Coolant/Engine
- * Oil/Brake Fluid, and so on. This is what a technician actually
- * browses when adding a Store Part line to an estimate — never a
- * real, vehicle-specific catalog Part, and never a price. Store
- * builds this list once; technicians pick from it every time after.
+ * Part Categories and Part Types (e.g. Filter → Oil Filter, Fuel Filter).
+ * Technicians pick a Part Type on an estimate; the Store later matches it to
+ * a catalogue part and price.
  */
 export default async function PartTypesPage({
   searchParams,
@@ -61,8 +58,8 @@ export default async function PartTypesPage({
         icon="layers"
         back={{ href: "/inventory", label: "Back to Inventory" }}
         title="Part Categories & Types"
-        description={<>The generic classification a technician picks from when requesting a Store Part on an estimate — Store then
-        matches each request to the real, vehicle-fitting catalog Part.</>}
+        description={<>Technicians choose a Part Type when adding a Store Part to an estimate. The Store then matches it to a
+        catalogue part that fits the vehicle.</>}
       />
 
       {error ? (

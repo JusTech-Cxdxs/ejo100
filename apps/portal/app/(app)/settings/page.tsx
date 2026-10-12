@@ -23,7 +23,7 @@ export default async function SettingsPage() {
 
       <section className={`${card} mt-8`}>
         <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Scheduled jobs</h2>
-        <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Each run is recorded. A job that sends nothing has simply found nothing to send (no appointments today, no open alerts).</p>
+        <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Each run is recorded. A run that sends nothing had nothing to send (for example, no appointments today).</p>
         <div className="mt-4 divide-y divide-[var(--ejo-border)]">
           {jobs.map((j) => {
             const stale = !j.lastRun || Date.now() - j.lastRun.getTime() > (j.key === 'appointment-reminders' ? 3600000 : 3 * 86400000);

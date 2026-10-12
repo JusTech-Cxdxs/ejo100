@@ -129,17 +129,12 @@ const SERVICE_ESTIMATE_LINE_TYPE_DISPLAY: Record<string, string> = {
 
 const NEXT_ACTION: Record<string, { status: string; label: string } | null> = {
   SCHEDULED: { status: 'CHECKED_IN', label: 'Check In Vehicle' },
-  // No manual path to IN_SERVICE — every real Vehicle Service goes
-  // through the real choice (Continue with Normal Service or
-  // Escalate) after inspection. Choosing Continue means writing a
-  // real estimate; once that's approved, the 70% deposit is what
-  // actually moves this to In Service (see recordServicePayment),
-  // never a manual click. There's no such thing as a free visit with
-  // nothing to estimate and nothing to pay for.
+  // No manual move to IN_SERVICE: after inspection the service either
+  // continues with an estimate (the 70% deposit moves it on, see
+  // recordServicePayment) or escalates to a Job Card.
   CHECKED_IN: null,
   IN_SERVICE: { status: 'COMPLETED', label: 'Complete Service' },
-  // Same end-of-life ladder as Job Card's own: Ready for Collection →
-  // a Manager-approved close (see the Close panel) → Check Out.
+  // Same ending as a Job Card: Ready for Collection → Manager-approved close → Check Out.
   COMPLETED: { status: 'READY_FOR_COLLECTION', label: 'Mark Ready for Collection' },
   READY_FOR_COLLECTION: null,
   CLOSED: { status: 'COLLECTED', label: 'Check Out Vehicle' },
@@ -204,9 +199,7 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'payment.approved': 'Deposit requirement met — work started',
 };
 
-// Prisma returns Decimal fields as Decimal objects (from decimal.js),
-// not plain numbers — Number(...) here is a deliberate, safe
-// conversion, matching Job Card's own module-level formatNaira exactly.
+// Prisma returns Decimal objects; amounts are stored rounded to 2dp.
 function formatNaira(value: unknown): string {
   if (value === null || value === undefined) return '—';
   return `₦${Number(value).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -234,10 +227,7 @@ function formatAuditDetail(entry: { action: string; metadata: unknown }): string
       return typeof meta.reason === 'string' ? `Reason: ${meta.reason}` : null;
     case 'vehicle_service.escalated_to_job_card':
       return typeof meta.jobNumber === 'string' ? `New Job Card: ${meta.jobNumber}` : null;
-    // Same real detail-building logic as Job Card's own
-    // formatAuditDetail — one real place a technician, supervisor or
-    // Master Admin can see exactly what changed on this estimate and
-    // who did it, not just that "something" happened.
+    // Same detail format as the Job Card page's formatAuditDetail.
     case 'service_estimate.line_item_added':
     case 'service_estimate.line_item_updated': {
       const parts: string[] = [];
@@ -308,9 +298,8 @@ export default async function VehicleServiceDetailPage({
   await guardAnyPage(['workshop.view'], '/workshop');
   const { editMileage, editLineId, error, status } = await searchParams;
   const { id } = await params;
-  // Round 1 — everything that needs only the service's id, all at once
-  // (each database trip crosses regions, so fewer rounds = a faster page).
-  // A stale, mistyped or out-of-reach id is simply "not found".
+  // Round 1: everything that needs only the id, in parallel (each database
+  // round trip crosses regions). An id the viewer can't see is a 404.
   if (!(await serviceVisible(id, 'page'))) notFound();
   const [service, isMasterAdmin, viewerId, technicians, auditTrail, inspection, serviceEstimate, payments, sourcingNeeds, closeRequests, refunds, warranties, roadTests, cancellationRequests] = await Promise.all([
     getVehicleService(id),
@@ -339,7 +328,7 @@ export default async function VehicleServiceDetailPage({
   const isReadOnly = service.status === 'ESCALATED' || Boolean(service.escalatedToJobCard);
   const isEstimateContributor = !isReadOnly && (isMasterAdmin || service.supervisor?.id === viewerId || service.assignedTechnician?.id === viewerId);
   const nextAction = NEXT_ACTION[service.status];
-  // Round 2 — what needs the service's branch or its estimate, all at once.
+  // Round 2: what needs the branch or the estimate.
   const [partTypes, partCategories, eligibleFinance, eligibleManagers, partWarrantyBadges] = await Promise.all([
     listPartTypes(service.branchId),
     listPartCategories(service.branchId),
@@ -354,15 +343,11 @@ export default async function VehicleServiceDetailPage({
   }));
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
-  // Same real rule as Job Card's own isCreator — whoever created this
-  // Vehicle Service itself (matching notifyCustomerOfApprovedServiceEstimate's
-  // own backend check), not whoever happened to start the estimate.
+  // The person who opened the Vehicle Service, as checked by
+  // notifyCustomerOfApprovedServiceEstimate on the server.
   const isEstimateCreator = isMasterAdmin || service.createdBy.id === viewerId;
   const hasUnmatchedStoreParts = serviceEstimate?.lineItems.some((li: { type: string; matchedPartId: string | null }) => li.type === 'STORE_PART' && !li.matchedPartId) ?? false;
-  // Same real "live while still Draft" price as Job Card's own
-  // getLiveLineAmount — a matched Store Part line always reflects the
-  // Part's own current real price for as long as the estimate can
-  // still be edited, never a stale snapshot.
+  // While Draft, a matched Store Part line follows the part's current price.
   function getLiveLineAmount(item: { type: string; quantity: unknown; amount: unknown; matchedPart: { sellingPrice: unknown } | null }): number {
     if (item.type === 'STORE_PART' && item.matchedPart && serviceEstimate?.status === 'DRAFT' && item.matchedPart.sellingPrice !== null) {
       return Math.round(Number(item.quantity) * Number(item.matchedPart.sellingPrice) * 100) / 100;
@@ -371,7 +356,6 @@ export default async function VehicleServiceDetailPage({
   }
   const estimateTotal = (serviceEstimate?.lineItems ?? []).reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
-  // Estimate lines whose part carries a warranty — shown before fitting.
   const refundedTotal = refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
   const pendingCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'PENDING') ?? null;
   const approvedCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'APPROVED') ?? null;
@@ -381,7 +365,7 @@ export default async function VehicleServiceDetailPage({
     ['SCHEDULED', 'CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'].includes(service.status) &&
     !service.escalatedToJobCard &&
     (isMasterAdmin || service.createdBy.id === viewerId || service.supervisor?.id === viewerId);
-  // Same real rule the server enforces for close and check-out.
+  // Same rule the server enforces for close and check-out.
   const isPaidInFull = paymentsTotal >= estimateTotal;
   const pendingCloseRequest = closeRequests.find((r: (typeof closeRequests)[number]) => r.status === 'PENDING') ?? null;
   // Who may take each step — mirrors requireVehicleServiceStepRole.
@@ -397,8 +381,7 @@ export default async function VehicleServiceDetailPage({
         : true;
   const isActiveVisit = service.status === 'SCHEDULED' || service.status === 'CHECKED_IN' || service.status === 'IN_SERVICE';
   const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
-  // A cancelled job that took money is about the refund, not payment
-  // progress — never "Payment Completed" on money being given back.
+  // A cancelled job that took money shows refund progress, not payment progress.
   const paymentStatus: 'AWAITING_PAYMENT' | 'PARTIAL' | 'DEPOSIT_MET' | 'PAID_IN_FULL' | 'REFUND_DUE' | 'REFUNDED' =
     service.status === 'CANCELLED' && paymentsTotal > 0
       ? refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0) >= paymentsTotal - 0.004
@@ -411,9 +394,7 @@ export default async function VehicleServiceDetailPage({
         : estimateTotal > 0 && paymentsTotal >= minimumDeposit
           ? 'DEPOSIT_MET'
           : 'PARTIAL';
-  // Same real rule as Job Card's own — the payment badge appears the
-  // moment payment is genuinely expected (customer notified), or once
-  // any payment at all has been recorded.
+  // Payments show once the customer has been notified or any payment exists.
   const showPayments = payments.length > 0 || Boolean(serviceEstimate?.customerNotifiedAt);
 
   const canRoadTest = await canRequestRoadTestOn('VEHICLE_SERVICE', service.id);
@@ -438,7 +419,7 @@ export default async function VehicleServiceDetailPage({
       ) : null}
       {status === 'estimate_cancelled' ? (
         <div className="mb-6 max-w-xl">
-          <FormFeedbackBanner kind="success" message="Estimate cancelled — you can now escalate to a Job Card instead." />
+          <FormFeedbackBanner kind="success" message="Estimate cancelled. You can now escalate to a Job Card." />
         </div>
       ) : null}
       {status === 'line_added' ? (
@@ -483,7 +464,7 @@ export default async function VehicleServiceDetailPage({
       ) : null}
       {status === 'line_matched' ? (
         <div className="mb-6 max-w-xl">
-          <FormFeedbackBanner kind="success" message="Matched to a real Part." />
+          <FormFeedbackBanner kind="success" message="Line matched to a Store part." />
         </div>
       ) : null}
       {status === 'estimate_submitted' ? (
@@ -586,7 +567,7 @@ export default async function VehicleServiceDetailPage({
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Customer &amp; Vehicle</h2>
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Customer &amp; vehicle</h2>
             <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Customer</dt>
@@ -719,7 +700,7 @@ export default async function VehicleServiceDetailPage({
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Inspection</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle inspection</h2>
               {inspection?.status === 'IN_PROGRESS' || inspection?.status === 'COMPLETED' ? (
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${inspection.status === 'COMPLETED' ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]' : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'}`}>
                   {inspection.status === 'COMPLETED' ? 'Completed' : 'In Progress'}
@@ -729,7 +710,7 @@ export default async function VehicleServiceDetailPage({
               ) : null}
             </div>
             <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-              The real technical record of what the supervisor/technician actually found on this vehicle.
+              What the supervisor or technician found on this vehicle.
             </p>
             {isReadOnly ? (
               <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">
@@ -740,7 +721,7 @@ export default async function VehicleServiceDetailPage({
                 ) : (
                   'No inspection was recorded.'
                 )}{' '}
-                — read-only, this service was escalated.
+                (read-only, this service was escalated).
               </p>
             ) : !inspection ? (
               <LoadingLink
@@ -809,7 +790,7 @@ export default async function VehicleServiceDetailPage({
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-[var(--ejo-text)]">
-                  {serviceEstimate ? 'Service Estimate' : 'What happens next?'}
+                  {serviceEstimate ? 'Service Estimate' : 'Next step'}
                 </h2>
                 {serviceEstimate ? (
                   <div className="flex items-center gap-2">
@@ -838,8 +819,8 @@ export default async function VehicleServiceDetailPage({
               </div>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
                 {serviceEstimate
-                  ? "For routine work that doesn't need a Job Card — engine oil, filters, and other items the customer still needs priced and approved."
-                  : 'Choose one — a real repair beyond routine service should escalate to a Job Card; routine work continues here with its own estimate.'}
+                  ? 'Routine work that does not need a Job Card, such as engine oil and filters. The customer still approves the price.'
+                  : 'Routine work continues here with its own estimate. Repairs beyond routine service should be escalated to a Job Card.'}
               </p>
 
               {!serviceEstimate ? (
@@ -855,10 +836,10 @@ export default async function VehicleServiceDetailPage({
                   </form>
 
                   <div className="mt-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-4">
-                    <h3 className="text-sm font-semibold text-[var(--ejo-error)]">Or escalate — real repair work</h3>
+                    <h3 className="text-sm font-semibold text-[var(--ejo-error)]">Or escalate to a Job Card</h3>
                     <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                      Beyond routine maintenance? This opens a real Job Card for this vehicle — that&apos;s
-                      where the estimate is actually built, approved, and worked from.
+                      For repair work. This opens a Job Card for this vehicle, and the estimate is prepared and
+                      approved there.
                     </p>
                     {(() => {
                       const findings = (inspection?.items ?? []).filter(
@@ -866,8 +847,8 @@ export default async function VehicleServiceDetailPage({
                       );
                       return findings.length > 0 ? (
                         <p className="mt-2 text-xs text-[var(--ejo-text)]">
-                          <span className="font-medium">{findings.length}</span> inspection finding{findings.length === 1 ? '' : 's'} will carry
-                          straight into the new Job Card as real complaint lines — nothing needs retyping.
+                          <span className="font-medium">{findings.length}</span> inspection finding{findings.length === 1 ? '' : 's'} will be
+                          copied into the new Job Card as complaints.
                         </p>
                       ) : null;
                     })()}
@@ -878,7 +859,7 @@ export default async function VehicleServiceDetailPage({
                       <textarea
                         name="additionalComplaint"
                         rows={2}
-                        placeholder="Anything else worth adding…"
+                        placeholder="Anything else to add (optional)"
                         className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                       />
                       <SubmitButton
@@ -911,9 +892,9 @@ export default async function VehicleServiceDetailPage({
                           <th className="py-1.5 pr-2 font-medium">Description</th>
                           <th className="py-1.5 pr-2 text-right font-medium">Qty</th>
                           <th className="py-1.5 pr-2 font-medium">Unit</th>
-                          <th className="py-1.5 pr-2 text-right font-medium">Unit Price</th>
+                          <th className="py-1.5 pr-2 text-right font-medium">Unit price</th>
                           <th className="py-1.5 pr-2 text-right font-medium">Amount</th>
-                          <th className="py-1.5 pr-2 font-medium">Entered By</th>
+                          <th className="py-1.5 pr-2 font-medium">Entered by</th>
                           {isEstimateContributor ? <th className="py-1.5 font-medium">&nbsp;</th> : null}
                         </tr>
                       </thead>
@@ -922,23 +903,14 @@ export default async function VehicleServiceDetailPage({
                           const canModifyThis = serviceEstimate.status !== 'MANAGER_APPROVED' && isEstimateContributor && (viewerId === line.enteredById || isApprover);
                           const isEditingThis = editLineId === line.id && canModifyThis;
                           const needsMatch = line.type === 'STORE_PART' && !line.matchedPartId;
-                          // Same real preview purpose as Job Card's own
-                          // table — a genuine, non-binding look at what
-                          // the unit will actually be, never a value
-                          // that's itself submitted anywhere.
+                          // Display only: the matched unit, or the Part Type's typical unit.
                           const storePartPreviewUnit =
                             line.type === 'STORE_PART'
                               ? (line.unitOfMeasure ?? partTypes.find((t: (typeof partTypes)[number]) => t.id === line.partTypeId)?.typicalUnit ?? null)
                               : null;
                           const rawUnit = line.type === 'STORE_PART' ? storePartPreviewUnit : line.unitOfMeasure;
                           const displayUnit = rawUnit ? pluralizeWord(Number(line.quantity), rawUnit) : '—';
-                          // Same real "live while still Draft" price
-                          // tracking as Job Card's own table — a
-                          // matched Store Part line always shows the
-                          // Part's own current real selling price
-                          // while the estimate can still be edited at
-                          // all, never a stale snapshot from the
-                          // moment it happened to be matched.
+                          // While Draft, show the matched part's current selling price.
                           const liveUnitPrice =
                             line.type === 'STORE_PART' && line.matchedPart && serviceEstimate.status === 'DRAFT' && line.matchedPart.sellingPrice !== null
                               ? Number(line.matchedPart.sellingPrice)
@@ -1145,8 +1117,8 @@ export default async function VehicleServiceDetailPage({
                       <input type="hidden" name="vehicleServiceId" value={service.id} />
                       <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
                         {serviceEstimate.matchingRequestedAt
-                          ? 'Store matching already requested — awaiting Store. Submission stays on hold until every Store Part line is matched.'
-                          : 'This estimate has Store Part lines with no price yet — those only get priced once Store matches them. Request Store matching to move forward.'}
+                          ? 'Store matching requested. You can submit once the Store has matched every Store Part line.'
+                          : 'Store Part lines are priced when the Store matches them. Request Store matching to continue.'}
                       </p>
                       <SubmitButton
                         label={serviceEstimate.matchingRequestedAt ? 'Request Store Matching Again' : 'Request Store Matching'}
@@ -1162,7 +1134,7 @@ export default async function VehicleServiceDetailPage({
                       <input type="hidden" name="estimateId" value={serviceEstimate.id} />
                       <input type="hidden" name="vehicleServiceId" value={service.id} />
                       <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
-                        Every line needs a price before this can be submitted — a supervisor will validate it next.
+                        Every line needs a price. The supervisor validates the estimate next.
                       </p>
                       <SubmitButton
                         label="Submit for validation"
@@ -1191,7 +1163,7 @@ export default async function VehicleServiceDetailPage({
                       <input type="hidden" name="estimateId" value={serviceEstimate.id} />
                       <input type="hidden" name="vehicleServiceId" value={service.id} />
                       <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
-                        The supervisor has validated this estimate — it&apos;s ready for your own final sign-off.
+                        The supervisor has validated this estimate. It is ready for your approval.
                       </p>
                       <SubmitButton
                         label="Approve as manager"
@@ -1214,8 +1186,7 @@ export default async function VehicleServiceDetailPage({
                       <input type="hidden" name="estimateId" value={serviceEstimate.id} />
                       <input type="hidden" name="vehicleServiceId" value={service.id} />
                       <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
-                        Approved by the manager. Once you&apos;re satisfied everything is in order, notify the customer
-                        so they can review the estimate and proceed.
+                        Approved by the manager. Check the estimate, then notify the customer.
                       </p>
                       <SubmitButton
                         label="Notify customer"
@@ -1276,12 +1247,12 @@ export default async function VehicleServiceDetailPage({
                     </div>
                   ))}
                   <div className="flex justify-between pt-1 text-sm font-semibold text-[var(--ejo-text)]">
-                    <span>Total Recorded</span>
+                    <span>Total recorded</span>
                     <span>{formatNaira(paymentsTotal)}</span>
                   </div>
                   {estimateTotal > 0 && paymentsTotal < estimateTotal ? (
                     <div className="flex justify-between text-sm text-[var(--ejo-warning)]">
-                      <span>Balance Remaining</span>
+                      <span>Balance remaining</span>
                       <span>{formatNaira(estimateTotal - paymentsTotal)}</span>
                     </div>
                   ) : null}
@@ -1295,10 +1266,8 @@ export default async function VehicleServiceDetailPage({
               ) : ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'].includes(service.status) && isEligibleFinance ? (
                 <>
                   <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
-                    Recording is fully automatic — the move to In Service happens the moment the total recorded
-                    first reaches the 70% minimum deposit, with no separate approval step. Pick a suggested amount
-                    below, or choose &quot;Other&quot; to enter one manually — either way, whatever the field shows is
-                    exactly what gets recorded.
+                    Once payments reach the 70% minimum deposit, the service moves to In Service automatically.
+                    Pick a suggested amount or choose &quot;Other&quot; to enter a different one.
                   </p>
                   <form key={payments.length} action={recordServicePaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
                     <IdempotencyKey />
@@ -1342,7 +1311,7 @@ export default async function VehicleServiceDetailPage({
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Sourcing</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Auto-detected from this Vehicle Service&apos;s own estimate — Store parts are requested and tracked here.
+                Based on this Vehicle Service&apos;s estimate. Store parts are requested and tracked here.
               </p>
               <div className="mt-4 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-info)]/5 p-4">
                 <div className="flex items-center justify-between gap-2">
@@ -1391,7 +1360,7 @@ export default async function VehicleServiceDetailPage({
 
           {(service.nextServiceDueOdometer || service.nextServiceDueDate) ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/30 bg-[var(--ejo-info)]/5 p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Next Service Due</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Next service due</h2>
               <p className="mt-2 text-sm text-[var(--ejo-text)]">
                 {service.nextServiceDueOdometer ? `${service.nextServiceDueOdometer.toLocaleString('en-NG')} km` : null}
                 {service.nextServiceDueOdometer && service.nextServiceDueDate ? ' or ' : null}
@@ -1420,9 +1389,8 @@ export default async function VehicleServiceDetailPage({
             <div id="review-approval" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Review this Vehicle Service</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Approve to confirm this Vehicle Service can proceed, or reject it back to {service.createdBy.fullName}{' '}
-                with a reason — a rejection doesn&apos;t have to mean something was wrong; availability or workload
-                are valid reasons too.
+                Approve to let the work go ahead, or reject it back to {service.createdBy.fullName} with a reason
+                (availability or workload are fine reasons).
               </p>
               <form action={approveVehicleServiceFormAction} className="mt-4 space-y-2">
                 <FormPendingOverlay />
@@ -1511,7 +1479,7 @@ export default async function VehicleServiceDetailPage({
                       <textarea
                         name="technicianNotes"
                         rows={3}
-                        placeholder="What was actually done…"
+                        placeholder="Work done"
                         className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                       />
                     </div>
@@ -1529,7 +1497,7 @@ export default async function VehicleServiceDetailPage({
                       name="collectedByName"
                       required
                       defaultValue={service.customer.fullName}
-                      placeholder="Whoever is physically collecting the vehicle"
+                      placeholder="Person collecting the vehicle"
                       className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                     />
                   </div>
@@ -1548,7 +1516,7 @@ export default async function VehicleServiceDetailPage({
             <div id="close-request" className="scroll-mt-24 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Request close</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Requires Manager approval before this Vehicle Service is actually closed — the same approval Job Card&apos;s own close needs.
+                A Manager must approve before this Vehicle Service is closed.
               </p>
               {pendingCloseRequest ? (
                 <>
@@ -1587,7 +1555,7 @@ export default async function VehicleServiceDetailPage({
                 </>
               ) : !isPaidInFull ? (
                 <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
-                  Payment must be completed in full before a close can be requested — {formatNaira(estimateTotal - paymentsTotal)} still outstanding.
+                  The balance must be paid in full before a close can be requested. Outstanding: {formatNaira(estimateTotal - paymentsTotal)}.
                 </p>
               ) : isEstimateCreator || isApprover ? (
                 <form action={requestVehicleServiceCloseFormAction} className="mt-3">
@@ -1735,7 +1703,7 @@ export default async function VehicleServiceDetailPage({
                 <input type="hidden" name="serviceId" value={service.id} />
                 <textarea name="reason" required rows={2} placeholder="Why should this Vehicle Service be cancelled?" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
                 <p className="text-[11px] text-[var(--ejo-text-muted)]">
-                  A Workshop Manager approves or declines it.{paymentsTotal > 0 ? ` ${formatNaira(paymentsTotal)} has been paid — approval authorises a full refund.` : ''} Cancelling also stops this vehicle&apos;s service reminders until a service is next completed.
+                  A Workshop Manager approves or declines it.{paymentsTotal > 0 ? ` ${formatNaira(paymentsTotal)} has been paid; approval authorises a full refund.` : ''} Cancelling also stops this vehicle&apos;s service reminders until its next completed service.
                 </p>
                 <SubmitButton label="Request cancellation" pendingLabel="Requesting…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10" />
               </form>
