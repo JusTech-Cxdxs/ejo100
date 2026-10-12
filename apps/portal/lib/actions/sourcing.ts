@@ -6,21 +6,13 @@ import { logFailure } from '@/lib/log';
 import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach, seeBranchAnyOf, seeJobCard, seeService } from '@/lib/authz/server';
 
 /**
- * Sourcing — the two paths a Job Card's estimate can genuinely need once
- * work has actually started: Store-held parts (a Parts Request Slip,
- * approved by the Workshop HOD then Store, released by a Storekeeper) and
- * externally-sourced parts/jobs (a cash advance — request, Manager
- * approval, Finance disbursement). Which one(s) apply to a given Job Card
- * is never a human decision — it's read directly from the estimate's own
- * line item types.
- *
- * Both gated on the same 70%-paid threshold that already governs when the
- * estimate itself becomes visible (JobCard.status reaching IN_PROGRESS or
- * later) — reused directly, not reimplemented.
- *
- * Cross-cutting between Workshop and Store, so this lives as its own file
- * rather than inside either workshop.ts or store.ts — reuses the real,
- * already-verified auth helpers from both rather than duplicating them.
+ * Sourcing for a Job Card (or Vehicle Service) once work has started:
+ * - Store parts: a Parts Request Slip, approved by the Workshop HOD, then
+ *   Store (which reserves stock), then released by a storekeeper.
+ * - External parts/jobs: a cash advance, reviewed by Finance, approved by a
+ *   Manager, then disbursed by Finance.
+ * Which flow applies is read from the estimate's line types, not chosen.
+ * Both start only once the deposit has moved the job to IN_PROGRESS.
  */
 
 import { prisma, getAuditActor } from '@ejo/database';
@@ -42,33 +34,18 @@ import { renderExternalProcurementApprovalNeededEmail, renderExternalProcurement
 import { renderServiceEstimatePartRequestApprovalNeededEmail, renderServiceEstimatePartRequestStatusEmail } from '@/lib/email-templates/service-estimate-part-request-status';
 import { lagosYear } from '@/lib/utils/format-date';
 
-/** Mirrors getStoreOrgContext()/getWorkshopOrgContext() exactly, but
- * scoped directly to a real branchId rather than a fixed department
- * slug — this workflow's own emails genuinely span both the Workshop
- * side (requesting, HOD approval) and the Store side (approval,
- * release), so no single department name would ever be honestly
- * correct for every recipient. */
+/** Like getStoreOrgContext(), but by branch: these emails go to both
+ * Workshop and Store staff, so the department name is passed in. */
 async function getSourcingOrgContext(branchId: string, departmentName: string): Promise<{ companyName: string; branchName: string; departmentName: string }> {
   const branch = await prisma.branch.findUniqueOrThrow({
     where: { id: branchId },
     select: { name: true, businessUnit: { select: { organisation: { select: { name: true } } } } },
   });
-  // The returned field is still named companyName (not renamed to
-  // organisationName) deliberately — every one of the 32 email
-  // templates across this project already expects a `companyName`
-  // parameter, and renaming this one return value's field name would
-  // either break all of them or force a 32-file ripple for a purely
-  // internal parameter name that's never shown as literal text to
-  // anyone. Only the real underlying bug — this query still using the
-  // Prisma relation's old name (`company`, now `organisation` after
-  // the schema rename) — needed fixing here.
+  // Named companyName because every email template takes `companyName`.
   return { companyName: branch.businessUnit.organisation.name, branchName: branch.name, departmentName };
 }
 
-/** The one real query every email this whole request chain sends
- * needs — fetched once, reused everywhere, so every stage's own email
- * shows the exact same real Job Card/vehicle picture, never a
- * slightly different one assembled separately each time. */
+/** Job Card and vehicle details shared by every email in the request chain. */
 async function getPartRequestEmailContext(jobCardId: string) {
   const jobCard = await prisma.jobCard.findUniqueOrThrow({
     where: { id: jobCardId },
@@ -82,18 +59,11 @@ async function getPartRequestEmailContext(jobCardId: string) {
       department: { select: { name: true } },
     },
   });
-  // A Job Card's own department is genuinely optional in the real
-  // schema (departmentId String?) — a real, live bug this fixes: the
-  // first version assumed it was always present and crashed in
-  // production the moment a Job Card with no department set actually
-  // reached this code. "Workshop" is an honest, generic fallback,
-  // never a guess at which specific department it might have been.
+  // departmentId is optional on JobCard; fall back to a generic name.
   return { ...jobCard, departmentName: jobCard.department?.name ?? 'Workshop' };
 }
 
-/** The real Vehicle Service equivalent of getPartRequestEmailContext —
- * entirely separate function, never a branch inside the Job Card one,
- * so the working Job Card path is never touched by this at all. */
+/** Vehicle Service version of getPartRequestEmailContext(). */
 async function getServiceEstimatePartRequestEmailContext(vehicleServiceId: string) {
   const service = await prisma.vehicleService.findUniqueOrThrow({
     where: { id: vehicleServiceId },
@@ -110,10 +80,8 @@ async function getServiceEstimatePartRequestEmailContext(vehicleServiceId: strin
   return { ...service, departmentName: service.department?.name ?? 'Workshop' };
 }
 
-/** The real Vehicle Service equivalent of
- * notifyTechnicianAndSupervisorOfPartRequestStatus below — same real
- * reasoning, entirely separate function and entirely separate email
- * template, never touching the Job Card version at all. */
+/** Vehicle Service version of notifyTechnicianAndSupervisorOfPartRequestStatus(),
+ * with its own email template. */
 async function notifySupervisorAndTechnicianOfServiceEstimatePartRequestStatus(
   vehicleServiceId: string,
   slipId: string,
@@ -148,15 +116,11 @@ async function notifySupervisorAndTechnicianOfServiceEstimatePartRequestStatus(
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Service Estimate Parts Request status emails', referenceNumber, err);
   }
 }
 
-/** The Technician and Supervisor both hear about every real stage
- * this request moves through — the Supervisor's own genuine ability
- * to follow up depends on actually knowing what's happening, not
- * just the Technician who happened to raise it in the first place. */
+/** Emails the technician and supervisor at every stage of a parts request. */
 async function notifyTechnicianAndSupervisorOfPartRequestStatus(
   jobCardId: string,
   slipId: string,
@@ -191,16 +155,11 @@ async function notifyTechnicianAndSupervisorOfPartRequestStatus(
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Parts Request status emails', referenceNumber, err);
   }
 }
 
-/** Mirrors notifyTechnicianAndSupervisorOfPartRequestStatus() exactly
- * — External Procurement's own version, for its own four real
- * stages. getPartRequestEmailContext() is reused as-is here rather
- * than duplicated: it's already generic to any Job Card, nothing in
- * it is specific to Store Parts. */
+/** External Procurement version of notifyTechnicianAndSupervisorOfPartRequestStatus(). */
 async function notifyTechnicianAndSupervisorOfExternalProcurementStatus(
   jobCardId: string,
   requestId: string,
@@ -237,21 +196,17 @@ async function notifyTechnicianAndSupervisorOfExternalProcurementStatus(
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send External Procurement status emails', referenceNumber, err);
   }
 }
 
 class SourcingActionError extends Error {}
 
-/** A Job Card is only far enough along to source anything once payment has
- * genuinely started work — the same real-world moment IN_PROGRESS already
- * marks. Anything at or past that point (including later stages like
- * Quality Check) can still legitimately need a late-discovered part. */
+/** Sourcing starts once the deposit has started work (IN_PROGRESS). Later
+ * stages, such as Quality Check, can still need a late part. */
 const SOURCEABLE_STATUSES = ['IN_PROGRESS', 'AWAITING_PARTS', 'QUALITY_CHECK', 'COMPLETED'] as const;
 
-/** PRS-2026-000001 — same year-prefixed, zero-padded sequence as
- * JC-/GRN- numbering elsewhere in this project. */
+/** PRS-2026-000001, same format as JC- and GRN- numbers. */
 async function generatePartRequestSlipNumber(db: Pick<typeof prisma, 'partRequestSlip'> = prisma): Promise<string> {
   const year = lagosYear();
   const prefix = `PRS-${year}-`;
@@ -277,20 +232,15 @@ async function generateExternalProcurementRequestNumber(db: Pick<typeof prisma, 
   return `${prefix}${String(nextSequence).padStart(6, '0')}`;
 }
 
-/** Finance Officer for the branch, or a Master Admin — same fallback
- * pattern as requireEligibleManager()/requireStoreStaff(), reusing the
- * already-exported list function rather than re-querying roles directly. */
+/** A Finance Officer for the branch, or a Master Admin. */
 async function requireEligibleFinance(branchId: string, key: 'procurement.epr.review' | 'procurement.epr.disburse' = 'procurement.epr.review'): Promise<{ id: string }> {
   const user = await requireUser();
   await authorize(key, { branchId, homeBranch: true }, `finance:${key}`, key === 'procurement.epr.disburse' ? 'Only a Finance Officer for this branch can disburse this.' : 'Only a Finance Officer for this branch can review this.');
   return user;
 }
 
-/** The auto-detection itself — reads the Job Card's own estimate and
- * reports plainly what it actually needs, rather than making anyone
- * guess which flow applies. A Job Card with only labour/internal-job
- * lines needs neither; one with both store and external parts needs
- * both, shown as two separate, independent requests. */
+/** Reads the estimate's line types and reports which sourcing flows the Job
+ * Card needs: none, Store parts, external, or both (as separate requests). */
 export async function getJobCardSourcingNeeds(jobCardId: string) {
   await requireUser();
   await seeJobCard(jobCardId, 'getJobCardSourcingNeeds');
@@ -328,12 +278,8 @@ export async function getJobCardSourcingNeeds(jobCardId: string) {
     }),
   ]);
 
-  // The real, accurate signal for whether there's still something new
-  // to request — reusing the exact same eligibility check each
-  // request page already uses to decide what it can show, rather than
-  // a looser "is anything currently active" check that would keep
-  // showing the button even once every real line has already been
-  // successfully released or disbursed, with nothing new to raise.
+  // Uses the same eligibility checks as the request pages, so the button
+  // disappears once every line has been requested.
   const [requestablePartLines, requestableExternalLines] = await Promise.all([
     getRequestablePartRequestLines(jobCardId),
     getRequestableExternalProcurementLines(jobCardId),
@@ -352,10 +298,8 @@ export async function getJobCardSourcingNeeds(jobCardId: string) {
   };
 }
 
-/** Only ever touches JobCard.status if it's currently IN_PROGRESS or
- * AWAITING_PARTS — never clobbers a status that's genuinely moved past
- * this point (e.g. Quality Check), even if a request is somehow still
- * outstanding at that stage. */
+/** Only changes JobCard.status when it is IN_PROGRESS or AWAITING_PARTS;
+ * never overrides a status that has moved on (e.g. Quality Check). */
 async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
@@ -378,12 +322,11 @@ async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
 
   const to = hasOutstanding && jobCard.status !== 'AWAITING_PARTS' ? 'AWAITING_PARTS' : !hasOutstanding && jobCard.status === 'AWAITING_PARTS' ? 'IN_PROGRESS' : null;
   if (!to) return;
-  // Only if the Job Card is still where we read it — never clobber a status
-  // someone moved on in the meantime (that change wins; nothing to sync).
+  // Only if the Job Card is still where we read it; a status someone changed
+  // in the meantime wins.
   const moved = await prisma.jobCard.updateMany({ where: { id: jobCardId, status: jobCard.status }, data: { status: to } });
   if (moved.count === 0) return;
-  // An automatic status change is still a status change — on the Job
-  // Card's own trail, attributed to whoever's action caused it.
+  // Logged on the Job Card, attributed to whoever's action caused it.
   await writeAuditLog({
     userId: getAuditActor()?.userId ?? null,
     action: 'job_card.status_updated',
@@ -397,8 +340,8 @@ async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
       reason: to === 'AWAITING_PARTS' ? 'Parts requested and not yet received' : 'All requested parts received',
     },
   });
-  // Parts arrived: tell the customer work has resumed — the same email a
-  // manual resume sends, never the "work has started" one again.
+  // Parts arrived: send the "work resumed" email a manual resume sends, not
+  // "work has started" again.
   if (to === 'IN_PROGRESS') {
     try {
       const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
@@ -418,7 +361,6 @@ async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
         }),
       );
     } catch (err) {
-      // eslint-disable-next-line no-console
       logFailure('Failed to send work-resumed email', jobCardId, err);
     }
   }
@@ -475,22 +417,14 @@ export async function getPartRequestSlip(id: string) {
               partNumber: true,
               baseUnitOfMeasure: true,
               trackingType: true,
-              // Every serial genuinely available right now, in real
-              // FIFO order (earliest-received first) — the same real
-              // order Store's own batch-tracked stock already uses.
-              // Fetched here so the release form can offer a real,
-              // live, searchable pick instead of free text that could
-              // easily drift from what's actually in stock.
+              // In-stock serials, oldest first (FIFO), for the release form's picker.
               serials: { where: { status: 'IN_STOCK' }, orderBy: { receivedAt: 'asc' }, select: { serialNumber: true, receivedAt: true } },
             },
           },
           estimateLineItem: { select: { description: true, unitPrice: true, amount: true } },
           serviceEstimateLineItem: { select: { description: true, unitPrice: true, amount: true } },
-          // The real, permanent record of exactly what this line was
-          // fulfilled with — which specific serials, or which real
-          // batches and how much of each — so the released document
-          // itself becomes a genuine traceable record, not just a
-          // quantity.
+          // What the line was released with (serials, or batches and quantities),
+          // so the released slip is traceable.
           issuedSerials: {
             select: {
               serialNumber: true,
@@ -508,8 +442,8 @@ export async function getPartRequestSlip(id: string) {
               },
             },
           },
-          // A QUANTITY line's own release rows — resolved below into the
-          // exact deliveries they drew from (quantitySources).
+          // A QUANTITY line's release rows, resolved below into the deliveries they
+          // drew from (quantitySources).
           quantityConsumptions: { select: { id: true } },
         },
       },
@@ -517,9 +451,8 @@ export async function getPartRequestSlip(id: string) {
   });
   if (!slip) return null;
 
-  // The same real trace a BATCH line gets from its batchConsumptions,
-  // for QUANTITY lines: which Goods Receipt(s) each release drew from,
-  // FIFO — including releases made before per-delivery tracking existed.
+  // For QUANTITY lines: which goods receipt(s) each release drew from, FIFO,
+  // including releases made before per-delivery tracking existed.
   const quantityPartIds = slip.lines
     .filter((l: (typeof slip.lines)[number]) => l.part.trackingType === 'QUANTITY' && l.quantityConsumptions.length > 0)
     .map((l: (typeof slip.lines)[number]) => l.partId);
@@ -621,13 +554,9 @@ export async function listExternalProcurementRequests(branchId: string, search?:
   });
 }
 
-/** Every real Store Part line for this Job Card that's actually ready
- * to request — matched to a real catalog Part (Store already did
- * that work back at estimate time) and not already covered by an
- * earlier, still-active request. There's genuinely nothing left for
- * a human to pick here: the Part, the quantity, the unit, and the
- * price were all decided the moment Store matched the line — this
- * just finds what's real and waiting. */
+/** Store Part lines on this Job Card that are matched to a catalogue part
+ * and not covered by an active request. Part, quantity, unit and price all
+ * come from the match. */
 export async function getRequestablePartRequestLines(jobCardId: string) {
   await requireUser();
   return requestablePartRequestLines(prisma, jobCardId);
@@ -664,14 +593,9 @@ async function requestablePartRequestLines(db: Pick<typeof prisma, 'estimate' | 
   return (estimate?.lineItems ?? []).filter((li: { id: string }) => !alreadyRequestedLineIds.has(li.id));
 }
 
-/** Raises a Store parts request — the first of the three real approval
- * steps (Workshop HOD next, then Store, then release). Immediately moves
- * the Job Card to AWAITING_PARTS if it isn't already there. Deliberately
- * takes no Part/quantity input at all: everything real about what's
- * being requested (which Part, how many, what it costs) was already
- * decided the moment Store matched each line back at estimate time —
- * this only ever pulls that, in full, never lets anyone re-enter or
- * second-guess it here. */
+/** Raises a Store parts request (then HOD approval, Store approval,
+ * release) and moves the Job Card to AWAITING_PARTS. Takes no part or
+ * quantity input: everything comes from the matched estimate lines. */
 export async function requestPartRequestSlip(jobCardId: string): Promise<{ id: string; referenceNumber: string }> {
   const user = await requireUser();
   await authorizeOnJobCard('sourcing.request', jobCardId, 'requestPartRequestSlip');
@@ -682,9 +606,9 @@ export async function requestPartRequestSlip(jobCardId: string): Promise<{ id: s
   if (!SOURCEABLE_STATUSES.includes(jobCard.status as (typeof SOURCEABLE_STATUSES)[number])) {
     throw new SourcingActionError("This Job Card isn't far enough along to request parts yet — it needs to be at least In Progress (70% paid).");
   }
-  // Worked out and created with the Job Card locked: a double click (or two
-  // people) can't raise two requests for the same lines — which would ask
-  // Store to reserve the same parts twice.
+  // Built and created with the Job Card locked: a double click (or two
+  // people) can't raise two requests for the same lines, which would reserve
+  // the same parts twice.
   const { slip, requestableLines, referenceNumber } = await retryOnNumberClash('referenceNumber', () => prisma.$transaction(async (tx) => {
     await lockExisting(tx, 'jobCard', [jobCardId]);
     const requestableLines = await requestablePartRequestLines(tx, jobCardId);
@@ -719,12 +643,8 @@ export async function requestPartRequestSlip(jobCardId: string): Promise<{ id: s
     entityId: slip.id,
     metadata: { referenceNumber, lineCount: requestableLines.length },
   });
-  // Every stage of this request also lands on the Job Card's own
-  // audit trail, with the real reference number — the Job Card is
-  // the "mother record" for everything that happens against it, so
-  // its own timeline should show that sourcing happened at all, even
-  // though the full, detailed timeline for this specific request
-  // still lives on the request's own page.
+  // Each stage is also logged on the Job Card with the reference number,
+  // so its timeline shows the sourcing.
   await writeAuditLog({
     userId: user.id,
     action: 'part_request_slip.requested',
@@ -768,25 +688,17 @@ export async function requestPartRequestSlip(jobCardId: string): Promise<{ id: s
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Parts Request approval-needed emails', referenceNumber, err);
   }
 
   return { id: slip.id, referenceNumber };
 }
 
-/** The real Vehicle Service equivalent of getRequestablePartRequestLines —
- * same exact reasoning, reading from ServiceEstimateLineItem instead of
- * EstimateLineItem. */
 /**
- * The one honest answer to "has this Vehicle Service genuinely reached
- * real work yet?" — the Vehicle Service equivalent of Job Card's own
- * SOURCEABLE_STATUSES check. Deliberately checks the real chain itself
- * rather than status alone: the estimate must be fully approved and the
- * customer actually notified, AND the real 70% deposit must actually be
- * recorded. Status alone isn't enough, because a Vehicle Service moved
- * to IN_SERVICE manually before the "no free visit" rule existed would
- * otherwise qualify without ever having gone through the real process.
+ * Whether a Vehicle Service may source parts: estimate approved, customer
+ * notified, and the 70% deposit recorded. Status alone isn't enough, since
+ * services moved to IN_SERVICE by hand before the deposit rule existed would
+ * otherwise qualify.
  */
 async function isVehicleServiceEligibleToSource(vehicleServiceId: string): Promise<boolean> {
   const service = await prisma.vehicleService.findUnique({
@@ -806,9 +718,7 @@ async function isVehicleServiceEligibleToSource(vehicleServiceId: string): Promi
   return total > 0 && paid >= minimumDeposit;
 }
 
-/** The real Vehicle Service equivalent of getJobCardSourcingNeeds —
- * same shape, so the Vehicle Service page's own Sourcing card can mirror
- * Job Card's exactly. */
+/** Vehicle Service version of getJobCardSourcingNeeds(). */
 export async function getVehicleServiceSourcingNeeds(vehicleServiceId: string) {
   await requireUser();
   await seeService(vehicleServiceId, 'getVehicleServiceSourcingNeeds');
@@ -835,6 +745,7 @@ export async function getVehicleServiceSourcingNeeds(vehicleServiceId: string) {
   };
 }
 
+/** Vehicle Service version of getRequestablePartRequestLines(). */
 export async function getRequestableServiceEstimatePartRequestLines(serviceEstimateId: string) {
   await requireUser();
   return requestableServiceEstimateLines(prisma, serviceEstimateId);
@@ -871,13 +782,8 @@ async function requestableServiceEstimateLines(db: Pick<typeof prisma, 'serviceE
   return estimate.lineItems.filter((li: { id: string }) => !alreadyRequestedLineIds.has(li.id));
 }
 
-/** The real Vehicle Service equivalent of requestPartRequestSlip — same
- * exact reasoning (nothing here is re-entered, it's all a real fact the
- * Service Estimate already holds once Store has matched a line), except
- * there's no equivalent of Job Card's own AWAITING_PARTS status to sync,
- * since Vehicle Service's own real status enum doesn't have one — this
- * doesn't force a status transition at all, deliberately simpler,
- * matching how much lighter this whole module already is. */
+/** Vehicle Service version of requestPartRequestSlip(). Vehicle Service has
+ * no AWAITING_PARTS status, so no status change is made. */
 export async function requestServiceEstimatePartRequestSlip(serviceEstimateId: string): Promise<{ id: string; referenceNumber: string }> {
   const user = await requireUser();
   const estimate = await prisma.serviceEstimate.findUnique({
@@ -888,12 +794,9 @@ export async function requestServiceEstimatePartRequestSlip(serviceEstimateId: s
   if (!estimate) {
     throw new SourcingActionError('Service Estimate not found.');
   }
-  // Same real "actually sourceable" requirement as Job Card's own
-  // SOURCEABLE_STATUSES — checked against the real chain itself
-  // (customer notified, 70% deposit actually recorded, in service),
-  // never status alone. See isVehicleServiceEligibleToSource.
+  // See isVehicleServiceEligibleToSource: the deposit chain, not status alone.
   if (!(await isVehicleServiceEligibleToSource(estimate.vehicleServiceId))) {
-    throw new SourcingActionError('Parts can only be requested once the customer has been notified and the 70% deposit recorded — the moment real work begins.');
+    throw new SourcingActionError('Parts can only be requested once the customer has been notified and the 70% deposit recorded.');
   }
   // Same as requestPartRequestSlip: never two requests for the same lines.
   const { slip, requestableLines, referenceNumber } = await retryOnNumberClash('referenceNumber', () => prisma.$transaction(async (tx) => {
@@ -972,18 +875,16 @@ export async function requestServiceEstimatePartRequestSlip(serviceEstimateId: s
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Service Estimate Parts Request approval-needed emails', referenceNumber, err);
   }
 
   return { id: slip.id, referenceNumber };
 }
 
-/** Step one of three — the Workshop HOD confirming the request itself is
- * legitimate, before Store ever looks at stock availability. */
+/** Step 1 of 3: the Workshop HOD confirms the request before Store checks stock. */
 export async function approvePartRequestSlipByHod(slipId: string, notes?: string): Promise<void> {
-  // Central catalogue first (who may attempt this); branch eligibility and the
-  // workflow state are still checked below, exactly as before.
+  // Catalogue check first (who may attempt this); branch eligibility and
+  // workflow state are checked below.
   await authorize('store.prs.approve_hod', undefined, 'approvePartRequestSlipByHod');
   const slip = await prisma.partRequestSlip.findUnique({ where: { id: slipId }, select: { status: true, branchId: true, jobCardId: true, vehicleServiceId: true, referenceNumber: true } });
   if (!slip) {
@@ -1004,11 +905,7 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
   if (claimed.count === 0) throw new Error('This was just done by someone else — refresh to see the latest.');
   await writeAuditLog({ userId: user.id, action: 'part_request_slip.hod_approved', entityType: 'PartRequestSlip', entityId: slipId });
 
-  // Everything below this point is genuinely Job Card-specific (its own
-  // audit trail entry, its own real email context and templates) — kept
-  // as its own untouched branch, exactly as it always worked, with a
-  // fully separate branch below for a Vehicle Service-sourced slip
-  // rather than any shared logic that could risk changing either path.
+  // Job Card slips. Vehicle Service slips are handled in the `else if` below.
   if (slip.jobCardId) {
     await writeAuditLog({
       userId: user.id,
@@ -1020,9 +917,7 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
 
     await notifyTechnicianAndSupervisorOfPartRequestStatus(slip.jobCardId, slipId, slip.referenceNumber, 'hod_approved');
 
-    // Now Store's own turn — the same real "approval needed" email as
-    // the HOD's own, just addressed to whoever can actually approve and
-    // reserve stock next.
+    // Now Store's turn: the same "approval needed" email, sent to Store.
     try {
       const [emailContext, storeOfficers, storeManagers, lineDetails] = await Promise.all([
         getPartRequestEmailContext(slip.jobCardId),
@@ -1062,7 +957,6 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
         );
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
       logFailure('Failed to send Parts Request Store-approval-needed emails', slip.referenceNumber, err);
     }
   } else if (slip.vehicleServiceId) {
@@ -1115,20 +1009,17 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
         );
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
       logFailure('Failed to send Service Estimate Parts Request Store-approval-needed emails', slip.referenceNumber, err);
     }
   }
 }
 
-/** Step two of three — Store confirming and reserving the actual stock.
- * Reservation happens here, not at release, specifically so a second
- * request approved moments later can't be promised the same units this
- * one already claimed. Checks every line's real availability (on hand
- * minus already reserved) before reserving any of them. */
+/** Step 2 of 3: Store approves and reserves the stock. Reserving here, not
+ * at release, stops a later request from being promised the same units.
+ * Every line's availability (on hand minus reserved) is checked first. */
 export async function approvePartRequestSlipByStore(slipId: string, notes?: string): Promise<void> {
-  // Central catalogue first (who may attempt this); branch eligibility and the
-  // workflow state are still checked below, exactly as before.
+  // Catalogue check first (who may attempt this); branch eligibility and
+  // workflow state are checked below.
   await authorize('store.prs.release', undefined, 'approvePartRequestSlipByStore');
   const slip = await prisma.partRequestSlip.findUnique({
     where: { id: slipId },
@@ -1160,13 +1051,14 @@ export async function approvePartRequestSlipByStore(slipId: string, notes?: stri
   }
 
   await prisma.$transaction(async (tx) => {
-    // The request first, then the job's state, then stock (the same order a
-    // cancellation uses — see lib/sourcing-lifecycle.ts — so they queue, never deadlock).
+    // Lock order: request, then the job's state, then stock. A cancellation
+    // uses the same order (lib/sourcing-lifecycle.ts), so they queue instead of
+    // deadlocking.
     await lockRows(tx, 'partRequestSlip', [slipId]);
     await assertJobStillOpen(tx, slip);
-    // Two storekeepers approving different requests for the same part at
-    // once: the check above is only a fast answer. Lock the stock rows and
-    // decide again against what is on hand and reserved at this instant.
+    // Two storekeepers approving different requests for the same part: the
+    // check above is only a fast answer. Lock the stock rows and decide again
+    // against what is on hand and reserved now.
     await lockRows(tx, 'partStockByPart', slip.lines.map((l: (typeof slip.lines)[number]) => l.partId));
     const needed = new Map<string, number>();
     for (const line of slip.lines) needed.set(line.partId, (needed.get(line.partId) ?? 0) + Number(line.quantityRequested));
@@ -1216,21 +1108,17 @@ export async function approvePartRequestSlipByStore(slipId: string, notes?: stri
   }
 }
 
-/** Step three of three — a Storekeeper physically releasing it. Full
- * release only for this first version, not partial/backorder — every
- * line's complete requested quantity is released at once. Converts the
- * reservation into the actual, permanent stock reduction: decrements the
- * aggregate, and updates whichever tracking-type-specific record applies
- * (oldest batches first for BATCH parts, the specific confirmed units for
- * SERIALIZED ones) — the mirror image of how Goods Receipt adds stock in
- * the first place. */
+/** Step 3 of 3: a storekeeper releases the parts. Full release only (no
+ * partial or backorder). Turns the reservation into a stock reduction and
+ * updates the tracking records: oldest batches first for BATCH, the chosen
+ * units for SERIALIZED, FIFO receipt layers for QUANTITY. */
 export async function releasePartRequestSlip(
   slipId: string,
   receivedBy: { receivedByUserId?: string; receivedByName?: string },
   lineSerials?: Record<string, string[]>,
 ): Promise<void> {
-  // Central catalogue first (who may attempt this); branch eligibility and the
-  // workflow state are still checked below, exactly as before.
+  // Catalogue check first (who may attempt this); branch eligibility and
+  // workflow state are checked below.
   await authorize('store.prs.release', undefined, 'releasePartRequestSlip');
   const slip = await prisma.partRequestSlip.findUnique({
     where: { id: slipId },
@@ -1257,14 +1145,12 @@ export async function releasePartRequestSlip(
     throw new SourcingActionError('This request has not been approved for release.');
   }
   if (!receivedBy.receivedByUserId && !receivedBy.receivedByName?.trim()) {
-    throw new SourcingActionError('Who is collecting this must be recorded — either a real user or a name.');
+    throw new SourcingActionError('Record who is collecting this: a staff member or a name.');
   }
   const user = await requireStoreStaff(slip.branchId, 'store.prs.release');
 
-  // Validated up front, before any writes: a SERIALIZED line's provided
-  // serials must match its requested quantity exactly, and every one of
-  // them must genuinely be a real, currently in-stock unit of that part
-  // — never silently accepted if it doesn't exist or was already issued.
+  // Validate before writing: a SERIALIZED line needs exactly as many serials
+  // as its quantity, each an in-stock unit of that part.
   for (const line of slip.lines) {
     if (line.part.trackingType === 'SERIALIZED') {
       const serials = (lineSerials?.[line.id] ?? []).map((s) => s.trim()).filter(Boolean);
@@ -1283,10 +1169,10 @@ export async function releasePartRequestSlip(
   }
 
   await prisma.$transaction(async (tx) => {
-    // Claim the slip first (compare-and-set) so a second, simultaneous
-    // release stops before touching stock, then lock this slip's stock rows
-    // in a fixed order so two releases of the same parts queue rather than
-    // deadlock or both draw down the same batches.
+    // Claim the slip first (compare-and-set) so a simultaneous release stops
+    // before touching stock, then lock this slip's stock rows in a fixed order
+    // so two releases of the same parts queue instead of deadlocking or both
+    // drawing down the same batches.
     claimedOrStale(await tx.partRequestSlip.updateMany({
       where: { id: slipId, status: 'APPROVED' },
       data: {
@@ -1317,20 +1203,13 @@ export async function releasePartRequestSlip(
           if (remaining <= 0) break;
           const take = Math.min(remaining, Number(batch.remainingQuantity));
           await tx.partBatch.update({ where: { id: batch.id }, data: { remainingQuantity: { decrement: take } } });
-          // The real, permanent traceability record — exactly which
-          // batch this release actually drew from, and how much of
-          // it, so a later warranty or quality trace can genuinely
-          // answer "which delivery did this customer's stock come
-          // from," not just "how much is left."
+          // Record which batch this release drew from, and how much, for warranty
+          // and quality traces.
           await tx.partBatchConsumption.create({ data: { batchId: batch.id, slipLineId: line.id, quantityTaken: take } });
           remaining -= take;
         }
         if (remaining > 0) {
-          // Batch records didn't fully cover the released quantity —
-          // the aggregate is still correct (decremented above), but
-          // this is a real data-integrity signal worth knowing about,
-          // not silently swallowed.
-          // eslint-disable-next-line no-console
+          // The aggregate is already correct; log the gap in the batch records.
           logFailure('Batch records did not cover the full released quantity', line.partId, remaining);
         }
       } else if (line.part.trackingType === 'SERIALIZED') {
@@ -1338,24 +1217,18 @@ export async function releasePartRequestSlip(
         for (const serialNumber of serials) {
           const issued = await tx.partSerial.updateMany({
             where: { partId: line.partId, serialNumber, status: 'IN_STOCK' },
-            // The real, permanent record of exactly which release this
-            // one physical unit was issued out against — the direct
-            // answer to "who has this serial" for a later warranty
-            // trace.
+            // Which release this unit was issued against, for warranty traces.
             data: { status: 'ISSUED', issuedToSlipLineId: line.id },
           });
-          // Checked before the transaction, but another release may have
-          // issued this exact unit since — never release a unit twice.
+          // Another release may have issued this unit since the check above; never
+          // release a unit twice.
           if (issued.count !== 1) throw new StaleStateError(`${line.part.name}: serial ${serialNumber} was just issued on another request — refresh and choose another unit.`);
         }
       } else {
-        // QUANTITY-tracked — each Goods Receipt line for this Part is a
-        // FIFO layer, exactly like a batch. Replay every earlier receipt
-        // and release to know what each delivery still holds, then draw
-        // this release oldest-first, recording the exact delivery each
-        // portion came from — one row per delivery touched — so a
-        // quantity part is traceable to its GRN just like a batch or
-        // serial is. See lib/inventory/quantity-fifo.ts.
+        // QUANTITY parts: each goods receipt line is a FIFO layer. Replay earlier
+        // receipts and releases to get what each delivery still holds, then draw
+        // oldest-first and record one row per delivery touched, so the part is
+        // traceable to its GRN. See lib/inventory/quantity-fifo.ts.
         const [receiptLines, priorConsumptions] = await Promise.all([
           tx.goodsReceiptLine.findMany({
             where: { partId: line.partId },
@@ -1387,10 +1260,7 @@ export async function releasePartRequestSlip(
           });
         }
         if (plan.some((p: (typeof plan)[number]) => p.goodsReceiptLineId === null)) {
-          // Same integrity signal as the batch branch above — the
-          // aggregate is still correct, but received deliveries didn't
-          // fully account for this release.
-          // eslint-disable-next-line no-console
+          // As above: the aggregate is correct, but receipts didn't cover the release.
           logFailure('Goods Receipt layers did not cover the full released quantity', line.partId);
         }
       }
@@ -1402,15 +1272,13 @@ export async function releasePartRequestSlip(
   if (slip.jobCardId) {
     await syncJobCardSourcingStatus(slip.jobCardId);
   }
-  // Every released part that carries a warranty gets its own warranty
-  // number now — tied to this customer, vehicle, Job Card / Vehicle
-  // Service, slip line and serial. Never blocks the release itself.
+  // Issue a warranty for each released part that carries one (customer,
+  // vehicle, job, slip line, serial). Never blocks the release.
   try {
     await issuePartWarrantiesForSlip(slipId);
   } catch (err) {
-    // Never silent: the failure is in the audit trail (Warranty can issue
-    // the missing warranties from the slip) as well as the server log.
-    // eslint-disable-next-line no-console
+    // Recorded in the audit trail as well as the server log, so Warranty can
+    // issue the missing warranties from the slip.
     logFailure('Failed to issue part warranties for released slip', slipId, err);
     await writeAuditLog({ userId: user.id, action: 'part_warranty.issue_failed', entityType: 'PartRequestSlip', entityId: slipId, metadata: { error: String((err as Error)?.message ?? err).slice(0, 300) } }).catch(() => undefined);
   }
@@ -1444,11 +1312,8 @@ export async function releasePartRequestSlip(
   }
 }
 
-/** Rejectable at either stage still pending a decision — by whoever would
- * have approved at that same stage (HOD if still awaiting HOD, Store if
- * already past HOD and awaiting Store). Never rejectable once APPROVED,
- * since stock is reserved by then — a wrong reservation is unwound by a
- * real Manager/Store conversation, not a status flip. */
+/** Rejects a request still awaiting HOD or Store approval, by whoever would
+ * approve at that stage. Not possible once APPROVED, since stock is reserved. */
 export async function rejectPartRequestSlip(slipId: string, reason: string): Promise<void> {
   const slip = await prisma.partRequestSlip.findUnique({ where: { id: slipId }, select: { status: true, branchId: true, jobCardId: true, vehicleServiceId: true, referenceNumber: true } });
   if (!slip) {
@@ -1463,9 +1328,9 @@ export async function rejectPartRequestSlip(slipId: string, reason: string): Pro
   const stage = slip.status === 'PENDING_HOD_APPROVAL' ? 'HOD' : 'STORE';
   const user = stage === 'HOD' ? await requireEligibleManager(slip.branchId, 'store.prs.approve_hod') : await requireStoreStaff(slip.branchId, 'store.prs.release');
 
-  // Compare-and-set: only from the stage the rejecter actually saw. If Store
-  // approved it meanwhile, stock is now reserved — a stale reject must not
-  // overwrite APPROVED and strand that reservation.
+  // Compare-and-set: only from the stage the rejecter saw. If Store approved
+  // it meanwhile, stock is reserved; a stale reject must not overwrite
+  // APPROVED and strand the reservation.
   claimedOrStale(await prisma.partRequestSlip.updateMany({
     where: { id: slipId, status: slip.status },
     data: { status: 'REJECTED', rejectedById: user.id, rejectedAt: new Date(), rejectionStage: stage, rejectionReason: reason.trim() },
@@ -1504,16 +1369,8 @@ export async function rejectPartRequestSlip(slipId: string, reason: string): Pro
   }
 }
 
-/** Raises an external procurement request — a genuine cash advance
- * (an imprest, in real accounting terms) for a part or job the Store
- * doesn't carry. Immediately moves the Job Card to AWAITING_PARTS if it
- * isn't already there. */
-/** Every real External Part/External Job line on this Job Card's own
- * estimate that's ready to request — already priced (by whoever had
- * pricing authority for that line type, back at estimate time) and
- * not already covered by an earlier, still-active request. Same
- * reasoning as the Store Parts side: nothing here needs a human to
- * re-enter it, it's a real fact the estimate already holds. */
+/** External Part/Job lines on this Job Card that are priced and not covered
+ * by an active request. */
 export async function getRequestableExternalProcurementLines(jobCardId: string) {
   await requireUser();
   return requestableExternalLines(prisma, jobCardId);
@@ -1538,10 +1395,8 @@ async function requestableExternalLines(db: Pick<typeof prisma, 'estimate' | 'ex
       },
     }),
   ]);
-  // Covers both the legacy single-line shape (estimateLineItemId on
-  // the request itself) and the real, current multi-line shape (each
-  // real line has its own) — a request raised either way correctly
-  // keeps its covered lines out of what's still requestable.
+  // Covers both legacy single-line requests (estimateLineItemId on the
+  // request) and multi-line requests (one row per line).
   const alreadyRequestedLineIds = new Set(
     existingRequests.flatMap((r: { estimateLineItemId: string | null; lines: { estimateLineItemId: string | null }[] }) => [
       r.estimateLineItemId,
@@ -1551,16 +1406,9 @@ async function requestableExternalLines(db: Pick<typeof prisma, 'estimate' | 'ex
   return (estimate?.lineItems ?? []).filter((li: { id: string }) => !alreadyRequestedLineIds.has(li.id));
 }
 
-/** The real fix for a genuine complaint: a Lathe job and a Bushing
- * both needed for the same repair are one real trip to Finance for
- * cash, not two separate, unconnected ones — raising them one at a
- * time, each its own request with its own reference number and its
- * own approval chain, was never right. This raises every currently-
- * eligible External Part/Job line together as ONE real request, with
- * ONE reference number, ONE combined total, and ONE approval chain
- * from here through disbursement — the same real shape Store Parts
- * already has, not a UI convenience wrapped around several separate
- * records underneath. */
+/** Raises one cash-advance request covering every eligible External
+ * Part/Job line, with one reference number, total and approval chain, and
+ * moves the Job Card to AWAITING_PARTS. */
 export async function requestExternalProcurementBatch(jobCardId: string): Promise<{ id: string; referenceNumber: string }> {
   const user = await requireUser();
   await authorizeOnJobCard('sourcing.request', jobCardId, 'requestExternalProcurementBatch');
@@ -1571,7 +1419,7 @@ export async function requestExternalProcurementBatch(jobCardId: string): Promis
   if (!SOURCEABLE_STATUSES.includes(jobCard.status as (typeof SOURCEABLE_STATUSES)[number])) {
     throw new SourcingActionError("This Job Card isn't far enough along to request procurement yet — it needs to be at least In Progress (70% paid).");
   }
-  // Worked out and created with the Job Card locked: a double click can never
+  // Built and created with the Job Card locked: a double click can never
   // raise two requests for the same lines (which Finance would pay twice).
   const { request, requestableLines, referenceNumber, estimatedAmount } = await retryOnNumberClash('referenceNumber', () => prisma.$transaction(async (tx) => {
     await lockExisting(tx, 'jobCard', [jobCardId]);
@@ -1579,10 +1427,7 @@ export async function requestExternalProcurementBatch(jobCardId: string): Promis
     if (requestableLines.length === 0) {
       throw new SourcingActionError('There is nothing ready to request — either every line has already been requested, or nothing is priced yet.');
     }
-    // The one real total for the whole request — the sum of every real
-    // line's own already-approved amount, locked in right here and
-    // never recomputed later, the same "locked the moment it's
-    // submitted" reasoning the single-line version always had.
+    // Fixed at submission: the sum of the lines' approved amounts.
     const estimatedAmount = requestableLines.reduce((sum: number, l: (typeof requestableLines)[number]) => sum + Number(l.amount), 0);
     const description = requestableLines.map((l: (typeof requestableLines)[number]) => l.description).join(', ');
 
@@ -1625,9 +1470,7 @@ export async function requestExternalProcurementBatch(jobCardId: string): Promis
     metadata: { referenceNumber, estimatedAmount, lineCount: requestableLines.length },
   });
 
-  // Finance reviews first, so they're the first real recipient — one
-  // real email for the whole request, showing every real line
-  // together, exactly the way the request itself now actually works.
+  // Finance reviews first, so they get the first email.
   try {
     const [emailContext, financeOfficers, requestedByUser] = await Promise.all([
       getPartRequestEmailContext(jobCardId),
@@ -1658,18 +1501,14 @@ export async function requestExternalProcurementBatch(jobCardId: string): Promis
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send External Procurement approval-needed email', referenceNumber, err);
   }
 
   return { id: request.id, referenceNumber };
 }
 
-/** Finance's own real addition — transport, logistics, or any other
- * genuine supplementary cost the technician's original request could
- * never have anticipated. Deliberately cannot touch the technician's
- * own description or estimatedAmount at all — this only ever creates
- * a new, separate line alongside it. */
+/** Finance adds a supplementary cost (transport, logistics, etc.) as a new
+ * line. The technician's lines and estimate are never changed. */
 export async function addExternalProcurementSupplementaryLine(requestId: string, description: string, amount: number): Promise<void> {
   const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true } });
   if (!request) {
@@ -1720,11 +1559,8 @@ export async function removeExternalProcurementSupplementaryLine(lineId: string)
   });
 }
 
-/** The same real correction/edit path already proven elsewhere in this
- * system (a Goods Receipt line's own cost, a Part's own selling
- * price) — Finance can fix a genuine mistake in their own
- * supplementary line without deleting and re-adding it, but only
- * while the request is still genuinely theirs to edit. */
+/** Finance corrects one of its supplementary lines while the request is
+ * still in Finance review. */
 export async function editExternalProcurementSupplementaryLine(lineId: string, description: string, amount: number): Promise<void> {
   const line = await prisma.externalProcurementSupplementaryLine.findUnique({
     where: { id: lineId },
@@ -1754,10 +1590,8 @@ export async function editExternalProcurementSupplementaryLine(lineId: string, d
   });
 }
 
-/** Mirrors getPartAuditTrail()/getGoodsReceiptAuditTrail() exactly —
- * the real, chronological record of everything Finance has done to
- * this request's own supplementary lines (added, edited, removed),
- * shown alongside the request's own real milestones on its Timeline. */
+/** Audit entries for the request's supplementary lines (added, edited,
+ * removed), shown on its timeline. */
 export async function getExternalProcurementRequestAuditTrail(requestId: string) {
   await requireUser();
   const owner = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { branchId: true } });
@@ -1774,14 +1608,10 @@ export async function getExternalProcurementRequestAuditTrail(requestId: string)
   return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(userById.get(e.userId) ?? 'Unknown', e.metadata) : 'System' }));
 }
 
-/** Finance's own deliberate checkpoint — explicitly passing the
- * request forward to the Manager once they're satisfied nothing more
- * needs adding, rather than an ambiguous automatic handoff. Genuinely
- * fine to send forward with zero supplementary lines added — not
- * every request needs one. */
+/** Finance passes the request to the Manager. Supplementary lines are optional. */
 export async function sendExternalProcurementToManager(requestId: string): Promise<void> {
-  // Central catalogue first (who may attempt this); branch eligibility and the
-  // workflow state are still checked below, exactly as before.
+  // Catalogue check first (who may attempt this); branch eligibility and
+  // workflow state are checked below.
   await authorize('procurement.epr.review', undefined, 'sendExternalProcurementToManager');
   const request = await prisma.externalProcurementRequest.findUnique({
     where: { id: requestId },
@@ -1826,10 +1656,8 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
 
   await notifyTechnicianAndSupervisorOfExternalProcurementStatus(request.jobCardId, requestId, request.referenceNumber, 'sent_to_manager');
 
-  // The real, full total — the technician's own original figure plus
-  // whatever real supplementary costs Finance has since added — is
-  // what the Manager actually needs to see, never just the smaller
-  // original estimate.
+  // The Manager sees the full total: the original estimate plus Finance's
+  // supplementary lines.
   const realTotal = Number(request.estimatedAmount) + request.supplementaryLines.reduce((sum: number, l: { amount: unknown }) => sum + Number(l.amount), 0);
   try {
     const [emailContext, managers] = await Promise.all([
@@ -1851,14 +1679,10 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
           customerName: emailContext.customer.fullName,
           lines: [
             ...request.lines.map((l: (typeof request.lines)[number]) => ({ description: l.description, quantity: Number(l.quantity), unitOfMeasure: l.unitOfMeasure, amount: Number(l.amount) })),
-            // A legacy, single-line request has no real lines of its
-            // own — its one real fact is still the request's own
-            // description/estimatedAmount, shown the same way here.
+            // Legacy single-line requests have no line rows; show the request's own
+            // description and amount.
             ...(request.lines.length === 0 ? [{ description: request.description, quantity: 1, unitOfMeasure: null, amount: Number(request.estimatedAmount) }] : []),
-            // Finance's own real additions, shown the same way as
-            // every other item — the Manager approves the genuine
-            // full picture, not just the technician's own original
-            // figure.
+            // Finance's supplementary lines, listed with the rest.
             ...request.supplementaryLines.map((l: { description?: string; amount: unknown }) => ({ description: (l as { description: string }).description, quantity: 1, unitOfMeasure: null, amount: Number(l.amount) })),
           ],
           estimatedAmount: realTotal,
@@ -1871,20 +1695,15 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send External Procurement Manager-approval-needed email', request.referenceNumber, err);
   }
 }
 
-/** A Workshop Manager confirming the combined total — the technician's
- * own original figure plus whatever real supplementary costs Finance
- * has since added — before any money actually moves. The same gate
- * structure as the Store side's HOD step, just now approving the
- * genuine full picture rather than only the technician's initial
- * guess. */
+/** A Workshop Manager approves the full total (original estimate plus
+ * Finance's supplementary lines) before any money moves. */
 export async function approveExternalProcurementRequest(requestId: string, notes?: string): Promise<void> {
-  // Central catalogue first (who may attempt this); branch eligibility and the
-  // workflow state are still checked below, exactly as before.
+  // Catalogue check first (who may attempt this); branch eligibility and
+  // workflow state are checked below.
   await authorize('procurement.epr.approve', undefined, 'approveExternalProcurementRequest');
   const request = await prisma.externalProcurementRequest.findUnique({
     where: { id: requestId },
@@ -1906,9 +1725,7 @@ export async function approveExternalProcurementRequest(requestId: string, notes
   const user = await requireEligibleManager(request.branchId, 'procurement.epr.approve');
   // Nothing is approved or paid out for a Job Card that is cancelled or finished.
   await assertJobStillOpen(prisma, { jobCardId: request.jobCardId });
-  // Locked in right here, at the exact moment of approval — never
-  // recomputed later, so nothing that happens afterward could ever
-  // silently change what the Manager actually approved.
+  // Fixed at approval, so nothing later can change what the Manager approved.
   const supplementaryTotal = request.supplementaryLines.reduce(
     (sum: number, line: (typeof request.supplementaryLines)[number]) => sum + Number(line.amount),
     0,
@@ -1945,21 +1762,14 @@ export async function approveExternalProcurementRequest(requestId: string, notes
   await notifyTechnicianAndSupervisorOfExternalProcurementStatus(request.jobCardId, requestId, request.referenceNumber, 'approved', approvedTotal);
 }
 
-/** Finance actually handing over the cash advance — the real amount
- * given, which may differ slightly from the original estimate, kept as
- * its own field rather than overwriting it. */
-/** Finance's own final step — recording exactly how the already-
- * approved total was actually paid out. Deliberately no amount
- * parameter at all anymore: the real figure was locked in the moment
- * the Manager approved it (approvedTotal), and is simply copied
- * across here, never retyped — the one thing this step can genuinely
- * never touch, by design. */
+/** Finance records the disbursement. No amount parameter: the amount is the
+ * approvedTotal fixed at Manager approval, copied across, never retyped. */
 export async function disburseExternalProcurementRequest(
   requestId: string,
   payment: { paymentMethod: string; paymentReference?: string; disbursementNotes?: string },
 ): Promise<void> {
-  // Central catalogue first (who may attempt this); branch eligibility and the
-  // workflow state are still checked below, exactly as before.
+  // Catalogue check first (who may attempt this); branch eligibility and
+  // workflow state are checked below.
   await authorize('procurement.epr.disburse', undefined, 'disburseExternalProcurementRequest');
   const request = await prisma.externalProcurementRequest.findUnique({
     where: { id: requestId },
@@ -1972,9 +1782,8 @@ export async function disburseExternalProcurementRequest(
     throw new SourcingActionError('This request has not been approved for disbursement.');
   }
   if (request.approvedTotal === null) {
-    // Should never genuinely happen — approval always sets this — but
-    // a missing approved total is a real data problem worth stopping
-    // on rather than silently disbursing an unknown amount.
+    // Approval always sets approvedTotal; if it's missing, stop rather than
+    // disburse an unknown amount.
     throw new SourcingActionError('This request has no approved total on record — contact an administrator before disbursing.');
   }
   const paymentMethod = payment.paymentMethod?.trim();
@@ -2020,13 +1829,8 @@ export async function disburseExternalProcurementRequest(
   await notifyTechnicianAndSupervisorOfExternalProcurementStatus(request.jobCardId, requestId, request.referenceNumber, 'disbursed', Number(disbursedAmount));
 }
 
-/** Rejectable only before a Manager has approved it — once approved, an
- * unwind is a real conversation between Manager and Finance, not a
- * status flip, the same reasoning as the Store side never un-reserving
- * via rejection either. */
-/** Rejectable at either real stage — Finance's own review, or the
- * Manager's approval — mirroring exactly how a Store Parts request can
- * be rejected at either HOD or Store's own stage. */
+/** Rejects a request in Finance review or awaiting Manager approval, by
+ * whoever decides at that stage. Not possible once approved. */
 export async function rejectExternalProcurementRequest(requestId: string, reason: string): Promise<void> {
   const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
   if (!request) {

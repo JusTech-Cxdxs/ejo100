@@ -3,9 +3,8 @@
 import { friendlyError } from '@/lib/errors';
 
 /**
- * Thin <form action={...}> wrappers around lib/actions/store.ts — same
- * pattern as workshop-form-handlers.ts: native React 19 form actions,
- * FormData in, redirect or revalidatePath out.
+ * <form action={...}> wrappers around lib/actions/store.ts, same pattern as
+ * workshop-form-handlers.ts.
  */
 
 import { revalidatePath } from 'next/cache';
@@ -60,10 +59,8 @@ export async function recordGoodsReceiptFormAction(formData: FormData) {
   const branchId = str(formData, 'branchId');
   const partId = str(formData, 'partId');
   try {
-    // Multiple real <input name="serialNumbers"> rows, the same
-    // getAll() pattern used for complaints on Job Card creation —
-    // never a single field a comma/newline had to be parsed back out
-    // of, which risked splitting a serial that genuinely contained one.
+    // One <input name="serialNumbers"> per serial, so a serial containing a
+    // comma is never split.
     const serialNumbers = formData.getAll('serialNumbers')
       .map((s) => (typeof s === 'string' ? s.trim() : ''))
       .filter(Boolean);
@@ -95,11 +92,8 @@ export async function recordGoodsReceiptFormAction(formData: FormData) {
 export async function updatePartFormAction(formData: FormData) {
   const id = str(formData, 'id');
   try {
-    // Alternative units validated and applied first — if a duplicate
-    // name or a name matching the base unit slips through, this
-    // throws before any of the part's other fields are touched,
-    // avoiding a partial update where the description saved but the
-    // units silently didn't.
+    // Validate alternative units first, so a bad unit throws before any other
+    // field is saved.
     const unitNames = formData.getAll('altUnitName').map((v) => (typeof v === 'string' ? v : ''));
     const unitFactors = formData.getAll('altUnitFactor').map((v) => (typeof v === 'string' ? v : ''));
     const units = unitNames
@@ -266,11 +260,8 @@ export async function matchEstimateStorePartLineFormAction(formData: FormData) {
   }
   revalidatePath('/inventory/estimate-matching');
   if (jobCardId) revalidatePath(`/workshop/job-cards/${jobCardId}`);
-  // Same real "stay here until this Job Card's own queue is
-  // genuinely empty" reasoning the user asked for directly — matching
-  // one of three lines shouldn't bounce Store back out to the general
-  // list; only the real last one should, right when the real
-  // "matching complete" email actually fires.
+  // Stay on this Job Card's matching page until its last line is matched
+  // (when the "matching complete" email goes out).
   const stillHasUnmatched = jobCardId ? await jobCardHasUnmatchedStoreParts(jobCardId) : false;
   redirect(stillHasUnmatched ? `/inventory/estimate-matching/${jobCardId}?status=line_matched` : '/inventory/estimate-matching?status=line_matched');
 }

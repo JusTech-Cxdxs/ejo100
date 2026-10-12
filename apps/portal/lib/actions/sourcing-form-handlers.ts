@@ -51,9 +51,8 @@ export async function requestPartRequestSlipFormAction(formData: FormData) {
   redirect(`/workshop/job-cards/${jobCardId}?status=parts_requested`);
 }
 
-/** The Vehicle Service equivalent of requestPartRequestSlipFormAction —
- * entirely separate function, since it redirects back to the Service
- * Estimate's own real page, never the Job Card one. */
+/** Vehicle Service version of requestPartRequestSlipFormAction; redirects
+ * back to the service estimate page. */
 export async function requestServiceEstimatePartRequestSlipFormAction(formData: FormData) {
   const serviceEstimateId = str(formData, 'serviceEstimateId');
   const vehicleServiceId = str(formData, 'vehicleServiceId');

@@ -53,10 +53,8 @@ export type UpdateBranchInput = {
   bankAccountNumber?: string;
 };
 
-/** Only a Master Administrator edits a branch's own real, printed
- * identity — the same real letterhead reasoning as Organisation, just
- * one level down: this is what a Job Card's own "Executing Facility"
- * block pulls its address and hotlines from. */
+/** Edits a branch's printed identity: the address and hotlines on a Job
+ * Card's "Executing Facility" block, and its bank details. */
 export async function updateBranch(branchId: string, input: UpdateBranchInput): Promise<void> {
   const user = await requireUser();
   // The organisation's own administrators manage their branches (catalogue:

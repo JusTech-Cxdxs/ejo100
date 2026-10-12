@@ -431,9 +431,8 @@ function reminderSafetyNet() {
  * participant), still to happen. */
 export async function getSchedulingDashboardItems(): Promise<{ id: string; title: string; detail: string; url: string; createdAt: Date }[]> {
   const user = await requireUser();
-  // The reminder safety net runs AFTER the response is sent — nobody waits
-  // for it — and at most once every 5 minutes per server (the scheduled job
-  // is the real sender; this only covers a missed run).
+  // Runs after the response is sent, at most once every 5 minutes per server.
+  // The scheduled job sends reminders; this only covers a missed run.
   reminderSafetyNet();
   const now = new Date();
   const end = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }) + 'T23:59:59+01:00');
@@ -568,7 +567,7 @@ export async function removeVisitorGroup(visitId: string, reason: string): Promi
 }
 
 
-// Once per request: repeated calls during one page load reuse the answer.
+// Cached per request.
 const getSchedulingAccessCached = cache(getSchedulingAccessUncached);
 export async function getSchedulingAccess(): Promise<SchedulingAccess> {
   return getSchedulingAccessCached();
