@@ -1,19 +1,15 @@
 import type { PlatformModuleDescriptor } from '@ejo/types';
 
 /**
- * MODULE REGISTRY (Phase 1 client-side mirror of packages/database's
- * PlatformModule / OrganisationModule tables).
+ * Module registry: the in-code mirror of the PlatformModule /
+ * OrganisationModule tables. The sidebar and route guards read it, so
+ * activating a module means changing its status here; no routing or sidebar
+ * code changes.
  *
- * This is the single source of truth the sidebar AND route guards read
- * from. To "activate" a module for a client, flip its status here (or,
- * once the API is wired up, in the database) — no new routing or sidebar
- * code is needed.
- *
- * Version 1: the modules below are live. Everything planned next (HR,
- * Payroll, Finance, Procurement, Suppliers, Warehouse, Manufacturing, Sales,
- * Documents, Reports, …) is on the Roadmap (lib/roadmap.ts) — shown to
- * everyone in its own "Coming next" menu section with a page describing what
- * it will do, so nobody mistakes "not yet" for "never".
+ * The modules below are live in version 1. Planned modules (HR, Payroll,
+ * Finance, Procurement, Suppliers, Warehouse, Manufacturing, Sales,
+ * Documents, Reports, …) are on the Roadmap (lib/roadmap.ts), shown in the
+ * "Coming next" menu section with a page describing each.
  */
 export const platformModules: PlatformModuleDescriptor[] = [
   { key: 'dashboard', name: 'Dashboard', status: 'LIVE', href: '/dashboard', icon: 'layout-dashboard' },

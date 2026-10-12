@@ -98,8 +98,7 @@ export async function setEstimateLineBillTo(lineId: string, billTo: BillTo, warr
     throw new BillingError(`Give the reason this line is ${billTo === 'GOODWILL' ? 'goodwill' : 'an internal cost'}.`);
   }
   if (line.billTo === billTo && (line.coveringWarrantyId ?? null) === coveringWarrantyId) throw new BillingError('That is already who pays for this line.');
-  // Capture the previous value before saving, so the audit's "from" is
-  // always the real prior state.
+  // Read before saving, so the audit's "from" is the prior value.
   const previous = BILL_TO_LABEL[(line.billTo ?? 'CUSTOMER') as BillTo];
   // Who pays changes what the customer owes, so it takes the same Job Card
   // lock as recording a payment: the two are decided one after the other.
