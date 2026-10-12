@@ -12,7 +12,6 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
-import { CustomerLink } from '@/components/CustomerLink';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
   'goods_receipt.recorded': 'Goods Receipt recorded',

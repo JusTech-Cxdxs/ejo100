@@ -40,7 +40,8 @@ async function main() {
   const customer = await prisma.customer.upsert({
     where: { email: 'customer@e2e.test' },
     update: {},
-    create: { organisationId: org.id, fullName: 'Ada Customer', email: 'customer@e2e.test', phone: '08000000001', createdById: frontDesk.id },
+    // Registration requires a primary address and phone (v28).
+    create: { organisationId: org.id, fullName: 'Ada Customer', email: 'customer@e2e.test', phone: '08000000001', address: 'Plot 3, Isolo, Lagos', createdById: frontDesk.id },
   });
   await prisma.customerVehicle.upsert({
     where: { plateNumber: 'E2E-001-AA' },
@@ -63,7 +64,7 @@ async function main() {
   await prisma.department.upsert({ where: { branchId_slug: { branchId: otherBranch.id, slug: 'workshop' } }, update: {}, create: { branchId: otherBranch.id, name: 'Workshop', slug: 'workshop' } });
   await prisma.role.upsert({ where: { organisationId_slug: { organisationId: other.id, slug: 'administrator' } }, update: {}, create: { organisationId: other.id, name: 'Organisation Administrator', slug: 'administrator', isSystem: true } });
   await person(other.id, otherBranch.id, { ...OTHER_ORG_ADMIN, role: 'administrator' });
-  await prisma.customer.upsert({ where: { email: 'other-customer@e2e.test' }, update: {}, create: { organisationId: other.id, fullName: 'Other Customer', email: 'other-customer@e2e.test' } });
+  await prisma.customer.upsert({ where: { email: 'other-customer@e2e.test' }, update: {}, create: { organisationId: other.id, fullName: 'Other Customer', email: 'other-customer@e2e.test', phone: '08000000009', address: 'Garki, Abuja' } });
 
   // eslint-disable-next-line no-console
   console.log(`E2E seed: ${PEOPLE.length} staff in ${org.name} / ${branch.name}, a customer with 2 vehicles, and ${other.name} with its own admin.`);
