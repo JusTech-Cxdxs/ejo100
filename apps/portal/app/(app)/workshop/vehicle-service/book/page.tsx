@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getVehicle, listEligibleSupervisorsForVehicleType } from '@/lib/actions/workshop';
 import { getVehicleServiceHealth } from '@/lib/actions/vehicle-service';
@@ -16,6 +17,7 @@ import { formatDateOnly } from '@/lib/utils/format-date';
  * Submits to the normal Vehicle Service creation, nothing separate.
  */
 export default async function BookVehicleServicePage({ searchParams }: { searchParams: Promise<{ vehicleId?: string }> }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { vehicleId } = await searchParams;
   if (!vehicleId) notFound();
   const vehicle = await getVehicle(vehicleId);

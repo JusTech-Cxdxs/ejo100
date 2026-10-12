@@ -1075,6 +1075,12 @@ export async function createJobCard(input: CreateJobCardInput) {
   if (!input.supervisorId) {
     throw new WorkshopActionError('A supervisor must be assigned to open a Job Card.');
   }
+  if (input.mileageAtCheckIn !== undefined && input.mileageAtCheckIn !== null && (!Number.isInteger(input.mileageAtCheckIn) || input.mileageAtCheckIn < 0 || input.mileageAtCheckIn > 5_000_000)) {
+    throw new WorkshopActionError('Enter the mileage as a whole number of kilometres.');
+  }
+  if (complaints.some((c) => c.length > 500)) {
+    throw new WorkshopActionError('Keep each complaint under 500 characters.');
+  }
 
   // The routed department is derived from the vehicle's own recorded
   // type — never taken from client input — so it's structurally
@@ -2887,6 +2893,7 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
     select: {
       id: true,
       status: true,
+      approvedById: true,
       jobCard: {
         select: {
           branchId: true,
@@ -2906,6 +2913,11 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
   }
   const user = await requireEligibleManager(estimate.jobCard.branchId, 'workshop.estimate.final_approve');
   await authorize('workshop.estimate.final_approve', { branchId: estimate.jobCard.branchId }, 'approveEstimateAsManager');
+  // Segregation of duties: the Manager's final approval is a second pair of
+  // eyes — never the same person who approved it as supervisor.
+  if (estimate.approvedById === user.id && !(await currentUserIsMasterAdmin())) {
+    throw new WorkshopActionError('You approved this estimate as its supervisor — another Manager gives the final approval.');
+  }
 
   claimed(await prisma.estimate.updateMany({
     where: { id: estimate.id, status: 'APPROVED' },
@@ -3685,6 +3697,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
     where: { id: requestId },
     select: {
       id: true,
+      requestedById: true,
       status: true,
       reason: true,
       jobCardId: true,
@@ -3715,6 +3728,10 @@ export async function approveCancellationRequest(requestId: string, decisionNote
     throw new WorkshopActionError('This Job Card has since been closed or checked out, so it can no longer be cancelled — decline this request.');
   }
   const user = await requireEligibleManager(request.jobCard.branchId, 'workshop.close.approve');
+  // Segregation of duties: whoever asked for this cannot also approve it.
+  if (request.requestedById === user.id && !(await currentUserIsMasterAdmin())) {
+    throw new WorkshopActionError('You asked for this — another Manager decides it.');
+  }
 
   // All-or-nothing, and each step only from the state it was decided on: a
   // close approved at the same moment, or a second click, makes this stop
@@ -4013,6 +4030,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
     where: { id: requestId },
     select: {
       id: true,
+      requestedById: true,
       status: true,
       jobCardId: true,
       jobCard: {
@@ -4042,6 +4060,10 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
     throw new WorkshopActionError('This Job Card is no longer Ready for Collection, so it cannot be closed — decline this request.');
   }
   const user = await requireEligibleManager(request.jobCard.branchId, 'workshop.close.approve');
+  // Segregation of duties: whoever asked for this cannot also approve it.
+  if (request.requestedById === user.id && !(await currentUserIsMasterAdmin())) {
+    throw new WorkshopActionError('You asked for this — another Manager decides it.');
+  }
 
   // Same all-or-nothing, compare-and-set shape as approving a cancellation.
   await prisma.$transaction(async (tx) => {

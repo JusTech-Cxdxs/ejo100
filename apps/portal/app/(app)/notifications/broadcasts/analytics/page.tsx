@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { getBroadcastAnalytics } from '@/lib/actions/notifications';
 import { LoadingLink } from '@/components/LoadingLink';
 import { BROADCAST_CATEGORY } from '@/lib/notification-rules';
@@ -8,6 +9,7 @@ const AUDIENCE: Record<string, string> = { ALL: 'Everyone', BRANCH: 'Branches', 
 const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 
 export default async function BroadcastAnalyticsPage() {
+  await guardPage('notifications.broadcast.send', '/notifications/broadcasts/analytics');
   const a = await getBroadcastAnalytics();
   const t = a.totals;
   const maxCat = Math.max(1, ...a.byCategory.map((c) => c.count));

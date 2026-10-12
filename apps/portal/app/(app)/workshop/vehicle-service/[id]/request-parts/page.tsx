@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getVehicleService } from '@/lib/actions/vehicle-service';
 import { getVehicleServiceSourcingNeeds, getRequestableServiceEstimatePartRequestLines } from '@/lib/actions/sourcing';
@@ -26,6 +27,7 @@ export default async function VehicleServiceRequestPartsPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { id } = await params;
   const { error } = await searchParams;
   const service = await getVehicleService(id);

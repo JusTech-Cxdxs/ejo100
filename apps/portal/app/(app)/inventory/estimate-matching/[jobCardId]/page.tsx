@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { jobCardVisible } from '@/lib/authz/server';
+import { jobCardVisible, guardAnyPage } from '@/lib/authz/server';
 import { listUnmatchedStorePartLinesForJobCard, getFittingPartsForVehicle, getStoreBranchId } from '@/lib/actions/store';
 import { getJobCard } from '@/lib/actions/workshop';
 import { matchEstimateStorePartLineFormAction } from '@/lib/actions/store-form-handlers';
@@ -39,6 +39,7 @@ export default async function JobCardMatchingPage({
   params: Promise<{ jobCardId: string }>;
   searchParams: Promise<{ error?: string; status?: string }>;
 }) {
+  await guardAnyPage(['store.view'], '/inventory');
   const { jobCardId } = await params;
   // A stale, mistyped or out-of-reach id is simply "not found".
   if (!(await jobCardVisible(jobCardId, 'page'))) notFound();

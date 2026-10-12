@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listIncidents } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -10,6 +11,7 @@ import { LiveSearchInput } from '@/components/LiveSearchInput';
 const TABS: [string, string][] = [['open', 'Open'], ['under_review', 'Under review'], ['closed', 'Closed'], ['all', 'All']];
 
 export default async function IncidentsPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string; severity?: string }> }) {
+  await guardAnyPage(['security.view'], '/security/incidents');
   const { q, tab, severity } = await searchParams;
   const { tab: current, counts, rows } = await listIncidents(q, tab, severity);
   const keep = (k: string) => `/security/incidents?tab=${k}${q ? `&q=${encodeURIComponent(q)}` : ''}${severity ? `&severity=${severity}` : ''}`;

@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getExternalProcurementRequest, getExternalProcurementRequestAuditTrail } from '@/lib/actions/sourcing';
 import { listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch, currentUserIsMasterAdmin, currentUserId } from '@/lib/actions/workshop';
@@ -41,6 +42,7 @@ export default async function ExternalProcurementDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string; status?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { id } = await params;
   const { error, status } = await searchParams;
   const request = await getExternalProcurementRequest(id);

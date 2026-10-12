@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { headers } from 'next/headers';
 import { getVehicleServiceOutcomes } from '@/lib/actions/visit-outcomes';
 import { OutcomeFilterTabs } from '@/components/OutcomeFilterTabs';
@@ -56,6 +57,7 @@ export default async function VehicleServicePage({
 }: {
   searchParams: Promise<{ q?: string; type?: string; error?: string; status?: string; editInterval?: string; outcome?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { q, type, error, status, editInterval, outcome: rawOutcome } = await searchParams;
   const outcomeFilter = parseOutcomeFilter(rawOutcome);
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;

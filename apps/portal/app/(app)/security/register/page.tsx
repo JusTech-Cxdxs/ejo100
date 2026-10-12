@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { searchSecurityRecords } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -12,6 +13,7 @@ const TYPE_LABEL: Record<string, string> = { VISIT: 'Visit', EXIT_PASS: 'Exit pa
 
 /** The Security register — every visit, exit pass and vehicle exit. */
 export default async function SecurityRegisterPage({ searchParams }: { searchParams: Promise<{ q?: string; type?: string }> }) {
+  await guardAnyPage(['security.view'], '/security/register');
   const { q, type } = await searchParams;
   const t = TYPES.some(([k]) => k === type) ? type : '';
   const rows = await searchSecurityRecords(q, t || undefined);

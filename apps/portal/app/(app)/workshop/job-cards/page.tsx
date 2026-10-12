@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { LoadingLink } from '@/components/LoadingLink';
 import { getJobCardOutcomes } from '@/lib/actions/visit-outcomes';
@@ -45,6 +46,7 @@ export default async function WorkshopJobCardsPage({
 }: {
   searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string; outcome?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { q, type, status, error, outcome: rawOutcome } = await searchParams;
   const outcomeFilter = parseOutcomeFilter(rawOutcome);
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;

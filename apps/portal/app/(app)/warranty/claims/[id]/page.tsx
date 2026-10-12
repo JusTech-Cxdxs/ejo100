@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { pluralize } from '@/lib/utils/pluralize';
 import { humanizeAction } from '@/lib/humanize-action';
@@ -71,6 +72,7 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 export default async function WarrantyClaimPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string; edit?: string }> }) {
+  await guardAnyPage(['warranty.view'], '/warranty');
   const { id } = await params;
   const { status, error, edit } = await searchParams;
   const [c, trail, roles, viewer] = await Promise.all([getWarrantyClaim(id), getWarrantyClaimAuditTrail(id), getWarrantyRoles(), requireUser()]);

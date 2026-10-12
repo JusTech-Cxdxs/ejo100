@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listAllRefunds } from '@/lib/actions/refunds';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
@@ -16,6 +17,7 @@ function naira(n: number): string {
  * who in Finance refunded it and when, and its printable receipt.
  */
 export default async function RefundsRegisterPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { q } = await searchParams;
   const refunds = await listAllRefunds(q);
   const total = refunds.reduce((s: number, r: (typeof refunds)[number]) => s + Number(r.amount), 0);

@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { durationLabel } from '@/lib/warranty-state';
 import { isPolicyId, policyAuditLabel } from '@/lib/audit-policy-label';
@@ -60,6 +61,7 @@ export default async function PartDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string; status?: string; editFitmentId?: string; editWarranty?: string }>;
 }) {
+  await guardAnyPage(['store.view'], '/inventory');
   const { id } = await params;
   const { error, status, editFitmentId, editWarranty } = await searchParams;
   const part = await getPart(id);

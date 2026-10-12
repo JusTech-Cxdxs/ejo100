@@ -1,5 +1,5 @@
 import { OrgTrail } from '@/components/OrgTrail';
-import { allows } from '@/lib/authz/server';
+import { allows, guardAnyPage } from '@/lib/authz/server';
 import { getWorkshopCustodySummary, type WorkshopCustodyEntry, currentUserIsMasterAdmin, listEligibleManagersForBranch, currentUserId } from '@/lib/actions/workshop';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { sendApprovalReminderFormAction, notifyOverdueCancelledVehicleFormAction, sendReadyForCollectionReminderFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction } from '@/lib/actions/workshop-form-handlers';
@@ -151,6 +151,7 @@ export default async function WorkshopCustodyPage({
 }: {
   searchParams: Promise<{ error?: string; status?: string; reminders?: string; overdue?: string; filter?: string; q?: string; type?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { error, status, reminders, overdue, filter, q, type: rawType } = await searchParams;
   const vehicleType = rawType === 'PASSENGER' || rawType === 'COMMERCIAL' ? rawType : null;
   const showAwaiting = !filter || filter === 'awaiting';

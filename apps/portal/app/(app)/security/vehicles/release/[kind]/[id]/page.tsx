@@ -1,4 +1,4 @@
-import { allows } from '@/lib/authz/server';
+import { allows, guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getClearedVehicle, getSecurityRoles } from '@/lib/actions/security';
 import { confirmVehicleExitFormAction } from '@/lib/actions/security-form-handlers';
@@ -12,6 +12,7 @@ import { formatDateTime } from '@/lib/utils/format-date';
 /** One released vehicle — check it against what is at the gate, then
  * confirm the exit. */
 export default async function ReleaseVehiclePage({ params, searchParams }: { params: Promise<{ kind: string; id: string }>; searchParams: Promise<{ error?: string }> }) {
+  await guardAnyPage(['security.view'], '/security/vehicles');
   const { kind: slug, id } = await params;
   const { error } = await searchParams;
   const kind = slug === 'job-card' ? 'JOB_CARD' : slug === 'vehicle-service' ? 'VEHICLE_SERVICE' : null;

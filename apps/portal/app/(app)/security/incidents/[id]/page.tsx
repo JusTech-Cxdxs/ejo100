@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getIncident, getSecurityRoles, getSecurityHistory, listGateStaffOptions } from '@/lib/actions/security';
 import { incidentActionFormAction, securityFollowUpFormAction } from '@/lib/actions/security-form-handlers';
@@ -14,6 +15,7 @@ const DONE: Record<string, string> = { reported: 'Incident reported — the Chie
 const HREF: Record<string, string> = { Visit: '/security/visitors/', ExitPass: '/security/exit-passes/', RoadTestPermit: '/security/road-tests/', VehicleGateExit: '/security/vehicles/exits/', GateDelivery: '/security/deliveries/', ContractorPass: '/security/contractors/' };
 
 export default async function IncidentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
+  await guardAnyPage(['security.view'], '/security/incidents');
   const { id } = await params;
   const { status, error } = await searchParams;
   const [inc, roles, history, staff] = await Promise.all([getIncident(id), getSecurityRoles(), getSecurityHistory('SecurityIncident', id), listGateStaffOptions()]);

@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { listRolesForEditor } from '@/lib/actions/roles';
 import { grantRolePermissionFormAction, revokeRolePermissionFormAction } from '@/lib/actions/roles-form-handlers';
 import { PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
@@ -7,6 +8,7 @@ import { FilterSelect } from '@/components/FilterSelect';
 const chip = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium';
 
 export default async function RolesPage({ searchParams }: { searchParams: Promise<{ error?: string; status?: string }> }) {
+  await guardPage('admin.roles.manage', '/roles');
   const { error, status } = await searchParams;
   const roles = await listRolesForEditor();
   const all = Object.keys(PERMISSIONS) as PermissionKey[];

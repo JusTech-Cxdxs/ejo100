@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
 import { WarrantyList } from '@/components/WarrantyList';
@@ -49,6 +50,7 @@ export default async function PartRequestSlipDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string; status?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { id } = await params;
   const { error, status } = await searchParams;
   const slip = await getPartRequestSlip(id);

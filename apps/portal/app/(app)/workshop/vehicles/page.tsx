@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { LoadingLink } from '@/components/LoadingLink';
 import { listAllVehicles } from '@/lib/actions/workshop';
@@ -17,6 +18,7 @@ export default async function WorkshopVehiclesPage({
 }: {
   searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { q, type, status, error } = await searchParams;
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   // Delete now lives in its own Danger Zone on the Edit Vehicle page,

@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { listParts, getStoreBranchId, listAllPartTypesForSelect, searchPartTypesForSelect } from '@/lib/actions/store';
 import { durationLabel, durationShort } from '@/lib/warranty-state';
@@ -33,6 +34,7 @@ export default async function InventoryPartsPage({
 }: {
   searchParams: Promise<{ error?: string; status?: string; q?: string }>;
 }) {
+  await guardAnyPage(['store.view'], '/inventory');
   const { error, status, q } = await searchParams;
   const branchId = await getStoreBranchId();
   const [parts, partPolicies] = await Promise.all([listParts(branchId, q), listWarrantyPolicies('PART', { state: 'active' })]);

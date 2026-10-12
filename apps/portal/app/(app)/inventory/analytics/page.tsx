@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import type { ReactNode } from 'react';
 import { getStoreBranchId } from '@/lib/actions/store';
 import { getInventoryAnalytics } from '@/lib/actions/inventory-analytics';
@@ -81,6 +82,7 @@ function Bars({ rows }: { rows: { label: string; value: number; note: string }[]
 }
 
 export default async function InventoryAnalyticsPage({ searchParams }: { searchParams: Promise<{ lead?: string; service?: string; show?: string; focus?: string; status?: string; error?: string }> }) {
+  await guardPage('analytics.inventory.view', '/inventory/analytics');
   const params = await searchParams;
   const branchId = await getStoreBranchId();
   if (!branchId) return <div className="p-8 text-sm text-[var(--ejo-text-muted)]">No Store branch is set up yet.</div>;

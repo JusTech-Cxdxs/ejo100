@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { listUsersForAdmin, staffPlacementOptions } from '@/lib/actions/users-admin';
 import { assignRoleFormAction, removeRoleFormAction, setStaffActiveFormAction, resendWelcomeFormAction, assignMissingEmployeeIdsFormAction } from '@/lib/actions/users-admin-form-handlers';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
@@ -36,6 +37,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: str
 }
 
 export default async function UsersPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; status?: string; id?: string; show?: string; branch?: string; role?: string; add?: string }> }) {
+  await guardPage('admin.users.manage', '/users');
   const sp = await searchParams;
   const { q, error, status } = sp;
   // Only something shaped like an employee ID is ever shown back.

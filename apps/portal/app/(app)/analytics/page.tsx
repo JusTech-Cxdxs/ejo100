@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { canSeeMasterAnalytics, getMasterAnalytics } from '@/lib/actions/master-analytics';
 import { LoadingLink } from '@/components/LoadingLink';
 import { pluralize } from '@/lib/utils/pluralize';
@@ -8,6 +9,7 @@ const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 const PERIODS: [string, string][] = [['today', 'Today'], ['this_month', 'This month'], ['last_month', 'Last month'], ['last_30', 'Last 30 days'], ['this_quarter', 'This quarter'], ['this_year', 'This year']];
 
 export default async function BusinessAnalyticsPage({ searchParams }: { searchParams: Promise<{ period?: string; from?: string; to?: string }> }) {
+  await guardPage('analytics.business.view', '/analytics');
   const { period, from, to } = await searchParams;
   // Refused on the server — typing the address directly does not get round it.
   if (!(await canSeeMasterAnalytics())) {

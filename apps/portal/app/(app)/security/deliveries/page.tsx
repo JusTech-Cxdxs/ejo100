@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listDeliveries } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
@@ -10,6 +11,7 @@ import { LiveSearchInput } from '@/components/LiveSearchInput';
 const TABS: [string, string][] = [['at_gate', 'At the gate'], ['expected', 'Expected'], ['received', 'Received'], ['left', 'Left'], ['cancelled', 'Cancelled'], ['all', 'All']];
 
 export default async function DeliveriesPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string }> }) {
+  await guardAnyPage(['security.view', 'store.grn.record'], '/security/deliveries');
   const { q, tab } = await searchParams;
   const { tab: current, counts, rows } = await listDeliveries(q, tab);
   return (

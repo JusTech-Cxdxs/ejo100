@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { getBranches } from '@/lib/actions/branches';
 import { LoadingLink } from '@/components/LoadingLink';
 
@@ -10,6 +11,7 @@ import { LoadingLink } from '@/components/LoadingLink';
  * different blocks on the same document).
  */
 export default async function BranchesPage() {
+  await guardPage('admin.structure.manage', '/branches');
   const branches = await getBranches();
 
   return (

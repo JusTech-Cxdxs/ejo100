@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
 import { LoadingLink } from '@/components/LoadingLink';
 import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS, CLAIM_GROUPS, REMEDY_LABEL, PART_RETURN_LABEL } from '@/lib/warranty-claim-status';
@@ -22,6 +23,7 @@ const GROUP_LABEL: Record<string, string> = {
 /** Warranty claims register — every claim, its stage, its money, and what
  * needs doing next. */
 export default async function WarrantyClaimsPage({ searchParams }: { searchParams: Promise<{ q?: string; group?: string; remedy?: string; part?: string }> }) {
+  await guardAnyPage(['warranty.view'], '/warranty');
   const { q, group: rawGroup, remedy: rawRemedy, part: rawPart } = await searchParams;
   const remedy = rawRemedy && REMEDY_LABEL[rawRemedy] ? rawRemedy : null;
   const part = rawPart && PART_RETURN_LABEL[rawPart] ? rawPart : null;

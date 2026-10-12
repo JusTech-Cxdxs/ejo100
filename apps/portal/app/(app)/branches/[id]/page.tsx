@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getBranch } from '@/lib/actions/branches';
 import { updateBranchFormAction } from '@/lib/actions/branches-form-handlers';
@@ -24,6 +25,7 @@ export default async function BranchEditPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string; status?: string; edit?: string }>;
 }) {
+  await guardPage('admin.structure.manage', '/branches');
   const { id } = await params;
   const { error, status, edit } = await searchParams;
   const branch = await getBranch(id);

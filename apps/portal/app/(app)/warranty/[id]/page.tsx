@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import type { ReactNode } from 'react';
 import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
@@ -46,6 +47,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export default async function WarrantyDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
+  await guardAnyPage(['warranty.view'], '/warranty');
   const { id } = await params;
   const { status, error } = await searchParams;
   const [w, trail, claims, roles, emails] = await Promise.all([getWarranty(id), getWarrantyAuditTrail(id), listWarrantyClaims({ warrantyId: id }), getWarrantyRoles(), getWarrantyEmailState(id)]);

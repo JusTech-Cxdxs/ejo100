@@ -65,9 +65,10 @@ export async function can(key: PermissionKey, record?: RecordContext): Promise<D
 }
 
 /** Record a refusal in the audit trail — a security signal, never noise for users. */
-async function logDenied(userId: string, key: PermissionKey, where: string, reason: string) {
+// Once per request: a page and its layout both guard, and render together.
+const logDenied = cache(async (userId: string, key: PermissionKey, where: string, reason: string) => {
   await writeAuditLog({ userId, action: 'access.denied', entityType: 'Access', entityId: where.slice(0, 120), metadata: { permission: key, reason } }).catch(() => undefined);
-}
+});
 
 /** Pages / layouts: refuse on the SERVER (pasted links included). */
 export async function guardPage(key: PermissionKey, where: string): Promise<void> {

@@ -1,5 +1,5 @@
 import { jobStatuses } from '@/lib/job-runs';
-import { getPrincipal } from '@/lib/authz/server';
+import { getPrincipal, guardPage } from '@/lib/authz/server';
 import { formatDateTime } from '@/lib/utils/format-date';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6';
@@ -18,6 +18,7 @@ const LABEL: Record<string, string> = { remindersSent: 'reminders sent', broadca
 
 /** Settings — the health of everything that runs on its own. */
 export default async function SettingsPage() {
+  await guardPage('admin.settings.manage', '/settings');
   const [{ jobs, emails7d }, p] = await Promise.all([jobStatuses(), getPrincipal()]);
   return (
     <div className="p-8">

@@ -1,5 +1,5 @@
 import { canRequestRoadTestOn } from '@/lib/actions/security';
-import { serviceVisible } from '@/lib/authz/server';
+import { serviceVisible, guardAnyPage } from '@/lib/authz/server';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
 import { listRoadTestsFor } from '@/lib/actions/security';
 import { securityActionDetail } from '@/lib/security-labels';
@@ -313,6 +313,7 @@ export default async function VehicleServiceDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ editMileage?: string; editLineId?: string; error?: string; status?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { editMileage, editLineId, error, status } = await searchParams;
   const { id } = await params;
   // Round 1 — everything that needs only the service's id, all at once

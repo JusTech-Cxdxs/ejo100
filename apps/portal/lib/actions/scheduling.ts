@@ -1,6 +1,7 @@
 'use server';
 
 import { claimed, lockRows } from '@/lib/integrity';
+import { retryOnNumberClash } from '@/lib/integrity-core';
 import { cache } from 'react';
 import { after } from 'next/server';
 
@@ -180,10 +181,12 @@ function cleanGroup(g: VisitorGroupInput) {
  * meeting's time and length, hosted by the meeting's host. */
 async function createGroupBooking(appt: { id: string; title: string; startsAt: Date; endsAt: Date; ownerId: string }, g: ReturnType<typeof cleanGroup>, bookerId: string) {
   const [lead, ...members] = g.names;
-  const visitNumber = await nextNumber('VIS');
-  const v = await prisma.visit.create({
-    data: { visitNumber, status: 'EXPECTED', vehicleType: 'ON_FOOT', branchId: await getWorkshopBranchId(), registeredById: bookerId, appointmentId: appt.id, visitorName: lead!, partySize: g.names.length, memberNames: members, company: g.organisation, phone: g.phone, purpose: g.purpose, hostUserId: appt.ownerId, expectedAt: appt.startsAt, expectedDurationMinutes: Math.max(5, mins(appt.startsAt, appt.endsAt)) },
-  });
+  // Two bookings at the same moment can pick the same number: the second takes the next one.
+  const branchId = await getWorkshopBranchId();
+  const v = await retryOnNumberClash('visitNumber', async () => prisma.visit.create({
+    data: { visitNumber: await nextNumber('VIS'), status: 'EXPECTED', vehicleType: 'ON_FOOT', branchId, registeredById: bookerId, appointmentId: appt.id, visitorName: lead!, partySize: g.names.length, memberNames: members, company: g.organisation, phone: g.phone, purpose: g.purpose, hostUserId: appt.ownerId, expectedAt: appt.startsAt, expectedDurationMinutes: Math.max(5, mins(appt.startsAt, appt.endsAt)) },
+  }));
+  const visitNumber = v.visitNumber;
   const host = (await prisma.user.findUnique({ where: { id: appt.ownerId }, select: { fullName: true } }))?.fullName ?? '';
   await writeAuditLog({ userId: bookerId, action: 'visit.pre_registered', entityType: 'Visit', entityId: v.id, metadata: { visitNumber, visitor: lead, people: g.names.length, expectedAt: appt.startsAt } });
   await emailGate('new', v.id, appt, g, host, bookerId);
@@ -216,12 +219,13 @@ export async function createAppointment(input: AppointmentInput): Promise<{ id: 
   if (d.startsAt.getTime() < Date.now() - 5 * 60000) throw new SchedulingError('That time has already passed.');
   await assertRoomIsMine(d.roomId);
   await assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt);
-  const appointmentNumber = await nextNumber('APT');
   const branchId = await getWorkshopBranchId();
-  const appt = await bookExclusively([input.ownerId], [d.roomId], (db) => assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt, undefined, db), (tx) => tx.appointment.create({
+  // Two bookings at the same moment can pick the same number: the second takes the next one.
+  let appointmentNumber = '';
+  const appt = await retryOnNumberClash('appointmentNumber', async () => { appointmentNumber = await nextNumber('APT'); return bookExclusively([input.ownerId], [d.roomId], (db) => assertNoClash(input.ownerId, d.roomId, d.startsAt, d.endsAt, undefined, db), (tx) => tx.appointment.create({
     data: { appointmentNumber, branchId, title: d.title, agenda: d.agenda, ownerId: input.ownerId, createdById: a.userId, startsAt: d.startsAt, endsAt: d.endsAt, roomId: d.roomId, location: d.location, participants: { create: d.participantIds.map((userId) => ({ userId })) } },
     select: { id: true, owner: { select: { fullName: true } }, room: { select: { name: true } } },
-  }));
+  })); });
   if (d.visitors) await createGroupBooking({ id: appt.id, title: d.title, startsAt: d.startsAt, endsAt: d.endsAt, ownerId: input.ownerId }, d.visitors, a.userId);
   await writeAuditLog({ userId: a.userId, action: 'appointment.created', entityType: 'Appointment', entityId: appt.id, metadata: { appointmentNumber, title: d.title, startsAt: d.startsAt, onBehalfOf: input.ownerId !== a.userId ? appt.owner.fullName : undefined } });
   await sendLoggedEmail({ entityType: 'Appointment', entityId: appt.id, recipients: await recipientsFor(appt.id, a.userId), subject: `New appointment: ${d.title} — ${fmt(d.startsAt)}`, heading: 'You have a new appointment', lines: describe(d, appt.room?.name ?? null, appt.owner.fullName, d.visitors?.names ?? null), path: `/schedule/${appt.id}`, actorId: a.userId });
@@ -241,6 +245,7 @@ async function loadForChange(id: string) {
 export async function updateAppointment(id: string, input: AppointmentInput): Promise<void> {
   const { user, appt, access } = await loadForChange(id);
   if (appt.status !== 'SCHEDULED') throw new SchedulingError('Only a scheduled appointment can be changed.');
+  if (new Date(input.startsAt).getTime() < Date.now() - 5 * 60000 && new Date(input.startsAt).getTime() !== new Date(appt.startsAt).getTime()) throw new SchedulingError('That time has already passed.');
   if (!access.owners.some((o) => o.id === input.ownerId) && input.ownerId !== appt.ownerId) throw new SchedulingError('You cannot move it onto that calendar.');
   const d = clean(input);
   await assertRoomIsMine(d.roomId);

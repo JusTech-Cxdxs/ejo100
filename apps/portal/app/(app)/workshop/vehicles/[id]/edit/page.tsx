@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { listPartsFittedToVehicle, getVehicleCoveredValue } from '@/lib/actions/vehicle-history';
 import { computeVehicleIntelligence } from '@/lib/vehicle-intelligence';
@@ -77,6 +78,7 @@ export default async function VehiclePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string; edit?: string; status?: string }>;
 }) {
+  await guardAnyPage(['workshop.view'], '/workshop');
   const { id } = await params;
   const { error, edit, status } = await searchParams;
   // Everything on this page needs only the vehicle's id — one round, all at once.

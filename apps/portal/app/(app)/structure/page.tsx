@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { getStructure } from '@/lib/actions/structure';
 import { createBusinessUnitFormAction, renameBusinessUnitFormAction, createBranchFormAction, createDepartmentFormAction } from '@/lib/actions/structure-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -25,6 +26,7 @@ function Stat({ value, name }: { value: number; name: string }) {
  * with how many people work in each — and where each is added or changed.
  */
 export default async function StructurePage({ searchParams }: { searchParams: Promise<{ error?: string; status?: string }> }) {
+  await guardPage('admin.structure.manage', '/structure');
   const { error, status } = await searchParams;
   const s = await getStructure();
   const branches = s.units.flatMap((u) => u.branches);

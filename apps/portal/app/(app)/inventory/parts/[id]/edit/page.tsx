@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getPart } from '@/lib/actions/store';
 import { updatePartFormAction } from '@/lib/actions/store-form-handlers';
@@ -26,6 +27,7 @@ export default async function EditPartPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string }>;
 }) {
+  await guardAnyPage(['store.view'], '/inventory');
   const { id } = await params;
   const { error } = await searchParams;
   const part = await getPart(id);

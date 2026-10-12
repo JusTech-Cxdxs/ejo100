@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { canSeeAuditLogs, getAuditLogPage, listAuditUsers } from '@/lib/actions/audit-logs';
 import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { SearchableSelect } from '@/components/SearchableSelect';
@@ -25,6 +26,7 @@ function groupByDay<T extends { at: Date }>(rows: T[]): [string, T[]][] {
 const KIND_CHIP: Record<string, string> = { Business: 'bg-[var(--ejo-primary)]/15 text-[var(--ejo-primary)]', 'Data change': 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]', API: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]', 'System job': 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]' };
 
 export default async function AuditLogsPage({ searchParams }: { searchParams: Promise<{ kind?: string; q?: string; userId?: string; from?: string; to?: string; cursor?: string }> }) {
+  await guardPage('audit.view', '/audit-logs');
   const sp = await searchParams;
   // Refused on the server — typing the address directly does not get round it.
   if (!(await canSeeAuditLogs())) {

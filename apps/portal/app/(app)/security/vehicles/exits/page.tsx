@@ -1,3 +1,4 @@
+import { guardAnyPage } from '@/lib/authz/server';
 import { JobRef } from '@/components/JobRef';
 import { listVehicleExits } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -7,6 +8,7 @@ import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 
 export default async function VehicleExitsPage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string }> }) {
+  await guardAnyPage(['security.view'], '/security/vehicles');
   const { q, kind } = await searchParams;
   const all = await listVehicleExits(q);
   const rows = all.filter((x) => (kind === 'job-card' ? x.jobCard : kind === 'vehicle-service' ? x.vehicleService : true));
