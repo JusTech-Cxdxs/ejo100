@@ -3,6 +3,7 @@ import { listExternalProcurementRequests } from '@/lib/actions/sourcing';
 import { getStoreBranchId } from '@/lib/actions/store';
 import { LoadingLink } from '@/components/LoadingLink';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageHeader } from '@/components/ui';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_FINANCE_REVIEW: 'Awaiting Finance review',
@@ -37,11 +38,12 @@ export default async function ExternalProcurementPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/workshop" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Workshop
-      </LoadingLink>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">External Procurement</h1>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">Cash advance requests for externally-sourced parts and jobs.</p>
+      <PageHeader
+        icon="cart"
+        back={{ href: "/workshop", label: "Back to Workshop" }}
+        title="External Procurement"
+        description={<>Cash advance requests for externally-sourced parts and jobs.</>}
+      />
 
       <form className="mb-6 flex gap-2" action="/workshop/external-procurement">
         <LiveSearchInput

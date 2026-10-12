@@ -2,12 +2,12 @@ import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getAppointment } from '@/lib/actions/scheduling';
 import { addVisitorGroupFormAction } from '@/lib/actions/scheduling-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { ScheduleNav } from '@/components/ScheduleNav';
 import { VisitorGroupFields } from '@/components/VisitorGroupFields';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
+import { BackLink, PageTitle } from '@/components/ui';
 
 /** Add a visitor group to an appointment — one per company / person. */
 export default async function AddVisitorsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
@@ -19,8 +19,8 @@ export default async function AddVisitorsPage({ params, searchParams }: { params
   if (!a) notFound();
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href={`/schedule/${a.id}`} className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to {a.appointmentNumber}</LoadingLink>
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Add visitors</h1>
+      <BackLink href={`/schedule/${a.id}`} label={<>Back to {a.appointmentNumber}</>} className="mb-4" />
+      <PageTitle icon="calendar">Add visitors</PageTitle>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">{a.title} · {new Date(a.startsAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} — Security will expect them at that time.</p>
       <ScheduleNav active="/schedule/appointments" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}

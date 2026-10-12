@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation';
 import { getBroadcast, canBroadcast, listAudienceOptions } from '@/lib/actions/notifications';
 import { getSecurityHistory } from '@/lib/actions/security';
 import { broadcastActionFormAction } from '@/lib/actions/notification-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityHistory } from '@/components/SecurityHistory';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
@@ -10,6 +9,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { BROADCAST_CATEGORY, BROADCAST_STATE_LABEL, DURATIONS } from '@/lib/notification-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const DONE: Record<string, string> = { created: 'Broadcast published.', stop: 'Broadcast stopped — it no longer shows.', reactivate: 'Broadcast running again — everyone sees it as new.' };
 
@@ -25,9 +25,9 @@ export default async function BroadcastPage({ params, searchParams }: { params: 
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => (val ? <div className="flex justify-between gap-3 py-1 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right text-[var(--ejo-text)]">{val}</dd></div> : null);
   return (
     <div className="w-full p-4 sm:p-8">
-      <LoadingLink href="/notifications/broadcasts" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Broadcasts</LoadingLink>
+      <BackLink href="/notifications/broadcasts" label="Back to Broadcasts" className="mb-4" />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{b.broadcastNumber}</h1>
+        <PageTitle icon="megaphone">{b.broadcastNumber}</PageTitle>
         <span className="rounded-full bg-[var(--ejo-bg)] px-3 py-1 text-sm font-medium text-[var(--ejo-text)]">{BROADCAST_STATE_LABEL[b.state]}</span>
       </div>
       {status && DONE[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={DONE[status]!} /></div> : null}

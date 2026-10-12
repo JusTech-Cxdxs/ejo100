@@ -1,6 +1,7 @@
 import { jobStatuses } from '@/lib/job-runs';
 import { getPrincipal, guardPage } from '@/lib/authz/server';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { PageHeader } from '@/components/ui';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6';
 
@@ -22,8 +23,11 @@ export default async function SettingsPage() {
   const [{ jobs, emails7d }, p] = await Promise.all([jobStatuses(), getPrincipal()]);
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Settings</h1>
-      <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">What runs on its own, and whether it is working.</p>
+      <PageHeader
+        icon="settings"
+        title="Settings"
+        description={<>What runs on its own, and whether it is working.</>}
+      />
 
       <section className={`${card} mt-8`}>
         <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Scheduled jobs</h2>

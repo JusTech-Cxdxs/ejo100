@@ -9,8 +9,9 @@ import { PrintMenu } from '@/components/print/PrintMenu';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
-import { ROAD_TEST_STATUS_LABEL, STATUS_CHIP, durationText, minutesBetween, roadTestOverdueMinutes } from '@/lib/security-rules';
+import { ROAD_TEST_STATUS_LABEL, durationText, minutesBetween, roadTestOverdueMinutes } from '@/lib/security-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 
 const DONE: Record<string, string> = {
   requested: 'Road test requested — the Manager has been asked to approve it.',
@@ -41,15 +42,15 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
   const kmText = (n: number | null) => (n === null ? null : `${n.toLocaleString('en-NG')} km`);
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/security/road-tests" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Road tests</LoadingLink>
+      <BackLink href="/security/road-tests" label="Back to Road tests" className="mb-4" />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Road test {r.permitNumber}</h1>
+          <PageTitle icon="road">Road test {r.permitNumber}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{[r.vehicle.make, r.vehicle.model].filter(Boolean).join(' ')}{r.vehicle.plateNumber ? ` — ${r.vehicle.plateNumber}` : ''} · requested by {r.requestedBy.fullName} on {formatDateTime(r.createdAt)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {['APPROVED', 'OUT', 'RETURNED'].includes(r.status) ? <PrintMenu orgHref={`/print/road-test/${r.id}`} clientHref={`/print/road-test/${r.id}?variant=client`} clientLabel="Driver Copy" align="right" /> : null}
-          <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_CHIP[r.status] ?? ''}`}>{ROAD_TEST_STATUS_LABEL[r.status]}</span>
+          <StatusChip status={r.status} label={ROAD_TEST_STATUS_LABEL[r.status]} className="px-3 py-1 text-sm" />
         </div>
       </div>
       <SecurityNav active="/security/road-tests" />

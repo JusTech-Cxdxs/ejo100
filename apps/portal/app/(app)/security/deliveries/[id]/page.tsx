@@ -9,8 +9,9 @@ import { DeliveryArrivalFields } from '@/components/DeliveryForm';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
-import { DELIVERY_STATUS_LABEL, STATUS_CHIP, VEHICLE_TYPE_LABEL, durationText, minutesBetween } from '@/lib/security-rules';
+import { DELIVERY_STATUS_LABEL, VEHICLE_TYPE_LABEL, durationText, minutesBetween } from '@/lib/security-rules';
 import { formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
+import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 
 const DONE: Record<string, string> = { expected: 'Delivery announced — Security has been emailed.', arrived: 'Arrival recorded — the Store has been emailed.', arrive: 'Arrival recorded — the Store has been emailed.', receive: 'Received by the Store.', left: 'Delivery vehicle recorded leaving.', cancel: 'Delivery cancelled — Security has been emailed.', follow_up: 'Follow-up saved.' };
 
@@ -28,13 +29,13 @@ export default async function DeliveryPage({ params, searchParams }: { params: P
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => (val ? <div className="flex justify-between gap-3 py-1 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right text-[var(--ejo-text)]">{val}</dd></div> : null);
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/security/deliveries" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Deliveries</LoadingLink>
+      <BackLink href="/security/deliveries" label="Back to Deliveries" className="mb-4" />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{d.deliveryNumber} — {d.supplierName}</h1>
+          <PageTitle icon="truck">{d.deliveryNumber} — {d.supplierName}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{d.items}</p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_CHIP[d.status] ?? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'}`}>{DELIVERY_STATUS_LABEL[d.status]}</span>
+        <StatusChip status={d.status} label={DELIVERY_STATUS_LABEL[d.status]} className="px-3 py-1 text-sm" />
       </div>
       <SecurityNav active="/security/deliveries" />
       {status && DONE[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={DONE[status]!} /></div> : null}

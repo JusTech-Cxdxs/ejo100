@@ -3,11 +3,11 @@ import { notFound } from 'next/navigation';
 import { getJobCard } from '@/lib/actions/workshop';
 import { getJobCardSourcingNeeds, getRequestableExternalProcurementLines } from '@/lib/actions/sourcing';
 import { requestExternalProcurementFormAction } from '@/lib/actions/sourcing-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
+import { BackLink, PageTitle } from '@/components/ui';
 
 function formatNaira(value: number): string {
   return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -46,13 +46,8 @@ export default async function RequestProcurementPage({
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href={`/workshop/job-cards/${id}`}
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Job Card {jobCard.jobNumber}
-      </LoadingLink>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Request External Procurement</h1>
+      <BackLink href={`/workshop/job-cards/${id}`} label={<>Back to Job Card {jobCard.jobNumber}</>} className="mb-4" />
+      <PageTitle icon="cart" className="mb-2">Request External Procurement</PageTitle>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
         Every line below is already priced on the approved estimate. Nothing here needs editing; raising the request
         sends this exact list forward as a cash advance request.

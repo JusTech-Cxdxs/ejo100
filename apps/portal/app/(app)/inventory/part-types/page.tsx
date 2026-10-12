@@ -1,11 +1,11 @@
 import { guardAnyPage } from '@/lib/authz/server';
 import { listPartCategories, listPartTypes, getStoreBranchId, searchPartCategoriesForSelect, listAllPartCategoriesForSelect } from '@/lib/actions/store';
 import { createPartCategoryFormAction, createPartTypeFormAction } from '@/lib/actions/store-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SearchableSelect } from '@/components/SearchableSelect';
+import { EmptyState, PageHeader } from '@/components/ui';
 
 const FOLDER_ICON = (
   <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-primary)]">
@@ -57,14 +57,13 @@ export default async function PartTypesPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/inventory" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Inventory
-      </LoadingLink>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Part Categories & Types</h1>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        The generic classification a technician picks from when requesting a Store Part on an estimate — Store then
-        matches each request to the real, vehicle-fitting catalog Part.
-      </p>
+      <PageHeader
+        icon="layers"
+        back={{ href: "/inventory", label: "Back to Inventory" }}
+        title="Part Categories & Types"
+        description={<>The generic classification a technician picks from when requesting a Store Part on an estimate — Store then
+        matches each request to the real, vehicle-fitting catalog Part.</>}
+      />
 
       {error ? (
         <div className="mb-6 max-w-xl">
@@ -85,7 +84,7 @@ export default async function PartTypesPage({
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-3">
           {categories.length === 0 ? (
-            <p className="text-sm text-[var(--ejo-text-muted)]">No Part Categories yet — add the first one on the right.</p>
+            <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="layers" title="No Part Categories yet — add the first one on the right." /></div>
           ) : (
             categories.map((category: (typeof categories)[number]) => {
               const children = typesByCategory.get(category.id) ?? [];

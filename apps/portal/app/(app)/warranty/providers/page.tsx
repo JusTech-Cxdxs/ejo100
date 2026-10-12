@@ -8,6 +8,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { pluralize } from '@/lib/utils/pluralize';
 import { PROVIDER_TYPE_LABEL } from '@/lib/warranty-claim-status';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageHeader } from '@/components/ui';
 
 
 const BANNER: Record<string, string> = {
@@ -38,12 +39,13 @@ export default async function WarrantyProvidersPage({ searchParams }: { searchPa
 
   return (
     <div className="p-8">
-      <LoadingLink href="/warranty" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Warranty</LoadingLink>
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Warranty providers</h1>
-      <p className="mt-1 mb-6 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-        The manufacturers, distributors, component makers and suppliers that stand behind warranties — and the claim rules each one sets
-        (how long to submit a claim, how long to keep a failed part).
-      </p>
+      <PageHeader
+        icon="building"
+        back={{ href: "/warranty", label: "Back to Warranty" }}
+        title="Warranty providers"
+        description={<>The manufacturers, distributors, component makers and suppliers that stand behind warranties — and the claim rules each one sets
+        (how long to submit a claim, how long to keep a failed part).</>}
+      />
       {status && BANNER[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={BANNER[status]} /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">

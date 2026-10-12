@@ -1,9 +1,10 @@
 import { guardAnyPage } from '@/lib/authz/server';
 import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
 import { LoadingLink } from '@/components/LoadingLink';
-import { CLAIM_STATUS_LABEL, CLAIM_STATUS_CLASS, CLAIM_GROUPS, REMEDY_LABEL, PART_RETURN_LABEL } from '@/lib/warranty-claim-status';
+import { CLAIM_STATUS_LABEL, CLAIM_GROUPS, REMEDY_LABEL, PART_RETURN_LABEL } from '@/lib/warranty-claim-status';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageHeader, StatusChip } from '@/components/ui';
 
 function naira(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -49,16 +50,13 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
 
   return (
     <div className="p-8">
-      <LoadingLink href="/warranty" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Warranty</LoadingLink>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Warranty claims</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-            Every claim from draft to money received: staff draft it, the Warranty HOD and the Branch Manager approve it, it goes to
-            the provider, and the decision and settlement are recorded. Start a claim from the warranty it is made against.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon="file"
+        back={{ href: "/warranty", label: "Back to Warranty" }}
+        title="Warranty claims"
+        description={<>Every claim from draft to money received: staff draft it, the Warranty HOD and the Branch Manager approve it, it goes to
+            the provider, and the decision and settlement are recorded. Start a claim from the warranty it is made against.</>}
+      />
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4"><p className="text-xs text-[var(--ejo-text-muted)]">Claimed (excl. cancelled)</p><p className="mt-1 text-xl font-bold text-[var(--ejo-text)]">{naira(claimed)}</p></div>
@@ -153,7 +151,7 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
                       {c.deadlineAt ? formatDateOnly(c.deadlineAt) : '—'}
                       {open && daysLeft !== null ? <div>{daysLeft < 0 ? `${Math.abs(daysLeft)} ${Math.abs(daysLeft) === 1 ? 'day' : 'days'} late` : `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left`}</div> : null}
                     </td>
-                    <td className="px-3 py-2"><span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${CLAIM_STATUS_CLASS[c.status]}`}>{CLAIM_STATUS_LABEL[c.status]}</span></td>
+                    <td className="px-3 py-2"><StatusChip status={c.status} label={CLAIM_STATUS_LABEL[c.status]} /></td>
                   </tr>
                 );
               })}

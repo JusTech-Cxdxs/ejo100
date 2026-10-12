@@ -4,13 +4,13 @@ import { prisma } from '@ejo/database';
 import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { requireUser } from '@/lib/actions/workshop';
 import { requestRoadTestFormAction } from '@/lib/actions/security-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { durationText } from '@/lib/security-rules';
+import { PageHeader } from '@/components/ui';
 
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 
@@ -36,9 +36,12 @@ export default async function NewRoadTestPage({ searchParams }: { searchParams: 
   const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href={rec.back} className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to {rec.number}</LoadingLink>
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Request a road test</h1>
-      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">{rec.number} · {[rec.vehicle.make, rec.vehicle.model].filter(Boolean).join(' ')}{rec.vehicle.plateNumber ? ` — ${rec.vehicle.plateNumber}` : ''} · {rec.customer}{rec.vehicle.mileage !== null ? ` · last odometer ${rec.vehicle.mileage.toLocaleString('en-NG')} km` : ''}</p>
+      <PageHeader
+        icon="road"
+        back={{ href: rec.back, label: <>Back to {rec.number}</> }}
+        title="Request a road test"
+        description={<>{rec.number} · {[rec.vehicle.make, rec.vehicle.model].filter(Boolean).join(' ')}{rec.vehicle.plateNumber ? ` — ${rec.vehicle.plateNumber}` : ''} · {rec.customer}{rec.vehicle.mileage !== null ? ` · last odometer ${rec.vehicle.mileage.toLocaleString('en-NG')} km` : ''}</>}
+      />
       <SecurityNav active="/security/road-tests" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       <form action={requestRoadTestFormAction} className="max-w-2xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">

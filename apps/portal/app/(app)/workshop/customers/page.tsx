@@ -1,6 +1,5 @@
 import { guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
-import { LoadingLink } from '@/components/LoadingLink';
 import { listCustomers } from '@/lib/actions/workshop';
 import { createCustomerFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -8,6 +7,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageHeader } from '@/components/ui';
 
 const STATUS_MESSAGES: Record<string, { kind: 'success' | 'warning'; message: string }> = {
   customer_existing: { kind: 'success', message: 'That email already had a customer record — reused it, no duplicate created.' },
@@ -27,20 +27,12 @@ export default async function WorkshopCustomersPage({
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/workshop"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Workshop
-      </LoadingLink>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Customers</h1>
-          <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
-            <OrgTrail area="Workshop" />
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon="users"
+        back={{ href: "/workshop", label: "Back to Workshop" }}
+        title="Customers"
+        description={<><OrgTrail area="Workshop" /></>}
+      />
 
       {statusInfo ? <FormFeedbackBanner kind={statusInfo.kind} message={statusInfo.message} /> : null}
       {error ? <FormFeedbackBanner kind="error" message={error} /> : null}

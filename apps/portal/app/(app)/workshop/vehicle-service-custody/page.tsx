@@ -11,6 +11,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { ordinal } from '@/lib/custody-reminders';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { EmptyState, PageHeader } from '@/components/ui';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -137,13 +138,12 @@ export default async function VehicleServiceCustodyPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href="/workshop" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Workshop
-      </LoadingLink>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Vehicles In Custody — Vehicle Service</h1>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        <OrgTrail area="Workshop" />
-      </p>
+      <PageHeader
+        icon="key"
+        back={{ href: "/workshop", label: "Back to Workshop" }}
+        title="Vehicles In Custody — Vehicle Service"
+        description={<><OrgTrail area="Workshop" /></>}
+      />
       <p className="-mt-3 mb-6 text-xs text-[var(--ejo-text-muted)]">
         Vehicles already collected are tracked for their next service in the{' '}
         <LoadingLink href="/workshop/service-tracker" className="font-medium text-[var(--ejo-primary)] hover:underline">
@@ -256,7 +256,7 @@ export default async function VehicleServiceCustodyPage({
         <section className="mb-10">
           <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Checked In</h2>
           {summary.checkedIn.length === 0 ? (
-            <p className="text-sm text-[var(--ejo-text-muted)]">No vehicles currently checked in.</p>
+            <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="key" title="No vehicles currently checked in." /></div>
           ) : (
             <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
               <table className="w-full text-sm">
@@ -296,7 +296,7 @@ export default async function VehicleServiceCustodyPage({
         <section className="mb-10">
           <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">In Service</h2>
           {summary.inService.length === 0 ? (
-            <p className="text-sm text-[var(--ejo-text-muted)]">No vehicles currently in service.</p>
+            <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="key" title="No vehicles currently in service." /></div>
           ) : (
             <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
               <table className="w-full text-sm">
@@ -336,7 +336,7 @@ export default async function VehicleServiceCustodyPage({
         <section className="mb-10">
           <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Completed — Awaiting Collection</h2>
           {summary.completed.length === 0 ? (
-            <p className="text-sm text-[var(--ejo-text-muted)]">Nothing currently waiting on collection.</p>
+            <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="key" title="Nothing currently waiting on collection." /></div>
           ) : (
             <div className="space-y-3">
               {summary.completed.map((entry: (typeof summary.completed)[number]) => (
@@ -468,7 +468,7 @@ export default async function VehicleServiceCustodyPage({
         <section className="mb-10">
           <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Due Soon</h2>
           {summary.dueSoon.length === 0 ? (
-            <p className="text-sm text-[var(--ejo-text-muted)]">Nothing due for service soon.</p>
+            <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="key" title="Nothing due for service soon." /></div>
           ) : (
             <div className="space-y-3">
               {summary.dueSoon.map((entry: (typeof summary.dueSoon)[number]) => (

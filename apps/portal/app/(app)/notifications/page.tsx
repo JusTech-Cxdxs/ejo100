@@ -7,6 +7,8 @@ import { BROADCAST_CATEGORY, AREA_LABEL } from '@/lib/notification-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { EmptyState, HeaderAction, Icon, PageHeader } from '@/components/ui';
+import { ACTION_ICON, AREA_ICON, CATEGORY_ICON, CATEGORY_TILE } from '@/components/ui/notify-icons';
 
 const AREAS = ['WORKSHOP', 'STORE', 'WARRANTY', 'SECURITY', 'SCHEDULING', 'SYSTEM'];
 
@@ -35,13 +37,14 @@ export default async function NotificationCenter({ searchParams }: { searchParam
   const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]';
   return (
     <div className="w-full p-4 sm:p-8">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Notification Center</h1>
-          <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{summary.total === 0 ? "You're all caught up." : `${pluralize(summary.total, 'item')} waiting for you.`} Sounds are {summary.muted ? 'off 🔕' : 'on 🔔'} — change it from the bell.</p>
-        </div>
-        {broadcaster ? <LoadingLink href="/notifications/broadcasts" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Manage broadcasts →</LoadingLink> : null}
-      </div>
+      <PageHeader
+        hero
+        live
+        icon="bell"
+        title="Notification Center"
+        description={<>{summary.total === 0 ? "You're all caught up." : `${pluralize(summary.total, 'item')} waiting for you.`} Sounds are {summary.muted ? 'off' : 'on'} — change it from the bell.</>}
+        actions={broadcaster ? <HeaderAction href="/notifications/broadcasts" icon="megaphone" variant="secondary">Manage broadcasts →</HeaderAction> : null}
+      />
       {status === 'read' ? <div className="mb-4 max-w-2xl"><FormFeedbackBanner kind="success" message="Marked as read." /></div> : null}
       <div className="mb-5 flex flex-wrap items-center gap-2">
         {tabs.map(([k, l, n]) => <LoadingLink key={k} href={`/notifications?tab=${k}`} className={pill(current === k)}>{l} ({n})</LoadingLink>)}
@@ -57,13 +60,14 @@ export default async function NotificationCenter({ searchParams }: { searchParam
 
       {current === 'actions' ? (
         <div className={card}>
-          {summary.actions.length === 0 ? <p className="p-6 text-sm text-[var(--ejo-text-muted)]">Nothing is waiting for your decision.</p> : (
+          {summary.actions.length === 0 ? <EmptyState compact icon="check-circle" title="Nothing is waiting for your decision." /> : (
             <ul className="divide-y divide-[var(--ejo-border)]">
               {summary.actions.map((n) => (
                 <li key={n.id}>
-                  <Link href={n.url} className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-[var(--ejo-bg)]">
-                    <span className="min-w-0"><span className="block text-sm font-medium text-[var(--ejo-text)]">⏳ {n.title}</span><span className="block text-xs text-[var(--ejo-text-muted)]">{n.detail}</span></span>
-                    <span className="shrink-0 text-xs text-[var(--ejo-primary)]">Open →</span>
+                  <Link href={n.url} className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-[var(--ejo-bg)]">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning-text)]"><Icon name={ACTION_ICON[n.kind] ?? 'bolt'} size={17} /></span>
+                    <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-[var(--ejo-text)]">{n.title}</span><span className="block text-xs text-[var(--ejo-text-muted)]">{n.detail}</span></span>
+                    <span className="shrink-0 self-center text-xs font-medium text-[var(--ejo-primary)] transition-transform group-hover:translate-x-0.5">Open →</span>
                   </Link>
                 </li>
               ))}
@@ -87,12 +91,16 @@ export default async function NotificationCenter({ searchParams }: { searchParam
             ) : null}
           </div>
           <div className={card}>
-            {feed.length === 0 ? <p className="p-6 text-sm text-[var(--ejo-text-muted)]">{term ? `Nothing matches "${term}".` : unreadOnly ? 'No unread activity.' : view === 'read' ? 'Nothing read yet.' : 'No activity in the last 90 days.'}</p> : (
+            {feed.length === 0 ? <EmptyState compact icon="activity" title={term ? `Nothing matches "${term}".` : unreadOnly ? 'No unread activity.' : view === 'read' ? 'Nothing read yet.' : 'No activity in the last 90 days.'} /> : (
               <ul className="divide-y divide-[var(--ejo-border)]">
                 {feed.map((a) => (
-                  <li key={a.key} className={`flex flex-wrap items-start justify-between gap-2 px-4 py-3 ${a.read ? '' : 'bg-[var(--ejo-primary)]/5'}`}>
+                  <li key={a.key} className={`flex items-start gap-3 px-4 py-3 transition-colors ${a.read ? '' : 'bg-[var(--ejo-primary)]/5'}`}>
+                    <span className={`relative mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${a.read ? 'bg-[var(--ejo-bg)] text-[var(--ejo-text-muted)] ring-1 ring-[var(--ejo-border)]' : 'bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]'}`}>
+                      <Icon name={AREA_ICON[a.area] ?? 'activity'} size={17} />
+                      {a.read ? null : <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--ejo-surface)] bg-[var(--ejo-primary)]" />}
+                    </span>
                     <NotificationOpenLink href={a.url} itemKey={a.key} read={a.read} className="min-w-0 flex-1">
-                      <span className="block text-sm text-[var(--ejo-text)]">{a.read ? null : <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-[var(--ejo-primary)]" />}{a.title}</span>
+                      <span className={`block text-sm text-[var(--ejo-text)] ${a.read ? '' : 'font-medium'}`}>{a.title}</span>
                       {a.detail ? <span className="block text-xs text-[var(--ejo-text-muted)]">{a.detail}</span> : null}
                       <span className="block text-[11px] text-[var(--ejo-text-muted)]">{AREA_LABEL[a.area]} · {a.actor ?? 'System'} · {formatDateTime(a.at)}</span>
                     </NotificationOpenLink>
@@ -116,17 +124,20 @@ export default async function NotificationCenter({ searchParams }: { searchParam
           {summary.unreadBroadcasts.length ? (
             <div className="mb-3"><MarkAllReadButton kind="broadcasts" /></div>
           ) : null}
-          {broadcasts.length === 0 ? <div className={card}><p className="p-6 text-sm text-[var(--ejo-text-muted)]">No broadcasts running for you right now.</p></div> : (
+          {broadcasts.length === 0 ? <div className={card}><EmptyState compact icon="check-circle" title="No broadcasts running for you right now." /></div> : (
             <div className="space-y-3">
               {broadcasts.map((b) => {
                 const m = BROADCAST_CATEGORY[b.category]!;
                 return (
-                  <div key={b.key} id={b.id} className={`${card} border-l-4 ${m.bar} p-4 ${b.read ? '' : 'shadow-md'}`}>
+                  <div key={b.key} id={b.id} className={`${card} ejo-lift scroll-mt-24 border-l-4 ${m.bar} p-4 sm:p-5 ${b.read ? '' : 'shadow-md'}`}>
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${m.chip}`}>{m.icon} {m.label}</span>
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${CATEGORY_TILE[b.category] ?? 'bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]'}`}><Icon name={CATEGORY_ICON[b.category] ?? 'megaphone'} size={19} /></span>
+                        <div className="min-w-0">
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${m.chip}`}>{m.label}</span>
                         {!b.read ? <span className="ml-2 text-[11px] font-semibold text-[var(--ejo-primary)]">New</span> : null}
-                        <h2 className="mt-2 text-base font-semibold text-[var(--ejo-text)]">{b.title}</h2>
+                        <h2 className="mt-1.5 text-base font-semibold text-[var(--ejo-text)]">{b.title}</h2>
+                        </div>
                       </div>
                       <NotificationReadToggle itemKey={b.key} read={b.read} />
                     </div>

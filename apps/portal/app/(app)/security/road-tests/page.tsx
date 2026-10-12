@@ -4,9 +4,10 @@ import { listRoadTests, getSecurityRoles } from '@/lib/actions/security';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityNav } from '@/components/SecurityNav';
 import { SecurityTable } from '@/components/SecurityTable';
-import { ROAD_TEST_STATUS_LABEL, STATUS_CHIP, durationText, roadTestOverdueMinutes } from '@/lib/security-rules';
+import { ROAD_TEST_STATUS_LABEL, durationText, roadTestOverdueMinutes } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageHeader, StatusChip } from '@/components/ui';
 
 const TABS = [['out', 'Out now'], ['approved', 'Approved — ready to go'], ['to_decide', 'To approve'], ['all', 'All']] as const;
 
@@ -21,8 +22,11 @@ export default async function RoadTestsPage({ searchParams }: { searchParams: Pr
   const link = 'text-[var(--ejo-primary)] hover:underline';
   return (
     <div className="p-4 sm:p-8">
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Road tests</h1>
-      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Workshop vehicles leaving for a road test — requested on the Job Card / Vehicle Service, approved by the Manager, timed and odometer-read out and back by Security.</p>
+      <PageHeader
+        icon="road"
+        title="Road tests"
+        description={<>Workshop vehicles leaving for a road test — requested on the Job Card / Vehicle Service, approved by the Manager, timed and odometer-read out and back by Security.</>}
+      />
       <SecurityNav active="/security/road-tests" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {TABS.filter(([k]) => k !== 'to_decide' || roles.isManager || roles.isMaster).map(([k, l]) => (
@@ -46,7 +50,7 @@ export default async function RoadTestsPage({ searchParams }: { searchParams: Pr
               <td className="text-xs">{r.gateOutAt ? formatDateTimeCompact(r.gateOutAt) : `Planned ${durationText(r.expectedDurationMinutes)}`}{r.gateInAt ? <span className="block">back {formatDateTimeCompact(r.gateInAt)}</span> : null}</td>
               <td className="text-xs">{r.startOdometer !== null && r.endOdometer !== null ? (r.endOdometer - r.startOdometer).toLocaleString('en-NG') : '—'}</td>
               <td>
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_CHIP[r.status] ?? ''}`}>{ROAD_TEST_STATUS_LABEL[r.status]}</span>
+                <StatusChip status={r.status} label={ROAD_TEST_STATUS_LABEL[r.status]} className="text-[11px]" />
                 {over > 0 ? <span className="mt-1 block text-[11px] font-semibold text-[var(--ejo-error)]">Late {durationText(over)}</span> : null}
               </td>
             </tr>

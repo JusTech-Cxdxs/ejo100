@@ -4,6 +4,7 @@ import { grantRolePermissionFormAction, revokeRolePermissionFormAction } from '@
 import { PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FilterSelect } from '@/components/FilterSelect';
+import { PageHeader } from '@/components/ui';
 
 const chip = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium';
 
@@ -14,8 +15,11 @@ export default async function RolesPage({ searchParams }: { searchParams: Promis
   const all = Object.keys(PERMISSIONS) as PermissionKey[];
   return (
     <div className="w-full p-4 sm:p-8">
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Roles</h1>
-      <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">Each role&apos;s permissions. <b>Included by default</b> comes from the platform catalogue; you can <b>add</b> more for your organisation (and remove what you added). Every change is recorded in the audit trail. The full picture is on the Permissions page.</p>
+      <PageHeader
+        icon="shield"
+        title="Roles"
+        description={<>Each role&apos;s permissions. <b>Included by default</b> comes from the platform catalogue; you can <b>add</b> more for your organisation (and remove what you added). Every change is recorded in the audit trail. The full picture is on the Permissions page.</>}
+      />
       {error ? <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/40 bg-[var(--ejo-error)]/5 p-3 text-sm text-[var(--ejo-error)]">{error}</p> : null}
       {status === 'saved' ? <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-success)]/40 bg-[var(--ejo-success)]/5 p-3 text-sm text-[var(--ejo-text)]">Saved.</p> : null}
       <div className="mt-5 grid gap-4 lg:grid-cols-2">

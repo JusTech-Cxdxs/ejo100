@@ -8,6 +8,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { BackLink, PageTitle } from '@/components/ui';
 
 /** One released vehicle — check it against what is at the gate, then
  * confirm the exit. */
@@ -24,8 +25,8 @@ export default async function ReleaseVehiclePage({ params, searchParams }: { par
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => <div className="flex justify-between gap-3 py-1.5 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right font-medium text-[var(--ejo-text)]">{val || '—'}</dd></div>;
   return (
     <div className="p-4 sm:p-8">
-      <LoadingLink href="/security/vehicles" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to Vehicles cleared to leave</LoadingLink>
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{[v.vehicle.make, v.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}{v.vehicle.plateNumber ? ` — ${v.vehicle.plateNumber}` : ''}</h1>
+      <BackLink href="/security/vehicles" label="Back to Vehicles cleared to leave" className="mb-4" />
+      <PageTitle icon="car">{[v.vehicle.make, v.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}{v.vehicle.plateNumber ? ` — ${v.vehicle.plateNumber}` : ''}</PageTitle>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Released with {v.number}</p>
       <SecurityNav active="/security/vehicles" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}

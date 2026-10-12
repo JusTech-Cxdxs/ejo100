@@ -1,6 +1,7 @@
 import { LoadingLink } from '@/components/LoadingLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
-import { warrantyCoverage, WARRANTY_STATE_CLASS, WARRANTY_STATE_LABEL } from '@/lib/warranty-state';
+import { warrantyCoverage, WARRANTY_STATE_LABEL } from '@/lib/warranty-state';
+import { StatusChip } from '@/components/ui';
 
 type Row = {
   id: string;
@@ -54,7 +55,7 @@ export function WarrantyList({ warranties, title = 'Warranties', emptyText }: { 
                   <p className="text-xs text-[var(--ejo-text-muted)]">{cov.reason}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${WARRANTY_STATE_CLASS[cov.state]}`}>{WARRANTY_STATE_LABEL[cov.state]}</span>
+                  <StatusChip status={cov.state} label={WARRANTY_STATE_LABEL[cov.state]} />
                   <PrintMenu orgHref={`/print/warranty/${w.id}`} clientHref={`/print/warranty/${w.id}?variant=client`} clientLabel="Customer Copy" size="compact" align="right" />
                 </div>
               </div>

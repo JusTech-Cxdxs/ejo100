@@ -5,13 +5,13 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { prisma } from '@ejo/database';
 import { getWarranty } from '@/lib/actions/warranty';
 import { createWarrantyClaimFormAction } from '@/lib/actions/warranty-claims-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { WarrantyClaimFields } from '@/components/WarrantyClaimFields';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { coverageLabel } from '@/lib/warranty-claim-status';
+import { PageHeader } from '@/components/ui';
 
 /** Start a claim against one warranty. A draft can be incomplete — the
  * readiness check on the claim page says what's still needed. */
@@ -33,14 +33,15 @@ export default async function NewWarrantyClaimPage({ searchParams }: { searchPar
 
   return (
     <div className="p-8">
-      <LoadingLink href={`/warranty/${w.id}`} className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">← Back to {w.warrantyNumber}</LoadingLink>
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Start a warranty claim</h1>
-      <p className="mt-1 mb-6 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-        Against {w.warrantyNumber} — {w.subjectDescription} ({w.provider.name}). Covered {formatDateOnly(w.startsAt)} – {formatDateOnly(w.endsAt)}
+      <PageHeader
+        icon="file"
+        back={{ href: `/warranty/${w.id}`, label: <>Back to {w.warrantyNumber}</> }}
+        title="Start a warranty claim"
+        description={<>Against {w.warrantyNumber} — {w.subjectDescription} ({w.provider.name}). Covered {formatDateOnly(w.startsAt)} – {formatDateOnly(w.endsAt)}
         {w.startReading !== null && w.distanceLimit !== null ? ` or ${(w.startReading + w.distanceLimit).toLocaleString('en-NG')} km` : ''}.
         {' '}Pays for: {coverageLabel(w.policy)}.
-        {w.provider.claimSubmissionDays ? ` Claims must reach ${w.provider.name} within ${pluralize(w.provider.claimSubmissionDays, 'day')} of the failure.` : ''}
-      </p>
+        {w.provider.claimSubmissionDays ? ` Claims must reach ${w.provider.name} within ${pluralize(w.provider.claimSubmissionDays, 'day')} of the failure.` : ''}</>}
+      />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       {covered ? (
         <div className="mb-6 max-w-3xl rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-success)]/40 bg-[var(--ejo-success)]/5 p-4 text-sm text-[var(--ejo-text)]">

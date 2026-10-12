@@ -26,6 +26,7 @@ import { VehicleVisitHistoryChart } from '@/components/LazyCharts';
 import { VehicleFindingsBreakdownChart } from '@/components/LazyCharts';
 import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateTime, formatDateTimeCompact, formatDateOnly } from '@/lib/utils/format-date';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle.gate_exit': 'Left through the gate',
@@ -123,14 +124,12 @@ export default async function VehiclePage({
   const earlierCycles = reminderHistory.filter((r: (typeof reminderHistory)[number]) => cycleKey(r) !== latestKey);
   return (
     <div className="p-8">
-      <LoadingLink href="/workshop/vehicles" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Vehicles
-      </LoadingLink>
+      <BackLink href="/workshop/vehicles" label="Back to Vehicles" className="mb-4" />
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="mb-1 text-2xl font-bold text-[var(--ejo-text)]">
+          <PageTitle icon="car" className="mb-1">
             {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Vehicle'}
-          </h1>
+          </PageTitle>
           <p className="text-sm text-[var(--ejo-text-muted)]">
             {vehicle.plateNumber || vehicle.chassisNumber} — owned by {vehicle.customer.fullName}
           </p>

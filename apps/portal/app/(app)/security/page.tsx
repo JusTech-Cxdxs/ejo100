@@ -10,16 +10,19 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { visitOverdueMinutes, exitPassOverdueMinutes, roadTestOverdueMinutes, durationText, VEHICLE_TYPE_LABEL } from '@/lib/security-rules';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
+import { PageHeader, HeaderAction, SectionCard, StatTile, Icon, type IconName, type Tone } from '@/components/ui';
 
-const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5';
+const COMPOUND_ICON: Record<string, IconName> = {
+  'Visitors on premises': 'badge', 'Visitor vehicles': 'car', 'Workshop vehicles': 'wrench', 'Cleared, not yet out': 'check-circle', 'Vehicles inside (total)': 'garage',
+  'People out on passes': 'walk', 'On road test': 'road', 'Contractors on site': 'hardhat', 'Deliveries on site': 'truck', 'Open incidents': 'alert', Overdue: 'clock',
+};
 const btn = 'rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1 text-xs font-medium text-white hover:opacity-90';
 
-function Panel({ title, count, children, tone }: { title: string; count: number; children: ReactNode; tone?: string }) {
+function Panel({ title, count, children, tone, icon = 'list' }: { title: string; count: number; children: ReactNode; tone?: Tone; icon?: IconName }) {
   return (
-    <div className={card}>
-      <h2 className={`text-sm font-semibold ${tone ?? 'text-[var(--ejo-text)]'}`}>{title} ({count})</h2>
-      <div className="mt-3">{count === 0 ? <p className="text-xs text-[var(--ejo-text-muted)]">None.</p> : children}</div>
-    </div>
+    <SectionCard icon={icon} tone={tone} title={<>{title} <span className="ml-1 rounded-full bg-[var(--ejo-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--ejo-text-muted)] ring-1 ring-[var(--ejo-border)]">{count}</span></>}>
+      {count === 0 ? <p className="flex items-center gap-2 text-xs text-[var(--ejo-text-muted)]"><Icon name="check" size={14} />None.</p> : children}
+    </SectionCard>
   );
 }
 
@@ -46,23 +49,25 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
   const row = 'flex flex-wrap items-center justify-between gap-2 border-b border-[var(--ejo-border)] py-2 text-sm last:border-0';
 
   return (
-    <div className="p-4 sm:p-8">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Security</h1>
-          <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">Who is expected, who is here, who is out, and what may leave — live.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <LoadingLink href="/security/visitors#register" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">+ Visitor</LoadingLink>
-          <LoadingLink href="/security/exit-passes/new" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">+ Exit pass</LoadingLink>
-          <LoadingLink href="/security/vehicles" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Vehicles leaving ({d.vehicles.length})</LoadingLink>
-        </div>
-      </div>
+    <div className="w-full p-4 sm:p-8">
+      <PageHeader
+        hero
+        live
+        icon="lock"
+        eyebrow="Module · Gate & reception"
+        title="Security"
+        description="Who is expected, who is here, who is out, and what may leave — live."
+        actions={<>
+          <HeaderAction href="/security/visitors#register" icon="user-plus">+ Visitor</HeaderAction>
+          <HeaderAction href="/security/exit-passes/new" icon="exit">+ Exit pass</HeaderAction>
+          <HeaderAction href="/security/vehicles" icon="car" variant="secondary">Vehicles leaving ({d.vehicles.length})</HeaderAction>
+        </>}
+      />
       <SecurityNav active="/security" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
 
-      <h2 className="mb-2 text-sm font-semibold text-[var(--ejo-text)]">In the compound now</h2>
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
+      <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ejo-text-muted)]"><Icon name="pin" size={13} />In the compound now</h2>
+      <div className="ejo-stagger mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
         {([
           ['Visitors on premises', d.compound.visitors, d.compound.visits === d.compound.visitors ? 'Checked in, not yet out' : `People on ${d.compound.visits} ${d.compound.visits === 1 ? 'pass' : 'passes'} (groups counted in full)`, '/security/on-premises'],
           ['Visitor vehicles', d.compound.visitorVehicles, 'Cars, motorcycles… of visitors inside', '/security/vehicles-inside?type=visitor'],
@@ -76,18 +81,14 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
           ['Open incidents', d.compound.openIncidents, 'Open or under review', '/security/incidents?tab=open'],
           ['Overdue', overdueVisits.length + overduePasses.length + overdueTests.length, 'Follow up or extend', '/security/overdue'],
         ] as const).map(([label, n, hint, href]) => (
-          <LoadingLink key={label} href={href} className={`${card} block transition hover:border-[var(--ejo-primary)]`}>
-            <p className="text-xs text-[var(--ejo-text-muted)]">{label}</p>
-            <p className={`mt-1 text-2xl font-bold ${label === 'Overdue' && n > 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-text)]'}`}>{n}</p>
-            <p className="mt-1 text-[10px] text-[var(--ejo-text-muted)]">{hint} →</p>
-          </LoadingLink>
+          <StatTile key={label} icon={COMPOUND_ICON[label] ?? 'grid'} label={label} value={n} hint={hint} href={href} tone={(label === 'Overdue' || label === 'Open incidents') && n > 0 ? 'error' : 'brand'} emphasis={(label === 'Overdue' || label === 'Open incidents') && n > 0} />
         ))}
       </div>
 
       {overdueVisits.length + overduePasses.length + overdueTests.length > 0 ? (
         <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/40 bg-[var(--ejo-error)]/5 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Overdue</h2>
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--ejo-error)]"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--ejo-error)]/12"><Icon name="clock" size={15} /></span>Overdue</h2>
             <LoadingLink href="/security/overdue" className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">Follow up or extend →</LoadingLink>
           </div>
           <ul className="mt-2 space-y-1 text-sm">
@@ -104,8 +105,8 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="On premises now" count={d.onPremises.length}>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel icon="badge" title="On premises now" count={d.onPremises.length}>
           {d.onPremises.map((v) => (
             <div key={v.id} className={row}>
               <span className="min-w-0">
@@ -116,7 +117,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
             </div>
           ))}
         </Panel>
-        <Panel title="Checked in — not yet received at reception" count={d.atGateNotReceived.length} tone="text-[var(--ejo-warning)]">
+        <Panel icon="door" title="Checked in — not yet received at reception" count={d.atGateNotReceived.length} tone="warning">
           {d.atGateNotReceived.map((v) => (
             <div key={v.id} className={row}>
               <span className="min-w-0">
@@ -127,7 +128,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
             </div>
           ))}
         </Panel>
-        <Panel title="Expected today" count={d.expectedToday.length}>
+        <Panel icon="calendar" title="Expected today" count={d.expectedToday.length}>
           {d.expectedToday.map((v) => (
             <div key={v.id} className={row}>
               <span className="min-w-0">
@@ -138,7 +139,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
             </div>
           ))}
         </Panel>
-        <Panel title="Exit passes approved — may leave" count={d.passesReady.length}>
+        <Panel icon="exit" title="Exit passes approved — may leave" count={d.passesReady.length}>
           {d.passesReady.map((p) => (
             <div key={p.id} className={row}>
               <span className="min-w-0">
@@ -149,7 +150,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
             </div>
           ))}
         </Panel>
-        <Panel title="Out on exit passes" count={d.passesOut.length}>
+        <Panel icon="walk" title="Out on exit passes" count={d.passesOut.length}>
           {d.passesOut.map((p) => (
             <div key={p.id} className={row}>
               <span className="min-w-0">
@@ -162,7 +163,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
             </div>
           ))}
         </Panel>
-        <Panel title="Road tests — approved, may go out" count={d.roadTestsReady.length}>
+        <Panel icon="road" title="Road tests — approved, may go out" count={d.roadTestsReady.length}>
           {d.roadTestsReady.map((r) => (
             <div key={r.id} className={row}>
               <span className="min-w-0">
@@ -173,7 +174,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
             </div>
           ))}
         </Panel>
-        <Panel title="Out on road test" count={d.roadTestsOut.length}>
+        <Panel icon="gauge" title="Out on road test" count={d.roadTestsOut.length}>
           {d.roadTestsOut.map((r) => (
             <div key={r.id} className={row}>
               <span className="min-w-0">
@@ -184,7 +185,7 @@ export default async function SecurityDashboardPage({ searchParams }: { searchPa
             </div>
           ))}
         </Panel>
-        <Panel title="Vehicles cleared to leave" count={d.vehicles.length}>
+        <Panel icon="car" title="Vehicles cleared to leave" count={d.vehicles.length}>
           {d.vehicles.slice(0, 6).map((v) => (
             <div key={`${v.kind}-${v.id}`} className={row}>
               <span className="min-w-0 text-sm">

@@ -20,6 +20,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { formatDateTimeCompact, formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
+import { BackLink, PageTitle } from '@/components/ui';
 
 const TRACKING_TYPE_LABEL: Record<string, string> = {
   QUANTITY: 'Quantity',
@@ -78,14 +79,9 @@ export default async function PartDetailPage({
 
   return (
     <div className="p-8">
-      <LoadingLink
-        href="/inventory/parts"
-        className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]"
-      >
-        ← Back to Parts Catalog
-      </LoadingLink>
+      <BackLink href="/inventory/parts" label="Back to Parts Catalog" className="mb-4" />
       <div className="mb-2 flex items-center gap-2">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{part.name}</h1>
+        <PageTitle icon="package">{part.name}</PageTitle>
         <span className="rounded-full bg-[var(--ejo-info)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-info)]">
           {TRACKING_TYPE_LABEL[part.trackingType] ?? part.trackingType}
         </span>

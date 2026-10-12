@@ -6,6 +6,7 @@ import { SecurityTable } from '@/components/SecurityTable';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
+import { PageHeader } from '@/components/ui';
 
 export default async function RoomsPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string; edit?: string }> }) {
   // Calendars are for people who keep one (an appointment itself stays open to the people in it).
@@ -17,8 +18,11 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
   const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
   return (
     <div className="p-4 sm:p-8">
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Meeting rooms</h1>
-      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">A room can never be double-booked — the calendar refuses a clash.</p>
+      <PageHeader
+        icon="room"
+        title="Meeting rooms"
+        description={<>A room can never be double-booked — the calendar refuses a clash.</>}
+      />
       <ScheduleNav active="/schedule/rooms" />
       {status === 'room_saved' ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message="Room saved." /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}

@@ -4,6 +4,7 @@ import { listUnmatchedServiceEstimateStorePartLines } from '@/lib/actions/vehicl
 import { LoadingLink } from '@/components/LoadingLink';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { EmptyState, PageHeader } from '@/components/ui';
 
 const WRENCH_ICON = (
   <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5 shrink-0 text-[var(--ejo-warning)]">
@@ -89,13 +90,12 @@ export default async function EstimateMatchingPage({ searchParams }: { searchPar
 
   return (
     <div className="p-8">
-      <LoadingLink href="/inventory" className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to Inventory
-      </LoadingLink>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--ejo-text)]">Estimate Matching</h1>
-      <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Every Job Card and Vehicle Service currently waiting on Store — open one to match its own Store Part lines.
-      </p>
+      <PageHeader
+        icon="match"
+        back={{ href: "/inventory", label: "Back to Inventory" }}
+        title="Estimate Matching"
+        description={<>Every Job Card and Vehicle Service currently waiting on Store — open one to match its own Store Part lines.</>}
+      />
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <form className="flex gap-2" action="/inventory/estimate-matching">
@@ -133,7 +133,7 @@ export default async function EstimateMatchingPage({ searchParams }: { searchPar
       </div>
 
       {groups.length === 0 ? (
-        <p className="text-sm text-[var(--ejo-text-muted)]">Nothing waiting on Store right now.</p>
+        <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="match" title="Nothing waiting on Store right now." /></div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {groups.map((group) => (

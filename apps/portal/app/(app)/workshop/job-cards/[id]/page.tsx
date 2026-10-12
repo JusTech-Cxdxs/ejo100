@@ -34,6 +34,7 @@ import { PaymentAmountField } from '@/components/PaymentAmountField';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { IdempotencyKey } from '@/components/IdempotencyKey';
+import { PageTitle, StatusChip } from '@/components/ui';
 
 
 const STATUS_LABEL: Record<string, string> = {
@@ -53,18 +54,6 @@ const STATUS_LABEL: Record<string, string> = {
 // badge was hardcoded to the primary (green) color for every single
 // status, Cancelled included. Matches the list page's own map exactly,
 // so the same status reads the same color everywhere in the app.
-const STATUS_COLOR: Record<string, string> = {
-  CHECKED_IN: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
-  IN_PROGRESS: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  AWAITING_PARTS: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  QUALITY_CHECK: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  AWAITING_CUSTOMER_APPROVAL: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]',
-  COMPLETED: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
-  READY_FOR_COLLECTION: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]',
-  CLOSED: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
-  CHECKED_OUT: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
-  CANCELLED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
-};
 
 // Falls back to the raw action string for anything not listed — future
 // phases add more audit actions (assignment.*, estimate.*, etc.); this
@@ -521,26 +510,17 @@ export default async function JobCardDetailPage({
         </div>
       ) : null}
 
-      <div className="mt-3 mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">{jobCard.jobNumber}</h1>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[jobCard.status]}`}>
-          {STATUS_LABEL[jobCard.status]}
-        </span>
-        <span
-          className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            jobCard.approvalStatus === 'APPROVED'
-              ? 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
-              : jobCard.approvalStatus === 'REJECTED'
-                ? 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]'
-                : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'
-          }`}
-        >
+      <div className="ejo-hero relative mt-3 mb-6 flex flex-wrap items-center gap-3 overflow-hidden rounded-[var(--ejo-radius-xl)] border border-[var(--ejo-border)] p-4 sm:p-5">
+        <div className="ejo-orb pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-[var(--ejo-primary)]/15 blur-3xl" aria-hidden="true" />
+        <PageTitle icon="clipboard" className="relative mr-1">{jobCard.jobNumber}</PageTitle>
+        <StatusChip status={jobCard.status} label={STATUS_LABEL[jobCard.status]} />
+        <StatusChip tone={jobCard.approvalStatus === 'APPROVED' ? 'success' : jobCard.approvalStatus === 'REJECTED' ? 'error' : 'warning'} className="max-w-full whitespace-normal">
           {jobCard.approvalStatus === 'APPROVED'
             ? `Approved by ${jobCard.approvedBy?.fullName ?? 'supervisor'}`
             : jobCard.approvalStatus === 'REJECTED'
               ? `Rejected — ${jobCard.rejectionReason}`
               : 'Awaiting Supervisor Approval'}
-        </span>
+        </StatusChip>
         {payments.length > 0 || jobCard.status === 'AWAITING_CUSTOMER_APPROVAL' ? (
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PAYMENT_STATUS_COLOR[paymentStatus]}`}>
             {PAYMENT_STATUS_LABEL[paymentStatus]}
@@ -1519,7 +1499,7 @@ export default async function JobCardDetailPage({
           <div id="status-panel" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Status</h2>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[jobCard.status]}`}>{STATUS_LABEL[jobCard.status]}</span>
+              <StatusChip status={jobCard.status} label={STATUS_LABEL[jobCard.status]} />
             </div>
             <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">{STAGE_HINT[jobCard.status]}</p>
 

@@ -2,11 +2,11 @@ import { guardAnyPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getPart } from '@/lib/actions/store';
 import { updatePartFormAction } from '@/lib/actions/store-form-handlers';
-import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { pluralizeWord } from '@/lib/utils/pluralize';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { BackLink, PageTitle } from '@/components/ui';
 
 /**
  * Edits an existing part's safe-to-change fields and its full
@@ -45,10 +45,8 @@ export default async function EditPartPage({
 
   return (
     <div className="p-8">
-      <LoadingLink href={`/inventory/parts/${id}`} className="mb-4 inline-block text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">
-        ← Back to {part.name}
-      </LoadingLink>
-      <h1 className="mb-6 text-2xl font-bold text-[var(--ejo-text)]">Edit Part</h1>
+      <BackLink href={`/inventory/parts/${id}`} label={<>Back to {part.name}</>} className="mb-4" />
+      <PageTitle icon="package" className="mb-6">Edit Part</PageTitle>
 
       {error ? (
         <div className="mb-6 max-w-xl">
