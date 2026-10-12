@@ -28,7 +28,7 @@
  */
 import { readFileSync, readdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { BASE, FORGED_COOKIE, action, actionById, actionMap, closeDb, concretePath, redact, report, signIn, sql, type Check } from './lib';
+import { BASE, FORGED_COOKIE, action, actionById, actionMap, closeDb, concretePath, digestMessages, isEmptyValue, redact, report, signIn, sql, type Check } from './lib';
 import { E2E_PASSWORD, MASTER, OTHER_ORG_ADMIN, PEOPLE } from '../people';
 import { decide, PERMISSIONS, type PermissionKey, type Principal } from '../../lib/authz/catalogue';
 
@@ -90,9 +90,10 @@ async function cron(): Promise<Check[]> {
     checks.push({ id: 'AC-CRON', title: p, pass: [none, wrong, query, raw].every((r) => r.status === 401) && right.status === 200 && post.status !== 200,
       detail: `none=${none.status} wrong=${wrong.status} ?key=${query.status} no-Bearer=${raw.status} POST=${post.status} correct=${right.status}` });
   }
-  const pulse = await fetch(`${BASE}/api/live/pulse`);
-  const pulseForged = await fetch(`${BASE}/api/live/pulse`, { headers: { cookie: FORGED_COOKIE } });
-  checks.push({ id: 'AC-PULSE', title: '/api/live/pulse signed out', pass: pulse.status === 401 && pulseForged.status === 401, detail: `no cookie=${pulse.status} forged cookie=${pulseForged.status}` });
+  const pulse = await fetch(`${BASE}/api/live/pulse`, { redirect: 'manual' });
+  const pulseForged = await fetch(`${BASE}/api/live/pulse`, { headers: { cookie: FORGED_COOKIE }, redirect: 'manual' });
+  const toLogin = pulse.status === 307 && (pulse.headers.get('location') ?? '').includes('/login');
+  checks.push({ id: 'AC-PULSE', title: '/api/live/pulse signed out', pass: (pulse.status === 401 || toLogin) && pulseForged.status === 401, detail: `no cookie=${pulse.status}${toLogin ? ' → /login (middleware)' : ''}, forged cookie=${pulseForged.status}` });
   return checks;
 }
 
@@ -226,7 +227,7 @@ async function idorSweep(theirs: string[], ours: string): Promise<Check[]> {
     const r = await action(c.name, [c.id], { cookie });
     const l = leaks(r.raw);
     if (l.length) leaked.push(`${c.name}(${c.param}) → ${l.join(',')}`);
-    else if (r.ok && r.value !== null && r.value !== undefined && r.value !== false && !(Array.isArray(r.value) && r.value.length === 0) && r.value !== '') returned.push(`${c.name}(${c.param}): ${redact(JSON.stringify(r.value)).slice(0, 80)}`);
+    else if (r.ok && !isEmptyValue(r.value)) returned.push(`${c.name}(${c.param}): ${redact(JSON.stringify(r.value)).slice(0, 80)}`);
   });
   const after = await fingerprint();
   const changed = diff(before, after);
@@ -246,26 +247,16 @@ async function idorSweep(theirs: string[], ours: string): Promise<Check[]> {
 function actionMapHas(name: string) { const m = actionMap(); if (!Object.values(m).some((a) => a.name === name)) throw new Error('absent'); }
 
 // ── Signed-out sweep over EVERY action of the build ─────────────────────
-function digestMessages(): Map<string, string> {
-  const m = new Map<string, string>();
-  const log = process.env.PORTAL_LOG ?? 'portal.log';
-  if (!existsSync(log)) return m;
-  for (const line of readFileSync(log, 'utf8').split('\n')) {
-    if (!line.startsWith('{')) continue;
-    try { const j = JSON.parse(line) as { ref?: string; message?: string }; if (j.ref) m.set(String(j.ref), String(j.message ?? '')); } catch { /* not JSON */ }
-  }
-  return m;
-}
 async function anonSweep(): Promise<Check[]> {
   const map = actionMap();
   const before = await fingerprint();
-  const results: { name: string; file: string; via: string; outcome: string; value?: string }[] = [];
+  const results: { name: string; file: string; via: string; outcome: string; value?: string; raw?: unknown }[] = [];
   await pool(Object.entries(map), 8, async ([id, a]) => {
     const path = concretePath(a.page ?? '/dashboard');
     const isForm = /FormAction$|FormHandler$/.test(a.name) || a.file.includes('form-handlers');
     const r = await actionById(id, [], { cookie: FORGED_COOKIE, path, ...(isForm ? { formData: { id: FIX.jcPay, jobCardId: FIX.jcPay, partId: FIX.parts.approve, returnTo: '/dashboard' } } : {}) });
     const outcome = r.redirect ? `redirect ${r.redirect.split('?')[0]}` : r.error ? `error ${r.error}` : r.ok ? 'returned' : `HTTP ${r.status}`;
-    results.push({ name: a.name, file: a.file, via: path, outcome, value: r.ok ? redact(JSON.stringify(r.value ?? null)).slice(0, 120) : undefined });
+    results.push({ name: a.name, file: a.file, via: path, outcome, value: r.ok ? redact(JSON.stringify(r.value ?? null)).slice(0, 120) : undefined, raw: r.ok ? r.value : undefined });
   });
   const after = await fingerprint();
   const msgs = digestMessages();
@@ -276,7 +267,7 @@ async function anonSweep(): Promise<Check[]> {
     why.set(k, (why.get(k) ?? 0) + 1);
     (r as { reason?: string }).reason = reason;
   }
-  const returnedData = results.filter((r) => r.outcome === 'returned' && r.value && !['null', '""', '[]', 'false', '{}', undefined].includes(r.value));
+  const returnedData = results.filter((r) => r.outcome === 'returned' && !isEmptyValue(r.raw));
   const returnedEmpty = results.filter((r) => r.outcome === 'returned' && !returnedData.includes(r));
   const changed = diff(before, after);
   evidence.anon = { total: results.length, reasons: Object.fromEntries(why), returnedData, returnedEmpty: returnedEmpty.map((r) => `${r.file}:${r.name}=${r.value}`), changed };
@@ -299,6 +290,7 @@ async function privilege(tech: string, otherAdmin: string): Promise<Check[]> {
     payments: (await sql(`SELECT count(*)::int AS n FROM payments WHERE "jobCardId"=$1`, [FIX.jcPay2]))[0]!.n,
     deptCount: (await sql(`SELECT count(*)::int AS n FROM departments WHERE "branchId"=$1`, [FIX.branchId]))[0]!.n,
     broadcastActive: (await sql(`SELECT "isActive" FROM broadcasts WHERE id=$1`, [FIX.broadcast]))[0]!.isActive,
+    firstOrgEmployeeIds: (await sql(`SELECT md5(string_agg(coalesce("employeeId",'-'), ',' ORDER BY id)) h FROM users WHERE "organisationId"=$1`, [FIX.orgId]))[0]!.h,
   });
   const attempts: [string, unknown[]][] = [
     ['assignRole', [FIX.users.tech, FIX.roles.admin]],
@@ -325,7 +317,10 @@ async function privilege(tech: string, otherAdmin: string): Promise<Check[]> {
     }
     const after = await snapshot();
     const changed = Object.keys(before).filter((k) => (before as Record<string, unknown>)[k] !== (after as Record<string, unknown>)[k]);
-    checks.push({ id: 'AC-PRIV', title: `${who}: ${attempts.length} privileged actions`, pass: changed.length === 0 && !outcomes.some((o) => o.endsWith('ACCEPTED')), detail: `${outcomes.join(' ')}; DB changed: ${changed.join(',') || 'nothing'}` });
+    // An administrator of the OTHER organisation may run assignMissingEmployeeIds for their own
+    // people (organisation-fenced); what matters is that nothing of the first organisation changed.
+    const accepted = outcomes.filter((o) => o.endsWith('ACCEPTED') && !(who === 'other-org admin' && o.startsWith('assignMissingEmployeeIds')));
+    checks.push({ id: 'AC-PRIV', title: `${who}: ${attempts.length} privileged actions against the first organisation`, pass: changed.length === 0 && accepted.length === 0, detail: `${outcomes.join(' ')}; first-org DB state changed: ${changed.join(',') || 'nothing'}` });
   }
   return checks;
 }

@@ -18,7 +18,7 @@
  *  CONC-12 global stock invariants                            → no negative on-hand / reserved anywhere
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { action, closeDb, report, signIn, sql, type Check, type ActionResult } from './lib';
+import { action, closeDb, digestMessages, report, signIn, sql, type Check, type ActionResult } from './lib';
 import { E2E_PASSWORD } from '../people';
 
 const FIX = JSON.parse(readFileSync(process.env.SEC_FIXTURES ?? 'sec-fixtures.json', 'utf8'));
@@ -31,10 +31,15 @@ async function sessions(email: string, n: number) {
   for (let i = 0; i < n; i += 1) out.push(await signIn(email, E2E_PASSWORD));
   return out;
 }
+/** Outcome counts, with the server's reason for refusals (from the portal log, by digest). */
 const tally = (rs: ActionResult[]) => {
+  const msgs = digestMessages();
   const t: Record<string, number> = {};
-  for (const r of rs) { const k = r.ok ? 'ok' : r.redirect ? 'redirect' : r.error ? 'refused' : `HTTP ${r.status}`; t[k] = (t[k] ?? 0) + 1; }
-  return Object.entries(t).map(([k, v]) => `${k}=${v}`).join(' ');
+  for (const r of rs) {
+    const k = r.ok ? 'ok' : r.redirect ? `redirect ${r.redirect.split('?')[0]}` : r.error ? `refused "${msgs.get(r.error) ?? `digest ${r.error}`}"` : `HTTP ${r.status}`;
+    t[k] = (t[k] ?? 0) + 1;
+  }
+  return Object.entries(t).map(([k, v]) => `${v}× ${k}`).join(' · ');
 };
 const burst = (n: number, fn: (i: number) => Promise<ActionResult>) => Promise.all(Array.from({ length: n }, (_, i) => fn(i)));
 const num = async (q: string, p: unknown[] = []) => Number(Object.values((await sql(q, p))[0] ?? { n: 0 })[0] ?? 0);

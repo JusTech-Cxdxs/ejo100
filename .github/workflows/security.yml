@@ -297,23 +297,27 @@ jobs:
       - uses: grafana/setup-k6-action@v1
       - name: k6 staged load (smoke → baseline → ramp → spike → soak → recovery)
         run: |
-          k6 run --quiet -e BASE=http://localhost:3001 -e ACTION_MAP=actions.json -e K6_SUMMARY=k6-summary.json ops/load-test/k6-ci.js || echo "::warning title=k6::exit $? (a proposed threshold was breached — see the stage annotations)"
+          k6 run --quiet -e BASE=http://localhost:3001 -e ACTION_MAP="$PWD/actions.json" -e K6_SUMMARY="$PWD/k6-summary.json" ops/load-test/k6-ci.js > k6.out 2>&1; rc=$?
+          tail -n 40 k6.out
+          [ $rc = 0 ] || echo "::warning title=k6 exit $rc::99 = a proposed threshold was breached (see stage annotations); other codes = script/run error. $(grep -iE 'error|exception' k6.out | head -3 | tr '\n' ' ' | cut -c1-400)"
           node ops/load-test/k6-report.mjs k6-summary.json stage "smoke:30,baseline:60,ramp:90,spike:40,soak:120,recovery:45,write:330"
       - name: Two instances behind a round-robin proxy — kill one mid-test
         if: always()
         run: |
-          (cd apps/portal && nohup npx next start -p 3011 > ../../portal-a.log 2>&1 & echo $! > ../../a.pid)
-          (cd apps/portal && nohup npx next start -p 3012 > ../../portal-b.log 2>&1 &)
+          NEXT_BIN="$PWD/node_modules/next/dist/bin/next"
+          (cd apps/portal && nohup node "$NEXT_BIN" start -p 3011 > ../../portal-a.log 2>&1 & echo $! > ../../a.pid)
+          (cd apps/portal && nohup node "$NEXT_BIN" start -p 3012 > ../../portal-b.log 2>&1 &)
           for p in 3011 3012; do for i in $(seq 1 60); do curl -sf http://localhost:$p/login > /dev/null && break; sleep 1; done; done
           (nohup node ops/load-test/lb.mjs 3010 http://127.0.0.1:3011 http://127.0.0.1:3012 > lb.log 2>&1 &)
           sleep 2
-          (k6 run --quiet -e BASE=http://localhost:3010 -e KILL_AT=20 -e K6_SUMMARY=k6-failover.json ops/load-test/k6-failover.js > k6-failover.out 2>&1; echo $? > k6-failover.rc) &
-          sleep 22
-          pkill -f "next start -p 3011" || true
-          before=$(curl -s http://localhost:3010/__lb)
-          wait
-          after=$(curl -s http://localhost:3010/__lb)
-          echo "::notice title=failover proxy::killed instance A (:3011) at ~20 s; upstream stats after: $after"
+          (k6 run --quiet -e BASE=http://localhost:3010 -e ORIGIN=http://localhost:3001 -e KILL_AT=20 -e K6_SUMMARY="$PWD/k6-failover.json" ops/load-test/k6-failover.js > k6-failover.out 2>&1; echo $? > k6-failover.rc) &
+          K6=$!
+          sleep 21
+          kill -9 "$(cat a.pid)" 2>/dev/null; fuser -k -n tcp 3011 2>/dev/null || true
+          sleep 1; curl -s -o /dev/null -w "instance A after kill: HTTP %{http_code}\n" http://localhost:3011/login || true
+          wait $K6
+          tail -n 25 k6-failover.out
+          echo "::notice title=failover proxy::killed instance A (:3011) at ~21 s; upstream stats: $(curl -s http://localhost:3010/__lb); k6 exit $(cat k6-failover.rc)"
           node ops/load-test/k6-report.mjs k6-failover.json phase "before:20,during:10,after:30"
       - if: always()
         name: Server log errors under load

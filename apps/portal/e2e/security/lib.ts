@@ -94,9 +94,9 @@ export async function actionById(id: string, args: unknown[], opts: { cookie?: s
   if (opts.cookie) headers.cookie = opts.cookie;
   let body: string | FormData;
   if (opts.formData) {
-    // encodeReply of [FormData]: the FormData's fields prefixed "1_", the args row at "0".
+    // React 19 encodeReply of [FormData]: the FormData's fields as "_1_<name>", the args row at "0" = ["$K1"].
     const fd = new FormData();
-    for (const [k, v] of Object.entries(opts.formData)) fd.append(`1_${k}`, v);
+    for (const [k, v] of Object.entries(opts.formData)) fd.append(`_1_${k}`, v);
     fd.append('0', JSON.stringify(['$K1']));
     body = fd;
   } else {
@@ -144,6 +144,27 @@ export function report(group: string, checks: Check[]): number {
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + '\n');
   }
   return failed.filter((c) => c.severity !== 'warning').length;
+}
+
+/** Server-side reason for a refused call: the portal logs every thrown error as
+ * one JSON line with `ref` = the digest the client received (instrumentation.ts). */
+export function digestMessages(log = process.env.PORTAL_LOG ?? 'portal.log'): Map<string, string> {
+  const m = new Map<string, string>();
+  let text = '';
+  try { text = readFileSync(log, 'utf8'); } catch { return m; }
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('{')) continue;
+    try { const j = JSON.parse(line) as { ref?: string; message?: string }; if (j.ref) m.set(String(j.ref), String(j.message ?? '').split('\n')[0]!.slice(0, 120)); } catch { /* not JSON */ }
+  }
+  return m;
+}
+
+/** "Nothing": null, '', false, 0, [], {}, React's "$undefined", or an object of only those. */
+export function isEmptyValue(v: unknown): boolean {
+  if (v === null || v === undefined || v === '' || v === false || v === 0 || v === '$undefined') return true;
+  if (Array.isArray(v)) return v.length === 0;
+  if (typeof v === 'object') return Object.values(v as object).every(isEmptyValue);
+  return false;
 }
 
 /** Never print personal data in CI output: mask emails and long values. */

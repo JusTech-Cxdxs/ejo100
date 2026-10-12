@@ -14,7 +14,9 @@ for (const p of phases) { thresholds[`http_req_duration{phase:${p}}`] = ['p(95)<
 export const options = { scenarios: { mixed: { executor: 'constant-vus', vus: 20, duration: '60s' } }, thresholds, summaryTrendStats: ['min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max', 'count'], discardResponseBodies: true };
 
 export function setup() {
-  const r = http.post(`${BASE}/api/auth/sign-in/email`, JSON.stringify({ email: 'admin@e2e.test', password: 'E2e-Test-Pass-2026!' }), { headers: { 'content-type': 'application/json', origin: BASE } });
+  // Sign in on the proxy; Origin must be the configured BETTER_AUTH_URL (trusted origin).
+  const r = http.post(`${BASE}/api/auth/sign-in/email`, JSON.stringify({ email: 'admin@e2e.test', password: 'E2e-Test-Pass-2026!' }), { headers: { 'content-type': 'application/json', origin: __ENV.ORIGIN || BASE } });
+  if (r.status !== 200) throw new Error(`sign-in through the proxy failed: HTTP ${r.status}`);
   const c = r.cookies['better-auth.session_token'];
   return { cookie: c && c.length ? `better-auth.session_token=${c[0].value}` : '', t0: Date.now() };
 }

@@ -51,7 +51,9 @@ regexes = [
   '''PASTE_YOUR_CRON_SECRET_HERE''',
   '''postgres(ql)?://postgres:password@db\.your-project\.supabase\.co''',
   '''SUPABASE_SERVICE_ROLE_KEY="?replace-me''',
-  # security test canaries (apps/portal/e2e/security)
+  # security test canaries and forged credentials (apps/portal/e2e/security, security.yml)
+  '''Bearer forged-token''',
+  '''forged\.not-a-real-session''',
   '''CANARY[A-Z]+[0-9]*''',
 ]
 paths = [
