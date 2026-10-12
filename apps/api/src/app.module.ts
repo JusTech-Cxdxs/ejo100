@@ -52,8 +52,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     DepartmentsModule,
     TeamsModule,
 
-    // Business modules (Workshop LIVE for Phase One; the rest scaffolded
-    // and registered but without business logic yet)
+    // Business modules (registered; most are placeholders)
     WorkshopModule,
     InventoryModule,
     WarehouseModule,

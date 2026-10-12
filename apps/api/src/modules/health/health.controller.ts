@@ -3,13 +3,9 @@ import { Controller, Get, HttpCode, HttpStatus, ServiceUnavailableException } fr
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
- * Unauthenticated health endpoint — GET /api/v1/health. Deliberately
- * checks real database connectivity (a trivial `SELECT 1`), not just
- * "the Node process is running": a Render deploy can report the app as
- * "live" while Prisma/Supabase is actually unreachable (wrong
- * DATABASE_URL, Supabase paused/rate-limited, etc.) — this endpoint is
- * what would actually catch that, either for Render's own Health Check
- * Path setting or for manual verification after a deploy.
+ * Unauthenticated health check, GET /api/v1/health. Runs `SELECT 1` so a
+ * process that is up but cannot reach the database (wrong DATABASE_URL,
+ * paused database) reports unhealthy. Used as the host's health check path.
  */
 @Public()
 @Controller('health')

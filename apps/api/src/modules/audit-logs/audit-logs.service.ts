@@ -13,9 +13,8 @@ export type AuditLogQuery = {
 };
 
 /**
- * Read side of the audit trail, ready for the future audit dashboard.
- * The trail itself is append-only: nothing in the platform updates or
- * deletes an audit entry.
+ * Read side of the audit trail. The trail is append-only: nothing updates
+ * or deletes an entry.
  */
 @Injectable()
 export class AuditLogsService {
