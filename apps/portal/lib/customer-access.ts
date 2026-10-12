@@ -1,3 +1,5 @@
+import { portalConfig } from '@/lib/site-config';
+import { websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@ejo/database';
@@ -20,9 +22,7 @@ import { renderCustomerWelcomeEmail } from '@/lib/email-templates/customer-welco
 
 export const CUSTOMER_SET_PASSWORD_HOURS = 72;
 
-export function websiteBaseUrl(): string {
-  return (process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app').replace(/\/+$/, '');
-}
+export { websiteBaseUrl };
 
 /** A new one-time set-password link for a customer (72 hours by default). */
 export async function issueCustomerSetPasswordLink(customerId: string, hours = CUSTOMER_SET_PASSWORD_HOURS): Promise<string> {
@@ -86,7 +86,7 @@ export async function sendCustomerAccessEmail(customerId: string, kind: 'welcome
     const setPasswordUrl = await issueCustomerSetPasswordLink(customer.id);
     const branch = await branchDetails();
     const website = websiteBaseUrl();
-    const companyName = branch?.businessUnit.organisation.name ?? (await prisma.organisation.findUnique({ where: { id: customer.organisationId }, select: { name: true } }))?.name ?? '';
+    const companyName = branch?.businessUnit.organisation.name ?? (await prisma.organisation.findUnique({ where: { id: customer.organisationId }, select: { name: true } }))?.name ?? portalConfig.organisationName;
     const rendered = renderCustomerWelcomeEmail({
       kind,
       customerName: customer.fullName,

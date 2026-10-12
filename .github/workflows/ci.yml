@@ -32,6 +32,8 @@ jobs:
       DIRECT_URL: 'postgresql://user:password@localhost:5999/ejo100'
       BETTER_AUTH_SECRET: 'ci-placeholder-secret-do-not-use-in-production'
       BETTER_AUTH_URL: 'http://localhost:3001'
+      NEXT_PUBLIC_PORTAL_URL: 'http://localhost:3001'
+      NEXT_PUBLIC_WEBSITE_URL: 'http://localhost:3000'
       TEST_DATABASE_URL: 'postgresql://postgres:ci-test-only@localhost:5432/postgres'
     steps:
       - uses: actions/checkout@v4

@@ -5,7 +5,9 @@
 -- every 10 minutes. Supabase's own scheduler (pg_cron) calls the portal for us.
 --
 -- BEFORE RUNNING: replace PASTE_YOUR_CRON_SECRET_HERE below with the exact
--- CRON_SECRET value you set in Vercel (Settings → Environment Variables).
+-- CRON_SECRET value you set in Vercel (Settings → Environment Variables), and
+-- PASTE_YOUR_PORTAL_ADDRESS_HERE with the portal's public address (the value
+-- of NEXT_PUBLIC_PORTAL_URL, e.g. https://portal.example.com, no trailing slash).
 -- It is stored ENCRYPTED in Supabase Vault — never in this file or in GitHub.
 -- Do not share it with anyone (Claude included). Safe to run more than once.
 
@@ -29,7 +31,7 @@ SELECT cron.schedule(
   '*/10 * * * *',
   $job$
   SELECT net.http_get(
-    url := 'https://ejo100-portal.vercel.app/api/cron/appointment-reminders',
+    url := 'PASTE_YOUR_PORTAL_ADDRESS_HERE/api/cron/appointment-reminders',
     headers := jsonb_build_object('Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'ejo_cron_secret'))
   );
   $job$

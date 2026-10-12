@@ -31,7 +31,7 @@ const en = {
 'hero.slide1.subheading':
   'A diversified group creating lasting value across Africa and beyond.',
 'hero.slide1.primaryCta': 'Explore Our Businesses',
-'hero.slide1.secondaryCta': 'About Kewalram Chanrai',
+'hero.slide1.secondaryCta': 'About {organisation}',
 'hero.slide2.eyebrow': 'ENGINEERED FOR EXCELLENCE',
 'hero.slide2.headline': 'Automotive Solutions You Can Trust.',
 'hero.slide2.subheading':
@@ -52,13 +52,13 @@ const en = {
   'stats.countries': 'Countries of Operation',
 
   // About section
-  'about.eyebrow': 'ABOUT KEWALRAM CHANRAI GROUP',
+  'about.eyebrow': 'ABOUT {ORGANISATION}',
   'about.title': 'A Legacy of Trust. A Future of Excellence.',
   'about.body':
-    'For over 150 years, Kewalram Chanrai Group has been at the forefront of innovation and entrepreneurship. From our humble beginnings to our global footprint today, our commitment to quality, integrity and sustainable growth remains unwavering.',
+    'For over 150 years, {organisation} has been at the forefront of innovation and entrepreneurship. From our humble beginnings to our global footprint today, our commitment to quality, integrity and sustainable growth remains unwavering.',
   'about.cta': 'Discover Our Story',
-  'about.badgeYears': '150+',
-  'about.badgeCaption': 'Years of Excellence, Since 1870',
+  'about.badgeYears': '{years}+',
+  'about.badgeCaption': 'Years of Excellence, Since {founded}',
 
   // Business units
   'business.eyebrow': 'OUR BUSINESSES',
@@ -82,7 +82,7 @@ const en = {
 
   // News section
   'news.eyebrow': 'LATEST NEWS & HIGHLIGHTS',
-  'news.title': 'What\u2019s Happening at Kewalram',
+  'news.title': 'What\u2019s Happening at {organisation}',
   'news.readMore': 'Read More',
   'news.sustainabilityEyebrow': 'SUSTAINABILITY',
   'news.sustainabilityTitle': 'Building a Better Tomorrow',
@@ -94,11 +94,9 @@ const en = {
   'footer.quickLinks': 'Quick Links',
   'footer.ourBusinesses': 'Our Businesses',
   'footer.contactUs': 'Contact Us',
-  'footer.companyName': 'Kewalram Chanrai Group',
   'footer.companyDescription':
     'A spirit of entrepreneurship that has driven the success of our businesses for over 150 years.',
-  'footer.headOffice': 'Kewalram Chanrai Group Head Office',
-  'footer.location': 'Lagos, Nigeria',
+  'footer.headOffice': '{organisation} Head Office',
   'footer.newsletter': 'Newsletter',
   'footer.newsletterText': 'Stay updated with our latest news and insights.',
   'footer.newsletterPlaceholder': 'Enter your email',

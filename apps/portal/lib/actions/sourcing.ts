@@ -1,5 +1,6 @@
 'use server';
 import { actorLabel } from '@/lib/assist/rules';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach, seeBranchAnyOf, seeJobCard, seeService } from '@/lib/authz/server';
@@ -125,7 +126,7 @@ async function notifySupervisorAndTechnicianOfServiceEstimatePartRequestStatus(
     const recipientIds = [service.supervisorId, service.assignedTechnicianId].filter((id): id is string => Boolean(id));
     const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
     const orgContext = await getSourcingOrgContext(service.branchId, service.departmentName);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const recipient of recipients) {
       await sendEmail(
@@ -168,7 +169,7 @@ async function notifyTechnicianAndSupervisorOfPartRequestStatus(
     const recipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
     const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
     const orgContext = await getSourcingOrgContext(jobCard.branchId, jobCard.departmentName);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const recipient of recipients) {
       await sendEmail(
@@ -213,7 +214,7 @@ async function notifyTechnicianAndSupervisorOfExternalProcurementStatus(
     const recipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
     const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
     const orgContext = await getSourcingOrgContext(jobCard.branchId, jobCard.departmentName);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const recipient of recipients) {
       await sendEmail(
@@ -401,7 +402,7 @@ async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
   if (to === 'IN_PROGRESS') {
     try {
       const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-      const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+      const websiteUrl = websiteBaseUrl();
       await sendEmail(
         jobCard.customer.email,
         `Work has resumed — Job Card ${jobCard.jobNumber}`,
@@ -743,7 +744,7 @@ export async function requestPartRequestSlip(jobCardId: string): Promise<{ id: s
       }),
     ]);
     const orgContext = await getSourcingOrgContext(jobCard.branchId, emailContext.departmentName);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const manager of managers.supervisors) {
       await sendEmail(
@@ -947,7 +948,7 @@ export async function requestServiceEstimatePartRequestSlip(serviceEstimateId: s
       }),
     ]);
     const orgContext = await getSourcingOrgContext(estimate.vehicleService.branchId, emailContext.departmentName);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const manager of managers.supervisors) {
       await sendEmail(
@@ -1037,7 +1038,7 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
         storeRecipients.set(staffMember.id, staffMember);
       }
       const orgContext = await getSourcingOrgContext(slip.branchId, emailContext.departmentName);
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const portalUrl = portalBaseUrl();
       const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
       for (const recipient of storeRecipients.values()) {
         await sendEmail(
@@ -1090,7 +1091,7 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
         storeRecipients.set(staffMember.id, staffMember);
       }
       const orgContext = await getSourcingOrgContext(slip.branchId, emailContext.departmentName);
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const portalUrl = portalBaseUrl();
       const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
       for (const recipient of storeRecipients.values()) {
         await sendEmail(
@@ -1634,7 +1635,7 @@ export async function requestExternalProcurementBatch(jobCardId: string): Promis
       prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
     ]);
     const orgContext = await getSourcingOrgContext(jobCard.branchId, emailContext.departmentName);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const officer of financeOfficers.supervisors) {
       await sendEmail(
@@ -1836,7 +1837,7 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
       listEligibleManagersForBranch(request.branchId),
     ]);
     const orgContext = await getSourcingOrgContext(request.branchId, emailContext.departmentName);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const manager of managers.supervisors) {
       await sendEmail(

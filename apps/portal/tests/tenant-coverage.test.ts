@@ -160,7 +160,7 @@ test('adding a staff member never emails a password and stays inside the organis
   assert.doesNotMatch(create, /input\.employeeId/, 'nobody chooses an employee ID');
   const onboarding = read('lib/staff-onboarding.ts');
   assert.match(onboarding, /createVerificationValue\(\{ value: userId, identifier: `reset-password:\$\{token\}`/, 'the link is the auth library\'s own one-time reset token');
-  assert.match(onboarding, /randomBytes\(18\)/, 'an unguessable token');
+  assert.match(onboarding, /randomBytes\((18|2[4-9]|3[0-2])\)/, 'an unguessable token (at least 144 bits)');
   assert.doesNotMatch(create, /temporaryPassword|generateSecurePassword/, 'no password is ever emailed');
   assert.match(create, /Choose a branch of your organisation/);
   assert.match(create, /You can only add people to your own branch/);

@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 import { NextRequest, NextResponse } from 'next/server';
 import { isCronRequest } from '@/lib/cron-auth';
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
   }
 
   const groups = await getOpenPricingAlertsForDigest();
-  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const portalUrl = portalBaseUrl();
   const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
 
   let emailsSent = 0;

@@ -1,4 +1,5 @@
 'use server';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { authorize, seeService } from '@/lib/authz/server';
@@ -190,7 +191,7 @@ export async function recordServicePayment(
 
   try {
     const orgContext = await getWorkshopOrgContext(service.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const balance = roundedTotal - newTotal;
 
     const recipientIds = new Set<string>();
@@ -232,7 +233,7 @@ export async function recordServicePayment(
   if (justMetDeposit || justCompletedFull) {
     try {
       const orgContext = await getWorkshopOrgContext(service.department?.name);
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const portalUrl = portalBaseUrl();
 
       const recipientIds = new Set<string>();
       if (service.supervisorId) recipientIds.add(service.supervisorId);
@@ -291,7 +292,7 @@ export async function recordServicePayment(
 
   try {
     const orgContext = await getWorkshopOrgContext(service.department?.name);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     const balance = roundedTotal - newTotal;
     await sendEmail(
       service.customer.email,

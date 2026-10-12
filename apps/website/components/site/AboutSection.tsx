@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useI18n } from '@/lib/i18n';
 import { MediaBox } from '@/components/MediaBox';
+import { siteConfig } from '@/lib/site-config';
 
 export function AboutSection() {
   const { t } = useI18n();
@@ -40,10 +41,12 @@ export function AboutSection() {
             alt={t('about.title')}
             className="aspect-[4/3] rounded-[var(--ejo-radius-xl)] shadow-xl"
           />
-          <div className="absolute -bottom-8 -left-6 w-48 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-5 shadow-2xl">
-            <p className="text-2xl font-bold text-[var(--ejo-primary)]">{t('about.badgeYears')}</p>
-            <p className="text-xs text-[var(--ejo-text-muted)]">{t('about.badgeCaption')}</p>
-          </div>
+          {siteConfig.foundedYear ? (
+            <div className="absolute -bottom-8 -left-6 w-48 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-5 shadow-2xl">
+              <p className="text-2xl font-bold text-[var(--ejo-primary)]">{t('about.badgeYears')}</p>
+              <p className="text-xs text-[var(--ejo-text-muted)]">{t('about.badgeCaption')}</p>
+            </div>
+          ) : null}
         </motion.div>
       </div>
     </section>

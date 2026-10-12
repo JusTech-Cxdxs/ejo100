@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { serviceVisible } from '@/lib/authz/server';
 import { getVehicleService } from '@/lib/actions/vehicle-service';
@@ -129,7 +130,7 @@ export default async function PrintVehicleInspectionPage({
   if (!service || !organisation) notFound();
   if (!inspection || inspection.status === 'SKIPPED') notFound();
 
-  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const portalUrl = portalBaseUrl();
   const logoUrl = `${portalUrl}/images/logo/logo.png`;
   const vehicleSummary = [service.vehicle.year, service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || '—';
   const statusLabel = inspection.status === 'COMPLETED' ? 'Completed' : 'In Progress';

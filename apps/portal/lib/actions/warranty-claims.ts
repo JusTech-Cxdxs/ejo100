@@ -1,5 +1,6 @@
 'use server';
 import { actorLabel } from '@/lib/assist/rules';
+import { portalBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { claimed as stillAsSeen } from '@/lib/integrity';
@@ -49,7 +50,7 @@ async function hodsAndManagers(): Promise<{ id: string; fullName: string; email:
 async function notify(recipients: { fullName: string; email: string }[], subject: string, heading: string, lines: string[], claimId: string) {
   try {
     const orgContext = await getWorkshopOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     for (const r of recipients) {
       await sendEmail(
         r.email,

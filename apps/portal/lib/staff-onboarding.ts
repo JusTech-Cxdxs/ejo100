@@ -43,7 +43,7 @@ export async function issueSetPasswordLink(userId: string, hours = SET_PASSWORD_
   const ctx = await auth.$context;
   // Only the newest link works: any earlier, unused set-password link for this person is withdrawn.
   await prisma.verification.deleteMany({ where: { value: userId, identifier: { startsWith: 'reset-password:' } } });
-  const token = randomBytes(18).toString('base64url');
+  const token = randomBytes(32).toString('base64url');
   await ctx.internalAdapter.createVerificationValue({ value: userId, identifier: `reset-password:${token}`, expiresAt: new Date(Date.now() + hours * 3600_000) });
   return `${ctx.baseURL}/reset-password/${token}?callbackURL=${encodeURIComponent('/reset-password')}`;
 }

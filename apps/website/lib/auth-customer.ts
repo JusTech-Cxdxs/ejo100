@@ -38,7 +38,7 @@ export const customerAuth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
 
   secret: process.env.BETTER_AUTH_SECRET,
-  baseURL: process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'http://localhost:3000',
+  baseURL: websiteBaseUrl() || undefined,
 
   // Map Better Auth's default "user/session/account" models onto our
   // customer-specific tables — modelName for the table, fields for the
@@ -98,7 +98,7 @@ export const customerAuth = betterAuth({
         email: customer.email,
         url,
         expiresInMinutes: RESET_LINK_SECONDS / 60,
-        companyName: customer.organisation?.name || siteConfig.companyShortName,
+        companyName: customer.organisation?.name || siteConfig.organisationName,
         logoUrl: `${base}/images/logo/email-logo.png`,
       });
       await sendEmail(customer.email, subject, html);

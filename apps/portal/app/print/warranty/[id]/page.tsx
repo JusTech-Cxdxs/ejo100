@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { prisma } from '@ejo/database';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
@@ -55,7 +56,7 @@ export default async function PrintWarrantyPage({ params, searchParams }: { para
       <DocumentHeader
         organisation={organisation}
         branch={branch}
-        logoUrl={`${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app'}/images/logo/logo.png`}
+        logoUrl={`${portalBaseUrl()}/images/logo/logo.png`}
         documentTitle={isOrgCopy ? 'Warranty Certificate — Organisation Copy' : 'Warranty Certificate'}
         referenceNumber={w.warrantyNumber}
         statusLabel={WARRANTY_STATE_LABEL[cov.state]}

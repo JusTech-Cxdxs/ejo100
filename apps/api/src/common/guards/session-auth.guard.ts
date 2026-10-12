@@ -12,8 +12,8 @@ import { PrismaService } from '../../prisma/prisma.service';
  * trust a session created by the portal's login flow).
  *
  * Token is read from the `Authorization: Bearer <token>` header (for
- * server-to-server / mobile clients) or the `better-auth.session_token`
- * cookie Better Auth sets in the browser. Expired or unknown tokens are
+ * server-to-server / mobile clients) or the session cookie Better Auth sets
+ * in the browser. Expired or unknown tokens are
  * rejected; this guard does NOT distinguish roles/permissions — combine
  * with a RolesGuard (see roles.guard.ts, hierarchy phase) for that.
  */
@@ -61,7 +61,10 @@ export class SessionAuthGuard implements CanActivate {
     if (authHeader?.startsWith('Bearer ')) {
       return authHeader.slice('Bearer '.length);
     }
-    const cookieToken = request.cookies?.['better-auth.session_token'];
-    return typeof cookieToken === 'string' ? cookieToken : null;
+    // Over HTTPS Better Auth names the cookie with the __Secure- prefix. Its
+    // value is "<token>.<signature>"; the token alone is the lookup key.
+    const cookieToken = request.cookies?.['__Secure-better-auth.session_token'] ?? request.cookies?.['better-auth.session_token'];
+    if (typeof cookieToken !== 'string' || !cookieToken) return null;
+    return cookieToken.split('.')[0] || null;
   }
 }

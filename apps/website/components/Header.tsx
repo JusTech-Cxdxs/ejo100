@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { siteNav, getPortalLoginUrl } from '@/lib/site-config';
+import { siteNav, getPortalLoginUrl, wordmarkParts } from '@/lib/site-config';
 import { useI18n } from '@/lib/i18n';
 import { BrandLogo } from './BrandLogo';
 import { ThemeToggle } from './ThemeToggle';
@@ -17,6 +17,8 @@ export function Header() {
   const isHome = pathname === '/';
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const portalLogin = getPortalLoginUrl();
+  const mark = wordmarkParts();
 
   useEffect(() => {
     function onScroll() {
@@ -64,39 +66,10 @@ export function Header() {
         >
           <div className="mx-auto flex max-w-7xl flex-nowrap items-center justify-between px-6 py-4">
             <Link href="/" className="flex shrink-0 items-center">
-              {/* No scale transform here anymore — it visually enlarged
-                  the logo beyond the layout box actually reserved for
-                  it (CSS transform:scale never affects layout/flow,
-                  only paint), which is exactly what was causing
-                  "Kewalram" to collide with the logo. The logo is
-                  already sized precisely via the size prop below to
-                  match the real wordmark stack height, so no extra
-                  scaling is needed or safe to add on top of that.
-                  Same real wordmark idea as the print document's own
-                  DocumentHeader — a rule that grows to fill exactly
-                  the leftover space so "Chanrai Group" ends flush with
-                  "Kewalram" above it, whatever the exact text width
-                  turns out to be, the same way print's own version is
-                  mathematically guaranteed to line up. Two earlier
-                  attempts at this on the website both turned out wrong
-                  once actually viewed — a nested flex/grid version
-                  that silently failed to grow at all, then a
-                  fixed-width version that "Chanrai Group" ran past
-                  "Kewalram" on. Traced the real, working difference
-                  directly against print's own proven markup this time,
-                  one variable at a time, rather than guess again: the
-                  growing rule only works reliably here inside a real
-                  two-column table, exactly like print's own structure
-                  — not a flex or grid row on its own. Built with plain
-                  inline styles throughout, the same as print's own
-                  version, so every piece of it — not just the final
-                  look — could be verified directly against real
-                  rendered pixels before shipping, nothing left on
-                  trust. The rule is always the real brand green —
-                  never swapped for white on the transparent hero
-                  state, on purpose; only the text around it dims for
-                  contrast against the hero image, the accent color
-                  itself stays constant. */}
+              {/* Wordmark: first word of the organisation name over a rule that
+                  grows to the width of the line beneath, as on printed
+                  documents. A two-column table keeps the rule growing
+                  reliably; no scale transform, so the logo never overlaps. */}
               <table role="presentation" style={{ borderCollapse: 'collapse' }}>
                 <tbody>
                   <tr>
@@ -106,14 +79,16 @@ export function Header() {
                     <td style={{ verticalAlign: 'middle', paddingLeft: '2px' }}>
                       <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch', whiteSpace: 'nowrap' }}>
                         <span className={`block text-base font-bold leading-tight ${transparent ? 'text-white' : 'text-[var(--ejo-text)]'}`}>
-                          Kewalram
+                          {mark.top}
                         </span>
-                        <span style={{ display: 'flex', alignItems: 'center', marginTop: '2px' }}>
-                          <span style={{ flex: 1, marginRight: '6px', borderBottom: '1px solid var(--ejo-primary)' }} />
-                          <span className={`block text-[11px] leading-tight ${transparent ? 'text-white/70' : 'text-[var(--ejo-text-muted)]'}`}>
-                            Chanrai Group
+                        {mark.bottom ? (
+                          <span style={{ display: 'flex', alignItems: 'center', marginTop: '2px' }}>
+                            <span style={{ flex: 1, marginRight: '6px', borderBottom: '1px solid var(--ejo-primary)' }} />
+                            <span className={`block text-[11px] leading-tight ${transparent ? 'text-white/70' : 'text-[var(--ejo-text-muted)]'}`}>
+                              {mark.bottom}
+                            </span>
                           </span>
-                        </span>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -171,12 +146,14 @@ export function Header() {
               >
                 {t('header.customerLogin')}
               </Link>
-              <a
-                href={getPortalLoginUrl()}
-                className="shrink-0 whitespace-nowrap rounded-full bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform hover:scale-[1.03] hover:opacity-90"
-              >
-                {t('header.employeeLogin')}
-              </a>
+              {portalLogin ? (
+                <a
+                  href={portalLogin}
+                  className="shrink-0 whitespace-nowrap rounded-full bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform hover:scale-[1.03] hover:opacity-90"
+                >
+                  {t('header.employeeLogin')}
+                </a>
+              ) : null}
             </div>
 
             <button
@@ -244,12 +221,14 @@ export function Header() {
                 >
                   {t('header.customerLogin')}
                 </Link>
-                <a
-                  href={getPortalLoginUrl()}
-                  className="block rounded-full bg-[var(--ejo-primary)] px-4 py-2.5 text-center text-sm font-semibold text-white"
-                >
-                  {t('header.employeeLogin')}
-                </a>
+                {portalLogin ? (
+                  <a
+                    href={portalLogin}
+                    className="block rounded-full bg-[var(--ejo-primary)] px-4 py-2.5 text-center text-sm font-semibold text-white"
+                  >
+                    {t('header.employeeLogin')}
+                  </a>
+                ) : null}
               </div>
             </motion.div>
           </>

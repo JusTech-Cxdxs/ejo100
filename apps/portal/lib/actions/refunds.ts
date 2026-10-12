@@ -1,4 +1,5 @@
 'use server';
+import { websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { authorize, jobOrServiceReach, seeJobCard, seeService, } from '@/lib/authz/server';
@@ -327,7 +328,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
 
   try {
     const orgContext = await getWorkshopOrgContext(t.departmentName);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     await sendEmail(
       t.customer.email,
       `Refund receipt ${referenceNumber} — ${t.label} ${t.number}`,

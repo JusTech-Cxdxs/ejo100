@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { serviceVisible } from '@/lib/authz/server';
 import { getVehicleService, getVehicleServiceAuditTrail } from '@/lib/actions/vehicle-service';
@@ -44,7 +45,7 @@ export default async function PrintVehicleServiceEstimatePage({
   if (estimate.status !== 'MANAGER_APPROVED') notFound();
 
   const vehicleDescription = [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
-  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const portalUrl = portalBaseUrl();
 
   return (
     <EstimatePrintDocument

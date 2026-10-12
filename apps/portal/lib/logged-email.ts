@@ -1,4 +1,5 @@
 import { cleanForLog } from '@/lib/errors';
+import { portalBaseUrl } from '@/lib/portal-url';
 import { prisma } from '@ejo/database';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
 import { sendEmail } from '@/lib/email';
@@ -19,7 +20,7 @@ export async function sendLoggedEmail(opts: { entityType: string; entityId: stri
   // operating branch of whoever acted — each organisation's own name.
   const branchId = opts.branchId ?? (await getWorkshopBranchId().catch(() => null));
   const branch = branchId ? await prisma.branch.findUnique({ where: { id: branchId }, select: { name: true, businessUnit: { select: { organisationId: true, organisation: { select: { name: true } } } } } }).catch(() => null) : null;
-  const portal = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const portal = portalBaseUrl();
   for (const r of unique) {
     let sent = true;
     let error: string | null = null;

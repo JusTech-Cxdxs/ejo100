@@ -1,4 +1,5 @@
 'use server';
+import { portalBaseUrl } from '@/lib/portal-url';
 
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
@@ -121,7 +122,7 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
           prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
           prisma.user.findMany({ where: { isActive: true, branchId, roles: { some: { role: { slug: { in: ['workshop-manager', 'finance-officer'] } } } } }, select: { fullName: true, email: true } }),
         ]);
-        const portal = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+        const portal = portalBaseUrl();
         for (const w of watchers) {
           if (!w.email) continue;
           await sendEmail(

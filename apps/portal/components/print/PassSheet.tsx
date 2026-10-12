@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import type { ReactNode } from 'react';
 
 const ACCENT = '#16A34A';
@@ -5,11 +6,11 @@ const ACCENT = '#16A34A';
 /**
  * A pass on a POS receipt roll (58 / 80 mm): fills the roll's width, with
  * the same header as every EJO document — logo beside the organisation
- * wordmark ("Kewalram" over an accent rule and "Chanrai Group") — then the
+ * wordmark (first word over an accent rule, the rest beneath) — then the
  * copy label, a boxed title, the content and an optional note.
  */
 export function PassSheet({ copyLabel, orgName, subName, title, children, note }: { copyLabel: string; orgName: string; subName?: string | null; title: string; children: ReactNode; note?: string }) {
-  const logo = `${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app'}/images/logo/logo.png`;
+  const logo = `${portalBaseUrl()}/images/logo/logo.png`;
   const words = orgName.trim().split(/\s+/);
   const top = words[0] ?? orgName;
   const bottom = words.slice(1).join(' ');

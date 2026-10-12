@@ -1,5 +1,6 @@
 'use client';
 
+import { siteConfig } from '@/lib/site-config';
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -106,7 +107,7 @@ export function HeroSlider() {
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
       aria-roledescription="carousel"
-      aria-label="Kewalram Chanrai Group highlights"
+      aria-label={`${siteConfig.organisationName} highlights`}
     >
       <AnimatePresence mode="wait">
         <motion.div
