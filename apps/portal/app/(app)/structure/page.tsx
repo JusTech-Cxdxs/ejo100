@@ -6,6 +6,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { LoadingLink } from '@/components/LoadingLink';
 import { STRUCTURE_STATUS } from '@/lib/structure-messages';
 import { SYSTEM_DEPARTMENTS } from '@/lib/structure-rules';
+import { PageTitle } from '@/components/ui';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]';
 const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
@@ -36,7 +37,7 @@ export default async function StructurePage({ searchParams }: { searchParams: Pr
   return (
     <div className="w-full max-w-6xl p-4 sm:p-8">
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--ejo-primary)]">{s.organisation?.name ?? 'Organisation'}</p>
-      <h1 className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">Organisation structure</h1>
+      <PageTitle icon="sitemap" className="mt-1">Organisation structure</PageTitle>
       <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">How the organisation is laid out — business units, the branches under each, and the departments in every branch — with the people in each. Staff are placed into a branch and department on the Users page. Every change here is recorded in the audit trail.</p>
 
       {error ? <div className="mt-4"><FormFeedbackBanner kind="error" message={error} /></div> : null}

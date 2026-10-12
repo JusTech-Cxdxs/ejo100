@@ -1,6 +1,7 @@
 import { PERMISSIONS, ROLE_GRANTS, ROLE_LABELS, PLATFORM_ONLY, scopeFor, type PermissionKey } from '@/lib/authz/catalogue';
 import { getPrincipal, guardPage } from '@/lib/authz/server';
 import { PermissionsMatrix, type MatrixRow } from '@/components/PermissionsMatrix';
+import { PageTitle } from '@/components/ui';
 
 /**
  * The Authorization Catalogue — generated from the same code the server
@@ -19,7 +20,7 @@ export default async function PermissionsPage() {
   }));
   return (
     <div className="w-full p-4 sm:p-8">
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Permissions</h1>
+      <PageTitle icon="key">Permissions</PageTitle>
       <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
         Who can do what, and on which records. Each department does its own work and sees only what that work needs — Front Desk opens jobs, supervisors and
         technicians do the work, the Manager approves and closes, Finance handles money, the Store handles stock, Security runs the gate. Every rule is checked on

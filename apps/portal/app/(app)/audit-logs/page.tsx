@@ -6,6 +6,7 @@ import { LinkedText } from '@/components/LinkedText';
 import { LoadingLink } from '@/components/LoadingLink';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
+import { PageTitle } from '@/components/ui';
 
 const KINDS: [string, string][] = [['all', 'Everything'], ['business', 'Business events'], ['data', 'Data changes'], ['api', 'API requests'], ['system', 'Scheduled jobs']];
 const AREA_DOT: Record<string, string> = { Workshop: 'bg-[var(--ejo-primary)]', Store: 'bg-[var(--ejo-info)]', Warranty: 'bg-[var(--ejo-warning)]', Security: 'bg-[var(--ejo-error)]', Scheduling: 'bg-purple-500', System: 'bg-[var(--ejo-text-muted)]' };
@@ -32,7 +33,7 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Pr
   if (!(await canSeeAuditLogs())) {
     return (
       <div className="p-4 sm:p-8">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Audit Logs</h1>
+        <PageTitle icon="history">Audit Logs</PageTitle>
         <p className="mt-3 max-w-xl text-sm text-[var(--ejo-text-muted)]">The full audit trail is for the Master Admin and Administrators. Each record&apos;s own history is on its page.</p>
       </div>
     );
@@ -48,7 +49,7 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Pr
   const input = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)]';
   return (
     <div className="w-full p-4 sm:p-8">
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Audit Logs</h1>
+      <PageTitle icon="history">Audit Logs</PageTitle>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Everything that happened, newest first — business events in plain words, every data change with its before and after, and every API request. Nothing here can be edited or deleted.</p>
       <div className="mb-3 flex flex-wrap gap-2">
         {KINDS.map(([k, l]) => <LoadingLink key={k} href={keep({ kind: k === 'all' ? undefined : k, cursor: undefined })} className={`rounded-full px-3 py-1 text-xs font-medium ${kind === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l}</LoadingLink>)}

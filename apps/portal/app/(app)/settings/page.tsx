@@ -1,6 +1,7 @@
 import { jobStatuses } from '@/lib/job-runs';
 import { getPrincipal, guardPage } from '@/lib/authz/server';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { PageTitle } from '@/components/ui';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6';
 
@@ -22,7 +23,7 @@ export default async function SettingsPage() {
   const [{ jobs, emails7d }, p] = await Promise.all([jobStatuses(), getPrincipal()]);
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Settings</h1>
+      <PageTitle icon="settings">Settings</PageTitle>
       <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">What runs on its own, and whether it is working.</p>
 
       <section className={`${card} mt-8`}>

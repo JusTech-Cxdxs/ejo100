@@ -1,6 +1,7 @@
 import { guardPage } from '@/lib/authz/server';
 import { getBranches } from '@/lib/actions/branches';
 import { LoadingLink } from '@/components/LoadingLink';
+import { PageTitle } from '@/components/ui';
 
 /**
  * Every real physical facility — each with its own real address and
@@ -17,7 +18,7 @@ export default async function BranchesPage() {
   return (
     <div className="p-8">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-[var(--ejo-text)]">Branches</h1>
+        <PageTitle icon="branch">Branches</PageTitle>
         <LoadingLink href="/structure" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Organisation structure · open a branch →</LoadingLink>
       </div>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
