@@ -154,7 +154,13 @@ export function digestMessages(log = process.env.PORTAL_LOG ?? 'portal.log'): Ma
   try { text = readFileSync(log, 'utf8'); } catch { return m; }
   for (const line of text.split('\n')) {
     if (!line.startsWith('{')) continue;
-    try { const j = JSON.parse(line) as { ref?: string; message?: string }; if (j.ref) m.set(String(j.ref), String(j.message ?? '').split('\n')[0]!.slice(0, 120)); } catch { /* not JSON */ }
+    try {
+      const j = JSON.parse(line) as { ref?: string; message?: string };
+      // Prisma messages start with a blank line and "Invalid `…` invocation:" — keep the cause (last line).
+      const lines = String(j.message ?? '').split('\n').map((x) => x.trim()).filter(Boolean);
+      const msg = lines.length > 1 && /invocation/.test(lines[0]!) ? `${lines[0]} … ${lines[lines.length - 1]}` : (lines[0] ?? '');
+      if (j.ref) m.set(String(j.ref), msg.slice(0, 160));
+    } catch { /* not JSON */ }
   }
   return m;
 }

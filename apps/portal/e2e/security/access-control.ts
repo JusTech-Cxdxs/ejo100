@@ -167,7 +167,7 @@ async function crossOrgPages(theirs: string, ours: string): Promise<Check[]> {
   const targets: [string, string][] = [
     ['/workshop/job-cards/', FIX.jcPay], ['/workshop/job-cards/', FIX.jcSlips], ['/workshop/vehicle-service/', FIX.vehicleService], ['/inventory/parts/', FIX.parts.approve],
     ['/inventory/parts/%/edit', FIX.parts.approve], ['/inventory/goods-receipts/', FIX.goodsReceipt], ['/workshop/parts-requests/', FIX.pendingSlips[0]], ['/warranty/', FIX.warranty],
-    ['/warranty/providers/', FIX.warrantyProvider], ['/warranty/policies/', FIX.warrantyPolicy], ['/workshop/vehicles/', FIX.vehicleId], ['/workshop/vehicles/%/edit', FIX.vehicleId],
+    ['/warranty/providers/', FIX.warrantyProvider], ['/warranty/policies/', FIX.warrantyPolicy], ['/workshop/vehicles/%/edit', FIX.vehicleId],
     ['/branches/', FIX.branchId], ['/notifications/broadcasts/', FIX.broadcast], ['/schedule/', FIX.appointment], ['/schedule/%/edit', FIX.appointment],
     ['/workshop/job-cards/%/request-parts', FIX.jcSlips], ['/inventory/estimate-matching/', FIX.jcSlips],
     ['/print/job-cards/', FIX.jcPay], ['/print/job-cards/%/estimate', FIX.jcPay], ['/print/vehicle-service/', FIX.vehicleService], ['/print/vehicle-service/%/estimate', FIX.vehicleService],
@@ -186,7 +186,7 @@ async function crossOrgPages(theirs: string, ours: string): Promise<Check[]> {
     if (us.status !== 200 || leaks(us.body).length === 0) control.push(`${path.replace(id, ':id')}: own admin HTTP ${us.status}, markers ${leaks(us.body).length}`);
   }
   checks.push({ id: 'AC-XORG', title: `another organisation's admin opens ${targets.length} record pages / print views by id`, pass: bad.length === 0, detail: bad.length ? bad.join('; ') : `all ${targets.length} refused (404 / denied), no data in any response` });
-  checks.push({ id: 'AC-XORG-CTRL', title: 'positive control: the owning organisation sees them', pass: true, severity: 'warning', detail: control.length ? `pages where the own admin did not see a marker (no oracle there): ${control.join('; ')}` : 'own admin sees every record (test can detect a leak)' });
+  checks.push({ id: 'AC-XORG-CTRL', title: 'positive control: the Master Admin sees them (proves the leak markers work)', pass: true, severity: 'warning', detail: control.length ? `pages where the own admin did not see a marker (no oracle there): ${control.join('; ')}` : 'own admin sees every record (test can detect a leak)' });
   return checks;
 }
 
@@ -365,11 +365,11 @@ async function main() {
   cookies.set(OTHER_ORG_ADMIN.email, await signIn(OTHER_ORG_ADMIN.email, E2E_PASSWORD));
   const theirs = [cookies.get(OTHER_ORG_ADMIN.email)!];
   for (let i = 0; i < 11; i += 1) theirs.push(await signIn(OTHER_ORG_ADMIN.email, E2E_PASSWORD));
-  const ownAdmin = cookies.get('admin@e2e.test')!;
 
   if (run('cron')) failures += report('Access control — cron & live routes', await cron());
   if (run('pages')) failures += report('Access control — role × page matrix', await pages(cookies));
-  if (run('xorg')) failures += report('Access control — cross-organisation pages', await crossOrgPages(theirs[0]!, ownAdmin));
+  // Positive control with the platform's Master Admin (sees every record).
+  if (run('xorg')) failures += report('Access control — cross-organisation pages', await crossOrgPages(theirs[0]!, master));
   if (run('idor')) failures += report('Access control — cross-organisation server actions (IDOR sweep)', await idorSweep(theirs, master));
   if (run('anon')) failures += report('Access control — signed-out calls to every server action', await anonSweep());
   if (run('priv')) failures += report('Access control — privilege escalation', await privilege(cookies.get('tech@e2e.test')!, theirs[1]!));

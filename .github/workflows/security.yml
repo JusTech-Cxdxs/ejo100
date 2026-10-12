@@ -194,15 +194,15 @@ jobs:
         run: |
           mkdir -p zap && chmod 777 zap
           docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t http://localhost:3001 -m 2 -I -J portal-anon.json -r portal-anon.html || true
+            zap-baseline.py -t http://localhost:3001 -m 2 -I -J portal-anon.json -r portal-anon.html > zap/portal-anon.out 2>&1 || true
           COOKIE=$(curl -s -i -X POST http://localhost:3001/api/auth/sign-in/email -H 'content-type: application/json' -H 'origin: http://localhost:3001' \
             -d '{"email":"admin@e2e.test","password":"E2e-Test-Pass-2026!"}' | grep -i '^set-cookie: better-auth.session_token=' | head -1 | sed -E 's/^[Ss]et-[Cc]ookie: ([^;]+).*/\1/' | tr -d '\r')
           docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t http://localhost:3001/dashboard -m 3 -I -J portal-auth.json -r portal-auth.html \
             -z "-config replacer.full_list(0).description=auth -config replacer.full_list(0).enabled=true -config replacer.full_list(0).matchtype=REQ_HEADER -config replacer.full_list(0).matchstr=Cookie -config replacer.full_list(0).regex=false -config replacer.full_list(0).replacement=$COOKIE -config spider.excludedParamList= -config spider.parseComments=false" \
-            || true
-          node apps/portal/e2e/security/zap-report.mjs zap/portal-anon.json "Portal (signed out)"
-          node apps/portal/e2e/security/zap-report.mjs zap/portal-auth.json "Portal (signed in, administrator)"
+            > zap/portal-auth.out 2>&1 || true
+          node apps/portal/e2e/security/zap-report.mjs zap/portal-anon.json "Portal (signed out)" zap/portal-anon.out
+          node apps/portal/e2e/security/zap-report.mjs zap/portal-auth.json "Portal (signed in, administrator)" zap/portal-auth.out
       - name: Website (public site + customer portal) — build, bundle scan, ZAP baseline
         if: always()
         env:
@@ -213,8 +213,8 @@ jobs:
           (cd apps/website && nohup npx next start -p 3000 > ../../website.log 2>&1 &)
           for i in $(seq 1 60); do curl -sf http://localhost:3000/ > /dev/null && break; sleep 2; done
           docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t http://localhost:3000 -m 2 -I -J website.json -r website.html || true
-          node apps/portal/e2e/security/zap-report.mjs zap/website.json "Website + customer portal (signed out)"
+            zap-baseline.py -t http://localhost:3000 -m 2 -I -J website.json -r website.html > zap/website.out 2>&1 || true
+          node apps/portal/e2e/security/zap-report.mjs zap/website.json "Website + customer portal (signed out)" zap/website.out
       - if: always()
         name: Server logs — errors, and anything that looks like a secret or personal data
         run: |
@@ -297,6 +297,7 @@ jobs:
       - uses: grafana/setup-k6-action@v1
       - name: k6 staged load (smoke → baseline → ramp → spike → soak → recovery)
         run: |
+          set +e
           k6 run --quiet -e BASE=http://localhost:3001 -e ACTION_MAP="$PWD/actions.json" -e K6_SUMMARY="$PWD/k6-summary.json" ops/load-test/k6-ci.js > k6.out 2>&1; rc=$?
           tail -n 40 k6.out
           [ $rc = 0 ] || echo "::warning title=k6 exit $rc::99 = a proposed threshold was breached (see stage annotations); other codes = script/run error. $(grep -iE 'error|exception' k6.out | head -3 | tr '\n' ' ' | cut -c1-400)"
@@ -304,6 +305,7 @@ jobs:
       - name: Two instances behind a round-robin proxy — kill one mid-test
         if: always()
         run: |
+          set +e
           NEXT_BIN="$PWD/node_modules/next/dist/bin/next"
           (cd apps/portal && nohup node "$NEXT_BIN" start -p 3011 > ../../portal-a.log 2>&1 & echo $! > ../../a.pid)
           (cd apps/portal && nohup node "$NEXT_BIN" start -p 3012 > ../../portal-b.log 2>&1 &)

@@ -82,7 +82,8 @@ async function main() {
     const rs = await burst(15, (i) => action('createJobCard', [{ customerId: FIX.customerId, vehicleId: FIX.manyVehicleIds[i], complaints: [`Concurrency test ${i}`], supervisorId: FIX.users.sup, mileageAtCheckIn: 20000 + i }], { cookie: front[i % front.length] }));
     const rows = await sql<{ jobNumber: string }>(`SELECT "jobNumber" FROM job_cards WHERE "vehicleId" = ANY($1)`, [FIX.manyVehicleIds]);
     const unique = new Set(rows.map((r) => r.jobNumber)).size;
-    checks.push({ id: 'CONC-04', title: 'createJobCard ×15, different vehicles (number generation)', pass: unique === rows.length && rows.length === 15, severity: rows.length === 15 ? undefined : 'warning',
+    // Integrity (unique numbers) is the hard requirement; refusals are a usability finding (CONC-F1).
+    checks.push({ id: 'CONC-04', title: 'createJobCard ×15, different vehicles (number generation)', pass: unique === rows.length && rows.length === 15, severity: unique === rows.length ? 'warning' : undefined,
       detail: `created=${rows.length}/15, unique numbers=${unique}; ${tally(rs)}${rows.length < 15 ? ' (refusals here mean a number clash surfaced to the user — retried manually)' : ''}` });
   }
   // CONC-05 — the supervisor double-clicks "Approve" 20 times.
