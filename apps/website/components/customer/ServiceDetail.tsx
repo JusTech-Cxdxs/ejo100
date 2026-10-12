@@ -117,7 +117,7 @@ export function ServiceDetail({ item, complaints, lines, branch, mileage, warran
         </Notice>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-6">
           {/* Timeline */}
           <Card className="p-5 sm:p-6">

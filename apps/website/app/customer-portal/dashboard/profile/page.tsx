@@ -21,7 +21,7 @@ export default async function ProfilePage() {
     <div className="space-y-6">
       <PageHero eyebrow="Profile & settings" icon="user" title="Your details" subtitle="Keep your phone numbers and addresses up to date so we can reach you about your vehicle. Every change is recorded for your security." />
 
-      <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="min-w-0 space-y-6">
           <Card className="p-5">
             <div className="flex items-center gap-3">

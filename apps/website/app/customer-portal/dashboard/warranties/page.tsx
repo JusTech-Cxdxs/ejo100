@@ -55,7 +55,7 @@ export default async function WarrantiesPage() {
           return (
             <section key={g.title}>
               <SectionTitle icon={g.icon} title={`${g.title} (${list.length})`} />
-              <div className="grid gap-4 md:grid-cols-2">{list.map((w, idx) => <WarrantyCard key={w.id} w={w} delay={Math.min(idx, 8) * 40} />)}</div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{list.map((w, idx) => <WarrantyCard key={w.id} w={w} delay={Math.min(idx, 8) * 40} />)}</div>
             </section>
           );
         })

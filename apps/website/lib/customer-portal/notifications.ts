@@ -39,7 +39,7 @@ function servicesEvents(items: ServiceItem[]): Omit<NoticeItem, 'read'>[] {
       if (at) out.push({ key: `${i.kind}:${i.id}:${event}`, title, body, at, href: i.href, icon, tone });
     };
     if (i.kind === 'jc') add('created', i.createdAt, `${name} opened`, `Your ${car} is checked in. We’ll keep you posted at every step.`, 'wrench', 'info');
-    else add(i.status === 'SCHEDULED' ? 'booked' : 'created', i.createdAt, `${name} booked`, `Your ${car} is booked in for a service.`, 'calendarCheck', 'info');
+    else add('booked', i.createdAt, `${name} booked`, `Your ${car} is booked in for a service.`, 'calendarCheck', 'info');
     if (i.kind === 'vs') add('checked_in', i.checkedInAt, `${name}: checked in`, `Your ${car} has arrived and is with our team.`, 'car', 'info');
     add('estimate', i.estimateNotifiedAt, `Your estimate for ${i.number} is ready`, i.money.estimateTotal !== null ? `Total ${naira(i.money.estimateTotal)} — minimum deposit ${naira(i.money.minDeposit ?? 0)}.` : 'Open it to see the details.', 'receipt', 'attention');
     add('started', i.workStartedAt, `Work started on ${i.number}`, `Our technicians are working on your ${car}.`, 'wrench', 'progress');

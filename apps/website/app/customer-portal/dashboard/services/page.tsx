@@ -53,7 +53,7 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
       </nav>
 
       {list.length ? (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {list.map((i, idx) => <ServiceCard key={`${i.kind}-${i.id}`} item={i} delay={Math.min(idx, 10) * 40} />)}
         </div>
       ) : (

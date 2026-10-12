@@ -159,7 +159,7 @@ export default async function CustomerOverviewPage() {
       <section aria-labelledby="attention-title">
         <SectionTitle id="attention-title" icon="alert" title="Needs your attention" />
         {attention.length ? (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {attention.slice(0, 8).map((a, idx) => <AttentionCard key={a.key} icon={a.icon} tone={a.tone} title={a.title} text={a.text} href={a.href} cta={a.cta} delay={idx * 50} />)}
           </div>
         ) : (
@@ -177,7 +177,7 @@ export default async function CustomerOverviewPage() {
       <section aria-labelledby="live-title">
         <SectionTitle id="live-title" icon="route" title="In progress" action={<Link href="/customer-portal/dashboard/services" className="text-sm font-medium text-[var(--ejo-primary)] hover:underline">All services</Link>} />
         {active.length ? (
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {active.slice(0, 4).map((i, idx) => <ServiceCard key={i.id} item={i} delay={idx * 60} />)}
           </div>
         ) : (

@@ -11,7 +11,7 @@ export function ServiceCard({ item, delay }: { item: ServiceItem; delay?: number
     <Link
       href={item.href}
       data-testid={`service-card-${item.number}`}
-      className="ejo-rise ejo-lift group block rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4 hover:border-[var(--ejo-primary)]/40 sm:p-5"
+      className="ejo-rise ejo-lift group block min-w-0 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4 hover:border-[var(--ejo-primary)]/40 sm:p-5"
       style={delay ? { animationDelay: `${delay}ms` } : undefined}
     >
       <div className="flex items-start gap-3">
@@ -24,8 +24,9 @@ export function ServiceCard({ item, delay }: { item: ServiceItem; delay?: number
             <span className="text-xs text-[var(--ejo-text-muted)]">{item.kind === 'jc' ? 'Job Card' : 'Vehicle service'}</span>
           </div>
           <p className="mt-0.5 truncate text-sm text-[var(--ejo-text-muted)]">{item.vehicle.label}{item.vehicle.plate ? ` · ${item.vehicle.plate}` : ''}</p>
+          <div className="mt-1.5 sm:hidden"><Badge tone={item.info.tone}>{item.info.label}</Badge></div>
         </div>
-        <Badge tone={item.info.tone}>{item.info.label}</Badge>
+        <div className="hidden shrink-0 sm:block"><Badge tone={item.info.tone}>{item.info.label}</Badge></div>
       </div>
 
       {item.phase === 'active' ? (

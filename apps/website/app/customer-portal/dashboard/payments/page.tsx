@@ -31,7 +31,7 @@ export default async function PaymentsPage() {
     <div className="space-y-6">
       <PageHero eyebrow="Payments" icon="wallet" title="Payments & balances" subtitle="Every payment and refund on your account, what’s still to pay on each visit, and how to pay." />
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {[
           { label: 'Paid to date', value: paid, icon: 'checkCircle' as const, tone: 'text-[var(--ejo-success)]' },
           { label: 'Refunded to you', value: refunded, icon: 'refund' as const, tone: 'text-[var(--ejo-info)]' },
@@ -44,7 +44,7 @@ export default async function PaymentsPage() {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-6">
           <section>
             <SectionTitle icon="alert" title="Balances to pay" />

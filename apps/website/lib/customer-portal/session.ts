@@ -45,8 +45,14 @@ export const lookupCustomer = cache(async (): Promise<Lookup> => {
   if (!c) return { state: 'none' };
   if (!c.isActive) return { state: 'inactive' };
   markCustomerActor(c.organisationId);
-  const { isActive: _active, customerCompany, ...rest } = c;
-  return { state: 'ok', customer: { ...rest, customerType: String(rest.customerType), companyName: customerCompany?.companyName ?? null } };
+  return {
+    state: 'ok',
+    customer: {
+      id: c.id, organisationId: c.organisationId, fullName: c.fullName, email: c.email, phone: c.phone, altPhone: c.altPhone,
+      address: c.address, notifyByEmail: c.notifyByEmail, customerType: String(c.customerType), createdAt: c.createdAt,
+      companyName: c.customerCompany?.companyName ?? null,
+    },
+  };
 });
 
 /** For pages and layouts: the signed-in, active customer — or off to sign in. */

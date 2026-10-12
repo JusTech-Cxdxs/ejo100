@@ -46,7 +46,7 @@ export function ContactForm({ phone, altPhone, address }: { phone: string; altPh
   const fe = state.fieldErrors ?? {};
   return (
     <form action={action} className="space-y-4" noValidate>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field id="phone" label="Phone number" error={fe.phone}>
           <input id="phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" required maxLength={20} defaultValue={phone} aria-invalid={Boolean(fe.phone) || undefined} aria-describedby={fe.phone ? 'phone-error' : undefined} className={cls(fe.phone)} placeholder="e.g. 0803 123 4567" />
         </Field>
@@ -69,7 +69,7 @@ export type AddressView = { id: string; label: string | null; line1: string; lin
 
 function AddressFields({ a, fe, idPrefix }: { a?: AddressView; fe: Record<string, string>; idPrefix: string }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <Field id={`${idPrefix}-label`} label="Label (optional)" error={fe.label}><input id={`${idPrefix}-label`} name="label" maxLength={40} defaultValue={a?.label ?? ''} placeholder="Home, Office…" className={cls(fe.label)} /></Field>
       <Field id={`${idPrefix}-line1`} label="Street address" error={fe.line1}><input id={`${idPrefix}-line1`} name="line1" required maxLength={120} defaultValue={a?.line1 ?? ''} className={cls(fe.line1)} /></Field>
       <Field id={`${idPrefix}-line2`} label="Area / landmark (optional)" error={fe.line2}><input id={`${idPrefix}-line2`} name="line2" maxLength={120} defaultValue={a?.line2 ?? ''} className={cls(fe.line2)} /></Field>

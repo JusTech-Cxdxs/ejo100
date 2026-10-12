@@ -72,7 +72,7 @@ export default async function VehiclePage({ params }: { params: Promise<{ id: st
       <section>
         <SectionTitle icon="shield" title="Warranties" />
         {mine.length ? (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {mine.map((w) => (
               <Link key={w.id} href={`/customer-portal/dashboard/warranties/${w.id}`} className="ejo-lift flex items-start justify-between gap-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4">
                 <span className="min-w-0"><span className="block truncate text-sm font-semibold text-[var(--ejo-text)]">{w.subject}</span><span className="text-xs text-[var(--ejo-text-muted)]">{w.number} · until {fmtDate(w.endsAt)}</span></span>
@@ -86,7 +86,7 @@ export default async function VehiclePage({ params }: { params: Promise<{ id: st
       <section>
         <SectionTitle icon="wrench" title="Service history" />
         {history.length ? (
-          <div className="grid gap-4 lg:grid-cols-2">{history.map((i, idx) => <ServiceCard key={i.id} item={i} delay={Math.min(idx, 8) * 40} />)}</div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">{history.map((i, idx) => <ServiceCard key={i.id} item={i} delay={Math.min(idx, 8) * 40} />)}</div>
         ) : <EmptyState icon="wrench" title="No visits yet" text="This vehicle’s Job Cards and services will appear here." />}
       </section>
     </div>

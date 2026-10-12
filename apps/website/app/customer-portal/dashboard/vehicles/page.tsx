@@ -15,7 +15,7 @@ export default async function VehiclesPage() {
     <div className="space-y-6">
       <PageHero eyebrow="My vehicles" icon="car" title="Your vehicles" subtitle="Everything we look after for you — where each one is right now, its last visit and when its next service is due." />
       {vehicles.length ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {vehicles.map((v, idx) => {
             const visits = items.filter((i) => i.vehicle.id === v.id && i.status !== 'ESCALATED');
             const custody = visits.find((i) => i.inCustody && i.status !== 'SCHEDULED');

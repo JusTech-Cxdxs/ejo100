@@ -45,7 +45,7 @@ export default async function WarrantyPage({ params }: { params: Promise<{ id: s
       {w.state === 'void' ? <Notice tone="danger" icon="ban">This warranty is no longer valid. Your branch can explain why and what your options are.</Notice> : null}
       {w.state === 'pending' ? <Notice tone="info" icon="info">We’re verifying this warranty with the provider. It will show as active once confirmed.</Notice> : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           <Card className="p-5 sm:p-6">
             <SectionTitle icon="shield" title="What’s covered" />
