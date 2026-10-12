@@ -11,7 +11,7 @@
 This is not a claim of zero vulnerabilities or unlimited scale.
 
 ### Owner actions (cannot be done from code)
-1. **Change the Master Admin password.** A real-looking password is in git history (SEC-01).
+1. ~~Change the Master Admin password~~ — done by the owner (SEC-01a). Remaining: remove `MASTER_ADMIN_PASSWORD` from Render/Vercel or set it to an unused random value (SEC-01c).
 2. **Website Vercel project — add these environment variables** (the customer portal now sends emails):
    - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`
    - `NEXT_PUBLIC_WEBSITE_URL` (the public address of the website; used in reset links)
@@ -84,7 +84,7 @@ This is not a claim of zero vulnerabilities or unlimited scale.
 | Role × page matrix | Playwright (every role × every page) + HTTP sweep (11 accounts × 70 pages) | Matches the Authorization Catalogue both ways |
 | Cross-organisation isolation | Other organisation's admin vs 24 record pages and print views; IDOR sweep (1,598 calls) | No leak, nothing changed |
 | Signed-out access | All 604 server actions called without a session | None returned data or changed anything |
-| Secrets | Gitleaks over all history + client-bundle scan | 1 historical (SEC-01, owner action); bundles clean |
+| Secrets | Gitleaks over all history + client-bundle scan | 1 historical password (SEC-01): live account resolved; bundles clean |
 | Static analysis | Semgrep (registry packs + 6 project rules) | 1 true positive (open redirect), fixed; CI blocks regressions |
 | Dependencies | npm audit | **0 high**, 4 moderate (NestJS 10 — needs NestJS 11) |
 | DAST | OWASP ZAP baseline (portal signed out and in, website) | No High; CSP `unsafe-inline` remains (Medium) |
