@@ -1,3 +1,4 @@
+import { requireUser } from '@/lib/actions/workshop';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import type { ReactNode } from 'react';
 import { humanizeAction } from '@/lib/humanize-action';
@@ -59,6 +60,9 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
   const cov = warrantyCoverage(w, w.vehicle?.mileage ?? null);
   const distanceEnd = w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null;
   const canChange = w.status !== 'VOID' && w.status !== 'TRANSFERRED';
+  // Same rule as verifyWarranty: an approver who did not register it (E2E-05).
+  const viewer = await requireUser();
+  const canVerify = roles.canApprove && (roles.isMaster || w.issuedById !== viewer.id);
 
   return (
     <div className="p-8">
@@ -273,11 +277,17 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
                 The Warranty HOD or Branch Manager — not the person who registered it — checks the evidence, then verifies it. Until then it covers nothing.
               </p>
-              <form action={verifyWarrantyFormAction} className="mt-3">
-                <FormPendingOverlay />
-                <input type="hidden" name="warrantyId" value={w.id} />
-                <SubmitButton label="Evidence checked — verify" pendingLabel="Verifying…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
-              </form>
+              {canVerify ? (
+                <form action={verifyWarrantyFormAction} className="mt-3">
+                  <FormPendingOverlay />
+                  <input type="hidden" name="warrantyId" value={w.id} />
+                  <SubmitButton label="Evidence checked — verify" pendingLabel="Verifying…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
+                </form>
+              ) : (
+                <p className="mt-3 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
+                  {roles.canApprove ? 'You registered this warranty, so someone else must verify it.' : 'Waiting for the Warranty HOD or Branch Manager to verify it.'}
+                </p>
+              )}
             </div>
           ) : null}
           {canChange ? (

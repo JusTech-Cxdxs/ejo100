@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
 import { authorize, authorizeOnService, refuse, branchWithinReach, seeService } from '@/lib/authz/server';
@@ -628,7 +629,7 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send estimate-submitted email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
+    logFailure('Failed to send estimate-submitted email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
   }
 }
 
@@ -713,7 +714,7 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send estimate-ready-for-manager email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
+    logFailure('Failed to send estimate-ready-for-manager email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
   }
 }
 
@@ -790,7 +791,7 @@ export async function approveServiceEstimateAsManager(estimateId: string): Promi
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send estimate-ready-for-customer-notification email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
+    logFailure('Failed to send estimate-ready-for-customer-notification email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
   }
 }
 
@@ -1016,7 +1017,7 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
               // Same real rule — never let the inspection PDF block
               // either the estimate PDF or the email itself.
               // eslint-disable-next-line no-console
-              console.error('Failed to generate Vehicle Service inspection PDF attachment', estimate.vehicleService.serviceNumber, inspectionPdfErr);
+              logFailure('Failed to generate Vehicle Service inspection PDF attachment', estimate.vehicleService.serviceNumber, inspectionPdfErr);
             }
           }
 
@@ -1025,14 +1026,14 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
           // A failed PDF must never block the email itself — the
           // customer still needs the approval notice either way.
           // eslint-disable-next-line no-console
-          console.error('Failed to generate Vehicle Service estimate PDF attachment', estimate.vehicleService.serviceNumber, pdfErr);
+          logFailure('Failed to generate Vehicle Service estimate PDF attachment', estimate.vehicleService.serviceNumber, pdfErr);
           return undefined;
         }
       })(),
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send customer estimate-approved email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
+    logFailure('Failed to send customer estimate-approved email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
   }
 }
 

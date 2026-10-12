@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
 import { cache } from 'react';
@@ -1830,7 +1831,7 @@ async function followUpEmail(kind: FollowUp, id: string, actorId: string | null)
       await sendLogged('ContractorPass', id, uniq([c.host]), `Your contractors have arrived — ${c.company}`, 'Your contractor team is on site', [`${c.passNumber} — ${c.company}`, 'Security has signed them in for today.'], `/security/contractors/${id}`, actorId);
     }
   } catch (err) {
-    console.error('Follow-up email failed', kind, id, err);
+    logFailure('Follow-up email failed', kind, id, err);
   }
 }
 

@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { listBroadcasts, canBroadcast } from '@/lib/actions/notifications';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SecurityTable } from '@/components/SecurityTable';
@@ -11,6 +12,7 @@ const TABS: [string, string][] = [['live', 'Live'], ['scheduled', 'Scheduled'], 
 const AUDIENCE = AUDIENCE_LABEL;
 
 export default async function BroadcastsPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string; category?: string; status?: string }> }) {
+  await guardPage('notifications.broadcast.send', '/notifications/broadcasts');
   const { q, tab, category, status } = await searchParams;
   const [{ tab: current, counts, rows }, allowed] = await Promise.all([listBroadcasts(q, tab, category), canBroadcast()]);
   const keep = (k: string) => `/notifications/broadcasts?tab=${k}${q ? `&q=${encodeURIComponent(q)}` : ''}${category ? `&category=${category}` : ''}`;

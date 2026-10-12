@@ -1,3 +1,4 @@
+import { logFailure } from '@/lib/log';
 import { NextRequest, NextResponse } from 'next/server';
 import { sendDueAppointmentReminders, sendMorningDigest } from '@/lib/appointment-reminders';
 import { deliverDueBroadcastEmails } from '@/lib/broadcast-delivery';
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
   const digests = digest ? await sendMorningDigest() : 0;
   await recordJobRun('appointment-reminders', { remindersSent: reminders, broadcastEmailsSent: broadcastEmails });
   // Role permission changes since the last run → one access-changed email per holder.
-  const notices = await deliverRoleAccessNotices().catch((err) => { console.error('Access notices failed', err); return null; });
+  const notices = await deliverRoleAccessNotices().catch((err) => { logFailure('Access notices failed', err); return null; });
   if (notices) await recordJobRun('access-notices', { rolesChanged: notices.roles, upTo: notices.upTo });
   if (digest) await recordJobRun('morning-digest', { digestsSent: digests });
   return NextResponse.json({ ok: true, remindersSent: reminders, digestsSent: digests, broadcastEmailsSent: broadcastEmails });

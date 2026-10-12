@@ -33,13 +33,12 @@ for (const { role, urls } of PAGES) {
 }
 
 test('phone: the menu is a drawer — content gets the screen, the menu opens on demand', async ({ page }) => {
-  test.fail(true, 'E2E-03: components/Sidebar.tsx is a fixed w-64 column with no responsive/drawer behaviour and app/(app)/layout.tsx has no menu button — on a 375 px phone the menu takes 256 px and the page gets ~119 px');
   await as(page, 'receptionist');
   await page.goto('/workshop/job-cards');
   await page.locator('main h1').first().waitFor();
   const mainBox = await page.locator('main').boundingBox();
   expect(mainBox!.width, 'main content width on a phone').toBeGreaterThanOrEqual(375 * 0.9);
-  const menuButton = page.getByRole('button', { name: /menu/i });
+  const menuButton = page.getByRole('button', { name: 'Open menu', exact: true });
   await menuButton.click();
   await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Workshop', exact: true })).toBeVisible();
 });

@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getBroadcast, canBroadcast, listAudienceOptions } from '@/lib/actions/notifications';
 import { getSecurityHistory } from '@/lib/actions/security';
@@ -15,6 +16,7 @@ import { BackLink, PageTitle } from '@/components/ui';
 const DONE: Record<string, string> = { created: 'Broadcast published.', stop: 'Broadcast stopped — it no longer shows.', reactivate: 'Broadcast running again — everyone sees it as new.' };
 
 export default async function BroadcastPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
+  await guardPage('notifications.broadcast.send', '/notifications/broadcasts');
   const { id } = await params;
   const { status, error } = await searchParams;
   const [b, allowed, options, history] = await Promise.all([getBroadcast(id), canBroadcast(), listAudienceOptions(), getSecurityHistory('Broadcast', id)]);

@@ -102,7 +102,10 @@ export const auth = betterAuth({
       // brute force). Tunable with AUTH_SIGNIN_PER_MINUTE (tests raise it).
       '/sign-in/email': { window: 60, max: Number(process.env.AUTH_SIGNIN_PER_MINUTE) || 20 },
       '/sign-up/email': { window: 60, max: 5 },
-      '/forget-password': { window: 300, max: 3 },
+      // Better Auth 1.6 names the reset request /request-password-reset (the
+      // old /forget-password rule never matched). Tunable for tests.
+      '/request-password-reset': { window: 300, max: Number(process.env.AUTH_RESET_REQUESTS_PER_5_MIN) || 5 },
+      '/forget-password': { window: 300, max: Number(process.env.AUTH_RESET_REQUESTS_PER_5_MIN) || 5 },
       '/reset-password': { window: 300, max: 5 },
     },
   },

@@ -51,9 +51,13 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
     where: {
       // Each organisation sees only its own history; the platform team sees all.
       ...(await orgWhere()),
-      ...kindWhere,
-      // Personal screen state (read markers, mute) is not business history.
-      entityType: { notIn: ['db:NotificationRead', 'db:NotificationPreference'] },
+      // AND, never a spread: both conditions filter entityType, and a spread
+      // let the second silently replace the tab's own filter (E2E-06).
+      AND: [
+        kindWhere,
+        // Personal screen state (read markers, mute) is not business history.
+        { entityType: { notIn: ['db:NotificationRead', 'db:NotificationPreference', 'db:CustomerNotificationRead'] } },
+      ],
       ...(f.userId ? { userId: f.userId } : {}),
       ...(createdAt.gte || createdAt.lt ? { createdAt } : {}),
       ...(refId ? { entityId: refId } : q ? { OR: [{ action: { contains: q.replace(/\s+/g, '_'), mode: 'insensitive' as const } }, { action: { contains: q, mode: 'insensitive' as const } }, { entityType: { contains: q.replace(/\s+/g, ''), mode: 'insensitive' as const } }, { entityId: { contains: q } }] } : {}),

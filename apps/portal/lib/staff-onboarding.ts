@@ -1,3 +1,4 @@
+import { logFailure } from '@/lib/log';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@ejo/database';
 import { auth } from '@/lib/auth';
@@ -107,7 +108,7 @@ export async function sendStaffAccessEmail(userId: string, kind: 'welcome' | 'up
     return true;
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Staff access email failed', userId, kind, redact(String((err as Error)?.message ?? err)));
+    logFailure('Staff access email failed', userId, kind, redact(String((err as Error)?.message ?? err)));
     return false;
   }
 }

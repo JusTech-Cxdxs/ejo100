@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { prisma } from '@ejo/database';
 import { jobCardActive, serviceInside } from '@/lib/custody';
@@ -39,7 +40,7 @@ export async function getDashboardNotifications(): Promise<DashboardNotification
     // degrades to "no notifications shown" instead of a real "server
     // issue" error blocking navigation everywhere.
     // eslint-disable-next-line no-console
-    console.error('Failed to load dashboard notifications', err);
+    logFailure('Failed to load dashboard notifications', err);
     return [];
   }
 }

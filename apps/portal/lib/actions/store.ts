@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 /**
  * Store Server Actions — Phase 1: the part catalog, unit-of-measure
@@ -412,7 +413,7 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send selling price notification emails', partId, err);
+    logFailure('Failed to send selling price notification emails', partId, err);
   }
 }
 
@@ -502,7 +503,7 @@ export async function setPartTargetMargin(partId: string, targetValue: number, p
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send target-margin-set notification emails', partId, err);
+    logFailure('Failed to send target-margin-set notification emails', partId, err);
   }
 }
 
@@ -1067,7 +1068,7 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Store matching request emails', jobCardId, err);
+    logFailure('Failed to send Store matching request emails', jobCardId, err);
   }
 }
 
@@ -1132,7 +1133,7 @@ async function sendStoreMatchingCompleteNotification(
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Store matching complete emails', jobCard.id, err);
+    logFailure('Failed to send Store matching complete emails', jobCard.id, err);
   }
 }
 
@@ -1844,7 +1845,7 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send goods-receipt notification email', receipt.id, err);
+    logFailure('Failed to send goods-receipt notification email', receipt.id, err);
   }
 
   // The real, immediate first notice for any genuinely new Pricing
@@ -1894,7 +1895,7 @@ export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promis
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send pricing-alert-raised emails', receipt.id, err);
+      logFailure('Failed to send pricing-alert-raised emails', receipt.id, err);
     }
   }
 
@@ -2120,7 +2121,7 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send price-sync notification emails', alert.part.id, err);
+    logFailure('Failed to send price-sync notification emails', alert.part.id, err);
   }
 }
 
@@ -2259,7 +2260,7 @@ async function notifyStoreOfGoodsReceiptEdit(branchId: string, editedByName: str
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Goods Receipt edit notification emails', referenceNumber, err);
+    logFailure('Failed to send Goods Receipt edit notification emails', referenceNumber, err);
   }
 }
 

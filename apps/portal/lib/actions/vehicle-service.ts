@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { claimed, lockExisting } from '@/lib/integrity';
 import { retryOnNumberClash } from '@/lib/integrity-core';
@@ -148,7 +149,7 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send supervisor notification email for Vehicle Service', serviceNumber, err);
+    logFailure('Failed to send supervisor notification email for Vehicle Service', serviceNumber, err);
   }
 
   return { id: service.id, serviceNumber };
@@ -321,7 +322,7 @@ async function notifyVehicleServiceCreatorOfDecision(params: {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send decision email for Vehicle Service', params.serviceNumber, err);
+    logFailure('Failed to send decision email for Vehicle Service', params.serviceNumber, err);
   }
 }
 
@@ -395,7 +396,7 @@ export async function assignTechnicianToVehicleService(serviceId: string, techni
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send technician notification email for Vehicle Service', service.serviceNumber, err);
+    logFailure('Failed to send technician notification email for Vehicle Service', service.serviceNumber, err);
   }
 }
 
@@ -458,7 +459,7 @@ async function notifySupervisorOfVehicleServiceTechnicianResponse(params: {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send technician response email to supervisor', params.serviceNumber, err);
+    logFailure('Failed to send technician response email to supervisor', params.serviceNumber, err);
   }
 }
 
@@ -1422,7 +1423,7 @@ export async function updateVehicleServiceStatus(
     // Fail-soft, like every other notification in this project — the
     // status change itself has already been saved.
     // eslint-disable-next-line no-console
-    console.error('Failed to send Vehicle Service lifecycle email', serviceId, newStatus, err);
+    logFailure('Failed to send Vehicle Service lifecycle email', serviceId, newStatus, err);
   }
 }
 
@@ -1620,7 +1621,7 @@ export async function requestVehicleServiceCancellation(serviceId: string, reaso
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Vehicle Service cancellation-requested emails', serviceId, err);
+    logFailure('Failed to send Vehicle Service cancellation-requested emails', serviceId, err);
   }
 }
 
@@ -1731,7 +1732,7 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Vehicle Service staff cancellation emails', request.vehicleServiceId, err);
+    logFailure('Failed to send Vehicle Service staff cancellation emails', request.vehicleServiceId, err);
   }
   try {
     const orgContext = await getWorkshopOrgContext(service.department?.name);
@@ -1751,7 +1752,7 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send customer Vehicle Service cancellation email', request.vehicleServiceId, err);
+    logFailure('Failed to send customer Vehicle Service cancellation email', request.vehicleServiceId, err);
   }
 }
 
@@ -1799,7 +1800,7 @@ export async function declineVehicleServiceCancellationRequest(requestId: string
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Vehicle Service cancellation-declined email', request.vehicleServiceId, err);
+    logFailure('Failed to send Vehicle Service cancellation-declined email', request.vehicleServiceId, err);
   }
 }
 
@@ -1960,7 +1961,7 @@ export async function requestVehicleServiceClose(serviceId: string): Promise<voi
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Vehicle Service close-requested emails', serviceId, err);
+    logFailure('Failed to send Vehicle Service close-requested emails', serviceId, err);
   }
 }
 
@@ -2074,7 +2075,7 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Vehicle Service close-approval emails', request.vehicleServiceId, err);
+    logFailure('Failed to send Vehicle Service close-approval emails', request.vehicleServiceId, err);
   }
 }
 
@@ -2131,7 +2132,7 @@ export async function declineVehicleServiceCloseRequest(requestId: string, decis
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Vehicle Service close-declined email', request.vehicleServiceId, err);
+    logFailure('Failed to send Vehicle Service close-declined email', request.vehicleServiceId, err);
   }
 }
 
@@ -2320,7 +2321,7 @@ export async function escalateVehicleServiceToJobCard(
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send escalation emails', serviceId, err);
+    logFailure('Failed to send escalation emails', serviceId, err);
   }
   return { jobCardId: jobCard.id };
 }

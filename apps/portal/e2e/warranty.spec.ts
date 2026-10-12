@@ -146,7 +146,6 @@ test('the register, claims, analytics and part warranties are all visible', asyn
 });
 
 test('the person who registered a warranty is not offered the Verify button', async ({ page }) => {
-  test.fail(true, 'E2E-05: app/(app)/warranty/[id]/page.tsx:268 shows "Evidence checked — verify" to everyone on a pending warranty (the registrar and Warranty Officers included); only verifyWarranty() refuses');
   const plate = (await freshVehicle('WTV', { make: 'Toyota', model: 'Hilux', year: 2026 })).plate;
   await as(page, 'warranty-officer');
   await page.goto(`/warranty/register?q=${encodeURIComponent(plate)}`);
@@ -163,9 +162,6 @@ test('the person who registered a warranty is not offered the Verify button', as
 });
 
 test('a claim for a failure that happened today can be sent the same morning', async ({ page }) => {
-  // Before 13:00 in Lagos the defect bites; in the afternoon it does not.
-  const morning = new Date().getUTCHours() < 12;
-  test.fail(morning, 'E2E-07: lib/actions/warranty-claims-form-handlers.ts:44 stores the failure date as `${date}T12:00:00Z` (13:00 Lagos), so a failure dated today is "in the future" until 1 pm — the readiness check (lib/warranty-claim-readiness.ts:48) blocks "Send for approval" all morning, and the form defaults the date to today');
   await as(page, 'warranty-officer');
   await open(page, S.warrantyUrl);
   await page.getByRole('link', { name: 'Start a claim' }).click();

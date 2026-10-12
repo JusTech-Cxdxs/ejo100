@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { allows, authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE } from '@/lib/authz/server';
 import { cleanEmail, cleanName, cleanPhone, cleanPrimaryAddress, normaliseTags } from '@/lib/crm';
@@ -40,7 +41,7 @@ import { customerTotal, isCustomerLine, coveredLabel } from '@/lib/estimate-bill
 import { headers } from 'next/headers';
 import { prisma, JobCardStatus, setAuditActor } from '@ejo/database';
 import { claimed, lockExisting } from '@/lib/integrity';
-import { exceedsBalance } from '@/lib/integrity-core';
+import { exceedsBalance, NUMBER_CLASH_TRIES, numberClashPause } from '@/lib/integrity-core';
 import { MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
 import { workingDaysBetween, addWorkingDays } from '@/lib/utils/working-days';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
@@ -241,7 +242,7 @@ async function notifyJobCardCreatorOfDecision(params: {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send Job Card decision email to creator', params.jobNumber, err);
+    logFailure('Failed to send Job Card decision email to creator', params.jobNumber, err);
   }
 }
 
@@ -1120,7 +1121,7 @@ export async function createJobCard(input: CreateJobCardInput) {
     });
   }
 
-  const MAX_ATTEMPTS = 5;
+  const MAX_ATTEMPTS = NUMBER_CLASH_TRIES;
   let created: Awaited<ReturnType<typeof attemptCreate>> | undefined;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -1140,6 +1141,7 @@ export async function createJobCard(input: CreateJobCardInput) {
         ((Array.isArray(target) && target.includes('jobNumber')) ||
           (typeof target === 'string' && target.includes('jobNumber')));
       if (isJobNumberCollision && attempt < MAX_ATTEMPTS) {
+        await numberClashPause(attempt);
         continue;
       }
       throw err;
@@ -1175,7 +1177,7 @@ export async function createJobCard(input: CreateJobCardInput) {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send supervisor notification email for Job Card', created.jobNumber, err);
+    logFailure('Failed to send supervisor notification email for Job Card', created.jobNumber, err);
   }
 
   // Notify the customer too — a genuinely separate try/catch from the
@@ -1206,7 +1208,7 @@ export async function createJobCard(input: CreateJobCardInput) {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send customer acknowledgment email for Job Card', created.jobNumber, err);
+    logFailure('Failed to send customer acknowledgment email for Job Card', created.jobNumber, err);
   }
 
   await writeAuditLog({
@@ -1392,7 +1394,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       await anchorEscalatedServiceFromJobCard(id);
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to start the next-service count from this Job Card checkout', id, err);
+      logFailure('Failed to start the next-service count from this Job Card checkout', id, err);
     }
   }
 
@@ -1478,7 +1480,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send status-lifecycle email', id, status, err);
+      logFailure('Failed to send status-lifecycle email', id, status, err);
     }
   }
 
@@ -1556,7 +1558,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send checkout email chain', id, status, err);
+      logFailure('Failed to send checkout email chain', id, status, err);
     }
   }
 
@@ -1764,7 +1766,7 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send supervisor reassignment email for Job Card', jobCard.jobNumber, err);
+    logFailure('Failed to send supervisor reassignment email for Job Card', jobCard.jobNumber, err);
   }
 }
 
@@ -1865,7 +1867,7 @@ export async function assignTechnician(jobCardId: string, technicianId: string) 
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send technician assignment email for Job Card', jobCard.jobNumber, err);
+    logFailure('Failed to send technician assignment email for Job Card', jobCard.jobNumber, err);
   }
 
   return jobCard;
@@ -1934,7 +1936,7 @@ async function notifySupervisorOfTechnicianResponse(params: {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send technician response email to supervisor', params.jobNumber, err);
+    logFailure('Failed to send technician response email to supervisor', params.jobNumber, err);
   }
 }
 
@@ -2529,7 +2531,7 @@ async function sendEstimateNudge(params: {
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send estimate nudge email', params.jobCardId, err);
+    logFailure('Failed to send estimate nudge email', params.jobCardId, err);
   }
 }
 
@@ -2686,7 +2688,7 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send estimate-submitted email to supervisor', jobCardId, err);
+    logFailure('Failed to send estimate-submitted email to supervisor', jobCardId, err);
   }
 }
 
@@ -2832,7 +2834,7 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send estimate-ready-for-manager email', jobCardId, err);
+    logFailure('Failed to send estimate-ready-for-manager email', jobCardId, err);
   }
 }
 
@@ -2918,7 +2920,7 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send estimate-ready-for-customer-notification email', jobCardId, err);
+    logFailure('Failed to send estimate-ready-for-customer-notification email', jobCardId, err);
   }
 }
 
@@ -3122,14 +3124,14 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
           // A failed PDF must never block the email itself — the
           // customer still needs the approval notice either way.
           // eslint-disable-next-line no-console
-          console.error('Failed to generate estimate PDF attachment', jobCardId, pdfErr);
+          logFailure('Failed to generate estimate PDF attachment', jobCardId, pdfErr);
           return undefined;
         }
       })(),
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send customer estimate-approved email', jobCardId, err);
+    logFailure('Failed to send customer estimate-approved email', jobCardId, err);
   }
 }
 
@@ -3432,7 +3434,7 @@ export async function recordPayment(
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send payment-recorded update emails', jobCardId, err);
+    logFailure('Failed to send payment-recorded update emails', jobCardId, err);
   }
 
   // The milestone broadcasts — every real party on the Job Card
@@ -3498,7 +3500,7 @@ export async function recordPayment(
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send payment milestone emails', jobCardId, err);
+      logFailure('Failed to send payment milestone emails', jobCardId, err);
     }
   }
 
@@ -3524,7 +3526,7 @@ export async function recordPayment(
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send customer payment-received email', jobCardId, err);
+    logFailure('Failed to send customer payment-received email', jobCardId, err);
   }
 }
 
@@ -3643,7 +3645,7 @@ export async function requestJobCardCancellation(jobCardId: string, reason: stri
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send cancellation-requested emails', jobCardId, err);
+    logFailure('Failed to send cancellation-requested emails', jobCardId, err);
   }
 }
 
@@ -3770,7 +3772,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send staff cancellation-broadcast emails', request.jobCardId, err);
+    logFailure('Failed to send staff cancellation-broadcast emails', request.jobCardId, err);
   }
 
   try {
@@ -3791,7 +3793,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send customer cancellation email', request.jobCardId, err);
+    logFailure('Failed to send customer cancellation email', request.jobCardId, err);
   }
 }
 
@@ -3867,7 +3869,7 @@ export async function declineCancellationRequest(requestId: string, decisionNote
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send cancellation-declined email', request.jobCardId, err);
+    logFailure('Failed to send cancellation-declined email', request.jobCardId, err);
   }
 }
 
@@ -3972,7 +3974,7 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send close-requested emails', jobCardId, err);
+    logFailure('Failed to send close-requested emails', jobCardId, err);
   }
 }
 
@@ -4114,7 +4116,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send close-approval emails', request.jobCardId, err);
+    logFailure('Failed to send close-approval emails', request.jobCardId, err);
   }
 }
 
@@ -4190,7 +4192,7 @@ export async function declineCloseRequest(requestId: string, decisionNotes?: str
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send close-declined email', request.jobCardId, err);
+    logFailure('Failed to send close-declined email', request.jobCardId, err);
   }
 }
 
@@ -4577,7 +4579,7 @@ export async function runApprovalDeadlineChecks(): Promise<{ remindersSent: numb
         remindersSent += 1;
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.error('Failed to send approval reminder', jc.id, err);
+        logFailure('Failed to send approval reminder', jc.id, err);
       }
     }
   }

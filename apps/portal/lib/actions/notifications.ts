@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { cache } from 'react';
 import { after } from 'next/server';
@@ -178,7 +179,7 @@ export async function getNotificationSummary(): Promise<NotificationSummary> {
     return value;
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Notification summary failed', err);
+    logFailure('Notification summary failed', err);
     return { actions: [], unreadActivity: [], unreadBroadcasts: [], total: 0, signature: '', muted: false };
   }
 }
@@ -334,7 +335,9 @@ export async function deleteBroadcast(id: string): Promise<void> {
 
 const BC_TABS = ['live', 'scheduled', 'ended', 'all'] as const;
 export async function listBroadcasts(q?: string, tab?: string, category?: string) {
-  const m = await me();
+  // The full list (every audience, scheduled and stopped ones too) is for the
+  // people who send broadcasts; everyone else sees theirs in the bell (E2E-02).
+  const m = await requireBroadcaster();
   const t = q?.trim();
   const rows = await prisma.broadcast.findMany({
     where: { organisationId: m.organisationId ?? '', ...(category && BROADCAST_CATEGORIES.includes(category) ? { category: category as never } : {}), ...(t ? { OR: [{ broadcastNumber: { contains: t, mode: 'insensitive' } }, { title: { contains: t, mode: 'insensitive' } }, { message: { contains: t, mode: 'insensitive' } }] } : {}) },
@@ -350,6 +353,8 @@ export async function listBroadcasts(q?: string, tab?: string, category?: string
 }
 
 export async function getBroadcast(id: string) {
+  // Broadcasters only (E2E-02), and only their own organisation's broadcast.
+  await requireBroadcaster();
   const m = await me();
   const b = await prisma.broadcast.findUnique({ where: { id }, include: { createdBy: { select: { fullName: true } }, stoppedBy: { select: { fullName: true } } } });
   if (!b || b.organisationId !== m.organisationId) return null;

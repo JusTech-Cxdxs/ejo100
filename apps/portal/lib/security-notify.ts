@@ -1,3 +1,4 @@
+import { logFailure } from '@/lib/log';
 import { prisma } from '@ejo/database';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
@@ -54,6 +55,6 @@ export async function notifyGateOfRelease(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', 
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to notify Security of a released vehicle', kind, recordId, err);
+    logFailure('Failed to notify Security of a released vehicle', kind, recordId, err);
   }
 }

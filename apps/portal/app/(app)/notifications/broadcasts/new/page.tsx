@@ -1,3 +1,4 @@
+import { guardPage } from '@/lib/authz/server';
 import { listAudienceOptions, canBroadcast } from '@/lib/actions/notifications';
 import { createBroadcastFormAction } from '@/lib/actions/notification-form-handlers';
 import { BroadcastForm } from '@/components/BroadcastForm';
@@ -6,6 +7,7 @@ import { PageHeader } from '@/components/ui';
 import { getCustomerNames } from '@/lib/actions/crm';
 
 export default async function NewBroadcastPage({ searchParams }: { searchParams: Promise<{ error?: string; for?: string; customerId?: string }> }) {
+  await guardPage('notifications.broadcast.send', '/notifications/broadcasts');
   const { error, for: forWhom, customerId } = await searchParams;
   const [options, allowed] = await Promise.all([listAudienceOptions(), canBroadcast()]);
   // Opened from the Customers pages: start with customers (one, or all) already chosen.

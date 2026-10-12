@@ -122,7 +122,6 @@ test('a technician (read-only Store) is refused when trying to add a part', asyn
 });
 
 test('read-only Store viewers are not offered the Store’s forms', async ({ page }) => {
-  test.fail(true, 'E2E-01: /inventory/parts and /inventory/goods-receipts/new render "Add a Part" / "Record Goods Receipt" to every store.view role (technician, finance…); only the server refuses');
   await as(page, 'technician');
   await page.goto('/inventory/parts');
   await expect(page.getByRole('heading', { name: 'Parts Catalog' })).toBeVisible();

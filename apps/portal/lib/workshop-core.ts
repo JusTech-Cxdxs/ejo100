@@ -1,3 +1,4 @@
+import { logFailure } from '@/lib/log';
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 import { after } from 'next/server';
@@ -106,7 +107,7 @@ export async function writeAuditLog(params: {
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to write audit log:', params.action, params.entityId, err);
+    logFailure('Failed to write audit log:', params.action, params.entityId, err);
   }
 }
 

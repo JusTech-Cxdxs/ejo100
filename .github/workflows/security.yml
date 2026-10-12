@@ -127,6 +127,9 @@ jobs:
       SMTP_FROM: 'EJO 100 <no-reply@e2e.test>'
       CRON_SECRET: 'e2e-cron-secret'
       AUTH_SIGNIN_PER_MINUTE: '1000'
+      AUTH_RESET_REQUESTS_PER_5_MIN: '1000'
+      CUSTOMER_SIGNIN_PER_MINUTE: '1000'
+      CUSTOMER_RESET_REQUESTS_PER_5_MIN: '1000'
       ACTION_MAP: ${{ github.workspace }}/actions.json
       SEC_FIXTURES: ${{ github.workspace }}/sec-fixtures.json
       PORTAL_LOG: ${{ github.workspace }}/portal.log
@@ -267,6 +270,9 @@ jobs:
       SMTP_FROM: 'EJO 100 <no-reply@e2e.test>'
       CRON_SECRET: 'e2e-cron-secret'
       AUTH_SIGNIN_PER_MINUTE: '100000'
+      AUTH_RESET_REQUESTS_PER_5_MIN: '100000'
+      CUSTOMER_SIGNIN_PER_MINUTE: '100000'
+      CUSTOMER_RESET_REQUESTS_PER_5_MIN: '100000'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

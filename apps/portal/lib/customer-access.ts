@@ -1,3 +1,4 @@
+import { logFailure } from '@/lib/log';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@ejo/database';
 import { hashPassword } from 'better-auth/crypto';
@@ -103,7 +104,7 @@ export async function sendCustomerAccessEmail(customerId: string, kind: 'welcome
   } catch (err) {
     error = redact(err instanceof Error ? err.message : String(err)).slice(0, 300);
     // eslint-disable-next-line no-console
-    console.error('Customer access email failed', customer.id, kind, error);
+    logFailure('Customer access email failed', customer.id, kind, error);
   }
   await prisma.securityEmailLog.create({ data: { entityType: 'Customer', entityId: customer.id, recipient: `${customer.fullName} <${customer.email}>`, subject, sent: !error, error } }).catch(() => undefined);
   await writeAuditLog({

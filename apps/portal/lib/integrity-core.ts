@@ -63,15 +63,28 @@ export function isUniqueClashOn(err: unknown, column: string): boolean {
  * saving at the same instant can pick the same one. The unique constraint
  * keeps the data correct; this re-runs the whole attempt (number included)
  * so the second person simply gets the next number instead of an error. */
-export async function retryOnNumberClash<T>(column: string, attempt: () => Promise<T>, tries = 5): Promise<T> {
+export async function retryOnNumberClash<T>(column: string, attempt: () => Promise<T>, tries = NUMBER_CLASH_TRIES): Promise<T> {
   for (let i = 1; ; i++) {
     try {
       return await attempt();
     } catch (err) {
-      if (i < tries && isUniqueClashOn(err, column)) continue;
+      if (i < tries && isUniqueClashOn(err, column)) {
+        await numberClashPause(i);
+        continue;
+      }
       throw err;
     }
   }
+}
+
+/** A burst of people saving at once (CONC-01: 15 at the same instant) would
+ * otherwise all re-read the same "latest" number again and clash again. A
+ * short, growing, random pause spreads the retries out, so everyone gets a
+ * number instead of an error. */
+export const NUMBER_CLASH_TRIES = 10;
+export function numberClashPause(attempt: number): Promise<void> {
+  const ms = Math.round(Math.random() * 40 * Math.min(attempt, 6)) + 5;
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Money is compared in whole kobo/cents so float drift never lets ₦0.01 through. */

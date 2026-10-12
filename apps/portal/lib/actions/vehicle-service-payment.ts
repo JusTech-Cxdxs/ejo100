@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { authorize, seeService } from '@/lib/authz/server';
 
@@ -225,7 +226,7 @@ export async function recordServicePayment(
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send payment-recorded update emails for Vehicle Service', service.serviceNumber, err);
+    logFailure('Failed to send payment-recorded update emails for Vehicle Service', service.serviceNumber, err);
   }
 
   if (justMetDeposit || justCompletedFull) {
@@ -284,7 +285,7 @@ export async function recordServicePayment(
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('Failed to send payment milestone emails for Vehicle Service', service.serviceNumber, err);
+      logFailure('Failed to send payment milestone emails for Vehicle Service', service.serviceNumber, err);
     }
   }
 
@@ -310,6 +311,6 @@ export async function recordServicePayment(
     );
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send customer payment-received email for Vehicle Service', service.serviceNumber, err);
+    logFailure('Failed to send customer payment-received email for Vehicle Service', service.serviceNumber, err);
   }
 }

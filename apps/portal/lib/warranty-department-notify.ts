@@ -1,3 +1,4 @@
+import { logFailure } from '@/lib/log';
 import { prisma } from '@ejo/database';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
@@ -69,6 +70,6 @@ export async function notifyWarrantyDepartmentOfPartWarranty(opts: { partId: str
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to notify the warranty department', err);
+    logFailure('Failed to notify the warranty department', err);
   }
 }

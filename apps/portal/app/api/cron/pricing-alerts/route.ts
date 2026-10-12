@@ -1,3 +1,4 @@
+import { logFailure } from '@/lib/log';
 import { NextRequest, NextResponse } from 'next/server';
 import { isCronRequest } from '@/lib/cron-auth';
 import { setAuditActor } from '@ejo/database';
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
       } catch (err) {
         emailsFailed += 1;
         // eslint-disable-next-line no-console
-        console.error('Failed to send pricing-alerts digest', group.branchId, recipient.email, err);
+        logFailure('Failed to send pricing-alerts digest', group.branchId, recipient.email, err);
       }
     }
   }

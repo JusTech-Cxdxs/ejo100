@@ -1,4 +1,5 @@
 'use server';
+import { logFailure } from '@/lib/log';
 
 import { claimed as stillAsSeen } from '@/lib/integrity';
 import { retryOnNumberClash } from '@/lib/integrity-core';
@@ -56,7 +57,7 @@ async function notify(recipients: { fullName: string; email: string }[], subject
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to send warranty claim notice', subject, err);
+    logFailure('Failed to send warranty claim notice', subject, err);
   }
 }
 

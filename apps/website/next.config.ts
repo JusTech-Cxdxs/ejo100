@@ -1,5 +1,26 @@
 import type { NextConfig } from 'next';
 
+// Content-Security-Policy (SEC-04): only this site's own scripts, styles,
+// fonts and connections (nothing external). Next.js still needs inline
+// scripts for hydration, hence 'unsafe-inline' (a nonce-based policy is the
+// planned next step); development also needs 'unsafe-eval' for fast refresh.
+const CSP = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'production' ? '' : " 'unsafe-eval'"}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "media-src 'self' data: blob:",
+  "worker-src 'self' blob:",
+  "frame-src 'self' blob:",
+  "frame-ancestors 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+  'upgrade-insecure-requests',
+].join('; ');
+
 const nextConfig: NextConfig = {
   transpilePackages: ['@ejo/ui', '@ejo/types', '@ejo/utils'],
   reactStrictMode: true,
@@ -18,7 +39,8 @@ const nextConfig: NextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' },
           { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
-          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests" },
+          { key: 'Content-Security-Policy', value: CSP },
+          { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
         ],
       },
       // Customer portal pages and data are personal — never kept by a shared

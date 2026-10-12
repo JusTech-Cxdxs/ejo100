@@ -45,7 +45,10 @@ export function claimReadiness(
   add('causalPartNumber', 'Causal part number', Boolean(claim.causalPartNumber?.trim()), false, 'Providers usually expect the part number.');
 
   const failure = new Date(claim.failureDate);
-  add('failureDate', 'Failure date is not in the future', failure.getTime() <= now.getTime(), true);
+  // Compared as Lagos calendar days: a failure dated today is never "in the
+  // future", whatever hour the date was stored at (E2E-07).
+  const lagosDay = (d: Date) => new Date(d.getTime() + 3600000).toISOString().slice(0, 10);
+  add('failureDate', 'Failure date is not in the future', lagosDay(failure) <= lagosDay(now), true);
   const statusOk = warranty.status === 'ACTIVE';
   add('warrantyActive', 'Warranty is active (verified, not suspended or void)', statusOk, true, `Warranty status: ${warranty.status.replace(/_/g, ' ').toLowerCase()}.`);
   const inDates = failure.getTime() >= new Date(warranty.startsAt).getTime() && failure.getTime() <= new Date(warranty.endsAt).getTime();

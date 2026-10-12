@@ -55,6 +55,9 @@ jobs:
       CRON_SECRET: 'e2e-cron-secret'
       # Every test signs in from the same address.
       AUTH_SIGNIN_PER_MINUTE: '1000'
+      AUTH_RESET_REQUESTS_PER_5_MIN: '1000'
+      CUSTOMER_SIGNIN_PER_MINUTE: '1000'
+      CUSTOMER_RESET_REQUESTS_PER_5_MIN: '1000'
       NEXT_TELEMETRY_DISABLED: '1'
       # One retry in CI (a flaky test is reported as a warning, never hidden).
       E2E_RETRIES: '1'

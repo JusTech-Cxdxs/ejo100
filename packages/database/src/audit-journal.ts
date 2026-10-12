@@ -112,7 +112,12 @@ const WRITE_ACTIONS = new Set(['create', 'createMany', 'update', 'updateMany', '
 // Notification read-markers and mute settings are personal screen state, not
 // business data — journaling them would make every "mark as read" look like
 // company activity.
-const SKIP_MODELS = new Set(['AuditLog', 'Session', 'Account', 'Verification', 'NotificationRead', 'NotificationPreference']);
+// Customer-portal auth tables are auth internals too: a CustomerVerification
+// identifier IS a live reset token, so it must never reach audit_logs.
+const SKIP_MODELS = new Set([
+  'AuditLog', 'Session', 'Account', 'Verification', 'NotificationRead', 'NotificationPreference',
+  'CustomerSession', 'CustomerAccount', 'CustomerVerification', 'CustomerNotificationRead',
+]);
 const SENSITIVE_KEY = /password|token|secret|hash/i;
 const MAX_JSON = 6000;
 
@@ -122,17 +127,20 @@ function redact(value: unknown, depth = 0): unknown {
   if (typeof value === 'bigint') return value.toString();
   if (Array.isArray(value)) return value.slice(0, 50).map((v) => redact(v, depth + 1));
   if (typeof value === 'object') {
-    // Prisma Decimal and similar: serialise via toString/toJSON.
-    const maybe = value as { toJSON?: () => unknown; constructor?: { name?: string } };
-    if (maybe.constructor?.name === 'Decimal' && typeof (value as { toString: () => string }).toString === 'function') {
-      return (value as { toString: () => string }).toString();
-    }
+    // Prisma Decimal (and anything else that knows how to serialise itself):
+    // use its own toJSON. Never test constructor.name — production builds
+    // minify class names, and a Decimal walked as a plain object produced
+    // values Postgres refused, losing the whole batch (E2E-04).
+    const maybe = value as { toJSON?: () => unknown };
+    if (typeof maybe.toJSON === 'function') return redact(maybe.toJSON(), depth + 1);
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       out[k] = SENSITIVE_KEY.test(k) ? '[redacted]' : redact(v, depth + 1);
     }
     return out;
   }
+  // A one-time link token in any value (e.g. "reset-password:<token>").
+  if (typeof value === 'string' && /^(reset-password|email-verification|set-password):/i.test(value)) return '[redacted]';
   return value;
 }
 
@@ -304,3 +312,4 @@ export function installAuditJournal(client: PrismaClient): void {
     return result;
   });
 }
+export { redact as redactForJournal };
