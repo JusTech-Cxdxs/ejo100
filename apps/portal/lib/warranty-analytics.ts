@@ -1,4 +1,5 @@
 import { warrantyCoverage, type WarrantyCoverageState } from './warranty-state';
+import { pluralize } from './utils/pluralize';
 
 /**
  * Warranty analytics — pure functions over plain rows, so every number on
@@ -292,10 +293,10 @@ export function computeWarrantyAnalytics(input: AnalyticsInput) {
     actions.push({ priority: 2, title: `${c.claimNumber} waiting for approval over 2 days`, detail: c.status === 'PENDING_HOD' ? 'Waiting on the Warranty HOD.' : 'Waiting on the Branch Manager.', href: `/warranty/claims/${c.id}` }),
   );
   claims.filter((c) => c.status === 'SUBMITTED' && c.submittedAt && days(c.submittedAt, now) > 30).forEach((c) =>
-    actions.push({ priority: 2, title: `Chase ${c.providerName} for a decision on ${c.claimNumber}`, detail: `Submitted ${Math.floor(days(c.submittedAt!, now))} days ago with no decision.`, href: `/warranty/claims/${c.id}` }),
+    actions.push({ priority: 2, title: `Chase ${c.providerName} for a decision on ${c.claimNumber}`, detail: `Submitted ${pluralize(Math.floor(days(c.submittedAt!, now)), 'day')} ago with no decision.`, href: `/warranty/claims/${c.id}` }),
   );
   claims.filter((c) => (c.status === 'ACCEPTED' || c.status === 'PARTIALLY_ACCEPTED') && c.decidedAt && days(c.decidedAt, now) > 30).forEach((c) =>
-    actions.push({ priority: 2, title: `Chase settlement of ${c.claimNumber}`, detail: `Accepted ${Math.floor(days(c.decidedAt!, now))} days ago — money, replacement or repair not yet received.`, href: `/warranty/claims/${c.id}` }),
+    actions.push({ priority: 2, title: `Chase settlement of ${c.claimNumber}`, detail: `Accepted ${pluralize(Math.floor(days(c.decidedAt!, now)), 'day')} ago — money, replacement or repair not yet received.`, href: `/warranty/claims/${c.id}` }),
   );
   coverage.filter(({ cov }) => cov.state === 'PENDING_VERIFICATION').forEach(({ w }) =>
     actions.push({ priority: 2, title: `Verify ${w.warrantyNumber}`, detail: 'Registered but not verified — it covers nothing until a Warranty HOD or Manager verifies it.', href: `/warranty/${w.id}` }),
@@ -307,7 +308,7 @@ export function computeWarrantyAnalytics(input: AnalyticsInput) {
     actions.push({ priority: 3, title: `Low approval rate with ${p.provider} (${Math.round((p.approvalRate ?? 0) * 100)}%)`, detail: 'Review rejected claims for patterns (evidence, deadlines, coverage) before the next submission.', href: `/warranty/providers/${p.providerId}` }),
   );
   topParts.filter((p) => p.claims >= 3).forEach((p) =>
-    actions.push({ priority: 3, title: `Repeat failures: ${p.part} (${p.claims} claims)`, detail: 'Possible quality issue — check the supplier and batch, and raise it with the provider.', href: `/warranty/claims?q=${encodeURIComponent(p.part.split(' (')[0]!)}` }),
+    actions.push({ priority: 3, title: `Repeat failures: ${p.part} (${pluralize(p.claims, 'claim')})`, detail: 'Possible quality issue — check the supplier and batch, and raise it with the provider.', href: `/warranty/claims?q=${encodeURIComponent(p.part.split(' (')[0]!)}` }),
   );
 
   // Warranty leakage: repairs on a vehicle while an ASSET warranty was

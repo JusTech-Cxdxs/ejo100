@@ -29,12 +29,12 @@ export function AuditTrail({ entries, collapsedCount = COLLAPSED_COUNT }: { entr
                 {entry.userName ? ` — ${entry.userName}` : ''}
               </p>
               {entry.detail ? <p className="text-xs text-[var(--ejo-text)]">{entry.detail}</p> : null}
-              <p className="text-xs text-[var(--ejo-text-muted)]">{entry.dateLabel}</p>
+              <p className="text-xs tabular-nums text-[var(--ejo-text-muted)]">{entry.dateLabel}</p>
             </div>
           </li>
         ))}
       </ol>
-      {entries.length > COLLAPSED_COUNT ? (
+      {entries.length > collapsedCount ? (
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}

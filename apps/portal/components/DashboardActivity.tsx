@@ -5,15 +5,9 @@ import { useNotifications } from '@/components/NotificationProvider';
 import { AREA_LABEL } from '@/lib/notification-rules';
 import { Icon } from '@/components/ui/Icon';
 import { AREA_ICON } from '@/components/ui/notify-icons';
+import { formatRelative } from '@/lib/utils/format-date';
 
-function ago(date: Date): string {
-  const m = Math.floor((Date.now() - new Date(date).getTime()) / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m} min ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} h ago`;
-  return `${Math.floor(h / 24)} d ago`;
-}
+const ago = (date: Date) => formatRelative(date, new Date(), { short: true });
 
 /**
  * The dashboard's "what's new" — read from the same live source as the bell

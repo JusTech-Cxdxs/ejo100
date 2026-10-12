@@ -14,7 +14,7 @@ const STATUS: Record<string, [string, string]> = {
   CANCELLED: ['Cancelled', 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'],
   NO_SHOW: ['No-show', 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]'],
 };
-const when = (a: Date, b: Date) => `${new Date(a).toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}, ${new Date(a).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' })} – ${new Date(b).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' })}`;
+const when = (a: Date, b: Date) => `${new Date(a).toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}, ${new Date(a).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' })} – ${new Date(b).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' })}`;
 
 export default async function AppointmentsRegisterPage({ searchParams }: { searchParams: Promise<{ q?: string; show?: string }> }) {
   // Calendars are for people who keep one (an appointment itself stays open to the people in it).

@@ -15,6 +15,7 @@ import { expiryReminderState } from '@/lib/warranty-reminders';
 import { notifyWarrantyDepartmentOfPartWarranty } from '@/lib/warranty-department-notify';
 import { renderCustomerWarrantyCertificateEmail } from '@/lib/email-templates/customer-warranty-certificate';
 import { renderCustomerWarrantyExpiryEmail } from '@/lib/email-templates/customer-warranty-expiry';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class WarrantyActionError extends Error {}
 
@@ -108,7 +109,7 @@ async function notifyStaff(recipients: { fullName: string; email: string }[], su
 
 /** WR-2026-000001 */
 async function nextWarrantyNumber(): Promise<string> {
-  const prefix = `WR-${new Date().getFullYear()}-`;
+  const prefix = `WR-${lagosYear()}-`;
   const latest = await prisma.warranty.findFirst({
     where: { warrantyNumber: { startsWith: prefix } },
     orderBy: { warrantyNumber: 'desc' },
@@ -664,7 +665,7 @@ export async function getWarrantyAuditTrail(warrantyId: string) {
   const visibleId = (await prisma.warranty.findFirst({ where: { ...({ customer: await orgWhere() }), id: warrantyId }, select: { id: true } }))?.id ?? '__no_access__';
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'Warranty', entityId: visibleId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     select: { id: true, action: true, createdAt: true, metadata: true, userId: true },
   });
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
@@ -698,7 +699,7 @@ export async function getWarrantyPolicyAuditTrail(policyId: string) {
   const visibleId = (await prisma.warrantyPolicy.findFirst({ where: { ...(await orgOwned()), id: policyId }, select: { id: true } }))?.id ?? '__no_access__';
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'WarrantyPolicy', entityId: visibleId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     select: { id: true, action: true, createdAt: true, metadata: true, userId: true },
   });
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
@@ -978,7 +979,7 @@ export async function getWarrantyProviderAuditTrail(providerId: string) {
   await requireUser();
   // Only as visible as the record itself (its organisation).
   const visibleId = (await prisma.warrantyProvider.findFirst({ where: { ...(await orgOwned()), id: providerId }, select: { id: true } }))?.id ?? '__no_access__';
-  const entries = await prisma.auditLog.findMany({ where: { entityType: 'WarrantyProvider', entityId: visibleId }, orderBy: { createdAt: 'asc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } });
+  const entries = await prisma.auditLog.findMany({ where: { entityType: 'WarrantyProvider', entityId: visibleId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, action: true, createdAt: true, metadata: true, userId: true } });
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));

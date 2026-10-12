@@ -84,6 +84,7 @@ import { renderCustomerJobInProgressEmail } from '@/lib/email-templates/customer
 import { renderCustomerQualityCheckEmail } from '@/lib/email-templates/customer-quality-check';
 import { renderCustomerJobCompletedEmail } from '@/lib/email-templates/customer-job-completed';
 import { renderCustomerReadyForCollectionEmail } from '@/lib/email-templates/customer-ready-for-collection';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class WorkshopActionError extends Error {}
 
@@ -804,7 +805,7 @@ export async function getVehicleAuditTrail(vehicleId: string): Promise<VehicleAu
   await seeVehicle(vehicleId, 'getVehicleAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'CustomerVehicle', entityId: vehicleId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
   });
   const userIds = [
     ...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id))),
@@ -868,7 +869,7 @@ export async function deleteVehicle(vehicleId: string): Promise<void> {
  * "000010" as a string too, unlike unpadded numbers).
  */
 async function generateJobNumber(): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = lagosYear();
   const prefix = `JC-${year}-`;
   const latest = await prisma.jobCard.findFirst({
     where: { jobNumber: { startsWith: prefix } },
@@ -989,7 +990,7 @@ export async function getJobCardAuditTrail(jobCardId: string): Promise<JobCardAu
   // rendered on screen at a time.
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'JobCard', entityId: jobCardId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
   });
   const userIds = [
     ...new Set(
@@ -4535,7 +4536,7 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
       vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
       totalEstimate: formatNaira(total),
       minimumDepositAmount: formatNaira(minimumDeposit),
-      dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+      dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
       reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
       logoUrl: `${websiteUrl}/images/logo/logo.png`,

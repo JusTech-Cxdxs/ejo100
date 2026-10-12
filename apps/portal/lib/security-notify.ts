@@ -1,3 +1,4 @@
+import { cleanForLog } from '@/lib/errors';
 import { logFailure } from '@/lib/log';
 import { prisma } from '@ejo/database';
 import { sendEmail } from '@/lib/email';
@@ -48,7 +49,7 @@ export async function notifyGateOfRelease(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', 
         }));
       } catch (err) {
         sent = false;
-        error = err instanceof Error ? err.message.slice(0, 300) : 'Unknown error';
+        error = err instanceof Error ? cleanForLog(err.message).slice(0, 300) : 'Unknown error';
       }
       await prisma.securityEmailLog.create({ data: { entityType, entityId: recordId, recipient: `${g.fullName} <${g.email}>`, subject, sent, error } });
       await prisma.auditLog.create({ data: { userId: actorId, action: sent ? 'security.email_sent' : 'security.email_failed', entityType, entityId: recordId, metadata: { to: g.fullName, subject, ...(error ? { error } : {}) } } });

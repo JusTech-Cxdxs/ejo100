@@ -1,4 +1,5 @@
 'use server';
+import { cleanForLog } from '@/lib/errors';
 import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
@@ -15,6 +16,7 @@ import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { visitOverdueMinutes, exitPassOverdueMinutes, roadTestOverdueMinutes, durationText, INCIDENT_TYPES, contractorState, contractorAfterHoursMinutes, lagosDay } from '@/lib/security-rules';
 import { customerTotal } from '@/lib/estimate-billing';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class SecurityError extends Error {}
 
@@ -136,7 +138,7 @@ async function visibleOrNull<T extends { branchId?: string | null }>(rec: T | nu
 // ── Numbering & logged emails ─────────────────────────────────────────
 
 async function nextNumber(prefix: 'VIS' | 'VP' | 'EP' | 'VX' | 'RT' | 'INC' | 'DLV' | 'CTR'): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = lagosYear();
   const start = `${prefix}-${year}-`;
   const latest =
     prefix === 'VIS'
@@ -172,7 +174,7 @@ async function sendLogged(entityType: string, entityId: string, recipients: Pers
       await sendEmail(r.email, subject, renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portal}${path}`, logoUrl: `${portal}/images/logo/logo.png`, companyName: org.companyName, branchName: org.branchName }));
     } catch (err) {
       sent = false;
-      error = err instanceof Error ? err.message.slice(0, 300) : 'Unknown error';
+      error = err instanceof Error ? cleanForLog(err.message).slice(0, 300) : 'Unknown error';
     }
     await prisma.securityEmailLog.create({ data: { entityType, entityId, recipient: `${r.fullName} <${r.email}>`, subject, sent, error } });
     await writeAuditLog({ userId: actorId, action: sent ? 'security.email_sent' : 'security.email_failed', entityType, entityId, metadata: { to: r.fullName, subject, ...(error ? { error } : {}) } });
@@ -313,7 +315,7 @@ async function emailGateAboutBooking(kind: 'new' | 'changed' | 'cancelled', visi
   const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { visitNumber: true, visitorName: true, memberNames: true, partySize: true, company: true, purpose: true, expectedAt: true, host: { select: { fullName: true } } } });
   if (!v) return;
   const who = `${[v.visitorName, ...v.memberNames].join(', ')}${v.company ? ` (${v.company})` : ''}`;
-  const when = v.expectedAt ? new Date(v.expectedAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+  const when = v.expectedAt ? new Date(v.expectedAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' }) : '';
   const staff = await usersWithSlugs(['security-officer', 'chief-security-officer', 'receptionist']);
   await sendLogged('Visit', visitId, staff, kind === 'cancelled' ? `Visit cancelled — ${who}` : `${kind === 'new' ? 'Visitor booked' : 'Visit rescheduled'} — ${who}, ${when}`, kind === 'cancelled' ? 'A booked visit was cancelled — do not expect them' : kind === 'new' ? 'Expect a visitor' : 'A booked visit has moved', [who, ...(v.partySize > 1 ? [`${v.partySize} people`] : []), `Visiting: ${v.host.fullName}`, `Purpose: ${v.purpose}`, kind === 'cancelled' ? `Reason: ${reason ?? ''}` : `Expected: ${when}`, v.visitNumber], kind === 'cancelled' ? '/security/visitors' : `/security/visitors/${visitId}`, actorId);
 }
@@ -1798,7 +1800,7 @@ async function followUpEmail(kind: FollowUp, id: string, actorId: string | null)
         const deciding = p.managerApprovedAt ? await gateStaff() : p.headApprovedAt ? await managerApprovers(p.requestedById, p.branchId) : await headApproversFor(p.requestedById);
         await sendLogged('ExitPass', id, uniq(deciding), `Exit pass ${p.passNumber} was cancelled`, 'An exit pass was cancelled', [p.passNumber, p.managerApprovedAt ? 'Do not let anyone out on this pass.' : 'No decision is needed any more.'], `/security/exit-passes/${id}`, actorId);
       } else {
-        const back = p.expectedReturnAt ? new Date(p.expectedReturnAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }) : null;
+        const back = p.expectedReturnAt ? new Date(p.expectedReturnAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit', day: 'numeric', month: 'short' }) : null;
         const text = kind === 'exit_pass.gate_out' ? ['Security recorded you going out.', ...(back ? [`Expected back by ${back}.`] : [])] : kind === 'exit_pass.gate_in' ? ['Security recorded you back in. Welcome back.'] : [`More time was given${back ? ` — now expected back by ${back}` : ''}.`];
         await sendLogged('ExitPass', id, uniq([p.requestedBy]), `Exit pass ${p.passNumber} — ${kind === 'exit_pass.gate_out' ? 'out through the gate' : kind === 'exit_pass.gate_in' ? 'back through the gate' : 'more time given'}`, 'Your exit pass', [p.passNumber, ...text], `/security/exit-passes/${id}`, actorId);
       }

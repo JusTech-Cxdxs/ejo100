@@ -1,4 +1,4 @@
-import { redact } from './errors';
+import { cleanForLog } from './errors';
 
 /**
  * One structured, redacted log line for a failure (LOG-01). Replaces raw
@@ -7,11 +7,7 @@ import { redact } from './errors';
  * email addresses are masked — logs never carry tokens, passwords or a
  * person's full email.
  */
-const EMAIL = /([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
-
-function clean(text: string): string {
-  return redact(text).replace(EMAIL, '$1***@$2');
-}
+const clean = cleanForLog;
 
 function describe(value: unknown): unknown {
   if (value instanceof Error) {

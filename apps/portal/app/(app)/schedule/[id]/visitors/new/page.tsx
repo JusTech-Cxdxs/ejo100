@@ -21,7 +21,7 @@ export default async function AddVisitorsPage({ params, searchParams }: { params
     <div className="p-4 sm:p-8">
       <BackLink href={`/schedule/${a.id}`} label={<>Back to {a.appointmentNumber}</>} className="mb-4" />
       <PageTitle icon="calendar">Add visitors</PageTitle>
-      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">{a.title} · {new Date(a.startsAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} — Security will expect them at that time.</p>
+      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">{a.title} · {new Date(a.startsAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' })} — Security will expect them at that time.</p>
       <ScheduleNav active="/schedule/appointments" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       <form action={addVisitorGroupFormAction} className="max-w-2xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">

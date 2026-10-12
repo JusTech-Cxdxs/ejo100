@@ -6,19 +6,10 @@ import { useNotifications } from '@/components/NotificationProvider';
 import { BROADCAST_CATEGORY, AREA_LABEL } from '@/lib/notification-rules';
 import { Icon } from '@/components/ui/Icon';
 import { ACTION_ICON, AREA_ICON, CATEGORY_ICON, CATEGORY_TILE } from '@/components/ui/notify-icons';
+import { formatRelative, isSameLagosDay } from '@/lib/utils/format-date';
 
-function timeAgo(date: Date): string {
-  const sec = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
-  if (sec < 60) return 'just now';
-  const m = Math.floor(sec / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} ${h === 1 ? 'hour' : 'hours'} ago`;
-  const d = Math.floor(h / 24);
-  return `${d} ${d === 1 ? 'day' : 'days'} ago`;
-}
-
-const isToday = (d: Date) => new Date(d).toDateString() === new Date().toDateString();
+const timeAgo = (date: Date) => formatRelative(date);
+const isToday = (d: Date) => isSameLagosDay(new Date(d), new Date());
 
 /** The bell — reads the shared live source (no requests of its own). */
 export function NotificationBell() {

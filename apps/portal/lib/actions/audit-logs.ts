@@ -93,7 +93,7 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
     }
     if (r.action === 'system.job_run') {
       const job = JOBS.find((j) => j.key === r.entityId);
-      const LABEL: Record<string, string> = { remindersSent: 'reminders', broadcastEmailsSent: 'broadcast emails', digestsSent: 'digests', branchesWithOpenAlerts: 'branches with open alerts', emailsSent: 'emails sent', emailsFailed: 'emails failed' };
+      const LABEL: Record<string, string> = { remindersSent: 'reminders', broadcastEmailsSent: 'broadcast emails', digestsSent: 'digests', branchesWithOpenAlerts: 'branches with open alerts', emailsSent: 'emails sent', emailsFailed: 'emails failed', rolesChanged: 'roles changed', errorReferencesRemoved: 'old error references removed' };
       return { id: r.id, at: r.createdAt, who: 'Scheduler', kind: 'System job', title: `Scheduled job ran — ${job?.name ?? r.entityId ?? 'job'}`, detail: Object.entries(meta).map(([k, v]) => `${String(v)} ${LABEL[k] ?? k}`).join(' · ') || null, area: 'System', records: [{ label: 'Scheduled jobs', url: '/settings' }], changes: [], ip: null };
     }
     return { id: r.id, at: r.createdAt, who, kind: 'Business', title: securityActionLabel(r.action), detail: securityActionDetail(r.action, meta), area: AREA_LABEL[areaOf(r.entityType)] ?? 'System', records: rec(r.entityType, r.entityId), changes: [], ip: r.ipAddress };
@@ -129,7 +129,7 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
     if (typeof v === 'boolean') return v ? 'Yes' : 'No';
     if (typeof v === 'string') {
       if (key && names.has(v)) return names.get(v)!;
-      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) return new Date(v).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) return new Date(v).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' });
       if (/^[A-Z][A-Z0-9_]+$/.test(v)) return v.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
       if (key && /Id$/.test(key) && /^c[a-z0-9]{20,}$/.test(v)) return 'A record';
       return v.slice(0, 200);

@@ -7,6 +7,7 @@ import { getPrincipal } from '@/lib/authz/server';
 import { navigationFor } from '@/lib/authz/navigation';
 import { AppShell } from '@/components/AppShell';
 import { NotificationProvider } from '@/components/NotificationProvider';
+import { OfflineNotice } from '@/components/OfflineNotice';
 import { portalConfig } from '@/lib/site-config';
 
 /**
@@ -68,6 +69,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       >
         {children}
       </AppShell>
+      <OfflineNotice />
     </NotificationProvider>
   );
 }

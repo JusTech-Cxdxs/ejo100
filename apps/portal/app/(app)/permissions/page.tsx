@@ -2,6 +2,7 @@ import { PERMISSIONS, ROLE_GRANTS, ROLE_LABELS, PLATFORM_ONLY, scopeFor, type Pe
 import { getPrincipal, guardPage } from '@/lib/authz/server';
 import { PermissionsMatrix, type MatrixRow } from '@/components/PermissionsMatrix';
 import { PageHeader } from '@/components/ui';
+import { pluralize } from '@/lib/utils/pluralize';
 
 /**
  * The Authorization Catalogue — generated from the same code the server
@@ -29,7 +30,7 @@ export default async function PermissionsPage() {
         Headquarters can add a permission to a role on the Roles page.</>}
       />
       <PermissionsMatrix roles={slugs.map((s) => ROLE_LABELS[s] ?? s)} rows={rows} />
-      <p className="mt-4 text-xs text-[var(--ejo-text-muted)]">{keys.length} permissions across {new Set(keys.map((k) => PERMISSIONS[k].module)).size} areas and {slugs.length} roles.</p>
+      <p className="mt-4 text-xs text-[var(--ejo-text-muted)]">{pluralize(keys.length, 'permission')} across {pluralize(new Set(keys.map((k) => PERMISSIONS[k].module)).size, 'area')} and {pluralize(slugs.length, 'role')}.</p>
       {me.isSuperAdmin ? (
         <div className="mt-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 text-xs text-[var(--ejo-text-muted)]">
           <p className="font-semibold text-[var(--ejo-text)]">Platform team only (organisations never see this)</p>

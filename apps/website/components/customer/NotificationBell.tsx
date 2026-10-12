@@ -6,21 +6,13 @@ import { useRouter } from 'next/navigation';
 import { Icon } from './Icon';
 import { playChime, primeSound } from '@/lib/customer-portal/sound';
 import { markAllNoticesRead, markNoticeRead } from '@/lib/customer-portal/actions';
+import { timeAgo } from '@/lib/customer-portal/format';
 
 type Item = { key: string; title: string; body: string; at: string; href: string; icon: string; tone: string; read: boolean };
 
 const POLL_MS = 30_000;
 
-function ago(iso: string): string {
-  const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
-  if (s < 60) return 'just now';
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.round(h / 24);
-  return d < 7 ? `${d} day${d === 1 ? '' : 's'} ago` : new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-}
+const ago = (iso: string) => timeAgo(new Date(iso));
 
 const TONE_DOT: Record<string, string> = {
   info: 'bg-[var(--ejo-info)]/10 text-[var(--ejo-info)]',

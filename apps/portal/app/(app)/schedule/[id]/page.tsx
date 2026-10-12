@@ -32,7 +32,7 @@ export default async function AppointmentPage({ params, searchParams }: { params
   const canManage = access.isAdmin || a.ownerId === access.userId || access.owners.some((o) => o.id === a.ownerId);
   const started = new Date(a.startsAt).getTime() <= Date.now();
   const open = a.status === 'SCHEDULED' && new Date(a.endsAt).getTime() > Date.now();
-  const t = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' });
+  const t = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' });
   const input = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
   const btn = 'rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90';
   const line = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]';

@@ -35,11 +35,12 @@ import { renderSupervisorVehicleServiceAssignedEmail } from '@/lib/email-templat
 import { renderVehicleServiceDecisionEmail } from '@/lib/email-templates/vehicle-service-decision';
 import { renderTechnicianVehicleServiceAssignedEmail } from '@/lib/email-templates/technician-vehicle-service-assigned';
 import { renderTechnicianVehicleServiceResponseEmail } from '@/lib/email-templates/technician-vehicle-service-response';
+import { lagosDayKey, lagosYear } from '@/lib/utils/format-date';
 
 class VehicleServiceActionError extends Error {}
 
 async function generateServiceNumber(): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = lagosYear();
   const prefix = `SV-${year}-`;
   const latest = await prisma.vehicleService.findFirst({
     where: { serviceNumber: { startsWith: prefix } },
@@ -172,7 +173,7 @@ export async function getVehicleServiceAuditTrail(serviceId: string): Promise<Ve
   await seeService(serviceId, 'getVehicleServiceAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'VehicleService', entityId: serviceId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
   });
   const userIds = [
     ...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id))),
@@ -691,7 +692,7 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
       .map((j: (typeof jobCards)[number]) => ({ date: j.createdAt, mileage: j.mileageAtCheckIn as number, label: j.jobNumber, source: 'JOB_CARD' as const })),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const monthKey = (d: Date) => lagosDayKey(d).slice(0, 7);
   const monthLabel = (d: Date) => d.toLocaleDateString('en-NG', { month: 'short', year: '2-digit', timeZone: 'Africa/Lagos' });
   const visitsByMonth = new Map<string, VehicleVisitMonth>();
   for (const s of services) {
