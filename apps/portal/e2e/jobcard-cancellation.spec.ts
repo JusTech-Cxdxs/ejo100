@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { CUSTOMER, SEED_PARTS } from './people';
-import { as, expectNoUrlError, latestMail, readStock, waitOutcome } from './helpers';
+import { as, open, expectNoUrlError, latestMail, readStock, waitOutcome } from './helpers';
 import { freshVehicle, idOfPart } from './db';
 import { card, expectStatus, jcForm, jobCardInProgress, openJobCard } from './workflows';
 
@@ -40,11 +40,11 @@ test('a Job Card is paid (70%) and Store reserves its parts', async ({ page }) =
   S.prsUrl = new URL(page.url()).pathname;
 
   await as(page, 'workshop-manager');
-  await page.goto(S.prsUrl);
+  await open(page, S.prsUrl);
   await page.getByRole('heading', { name: 'Workshop HOD Approval' }).locator('..').getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByText('Approved — now awaiting Store.')).toBeVisible();
   await as(page, 'store-manager');
-  await page.goto(S.prsUrl);
+  await open(page, S.prsUrl);
   await page.getByRole('button', { name: 'Approve & Reserve' }).click();
   await expect(page.getByText('Approved and stock reserved — now ready for release.')).toBeVisible();
   const reserved = await readStock(page, S.partUrl);
@@ -54,7 +54,7 @@ test('a Job Card is paid (70%) and Store reserves its parts', async ({ page }) =
 
 test('front desk asks to cancel; the Manager sees the refund it authorises and approves', async ({ page }) => {
   await as(page, 'receptionist');
-  await page.goto(S.url);
+  await open(page, S.url);
   const req = jcForm(page, 'Request cancellation');
   await req.locator('textarea[name="reason"]').fill('Customer decided to repair elsewhere');
   await req.getByRole('button', { name: 'Request cancellation' }).click();
@@ -62,7 +62,7 @@ test('front desk asks to cancel; the Manager sees the refund it authorises and a
   await expect(card(page, 'Cancellation history')).toContainText('Awaiting Manager Decision');
 
   await as(page, 'workshop-manager');
-  await page.goto(S.url);
+  await open(page, S.url);
   const box = page.locator('#cancellation-request');
   await expect(box).toContainText('Customer decided to repair elsewhere');
   await expect(box).toContainText(/has paid ₦[\d,]+\.\d\d\. Approving this cancellation also authorises a full refund/);
@@ -77,21 +77,21 @@ test('the open parts request is withdrawn and the reserved stock is back on the 
   const after = await readStock(page, S.partUrl);
   expect(after.reserved, 'reserved stock returned').toBe(S.before.reserved);
   expect(after.onHand, 'nothing left the Store').toBe(S.before.onHand);
-  await page.goto(S.prsUrl);
+  await open(page, S.prsUrl);
   await expect(page.getByText('Rejected', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Release', exact: true })).toHaveCount(0);
 });
 
 test('the vehicle cannot be handed back until Finance refunds the deposit', async ({ page, request }) => {
   await as(page, 'receptionist');
-  await page.goto(S.url);
+  await open(page, S.url);
   await expect(page.locator('#status-panel')).toContainText(/must be refunded \(see Refunds\) before the vehicle can be handed back/);
   await expect(page.getByRole('button', { name: 'Hand vehicle back' })).toHaveCount(0);
   // Front desk cannot record the refund itself.
   await expect(page.getByRole('button', { name: 'Record refund' })).toHaveCount(0);
 
   await as(page, 'finance-officer');
-  await page.goto(S.url);
+  await open(page, S.url);
   const refunds = page.locator('#refunds');
   await expect(refunds).toContainText('Refund due');
   const form = jcForm(page, 'Record refund');
@@ -114,7 +114,7 @@ test('the vehicle cannot be handed back until Finance refunds the deposit', asyn
 
 test('front desk hands the vehicle back; it can come in again on a new Job Card', async ({ page }) => {
   await as(page, 'receptionist');
-  await page.goto(S.url);
+  await open(page, S.url);
   const handBack = jcForm(page, 'Hand vehicle back');
   await handBack.locator('input[name="collectedByName"]').fill('Ada Customer (driver)');
   await handBack.getByRole('button', { name: 'Hand vehicle back' }).click();

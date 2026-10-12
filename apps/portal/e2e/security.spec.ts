@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { who } from './people';
-import { as, expectHealthy, expectNoUrlError, uniq, waitOutcome } from './helpers';
+import { as, open, expectHealthy, expectNoUrlError, uniq, waitOutcome } from './helpers';
 import { freshVehicle } from './db';
 import { jcForm, openJobCard, pickSearchable } from './workflows';
 
@@ -79,18 +79,18 @@ test('a contractor team: requested, approved by the Manager, signed in and out a
   const url = new URL(page.url()).pathname;
 
   await as(page, 'workshop-manager');
-  await page.goto(url);
+  await open(page, url);
   await page.getByRole('button', { name: 'Approve pass' }).click();
   await waitOutcome(page, /status=approve/);
 
   await as(page, 'security-officer');
-  await page.goto(url);
+  await open(page, url);
   await page.locator('select[name="workersPresent"]').selectOption('1');
   await page.getByRole('button', { name: 'Sign team in' }).click();
   await waitOutcome(page, /status=sign_in/);
   await page.goto('/security/on-premises');
   await expect(page.getByText(company).first()).toBeVisible();
-  await page.goto(url);
+  await open(page, url);
   await page.getByRole('button', { name: 'Sign team out' }).click();
   await waitOutcome(page, /status=sign_out/);
   expectNoUrlError(page);
@@ -117,13 +117,13 @@ test('a delivery at the gate is received by the Store and the vehicle leaves', a
   // The Store receives it (Store's menu has Deliveries without the Security desk).
   await as(page, 'store-manager');
   await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Deliveries', exact: true })).toBeVisible();
-  await page.goto(url);
+  await open(page, url);
   await page.locator('input[name="note"]').first().fill('All 5 cartons counted');
   await page.getByRole('button', { name: 'Confirm received by the Store' }).click();
   await waitOutcome(page, /status=receive/);
 
   await as(page, 'security-officer');
-  await page.goto(url);
+  await open(page, url);
   await page.getByRole('button', { name: 'Record vehicle leaving' }).click();
   await waitOutcome(page, /status=left/);
   await expect(page.getByText('Delivery vehicle recorded leaving.')).toBeVisible();
@@ -146,23 +146,23 @@ test('an exit pass: requested, authorised by the Department Head, approved by th
   await expect(page.getByRole('button', { name: /Authorise|Approve \(Manager\)/ })).toHaveCount(0);
 
   await as(page, 'department-head');
-  await page.goto(url);
+  await open(page, url);
   await page.getByRole('button', { name: 'Authorise (Department Head)' }).click();
   await waitOutcome(page, /status=approve/);
   await as(page, 'workshop-manager');
-  await page.goto(url);
+  await open(page, url);
   await page.getByRole('button', { name: 'Approve (Manager)' }).click();
   await waitOutcome(page, /status=approve/);
 
   await as(page, 'security-officer');
-  await page.goto(url);
+  await open(page, url);
   await page.getByRole('button', { name: 'Record time out' }).click();
   await waitOutcome(page, /status=gate_out/);
   await page.goto('/security/people-out');
   await expect(page.getByText(who('technician').name).first()).toBeVisible();
   await page.goto('/security/overdue');
   await expectHealthy(page);
-  await page.goto(url);
+  await open(page, url);
   await page.getByRole('button', { name: 'Record time in' }).click();
   await waitOutcome(page, /status=gate_in/);
   await expect(page.getByText('Time in recorded — welcome back.')).toBeVisible();
@@ -185,12 +185,12 @@ test('a road test permit: requested on a Job Card, approved, out and back with t
   const url = new URL(page.url()).pathname;
 
   await as(page, 'workshop-manager');
-  await page.goto(url);
+  await open(page, url);
   await page.getByRole('button', { name: 'Approve road test' }).click();
   await waitOutcome(page, /status=approve/);
 
   await as(page, 'security-officer');
-  await page.goto(url);
+  await open(page, url);
   await page.getByRole('textbox', { name: 'Odometer reading now (km)' }).or(page.locator('input[name="odometer"]')).first().fill('50000');
   await page.getByRole('button', { name: 'Record time out' }).click();
   await waitOutcome(page, /status=gate_out/);
@@ -221,7 +221,7 @@ test('an incident is reported by Security and closed by the Chief Security Offic
   await expect(page.getByRole('button', { name: 'Close incident' })).toHaveCount(0);
 
   await as(page, 'chief-security-officer');
-  await page.goto(url);
+  await open(page, url);
   const assign = jcForm(page, 'Assign');
   await assign.locator('select[name="assigneeId"]').selectOption({ index: 1 });
   await assign.getByRole('button', { name: 'Assign' }).click();

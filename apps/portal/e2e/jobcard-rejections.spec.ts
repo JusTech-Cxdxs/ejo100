@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { SUPERMANAGER, who } from './people';
-import { as, expectNoUrlError, latestMail, waitOutcome } from './helpers';
+import { as, open, expectNoUrlError, latestMail, waitOutcome } from './helpers';
 import { freshVehicle } from './db';
 import { addLine, assignTechnician, card, jcForm, jobNumber, openJobCard, submitEstimate, supervisorApprovesEstimate } from './workflows';
 
@@ -36,7 +36,7 @@ test('a supervisor rejects the Job Card; the front desk routes it to another sup
   });
 
   await as(page, 'workshop-supervisor');
-  await page.goto(S.url);
+  await open(page, S.url);
   const review = page.locator('#review-approval');
   await review.locator('input[name="reason"]').fill('Fully booked this week');
   await review.getByRole('button', { name: 'Reject' }).click();
@@ -44,7 +44,7 @@ test('a supervisor rejects the Job Card; the front desk routes it to another sup
   await latestMail(request, who('receptionist').email, new RegExp(`Job Card ${S.number} returned for correction`));
 
   await as(page, 'receptionist');
-  await page.goto(S.url);
+  await open(page, S.url);
   const reassign = jcForm(page, 'Reassign');
   await expect(page.getByRole('heading', { name: 'Reassign supervisor' })).toBeVisible();
   await reassign.locator('select[name="supervisorId"]').selectOption({ label: SUPERMANAGER.name });
@@ -53,18 +53,18 @@ test('a supervisor rejects the Job Card; the front desk routes it to another sup
   expectNoUrlError(page);
 
   await as(page, SUPERMANAGER);
-  await page.goto(S.url);
+  await open(page, S.url);
   await page.locator('#review-approval').getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByText(`Approved by ${SUPERMANAGER.name}`)).toBeVisible();
 });
 
 test('a technician turns the assignment down; it is reassigned and accepted', async ({ page }) => {
   await as(page, SUPERMANAGER);
-  await page.goto(S.url);
+  await open(page, S.url);
   await assignTechnician(page);
 
   await as(page, 'technician');
-  await page.goto(S.url);
+  await open(page, S.url);
   const respond = page.locator('#technician-response');
   await respond.locator('input[name="reason"]').fill('On leave tomorrow');
   await respond.getByRole('button', { name: 'Reject' }).click();
@@ -76,23 +76,23 @@ test('a technician turns the assignment down; it is reassigned and accepted', as
   await expect(trail).toContainText('Reason: On leave tomorrow');
 
   await as(page, SUPERMANAGER);
-  await page.goto(S.url);
+  await open(page, S.url);
   await assignTechnician(page);
   await as(page, 'technician');
-  await page.goto(S.url);
+  await open(page, S.url);
   await page.locator('#technician-response').getByRole('button', { name: 'Accept' }).click();
   await expect(page.locator('#technician-response')).toHaveCount(0);
 });
 
 test('the Manager sends the estimate back for changes; the supervisor fixes and re-approves', async ({ page }) => {
   await as(page, SUPERMANAGER);
-  await page.goto(S.url);
+  await open(page, S.url);
   await addLine(page, { type: 'LABOUR', description: 'Wheel alignment', price: 12000 });
   await submitEstimate(page);
   await supervisorApprovesEstimate(page);
 
   await as(page, 'workshop-manager');
-  await page.goto(S.url);
+  await open(page, S.url);
   await page.getByText('Needs changes? Send it back to the supervisor…').click();
   const back = jcForm(page, 'Send back');
   await back.locator('input[name="reason"]').fill('Add the tyre rotation as agreed');
@@ -103,7 +103,7 @@ test('the Manager sends the estimate back for changes; the supervisor fixes and 
   await expect(page.getByRole('button', { name: 'Approve as Manager' })).toHaveCount(0);
 
   await as(page, SUPERMANAGER);
-  await page.goto(S.url);
+  await open(page, S.url);
   // The supervisor can correct a submitted estimate.
   await card(page, 'Estimate').getByRole('link', { name: 'Edit' }).first().click();
   const edit = page.locator('form').filter({ has: page.locator('input[name="lineItemId"]') });
@@ -115,7 +115,7 @@ test('the Manager sends the estimate back for changes; the supervisor fixes and 
   await supervisorApprovesEstimate(page);
 
   await as(page, 'workshop-manager');
-  await page.goto(S.url);
+  await open(page, S.url);
   await page.getByRole('button', { name: 'Approve as Manager' }).click();
   await expect(page.getByRole('button', { name: 'Approve as Manager' })).toHaveCount(0);
   expectNoUrlError(page);
@@ -123,14 +123,14 @@ test('the Manager sends the estimate back for changes; the supervisor fixes and 
 
 test('a cancellation request can be declined; the Job Card carries on', async ({ page }) => {
   await as(page, 'receptionist');
-  await page.goto(S.url);
+  await open(page, S.url);
   const req = jcForm(page, 'Request cancellation');
   await req.locator('textarea[name="reason"]').fill('Customer unsure about the cost');
   await req.getByRole('button', { name: 'Request cancellation' }).click();
   await expect(card(page, 'Cancellation history')).toContainText('Awaiting Manager Decision');
 
   await as(page, 'workshop-manager');
-  await page.goto(S.url);
+  await open(page, S.url);
   const box = page.locator('#cancellation-request');
   await box.locator('form').filter({ has: page.getByRole('button', { name: 'Decline' }) }).locator('input[name="decisionNotes"]').fill('Customer confirmed by phone — go ahead');
   await box.getByRole('button', { name: 'Decline' }).click();
@@ -140,6 +140,6 @@ test('a cancellation request can be declined; the Job Card carries on', async ({
 
   // The front desk can ask again later (the declined request is history).
   await as(page, 'receptionist');
-  await page.goto(S.url);
+  await open(page, S.url);
   await expect(page.getByRole('button', { name: 'Request cancellation' })).toBeVisible();
 });

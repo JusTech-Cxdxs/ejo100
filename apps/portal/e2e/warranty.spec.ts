@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { SEED_WARRANTY } from './people';
-import { as, expectNoUrlError, uniq, visitHealthy, waitOutcome } from './helpers';
+import { as, open, expectNoUrlError, uniq, visitHealthy, waitOutcome } from './helpers';
 import { freshVehicle } from './db';
 import { jcForm, pickSearchable } from './workflows';
 
@@ -44,7 +44,7 @@ test('the Warranty HOD adds a provider and a vehicle policy', async ({ page }) =
   await pol.locator('select[name="durationUnit"]').selectOption('MONTHS');
   await pol.locator('input[name="distanceLimit"]').fill('100000');
   await pol.locator('input[name="coverageItem"]').first().fill('Engine and gearbox');
-  await pol.locator('select[name="defaultRemedy"]').selectOption('REPAIR');
+  await pol.locator('select[name="defaultRemedy"]').selectOption('REIMBURSEMENT');
   await pol.getByRole('button', { name: 'Add policy' }).click();
   await waitOutcome(page, /status=policy_created/);
   await expect(page.getByRole('link', { name: S.policy })).toBeVisible();
@@ -75,7 +75,7 @@ test('a Warranty Officer registers the vehicle warranty; the HOD verifies it', a
   }
 
   await as(page, 'warranty-hod');
-  await page.goto(S.warrantyUrl);
+  await open(page, S.warrantyUrl);
   await page.getByRole('button', { name: 'Evidence checked — verify' }).click();
   await waitOutcome(page, /status=verified/);
   expectNoUrlError(page);
@@ -83,7 +83,7 @@ test('a Warranty Officer registers the vehicle warranty; the HOD verifies it', a
 
 test('a claim is drafted, approved by the HOD and the Branch Manager, submitted, decided and settled', async ({ page }) => {
   await as(page, 'warranty-officer');
-  await page.goto(S.warrantyUrl);
+  await open(page, S.warrantyUrl);
   await page.getByRole('link', { name: 'Start a claim' }).click();
   await page.waitForURL(/\/warranty\/claims\/new\?warrantyId=/);
   const form = jcForm(page, 'Save draft claim');
@@ -106,24 +106,24 @@ test('a claim is drafted, approved by the HOD and the Branch Manager, submitted,
   await expect(page.getByText('Waiting on the Warranty HOD.')).toBeVisible();
 
   await as(page, 'warranty-hod');
-  await page.goto(S.claimUrl);
+  await open(page, S.claimUrl);
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
   await waitOutcome(page, /status=approved/);
   await expect(page.getByText('Waiting on the Branch Manager.')).toBeVisible();
 
   await as(page, 'workshop-manager');
-  await page.goto(S.claimUrl);
+  await open(page, S.claimUrl);
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
   await waitOutcome(page, /status=approved/);
 
   await as(page, 'warranty-officer');
-  await page.goto(S.claimUrl);
+  await open(page, S.claimUrl);
   await page.locator('input[name="providerReference"]').fill(`OEM-${tag}`);
   await page.getByRole('button', { name: 'Record as submitted' }).click();
   await waitOutcome(page, /status=submitted/);
 
   await as(page, 'warranty-hod');
-  await page.goto(S.claimUrl);
+  await open(page, S.claimUrl);
   await page.locator('select[name="decision"]').selectOption('ACCEPTED');
   await page.getByRole('button', { name: 'Record decision' }).click();
   await waitOutcome(page, /status=decision_recorded/);
@@ -167,7 +167,7 @@ test('a claim for a failure that happened today can be sent the same morning', a
   const morning = new Date().getUTCHours() < 12;
   test.fail(morning, 'E2E-07: lib/actions/warranty-claims-form-handlers.ts:44 stores the failure date as `${date}T12:00:00Z` (13:00 Lagos), so a failure dated today is "in the future" until 1 pm — the readiness check (lib/warranty-claim-readiness.ts:48) blocks "Send for approval" all morning, and the form defaults the date to today');
   await as(page, 'warranty-officer');
-  await page.goto(S.warrantyUrl);
+  await open(page, S.warrantyUrl);
   await page.getByRole('link', { name: 'Start a claim' }).click();
   const form = jcForm(page, 'Save draft claim');
   await expect(form.locator('input[name="failureDate"]')).toHaveValue(lagosDay());

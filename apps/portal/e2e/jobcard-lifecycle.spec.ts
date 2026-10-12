@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { CUSTOMER, SEED_PARTS, SUPERMANAGER, who } from './people';
-import { as, eventually, bellText, countMail, expectAuditEntry, expectNoUrlError, latestMail, readStock, urlError, waitOutcome } from './helpers';
+import { as, open, eventually, bellText, countMail, expectAuditEntry, expectNoUrlError, latestMail, readStock, urlError, waitOutcome } from './helpers';
 import { db, freshVehicle, idOfPart, paymentsOn } from './db';
 import {
   addLine, assignTechnician, expectStatus, jobNumber, jcForm, nextStep, notifyCustomer, openJobCard, recordPayment,
@@ -52,7 +52,7 @@ test('front desk opens the Job Card; the supervisor approves and assigns; the te
 
 test('the estimate is drafted by the technician and the supervisor, and Store prices the part', async ({ page }) => {
   await as(page, 'technician');
-  await page.goto(S.url);
+  await open(page, S.url);
   await test.step('a technician cannot price labour (the supervisor does)', async () => {
     const form = page.locator('form').filter({ has: page.locator('select[name="type"]') });
     await form.locator('select[name="type"]').selectOption('LABOUR');
@@ -66,7 +66,7 @@ test('the estimate is drafted by the technician and the supervisor, and Store pr
   await expect(page.getByRole('button', { name: 'Submit for validation' })).toHaveCount(0);
 
   await as(page, SUPERMANAGER);
-  await page.goto(S.url);
+  await open(page, S.url);
   await addLine(page, { type: 'LABOUR', description: 'Front brake overhaul', price: 20000 });
   await addLine(page, { type: 'SUNDRY', description: 'Brake cleaner and consumables', price: 1500 });
   await test.step('only one Sundry line is allowed', async () => {
@@ -77,7 +77,7 @@ test('the estimate is drafted by the technician and the supervisor, and Store pr
   await storeMatchesAll(page, S.id, who('store-officer'));
 
   await as(page, SUPERMANAGER);
-  await page.goto(S.url);
+  await open(page, S.url);
   await expect(page.getByText(`Matched: ${SEED_PARTS.brakePads.name}`).first()).toBeVisible();
   // 2 × 15,000 + 8,000 + 20,000 + 1,500 = 59,500
   await expect(page.getByText('Total Estimate').locator('..')).toContainText('₦59,500.00');
@@ -85,7 +85,7 @@ test('the estimate is drafted by the technician and the supervisor, and Store pr
 
 test('approvals respect segregation of duties; the customer is notified by email', async ({ page, request }) => {
   await as(page, SUPERMANAGER);
-  await page.goto(S.url);
+  await open(page, S.url);
   await submitEstimate(page);
   await supervisorApprovesEstimate(page);
   await test.step('the supervisor who approved may not also give the Manager’s final approval', async () => {
@@ -97,7 +97,7 @@ test('approvals respect segregation of duties; the customer is notified by email
   });
   await test.step('another Manager gives the final approval', async () => {
     await as(page, 'workshop-manager');
-    await page.goto(S.url);
+    await open(page, S.url);
     await page.getByRole('button', { name: 'Approve as Manager' }).click();
     await expect(page.getByRole('button', { name: 'Approve as Manager' })).toHaveCount(0);
     expectNoUrlError(page);
@@ -106,7 +106,7 @@ test('approvals respect segregation of duties; the customer is notified by email
   expect(toFrontDesk.subject).toContain(S.number);
 
   await as(page, 'receptionist');
-  await page.goto(S.url);
+  await open(page, S.url);
   await notifyCustomer(page);
   const mail = await latestMail(request, CUSTOMER.email, new RegExp(`Your estimate for Job Card ${S.number} has been approved`));
   expect(mail.html).toContain(S.number);
@@ -118,7 +118,7 @@ test('approvals respect segregation of duties; the customer is notified by email
 
 test('Finance records the 70% deposit — a double click records ONE payment — and work starts', async ({ page, request }) => {
   await as(page, 'finance-officer');
-  await page.goto(S.url);
+  await open(page, S.url);
   await expectStatus(page, 'Awaiting Customer Approval');
   const form = jcForm(page, 'Record payment');
   await form.locator('select').first().selectOption('SEVENTY_PERCENT');
@@ -138,7 +138,7 @@ test('parts: technician requests → HOD approves → Store reserves → Store r
   S.stockBefore = await readStock(page, S.partUrl);
 
   await as(page, 'technician');
-  await page.goto(S.url);
+  await open(page, S.url);
   await page.getByRole('link', { name: '+ Request Store Parts' }).click();
   await expect(page.getByRole('heading', { name: 'Request Store Parts' })).toBeVisible();
   await page.getByRole('button', { name: 'Raise Parts Request' }).click();
@@ -150,13 +150,13 @@ test('parts: technician requests → HOD approves → Store reserves → Store r
 
   await test.step('the Workshop HOD (Manager) approves', async () => {
     await as(page, 'workshop-manager');
-    await page.goto(S.prsUrl);
+    await open(page, S.prsUrl);
     await page.getByRole('heading', { name: 'Workshop HOD Approval' }).locator('..').getByRole('button', { name: 'Approve' }).click();
     await expect(page.getByText('Approved — now awaiting Store.')).toBeVisible();
   });
   await test.step('Store approves and reserves the stock', async () => {
     await as(page, 'store-manager');
-    await page.goto(S.prsUrl);
+    await open(page, S.prsUrl);
     await page.getByRole('button', { name: 'Approve & Reserve' }).click();
     await expect(page.getByText('Approved and stock reserved — now ready for release.')).toBeVisible();
     const s = await readStock(page, S.partUrl);
@@ -164,7 +164,7 @@ test('parts: technician requests → HOD approves → Store reserves → Store r
     expect(s.reserved).toBe(S.stockBefore.reserved + 2);
   });
   await test.step('Store releases to the technician', async () => {
-    await page.goto(S.prsUrl);
+    await open(page, S.prsUrl);
     await page.getByRole('button', { name: 'Release', exact: true }).click();
     await expect(page.getByText('Released.', { exact: true })).toBeVisible();
     await expect(page.getByText(/Warranties issued with this release/)).toBeVisible();
@@ -173,7 +173,7 @@ test('parts: technician requests → HOD approves → Store reserves → Store r
     expect(s.reserved).toBe(S.stockBefore.reserved);
   });
   await test.step('the Job Card resumes and lists the part warranty', async () => {
-    await page.goto(S.url);
+    await open(page, S.url);
     await expectStatus(page, 'In Progress');
     await expect(page.getByRole('heading', { name: 'Warranties issued' })).toBeVisible();
   });
@@ -189,7 +189,7 @@ test('the data-change journal records the part warranty issued with the release'
 
 test('outside purchase: technician requests → Finance reviews → Manager approves → Finance disburses', async ({ page }) => {
   await as(page, 'technician');
-  await page.goto(S.url);
+  await open(page, S.url);
   await expect(page.getByRole('link', { name: '+ Request Procurement' })).toHaveAttribute('href', `${S.url}/request-procurement`);
   await page.goto(`${S.url}/request-procurement`);
   await expect(page.getByRole('heading', { name: 'Request External Procurement' })).toBeVisible();
@@ -201,42 +201,42 @@ test('outside purchase: technician requests → Finance reviews → Manager appr
   S.eprUrl = new URL(page.url()).pathname;
 
   await as(page, 'finance-officer');
-  await page.goto(S.eprUrl);
+  await open(page, S.eprUrl);
   await expect(page.getByRole('heading', { name: 'Finance Review' })).toBeVisible();
   await page.getByRole('button', { name: 'Send to Manager' }).click();
   await expect(page.getByText('Sent to the Manager for approval.')).toBeVisible();
 
   await as(page, 'workshop-manager');
-  await page.goto(S.eprUrl);
+  await open(page, S.eprUrl);
   await page.getByRole('heading', { name: 'Manager Approval' }).locator('..').getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByText('Approved — now awaiting Finance disbursement.')).toBeVisible();
 
   await as(page, 'finance-officer');
-  await page.goto(S.eprUrl);
+  await open(page, S.eprUrl);
   await page.locator('input[name="paymentMethod"]').fill('Cash');
   await page.locator('textarea[name="disbursementNotes"]').fill('Cash advance to the technician');
   await page.getByRole('button', { name: 'Disburse' }).click();
   await expect(page.getByText('Disbursed.', { exact: true })).toBeVisible();
 
-  await page.goto(S.url);
+  await open(page, S.url);
   await expectStatus(page, 'In Progress');
 });
 
 test('quality check → completed → ready; balance paid; close approved; vehicle checked out', async ({ page, request }) => {
   await as(page, 'technician');
-  await page.goto(S.url);
+  await open(page, S.url);
   await nextStep(page, 'Work done — send to quality check', 'Quality Check');
   // The technician cannot sign off their own work.
   await expect(page.locator('#status-panel').getByRole('button', { name: /Passed quality check/ })).toHaveCount(0);
 
   await as(page, SUPERMANAGER);
-  await page.goto(S.url);
+  await open(page, S.url);
   await nextStep(page, 'Passed quality check — mark Completed', 'Completed');
   await nextStep(page, 'Mark Ready for Collection', 'Ready for Collection');
   await expect(page.getByText(/Next: collect the balance/)).toBeVisible();
 
   await as(page, 'finance-officer');
-  await page.goto(S.url);
+  await open(page, S.url);
   await recordPayment(page, 'REMAINING', 'CASH', 'Balance at collection');
   await expect(page.getByText('Paid in full — nothing further to record.')).toBeVisible();
   await expect(page.getByText('Payment Completed').first()).toBeVisible();
@@ -244,12 +244,12 @@ test('quality check → completed → ready; balance paid; close approved; vehic
   await latestMail(request, CUSTOMER.email, new RegExp(`Payment received — Job Card ${S.number}`));
 
   await as(page, 'receptionist');
-  await page.goto(S.url);
+  await open(page, S.url);
   await page.getByRole('button', { name: 'Request close' }).click();
   await expect(page.getByText(/Close requested — waiting on a Manager.s approval\./)).toBeVisible();
 
   await as(page, 'workshop-manager');
-  await page.goto(S.url);
+  await open(page, S.url);
   await page.locator('#close-request').getByRole('button', { name: 'Approve close' }).click();
   await expectStatus(page, 'Closed');
 
@@ -282,7 +282,7 @@ test('Security lets the collected vehicle out through the gate', async ({ page }
 
 test('the whole story is on the audit trail and in the Audit Logs', async ({ page }) => {
   await as(page, 'workshop-manager');
-  await page.goto(S.url);
+  await open(page, S.url);
   const trail = page.getByRole('heading', { name: 'Audit trail' }).locator('..');
   await trail.getByRole('button', { name: /^Show all/ }).click();
   for (const label of ['Job Card created', 'Job Card approved', 'Technician accepted assignment', 'Estimate submitted for validation', 'Estimate approved by manager', 'Customer notified of approved estimate', 'Payment recorded', 'Parts request released', 'Close requested', 'Left through the gate']) {

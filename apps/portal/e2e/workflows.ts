@@ -5,8 +5,9 @@
  * of the business broke.
  */
 import { expect, test, type Page, type Locator } from '@playwright/test';
-import { as, expectNoUrlError, waitOutcome } from './helpers';
+import { as, expectNoUrlError, open, waitOutcome } from './helpers';
 import { CUSTOMER, who, type Person } from './people';
+import { db } from './db';
 
 export const jcForm = (page: Page, button: string | RegExp): Locator =>
   page.locator('form').filter({ has: page.getByRole('button', { name: button }) });
@@ -73,7 +74,7 @@ export async function expectStatus(page: Page, label: string) {
 export async function supervisorApproves(page: Page, url: string, supervisor: Person = who('workshop-supervisor')) {
   await test.step('supervisor approves the Job Card', async () => {
     await as(page, supervisor);
-    await page.goto(url);
+    await open(page, url);
     await page.locator('#review-approval').getByRole('button', { name: 'Approve' }).click();
     await expect(page.locator('#review-approval')).toHaveCount(0);
     await expect(page.getByText(`Approved by ${supervisor.name}`)).toBeVisible();
@@ -94,7 +95,7 @@ export async function assignTechnician(page: Page, tech: Person = who('technicia
 export async function technicianAccepts(page: Page, url: string, tech: Person = who('technician')) {
   await test.step('technician accepts the assignment', async () => {
     await as(page, tech);
-    await page.goto(url);
+    await open(page, url);
     await page.locator('#technician-response').getByRole('button', { name: 'Accept' }).click();
     await expect(page.locator('#technician-response')).toHaveCount(0);
   });
@@ -118,7 +119,15 @@ export async function addLine(page: Page, line: Line) {
     }
     if (line.qty) await form.locator('input[name="quantity"]').fill(String(line.qty));
     await form.getByRole('button', { name: 'Add', exact: true }).click();
-    await expect(estimateRows(page)).toHaveCount(before + 1);
+    try {
+      await expect(estimateRows(page)).toHaveCount(before + 1);
+    } catch (e) {
+      // Say exactly what is on the page and in the database (a duplicate line is a product bug).
+      const rows = await estimateRows(page).allInnerTexts();
+      const id = /\/workshop\/job-cards\/([^/?#]+)/.exec(page.url())?.[1];
+      const inDb = id ? await db().estimateLineItem.findMany({ where: { estimate: { jobCardId: id } }, select: { type: true, description: true, createdAt: true } }) : [];
+      throw new Error(`estimate rows ${before} → ${rows.length} (expected ${before + 1}); page: ${JSON.stringify(rows.map((r) => r.replace(/\s+/g, ' ').slice(0, 60)))}; database: ${JSON.stringify(inDb)}`);
+    }
     expectNoUrlError(page);
   });
 }
@@ -231,28 +240,28 @@ export async function jobCardInProgress(page: Page, opts: { plate: string; lines
   // Technician adds Store Part / External lines; supervisor adds priced lines.
   const techLines = opts.lines.filter((l) => l.type === 'STORE_PART' || l.type === 'EXTERNAL_PART' || l.type === 'EXTERNAL_JOB');
   const supLines = opts.lines.filter((l) => !techLines.includes(l));
-  await page.goto(url);
+  await open(page, url);
   for (const l of techLines) await addLine(page, l);
   await as(page, 'workshop-supervisor');
-  await page.goto(url);
+  await open(page, url);
   for (const l of supLines) await addLine(page, l);
   if (opts.lines.some((l) => l.type === 'STORE_PART')) {
     await requestStoreMatching(page);
     await storeMatchesAll(page, id);
     await as(page, 'workshop-supervisor');
-    await page.goto(url);
+    await open(page, url);
   }
   await submitEstimate(page);
   await supervisorApprovesEstimate(page);
   await as(page, 'workshop-manager');
-  await page.goto(url);
+  await open(page, url);
   await managerApprovesEstimate(page);
   await as(page, 'receptionist');
-  await page.goto(url);
+  await open(page, url);
   await notifyCustomer(page);
   const number = await jobNumber(page);
   await as(page, 'finance-officer');
-  await page.goto(url);
+  await open(page, url);
   await recordPayment(page, 'SEVENTY_PERCENT');
   await expectStatus(page, 'In Progress');
   return { url, id, number };

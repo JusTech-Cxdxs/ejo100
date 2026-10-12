@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { who } from './people';
-import { as, expectNoUrlError, latestMail, uniq, visitHealthy, waitOutcome } from './helpers';
+import { as, open, expectNoUrlError, latestMail, uniq, visitHealthy, waitOutcome } from './helpers';
 import { jcForm, pickSearchable } from './workflows';
 
 /**
@@ -54,7 +54,7 @@ test('a calendar user books the room with a colleague, who is emailed', async ({
 
 test('an outside visitor is added — Security will expect them', async ({ page }) => {
   await as(page, 'calendar-user');
-  await page.goto(S.url);
+  await open(page, S.url);
   await page.getByRole('link', { name: '+ Add visitors' }).click();
   await page.waitForURL(/\/visitors\/new/);
   const form = jcForm(page, 'Add visitors');
@@ -75,7 +75,7 @@ test('an outside visitor is added — Security will expect them', async ({ page 
 
 test('the meeting is rescheduled, then cancelled', async ({ page }) => {
   await as(page, 'calendar-user');
-  await page.goto(S.url);
+  await open(page, S.url);
   await page.getByRole('link', { name: 'Change', exact: true }).first().click();
   await page.waitForURL(/\/edit/);
   const form = jcForm(page, 'Save changes');
