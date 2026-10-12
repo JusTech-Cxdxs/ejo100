@@ -1,27 +1,15 @@
 #!/usr/bin/env node
 /**
- * Automatically syncs the Prisma schema to the live database during a
- * Vercel build — this is what lets schema changes reach Neon without ever
- * requiring a manually-run terminal command.
+ * Syncs the Prisma schema to the production database during a Vercel
+ * production build, so schema changes deploy without a manual step.
  *
- * Deliberately uses `prisma db push` rather than `prisma migrate deploy`:
- * migrate deploy only APPLIES migration files that already exist in
- * prisma/migrations, and generating that first migration normally
- * requires running `prisma migrate dev` once against a real database from
- * a terminal — exactly what this project's workflow cannot do. `db push`
- * reads schema.prisma directly and reconciles the live database to match
- * it, with no pre-existing migration history required, so the whole
- * pipeline (generate -> push -> build) can run unattended on every deploy.
+ * Uses `prisma db push` rather than `prisma migrate deploy`: the project has
+ * no migration history, and db push reconciles the database with
+ * schema.prisma directly. It never uses --accept-data-loss, so anything
+ * destructive fails the deploy. Preview builds never touch the database.
  *
- * Trade-off: this does not keep a migration history. It does NOT use
- * --accept-data-loss: anything destructive fails the deploy (safe by
- * default), and only PRODUCTION deploys run it — previews never touch the
- * database. If migration history
- * ever becomes necessary, a terminal-based `prisma migrate dev` session
- * is unavoidable at that point.
- *
- * Skipped entirely outside Vercel (e.g. GitHub Actions CI) so pull-request
- * builds don't require a live DATABASE_URL secret.
+ * Skipped outside Vercel (e.g. GitHub Actions CI), so pull-request builds
+ * need no DATABASE_URL.
  */
 const { execSync } = require('child_process');
 const path = require('path');
@@ -51,9 +39,8 @@ const schemaPath = path.resolve(__dirname, '..', 'packages/database/prisma/schem
 applyPredeploySql();
 
 console.log('[db-push] Pushing Prisma schema to the database...');
-// No --accept-data-loss: a change that would drop a column or table (or
-// any data) now STOPS the deploy instead of silently deleting data. Such
-// changes are made deliberately, with a reviewed SQL script and a backup.
+// No --accept-data-loss: a change that would drop a column, table or data
+// stops the deploy. Such changes go through a reviewed SQL script and a backup.
 execSync(`npx prisma db push --schema="${schemaPath}" --skip-generate`, {
   stdio: 'inherit',
 });

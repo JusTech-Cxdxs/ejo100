@@ -12,7 +12,7 @@ const errors = [];
 const warnings = [];
 const notices = [];
 const clean = (s) => String(s ?? '').replace(/\u001b\[[0-9;]*m/g, '');
-// The first real message of a result (errors[] carries it when error is empty).
+// The first message of a result (errors[] carries it when error is empty).
 const msgOf = (r) => clean(r?.error?.message || (r?.errors ?? []).map((e) => e?.message).filter(Boolean)[0] || r?.error?.value || r?.status || '');
 // Where it failed: the spec line of the first error (not just the test's first line).
 const locOf = (r) => {

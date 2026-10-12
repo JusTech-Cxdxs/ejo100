@@ -244,8 +244,8 @@ export async function jobCardReadyForEstimate(page: Page, opts: { plate: string;
 
 /**
  * The whole estimate → approval → customer → 70% deposit path, so a spec
- * that is about something later (cancellation, parts, procurement) starts
- * from a Job Card that is genuinely In Progress.
+ * about something later (cancellation, parts, procurement) starts from a Job
+ * Card that is In Progress.
  */
 export async function jobCardInProgress(page: Page, opts: { plate: string; lines: Line[]; complaint?: string }): Promise<{ url: string; id: string; number: string }> {
   const url = await jobCardReadyForEstimate(page, opts);

@@ -1,25 +1,15 @@
 #!/usr/bin/env node
 /**
- * Render equivalent of db-push-if-vercel.js — automatically syncs the
- * Prisma schema to the live database as part of the API service's build
- * on Render, so schema changes reach Supabase Postgres without ever
- * requiring a manually-run terminal command.
+ * Render version of db-push-if-vercel.js: syncs the Prisma schema to the
+ * database during the API service's Render build. Kept separate rather than
+ * shared so each platform's script stands alone.
+ * - `prisma db push`, not `migrate deploy` (no migration history).
+ * - No `--accept-data-loss`: anything destructive stops the deploy.
  *
- * Same design as the Vercel version, mirrored rather than shared, so each
- * platform's script is self-contained and can be deleted independently
- * if that platform is ever dropped:
- * - Uses `prisma db push` (not `migrate deploy`) — no pre-existing
- *   migration history required, so the whole pipeline
- *   (generate -> push -> build) runs unattended on every deploy.
- * - NO `--accept-data-loss`: anything destructive stops the deploy instead
- *   of deleting data; pull-request previews never touch the database.
+ * Render sets RENDER=true on every service; elsewhere (local dev, GitHub
+ * Actions CI) this is a no-op, so CI needs no DATABASE_URL.
  *
- * Render sets the `RENDER` environment variable to "true" automatically
- * on every Render service — this script is a no-op anywhere that
- * variable isn't set (local dev, GitHub Actions CI), so CI never needs a
- * live DATABASE_URL secret.
- *
- * Wire this into the API service's Render "Build Command", e.g.:
+ * Render "Build Command", e.g.:
  *   npm install && npm run build --workspace=packages/database && npm run build --workspace=apps/api && node scripts/db-push-if-render.js
  */
 const { execSync } = require('child_process');
@@ -49,9 +39,8 @@ const schemaPath = path.resolve(__dirname, '..', 'packages/database/prisma/schem
 applyPredeploySql();
 
 console.log('[db-push] Pushing Prisma schema to the database...');
-// No --accept-data-loss: a change that would drop a column or table (or
-// any data) now STOPS the deploy instead of silently deleting data. Such
-// changes are made deliberately, with a reviewed SQL script and a backup.
+// No --accept-data-loss: a change that would drop a column, table or data
+// stops the deploy. Such changes go through a reviewed SQL script and a backup.
 execSync(`npx prisma db push --schema="${schemaPath}" --skip-generate`, {
   stdio: 'inherit',
 });
