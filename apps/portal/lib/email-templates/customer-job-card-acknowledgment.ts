@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details, list, sectionTitle, callout } from './layout';
 
 export type CustomerJobCardAcknowledgmentEmailOptions = {
   customerName: string;
@@ -10,74 +10,40 @@ export type CustomerJobCardAcknowledgmentEmailOptions = {
   companyName: string;
   branchName: string;
   departmentName: string;
-  /** Set when this Job Card continues a Vehicle Service that was
-   * escalated — the customer is told why, in plain words, instead of
-   * getting an unexplained second "vehicle received" email. */
+  /** Set when a routine Vehicle Service turned into this repair Job Card. */
   escalatedFromServiceNumber?: string;
 };
 
-/**
- * Sent to the customer themselves the moment a Job Card is opened for
- * their vehicle — confirms it was received, what was logged, and where
- * to track it, on the same reusable layout as every other workflow
- * email. This is a genuinely different audience than
- * supervisor-job-card-assigned.ts (which goes to staff): reassuring,
- * plain-language, and links to the customer's own portal dashboard
- * rather than the internal Job Card page.
- */
-export function renderCustomerJobCardAcknowledgmentEmail(
-  opts: CustomerJobCardAcknowledgmentEmailOptions,
-): string {
-  const { customerName, jobNumber, vehicleDescription, complaints, dashboardUrl, logoUrl, companyName, branchName, departmentName, escalatedFromServiceNumber } = opts;
-
-  const complaintsListHtml = complaints.length > 0
-    ? `<ol style="margin: 0; padding-left: 20px;">${complaints.map((c) => `<li style="margin-bottom: 4px;">${escapeHtml(c)}</li>`).join('')}</ol>`
-    : '<p style="margin: 0; color: #64748B;">No specific concerns recorded.</p>';
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
-    ${
-      escalatedFromServiceNumber
-        ? `<p style="margin: 0 0 16px 0;">
-      A quick update on your vehicle's routine service (Vehicle Service ${escapeHtml(escalatedFromServiceNumber)}): our team found work
-      that goes beyond routine maintenance, so your visit now continues as a repair Job Card. Your vehicle stays with us —
-      there's nothing you need to do. Our ${escapeHtml(departmentName)} team will prepare an estimate for your approval
-      before any repair work goes ahead, and we'll keep you updated throughout.
-    </p>`
-        : `<p style="margin: 0 0 16px 0;">
-      Thank you for bringing your vehicle to ${escapeHtml(companyName)}. We've received it and logged the
-      details below — our ${escapeHtml(departmentName)} team will begin the inspection shortly, and we'll
-      keep you updated as your service progresses.
-    </p>`
-    }
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Job Card</p>
-          <p style="margin: 0 0 16px 0; font-size: 15px; color: #0F172A; font-weight: bold;">${escapeHtml(jobNumber)}</p>
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Vehicle</p>
-          <p style="margin: 0 0 16px 0; font-size: 15px; color: #0F172A;">${escapeHtml(vehicleDescription)}</p>
-          <p style="margin: 0 0 6px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">What you told us</p>
-          <div style="font-size: 14px; color: #0F172A;">${complaintsListHtml}</div>
-        </td>
-      </tr>
-    </table>
-
-    <p style="margin: 0;">
-      You can track your vehicle's progress at any time by signing in to your account.
-    </p>
-  `;
-
+/** The customer's confirmation that the vehicle has been checked in (or that a service became a repair job). */
+export function renderCustomerJobCardAcknowledgmentEmail(o: CustomerJobCardAcknowledgmentEmailOptions): string {
+  const team = o.departmentName ? `our ${o.departmentName} team` : 'our team';
+  const escalated = Boolean(o.escalatedFromServiceNumber);
+  const bodyHtml = html`
+    ${greeting(o.customerName)}
+    ${escalated
+      ? para(`During the routine service on your ${o.vehicleDescription} (Vehicle Service ${o.escalatedFromServiceNumber}), we found work that goes beyond routine maintenance. Your visit now continues as repair Job Card ${o.jobNumber}.`)
+      : para(`Thank you for bringing your ${o.vehicleDescription} to ${o.companyName}. We have checked it in at ${o.branchName || 'the branch'}, and ${team} will start the inspection shortly.`)}
+    ${escalated ? callout(`Your vehicle stays with us. ${team.charAt(0).toUpperCase()}${team.slice(1)} will prepare an estimate, and no repair work goes ahead until you have approved it.`, 'info') : ''}
+    ${details([
+      ['Job Card', o.jobNumber],
+      ['Vehicle', o.vehicleDescription],
+      ['Branch', o.branchName],
+    ])}
+    ${sectionTitle('What you told us')}
+    ${o.complaints.length ? list(o.complaints, true) : para('No specific concerns recorded.', 'small')}
+    ${para('We will email you at each step: when the estimate is ready, when work starts and when your vehicle is ready to collect.', 'small')}`;
   return renderEmailLayout({
-    previewText: `We've received your vehicle — Job Card ${jobNumber} is now open.`,
-    companyName,
-    orgContext: [companyName, branchName, departmentName],
-    iconGlyph: '✓',
-    heading: 'We\u2019ve received your vehicle',
+    previewText: escalated
+      ? `Your service continues as repair Job Card ${o.jobNumber}. Nothing is done without your approval.`
+      : `Your ${o.vehicleDescription} is checked in under Job Card ${o.jobNumber}.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName, o.departmentName],
+    status: escalated ? { label: 'Update', tone: 'info' } : { label: 'Checked in', tone: 'success' },
+    heading: escalated ? 'Your service now continues as a repair job' : 'We have received your vehicle',
     bodyHtml,
-    ctaLabel: 'Track your service',
-    ctaUrl: dashboardUrl,
-    logoUrl,
+    ctaLabel: 'Follow progress',
+    ctaUrl: o.dashboardUrl,
+    audience: 'customer',
   });
 }

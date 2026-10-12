@@ -1,6 +1,5 @@
-import { renderEmailLayout, escapeHtml } from './layout';
-import { pluralize } from '@/lib/utils/pluralize';
-import { formatDateOnly } from '@/lib/utils/format-date';
+import { renderEmailLayout, html, greeting, para, details, sectionTitle, callout, plural, formatEmailDate } from './layout';
+import { vehicleSummaryLine, partLines, PART_REQUEST_STATUS } from './part-request-status';
 
 type VehicleInfo = {
   make: string | null;
@@ -11,25 +10,7 @@ type VehicleInfo = {
   plateNumber: string | null;
 };
 
-function vehicleSummaryLine(vehicle: VehicleInfo): string {
-  const parts = [vehicle.year, vehicle.make, vehicle.model, vehicle.engineType].filter(Boolean);
-  return parts.length > 0 ? parts.join(' ') : 'No vehicle details on file';
-}
-
-function vehicleDetailRows(vehicle: VehicleInfo): string {
-  const rows: string[] = [];
-  if (vehicle.chassisNumber) rows.push(`<p style="margin: 0 0 4px 0; font-size: 13px; color: #64748B;">VIN/Chassis: ${escapeHtml(vehicle.chassisNumber)}</p>`);
-  if (vehicle.plateNumber) rows.push(`<p style="margin: 0; font-size: 13px; color: #64748B;">Plate: ${escapeHtml(vehicle.plateNumber)}</p>`);
-  return rows.join('');
-}
-
 export type ServiceEstimatePartRequestLineInfo = { partName: string; quantity: number; baseUnitOfMeasure: string };
-
-function lineItemsList(lines: ServiceEstimatePartRequestLineInfo[]): string {
-  return lines
-    .map((l) => `<li style="margin-bottom: 4px;">${escapeHtml(l.partName)} — ${escapeHtml(pluralize(l.quantity, l.baseUnitOfMeasure))}</li>`)
-    .join('');
-}
 
 export type ServiceEstimatePartRequestApprovalNeededEmailOptions = {
   recipientName: string;
@@ -47,46 +28,31 @@ export type ServiceEstimatePartRequestApprovalNeededEmailOptions = {
   departmentName: string;
 };
 
-/**
- * The real Vehicle Service equivalent of renderPartRequestApprovalNeededEmail
- * — same real shape and reasoning, just genuinely "Vehicle Service" in its
- * own wording rather than reusing the Job Card template's own hardcoded
- * "Job Card" language, which would be a real, misleading mismatch here.
- */
-export function renderServiceEstimatePartRequestApprovalNeededEmail(opts: ServiceEstimatePartRequestApprovalNeededEmailOptions): string {
-  const { recipientName, requestedByName, referenceNumber, serviceNumber, customerName, vehicle, requestedAt, lines, approvalUrl, logoUrl, companyName, branchName, departmentName } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      ${escapeHtml(requestedByName)} raised Store Parts Request ${escapeHtml(referenceNumber)} for Vehicle Service
-      ${escapeHtml(serviceNumber)} — your approval is needed before this can move forward.
-    </p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 16px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Vehicle Service</p>
-          <p style="margin: 0 0 8px 0; font-size: 15px; color: #0F172A;">${escapeHtml(serviceNumber)} — ${escapeHtml(customerName)}</p>
-          <p style="margin: 0 0 4px 0; font-size: 13px; color: #64748B;">${escapeHtml(vehicleSummaryLine(vehicle))}</p>
-          ${vehicleDetailRows(vehicle)}
-        </td>
-      </tr>
-    </table>
-    <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748B;">${escapeHtml(pluralize(lines.length, 'Part'))} requested, on ${formatDateOnly(requestedAt)}:</p>
-    <ul style="margin: 0 0 16px 0; padding-left: 20px;">${lineItemsList(lines)}</ul>
-  `;
-
+export function renderServiceEstimatePartRequestApprovalNeededEmail(o: ServiceEstimatePartRequestApprovalNeededEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.recipientName)}
+    ${para(`${o.requestedByName} raised store parts request ${o.referenceNumber} for Vehicle Service ${o.serviceNumber}. It needs your approval before Store can reserve the parts.`)}
+    ${details([
+      ['Request', o.referenceNumber],
+      ['Vehicle Service', `${o.serviceNumber} (${o.customerName})`],
+      ['Vehicle', vehicleSummaryLine(o.vehicle)],
+      ['Plate', o.vehicle.plateNumber],
+      ['VIN / chassis', o.vehicle.chassisNumber],
+      ['Requested', `${formatEmailDate(o.requestedAt)} by ${o.requestedByName}`],
+    ])}
+    ${sectionTitle(`Parts requested (${o.lines.length})`)}
+    ${partLines(o.lines)}`;
   return renderEmailLayout({
-    previewText: `${requestedByName} raised ${referenceNumber} for ${serviceNumber} — your approval is needed.`,
-    companyName,
-    orgContext: [companyName, branchName, departmentName],
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    heading: 'Parts request needs your approval',
+    previewText: `${o.requestedByName} requested ${plural(o.lines.length, 'part')} for ${o.serviceNumber}. Your approval is needed.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName, o.departmentName],
+    status: { label: 'Approval needed', tone: 'warning' },
+    heading: `Parts request ${o.referenceNumber} needs your approval`,
     bodyHtml,
-    ctaLabel: 'Review Request',
-    ctaUrl: approvalUrl,
-    logoUrl,
+    ctaLabel: 'Review request',
+    ctaUrl: o.approvalUrl,
+    audience: 'staff',
   });
 }
 
@@ -104,69 +70,27 @@ export type ServiceEstimatePartRequestStatusEmailOptions = {
   departmentName: string;
 };
 
-const STATUS_COPY: Record<ServiceEstimatePartRequestStatusEmailOptions['kind'], { heading: string; line: string; tone: 'positive' | 'negative' | 'neutral' }> = {
-  hod_approved: {
-    heading: 'Parts request approved by HOD',
-    line: 'has been approved by the Workshop HOD and is now with Store for their own approval and stock reservation.',
-    tone: 'positive',
-  },
-  store_approved: {
-    heading: 'Parts request approved by Store',
-    line: 'has been approved by Store — the stock is now reserved and ready for release.',
-    tone: 'positive',
-  },
-  released: {
-    heading: 'Parts released',
-    line: 'has been released by Store — the real physical parts are now available for collection.',
-    tone: 'positive',
-  },
-  rejected: {
-    heading: 'Parts request rejected',
-    line: 'was rejected.',
-    tone: 'negative',
-  },
-};
-
-/**
- * The real Vehicle Service equivalent of renderPartRequestStatusEmail —
- * one shared template for every real stage, sent to both the assigned
- * technician and the supervisor.
- */
-export function renderServiceEstimatePartRequestStatusEmail(opts: ServiceEstimatePartRequestStatusEmailOptions): string {
-  const { recipientName, kind, referenceNumber, serviceNumber, customerName, rejectionReason, requestUrl, logoUrl, companyName, branchName, departmentName } = opts;
-  const copy = STATUS_COPY[kind];
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      Store Parts Request ${escapeHtml(referenceNumber)} for Vehicle Service ${escapeHtml(serviceNumber)} (${escapeHtml(customerName)}) ${copy.line}
-    </p>
-    ${
-      kind === 'rejected' && rejectionReason
-        ? `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 16px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Reason</p>
-          <p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(rejectionReason)}</p>
-        </td>
-      </tr>
-    </table>
-    `
-        : ''
-    }
-  `;
-
+export function renderServiceEstimatePartRequestStatusEmail(o: ServiceEstimatePartRequestStatusEmailOptions): string {
+  const copy = PART_REQUEST_STATUS[o.kind];
+  const bodyHtml = html`
+    ${greeting(o.recipientName)}
+    ${para(`Store parts request ${o.referenceNumber} for Vehicle Service ${o.serviceNumber} (${o.customerName}) ${copy.line}`)}
+    ${o.kind === 'rejected' && o.rejectionReason?.trim() ? callout(o.rejectionReason.trim(), 'danger', 'Reason given') : ''}
+    ${details([
+      ['Request', o.referenceNumber],
+      ['Vehicle Service', o.serviceNumber],
+      ['Customer', o.customerName],
+    ])}`;
   return renderEmailLayout({
-    previewText: `${referenceNumber} for ${serviceNumber} ${copy.line}`,
-    companyName,
-    orgContext: [companyName, branchName, departmentName],
-    iconGlyph: kind === 'rejected' ? '\u2715' : '\u2713',
-    iconTone: copy.tone,
-    heading: copy.heading,
+    previewText: `${o.referenceNumber} for ${o.serviceNumber} ${copy.line}`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName, o.departmentName],
+    status: { label: copy.label, tone: copy.tone },
+    heading: `${copy.heading}: ${o.referenceNumber}`,
     bodyHtml,
-    ctaLabel: 'View Request',
-    ctaUrl: requestUrl,
-    logoUrl,
+    ctaLabel: 'View request',
+    ctaUrl: o.requestUrl,
+    audience: 'staff',
   });
 }

@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details, highlight, callout } from './layout';
 import { ordinal } from '../utils/ordinal';
 
 export type CustomerReadyForCollectionEmailOptions = {
@@ -6,65 +6,38 @@ export type CustomerReadyForCollectionEmailOptions = {
   jobNumber: string;
   vehicleDescription: string;
   dueDate: string;
-  /** Only set when this is a repeat send (via the "send another
-   * reminder" action) — the initial "ready for collection" notice
-   * itself isn't really "a reminder" yet, so this stays undefined for
-   * that first send and the reminder-count line is skipped entirely. */
+  /** Set on reminders (1, 2, ...); omitted on the first notice. */
   reminderNumber?: number;
   dashboardUrl: string;
   logoUrl: string;
   companyName: string;
   branchName: string;
-  /** This follows a rework — say so, so the customer isn't told the same
-   * news twice as if it were new. */
   afterRework?: boolean;
 };
 
-/**
- * Fires once, the moment a Job Card's status genuinely transitions to
- * READY_FOR_COLLECTION — the real "come get it" call, a deliberate
- * step the Manager or QC department takes once everything is
- * genuinely ready, not automatic on Completed. Also reused for every
- * repeat reminder afterward, distinguished by `reminderNumber`.
- * States the real collection deadline plainly, since that's the one
- * thing a customer actually needs to act on here.
- */
-export function renderCustomerReadyForCollectionEmail(opts: CustomerReadyForCollectionEmailOptions): string {
-  const { customerName, jobNumber, vehicleDescription, dueDate, reminderNumber, dashboardUrl, logoUrl, companyName, branchName, afterRework } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      ${reminderNumber ? `This is our ${escapeHtml(ordinal(reminderNumber))} reminder that your` : 'Your'}
-      ${escapeHtml(vehicleDescription)} (Job Card ${escapeHtml(jobNumber)}) is ready for collection. You're
-      welcome to come by any time from now — there's no need to wait for the date below, it's simply the last
-      day to collect before charges may apply.
-    </p>
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #FEF3C7; border: 1px solid #FDE68A; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #B45309;">Expected Collection By</p>
-          <p style="margin: 0; font-size: 18px; color: #0F172A; font-weight: bold;">${escapeHtml(dueDate)}</p>
-          <p style="margin: 8px 0 0 0; font-size: 13px; color: #78350F;">
-            Charges may apply for any period the vehicle stays with us beyond this date.
-          </p>
-        </td>
-      </tr>
-    </table>
-    ${afterRework ? '<p style="margin: 16px 0 0 0; padding: 10px 14px; background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 10px; font-size: 13px; color: #166534;">This follows the additional work we let you know about — it is now complete.</p>' : ''}
-  `;
-
+export function renderCustomerReadyForCollectionEmail(o: CustomerReadyForCollectionEmailOptions): string {
+  const reminder = o.reminderNumber ? `${ordinal(o.reminderNumber)} reminder` : null;
+  const bodyHtml = html`
+    ${greeting(o.customerName)}
+    ${para(`${reminder ? 'A reminder that your' : 'Your'} ${o.vehicleDescription} is ready for collection at ${o.branchName || 'the branch'}. You can collect it any time from now.`)}
+    ${o.afterRework ? callout('The additional work we told you about is complete.', 'success') : ''}
+    ${highlight('Please collect by', o.dueDate, 'Storage charges may apply if the vehicle stays with us after this date.', 'warning')}
+    ${details([
+      ['Job Card', o.jobNumber],
+      ['Vehicle', o.vehicleDescription],
+      ['Reminder', reminder],
+    ])}
+    ${para('Please make sure any balance is paid before collection, and bring a form of identification. If someone else is collecting for you, let the branch know beforehand.', 'small')}`;
   return renderEmailLayout({
-    previewText: `Ready for collection — Job Card ${jobNumber}, expected collection by ${dueDate}.`,
-    companyName,
-    orgContext: [companyName, branchName],
-    iconGlyph: '✓',
-    iconTone: 'positive',
-    heading: 'Ready for collection',
+    previewText: `Your ${o.vehicleDescription} is ready. Please collect it by ${o.dueDate}.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName],
+    status: { label: 'Ready for collection', tone: 'success' },
+    heading: 'Your vehicle is ready for collection',
     bodyHtml,
-    ctaLabel: 'View in your account',
-    ctaUrl: dashboardUrl,
-    logoUrl,
+    ctaLabel: 'View in customer portal',
+    ctaUrl: o.dashboardUrl,
+    audience: 'customer',
   });
 }

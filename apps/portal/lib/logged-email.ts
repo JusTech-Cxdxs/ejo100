@@ -23,7 +23,7 @@ export async function sendLoggedEmail(opts: { entityType: string; entityId: stri
     let sent = true;
     let error: string | null = null;
     try {
-      await sendEmail(r.email, opts.subject, renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading: opts.heading, lines: opts.lines, actionUrl: `${portal}${opts.path}`, logoUrl: `${portal}/images/logo/logo.png`, companyName: branch?.businessUnit?.organisation?.name ?? 'EJO 100', branchName: branch?.name ?? '' }));
+      await sendEmail(r.email, opts.subject, renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading: opts.heading, lines: opts.lines, actionUrl: `${portal}${opts.path}`, logoUrl: `${portal}/images/logo/email-logo.png`, companyName: branch?.businessUnit?.organisation?.name ?? 'EJO 100', branchName: branch?.name ?? '' }));
     } catch (err) {
       sent = false;
       error = err instanceof Error ? err.message.slice(0, 300) : 'Unknown error';

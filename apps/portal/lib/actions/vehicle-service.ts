@@ -140,7 +140,7 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
           vehicleDescription: [vehicleFull?.make, vehicleFull?.model].filter(Boolean).join(' ') || 'Vehicle',
           reasons: complaints.map((c: (typeof complaints)[number]) => c.description),
           serviceUrl: `${portalUrl}/workshop/vehicle-service/${service.id}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -304,7 +304,7 @@ async function notifyVehicleServiceCreatorOfDecision(params: {
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     await sendEmail(
       creator.email,
-      params.decision === 'APPROVED' ? `Vehicle Service ${params.serviceNumber} approved` : `Vehicle Service ${params.serviceNumber} rejected`,
+      params.decision === 'APPROVED' ? `Vehicle Service ${params.serviceNumber} approved` : `Vehicle Service ${params.serviceNumber} returned for correction`,
       renderVehicleServiceDecisionEmail({
         decision: params.decision,
         recipientName: creator.fullName,
@@ -314,7 +314,7 @@ async function notifyVehicleServiceCreatorOfDecision(params: {
         rejectionReason: params.rejectionReason,
         notes: params.notes,
         serviceUrl: `${portalUrl}/workshop/vehicle-service/${params.serviceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -380,7 +380,7 @@ export async function assignTechnicianToVehicleService(serviceId: string, techni
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     await sendEmail(
       technician.email,
-      `You've been assigned to Vehicle Service ${service.serviceNumber}`,
+      `You are assigned to Vehicle Service ${service.serviceNumber}`,
       renderTechnicianVehicleServiceAssignedEmail({
         technicianName: technician.fullName,
         serviceNumber: service.serviceNumber,
@@ -388,7 +388,7 @@ export async function assignTechnicianToVehicleService(serviceId: string, techni
         vehicleDescription: [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         supervisorName: service.supervisor?.fullName ?? 'Supervisor',
         serviceUrl: `${portalUrl}/workshop/vehicle-service/${serviceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -442,7 +442,7 @@ async function notifySupervisorOfVehicleServiceTechnicianResponse(params: {
       service.supervisor.email,
       params.response === 'ACCEPTED'
         ? `Assignment accepted on Vehicle Service ${params.serviceNumber}`
-        : `Assignment rejected on Vehicle Service ${params.serviceNumber}`,
+        : `Assignment declined on Vehicle Service ${params.serviceNumber}`,
       renderTechnicianVehicleServiceResponseEmail({
         response: params.response,
         supervisorName: service.supervisor.fullName,
@@ -451,7 +451,7 @@ async function notifySupervisorOfVehicleServiceTechnicianResponse(params: {
         technicianName: technician?.fullName ?? 'Technician',
         rejectionReason: params.rejectionReason,
         serviceUrl: `${portalUrl}/workshop/vehicle-service/${params.serviceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -1348,13 +1348,13 @@ export async function updateVehicleServiceStatus(
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     const vehicleDescription = [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     const dashboardUrl = `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`;
-    const websiteLogoUrl = `${websiteUrl}/images/logo/logo.png`;
+    const websiteLogoUrl = `${websiteUrl}/images/logo/email-logo.png`;
     const longDate = (d: Date) => d.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' });
 
     if (newStatus === 'COMPLETED') {
       await sendEmail(
         service.customer.email,
-        `Your service is complete — Vehicle Service ${service.serviceNumber}`,
+        `Your vehicle service is complete — ${service.serviceNumber}`,
         renderCustomerServiceCompletedEmail({
           customerName: service.customer.fullName,
           serviceNumber: service.serviceNumber,
@@ -1370,7 +1370,7 @@ export async function updateVehicleServiceStatus(
     } else if (newStatus === 'READY_FOR_COLLECTION') {
       await sendEmail(
         service.customer.email,
-        `Ready for collection — Vehicle Service ${service.serviceNumber}`,
+        `Your vehicle is ready for collection — ${service.serviceNumber}`,
         renderCustomerServiceReadyForCollectionEmail({
           customerName: service.customer.fullName,
           serviceNumber: service.serviceNumber,
@@ -1386,7 +1386,7 @@ export async function updateVehicleServiceStatus(
       const collectedByName = input?.collectedByName?.trim() ?? 'the customer';
       await sendEmail(
         service.customer.email,
-        `Your vehicle has been collected — Vehicle Service ${service.serviceNumber}`,
+        `Your vehicle has been collected — ${service.serviceNumber}`,
         renderCustomerServiceCheckedOutEmail({
           customerName: service.customer.fullName,
           serviceNumber: service.serviceNumber,
@@ -1404,14 +1404,14 @@ export async function updateVehicleServiceStatus(
       for (const recipient of staff) {
         await sendEmail(
           recipient.email,
-          `Vehicle Service ${service.serviceNumber} — vehicle checked out`,
+          `Vehicle checked out — Vehicle Service ${service.serviceNumber}`,
           renderVehicleServiceCheckedOutStaffEmail({
             recipientName: recipient.fullName,
             serviceNumber: service.serviceNumber,
             customerName: service.customer.fullName,
             collectedByName,
             serviceUrl: `${portalUrl}/workshop/vehicle-service/${serviceId}`,
-            logoUrl: `${portalUrl}/images/logo/logo.png`,
+            logoUrl: `${portalUrl}/images/logo/email-logo.png`,
             companyName: orgContext.companyName,
             branchName: orgContext.branchName,
             departmentName: orgContext.departmentName,
@@ -1484,7 +1484,7 @@ export async function sendVehicleServiceCollectionReminder(serviceId: string): P
   const orgContext = await getWorkshopOrgContext(service.department?.name);
   await sendEmail(
     service.customer.email,
-    `Reminder — ready for collection, Vehicle Service ${service.serviceNumber}`,
+    `Reminder: your vehicle is ready for collection — ${service.serviceNumber}`,
     renderCustomerServiceReadyForCollectionEmail({
       customerName: service.customer.fullName,
       serviceNumber: service.serviceNumber,
@@ -1492,7 +1492,7 @@ export async function sendVehicleServiceCollectionReminder(serviceId: string): P
       dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
       reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),
@@ -1605,7 +1605,7 @@ export async function requestVehicleServiceCancellation(serviceId: string, reaso
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
-        `Cancellation requested — Vehicle Service ${service.serviceNumber}`,
+        `Cancellation request needs your decision — Vehicle Service ${service.serviceNumber}`,
         renderServiceCancellationRequestedEmail({
           managerName: manager.fullName,
           serviceNumber: service.serviceNumber,
@@ -1613,7 +1613,7 @@ export async function requestVehicleServiceCancellation(serviceId: string, reaso
           requestedByName: requester?.fullName ?? 'A team member',
           reason: trimmedReason,
           serviceUrl: `${portalUrl}/workshop/vehicle-service/${serviceId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
         }),
@@ -1723,7 +1723,7 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
           approvedByName: approver?.fullName ?? 'The manager',
           reason: request.reason,
           serviceUrl: `${portalUrl}/workshop/vehicle-service/${request.vehicleServiceId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -1739,13 +1739,13 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
     const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
     await sendEmail(
       service.customer.email,
-      `Vehicle Service ${service.serviceNumber} cancelled`,
+      `Your vehicle service ${service.serviceNumber} has been cancelled`,
       renderCustomerServiceCancelledEmail({
         customerName: service.customer.fullName,
         serviceNumber: service.serviceNumber,
         vehicleDescription: [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${request.vehicleServiceId}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
@@ -1793,7 +1793,7 @@ export async function declineVehicleServiceCancellationRequest(requestId: string
         declinedByName: decliner?.fullName ?? 'The manager',
         decisionNotes,
         serviceUrl: `${portalUrl}/workshop/vehicle-service/${request.vehicleServiceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
@@ -1863,7 +1863,7 @@ export async function sendVehicleServiceCancelledCollectionNotice(serviceId: str
   const orgContext = await getWorkshopOrgContext();
   await sendEmail(
     service.customer.email,
-    `Please arrange collection — Vehicle Service ${service.serviceNumber}`,
+    `Please collect your vehicle — ${service.serviceNumber}`,
     renderCustomerServiceCollectionOverdueEmail({
       customerName: service.customer.fullName,
       serviceNumber: service.serviceNumber,
@@ -1871,7 +1871,7 @@ export async function sendVehicleServiceCancelledCollectionNotice(serviceId: str
       daysSinceCancellationLabel: pluralize(daysElapsed, 'working day'),
       reminderNumber: reminderState.nextNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),
@@ -1946,14 +1946,14 @@ export async function requestVehicleServiceClose(serviceId: string): Promise<voi
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
-        `Close requested — Vehicle Service ${service.serviceNumber}`,
+        `Close request needs your decision — Vehicle Service ${service.serviceNumber}`,
         renderServiceCloseRequestedEmail({
           managerName: manager.fullName,
           serviceNumber: service.serviceNumber,
           customerName: service.customer.fullName,
           requestedByName: requester?.fullName ?? 'A team member',
           serviceUrl: `${portalUrl}/workshop/vehicle-service/${serviceId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
         }),
@@ -2044,13 +2044,13 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
     const vehicleDescription = [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     await sendEmail(
       service.customer.email,
-      `Vehicle Service ${service.serviceNumber} has been closed`,
+      `Your vehicle service ${service.serviceNumber} is closed`,
       renderCustomerServiceClosedEmail({
         customerName: service.customer.fullName,
         serviceNumber: service.serviceNumber,
         vehicleDescription,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${request.vehicleServiceId}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
@@ -2066,7 +2066,7 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
           customerName: service.customer.fullName,
           closedByName: approver?.fullName ?? 'The manager',
           serviceUrl: `${portalUrl}/workshop/vehicle-service/${request.vehicleServiceId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -2125,7 +2125,7 @@ export async function declineVehicleServiceCloseRequest(requestId: string, decis
         customerName: request.vehicleService.customer.fullName,
         declinedByName: decliner?.fullName ?? 'The manager',
         serviceUrl: `${portalUrl}/workshop/vehicle-service/${request.vehicleServiceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
@@ -2304,7 +2304,7 @@ export async function escalateVehicleServiceToJobCard(
       for (const r of recipients) {
         await sendEmail(
           r.email,
-          `Vehicle Service ${service.serviceNumber} escalated to Job Card ${jobCard.jobNumber}`,
+          `Vehicle Service ${service.serviceNumber} moved to Job Card ${jobCard.jobNumber}`,
           renderVehicleServiceEscalatedStaffEmail({
             recipientName: r.fullName,
             serviceNumber: service.serviceNumber,
@@ -2312,7 +2312,7 @@ export async function escalateVehicleServiceToJobCard(
             customerName: people?.customer.fullName ?? 'the customer',
             escalatedByName: escalator?.fullName ?? 'A team member',
             jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCard.id}`,
-            logoUrl: `${portalUrl}/images/logo/logo.png`,
+            logoUrl: `${portalUrl}/images/logo/email-logo.png`,
             companyName: orgContext.companyName,
             branchName: orgContext.branchName,
           }),

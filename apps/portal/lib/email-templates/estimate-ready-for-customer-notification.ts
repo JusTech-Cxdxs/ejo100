@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details } from './layout';
 
 export type EstimateReadyForCustomerNotificationEmailOptions = {
   recipientName: string;
@@ -12,48 +12,28 @@ export type EstimateReadyForCustomerNotificationEmailOptions = {
   branchName: string;
 };
 
-/**
- * Sent to whoever created the Job Card the moment the Manager approves
- * its estimate — the Manager approving is not the same as anyone
- * deciding the customer should be told. That decision belongs to this
- * person specifically: the front-desk/admin staff accountable for the
- * customer relationship, reusing JobCard.createdById rather than a
- * distinct "Admin" role that was never clearly defined. They review,
- * and only once they explicitly notify the customer does that happen.
- */
-export function renderEstimateReadyForCustomerNotificationEmail(opts: EstimateReadyForCustomerNotificationEmailOptions): string {
-  const { recipientName, jobNumber, customerName, approvedByManagerName, totalAmount, jobCardUrl, logoUrl, companyName, branchName } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      ${escapeHtml(approvedByManagerName)} has approved the estimate on Job Card ${escapeHtml(jobNumber)} for
-      ${escapeHtml(customerName)}. Please review it, and once you're satisfied everything is in order, notify
-      the customer so they can review and proceed.
-    </p>
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Job Card</p>
-          <p style="margin: 0 0 16px 0; font-size: 15px; color: #0F172A; font-weight: bold;">${escapeHtml(jobNumber)}</p>
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Total Estimate</p>
-          <p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(totalAmount)}</p>
-        </td>
-      </tr>
-    </table>
-  `;
-
+/** To whoever opened the Job Card: the manager approved the estimate, so the customer can now be told. */
+export function renderEstimateReadyForCustomerNotificationEmail(o: EstimateReadyForCustomerNotificationEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.recipientName)}
+    ${para(`${o.approvedByManagerName} approved the estimate on Job Card ${o.jobNumber} for ${o.customerName}. Please give it a final check, then send it to the customer from the Job Card.`)}
+    ${details([
+      ['Job Card', o.jobNumber],
+      ['Customer', o.customerName],
+      ['Approved by', o.approvedByManagerName],
+      ['Estimate total', o.totalAmount],
+    ])}
+    ${para('The customer receives the estimate, the deposit due and the payment details by email once you notify them.', 'small')}`;
   return renderEmailLayout({
-    previewText: `Estimate for Job Card ${jobNumber} is manager-approved — ready to notify the customer.`,
-    companyName,
-    orgContext: [companyName, branchName],
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    heading: 'Estimate approved — ready for the customer',
+    previewText: `The estimate on ${o.jobNumber} is approved and ready to send to ${o.customerName}.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName],
+    status: { label: 'Ready for the customer', tone: 'success' },
+    heading: `Estimate for ${o.jobNumber} approved by the manager`,
     bodyHtml,
     ctaLabel: 'Review and notify customer',
-    ctaUrl: jobCardUrl,
-    logoUrl,
+    ctaUrl: o.jobCardUrl,
+    audience: 'staff',
   });
 }

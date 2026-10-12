@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details, callout } from './layout';
 
 export type JobCardCancelledStaffEmailOptions = {
   recipientName: string;
@@ -13,46 +13,26 @@ export type JobCardCancelledStaffEmailOptions = {
   departmentName: string;
 };
 
-/**
- * Sent to every real staff party on a Job Card the moment a Manager
- * approves its cancellation — creator, supervisor, assigned
- * technician, and every eligible branch Manager, one send each, same
- * broadcast pattern already used for payment confirmation. Shows the
- * reason plainly, since staff are meant to see it — the customer's
- * own, separate email deliberately does not.
- */
-export function renderJobCardCancelledStaffEmail(opts: JobCardCancelledStaffEmailOptions): string {
-  const { recipientName, jobNumber, customerName, approvedByName, reason, jobCardUrl, logoUrl, companyName, branchName, departmentName } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      ${escapeHtml(approvedByName)} has approved cancellation of Job Card ${escapeHtml(jobNumber)} for
-      ${escapeHtml(customerName)}. No further work is needed on this Job Card.
-    </p>
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Job Card</p>
-          <p style="margin: 0 0 16px 0; font-size: 15px; color: #0F172A; font-weight: bold;">${escapeHtml(jobNumber)}</p>
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Reason</p>
-          <p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(reason)}</p>
-        </td>
-      </tr>
-    </table>
-  `;
-
+export function renderJobCardCancelledStaffEmail(o: JobCardCancelledStaffEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.recipientName)}
+    ${para(`${o.approvedByName} approved the cancellation of Job Card ${o.jobNumber} for ${o.customerName}. Stop any work on it; no further work is needed.`)}
+    ${details([
+      ['Job Card', o.jobNumber],
+      ['Customer', o.customerName],
+      ['Approved by', o.approvedByName],
+    ])}
+    ${o.reason?.trim() ? callout(o.reason.trim(), 'neutral', 'Reason') : ''}`;
   return renderEmailLayout({
-    previewText: `Job Card ${jobNumber} has been cancelled.`,
-    companyName,
-    orgContext: [companyName, branchName, departmentName],
-    iconGlyph: '!',
-    iconTone: 'negative',
-    heading: 'Job Card cancelled',
+    previewText: `Job Card ${o.jobNumber} for ${o.customerName} is cancelled.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName, o.departmentName],
+    status: { label: 'Cancelled', tone: 'danger' },
+    heading: `Job Card ${o.jobNumber} cancelled`,
     bodyHtml,
     ctaLabel: 'Open Job Card',
-    ctaUrl: jobCardUrl,
-    logoUrl,
+    ctaUrl: o.jobCardUrl,
+    audience: 'staff',
   });
 }

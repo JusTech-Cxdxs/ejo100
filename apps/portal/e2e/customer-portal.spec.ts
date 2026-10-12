@@ -67,7 +67,7 @@ test.describe('passwords', () => {
     await page.getByRole('button', { name: 'Send reset link' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Check your email' })).toBeVisible();
 
-    const mail = await latestMail(request, PASSWORD_CUSTOMER.email, /Set a new password for your customer portal/);
+    const mail = await latestMail(request, PASSWORD_CUSTOMER.email, /Reset your customer portal password/);
     const link = linkIn(mail.html, /\/customer-portal\/reset-password\?token=/);
     expect(link.startsWith(WEB), `the link points at the customer portal (${link})`).toBe(true);
 

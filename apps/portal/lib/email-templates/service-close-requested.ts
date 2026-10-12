@@ -1,6 +1,4 @@
-// Vehicle Service parallel of close-requested.ts — kept separate so Job Card's own
-// email is never touched (project standing rule).
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details } from './layout';
 
 export type ServiceCloseRequestedEmailOptions = {
   managerName: string;
@@ -13,34 +11,26 @@ export type ServiceCloseRequestedEmailOptions = {
   branchName: string;
 };
 
-/**
- * Sent to every eligible Workshop Manager for the branch the moment a
- * close is requested — same "notify every eligible manager, one send
- * each" pattern already used for cancellation requests. The Job
- * Card's own status is never touched at this point; this is purely
- * "someone is asking, here's why, please decide."
- */
-export function renderServiceCloseRequestedEmail(opts: ServiceCloseRequestedEmailOptions): string {
-  const { managerName, serviceNumber, customerName, requestedByName, serviceUrl, logoUrl, companyName, branchName } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(managerName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      ${escapeHtml(requestedByName)} has requested that Vehicle Service ${escapeHtml(serviceNumber)} for
-      ${escapeHtml(customerName)} be closed. Please review and approve or decline.
-    </p>
-  `;
-
+/** To each workshop manager of the branch when someone asks to close a Vehicle Service. */
+export function renderServiceCloseRequestedEmail(o: ServiceCloseRequestedEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.managerName)}
+    ${para(`${o.requestedByName} has asked to close Vehicle Service ${o.serviceNumber} for ${o.customerName}. Please review the service and approve or decline the request.`)}
+    ${details([
+      ['Vehicle Service', o.serviceNumber],
+      ['Customer', o.customerName],
+      ['Requested by', o.requestedByName],
+    ])}`;
   return renderEmailLayout({
-    previewText: `Close requested on Vehicle Service ${serviceNumber} — needs your review.`,
-    companyName,
-    orgContext: [companyName, branchName],
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    heading: 'Close requested — needs your review',
+    previewText: `${o.requestedByName} asked to close Vehicle Service ${o.serviceNumber}. Your decision is needed.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName],
+    status: { label: 'Decision needed', tone: 'warning' },
+    heading: `Close request for ${o.serviceNumber}`,
     bodyHtml,
     ctaLabel: 'Review request',
-    ctaUrl: serviceUrl,
-    logoUrl,
+    ctaUrl: o.serviceUrl,
+    audience: 'staff',
   });
 }

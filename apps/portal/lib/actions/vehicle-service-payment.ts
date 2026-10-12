@@ -217,7 +217,7 @@ export async function recordServicePayment(
           totalEstimate: formatNaira(roundedTotal),
           balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
           serviceUrl: `${portalUrl}/workshop/vehicle-service/${vehicleServiceId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -258,7 +258,7 @@ export async function recordServicePayment(
               customerName: service.customer.fullName,
               totalPaid: formatNaira(newTotal),
               serviceUrl: `${portalUrl}/workshop/vehicle-service/${vehicleServiceId}`,
-              logoUrl: `${portalUrl}/images/logo/logo.png`,
+              logoUrl: `${portalUrl}/images/logo/email-logo.png`,
               companyName: orgContext.companyName,
               branchName: orgContext.branchName,
               departmentName: orgContext.departmentName,
@@ -267,7 +267,7 @@ export async function recordServicePayment(
         } else {
           await sendEmail(
             recipient.email,
-            `Deposit requirement met on Vehicle Service ${service.serviceNumber}`,
+            `Deposit paid, work can start — Vehicle Service ${service.serviceNumber}`,
             renderServicePaymentRequirementMetEmail({
               recipientName: recipient.fullName,
               serviceNumber: service.serviceNumber,
@@ -275,7 +275,7 @@ export async function recordServicePayment(
               totalPaidSoFar: formatNaira(newTotal),
               totalEstimate: formatNaira(roundedTotal),
               serviceUrl: `${portalUrl}/workshop/vehicle-service/${vehicleServiceId}`,
-              logoUrl: `${portalUrl}/images/logo/logo.png`,
+              logoUrl: `${portalUrl}/images/logo/email-logo.png`,
               companyName: orgContext.companyName,
               branchName: orgContext.branchName,
               departmentName: orgContext.departmentName,
@@ -291,7 +291,7 @@ export async function recordServicePayment(
 
   try {
     const orgContext = await getWorkshopOrgContext(service.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
     const balance = roundedTotal - newTotal;
     await sendEmail(
       service.customer.email,
@@ -303,8 +303,8 @@ export async function recordServicePayment(
         totalPaidSoFar: formatNaira(newTotal),
         totalEstimate: formatNaira(roundedTotal),
         balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
-        serviceUrl: `${portalUrl}/workshop/vehicle-service/${vehicleServiceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        serviceUrl: `${websiteUrl}/customer-portal/dashboard#service-${vehicleServiceId}`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),

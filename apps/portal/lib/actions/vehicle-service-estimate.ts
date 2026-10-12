@@ -621,7 +621,7 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
         submittedByName: submitter?.fullName ?? 'A team member',
         totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         serviceUrl: `${portalUrl}/workshop/vehicle-service/${estimate.vehicleService.id}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -698,7 +698,7 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
-        `Estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} ready for your review`,
+        `Estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} needs your approval`,
         renderServiceEstimateReadyForManagerEmail({
           managerName: manager.fullName,
           serviceNumber: estimate.vehicleService.serviceNumber,
@@ -706,7 +706,7 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
           approvedByName: approver?.fullName ?? 'The supervisor',
           totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           vehicleServiceUrl: `${portalUrl}/workshop/vehicle-service/${estimate.vehicleService.id}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName,
           branchName,
         }),
@@ -776,7 +776,7 @@ export async function approveServiceEstimateAsManager(estimateId: string): Promi
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     await sendEmail(
       estimate.vehicleService.createdBy.email,
-      `Estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} approved by manager`,
+      `Estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} approved by manager — ready to send`,
       renderServiceEstimateReadyForCustomerNotificationEmail({
         recipientName: estimate.vehicleService.createdBy.fullName,
         serviceNumber: estimate.vehicleService.serviceNumber,
@@ -784,7 +784,7 @@ export async function approveServiceEstimateAsManager(estimateId: string): Promi
         approvedByManagerName: manager?.fullName ?? 'The manager',
         totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         vehicleServiceUrl: `${portalUrl}/workshop/vehicle-service/${estimate.vehicleService.id}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: estimate.vehicleService.branch.businessUnit.organisation.name,
         branchName: estimate.vehicleService.branch.name,
       }),
@@ -884,15 +884,16 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
     // Same real reference shape as Job Card's own: number — vehicle — plate.
     const paymentRemarkSuggestion = [estimate.vehicleService.serviceNumber, vehicleDescription, estimate.vehicleService.vehicle.plateNumber]
       .filter(Boolean)
-      .join(' — ');
+      .join(' ');
     const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
     await sendEmail(
       estimate.vehicleService.customer.email,
-      `Your estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} has been approved`,
+      `Estimate ready for ${estimate.vehicleService.serviceNumber} — ${[vehicleDescription, estimate.vehicleService.vehicle.plateNumber ? `(${estimate.vehicleService.vehicle.plateNumber})` : ''].filter(Boolean).join(' ')}`,
       renderCustomerServiceEstimateApprovedEmail({
         customerName: estimate.vehicleService.customer.fullName,
         serviceNumber: estimate.vehicleService.serviceNumber,
         vehicleDescription,
+        plateNumber: estimate.vehicleService.vehicle.plateNumber,
         lineItems: (estimate.lineItems as { description: string; quantity: unknown; amount: unknown; unitOfMeasure: string | null }[]).map((li) => ({
           description: li.description,
           quantity: Number(li.quantity),
@@ -904,10 +905,11 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
         sundrySubtotal: sundryTotal > 0 ? formatNaira(sundryTotal) : undefined,
         totalAmount: formatNaira(total),
         minimumDepositAmount: formatNaira(minimumDepositForEmail),
+        depositPercent: Math.round(MINIMUM_DEPOSIT_FRACTION * 100),
         ...(await bankDetailsFor((await prisma.vehicleService.findUnique({ where: { id: estimate.vehicleService.id }, select: { branchId: true } }))?.branchId)),
         paymentRemarkSuggestion,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${estimate.vehicleService.id}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: estimate.vehicleService.branch.businessUnit.organisation.name,
         branchName: estimate.vehicleService.branch.name,
       }),
@@ -1086,7 +1088,7 @@ async function sendServiceEstimateNudge(params: {
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     await sendEmail(
       toUser.email,
-      `A note on the estimate for Vehicle Service ${service.serviceNumber}`,
+      `Please look at the estimate — Vehicle Service ${service.serviceNumber}`,
       renderServiceEstimateNudgeEmail({
         recipientName: toUser.fullName,
         fromName: fromUser?.fullName ?? 'A team member',
@@ -1095,7 +1097,7 @@ async function sendServiceEstimateNudge(params: {
         customerName: service.customer.fullName,
         note: params.note,
         vehicleServiceUrl: `${portalUrl}/workshop/vehicle-service/${params.vehicleServiceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
@@ -1162,7 +1164,7 @@ async function sendServiceStoreMatchingCompleteNotification(
   try {
     const orgContext = await getWorkshopOrgContext();
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     const recipientIds = [service.supervisorId, service.assignedTechnicianId].filter((id): id is string => Boolean(id));
     const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
     for (const recipient of recipients) {
@@ -1259,11 +1261,11 @@ export async function requestServiceEstimateStoreMatching(vehicleServiceId: stri
     }
     const orgContext = await getWorkshopOrgContext();
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const recipient of storeRecipients.values()) {
       await sendEmail(
         recipient.email,
-        `Store matching requested — Vehicle Service ${service.serviceNumber}`,
+        `Please match parts — Vehicle Service ${service.serviceNumber}`,
         renderServiceStoreMatchingRequestedEmail({
           recipientName: recipient.fullName,
           requestedByName: requestedByUser?.fullName ?? 'A team member',
@@ -1290,7 +1292,7 @@ export async function requestServiceEstimateStoreMatching(vehicleServiceId: stri
     for (const recipient of statusRecipients) {
       await sendEmail(
         recipient.email,
-        `Store matching requested — Vehicle Service ${service.serviceNumber}`,
+        `Waiting for Store to match parts — Vehicle Service ${service.serviceNumber}`,
         renderServiceStoreMatchingStatusEmail({
           recipientName: recipient.fullName,
           kind: 'awaiting',

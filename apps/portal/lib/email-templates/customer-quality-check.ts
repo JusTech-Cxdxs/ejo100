@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details } from './layout';
 
 export type CustomerQualityCheckEmailOptions = {
   customerName: string;
@@ -10,33 +10,27 @@ export type CustomerQualityCheckEmailOptions = {
   branchName: string;
 };
 
-/**
- * Fires once, the moment a Job Card's status genuinely transitions to
- * QUALITY_CHECK — names the real activity (road testing and other
- * checks against standard), not a vague "almost done."
- */
-export function renderCustomerQualityCheckEmail(opts: CustomerQualityCheckEmailOptions): string {
-  const { customerName, jobNumber, vehicleDescription, dashboardUrl, logoUrl, companyName, branchName } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      Work on your ${escapeHtml(vehicleDescription)} (Job Card ${escapeHtml(jobNumber)}) is complete, and our
-      Quality Assurance team is now carrying out final checks — including a road test and a full inspection —
-      to confirm everything meets the standard we hold every job to before it goes back to you.
-    </p>
-  `;
-
+/** Sent once, when the work is done and the vehicle goes to quality checks. */
+export function renderCustomerQualityCheckEmail(o: CustomerQualityCheckEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.customerName)}
+    ${para(`The work on your ${o.vehicleDescription} is finished. Our quality team is now carrying out final checks, including a road test, before the vehicle is handed back to you.`)}
+    ${details([
+      ['Job Card', o.jobNumber],
+      ['Vehicle', o.vehicleDescription],
+      ['Status', 'Final quality checks'],
+    ])}
+    ${para('We will email you when the checks are complete.', 'small')}`;
   return renderEmailLayout({
-    previewText: `Quality checks underway on your vehicle — Job Card ${jobNumber}.`,
-    companyName,
-    orgContext: [companyName, branchName],
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    heading: 'Quality assurance in progress',
+    previewText: `Work on your ${o.vehicleDescription} is finished and in final quality checks.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName],
+    status: { label: 'Quality checks', tone: 'info' },
+    heading: 'Your vehicle is in final checks',
     bodyHtml,
-    ctaLabel: 'Track progress',
-    ctaUrl: dashboardUrl,
-    logoUrl,
+    ctaLabel: 'Follow progress',
+    ctaUrl: o.dashboardUrl,
+    audience: 'customer',
   });
 }

@@ -247,7 +247,7 @@ async function notifyJobCardCreatorOfDecision(params: {
         rejectionReason: params.rejectionReason,
         notes: params.notes,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${params.jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -1182,7 +1182,7 @@ export async function createJobCard(input: CreateJobCardInput) {
         vehicleDescription: [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         complaints: created.complaints.map((c: (typeof created.complaints)[number]) => c.description),
         jobCardUrl: `${portalUrl}/workshop/job-cards/${created.id}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -1205,14 +1205,14 @@ export async function createJobCard(input: CreateJobCardInput) {
       created.customer.email,
       input.escalatedFromServiceNumber
         ? `Your service continues as Job Card ${created.jobNumber}`
-        : `We've received your vehicle — Job Card ${created.jobNumber}`,
+        : `Your vehicle is checked in — Job Card ${created.jobNumber}`,
       renderCustomerJobCardAcknowledgmentEmail({
         customerName: created.customer.fullName,
         jobNumber: created.jobNumber,
         vehicleDescription: [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         complaints: created.complaints.map((c: (typeof created.complaints)[number]) => c.description),
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${created.id}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -1427,7 +1427,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
       const vehicleDescription = [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
       const dashboardUrl = `${websiteUrl}/customer-portal/dashboard#jobcard-${id}`;
-      const logoUrl = `${websiteUrl}/images/logo/logo.png`;
+      const logoUrl = `${websiteUrl}/images/logo/email-logo.png`;
       // Has this Job Card been sent back for rework before (this move not
       // counted — its own audit entry is written after these emails)?
       const reworkedBefore =
@@ -1448,19 +1448,19 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       if (status === JobCardStatus.IN_PROGRESS && isReworkTransition) {
         await sendEmail(
           jobCard.customer.email,
-          `A quick update on your vehicle — Job Card ${jobCard.jobNumber}`,
+          `An update on your vehicle — Job Card ${jobCard.jobNumber}`,
           renderCustomerJobWorkUpdateEmail({ ...shared, kind: 'REWORK' }),
         );
       } else if (status === JobCardStatus.IN_PROGRESS && priorStatus === JobCardStatus.AWAITING_PARTS) {
         await sendEmail(
           jobCard.customer.email,
-          `Work has resumed — Job Card ${jobCard.jobNumber}`,
+          `Work on your vehicle has resumed — Job Card ${jobCard.jobNumber}`,
           renderCustomerJobWorkUpdateEmail({ ...shared, kind: 'RESUMED' }),
         );
       } else if (status === JobCardStatus.IN_PROGRESS) {
         await sendEmail(
           jobCard.customer.email,
-          `Your vehicle is now in progress — Job Card ${jobCard.jobNumber}`,
+          `Work on your vehicle has started — Job Card ${jobCard.jobNumber}`,
           renderCustomerJobInProgressEmail(shared),
         );
       } else if (status === JobCardStatus.QUALITY_CHECK) {
@@ -1469,21 +1469,21 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
         if (!reworkedBefore) {
           await sendEmail(
             jobCard.customer.email,
-            `Quality assurance in progress — Job Card ${jobCard.jobNumber}`,
+            `Your vehicle is in final quality checks — Job Card ${jobCard.jobNumber}`,
             renderCustomerQualityCheckEmail(shared),
           );
         }
       } else if (status === JobCardStatus.COMPLETED) {
         await sendEmail(
           jobCard.customer.email,
-          `Quality inspection passed — Job Card ${jobCard.jobNumber}`,
+          `Your vehicle passed its quality inspection — Job Card ${jobCard.jobNumber}`,
           renderCustomerJobCompletedEmail({ ...shared, afterRework: reworkedBefore }),
         );
       } else {
         const dueDate = addWorkingDays(new Date(), READY_FOR_COLLECTION_GRACE_WORKING_DAYS);
         await sendEmail(
           jobCard.customer.email,
-          `Ready for collection — Job Card ${jobCard.jobNumber}`,
+          `Your vehicle is ready for collection — Job Card ${jobCard.jobNumber}`,
           renderCustomerReadyForCollectionEmail({
             ...shared,
             dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
@@ -1521,8 +1521,8 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       const vehicleDescription = [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
       const dashboardUrl = `${websiteUrl}/customer-portal/dashboard`;
       const jobCardUrl = `${portalUrl}/workshop/job-cards/${id}`;
-      const websiteLogoUrl = `${websiteUrl}/images/logo/logo.png`;
-      const portalLogoUrl = `${portalUrl}/images/logo/logo.png`;
+      const websiteLogoUrl = `${websiteUrl}/images/logo/email-logo.png`;
+      const portalLogoUrl = `${portalUrl}/images/logo/email-logo.png`;
       const realCollectedByName = result.collectedByName ?? collectedByName?.trim() ?? 'the customer';
 
       await sendEmail(
@@ -1555,7 +1555,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       for (const recipient of staffRecipients) {
         await sendEmail(
           recipient.email,
-          `Job Card ${jobCard.jobNumber} — vehicle checked out`,
+          `Vehicle checked out — Job Card ${jobCard.jobNumber}`,
           renderVehicleCheckedOutStaffEmail({
             recipientName: recipient.fullName,
             jobNumber: jobCard.jobNumber,
@@ -1771,7 +1771,7 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
         vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         complaints: jobCard.complaints.map((c: (typeof jobCard.complaints)[number]) => c.description),
         jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -1863,7 +1863,7 @@ export async function assignTechnician(jobCardId: string, technicianId: string) 
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     await sendEmail(
       technician.email,
-      `You've been assigned to Job Card ${jobCard.jobNumber}`,
+      `You are assigned to Job Card ${jobCard.jobNumber}`,
       renderTechnicianJobCardAssignedEmail({
         technicianName: technician.fullName,
         jobNumber: jobCard.jobNumber,
@@ -1872,7 +1872,7 @@ export async function assignTechnician(jobCardId: string, technicianId: string) 
         complaints: jobCard.complaints.map((c: (typeof jobCard.complaints)[number]) => c.description),
         supervisorName: jobCard.supervisor?.fullName ?? 'Supervisor',
         jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCard.id}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -1932,7 +1932,7 @@ async function notifySupervisorOfTechnicianResponse(params: {
       jobCard.supervisor.email,
       params.response === 'ACCEPTED'
         ? `Assignment accepted on Job Card ${params.jobNumber}`
-        : `Assignment rejected on Job Card ${params.jobNumber}`,
+        : `Assignment declined on Job Card ${params.jobNumber}`,
       renderTechnicianResponseEmail({
         response: params.response,
         supervisorName: jobCard.supervisor.fullName,
@@ -1941,7 +1941,7 @@ async function notifySupervisorOfTechnicianResponse(params: {
         technicianName: technician?.fullName ?? 'Technician',
         rejectionReason: params.rejectionReason,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${params.jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -2527,7 +2527,7 @@ async function sendEstimateNudge(params: {
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     await sendEmail(
       toUser.email,
-      `A note on the estimate for Job Card ${jobCard.jobNumber}`,
+      `Please look at the estimate — Job Card ${jobCard.jobNumber}`,
       renderEstimateNudgeEmail({
         recipientName: toUser.fullName,
         fromName: fromUser?.fullName ?? 'A team member',
@@ -2536,7 +2536,7 @@ async function sendEstimateNudge(params: {
         customerName: jobCard.customer.fullName,
         note: params.note,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${params.jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -2693,7 +2693,7 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
         submittedByName: submitter?.fullName ?? 'A team member',
         totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -2831,7 +2831,7 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
-        `Estimate for Job Card ${estimate.jobCard.jobNumber} ready for your review`,
+        `Estimate for Job Card ${estimate.jobCard.jobNumber} needs your approval`,
         renderEstimateReadyForManagerEmail({
           managerName: manager.fullName,
           jobNumber: estimate.jobCard.jobNumber,
@@ -2839,7 +2839,7 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
           approvedByName: approver?.fullName ?? 'The supervisor',
           totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName,
           branchName,
         }),
@@ -2918,7 +2918,7 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
     await sendEmail(
       estimate.jobCard.createdBy.email,
-      `Estimate for Job Card ${estimate.jobCard.jobNumber} approved by manager`,
+      `Estimate for Job Card ${estimate.jobCard.jobNumber} approved by manager — ready to send`,
       renderEstimateReadyForCustomerNotificationEmail({
         recipientName: estimate.jobCard.createdBy.fullName,
         jobNumber: estimate.jobCard.jobNumber,
@@ -2926,7 +2926,7 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
         approvedByManagerName: manager?.fullName ?? 'The manager',
         totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: estimate.jobCard.branch.businessUnit.organisation.name,
         branchName: estimate.jobCard.branch.name,
       }),
@@ -3054,17 +3054,18 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
     const vehicleDescription = [estimate.jobCard.vehicle.make, estimate.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     const paymentRemarkSuggestion = [estimate.jobCard.jobNumber, vehicleDescription, estimate.jobCard.vehicle.plateNumber]
       .filter(Boolean)
-      .join(' — ');
+      .join(' ');
 
     const rawLineItems = estimate.lineItems as { description: string; quantity: number; unitOfMeasure: string | null; amount: unknown; billTo?: string | null; coveringWarranty?: { warrantyNumber: string } | null }[];
 
     await sendEmail(
       estimate.jobCard.customer.email,
-      `Your estimate for Job Card ${estimate.jobCard.jobNumber} has been approved`,
+      `Estimate ready for ${estimate.jobCard.jobNumber} — ${[vehicleDescription, estimate.jobCard.vehicle.plateNumber ? `(${estimate.jobCard.vehicle.plateNumber})` : ''].filter(Boolean).join(' ')}`,
       renderCustomerEstimateApprovedEmail({
         customerName: estimate.jobCard.customer.fullName,
         jobNumber: estimate.jobCard.jobNumber,
         vehicleDescription,
+        plateNumber: estimate.jobCard.vehicle.plateNumber,
         lineItems: rawLineItems.map((li) => ({
           description: li.description,
           quantity: li.quantity,
@@ -3076,10 +3077,11 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
         sundrySubtotal: sundryTotal > 0 ? formatNaira(sundryTotal) : undefined,
         totalAmount: formatNaira(total),
         minimumDepositAmount: formatNaira(minimumDeposit),
+        depositPercent: Math.round(MINIMUM_DEPOSIT_FRACTION * 100),
         ...(await bankDetailsFor(estimate.jobCard.branch.id)),
         paymentRemarkSuggestion,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: estimate.jobCard.branch.businessUnit.organisation.name,
         branchName: estimate.jobCard.branch.name,
       }),
@@ -3438,7 +3440,7 @@ export async function recordPayment(
           totalEstimate: formatNaira(roundedTotal),
           balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
           jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -3486,7 +3488,7 @@ export async function recordPayment(
               customerName: jobCard.customer.fullName,
               totalPaid: formatNaira(newTotal),
               jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-              logoUrl: `${portalUrl}/images/logo/logo.png`,
+              logoUrl: `${portalUrl}/images/logo/email-logo.png`,
               companyName: orgContext.companyName,
               branchName: orgContext.branchName,
               departmentName: orgContext.departmentName,
@@ -3495,7 +3497,7 @@ export async function recordPayment(
         } else {
           await sendEmail(
             recipient.email,
-            `Deposit requirement met on Job Card ${jobCard.jobNumber}`,
+            `Deposit paid, work can start — Job Card ${jobCard.jobNumber}`,
             renderPaymentRequirementMetEmail({
               recipientName: recipient.fullName,
               jobNumber: jobCard.jobNumber,
@@ -3503,7 +3505,7 @@ export async function recordPayment(
               totalPaidSoFar: formatNaira(newTotal),
               totalEstimate: formatNaira(roundedTotal),
               jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-              logoUrl: `${portalUrl}/images/logo/logo.png`,
+              logoUrl: `${portalUrl}/images/logo/email-logo.png`,
               companyName: orgContext.companyName,
               branchName: orgContext.branchName,
               departmentName: orgContext.departmentName,
@@ -3532,7 +3534,7 @@ export async function recordPayment(
         totalEstimate: formatNaira(roundedTotal),
         balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
@@ -3642,7 +3644,7 @@ export async function requestJobCardCancellation(jobCardId: string, reason: stri
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
-        `Cancellation requested — Job Card ${jobCard.jobNumber}`,
+        `Cancellation request needs your decision — Job Card ${jobCard.jobNumber}`,
         renderCancellationRequestedEmail({
           managerName: manager.fullName,
           jobNumber: jobCard.jobNumber,
@@ -3650,7 +3652,7 @@ export async function requestJobCardCancellation(jobCardId: string, reason: stri
           requestedByName: requester?.fullName ?? 'A team member',
           reason: trimmedReason,
           jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
         }),
@@ -3776,7 +3778,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
           approvedByName: approver?.fullName ?? 'The manager',
           reason: request.reason,
           jobCardUrl: `${portalUrl}/workshop/job-cards/${request.jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -3793,13 +3795,13 @@ export async function approveCancellationRequest(requestId: string, decisionNote
     const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
     await sendEmail(
       request.jobCard.customer.email,
-      `Job Card ${request.jobCard.jobNumber} cancelled`,
+      `Your Job Card ${request.jobCard.jobNumber} has been cancelled`,
       renderCustomerJobCardCancelledEmail({
         customerName: request.jobCard.customer.fullName,
         jobNumber: request.jobCard.jobNumber,
         vehicleDescription: [request.jobCard.vehicle.make, request.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${request.jobCardId}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
@@ -3875,7 +3877,7 @@ export async function declineCancellationRequest(requestId: string, decisionNote
         declinedByName: decliner?.fullName ?? 'The manager',
         decisionNotes,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${request.jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
@@ -3972,14 +3974,14 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
-        `Close requested — Job Card ${jobCard.jobNumber}`,
+        `Close request needs your decision — Job Card ${jobCard.jobNumber}`,
         renderCloseRequestedEmail({
           managerName: manager.fullName,
           jobNumber: jobCard.jobNumber,
           customerName: jobCard.customer.fullName,
           requestedByName: requester?.fullName ?? 'A team member',
           jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
         }),
@@ -4086,13 +4088,13 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
 
     await sendEmail(
       request.jobCard.customer.email,
-      `Job Card ${request.jobCard.jobNumber} has been closed`,
+      `Your Job Card ${request.jobCard.jobNumber} is closed`,
       renderCustomerJobCardClosedEmail({
         customerName: request.jobCard.customer.fullName,
         jobNumber: request.jobCard.jobNumber,
         vehicleDescription,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
@@ -4120,7 +4122,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
           customerName: request.jobCard.customer.fullName,
           closedByName: approver?.fullName ?? 'The manager',
           jobCardUrl: `${portalUrl}/workshop/job-cards/${request.jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -4198,7 +4200,7 @@ export async function declineCloseRequest(requestId: string, decisionNotes?: str
         declinedByName: decliner?.fullName ?? 'The manager',
         decisionNotes,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${request.jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
@@ -4528,17 +4530,18 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
 
   await sendEmail(
     jobCard.customer.email,
-    `Action required — Job Card ${jobCard.jobNumber} awaiting your approval`,
+    `Reminder: your estimate is waiting — Job Card ${jobCard.jobNumber}`,
     renderCustomerApprovalReminderEmail({
       customerName: jobCard.customer.fullName,
       jobNumber: jobCard.jobNumber,
       vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
       totalEstimate: formatNaira(total),
       minimumDepositAmount: formatNaira(minimumDeposit),
-      dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+      depositPercent: Math.round(MINIMUM_DEPOSIT_FRACTION * 100),
+      dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
       reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),
@@ -4657,7 +4660,7 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
   const orgContext = await getWorkshopOrgContext();
   await sendEmail(
     jobCard.customer.email,
-    `Please arrange collection — Job Card ${jobCard.jobNumber}`,
+    `Please collect your vehicle — Job Card ${jobCard.jobNumber}`,
     renderCustomerCollectionOverdueEmail({
       customerName: jobCard.customer.fullName,
       jobNumber: jobCard.jobNumber,
@@ -4665,7 +4668,7 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
       daysSinceCancellationLabel: pluralize(daysElapsed, 'working day'),
       reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),
@@ -4724,7 +4727,7 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
 
   await sendEmail(
     jobCard.customer.email,
-    `Reminder — ready for collection, Job Card ${jobCard.jobNumber}`,
+    `Reminder: your vehicle is ready for collection — Job Card ${jobCard.jobNumber}`,
     renderCustomerReadyForCollectionEmail({
       customerName: jobCard.customer.fullName,
       jobNumber: jobCard.jobNumber,
@@ -4732,7 +4735,7 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
       dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
       reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),

@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, type EmailTone } from './layout';
 
 export type WarrantyStaffNoticeEmailOptions = {
   recipientName: string;
@@ -8,29 +8,33 @@ export type WarrantyStaffNoticeEmailOptions = {
   logoUrl: string;
   companyName: string;
   branchName: string;
+  /** The button label; defaults to "Open in EJO 100". */
+  actionLabel?: string;
+  /** A small label above the heading, e.g. "Appointment" or "Security". */
+  statusLabel?: string;
+  statusTone?: EmailTone;
 };
 
 /**
- * Internal warranty notices to staff (verifications, policy edits,
- * deletion approvals) — one clear heading, the facts as short lines, and
- * a link straight to the record. Staff-only; never sent to customers.
+ * The general staff notice: one heading, the facts as short lines, and a link
+ * to the record. Used for warranty, security, scheduling and broadcast notices.
+ * Staff only; never sent to customers.
  */
-export function renderWarrantyStaffNoticeEmail(opts: WarrantyStaffNoticeEmailOptions): string {
-  const { recipientName, heading, lines, actionUrl, logoUrl, companyName, branchName } = opts;
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
-    ${lines.map((l) => `<p style="margin: 0 0 8px 0;">${escapeHtml(l)}</p>`).join('')}
-  `;
+export function renderWarrantyStaffNoticeEmail(o: WarrantyStaffNoticeEmailOptions): string {
+  const lines = o.lines.map((l) => (l ?? '').trim()).filter(Boolean);
+  const bodyHtml = html`
+    ${greeting(o.recipientName)}
+    ${lines.map((l) => para(l))}`;
   return renderEmailLayout({
-    previewText: heading,
-    companyName,
-    orgContext: [companyName, branchName],
-    iconGlyph: '⛨',
-    iconTone: 'neutral',
-    heading,
+    previewText: lines[0] ?? o.heading,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName],
+    status: o.statusLabel ? { label: o.statusLabel, tone: o.statusTone ?? 'info' } : undefined,
+    heading: o.heading,
     bodyHtml,
-    ctaLabel: 'Open in EJO 100',
-    ctaUrl: actionUrl,
-    logoUrl,
+    ctaLabel: o.actionLabel ?? 'Open in EJO 100',
+    ctaUrl: o.actionUrl,
+    audience: 'staff',
   });
 }

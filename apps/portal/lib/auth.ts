@@ -4,6 +4,7 @@ import { prisma } from '@ejo/database';
 import { after } from 'next/server';
 import { sendEmail } from './email';
 import { renderPasswordResetEmail } from './email-templates/password-reset';
+import { renderEmailLayout, html, greeting, para } from './email-templates/layout';
 import { portalConfig } from './site-config';
 import { portalBaseUrl } from './portal-url';
 
@@ -40,19 +41,30 @@ export const auth = betterAuth({
       // The branded "set a new password" email (lib/email-templates/password-reset.ts).
       const name = (user as { fullName?: string; name?: string }).fullName ?? user.name ?? '';
       const base = portalBaseUrl();
-      const { subject, html } = renderPasswordResetEmail({ fullName: name, url, companyName: portalConfig.organisationName, logoUrl: `${base}/images/logo/logo.png` });
-      await sendEmail(user.email, subject, html);
+      const message = renderPasswordResetEmail({ fullName: name, email: user.email, url, companyName: portalConfig.organisationName, logoUrl: `${base}/images/logo/email-logo.png` });
+      await sendEmail(user.email, message.subject, message.html);
     },
   },
 
   emailVerification: {
     sendVerificationEmail: async ({ user, url }) => {
+      const base = portalBaseUrl();
+      const name = (user as { fullName?: string; name?: string }).fullName ?? user.name ?? '';
       await sendEmail(
         user.email,
-        'Verify your EJO 100 email address',
-        `<p>Hello ${escapeHtml(user.name ?? '')},</p>
-         <p>Please verify your email address to finish setting up your EJO 100 account.</p>
-         <p><a href="${url}">Verify email</a></p>`,
+        'Confirm your EJO 100 email address',
+        renderEmailLayout({
+          previewText: 'Confirm this address to finish setting up your EJO 100 account.',
+          companyName: portalConfig.organisationName,
+          logoUrl: `${base}/images/logo/email-logo.png`,
+          status: { label: 'Security', tone: 'info' },
+          heading: 'Confirm your email address',
+          bodyHtml: html`${greeting(name)}${para('Please confirm this email address to finish setting up your EJO 100 account. If you did not expect this, you can ignore the email.')}`,
+          ctaLabel: 'Confirm email address',
+          ctaUrl: url,
+          showLinkFallback: true,
+          reason: 'You are receiving this because this address was used for an EJO 100 account.',
+        }),
       );
     },
     sendOnSignUp: true,
@@ -127,8 +139,3 @@ export const auth = betterAuth({
 });
 
 export type Session = typeof auth.$Infer.Session;
-
-/** Text placed into an HTML email is always escaped (no markup injection). */
-function escapeHtml(v: string): string {
-  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}

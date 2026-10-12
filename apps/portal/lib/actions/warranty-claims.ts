@@ -52,7 +52,7 @@ async function notify(recipients: { fullName: string; email: string }[], subject
       await sendEmail(
         r.email,
         subject,
-        renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portalUrl}/warranty/claims/${claimId}`, logoUrl: `${portalUrl}/images/logo/logo.png`, companyName: orgContext.companyName, branchName: orgContext.branchName }),
+        renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portalUrl}/warranty/claims/${claimId}`, logoUrl: `${portalUrl}/images/logo/email-logo.png`, companyName: orgContext.companyName, branchName: orgContext.branchName }),
       );
     }
   } catch (err) {

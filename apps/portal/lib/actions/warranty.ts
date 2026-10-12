@@ -97,7 +97,7 @@ async function notifyStaff(recipients: { fullName: string; email: string }[], su
       await sendEmail(
         r.email,
         subject,
-        renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portalUrl}${path}`, logoUrl: `${portalUrl}/images/logo/logo.png`, companyName: orgContext.companyName, branchName: orgContext.branchName }),
+        renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portalUrl}${path}`, logoUrl: `${portalUrl}/images/logo/email-logo.png`, companyName: orgContext.companyName, branchName: orgContext.branchName }),
       );
     }
   } catch (err) {
@@ -1265,7 +1265,7 @@ export async function sendWarrantyCertificateEmail(warrantyId: string): Promise<
       notCovered: splitLines(w.exclusionsSnapshot),
       conditions: splitLines(w.conditionsSnapshot),
       isSample: w.policy.isSample,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),
@@ -1310,7 +1310,7 @@ export async function sendWarrantyExpiryReminder(warrantyId: string): Promise<vo
       daysLeft,
       reminderNumber: number,
       isFinal: state.dueStage === 3,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),

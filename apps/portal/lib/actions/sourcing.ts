@@ -35,8 +35,8 @@ import { writeAuditLog, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { renderCustomerJobWorkUpdateEmail } from '@/lib/email-templates/customer-job-work-update';
 import { requireStoreStaff, listEligibleStoreOfficersForBranch, listEligibleStoreManagersForBranch } from './store';
 import { sendEmail } from '@/lib/email';
-import { renderPartRequestApprovalNeededEmail, renderPartRequestStatusEmail } from '@/lib/email-templates/part-request-status';
-import { renderExternalProcurementApprovalNeededEmail, renderExternalProcurementStatusEmail } from '@/lib/email-templates/external-procurement-status';
+import { renderPartRequestApprovalNeededEmail, renderPartRequestStatusEmail, PART_REQUEST_STATUS } from '@/lib/email-templates/part-request-status';
+import { renderExternalProcurementApprovalNeededEmail, renderExternalProcurementStatusEmail, EXTERNAL_PROCUREMENT_STATUS } from '@/lib/email-templates/external-procurement-status';
 import { renderServiceEstimatePartRequestApprovalNeededEmail, renderServiceEstimatePartRequestStatusEmail } from '@/lib/email-templates/service-estimate-part-request-status';
 
 /** Mirrors getStoreOrgContext()/getWorkshopOrgContext() exactly, but
@@ -124,11 +124,11 @@ async function notifySupervisorAndTechnicianOfServiceEstimatePartRequestStatus(
     const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
     const orgContext = await getSourcingOrgContext(service.branchId, service.departmentName);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const recipient of recipients) {
       await sendEmail(
         recipient.email,
-        `Parts request ${kind === 'rejected' ? 'rejected' : 'update'} — ${referenceNumber}`,
+        `${PART_REQUEST_STATUS[kind].heading} — ${referenceNumber}`,
         renderServiceEstimatePartRequestStatusEmail({
           recipientName: recipient.fullName,
           kind,
@@ -167,11 +167,11 @@ async function notifyTechnicianAndSupervisorOfPartRequestStatus(
     const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
     const orgContext = await getSourcingOrgContext(jobCard.branchId, jobCard.departmentName);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const recipient of recipients) {
       await sendEmail(
         recipient.email,
-        `Parts request ${kind === 'rejected' ? 'rejected' : 'update'} — ${referenceNumber}`,
+        `${PART_REQUEST_STATUS[kind].heading} — ${referenceNumber}`,
         renderPartRequestStatusEmail({
           recipientName: recipient.fullName,
           kind,
@@ -212,11 +212,11 @@ async function notifyTechnicianAndSupervisorOfExternalProcurementStatus(
     const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
     const orgContext = await getSourcingOrgContext(jobCard.branchId, jobCard.departmentName);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const recipient of recipients) {
       await sendEmail(
         recipient.email,
-        `Procurement request ${kind === 'rejected' ? 'rejected' : 'update'} — ${referenceNumber}`,
+        `${EXTERNAL_PROCUREMENT_STATUS[kind].heading} — ${referenceNumber}`,
         renderExternalProcurementStatusEmail({
           recipientName: recipient.fullName,
           kind,
@@ -409,7 +409,7 @@ async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
           jobNumber: jobCard.jobNumber,
           vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
           dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
-          logoUrl: `${websiteUrl}/images/logo/logo.png`,
+          logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
         }),
@@ -742,7 +742,7 @@ export async function requestPartRequestSlip(jobCardId: string): Promise<{ id: s
     ]);
     const orgContext = await getSourcingOrgContext(jobCard.branchId, emailContext.departmentName);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
@@ -946,7 +946,7 @@ export async function requestServiceEstimatePartRequestSlip(serviceEstimateId: s
     ]);
     const orgContext = await getSourcingOrgContext(estimate.vehicleService.branchId, emailContext.departmentName);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
@@ -1036,7 +1036,7 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
       }
       const orgContext = await getSourcingOrgContext(slip.branchId, emailContext.departmentName);
       const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-      const logoUrl = `${portalUrl}/images/logo/logo.png`;
+      const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
       for (const recipient of storeRecipients.values()) {
         await sendEmail(
           recipient.email,
@@ -1089,7 +1089,7 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
       }
       const orgContext = await getSourcingOrgContext(slip.branchId, emailContext.departmentName);
       const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-      const logoUrl = `${portalUrl}/images/logo/logo.png`;
+      const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
       for (const recipient of storeRecipients.values()) {
         await sendEmail(
           recipient.email,
@@ -1633,11 +1633,11 @@ export async function requestExternalProcurementBatch(jobCardId: string): Promis
     ]);
     const orgContext = await getSourcingOrgContext(jobCard.branchId, emailContext.departmentName);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const officer of financeOfficers.supervisors) {
       await sendEmail(
         officer.email,
-        `Procurement request needs your review — ${referenceNumber}`,
+        `Procurement request needs your approval — ${referenceNumber}`,
         renderExternalProcurementApprovalNeededEmail({
           recipientName: officer.fullName,
           requestedByName: requestedByUser?.fullName ?? 'A team member',
@@ -1835,7 +1835,7 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
     ]);
     const orgContext = await getSourcingOrgContext(request.branchId, emailContext.departmentName);
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,

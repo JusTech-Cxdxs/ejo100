@@ -389,7 +389,7 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
     }
     const orgContext = await getStoreOrgContext();
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const recipient of recipients.values()) {
       await sendEmail(
         recipient.email,
@@ -479,7 +479,7 @@ export async function setPartTargetMargin(partId: string, targetValue: number, p
     }
     const orgContext = await getStoreOrgContext();
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     const equivalentMarkup = marginToMarkup(targetMarginPercent);
     for (const recipient of recipients.values()) {
       await sendEmail(
@@ -1020,12 +1020,12 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
     }
     const orgContext = await getStoreOrgContext();
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
 
     for (const recipient of storeRecipients.values()) {
       await sendEmail(
         recipient.email,
-        `Store matching requested — Job Card ${jobCard.jobNumber}`,
+        `Please match parts — Job Card ${jobCard.jobNumber}`,
         renderStoreMatchingRequestedEmail({
           recipientName: recipient.fullName,
           requestedByName: requestedByUser?.fullName ?? 'A team member',
@@ -1051,7 +1051,7 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
     for (const recipient of statusRecipients) {
       await sendEmail(
         recipient.email,
-        `Awaiting Store match — Job Card ${jobCard.jobNumber}`,
+        `Waiting for Store to match parts — Job Card ${jobCard.jobNumber}`,
         renderStoreMatchingStatusEmail({
           recipientName: recipient.fullName,
           kind: 'awaiting',
@@ -1110,7 +1110,7 @@ async function sendStoreMatchingCompleteNotification(
   try {
     const orgContext = await getStoreOrgContext();
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     const statusRecipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
     const statusRecipients = await prisma.user.findMany({ where: { id: { in: statusRecipientIds } }, select: { fullName: true, email: true } });
     for (const recipient of statusRecipients) {
@@ -1848,12 +1848,12 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
           serialNumbers: line.part.trackingType === 'SERIALIZED' ? (line.serialNumbers ?? []).map((s) => s.trim()).filter(Boolean) : undefined,
           notes: input.notes?.trim() || undefined,
           dashboardUrl: `${portalUrl}/inventory/parts/${line.partId}`,
-          logoUrl: `${websiteUrl}/images/logo/logo.png`,
+          logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
         });
         for (const to of recipients) {
-          await sendEmail(to, `Goods receipt recorded — ${referenceNumber}`, html);
+          await sendEmail(to, `Goods receipt ${referenceNumber} recorded — ${line.part.name}`, html);
         }
       }
     }
@@ -1880,7 +1880,7 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
         recipients.set(staffMember.id, staffMember);
       }
       const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-      const logoUrl = `${portalUrl}/images/logo/logo.png`;
+      const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
       const formatNairaForAlert = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       for (const alert of newAlertsForEmail) {
         const recommendedPrice = roundedPriceForTargetMargin(alert.newUnitCost, alert.targetMarginPercent);
@@ -1904,7 +1904,7 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
             companyName: orgContext.companyName,
             branchName: orgContext.branchName,
           });
-          await sendEmail(recipient.email, `${alert.severity === 'CRITICAL_LOSS' ? 'Critical Loss' : alert.severity === 'DEFICIT' ? 'Margin Deficit' : 'Margin Boost'} — ${alert.partName}`, html);
+          await sendEmail(recipient.email, `Pricing alert: ${alert.severity === 'CRITICAL_LOSS' ? 'selling below cost' : alert.severity === 'DEFICIT' ? 'below target margin' : 'above target margin'} — ${alert.partName}`, html);
         }
       }
     } catch (err) {
@@ -2104,7 +2104,7 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
     }
     const orgContext = await getStoreOrgContext();
     const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const recipient of recipients.values()) {
       await sendEmail(
         recipient.email,
@@ -2258,14 +2258,14 @@ async function notifyStoreOfGoodsReceiptEdit(branchId: string, editedByName: str
     for (const recipient of recipients.values()) {
       await sendEmail(
         recipient.email,
-        `Goods Receipt edited — ${referenceNumber}`,
+        `Goods receipt edited — ${referenceNumber}`,
         renderGoodsReceiptEditedEmail({
           recipientName: recipient.fullName,
           editedByName,
           referenceNumber,
           changeSummary,
           goodsReceiptUrl: `${portalUrl}/inventory/goods-receipts`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,

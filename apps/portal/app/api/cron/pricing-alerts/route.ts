@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
   const groups = await getOpenPricingAlertsForDigest();
   const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-  const logoUrl = `${portalUrl}/images/logo/logo.png`;
+  const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
 
   let emailsSent = 0;
   let emailsFailed = 0;
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
         });
         await sendEmail(
           recipient.email,
-          `Pricing Command Center — ${group.items.length} open ${group.items.length === 1 ? 'alert' : 'alerts'} at ${group.branchName}`,
+          `${group.items.length} open pricing ${group.items.length === 1 ? 'alert' : 'alerts'} at ${group.branchName}`,
           html,
         );
         emailsSent += 1;

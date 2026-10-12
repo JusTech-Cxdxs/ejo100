@@ -62,7 +62,7 @@ export async function notifyWarrantyDepartmentOfPartWarranty(opts: { partId: str
           heading,
           lines,
           actionUrl: `${portalUrl}/inventory/parts/${part.id}#warranty`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: org?.name ?? 'EJO 100',
           branchName: branch?.name ?? '',
         }),
