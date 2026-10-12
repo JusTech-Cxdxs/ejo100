@@ -1,13 +1,11 @@
 /**
- * Phase 2 seed structure — seeds only the organizational skeleton
- * (Platform Module registry + the Kewalram Nigeria hierarchy down to
- * Isolo Branch / Workshop) described in the project constitution.
- * No business data (job cards, customers, etc.) is seeded here — that
- * arrives with the Workshop module in a later phase.
+ * Seeds the platform skeleton: the module registry, the first organisation's
+ * hierarchy (down to its first branch and departments), baseline roles and
+ * the Master Administrator. No business data.
  *
  * Run with: npm run seed --workspace=packages/database
- * (requires DATABASE_URL to point at a real, migrated Postgres instance,
- * and MASTER_ADMIN_EMAIL / MASTER_ADMIN_PASSWORD to be set — see below)
+ * Requires DATABASE_URL (a migrated database) and MASTER_ADMIN_EMAIL /
+ * MASTER_ADMIN_PASSWORD (see below).
  */
 import { PrismaClient, ModuleStatus } from '@prisma/client';
 import { hashPassword } from 'better-auth/crypto';
@@ -15,17 +13,12 @@ import { hashPassword } from 'better-auth/crypto';
 const prisma = new PrismaClient();
 
 /**
- * First Master Administrator (System Owner / Super Admin) — bootstraps the
- * platform. Every future user, role, and permission is created from the
- * Portal's admin UI, not from this seed.
+ * The first Master Administrator, who bootstraps the platform. Everyone
+ * else is created from the portal.
  *
- * Deliberately NO hardcoded fallback credentials here — this repository
- * may be public, and a real password sitting in source control (even as
- * "just a default") is a genuine, standing security exposure, not a
- * style preference. MASTER_ADMIN_EMAIL and MASTER_ADMIN_PASSWORD must be
- * set explicitly in the deployment platform's environment variables
- * before running this script; it fails loudly rather than silently
- * falling back to a value anyone could read on GitHub.
+ * No fallback credentials: MASTER_ADMIN_EMAIL and MASTER_ADMIN_PASSWORD must
+ * be set in the environment, and the script fails if they are missing, so no
+ * password ever sits in source control.
  */
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -133,23 +126,17 @@ async function main() {
     create: { branchId: isoloBranch.id, name: 'Workshop', slug: 'workshop' },
   });
 
-  // The Store department — a sibling of Workshop under the same branch,
-  // not a sub-department of it, matching how the real org structure was
-  // described: Isolo Branch is the facility, Workshop and Store are two
-  // separate departments under it that happen to work closely together.
+  // Store: a sibling of Workshop under the same branch, not a sub-department.
   await prisma.department.upsert({
     where: { branchId_slug: { branchId: isoloBranch.id, slug: 'store' } },
     update: {},
     create: { branchId: isoloBranch.id, name: 'Store', slug: 'store' },
   });
 
-  // Two operational Workshop departments — Passenger vs Commercial — each
-  // with its own HOD/Supervisor and specialists. Added alongside the
-  // original single "workshop" department above, not replacing it:
-  // getWorkshopBranchId() still resolves the branch via that original
-  // row, so nothing that already depends on it breaks. These two are
-  // where actual Job Cards route to going forward, based on the
-  // vehicle's Passenger/Commercial type.
+  // The two operational Workshop departments (Passenger and Commercial), each
+  // with its own supervisor. Job Cards route to one of them by vehicle type.
+  // The original "workshop" department stays: getWorkshopBranchId() resolves
+  // the branch through it.
   const [passengerWorkshop, commercialWorkshop] = await Promise.all([
     prisma.department.upsert({
       where: { branchId_slug: { branchId: isoloBranch.id, slug: 'workshop-passenger' } },
@@ -176,10 +163,8 @@ async function main() {
   }
 
   // --- Master Administrator (bootstrap account) -----------------------------
-  // isSuperAdmin bypasses PermissionsGuard entirely (see
-  // apps/api/src/common/guards/permissions.guard.ts) — this role has
-  // unrestricted access to every current and future module without
-  // needing an explicit RolePermission row per permission.
+  // isSuperAdmin bypasses permission checks entirely: every current and future
+  // permission without RolePermission rows.
   const superAdminRole = await prisma.role.upsert({
     where: { organisationId_slug: { organisationId: organisation.id, slug: 'master-administrator' } },
     update: { isSuperAdmin: true, isSystem: true },
@@ -212,14 +197,9 @@ async function main() {
     create: { userId: masterAdminUser.id, roleId: superAdminRole.id },
   });
 
-  // Better Auth's own credential provider row — hashed with Better Auth's
-  // own hashPassword() so it verifies correctly through the existing
-  // /login page (apps/portal/lib/auth.ts) with no special-case login path.
-  //
-  // Update-or-create (not "only create if entirely missing") so re-running
-  // this seed — e.g. after rotating MASTER_ADMIN_PASSWORD — always keeps
-  // the stored hash in sync with whatever the environment variable
-  // currently says, rather than silently doing nothing on a second run.
+  // Better Auth credential row, hashed with Better Auth's hashPassword() so the
+  // normal /login page verifies it. Update-or-create, so re-running the seed
+  // after rotating MASTER_ADMIN_PASSWORD updates the stored hash.
   const existingAccount = await prisma.account.findFirst({
     where: { userId: masterAdminUser.id, providerId: 'credential' },
   });

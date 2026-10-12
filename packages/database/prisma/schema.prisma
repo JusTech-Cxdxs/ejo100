@@ -1,11 +1,5 @@
 // ============================================================================
-// EJO 100 ENTERPRISE PLATFORM — CORE DATABASE SCHEMA
-// Phase 1: organization hierarchy, module registry, branding config.
-// Phase 2 (added below, Phase 1 models untouched): Better Auth tables,
-// Employee/Customer identity separation, RBAC join tables.
-//
-// Still NO business-logic modules (Workshop, Inventory, Finance, etc.) —
-// those arrive in later phases per the project's incremental build rule.
+// EJO 100 — core database schema
 // ============================================================================
 
 generator client {
@@ -19,9 +13,8 @@ datasource db {
 }
 
 // ----------------------------------------------------------------------------
-// MODULE REGISTRY — powers the "every route exists, only some are live" rule.
-// The sidebar / router in apps/portal reads this instead of hardcoding which
-// modules are active, so activating a module later is configuration only.
+// MODULE REGISTRY: which modules are live. The portal's sidebar and router
+// read this, so activating a module is configuration only.
 // ----------------------------------------------------------------------------
 enum ModuleStatus {
   LIVE
@@ -45,8 +38,8 @@ model PlatformModule {
   @@map("platform_modules")
 }
 
-// Per-organisation override of a module's status (a module can be COMING_SOON
-// platform-wide but LIVE for one organisation once that organisation's build lands).
+// Per-organisation override of a module's status (e.g. COMING_SOON platform-wide
+// but LIVE for one organisation).
 model OrganisationModule {
   id        String       @id @default(cuid())
   organisationId String
@@ -60,9 +53,8 @@ model OrganisationModule {
 }
 
 // ----------------------------------------------------------------------------
-// BRANDING — the dynamic branding engine. One row per organisation; every UI
-// surface (portal, PDF templates, emails) reads colours from here instead of
-// hardcoding them. Public website branding is also sourced from this model.
+// BRANDING: one row per organisation; the portal, PDFs and emails read their
+// colours from here.
 // ----------------------------------------------------------------------------
 model Branding {
   id              String   @id @default(cuid())
@@ -73,7 +65,7 @@ model Branding {
   logoDarkUrl     String?
   faviconUrl      String?
 
-  primaryColor    String   @default("#16A34A") // Kewalram default: green
+  primaryColor    String   @default("#16A34A") // brand green
   secondaryColor  String   @default("#0F172A")
   accentColor     String   @default("#22C55E")
   successColor    String   @default("#16A34A")
@@ -90,11 +82,10 @@ model Branding {
 }
 
 // ----------------------------------------------------------------------------
-// ORGANIZATION HIERARCHY
+// ORGANISATION HIERARCHY
 // Platform -> Organisation -> Business Unit -> Country -> State -> City -> Branch
 //   -> Department -> Team -> User
-// Every level is a normal configurable record — nothing here is hardcoded
-// to Kewalram; Kewalram Nigeria is simply the first row seeded into it.
+// Every level is ordinary data; nothing is specific to one organisation.
 // ----------------------------------------------------------------------------
 
 model Organisation {
@@ -103,28 +94,16 @@ model Organisation {
   slug        String   @unique
   legalName   String?
   website     String?
-  // Real, printed contact and registration details — the exact
-  // information a genuine organisation letterhead or receipt carries, so
-  // a real printable document never has to fall back to placeholder
-  // text. All optional: filled in as the real business actually
-  // provides them, never invented.
-  //
-  // A real business commonly has more than one real hotline — a
-  // native Postgres string array (not a separate table) is the
-  // right shape here: every entry is just the same one real kind of
-  // fact (a phone number), with no extra metadata worth its own
-  // table, printed in the order they're kept in.
+  // Contact and registration details printed on letterheads and receipts.
+  // All optional. Hotlines are a string array, printed in order.
   hotlines    String[] @default([])
   hqAddress   String?
   poBox       String?
   rcNumber    String?
   email       String?
-  // The organisation's own configured Primary Service policy — the
-  // real "whichever comes first" rule Vehicle Service's own
-  // next-service prediction is anchored to. Both nullable: until the
-  // business actually sets a real interval, no prediction can
-  // honestly be made, and that's the correct state to show, not a
-  // fabricated default.
+  // Primary Service interval ("whichever comes first"), the basis for
+  // next-service predictions. Null until the organisation sets it; no
+  // prediction is made without it.
   primaryServiceIntervalKm   Int?
   primaryServiceIntervalDays Int?
   isActive    Boolean  @default(true)
@@ -214,12 +193,8 @@ model Branch {
   name           String   // e.g. "Isolo Branch"
   code           String?  // short code used in document numbering, e.g. "KWL-WS"
   address        String?
-  // A branch's own real contact hotlines — genuinely different from
-  // the Organisation's own general lines (confirmed directly from a
-  // real Kewalram Job Card: the VI head office and the Isolo Workshop
-  // print two entirely separate hotline blocks on the same document).
-  // Same real string-array shape as Organisation.hotlines, for the
-  // same reason: a branch commonly has more than one real line.
+  // The branch's own hotlines, printed separately from the organisation's
+  // (e.g. head office and a workshop branch on the same Job Card).
   hotlines       String[] @default([])
   email          String?
   // The branch's own bank account for customer deposits and payments —
@@ -291,20 +266,14 @@ model Team {
 
 // ----------------------------------------------------------------------------
 // IDENTITY & ACCESS
-// User = employees and platform administrators only. Customers are a
-// separate model (see CUSTOMER section below) so an employee account can
-// never satisfy a customer-dashboard query and vice versa, per the Phase 2
-// requirement that the two account types stay fully isolated even though
-// they share one Better Auth backend and one database.
+// User = employees and platform administrators only. Customers are a separate
+// model (CUSTOMER section below), so a staff account can never satisfy a
+// customer query, or the reverse.
 //
-// Session / Account / Verification below follow Better Auth's standard
-// adapter schema (https://www.better-auth.com) — field names and shapes
-// are dictated by that library, not invented here. Better Auth is
-// configured with two-model support (see apps/portal/lib/auth.ts) mapping
-// User -> "user" and Customer -> a second identity table via its
-// multi-session/organization-free plugin approach; both write into these
-// same Session/Account/Verification tables, discriminated by which foreign
-// key (userId vs customerId) is populated.
+// Session / Account / Verification follow Better Auth's adapter schema
+// (https://www.better-auth.com); field names are set by that library.
+// Customers have their own tables (CustomerSession, CustomerAccount,
+// CustomerVerification) used by the website's separate auth instance.
 // ----------------------------------------------------------------------------
 
 enum AccountType {
@@ -314,10 +283,8 @@ enum AccountType {
 
 model User {
   id            String      @id @default(cuid())
-  // Nullable: Better Auth creates this row on signup before an
-  // administrator has necessarily assigned org placement (see
-  // apps/portal/lib/auth.ts). A user with no organisationId yet is invisible
-  // everywhere except account settings until an admin assigns one.
+  // Nullable: an account may exist before an administrator places it in an
+  // organisation. Such a user sees nothing beyond their own account settings.
   organisationId     String?
   branchId      String?
   departmentId  String?
@@ -401,7 +368,6 @@ model User {
   externalProcurementRetired          ExternalProcurementRequest[] @relation("ExternalProcurementRetiredBy")
   externalProcurementSupplementaryLinesAdded ExternalProcurementSupplementaryLine[] @relation("ExternalProcurementSupplementaryLineAddedBy")
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([organisationId])
   @@index([branchId])
   @@map("users")
@@ -469,8 +435,7 @@ model User {
   notificationPreference NotificationPreference? @relation("NotificationPreference")
 }
 
-// One-to-one HR extension of User. Kept separate per the Phase 1 note so
-// the core identity table stays lean; HR-specific fields live here.
+// One-to-one HR extension of User, keeping the identity table small.
 model EmployeeProfile {
   id     String @id @default(cuid())
   userId String @unique
@@ -483,8 +448,7 @@ model EmployeeProfile {
   dateEmployed     DateTime?
   reportingManagerId String?
 
-  // Emergency contact (kept inline — single contact per employee is enough
-  // for Phase 2; promote to its own model if multiple contacts are needed)
+  // Emergency contact (one per employee).
   emergencyContactName         String?
   emergencyContactRelationship String?
   emergencyContactPhone        String?
@@ -521,11 +485,9 @@ model Role {
   slug        String
   description String?
   isSystem    Boolean  @default(false) // true for built-in roles that can't be deleted
-  // Bypasses PermissionsGuard entirely (see apps/api/src/common/guards/
-  // permissions.guard.ts) — grants every current AND future permission
-  // without needing a RolePermission row per permission. Reserved for the
-  // bootstrap Master Administrator / platform-owner role; do not grant
-  // this to ordinary admin roles.
+  // Bypasses permission checks entirely: every current and future permission
+  // without RolePermission rows. Only for the platform's Master Administrator
+  // role; never grant it to organisation roles.
   isSuperAdmin Boolean @default(false)
 
   organisation Organisation          @relation(fields: [organisationId], references: [id], onDelete: Cascade)
@@ -554,7 +516,6 @@ model UserRole {
   role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roleId])
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([roleId])
   @@map("user_roles")
 }
@@ -571,19 +532,14 @@ model RolePermission {
 }
 
 // ----------------------------------------------------------------------------
-// CUSTOMER IDENTITY — deliberately separate from User (employees/admins).
-// Same Better Auth backend and database per Phase 2 requirements, but a
-// customer session can never resolve to a User row, so a customer account
-// structurally cannot reach an employee-only route.
+// CUSTOMER IDENTITY: separate from User (employees). A customer session can
+// never resolve to a User row, so a customer account cannot reach a staff
+// route.
 // ----------------------------------------------------------------------------
 
-// Whether a customer is an individual person or a registered organisation —
-// real evidence for this distinction: an actual Kewalram paper estimate
-// form shows a organisation customer ("F Trading Nig. Ltd.") alongside
-// individual customers. `fullName` on Customer below covers either case
-// as a single display name (a person's full name, or a organisation's name)
-// — kept as one field rather than split into separate person/organisation
-// name fields, since that's what the paper form itself does.
+// Individual or organisation (e.g. a trading company). `fullName` on
+// Customer holds either a person's or an organisation's name, as on the
+// paper estimate form.
 enum CustomerType {
   INDIVIDUAL
   ORGANIZATION
@@ -591,25 +547,20 @@ enum CustomerType {
 
 model Customer {
   id            String       @id @default(cuid())
-  organisationId     String       // which organisation this customer belongs to (Kewalram, etc.)
+  organisationId     String       // which organisation this customer belongs to
 
   customerType  CustomerType @default(INDIVIDUAL)
   fullName      String
-  // Deliberately a single short line, not the separate, multi-field
-  // CustomerAddress model below (label/line1/line2/city/state/country)
-  // — that model is scaffolded for a fuller multi-address system this
-  // project doesn't need yet. What's actually needed here is simpler:
-  // one short address shown directly on the Job Card, kept brief on
-  // purpose (like a VIN) so it never stretches that layout — enforced
-  // with a UI character limit, not just a hint.
+  // Primary address: one short line printed on the Job Card (max 80 characters,
+  // enforced in the app). Extra addresses go in CustomerAddress.
   address       String?
   email         String       @unique
   emailVerified Boolean      @default(false)
   image         String?
   phone         String?
-  // v28 CRM — a second number (optional). The primary address and phone are
-  // required for every customer registered from v28 on (enforced in the app;
-  // older records may still be missing them and are flagged in the CRM).
+  // v28 CRM: an optional second number. Primary address and phone are
+  // required for customers registered from v28 (enforced in the app; older
+  // records may lack them and are flagged in the CRM).
   altPhone      String?
   // Free labels the organisation uses to group customers ("Fleet", "VIP").
   tags          String[] @default([])
@@ -619,9 +570,7 @@ model Customer {
   isActive      Boolean  @default(true)
   lastLoginAt   DateTime?
 
-  // Nullable: a customer registered by Workshop staff has a real creator;
-  // a customer who self-registers through the public portal in a future
-  // phase would not, so this can't be a required field.
+  // Nullable: customers who sign themselves up have no staff creator.
   createdById   String?
   createdBy     User?    @relation("CustomerCreatedBy", fields: [createdById], references: [id])
 
@@ -639,7 +588,6 @@ model Customer {
   jobCards        JobCard[]
   vehicleServices VehicleService[]
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([organisationId])
   @@map("customers")
   warranties      Warranty[]
@@ -648,8 +596,7 @@ model Customer {
   notificationReads CustomerNotificationRead[]
 }
 
-// Optional: when the customer is a business (fleet account) rather than
-// an individual — e.g. a organisation that brings multiple vehicles in.
+// Optional company details when the customer is a business (fleet account).
 model CustomerCompany {
   id         String   @id @default(cuid())
   customerId String   @unique
@@ -670,27 +617,16 @@ model CustomerVehicle {
   model        String?
   vehicleType  VehicleCategory? // Passenger vs Commercial — the Workshop's two operational sections
   year         Int?
-  plateNumber  String?  @unique // no two vehicles may share a plate — this is what caused the visible duplicate-vehicle bug: nothing stopped a second/third accidental submit from creating another row for the same real vehicle
+  plateNumber  String?  @unique // no two vehicles may share a plate
   chassisNumber String? @unique // VIN — globally unique per vehicle by definition
   engineNumber String?
-  // The engine's own real-world spec/type (e.g. "ISF2.8", "4HK1") — the
-  // actual compatibility key for parts fitment, deliberately distinct
-  // from engineNumber above (the physical engine's own serial number,
-  // a different concept entirely — the same distinction as a VIN vs.
-  // a model name). Confirmed via real research: two vehicles sharing
-  // a model name can have different engines (Tunland Petrol vs.
-  // Diesel variants), while two different models can share the exact
-  // same engine and be fully interchangeable for parts (Isuzu NPR and
-  // NQR both on the 4HK1) — engine, not model name, is what actually
-  // determines whether a part fits.
+  // Engine type (e.g. "ISF2.8", "4HK1"), the key for parts fitment. Not the
+  // engine serial number (engineNumber). One model name can have different
+  // engines, and different models can share one.
   engineType   String?
   mileage       Int?     // last known odometer reading, updated at each Job Card check-in
-  // This specific vehicle's own real service interval — overrides the
-  // organisation's own default (Organisation.primaryServiceIntervalKm/
-  // Days) only when actually set, since different real vehicles
-  // genuinely have different manufacturer-recommended intervals. Both
-  // null means "use the organisation's own default", never a
-  // fabricated per-vehicle number nobody actually provided.
+  // The vehicle's own service interval, overriding the organisation's
+  // default (Organisation.primaryServiceIntervalKm/Days) when set.
   serviceIntervalKm   Int?
   serviceIntervalDays Int?
 
@@ -702,7 +638,6 @@ model CustomerVehicle {
   vehicleServices VehicleService[]
   reminderLogs ServiceReminderLog[]
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([customerId])
   @@map("customer_vehicles")
   warranties Warranty[]
@@ -723,10 +658,7 @@ enum VehicleInspectionStatus {
   SKIPPED
 }
 
-// Deliberately just 4 levels, matching the same real visual language
-// Service Health already uses (Good/Attention/Overdue-style) — one
-// consistent vocabulary across the whole Vehicle Service module,
-// not a second competing scale for inspection items specifically.
+// Four levels, the same vocabulary as Service Health.
 enum InspectionSeverity {
   GOOD
   ATTENTION
@@ -735,12 +667,7 @@ enum InspectionSeverity {
 }
 
 // ----------------------------------------------------------------------------
-// WORKSHOP — Phase 3. The first fully operational business module (per the
-// project's phased build plan). Deliberately minimal for this pass: only
-// the fields the current UI actually reads/writes are here. Estimate,
-// Invoice, Part, and TechnicianAssignment are intentionally NOT modeled
-// yet — they attach to JobCard in a later phase without requiring a
-// redesign of this model, per the "don't build every module now" rule.
+// WORKSHOP
 // ----------------------------------------------------------------------------
 
 enum JobCardStatus {
@@ -748,38 +675,29 @@ enum JobCardStatus {
   IN_PROGRESS
   AWAITING_PARTS
   QUALITY_CHECK
-  // The workshop's own process is done and the estimate has been sent
-  // to the customer — set the moment notifyCustomerOfApprovedEstimate
-  // runs, not a separate manual step. Sits between the workshop's own
-  // work and payment: nothing proceeds until the customer pays (or,
-  // in a later phase, explicitly cancels).
+  // The approved estimate has been sent to the customer (set by
+  // notifyCustomerOfApprovedEstimate). Work waits for the deposit.
   AWAITING_CUSTOMER_APPROVAL
   COMPLETED
   READY_FOR_COLLECTION
   CLOSED
-  // The vehicle has physically left the workshop — the true "gate
-  // exit" moment, distinct from CLOSED above (which only means the
-  // job itself is administratively signed off; the vehicle can still
-  // be sitting in the yard at that point). Reachable two ways: the
-  // normal path (CLOSED, once collected and confirmed) or directly
-  // from CANCELLED once an uncollected, dead Job Card's vehicle is
-  // finally taken away — no other status is reachable from CANCELLED.
+  // The vehicle has left the workshop. Distinct from CLOSED, which is an
+  // administrative sign-off while the vehicle may still be in the yard.
+  // Reached from CLOSED, or from CANCELLED when the vehicle is handed back
+  // (the only move out of CANCELLED).
   CHECKED_OUT
   CANCELLED
 }
 
-// A separate dimension from JobCardStatus above — see the field comment
-// on JobCard.approvalStatus for why these aren't combined into one enum.
+// Separate from JobCardStatus; see JobCard.approvalStatus.
 enum JobCardApprovalStatus {
   PENDING
   APPROVED
   REJECTED
 }
 
-// Whether an assigned technician has agreed to take on the work —
-// mirrors JobCardApprovalStatus's shape deliberately, same underlying
-// idea (a real person's explicit response, not inferred from anything
-// else) applied to a different actor at a different point in the flow.
+// Whether the assigned technician has accepted the work. Same shape as
+// JobCardApprovalStatus.
 enum TechnicianAcceptanceStatus {
   PENDING
   ACCEPTED
@@ -792,12 +710,9 @@ model JobCard {
   branchId    String
   customerId  String
   vehicleId   String
-  // Which of the two Workshop departments (Passenger / Commercial) owns
-  // this Job Card — auto-resolved at creation from vehicle.vehicleType,
-  // never chosen manually. Nullable so every Job Card created before this
-  // field existed keeps working unchanged; it simply won't appear in a
-  // department-scoped HOD queue (a later phase), which is an honest,
-  // disclosed limit for old data rather than something silently broken.
+  // Passenger or Commercial Workshop department, derived from
+  // vehicle.vehicleType at creation. Nullable for Job Cards created before
+  // the field existed.
   departmentId String?
 
   complaint   String?       // legacy single-field complaint, kept for Job Cards created before per-item complaints existed — new Job Cards use `complaints` below instead
@@ -805,36 +720,23 @@ model JobCard {
   mileageAtCheckIn Int?
 
   assignedTechnicianId String? // User.id — nullable until a technician is assigned
-  // Whether the assigned technician has accepted the work — a separate
-  // dimension from `status`/`approvalStatus` above, same principle:
-  // being assigned isn't the same as having agreed to do it. Nullable
-  // specifically because there's a real "no technician assigned yet"
-  // state that isn't the same as "assigned but hasn't responded" — set
-  // to PENDING the moment assignTechnician() runs, cleared back to null
-  // if reassigned to someone else (their predecessor's accept/reject
-  // has no bearing on a different person's assignment).
+  // Separate from status/approvalStatus: being assigned is not the same as
+  // accepting. Null when no technician is assigned; PENDING when assigned;
+  // cleared on reassignment.
   technicianAcceptanceStatus   TechnicianAcceptanceStatus?
   technicianRespondedAt       DateTime?
   technicianRejectionReason   String? // required when the technician rejects, mirrors JobCard.rejectionReason's role for approval
-  // The Workshop Supervisor/HOD of the resolved department, chosen by
-  // whoever creates the Job Card from a list already filtered to that
-  // department — this is the "first assignment always goes to the right
-  // department's HOD" rule, enforced at the data layer (createJobCard
-  // validates the chosen supervisor actually belongs to the resolved
-  // department, not just trusting client input).
+  // The Workshop Supervisor of the resolved department. createJobCard checks
+  // the chosen supervisor belongs to that department.
   supervisorId String?
   createdById String        // User.id — staff member who opened this Job Card
 
   status      JobCardStatus @default(CHECKED_IN)
   notes       String?
 
-  // Approval is deliberately a SEPARATE dimension from `status` above,
-  // not a value within it — a Job Card can be `CHECKED_IN` in status
-  // while simultaneously `PENDING` in approval; these answer two
-  // different questions ("where is it in the physical workflow" vs
-  // "has the supervisor signed off on it") and shouldn't be forced into
-  // one field. This is the explicit approval tracking asked for: never
-  // inferred from status alone.
+  // Separate from status: a Job Card can be CHECKED_IN and PENDING approval at
+  // once. Status is where the vehicle is in the workflow; approval is whether
+  // the supervisor has signed off.
   approvalStatus   JobCardApprovalStatus @default(PENDING)
   approvedById     String?   // User.id — who approved or rejected it
   approvedAt       DateTime? // when the current approvalStatus was set
@@ -842,42 +744,20 @@ model JobCard {
   approvalNotes    String?   // optional longer commentary, on either an approval or a rejection
 
   closedAt    DateTime?
-  // Set the moment status genuinely transitions to READY_FOR_COLLECTION
-  // — the anchor for that status's own collection-grace deadline
-  // (READY_FOR_COLLECTION_GRACE_WORKING_DAYS), the same pattern as
-  // Estimate.customerNotifiedAt and CancellationRequest.decidedAt
-  // anchoring their own deadlines. Nullable and safe on the existing
-  // populated table: no default needed, since every row that predates
-  // this field genuinely never reached this status under it.
+  // Set on entering READY_FOR_COLLECTION; anchors the collection grace period
+  // (READY_FOR_COLLECTION_GRACE_WORKING_DAYS).
   readyForCollectionAt DateTime?
-  // Set the first time status genuinely reaches IN_PROGRESS — the
-  // real start of technical work, distinct from CHECKED_IN (which
-  // only means the vehicle has arrived and is being inspected/
-  // estimated, not yet worked on). Never overwritten on a later
-  // return to IN_PROGRESS (e.g. after AWAITING_PARTS resolves) — this
-  // marks when work genuinely began, not every moment it resumed.
+  // First time the Job Card reaches IN_PROGRESS (start of work). Not
+  // overwritten when work resumes after AWAITING_PARTS.
   workStartedAt DateTime?
-  // Set the first time status genuinely reaches COMPLETED — paired
-  // with workStartedAt to measure actual repair duration specifically
-  // (technician's own turnaround), deliberately distinct from the
-  // later, separate Ready for Collection step, since collection
-  // timing is a logistics/customer factor, not a reflection of how
-  // long the technical work itself took.
+  // First time the Job Card reaches COMPLETED. With workStartedAt, measures
+  // repair time, excluding the wait for collection.
   completedAt DateTime?
-  // Set the first time status genuinely reaches CHECKED_OUT — the
-  // true physical-exit moment. This, not closedAt (an administrative
-  // sign-off that can happen while the vehicle is still sitting in
-  // the yard), is the real end of "time in custody": the vehicle can
-  // be CLOSED and still physically present for a while before this is
-  // set.
+  // First time the Job Card reaches CHECKED_OUT: the vehicle left. This, not
+  // closedAt, ends time in custody.
   checkedOutAt DateTime?
-  // Exactly who physically walked out with the vehicle — the same
-  // real "who actually collected this" question PartRequestSlip's own
-  // receivedByName/receivedByUserId already answer for a parts
-  // release, now answered here too. A free-text name (the customer
-  // themselves, or an agent they sent) since whoever collects a
-  // vehicle very often has no real account in this system at all —
-  // never required to be a real User.
+  // Name of whoever collected the vehicle (the customer or someone they
+  // sent). Free text: collectors usually have no account.
   collectedByName String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -898,12 +778,9 @@ model JobCard {
   closeRequests        CloseRequest[]
   partRequestSlips     PartRequestSlip[]
   externalProcurementRequests ExternalProcurementRequest[]
-  // The real, reciprocal side of VehicleService.escalatedToJobCard —
-  // lets this Job Card's own page show plainly "this started life as
-  // a Vehicle Service visit" when that's genuinely true, never hidden.
+  // Reverse side of VehicleService.escalatedToJobCard.
   escalatedFromVehicleService VehicleService? @relation("VehicleServiceEscalatedJobCard")
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([branchId, status])
   @@index([branchId, createdAt])
   @@index([customerId])
@@ -917,12 +794,8 @@ model JobCard {
   roadTestPermits RoadTestPermit[]
 }
 
-// One row per distinct reported issue on a Job Card — e.g. "Fan not
-// working" and "AC not working" as two separate, numbered entries,
-// rather than one free-text paragraph mixing multiple complaints
-// together. `sequenceNumber` preserves the order they were entered in
-// (the order the customer/staff actually listed them), independent of
-// database insertion order.
+// One row per reported issue on a Job Card (e.g. "Fan not working",
+// "AC not working"). `sequenceNumber` keeps the order they were listed in.
 model JobCardComplaint {
   id             String   @id @default(cuid())
   jobCardId      String
@@ -934,28 +807,12 @@ model JobCardComplaint {
   @@map("job_card_complaints")
 }
 
-// One Estimate per Job Card for now — `version` exists so a later
-// phase (controlled technician-estimate-revision approval) can extend
-// this into real versioning without restructuring what's built here;
-// it's not yet incremented or acted on anywhere in this phase.
-// DRAFT while the technician and supervisor are still building it up —
-// prices can be left blank at this stage, since real workshop practice
-// is that different people fill in their own portion at different
-// times (technician prices external/outside work, Store prices parts,
-// supervisor/organisation sets labour and sundry). SUBMITTED once the
-// technician marks it done and sends it to the supervisor to validate
-// — every line must have a price by this point, enforced at the
-// transition, not before. APPROVED once the supervisor signs off.
-// Manager-level approval and the customer/admin-facing hand-off are a
-// later phase, not modeled here yet.
-// DRAFT while the technician and supervisor are still building it up —
-// prices can be left blank at this stage. SUBMITTED once the
-// technician marks it done and sends it to the supervisor to validate
-// — every line must have a price by this point. APPROVED once the
-// supervisor signs off — NOT yet the final word; it now moves to the
-// Workshop Manager for their own review. MANAGER_APPROVED is this
-// phase's actual terminal state — the customer is notified once an
-// estimate reaches it.
+// One estimate per Job Card. `version` is reserved for estimate revisions
+// and is not incremented yet.
+// DRAFT: technician and supervisor build it; prices may be blank.
+// SUBMITTED: sent to the supervisor; every line must be priced.
+// APPROVED: supervisor sign-off; goes to the Workshop Manager.
+// MANAGER_APPROVED: final; the customer can then be notified.
 enum EstimateStatus {
   DRAFT
   SUBMITTED
@@ -971,40 +828,20 @@ model Estimate {
   submittedAt DateTime?
   approvedAt  DateTime?
   approvedById String?
-  // The Workshop Manager's own sign-off, distinct from the
-  // supervisor's approvedAt/approvedById above — a Manager oversees a
-  // whole branch (both Passenger and Commercial departments), not one
-  // department the way a Supervisor does, so eligibility for this step
-  // is checked by branch, not department (see
-  // listEligibleManagersForBranch in workshop.ts).
+  // Workshop Manager's sign-off. Managers cover a whole branch, so
+  // eligibility is by branch (listEligibleManagersForBranch).
   managerApprovedAt   DateTime?
   managerApprovedById String?
-  // Gates the actual customer notification separately from
-  // MANAGER_APPROVED — the Manager approving is not the same as
-  // anyone deciding the customer should be told. That decision
-  // belongs to whoever created the Job Card (the front-desk/admin
-  // staff who opened it and is accountable for the customer
-  // relationship), reusing JobCard.createdById rather than inventing
-  // a distinct "Admin" role — see notifyCustomerOfApprovedEstimate in
-  // workshop.ts.
+  // Set when the customer is notified. Separate from MANAGER_APPROVED: the
+  // Job Card's creator decides when to tell the customer
+  // (notifyCustomerOfApprovedEstimate).
   customerNotifiedAt   DateTime?
   customerNotifiedById String?
-  // Set the moment the approval-deadline reminder email is actually
-  // sent — exists purely to prevent sending it twice, not a general
-  // audit field. Nullable and safe on an already-populated table:
-  // no default needed for existing rows, since "no reminder sent yet"
-  // is the correct, meaningful state for every row that predates this
-  // field.
+  // When the approval reminder was last sent; prevents duplicate sends.
   reminderSentAt       DateTime?
-  // The moment Store Matching was requested — this is what actually
-  // gates whether a Store Part line appears in Store's own matching
-  // queue at all, deliberately separate from just "an unmatched line
-  // exists": a technician still mid-way through building up an
-  // estimate shouldn't have every draft line show up in Store's queue
-  // before they're actually ready for Store to act on it. Reused,
-  // never re-cleared, on every later matching round for this same
-  // estimate — a newly-added Store Part line after this is already
-  // set becomes visible to Store immediately, no need to re-request.
+  // When Store matching was requested. Store's queue shows only estimates with
+  // this set, not every draft. Not cleared: Store Part lines added later
+  // appear in the queue straight away.
   matchingRequestedAt   DateTime?
   matchingRequestedById String?
   createdById String
@@ -1022,49 +859,21 @@ model Estimate {
   @@map("estimates")
 }
 
-// The five kinds of entry a real workshop estimate needs, each with
-// different accountability AND, critically, different pricing
-// authority — who is actually allowed to fill in the price differs by
-// type, enforced in code (see requirePricingAuthority below):
-//   STORE_PART    — Store staff (auto-fill once real inventory sync
-//                   exists — each part will carry its own fixed price;
-//                   that sync is a later phase, this one just tracks
-//                   it as a manually-priced line for now).
-//   EXTERNAL_PART — a part the technician sourced from outside the
-//                   workshop. Priced by the technician — they're the
-//                   one who bought it, they're the one who knows what
-//                   it cost.
-//   EXTERNAL_JOB  — work done outside (e.g. cylinder resurfacing,
-//                   lathe work on a brake disc), NOT a part. Priced by
-//                   the technician for the same reason as EXTERNAL_PART.
-//                   The cash-advance/receipt side of both external
-//                   types is a later phase; this one just tracks the
-//                   cost as a line.
-//   INTERNAL_JOB  — named work performed inside the workshop itself
-//                   (wheel alignment, wheel balancing, body work,
-//                   painting, gas/AC refill, engine overhaul, battery
-//                   charging, diesel injector servicing, etc.) — a
-//                   genuinely separate concept from LABOUR below, not
-//                   a relabeling of it. Plural by nature: one Job Card
-//                   can need several of these at once, so unlike
-//                   SUNDRY there is no one-line cap here. Priced by
-//                   the supervisor/organisation, never the technician.
-//   LABOUR        — the organisation's own labour/time charge for a
-//                   specific piece of work — e.g. "Labour for
-//                   Service", "Labour for Brake" — confirmed by an
-//                   actual Kewalram paper estimate, which shows both
-//                   as separate lines on the same job. Also plural by
-//                   nature, same as INTERNAL_JOB, no one-line cap.
-//                   Priced by the supervisor/organisation.
-//   SUNDRY        — miscellaneous small charges, naturally a single
-//                   aggregate rather than several distinct items — a
-//                   Job Card may only ever have ONE Sundry line
-//                   (enforced in code, not the schema — a second
-//                   attempt is rejected with a clear message pointing
-//                   at editing the existing one instead). Priced by
-//                   the supervisor/organisation.
-// `enteredById` matters more here than usual precisely because these
-// types have different people accountable for getting them right.
+// Estimate line types, with who may price each (requirePricingAuthority):
+//   STORE_PART    — a catalogue part; priced by Store matching.
+//   EXTERNAL_PART — a part the technician bought outside; priced by the
+//                   technician.
+//   EXTERNAL_JOB  — work done outside (e.g. cylinder resurfacing, lathe
+//                   work); priced by the technician.
+//   INTERNAL_JOB  — named work done in the workshop (alignment, balancing,
+//                   body work, AC gas, overhaul…); several allowed; priced
+//                   by the supervisor.
+//   LABOUR        — a labour charge for a piece of work ("Labour for
+//                   Service", "Labour for Brake"); several allowed; priced
+//                   by the supervisor.
+//   SUNDRY        — small miscellaneous charges; one line per estimate
+//                   (enforced in code); priced by the supervisor.
+// `enteredById` records who entered each line.
 enum EstimateLineItemType {
   STORE_PART
   EXTERNAL_PART
@@ -1080,55 +889,33 @@ model EstimateLineItem {
   type        EstimateLineItemType
   description String
   quantity    Int                  @default(1)
-  // Both nullable now — a DRAFT-stage line can exist with no price yet
-  // (see EstimateStatus above); `amount` is only ever computed and
-  // stored once both quantity and unitPrice are actually known, never
-  // trusted from client input either way.
+  // Nullable while DRAFT. `amount` is computed server-side once quantity and
+  // unitPrice are both known.
   unitPrice   Decimal?             @db.Decimal(12, 2)
   amount      Decimal?             @db.Decimal(12, 2)
   enteredById String
   createdAt   DateTime             @default(now())
-  // `@default(now())` alongside `@updatedAt` is deliberate, not
-  // redundant — `@updatedAt` alone tells Prisma's client to keep this
-  // current on every future update, but gives the migration itself no
-  // database-level default to backfill EXISTING rows with. Two real
-  // rows already existed here from testing the earlier phase, so the
-  // migration correctly refused to add this as a required column with
-  // nothing to put in them — confirmed directly from the actual
-  // deploy error, not guessed at. The explicit default fixes that.
+  // @default(now()) gives existing rows a value when the column is added;
+  // @updatedAt alone has no database default.
   updatedAt   DateTime             @default(now()) @updatedAt
-  // Both only ever meaningful for a STORE_PART line — set by the
-  // technician (which generic kind of part is needed, e.g. "Fuel
-  // Filter") and by Store (which real, vehicle-fitting catalog Part
-  // actually satisfies it), two separate moments by two separate
-  // people. Null on every other line type, and null on a STORE_PART
-  // line until each step actually happens — a freshly-added
-  // STORE_PART line has a partType but not yet a matchedPart,
-  // exactly reflecting where it stands.
+  // STORE_PART only: the part type the technician asked for, then the
+  // catalogue part Store matched. Null until each step happens.
   partTypeId    String?
   matchedPartId String?
-  // The real Unit of Measure for this line — for a STORE_PART line
-  // this is set automatically the moment Store matches it (copied
-  // from the real matched Part's own baseUnitOfMeasure, never typed
-  // by anyone), exactly mirroring how price already works; for every
-  // other line type it's set directly by whoever adds the line, from
-  // the real Nigerian UOM suggestions with free-text fallback. Null
-  // until either of those actually happens.
+  // For STORE_PART, copied from the matched part's baseUnitOfMeasure; for
+  // other lines, entered with the line.
   unitOfMeasure String?
 
   estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   enteredBy   User     @relation(fields: [enteredById], references: [id])
   requestSlipLines PartRequestSlipLine[]
   externalProcurementRequests ExternalProcurementRequest[]
-  // Back-relation for the new, real multi-line request lines above —
-  // kept as its own separate field (not reusing the legacy relation
-  // just above) since these are genuinely two different foreign keys
-  // now: the old single request-level one, and the new per-line one.
+  // Per-line link used by multi-line requests; separate from the legacy
+  // request-level relation above.
   externalProcurementRequestLines ExternalProcurementRequestLine[] @relation("ExternalProcurementRequestLineEstimate")
   partType    PartType? @relation(fields: [partTypeId], references: [id])
   matchedPart Part?     @relation("EstimateLineItemMatchedPart", fields: [matchedPartId], references: [id])
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([estimateId])
   @@map("estimate_line_items")
   // Who pays for this line. CUSTOMER (default) counts towards what the
@@ -1141,15 +928,9 @@ model EstimateLineItem {
   coveringWarranty   Warranty?      @relation("EstimateLineCoveringWarranty", fields: [coveringWarrantyId], references: [id])
 }
 
-// A payment toward a Job Card's estimate — deliberately one-to-many,
-// not one-to-one, since the 70% deposit model means a Job Card
-// realistically sees at least two payments (deposit, then balance).
-// Recorded by Finance staff after seeing proof of a bank transfer or
-// receiving cash at the cashier — a real, minimal record rather than
-// a bare boolean "paid" flag, so there's an actual audit trail of who
-// recorded what, how much, and by which method. The customer
-// uploading their own proof directly, and a real payment gateway,
-// are both later phases — this is the foundation they'd build on.
+// Payments toward a Job Card's estimate (usually a deposit, then the
+// balance), recorded by Finance from proof of a bank transfer or cash at
+// the cashier: who recorded what, how much and how.
 enum PaymentMethod {
   BANK_TRANSFER
   CASH
@@ -1157,9 +938,7 @@ enum PaymentMethod {
 
 model Payment {
   id            String        @id @default(cuid())
-  // Exactly one of jobCardId/vehicleServiceId is ever set — same real
-  // pattern as PartRequestSlip above, enforced in application code at
-  // creation, never at the database level.
+  // Exactly one of jobCardId / vehicleServiceId is set (enforced in the app).
   jobCardId     String?
   vehicleServiceId String?
   amount        Decimal       @db.Decimal(12, 2)
@@ -1176,19 +955,17 @@ model Payment {
   vehicleService VehicleService? @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
   recordedBy    User    @relation(fields: [recordedById], references: [id])
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([jobCardId])
   @@index([vehicleServiceId])
   @@index([recordedAt])
   @@map("payments")
 }
 
-// Money returned to a customer — e.g. a Job Card or Vehicle Service
-// cancelled after a deposit was paid. Recorded by Finance only after a
-// Manager has approved the cancellation (authorise, then pay out). Kept
-// as its own record (never a negative Payment) so payments stay a clean
-// record of money in, and every refund has its own receipt number.
-// Exactly one of jobCardId / vehicleServiceId is set, like Payment.
+// Money returned to a customer, e.g. after a cancellation following a
+// deposit. Recorded by Finance once a Manager has approved the
+// cancellation. Never a negative Payment, so payments stay money in and
+// each refund has its own receipt number. Exactly one of jobCardId /
+// vehicleServiceId is set.
 model Refund {
   id               String        @id @default(cuid())
   referenceNumber  String        @unique // RF-2026-000001
@@ -1217,16 +994,10 @@ model Refund {
   @@map("refunds")
 }
 
-// A cancellation request stays entirely separate from JobCard.status
-// itself until a Manager actually approves it — a declined request
-// never needs to "revert" anything, because nothing was ever touched
-// in the first place. Deliberately one-to-many (like Payment above):
-// a Job Card could see a declined request followed later by a second,
-// genuine one. The reason is required at request time (an employee's
-// note explaining why, whether that came from the customer by email,
-// phone, in person, or the customer's own dashboard) and shown to the
-// Manager for their decision; the Manager's own decision note is
-// separately recorded, whichever way they decide.
+// A cancellation request does not change JobCard.status until a Manager
+// approves it, so a decline has nothing to revert. A Job Card may have
+// several requests over time. The requester's reason is required; the
+// Manager's decision note is recorded either way.
 enum CancellationRequestStatus {
   PENDING
   APPROVED
@@ -1250,19 +1021,13 @@ model CancellationRequest {
   requestedBy User    @relation("CancellationRequestedBy", fields: [requestedById], references: [id])
   decidedBy   User?   @relation("CancellationDecidedBy", fields: [decidedById], references: [id])
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([jobCardId, status])
   @@map("cancellation_requests")
 }
 
-// The same real request → Manager approve/decline shape as
-// CancellationRequest, deliberately — requesting a close never
-// changes JobCard.status by itself (mirrors requestJobCardCancellation
-// never touching status either); status only ever moves to CLOSED on
-// real Manager approval, and a decline simply leaves the Job Card
-// exactly where it already was, since it was never touched. No
-// `reason` field here (unlike cancellation) — closing isn't something
-// that needs justifying the way ending a job early does.
+// Same request → Manager decision shape as CancellationRequest: status
+// only becomes CLOSED on approval. No reason field (closing needs no
+// justification).
 model CloseRequest {
   id            String                    @id @default(cuid())
   jobCardId     String
@@ -1279,21 +1044,15 @@ model CloseRequest {
   requestedBy User    @relation("CloseRequestedBy", fields: [requestedById], references: [id])
   decidedBy   User?   @relation("CloseDecidedBy", fields: [decidedById], references: [id])
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([jobCardId, status])
   @@map("close_requests")
 }
 
 // ----------------------------------------------------------------------------
-// VEHICLE SERVICE — a genuinely separate, deliberately lighter workflow from
-// Job Card, for routine maintenance and minor customer-requested work (oil
-// changes, filters, brake adjustment/bleeding, AC gas top-up, and similar).
-// Never a second Job Card system: a real Job Card discovered mid-service
-// (see escalatedToJobCardId below) leaves Vehicle Service entirely and
-// becomes a genuine Job Card from that point on. Reuses the existing real
-// Customer and CustomerVehicle records directly — never its own separate
-// customer/vehicle rows, matching this project's own standing rule against
-// duplicating identity data across modules.
+// VEHICLE SERVICE: a lighter workflow than Job Card for routine maintenance
+// and minor requested work (oil changes, filters, brake adjustment, AC gas).
+// A repair found mid-service is escalated to a Job Card (escalatedToJobCardId).
+// Uses the same Customer and CustomerVehicle records as Job Cards.
 // ----------------------------------------------------------------------------
 
 enum VehicleServiceStatus {
@@ -1301,9 +1060,8 @@ enum VehicleServiceStatus {
   CHECKED_IN
   IN_SERVICE
   COMPLETED
-  // Same real end-of-life ladder as Job Card's own: work done →
-  // customer told it's ready (with a collection-by date) → a Manager
-  // approves the close once payment is settled → the vehicle is
+  // Same end of life as a Job Card: work done → customer told it's ready
+  // (with a collection-by date) → a Manager approves the close once paid →
   // checked out to a named collector (COLLECTED).
   READY_FOR_COLLECTION
   CLOSED
@@ -1315,15 +1073,12 @@ enum VehicleServiceStatus {
   ESCALATED
 }
 
-// Real, configurable master data — never hardcoded service names, so the
-// business can add a new one (or retune an interval) without a real code
-// change. intervalKm/intervalDays are both nullable since a one-off request
-// (e.g. "top up my AC gas") genuinely has no real recurring interval of its
-// own; a service built only from interval-less types produces no real next-
-// service prediction, which is the honest, correct outcome, not a bug.
+// Service types are configurable data, not hard-coded names.
+// intervalKm/intervalDays are nullable: a one-off request (e.g. "top up my AC
+// gas") has no recurring interval, and produces no next-service prediction.
 model VehicleService {
   id            String @id @default(cuid())
-  serviceNumber String @unique // human-facing, e.g. "SV-2026-000001" — generated server-side, its own real sequence, entirely separate from Job Card's "JC-" numbering
+  serviceNumber String @unique // e.g. "SV-2026-000001", generated server-side; own sequence, separate from "JC-"
   branchId      String
 
   customerId String
@@ -1331,56 +1086,36 @@ model VehicleService {
 
   status VehicleServiceStatus @default(SCHEDULED)
 
-  // The real odometer reading at THIS service — the one true source
-  // the whole next-service calculation is built from. Also written
-  // back onto CustomerVehicle.mileage on completion, the same real
-  // "last known reading" field Job Card check-in already updates —
-  // one real shared value, never a second, competing one.
+  // Odometer at this service, the basis of the next-service calculation.
+  // Also written to CustomerVehicle.mileage, the same field Job Card check-in
+  // updates.
   odometerAtService Int?
 
-  // What the customer actually asked for, in their own real words —
-  // "adjust my brakes", "AC not cooling" — kept as free text, the
-  // customer's own real request.
-  // Legacy single-field complaint — kept for any real Vehicle Service
-  // created before per-item complaints existed, the exact same real
-  // reasoning Job Card's own legacy `complaint` field already uses.
-  // New Vehicle Services use `complaints` below instead.
+  // What the customer asked for, in their words ("adjust my brakes").
+  // Legacy single-field complaint for services created before per-item
+  // complaints; new services use `complaints` below.
   customerComplaint String?
   technicianNotes   String?
 
   assignedTechnicianId String?
-  // Same real dimension as Job Card's own technicianAcceptanceStatus —
-  // being assigned isn't the same as having agreed to do it. PENDING
-  // the moment a technician is assigned, cleared to null on reassignment
-  // or rejection, exactly mirroring Job Card's own fields and logic.
+  // Same as JobCard.technicianAcceptanceStatus: PENDING when assigned, null on
+  // reassignment or rejection.
   technicianAcceptanceStatus TechnicianAcceptanceStatus?
   technicianRespondedAt      DateTime?
   technicianRejectionReason  String?
 
-  // Set once, the first real moment work genuinely starts — either
-  // the manual status transition to IN_SERVICE, or the moment a
-  // payment first crosses the 70% deposit threshold, whichever
-  // happens first. Same real "first time only" guard, same real bug
-  // class this closes, as Job Card's own identical field.
+  // Set once, when work first starts: the manual move to IN_SERVICE or the
+  // payment that crosses the 70% deposit, whichever comes first.
   workStartedAt DateTime?
 
-  // Set only via attendToOverdueVehicle — marks this record's own
-  // real due-prediction as genuinely handled, so it stops showing on
-  // the Overdue list forever once a real new Vehicle Service has
-  // been opened for the same vehicle. Never touched by anything
-  // else; a vehicle that's simply serviced again normally already
-  // gets a fresh real prediction from that new visit on its own.
+  // Set by attendToOverdueVehicle: the due prediction has been handled and
+  // leaves the Overdue list. A new completed service gives a new prediction.
   attendedAt DateTime?
 
-  // The routed department, derived from the vehicle's own recorded
-  // Passenger/Commercial type — same real pattern as Job Card,
-  // structurally impossible to route to the wrong department by a
-  // client-side mistake since this is set server-side from the
-  // vehicle, never taken directly from client input.
+  // Derived server-side from the vehicle's Passenger/Commercial type, never
+  // from client input.
   departmentId String?
-  // Required at creation, same real reasoning as Job Card — every
-  // Vehicle Service visit has one real accountable supervisor from
-  // the start, not assigned later.
+  // Required at creation: every visit has an accountable supervisor from the start.
   supervisorId String?
 
   approvalStatus   JobCardApprovalStatus @default(PENDING)
@@ -1389,31 +1124,19 @@ model VehicleService {
   rejectionReason  String?
   approvalNotes    String?
 
-  // Set only when a real Job Card was genuinely created from this
-  // service visit because the technician found something beyond
-  // routine maintenance — the one real, deliberate door out of this
-  // lighter workflow, never a silent status change. A Service that's
-  // escalated stops progressing on its own; the real Job Card takes
-  // over from here.
+  // Set when a Job Card is created from this visit because the technician
+  // found more than routine maintenance. The service stops progressing; the
+  // Job Card takes over.
   escalatedToJobCardId String? @unique
 
-  // The real Primary Service event — Engine Oil, in practice — set
-  // only when the supervisor/technician confirms it was actually
-  // done on THIS visit, at completion. This replaces an earlier
-  // design where a catalogue item's own isPrimary flag decided this;
-  // that inference is gone in favour of an explicit, deliberate
-  // record of the one real event that actually anchors the vehicle's
-  // own next-service clock. Null means Primary Service wasn't done
-  // this visit — an honest, real state, not a bug.
+  // Primary Service (engine oil, in practice), set when staff confirm it was
+  // done on this visit. This explicit record anchors the vehicle's
+  // next-service clock. Null means no Primary Service this visit.
   primaryServiceMileage Int?
   primaryServiceDate    DateTime?
 
-  // Computed once, at the same real moment primaryServiceMileage/
-  // Date above are set, from the organisation's own configured
-  // interval (Organisation.primaryServiceIntervalKm/Days). Null
-  // whenever Primary Service wasn't done this visit, or the
-  // organisation hasn't configured a real interval yet — an honest
-  // reflection of that, never a fabricated guess.
+  // Computed when primaryServiceMileage/Date are set, from the organisation's
+  // interval. Null if no Primary Service this visit or no interval configured.
   nextServiceDueOdometer Int?
   nextServiceDueDate     DateTime?
 
@@ -1425,9 +1148,8 @@ model VehicleService {
   readyForCollectionAt DateTime?
   // When a Manager approved the close (see VehicleServiceCloseRequest).
   closedAt DateTime?
-  // collectedAt is the real physical-exit moment (checked out);
-  // collectedByName is who actually drove it away — required at
-  // checkout, same as Job Card's own collectedByName.
+  // collectedAt is when the vehicle left (checked out); collectedByName is who
+  // took it, required at checkout as for Job Cards.
   collectedAt DateTime?
   collectedByName String?
   cancelledAt DateTime?
@@ -1453,7 +1175,6 @@ model VehicleService {
   closeRequests VehicleServiceCloseRequest[]
   cancellationRequests VehicleServiceCancellationRequest[]
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([branchId, status])
   @@index([branchId, createdAt])
   @@index([customerId])
@@ -1467,10 +1188,9 @@ model VehicleService {
   roadTestPermits RoadTestPermit[]
 }
 
-// The Vehicle Service equivalent of Job Card's own CloseRequest — kept
-// as its own parallel model so Job Card's close flow is never touched.
-// A creator or supervisor requests the close (only once payment is
-// complete); a branch Manager approves (status → CLOSED) or declines.
+// Vehicle Service version of CloseRequest, kept separate from the Job Card
+// flow. The creator or supervisor requests the close (once fully paid); a
+// branch Manager approves (status → CLOSED) or declines.
 model VehicleServiceCloseRequest {
   id               String                    @id @default(cuid())
   vehicleServiceId String
@@ -1491,11 +1211,9 @@ model VehicleServiceCloseRequest {
   @@map("vehicle_service_close_requests")
 }
 
-// The Vehicle Service equivalent of Job Card's own CancellationRequest —
-// the same flow exactly: the creator or supervisor requests it with a
-// reason (status untouched), a branch Manager approves (→ CANCELLED,
-// which also authorises a refund of anything paid) or declines. Kept as
-// its own parallel model so Job Card's cancellation is never touched.
+// Vehicle Service version of CancellationRequest: the creator or supervisor
+// requests it with a reason (status unchanged); a branch Manager approves
+// (→ CANCELLED, which also authorises a refund of anything paid) or declines.
 model VehicleServiceCancellationRequest {
   id               String                    @id @default(cuid())
   vehicleServiceId String
@@ -1517,11 +1235,8 @@ model VehicleServiceCancellationRequest {
   @@map("vehicle_service_cancellation_requests")
 }
 
-// Each real, distinct thing the customer actually asked for this
-// visit — "AC not cooling well" and "brake pedal feels soft" as two
-// separate, numbered rows, the same real reasoning JobCardComplaint
-// already uses for Job Card: not one free-text paragraph mixing
-// multiple real requests together.
+// One row per thing the customer asked for this visit ("AC not cooling
+// well", "brake pedal feels soft"), like JobCardComplaint.
 model VehicleServiceComplaint {
   id               String   @id @default(cuid())
   vehicleServiceId String
@@ -1533,25 +1248,16 @@ model VehicleServiceComplaint {
   @@map("vehicle_service_complaints")
 }
 
-// The one real, permanent record of every service-due reminder ever
-// sent for a vehicle — never fire-and-forget. Kept per-vehicle, not
-// per-VehicleService, since a reminder is about the vehicle's own
-// next real due point regardless of which past visit that prediction
-// came from. Every real fact this reminder was actually based on is
-// captured at the moment it was sent — the estimate and the real
-// recorded odometer both drift after the fact as the vehicle keeps
-// being driven and serviced, so this is the one place that honestly
-// freezes what was actually true and shown to the customer at that
-// real moment, not what's true now.
+// Every service-due reminder sent for a vehicle. Per vehicle, not per
+// service, since a reminder is about the vehicle's next due point. The
+// figures shown to the customer are stored as they were at send time,
+// because mileage and predictions change afterwards.
 model ServiceReminderLog {
   id                     String   @id @default(cuid())
   vehicleId              String
   vehicle                CustomerVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  // 1 = first, warm/preventive; 2 = attentive follow-up; 3 =
-  // actionable/due; 4+ = overdue, factual — the real real-world
-  // progression already agreed on, never re-derived from sentAt
-  // alone since a customer could be skipped forward or the interval
-  // could change between reminders.
+  // 1 = friendly, 2 = follow-up, 3 = due, 4+ = overdue. Stored rather than
+  // derived from sentAt, since stages can be skipped or the interval changed.
   reminderNumber         Int
   sentAt                 DateTime @default(now())
   estimatedDueOdometer   Int?
@@ -1563,10 +1269,8 @@ model ServiceReminderLog {
   @@map("service_reminder_logs")
 }
 
-// One real inspection per Vehicle Service — the technical truth
-// between the visit being opened and any work being decided. This is
-// what was found; VehicleService's own status/notes record what was
-// decided and done about it.
+// One inspection per Vehicle Service: what was found. The service's
+// status and notes record what was decided and done.
 model VehicleInspection {
   id               String                  @id @default(cuid())
   vehicleServiceId String                  @unique
@@ -1574,10 +1278,7 @@ model VehicleInspection {
   status           VehicleInspectionStatus @default(NOT_STARTED)
   startedAt        DateTime?
   completedAt      DateTime?
-  // Set together, only on a real skip — inspectedById is who made
-  // that real decision in this case, the same real person a skip
-  // audit trail needs regardless of whether they ever inspected
-  // anything themselves.
+  // Set together on a skip; inspectedById is whoever decided to skip.
   skippedAt        DateTime?
   skipReason       String?
   notes            String?
@@ -1591,16 +1292,11 @@ model VehicleInspection {
   @@map("vehicle_inspections")
 }
 
-// One real row per checklist item on a real inspection — generated
-// from the vehicle-type-aware template at the moment the inspection
-// starts (code-defined, not a database catalogue — the template
-// itself changes rarely enough that a full admin CRUD system for it
-// would be premature; see lib/vehicle-inspection-template.ts).
-// condition/action stay free text on purpose (the real vocabulary
-// genuinely differs per item — "Dirty" for a filter, "Low" for oil
-// level, "Worn" for a brake pad — a fixed enum here would either be
-// too narrow or too generic to be useful); severity is the one real
-// controlled value, since that's what a summary rollup needs.
+// One row per checklist item, generated from the vehicle-type template
+// (lib/vehicle-inspection-template.ts) when the inspection starts.
+// condition/action are free text because the vocabulary differs per item
+// ("Dirty" filter, "Low" oil, "Worn" pad); severity is the controlled value
+// used for summaries.
 model VehicleInspectionItem {
   id           String              @id @default(cuid())
   inspectionId String
@@ -1625,18 +1321,10 @@ enum ServiceEstimateStatus {
   MANAGER_APPROVED
 }
 
-// The real estimate for a Vehicle Service visit that never needed a
-// full Job Card — routine work like an oil change or an air filter
-// still needs a real, priced estimate for Store to work from. Now
-// genuinely the same real multi-stage chain as Job Card's own
-// Estimate — supervisor validates, Manager gives final sign-off,
-// then whoever created this explicitly hands off to the customer —
-// the user's own explicit instruction once the two modules'
-// workflows were compared directly, side by side. A Vehicle Service
-// that instead escalates to a real repair uses Job Card's own
-// Estimate entirely, never this one — the two are mutually exclusive
-// by design, matching the user's own explicit "either escalate, or
-// write a service estimate" branching.
+// Estimate for a Vehicle Service that did not need a Job Card. Same chain
+// as a Job Card estimate: supervisor approves, Manager gives final
+// sign-off, then the service's creator sends it to the customer. An
+// escalated visit uses the Job Card's estimate instead; never both.
 model ServiceEstimate {
   id               String                @id @default(cuid())
   vehicleServiceId String                @unique
@@ -1644,21 +1332,17 @@ model ServiceEstimate {
   submittedAt      DateTime?
   approvedAt       DateTime?
   approvedById     String?
-  // The Workshop Manager's own real sign-off, distinct from the
-  // supervisor's approvedAt/approvedById above — same real two-role
-  // shape as Job Card's own estimate.
+  // The Workshop Manager's sign-off, separate from the supervisor's
+  // approvedAt/approvedById.
   managerApprovedAt   DateTime?
   managerApprovedById String?
-  // The explicit, real hand-off to the customer — deliberately never
-  // automatic, same real reasoning as Job Card's own: the Manager
-  // approving means the numbers are right, not that anyone has
-  // decided the customer should be told yet.
+  // Set when the estimate is sent to the customer. Never automatic: Manager
+  // approval means the numbers are right, not that the customer should be
+  // told yet.
   customerNotifiedAt   DateTime?
   customerNotifiedById String?
-  // Same real "Store, please come match this" request as Job Card's
-  // own estimate — set when the technician or supervisor explicitly
-  // asks Store to match the Store Part lines still waiting, not
-  // merely implied by their existing.
+  // Set when the technician or supervisor asks Store to match the Store Part
+  // lines (as on Job Card estimates).
   matchingRequestedAt   DateTime?
   matchingRequestedById String?
   createdById      String
@@ -1676,19 +1360,8 @@ model ServiceEstimate {
   @@map("service_estimates")
 }
 
-// One real line — free-text description on purpose (deliberately not
-// Job Card's own STORE_PART/EXTERNAL_PART/etc. type split, since a
-// routine Vehicle Service visit doesn't carry that same real
-// pricing-authority distinction between roles) — "Engine Oil 5W-30",
-// "Air Filter", quantity and unit price, the actual person who
-// entered it.
-// Deliberately just two values — STORE_PART needs the real Store-
-// matching flow below; everything else (external parts, labour,
-// sundry — a routine Vehicle Service visit rarely needs Job Card's
-// own full five-way split) is just OTHER, priced directly by whoever
-// enters it. This can grow later if a real need for more types shows
-// up, but starting narrow here matches how much lighter this whole
-// module is meant to be than Job Card's own Estimate.
+// Two line types: STORE_PART goes through Store matching; everything else
+// (outside parts, labour, sundry) is OTHER and priced by whoever enters it.
 enum ServiceEstimateLineItemType {
   STORE_PART
   INTERNAL_JOB
@@ -1707,13 +1380,9 @@ model ServiceEstimateLineItem {
   enteredById  String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  // Same real two-moment flow as Job Card's own STORE_PART lines:
-  // whoever adds the line picks which generic PartType they need
-  // (e.g. "Engine Oil Filter"); Store later matches it to a real,
-  // specific, vehicle-fitting Part from the actual catalogue, which
-  // is what fills in the real price and unit — never typed by
-  // whoever adds the line. Both null for an OTHER line, and null on
-  // a STORE_PART line until each step actually happens.
+  // STORE_PART only, as on Job Card estimates: the requester picks a part
+  // type (e.g. "Engine Oil Filter"); Store matches a catalogue part, which
+  // sets the price and unit. Both null for OTHER lines.
   partTypeId    String?
   matchedPartId String?
   unitOfMeasure String?
@@ -1724,7 +1393,6 @@ model ServiceEstimateLineItem {
   matchedPart Part?         @relation(fields: [matchedPartId], references: [id])
   partRequestSlipLines PartRequestSlipLine[]
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([estimateId])
   @@map("service_estimate_line_items")
 }
@@ -1733,7 +1401,7 @@ model CustomerAddress {
   id         String   @id @default(cuid())
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  // v28 — when it was added (audit trail and CRM ordering).
+  // v28: when it was added (audit trail and CRM ordering).
   createdAt  DateTime @default(now())
 
   label      String? // "Home", "Office"
@@ -1764,13 +1432,10 @@ model CustomerContact {
 
 // ----------------------------------------------------------------------------
 // BETTER AUTH TABLES
-// Standard Better Auth schema (see https://www.better-auth.com/docs/concepts/database).
-// Field names/shapes are dictated by the library's Prisma adapter — do not
-// rename without also updating apps/portal/lib/auth.ts. Employee/Admin
-// sessions and Customer sessions are kept in physically separate tables
-// (rather than one shared table with two nullable FKs) — that is what
-// actually guarantees a customer token cannot be presented to an
-// employee-only guard, matching the Phase 2 isolation requirement.
+// Standard Better Auth schema (https://www.better-auth.com/docs/concepts/database).
+// Field names are set by the library's Prisma adapter; keep them in step with
+// apps/portal/lib/auth.ts. Staff and customer sessions live in separate tables,
+// so a customer token can never be presented to a staff-only guard.
 // ----------------------------------------------------------------------------
 
 model Session {
@@ -1793,7 +1458,7 @@ model Account {
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   accountId             String
   providerId            String    // "credential", "google", "microsoft"...
-  password              String?   // set for the "credential" (email+password) provider — this is Better Auth's own field name for its Prisma adapter; it must be exactly "password", not renamed, since no field-mapping override is configured in apps/portal/lib/auth.ts
+  password              String?   // password hash for the "credential" provider; Better Auth's field name, keep it
   accessToken           String?
   refreshToken          String?
   accessTokenExpiresAt  DateTime?
@@ -1839,17 +1504,16 @@ model CustomerAccount {
   @@map("customer_accounts")
 }
 
-// Shared by both auth flows — email verification, password reset, etc.
-// Better Auth keys this by (identifier, value), not by user, so one table
-// safely serves both Employee and Customer flows.
+// Staff verification rows (email verification, password reset). Keyed by
+// (identifier, value), not by user. Customer links use CustomerVerification.
 model Verification {
   id         String   @id @default(cuid())
   identifier String   // typically the email being verified/reset
   value      String
   expiresAt  DateTime
   createdAt  DateTime @default(now())
-  // v27 — Better Auth writes updatedAt on every verification (password-reset
-  // and set-password links); without this column every such link failed.
+  // v27: Better Auth writes updatedAt on every verification (password-reset
+  // and set-password links), so the column is required.
   updatedAt  DateTime @default(now()) @updatedAt
 
   @@index([identifier])
@@ -1905,8 +1569,7 @@ model CustomerNotificationRead {
 }
 
 // ----------------------------------------------------------------------------
-// AUDIT LOG — required from Phase 1 per the "nothing deletable, everything
-// timestamped" rule; every future module writes into this same table.
+// AUDIT LOG: append-only, timestamped history every module writes to.
 // ----------------------------------------------------------------------------
 model AuditLog {
   id         String   @id @default(cuid())
@@ -1937,23 +1600,17 @@ model AuditLog {
 }
 
 // ----------------------------------------------------------------------------
-// DASHBOARD BROADCASTS — a real Master Admin/Manager-authored announcement,
-// shown in the dashboard's own marquee alongside real, auto-generated recent
-// activity. Deliberately its own separate, simple model rather than folded
-// into AuditLog above: an announcement is a genuine, deliberate message
-// someone wrote on purpose, not a system-recorded event — the two are
-// different real things even though they end up in the same visual ticker.
+// DASHBOARD ANNOUNCEMENTS: messages written by a Master Admin or Manager,
+// shown in the dashboard marquee. Separate from AuditLog because they are
+// authored messages, not recorded events.
 // ----------------------------------------------------------------------------
 
 model Announcement {
   id        String   @id @default(cuid())
   organisationId String
   message   String
-  // Real, deliberate expiry — an announcement genuinely stops being
-  // relevant after its own real event has passed (e.g. "Warehouse
-  // closed for stock count on Friday"), so this isn't left to someone
-  // remembering to manually take it down. Null means it stays active
-  // until manually deactivated instead.
+  // After this the announcement stops showing (e.g. a notice about Friday's
+  // stock count). Null means active until switched off.
   expiresAt DateTime?
   isActive  Boolean  @default(true)
 
@@ -1967,29 +1624,18 @@ model Announcement {
 }
 
 // ----------------------------------------------------------------------------
-// STORE / INVENTORY — Phase 1: the part catalog, unit-of-measure conversion,
-// stock representation, and goods receipt (stock coming in). Deliberately
-// does NOT yet include the Issue Slip workflow (requesting/releasing stock
-// to a Job Card) or External Procurement (cash-advance sourcing) — those
-// are their own later phases, built once this foundation exists.
+// STORE / INVENTORY: part catalogue, units of measure, stock and goods
+// receipts.
 //
-// Three tracking types cover every real item this store handles, matching
-// standard ERP Materials Management practice (SAP's own Quantity/Batch/
-// Serialized distinction) rather than forcing one model onto everything:
+// Three tracking types (as in SAP's quantity / batch / serial split):
 //   QUANTITY   — a single running total, e.g. brake pads, filters, WD-40.
-//   BATCH      — stock grouped by the delivery it arrived in, e.g. engine
-//                oil, coolant, brake fluid — lets a bad batch be traced to
-//                exactly which vehicles received it, without serializing
-//                every bottle.
-//   SERIALIZED — every physical unit has its own identity, e.g. tyres,
-//                rims, and (later) higher-value parts like alternators.
+//   BATCH      — stock grouped by delivery, e.g. engine oil, coolant, brake
+//                fluid, so a bad batch can be traced to the vehicles that
+//                received it without serialising every bottle.
+//   SERIALIZED — each physical unit has its own identity, e.g. tyres, rims.
 //
-// Unit of measure follows the same base-unit + alternative-unit-with-
-// conversion-factor pattern used everywhere in real inventory systems:
-// stock is always held in one base unit (e.g. Liters for engine oil), but
-// goods receipt can be recorded in whatever unit it actually arrived in
-// (a Drum, a Case) and is converted automatically — the same drum-and-cans
-// scenario described when this was designed.
+// Stock is held in one base unit (e.g. litres); a delivery can be recorded
+// in the unit it arrived in (a drum, a case) and is converted.
 // ----------------------------------------------------------------------------
 
 enum PartTrackingType {
@@ -2008,70 +1654,38 @@ model Part {
   branchId    String
   name        String
   description String?
-  // A simple string, not a separate category table — this project's own
-  // pattern of not over-building a piece until it's genuinely needed
-  // (e.g. JobCard.approvalStatus vs status being kept as two simple
-  // dimensions rather than one complex one). Free text now; if real
-  // category-based reporting becomes a genuine need later, this can grow
-  // into its own model without breaking anything already stored.
+  // Free-text browsing category used by the catalogue search. Structured
+  // classification is partTypeId below.
   category    String?
-  // Internal reference code — distinct from `barcode` below, which is
-  // reserved for the future barcode-scanning phase and unused for now.
+  // Internal reference code. `barcode` below is reserved for barcode scanning.
   partNumber  String?
   barcode     String?
   trackingType PartTrackingType @default(QUANTITY)
-  // The unit stock is always held in internally, regardless of what unit
-  // a delivery physically arrives in — e.g. "Liter" for engine oil,
-  // "Each" for brake pads. Never converted; alternativeUnits below convert
-  // TO this one, not the other way around.
+  // The unit stock is held in (e.g. "Liter" for engine oil, "Each" for brake
+  // pads). Alternative units convert to this one.
   baseUnitOfMeasure String
-  // Reserved for future replenishment automation — not yet acted on by
-  // any code, but present now so adding it later doesn't need a schema
-  // change once that automation is actually built.
+  // Reorder point and safety stock, set by Store (usually from the inventory
+  // analytics suggestion).
   reorderPoint Decimal? @db.Decimal(12, 3)
   safetyStock  Decimal? @db.Decimal(12, 3)
-  // What the customer is actually charged, per base unit — a real,
-  // deliberate figure Store sets, genuinely separate from cost. A
-  // Goods Receipt's own unitCost is what was PAID for a delivery,
-  // never what a customer should be CHARGED — conflating the two (the
-  // real bug this field exists to fix) meant an estimate's price
-  // moved every time a new delivery arrived at a different cost, with
-  // zero markup and zero deliberate pricing decision ever made. Store
-  // matching a line to this Part now requires this to be set — no
-  // silent fallback to cost, since that would just recreate the exact
-  // problem this was built to solve.
+  // Price charged to customers per base unit, set by Store. Separate from the
+  // goods receipt cost (what was paid). Store matching requires it and never
+  // falls back to cost.
   sellingPrice Decimal? @db.Decimal(12, 2)
-  // The margin Store actually wants to hold on this Part, as a real
-  // percentage of sellingPrice — e.g. 30 means "cost should never be
-  // more than 70% of what we charge". Nullable, same reasoning as
-  // sellingPrice's own nullability: a Part can exist before anyone's
-  // deliberately set a real pricing target for it, and the Pricing
-  // Command Center simply has nothing to compare against until one
-  // is. Never a company-wide default silently assumed here — a
-  // missing target means "not yet reviewed", not "target is 0%".
+  // The margin Store wants on this part, as a percentage of sellingPrice
+  // (30 = cost at most 70% of price). Null means not set yet, not 0%; the
+  // Pricing Command Center skips parts without one.
   targetMarginPercent Decimal? @db.Decimal(5, 2)
-  // Which real unit this Part's own target is entered and shown in —
-  // Margin or Markup. Defaults to Margin, matching what
-  // targetMarginPercent itself has always stored; a Part only ever
-  // switches once someone deliberately picks Markup instead.
+  // Whether the target is entered and shown as margin or markup.
+  // targetMarginPercent always stores margin.
   pricingMethod PricingMethod @default(MARGIN)
   isActive     Boolean  @default(true)
-  // Which generic, customer-facing PartType this Part actually is
-  // (e.g. "Fuel Filter") — nullable since a Part can exist in the
-  // catalog before ever being categorized this way, but this is what
-  // lets a technician's plain-language estimate request ("Fuel
-  // Filter") match against every real vehicle-specific Part that
-  // could satisfy it (this one, plus e.g. "Fuel Filter — Foton TM3" —
-  // same PartType, two genuinely different Parts). Deliberately
-  // separate from the free-text `category` field above: category is
-  // a simple, broad browsing bucket Store already uses for its own
-  // catalog search; PartType is a specific, structured, reusable
-  // classification with its own parent PartCategory (see below) —
-  // the two serve different purposes and neither replaces the other.
+  // The generic part type this part is (e.g. "Fuel Filter"), so a technician's
+  // request for a type can match every vehicle-specific part of that type.
+  // Separate from the free-text `category` browsing field.
   partTypeId   String?
-  // Warranty given with this part when it's issued to a customer (null =
-  // no warranty). Set on the Part page; a warranty is issued automatically
-  // at every release.
+  // Warranty issued with this part on release to a customer (null = none).
+  // Set on the Part page.
   warrantyPolicyId String?
   createdById  String
   createdAt    DateTime @default(now())
@@ -2089,11 +1703,7 @@ model Part {
   serials           PartSerial[]
   goodsReceiptLines GoodsReceiptLine[]
   requestSlipLines  PartRequestSlipLine[]
-  // The same real traceability BATCH/SERIALIZED Parts get from their
-  // own dedicated records, for a QUANTITY-tracked Part directly —
-  // exactly which real request took how much, since this tracking
-  // type keeps no per-delivery structure of its own to attach a
-  // consumption to otherwise.
+  // Release trail for QUANTITY parts (which request took how much).
   quantityConsumptions PartQuantityConsumption[]
   fitments          PartFitment[]
   matchedOnEstimateLines EstimateLineItem[] @relation("EstimateLineItemMatchedPart")
@@ -2104,11 +1714,8 @@ model Part {
   @@map("parts")
 }
 
-// An alternative unit a delivery might arrive in, and the factor to
-// convert it to the part's own base unit — e.g. unitName "Drum",
-// conversionFactor 200, for a part whose base unit is "Liter" (1 Drum =
-// 200 Liters). Goods receipt looks these up so a storekeeper can enter a
-// delivery exactly as it physically arrived, not force-converted by hand.
+// An alternative unit a delivery may arrive in and its factor to the base
+// unit, e.g. "Drum" with conversionFactor 200 for a part in litres.
 model PartUnitOfMeasure {
   id               String  @id @default(cuid())
   partId           String
@@ -2121,21 +1728,15 @@ model PartUnitOfMeasure {
   @@map("part_units_of_measure")
 }
 
-// The single, always-current aggregate for a part — works directly as the
-// real stock figure for QUANTITY-tracked parts, and doubles as a fast,
-// always-in-sync running total for BATCH/SERIALIZED parts (whose real
-// detail lives in PartBatch/PartSerial respectively) so a dashboard or
-// reorder check never has to sum every batch or serial row just to answer
-// "how much do we have."
+// The current stock total for a part: the stock figure for QUANTITY parts,
+// and a running total for BATCH/SERIALIZED parts (detail in PartBatch /
+// PartSerial) so nothing has to sum batches or serials.
 model PartStock {
   id               String   @id @default(cuid())
   partId           String   @unique
   quantityOnHand   Decimal  @default(0) @db.Decimal(14, 4)
-  // Reserved for the future Issue Slip phase — the moment a request is
-  // approved, the requested quantity moves here so a second request
-  // can't be promised the same stock before the first is released.
-  // Present now, unused until that phase, matching reorderPoint/
-  // safetyStock above.
+  // Quantity reserved by approved parts requests, so a later request can't be
+  // promised the same stock before the first is released.
   quantityReserved Decimal  @default(0) @db.Decimal(14, 4)
   updatedAt        DateTime @updatedAt
 
@@ -2144,11 +1745,9 @@ model PartStock {
   @@map("part_stock")
 }
 
-// One row per delivery batch for a BATCH-tracked part — e.g. "received one
-// 200L drum of engine oil on 2026-08-29, 152L remaining after issues."
-// remainingQuantity is decremented at goods issue (the future Issue Slip
-// phase); receivedQuantity never changes once recorded, so the two
-// together always show both the original delivery size and what's left.
+// One row per delivery batch of a BATCH part, e.g. "one 200 L drum received
+// on 2026-08-29, 152 L left". remainingQuantity goes down on release;
+// receivedQuantity never changes.
 model PartBatch {
   id                 String    @id @default(cuid())
   partId             String
@@ -2161,24 +1760,16 @@ model PartBatch {
 
   part             Part              @relation(fields: [partId], references: [id], onDelete: Cascade)
   goodsReceiptLine GoodsReceiptLine? @relation(fields: [goodsReceiptLineId], references: [id])
-  // Every real draw against this batch — a single release can span
-  // several partial draws across multiple batches (real FIFO), and a
-  // single batch can be drawn from by several different releases over
-  // its own lifetime, so this is genuinely a many-to-many relationship,
-  // not a single link on either side.
+  // Draws against this batch. Many-to-many: a release can draw from several
+  // batches (FIFO) and a batch can serve several releases.
   consumptions     PartBatchConsumption[]
 
   @@unique([partId, batchNumber])
   @@map("part_batches")
 }
 
-// The real, permanent record of exactly which batch a released
-// quantity actually came from — closes a genuine traceability gap:
-// before this, a batch's own remainingQuantity was correctly
-// decremented at release time, but nothing recorded which real
-// request/Job Card/customer that quantity actually went to, which is
-// exactly what's needed to answer "which customer got stock from this
-// specific delivery" for a warranty or quality-defect trace.
+// Which batch a released quantity came from, so a warranty or defect trace
+// can find the customers who received stock from a delivery.
 model PartBatchConsumption {
   id            String   @id @default(cuid())
   batchId       String
@@ -2189,33 +1780,24 @@ model PartBatchConsumption {
   batch    PartBatch           @relation(fields: [batchId], references: [id], onDelete: Cascade)
   slipLine PartRequestSlipLine @relation(fields: [slipLineId], references: [id], onDelete: Cascade)
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([batchId])
   @@index([slipLineId])
   @@index([consumedAt])
   @@map("part_batch_consumptions")
 }
 
-// The same real traceability BATCH-tracked Parts get from
-// PartBatchConsumption above, for QUANTITY-tracked ones — which keep
-// no individual batch or serial records of their own, only a single
-// running total, so there's no batch to attach a consumption to.
-// This is the direct real answer to "which request took how much of
-// this Part" for a tracking type that otherwise has no per-delivery
-// structure at all.
+// Release trail for QUANTITY parts (no batch or serial rows): which
+// request took how much.
 model PartQuantityConsumption {
   id            String   @id @default(cuid())
   partId        String
   slipLineId    String
   quantityTaken Decimal  @db.Decimal(14, 4)
   consumedAt    DateTime @default(now())
-  // The exact Goods Receipt line (delivery) this release drew from —
-  // the QUANTITY-tracked equivalent of PartBatchConsumption.batchId, so
-  // a release of a quantity part is traceable back to its GRN just like
-  // a batch or serial is. One release that spans two deliveries is
-  // stored as two rows, FIFO (see lib/inventory/quantity-fifo.ts).
-  // Nullable: releases made before this existed have none, and are
-  // attributed oldest-first at display time by the same FIFO replay.
+  // The goods receipt line this release drew from, so QUANTITY releases trace
+  // back to a GRN like batches and serials. A release spanning two deliveries
+  // is two rows, FIFO (lib/inventory/quantity-fifo.ts). Null on older
+  // releases, which are attributed oldest-first at display time.
   goodsReceiptLineId String?
 
   part             Part                @relation(fields: [partId], references: [id], onDelete: Cascade)
@@ -2224,16 +1806,13 @@ model PartQuantityConsumption {
 
   @@index([partId])
   @@index([goodsReceiptLineId])
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([slipLineId])
   @@index([consumedAt])
   @@map("part_quantity_consumptions")
 }
 
-// One row per physical unit for a SERIALIZED part — e.g. one tyre, one
-// rim. status flips to ISSUED at goods issue (the future Issue Slip
-// phase); a serial is never deleted once received, preserving a complete
-// history of every individual unit that ever passed through the store.
+// One row per physical unit of a SERIALIZED part (e.g. one tyre). status
+// becomes ISSUED on release; serials are never deleted.
 model PartSerial {
   id                 String           @id @default(cuid())
   partId             String
@@ -2241,32 +1820,18 @@ model PartSerial {
   status             PartSerialStatus @default(IN_STOCK)
   receivedAt         DateTime         @default(now())
   goodsReceiptLineId String?
-  // The real, permanent record of exactly which request this specific
-  // physical unit was issued out against, the moment it's issued —
-  // closes a genuine traceability gap: before this, status correctly
-  // flipped to ISSUED, but nothing recorded which real Job Card,
-  // customer, or PRS this exact serial actually went to, which is
-  // exactly what's needed to answer "who has this unit" for a
-  // warranty or quality-defect trace. A single, direct link is
-  // correct here (unlike a batch's own many-to-many consumption
-  // table) since one physical serialized unit is only ever issued
-  // once under the current, real workflow — there's no returns/
-  // re-issue path yet for this to need to track more than one.
+  // The request line this unit was issued against, for warranty traces. A
+  // single link is enough because a unit is issued once (there is no
+  // returns flow).
   issuedToSlipLineId String?
 
   part             Part                 @relation(fields: [partId], references: [id], onDelete: Cascade)
   goodsReceiptLine GoodsReceiptLine?    @relation(fields: [goodsReceiptLineId], references: [id])
   issuedToSlipLine PartRequestSlipLine? @relation(fields: [issuedToSlipLineId], references: [id])
 
-  // Genuinely global, not scoped to one Part — the real gap this
-  // closes: the previous [partId, serialNumber] pairing still let two
-  // completely different Parts (a Tyre and a Rim, say) share the
-  // exact same serial number, which is precisely the mistake this
-  // whole field exists to catch. A serial is meant to identify one
-  // real physical unit across the entire catalog, not just within
-  // whichever Part it happens to be filed under.
+  // Unique across all parts, not per part: a serial identifies one physical
+  // unit in the whole catalogue.
   @@unique([serialNumber])
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([partId, status])
   @@index([issuedToSlipLineId])
   @@index([goodsReceiptLineId])
@@ -2274,10 +1839,7 @@ model PartSerial {
   warranties Warranty[]
 }
 
-// The header for a delivery of stock arriving into the store — mirrors
-// JobCard's own human-readable reference-number pattern (GRN-2026-000001,
-// same generation logic as JC-2026-000001) so it reads the same way
-// across the whole platform.
+// A delivery into the store. Numbered GRN-2026-000001, like Job Card numbers.
 model GoodsReceipt {
   id              String   @id @default(cuid())
   // One per submitted form (see components/IdempotencyKey.tsx): the same
@@ -2295,18 +1857,14 @@ model GoodsReceipt {
   receivedBy User               @relation("GoodsReceiptReceivedBy", fields: [receivedById], references: [id])
   lines      GoodsReceiptLine[]
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([branchId, receivedAt])
   @@map("goods_receipts")
   gateDeliveries GateDelivery[]
 }
 
-// One line per part received on a single delivery. quantityReceivedInUnit
-// and unitUsed record exactly what the storekeeper actually entered (e.g.
-// "1 Drum"); quantityInBaseUnit is the converted amount that's genuinely
-// added to stock (e.g. "200 Liters") — both kept, so the original delivery
-// record and the real stock effect are each independently visible, never
-// only the converted figure with the original entry lost.
+// One line per part on a delivery. quantityReceivedInUnit and unitUsed are
+// what the storekeeper entered (e.g. "1 Drum"); quantityInBaseUnit is what
+// was added to stock (e.g. "200 Liters"). Both are kept.
 model GoodsReceiptLine {
   id                     String   @id @default(cuid())
   goodsReceiptId         String
@@ -2314,30 +1872,13 @@ model GoodsReceiptLine {
   quantityReceivedInUnit Decimal  @db.Decimal(14, 4)
   unitUsed               String
   quantityInBaseUnit     Decimal  @db.Decimal(14, 4)
-  // The real, exact amount actually paid for this whole delivery —
-  // computed once, directly from what was typed (unitCost-as-entered
-  // × quantityReceivedInUnit, both exact inputs), and never
-  // recomputed from anything else afterward. This is the genuine
-  // fix for a real bug: unitCost below is a PER-BASE-UNIT figure,
-  // useful for pricing math but inherently imprecise whenever the
-  // conversion factor doesn't divide evenly (₦650,000 ÷ 205 Liters
-  // has no exact 2-decimal answer) — recomputing the total by
-  // multiplying that already-rounded per-unit figure back out
-  // reliably loses money in the display, exactly what happened here
-  // (₦649,999.65 shown instead of the real ₦650,000 that was typed).
-  // totalCost is the one number that's never subject to that
-  // round-trip error, because it's never derived from unitCost at
-  // all — both are computed independently from the same original,
-  // exact inputs.
+  // Exact amount paid for the delivery line, from the typed figures. Never
+  // recomputed from unitCost: ₦650,000 ÷ 205 L has no exact 2-decimal answer,
+  // and multiplying the rounded unit cost back out shows ₦649,999.65.
   totalCost              Decimal? @db.Decimal(14, 2)
-  // Per-base-unit cost, kept for pricing calculations and the
-  // "cost is ₦X/Liter" reference note — genuinely a derived,
-  // display/reference figure now, not the source of truth for what
-  // was actually paid. Higher precision than before (6 decimal
-  // places instead of 2) specifically so that when this DOES get
-  // used in a calculation, the rounding error stays in fractions of
-  // a kobo rather than compounding into visible naira, the way the
-  // old 2-decimal-place column allowed.
+  // Cost per base unit, for pricing calculations and "₦X/Liter" notes.
+  // Derived, not the record of what was paid. Six decimal places keep
+  // rounding errors below a kobo.
   unitCost               Decimal? @db.Decimal(16, 6)
   // Only meaningful for a BATCH-tracked part — the batch this line
   // creates or adds to.
@@ -2350,59 +1891,41 @@ model GoodsReceiptLine {
   quantityConsumptions PartQuantityConsumption[]
   pricingAlert PricingAlert?
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([goodsReceiptId])
   @@index([partId])
   @@map("goods_receipt_lines")
 }
 
 // ----------------------------------------------------------------------------
-// PRICING COMMAND CENTER — every real Goods Receipt line where a Part had
-// both a real sellingPrice and a real targetMarginPercent already set is
-// auto-compared against the new cost the moment that line is recorded (see
-// recordGoodsReceipt). A Part with either figure unset is silently skipped
-// — nothing to compare against yet, not a problem to flag.
+// PRICING COMMAND CENTER: each goods receipt line for a part with both a
+// sellingPrice and a targetMarginPercent is compared against the new cost
+// when it is recorded (recordGoodsReceipt). Parts missing either are skipped.
 // ----------------------------------------------------------------------------
 
-// Purely a real display/input preference — never a second source of
-// truth. Part.targetMarginPercent always stores the real, true margin
-// (profit ÷ selling price) regardless of this setting; a Part whose
-// business genuinely thinks in Markup (profit ÷ cost) instead just
-// sees and types that number, with the system converting both ways
-// automatically. Confirmed directly this distinction is real and
-// easy to get wrong: entering a real Markup figure into a field that
-// actually means Margin produces a genuinely different, higher target
-// than intended — the exact real confusion this field exists to
-// prevent from happening silently again.
+// How the target is entered and shown. Part.targetMarginPercent always
+// stores margin (profit ÷ selling price); a part priced by markup
+// (profit ÷ cost) shows and accepts markup, converted both ways. Typing a
+// markup figure into a margin field would ask for a higher target.
 enum PricingMethod {
   MARGIN
   MARKUP
 }
 
 enum PricingAlertSeverity {
-  // Real margin has fallen below the real target, but is still
-  // genuinely positive — a real problem worth a look, not an
-  // emergency.
+  // Margin is below target but still positive.
   DEFICIT
-  // Cost has genuinely fallen since the price was last set — margin
-  // is now comfortably above target. A real opportunity, not a
-  // warning — flagged the same way so it's never missed sitting
-  // buried in a goods-receipt log somewhere.
+  // Cost has fallen; margin is now well above target. An opportunity, flagged
+  // so it isn't missed.
   BOOST
-  // Real cost now exceeds sellingPrice outright — every sale of this
-  // Part at its current price is a real, genuine loss. The one real
-  // hard-stop case: matchEstimateStorePartLine refuses to match this
-  // Part at all while this is true, not just a dashboard warning.
+  // Cost exceeds sellingPrice: every sale loses money. Store matching refuses
+  // the part while this alert is open.
   CRITICAL_LOSS
 }
 
 enum PricingAlertStatus {
   OPEN
-  // Store actually changed sellingPrice (or targetMarginPercent) in
-  // real response to this — the one real state a genuine "Sync
-  // Price" action moves an alert into, versus DISMISSED below which
-  // means someone looked and decided the current price is fine as it
-  // stands.
+  // Store changed sellingPrice (or the target) in response, e.g. via "Sync
+  // Price". DISMISSED means the current price was kept on purpose.
   RESOLVED
   DISMISSED
 }
@@ -2410,18 +1933,13 @@ enum PricingAlertStatus {
 model PricingAlert {
   id       String @id @default(cuid())
   partId   String
-  // Which real delivery actually triggered this — the one real
-  // moment the cost changed enough to matter, not a recomputed
-  // snapshot that could drift from what genuinely happened.
+  // The delivery that raised this alert.
   goodsReceiptLineId String @unique
   severity PricingAlertSeverity
   status   PricingAlertStatus @default(OPEN)
 
-  // The real figures at the exact moment this was raised — kept as
-  // their own stored snapshot, not re-derived later from whatever
-  // sellingPrice/targetMarginPercent happen to be by the time someone
-  // actually looks at this, since either could have already changed
-  // by then for a genuinely unrelated reason.
+  // Figures as they were when the alert was raised, since sellingPrice and
+  // the target may change later.
   previousUnitCost   Decimal? @db.Decimal(16, 6)
   newUnitCost        Decimal @db.Decimal(16, 6)
   sellingPriceAtAlert Decimal @db.Decimal(12, 2)
@@ -2439,21 +1957,15 @@ model PricingAlert {
   goodsReceiptLine GoodsReceiptLine @relation(fields: [goodsReceiptLineId], references: [id], onDelete: Cascade)
   resolvedBy      User?            @relation("PricingAlertResolvedBy", fields: [resolvedById], references: [id])
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([partId, status])
   @@map("pricing_alerts")
 }
 
 // ----------------------------------------------------------------------------
-// PARTS REQUEST SLIP & EXTERNAL PROCUREMENT — the two sourcing paths a Job
-// Card's estimate can genuinely need, auto-detected from its own line item
-// types (STORE_PART vs EXTERNAL_PART/EXTERNAL_JOB) rather than a human having
-// to decide which flow applies — a Job Card can need one, the other, both, or
-// neither, purely depending on what its own estimate actually contains.
-//
-// Both paths only ever become available once a Job Card's status genuinely
-// reaches IN_PROGRESS or later — the same 70%-paid gate that already governs
-// when the estimate itself becomes visible, reused rather than duplicated.
+// PARTS REQUEST SLIP & EXTERNAL PROCUREMENT: the two sourcing paths for an
+// estimate, chosen from its line types (STORE_PART vs EXTERNAL_PART /
+// EXTERNAL_JOB). A job may need one, both or neither.
+// Both open once the job reaches IN_PROGRESS (deposit paid).
 // ----------------------------------------------------------------------------
 
 enum PartRequestSlipStatus {
@@ -2465,14 +1977,10 @@ enum PartRequestSlipStatus {
 }
 
 enum ExternalProcurementStatus {
-  // Real new first stage — Finance reviews and may add real supplementary
-  // costs (transport, logistics) before this ever reaches the Manager,
-  // matching the real workflow: Finance can add to the total, but can
-  // never touch what the technician themselves originally submitted.
-  // Added as a new value, not a rename of an existing one, deliberately
-  // — any request already sitting in PENDING_MANAGER_APPROVAL from
-  // before this existed simply continues through the original path
-  // unaffected; only new requests start here.
+  // First stage: Finance reviews and may add supplementary costs (transport,
+  // logistics) before the Manager sees it, without changing the technician's
+  // figures. Requests created before this stage existed continue from
+  // PENDING_MANAGER_APPROVAL.
   PENDING_FINANCE_REVIEW
   PENDING_MANAGER_APPROVAL
   APPROVED
@@ -2480,22 +1988,15 @@ enum ExternalProcurementStatus {
   REJECTED
 }
 
-// The Store side — three real approval steps, not four: a Workshop HOD
-// confirms the request itself is legitimate, Store confirms and reserves the
-// stock (PartStock.quantityReserved moves here, not at release, so a second
-// request can't be promised the same stock the first one already claimed),
-// and a Storekeeper physically releases it. Mirrors JobCard's own jobNumber
-// pattern for its reference number (PRS-2026-000001).
+// Store parts: the Workshop HOD approves the request, Store approves and
+// reserves the stock (PartStock.quantityReserved, so a later request can't
+// be promised the same units), and a storekeeper releases it.
+// Numbered PRS-2026-000001.
 model PartRequestSlip {
   id              String                @id @default(cuid())
   referenceNumber String                @unique
-  // Exactly one of jobCardId/vehicleServiceId is ever set — enforced in
-  // application code at creation, not at the database level, since a
-  // real CHECK constraint isn't something Prisma's schema can express
-  // directly. A Job Card-sourced slip behaves in every way exactly as
-  // it always has; a Vehicle Service-sourced slip is the newer,
-  // deliberately parallel path added for the Service Estimate's own
-  // real Store Part lines.
+  // Exactly one of jobCardId / vehicleServiceId is set, enforced in the app
+  // (Prisma can't express a CHECK constraint).
   jobCardId       String?
   vehicleServiceId String?
   branchId        String
@@ -2512,20 +2013,15 @@ model PartRequestSlip {
 
   releasedById String?
   releasedAt   DateTime?
-  // Who physically collected it — a real system user where possible (the
-  // assigned technician, a colleague who helped), or plain text where not
-  // (an intern without their own account). Kept on the header, not per
-  // line: one person collects everything on a slip in one trip in real
-  // physical practice, not a different collector per part.
+  // Who collected the parts: a user where possible, or a typed name (e.g. an
+  // intern without an account). One collector per slip.
   receivedByUserId String?
   receivedByName   String?
 
   rejectedById    String?
   rejectedAt      DateTime?
-  // Which stage actually rejected it (HOD or STORE) — kept as its own
-  // field rather than inferred from which approval timestamp is null,
-  // since a rejection can happen at either stage and the record should
-  // say plainly which one, not make someone work it out.
+  // HOD or STORE: which stage rejected it, stated rather than inferred from
+  // timestamps.
   rejectionStage  String?
   rejectionReason String?
 
@@ -2543,7 +2039,6 @@ model PartRequestSlip {
   rejectedBy     User?    @relation("PartRequestSlipRejectedBy", fields: [rejectedById], references: [id])
   lines          PartRequestSlipLine[]
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([branchId, status])
   @@index([jobCardId])
   @@index([vehicleServiceId])
@@ -2554,18 +2049,12 @@ model PartRequestSlipLine {
   id                 String   @id @default(cuid())
   slipId             String
   partId             String
-  // Traceability back to the exact estimate line this sources — optional
-  // since a request could in principle be raised without a strict 1:1
-  // match to an existing estimate line.
+  // The Job Card estimate line this line sources.
   estimateLineItemId String?
-  // The same real traceability link for a Service Estimate's own Store
-  // Part line — parallel to estimateLineItemId above, never both set on
-  // the same real line since a slip is sourced from exactly one estimate
-  // kind.
+  // The Service Estimate line this line sources. Never set together with
+  // estimateLineItemId.
   serviceEstimateLineItemId String?
-  // In the part's own base unit, matching how Goods Receipt already
-  // works — a request is entered in whatever unit makes sense, but
-  // reservation and release always happen against the base unit.
+  // In the part's base unit; reservation and release use the base unit.
   quantityRequested  Decimal  @db.Decimal(14, 4)
   quantityReleased   Decimal? @db.Decimal(14, 4)
 
@@ -2573,59 +2062,39 @@ model PartRequestSlipLine {
   part             Part              @relation(fields: [partId], references: [id])
   estimateLineItem EstimateLineItem? @relation(fields: [estimateLineItemId], references: [id])
   serviceEstimateLineItem ServiceEstimateLineItem? @relation(fields: [serviceEstimateLineItemId], references: [id])
-  // Back-relations for the two new real traceability links above —
-  // exactly which batch quantities and which individual serials this
-  // one real release line actually fulfilled with.
+  // What this line was released with: batch quantities and serials.
   batchConsumptions PartBatchConsumption[]
   issuedSerials     PartSerial[]
   quantityConsumptions PartQuantityConsumption[]
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([slipId])
   @@index([partId])
   @@map("part_request_slip_lines")
   warranties Warranty[]
 }
 
-// The External side — a genuine cash advance (an imprest, in real
-// accounting terms): a technician requests money for a specific purchase,
-// a Manager approves it, Finance disburses the actual cash. Reconciling
-// it against a receipt afterward ("Advance Retirement") needs the
-// Attachment/Storage system, which doesn't exist yet — retiredById/
-// retiredAt are reserved here now, unused until that phase, the same
-// "reserve the field, build the feature later" pattern already used for
-// Part.reorderPoint/safetyStock.
+// External parts/jobs: a cash advance (imprest). The technician requests
+// money for a purchase, Finance reviews, a Manager approves, Finance pays
+// out. retiredById/retiredAt are reserved for reconciling the advance
+// against a receipt, which needs file attachments (not built yet).
 model ExternalProcurementRequest {
   id                 String                     @id @default(cuid())
   referenceNumber    String                     @unique
   jobCardId          String
   branchId           String
-  // Legacy, single-line fields — kept exactly as they were so any
-  // request raised before this model gained real multi-line support
-  // keeps working unchanged. A new request never sets these anymore;
-  // it's real lines below that carry this same information per item.
+  // Legacy single-line fields, kept for requests raised before multi-line
+  // support. New requests use `lines` below.
   estimateLineItemId String?
   requestedById      String
   description        String
-  // The technician's own original figure — locked the moment this is
-  // submitted (there's deliberately no edit path for it at all, by
-  // any role, at any later stage): everything that happens
-  // afterward — Finance's own additions, the Manager's approval,
-  // the eventual disbursement — builds on top of this number, never
-  // rewrites it. For a genuinely multi-line request, this is the sum
-  // of every real line below, computed once at creation and never
-  // recomputed later — the same "locked the moment it's submitted"
-  // reasoning, just now covering several real items at once instead
-  // of one.
+  // The technician's figure, fixed at submission (no edit path). For a
+  // multi-line request, the sum of its lines. Finance's additions and the
+  // approval build on it.
   estimatedAmount    Decimal                    @db.Decimal(12, 2)
   status             ExternalProcurementStatus  @default(PENDING_FINANCE_REVIEW)
 
-  // The real combined total (estimatedAmount + every real
-  // supplementaryLines entry) as it stood at the exact moment the
-  // Manager approved it — locked in right there, never recomputed
-  // later, so a supplementary line added after approval (which
-  // shouldn't happen, but isn't physically prevented by the schema
-  // itself) could never silently change what was actually approved.
+  // estimatedAmount plus all supplementary lines, fixed at Manager approval,
+  // so nothing added later changes what was approved.
   approvedTotal Decimal? @db.Decimal(12, 2)
 
   financeReviewedById String?
@@ -2637,34 +2106,20 @@ model ExternalProcurementRequest {
 
   disbursedById     String?
   disbursedAt       DateTime?
-  // The real amount actually handed over — copied directly from
-  // approvedTotal at the moment of disbursement, never a figure
-  // Finance types in themselves at this final stage. Kept as its own
-  // stored field anyway (not just read live from approvedTotal)
-  // because this is the genuine historical record of what was really
-  // disbursed, the same reasoning Goods Receipt's own unitCost is
-  // stored per-delivery rather than only ever read from a part's
-  // current price.
+  // Amount paid out: copied from approvedTotal at disbursement, never typed.
+  // Stored as the historical record of what was disbursed.
   disbursedAmount   Decimal? @db.Decimal(12, 2)
-  // Real payment method (e.g. "Cash", "Transfer") — suggested from a
-  // real short list, free text still always allowed for anything not
-  // on it, matching the same pattern already used for Unit of
-  // Measure. Only ever set at this final disbursement step, alongside
-  // the two fields below.
+  // e.g. "Cash", "Transfer" (suggested list, free text allowed). Set at
+  // disbursement together with the fields below.
   paymentMethod     String?
-  // The bank transaction reference — genuinely optional, since a cash
-  // disbursement has none, but recorded whenever a transfer means one
-  // actually exists.
+  // Bank transaction reference; none for cash.
   paymentReference  String?
   disbursementNotes String?
 
   rejectedById    String?
   rejectedAt      DateTime?
   rejectionReason String?
-  // Which stage this was rejected at — FINANCE_REVIEW or
-  // MANAGER_APPROVAL — the same "keep the individual per-request
-  // timeline honest about exactly where things stopped" reasoning
-  // already used for PartRequestSlip's own rejectionStage.
+  // FINANCE_REVIEW or MANAGER_APPROVAL: where the request was rejected.
   rejectionStage  String?
 
   retiredById String?
@@ -2683,25 +2138,17 @@ model ExternalProcurementRequest {
   rejectedBy       User?             @relation("ExternalProcurementRejectedBy", fields: [rejectedById], references: [id])
   retiredBy        User?             @relation("ExternalProcurementRetiredBy", fields: [retiredById], references: [id])
   supplementaryLines ExternalProcurementSupplementaryLine[]
-  // The real, multi-item content of a genuinely multi-line request —
-  // every request raised from this point forward stores its real
-  // items here (one row per External Part/Job estimate line), the
-  // same shape PartRequestSlip's own lines already use. A legacy,
-  // single-line request simply has none of these; its one real fact
-  // stays in description/estimatedAmount above exactly as before.
+  // One row per External Part/Job estimate line (same shape as
+  // PartRequestSlipLine). Legacy single-line requests have none.
   lines              ExternalProcurementRequestLine[]
 
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([branchId, status])
   @@index([jobCardId])
   @@map("external_procurement_requests")
 }
 
-// One real item on a genuinely multi-line External Procurement
-// Request — mirrors PartRequestSlipLine's own shape exactly. A cash
-// advance request naming a Lathe job AND a Bushing both needed for
-// the same repair is one real trip to Finance, not two unconnected
-// ones; this is what makes that one real document possible.
+// One item on an External Procurement Request, so several outside items for
+// one repair (e.g. a lathe job and a bushing) go to Finance as one request.
 model ExternalProcurementRequestLine {
   id                 String   @id @default(cuid())
   requestId          String
@@ -2717,13 +2164,8 @@ model ExternalProcurementRequestLine {
   @@map("external_procurement_request_lines")
 }
 
-// Finance's own real additions — transport, logistics, and similar real
-// supplementary costs a technician's own original request could never have
-// anticipated. Deliberately its own separate table rather than a single
-// number Finance edits on the request itself: each real cost gets its own
-// description, its own amount, and its own record of who added it and when
-// — exactly what "Finance can add, never touch the original" needs to mean
-// in the schema itself, not just in application logic.
+// Costs Finance adds (transport, logistics…). A row per cost, with who added
+// it and when, so the technician's original request is never edited.
 model ExternalProcurementSupplementaryLine {
   id          String   @id @default(cuid())
   requestId   String
@@ -2739,45 +2181,26 @@ model ExternalProcurementSupplementaryLine {
 }
 
 // ----------------------------------------------------------------------------
-// PART FITMENT — which real vehicles a Part actually fits, confirmed via real
-// research on Isuzu NPR/NQR/QMR/QLR and Foton Tunland/TM3: the genuine
-// compatibility key is the ENGINE, not the marketing model name — two
-// different models can share an engine and be fully interchangeable (NPR and
-// NQR both use the 4HK1), while the same-looking model name across a fuel
-// variant can have a genuinely different engine. A rigid single Make/Model
-// field on Part can't express "fits two models but not a third," which is
-// exactly the real situation this was designed around — hence a real,
-// separate many-to-many table instead.
+// PART FITMENT: which vehicles a part fits. The compatibility key is the
+// engine, not the model name: different models can share an engine (Isuzu
+// NPR and NQR both use the 4HK1) and one model name can hide different
+// engines. A many-to-many table expresses "fits two models but not a third".
 //
-// A Part with ZERO fitment rows means "fits everything" — no extra rows
-// needed for the parts that are already universal (Engine Oil, Coolant,
-// Brake Fluid, Penetrating Oil never needed a fitment restriction in the
-// first place).
+// A part with no fitment rows fits everything (engine oil, coolant, brake
+// fluid…).
 // ----------------------------------------------------------------------------
 
 model PartFitment {
   id     String @id @default(cuid())
   partId String
   make   String
-  // Null means "fits every model of this make" — the exact real
-  // fix for a genuine bug: this used to be required even on an
-  // edit, so narrowing a fitment to Foton+TM3 and later deciding it
-  // should really cover every Foton model meant the save was
-  // silently refused, with no way to widen a fitment row back out
-  // once it had been narrowed. Same real reasoning already applied
-  // to engineType below — a field left blank means "don't restrict
-  // on this", never a formality.
+  // Null means "fits every model of this make".
   model  String?
-  // Null means "fits every engine of this make/model" — only set when a
-  // part genuinely varies by engine within the same model (the real case
-  // this was built for), never set as a formality when it doesn't matter.
-  // Real, standing rule: never set without model also being set — an
-  // engine type is specific to a model, not just a make.
+  // Null means "fits every engine of this make/model". Only set together
+  // with model.
   engineType String?
-  // Optional year range — specs can change across model years even under
-  // the same name. Null on either end means unbounded in that direction.
-  // Real, standing rule: never set without model also being set — a
-  // year range narrows a specific model, not a whole make.
+  // Optional year range; null on either end means unbounded. Only set
+  // together with model.
   yearFrom Int?
   yearTo   Int?
 
@@ -2789,43 +2212,26 @@ model PartFitment {
 }
 
 // ----------------------------------------------------------------------------
-// PART CATEGORY / PART TYPE — the real, two-level hierarchy a technician
-// actually browses at estimate time, confirmed against a real example:
+// PART CATEGORY / PART TYPE: the two-level list technicians browse when
+// writing an estimate:
 //
 //   Filter (PartCategory)              Fluid (PartCategory)
 //   ├── Oil Filter (PartType)          ├── Coolant (PartType)
 //   └── Fuel Filter (PartType)         ├── Engine Oil (PartType)
 //                                      └── Brake Fluid (PartType)
 //
-// PartCategory is the broad, parent grouping ("Filter", "Fluid",
-// "Brakes"). PartType is the specific, customer-facing kind of part a
-// technician actually picks ("Fuel Filter", "Engine Oil") — this is what
-// appears on the estimate a customer sees, never a vehicle-specific
-// catalog Part or its price. One PartType can sit above several real
-// Parts — "Fuel Filter — Foton Tunland" and "Fuel Filter — Foton TM3"
-// are two genuinely different Parts (confirmed necessary in the Vehicle
-// Fitment phase — same engine family doesn't always mean the same
-// physical part), but both are the generic idea of "Fuel Filter" as far
-// as a technician needs to think about it. Store is the one who narrows
-// a PartType down to the one real, correct, vehicle-fitting Part — using
-// the fitment-matching logic already built.
-//
-// Deliberately separate from Part.category (a simple, free-text browsing
-// bucket Store's own catalog search already uses) — that field predates
-// this hierarchy and keeps working exactly as it did; this is a new,
-// structured classification built specifically for the technician/
-// estimate-facing side, not a replacement for it.
+// The PartType ("Fuel Filter") is what appears on the estimate. One type can
+// cover several vehicle-specific Parts ("Fuel Filter — Foton Tunland",
+// "Fuel Filter — Foton TM3"); Store picks the one that fits.
+// Separate from the free-text Part.category browsing field.
 // ----------------------------------------------------------------------------
 
 model PartCategory {
   id          String   @id @default(cuid())
   branchId    String
   name        String
-  // Short prefix used to auto-generate every Part Number under this
-  // category (e.g. "FIL" for Filter → FIL-001, FIL-002...) — nullable
-  // for now so it's safe alongside any category created before this
-  // existed, but required going forward by the form that creates one:
-  // a category with no code can't drive part-number generation.
+  // Prefix for generated part numbers (e.g. "FIL" → FIL-001). Nullable for
+  // older categories; required by the create form.
   code        String?
   description String?
   createdById String
@@ -2945,8 +2351,8 @@ model WarrantyPolicy {
   providerId       String
   brand            String?
   model            String?
-  // The duration AMOUNT, in durationUnit (the column keeps its original
-  // name so existing data is untouched — historically always months).
+  // The duration amount in durationUnit. Named durationMonths because it was
+  // always months before durationUnit existed.
   durationMonths   Int
   durationUnit     WarrantyDurationUnit @default(MONTHS)
   // Distance limit from the start reading (km in automotive); null = unlimited.
@@ -2960,8 +2366,8 @@ model WarrantyPolicy {
   // Freight: shipping the replacement in and the failed part back.
   coversLogistics  Boolean        @default(false)
   defaultRemedy    WarrantyRemedy @default(REIMBURSEMENT)
-  // Sample terms loaded for demonstration — clearly flagged everywhere
-  // until real terms replace them.
+  // Sample terms for demonstration, flagged everywhere until real terms
+  // replace them.
   isSample         Boolean      @default(false)
   // The organisation that keeps this record (each organisation has its own
   // providers and policies). Null only on rows created before multi-org.
@@ -3013,8 +2419,8 @@ model Warranty {
   coverageSnapshot    String
   exclusionsSnapshot  String?
   conditionsSnapshot  String?
-  // How it came to exist: AUTO (issued with a real part release) or MANUAL
-  // (registered by staff, e.g. a vehicle sold before integration).
+  // AUTO (issued on a part release) or MANUAL (registered by staff, e.g. a
+  // vehicle sold before the system was in use).
   origin              String
   evidenceNote        String?
   issuedById          String?
@@ -3583,7 +2989,6 @@ model Appointment {
 
   @@index([ownerId, startsAt])
   @@index([roomId, startsAt])
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([branchId, startsAt])
   @@map("appointments")
 }
@@ -3597,7 +3002,6 @@ model AppointmentParticipant {
   user        User        @relation("AppointmentParticipantUser", fields: [userId], references: [id])
 
   @@unique([appointmentId, userId])
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([userId])
   @@map("appointment_participants")
 }
@@ -3828,7 +3232,6 @@ model Broadcast {
   stoppedBy    User?        @relation("BroadcastStoppedBy", fields: [stoppedById], references: [id])
 
   @@index([isActive, startsAt])
-  // v27 — indexes for the queries this model is filtered and sorted by (performance audit, Oct 2026).
   @@index([organisationId, updatedAt])
   @@map("broadcasts")
 }
@@ -3873,11 +3276,10 @@ model RoadTestPerson {
   @@map("road_test_people")
 }
 
-/// v29 — Assisted sessions. A Branch Assistant (IT / support desk) helps a
-/// colleague who is not comfortable with computers (e.g. a technician): the
-/// colleague confirms with their own password on the assistant's screen, and
-/// for a limited time the assistant works on the colleague's tasks. Every
-/// action is recorded as done BY the assistant FOR the colleague. Only roles
+/// v29: Assisted sessions. A Branch Assistant helps a colleague who is not
+/// comfortable with computers: the colleague confirms with their own password,
+/// and for a limited time the assistant works on the colleague's tasks. Every
+/// action is recorded as done by the assistant for the colleague. Only roles
 /// without approval, money or administration rights can be assisted.
 model AssistSession {
   id             String    @id @default(cuid())
