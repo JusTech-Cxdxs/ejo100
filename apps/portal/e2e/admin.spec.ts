@@ -50,9 +50,12 @@ test('switching an account off signs the person out at once; switching on lets t
   await waitOutcome(page, /status=/);
   await expect(card(page)).toContainText('Switched off');
 
-  await test.step('the switched-off person is out on their next click', async () => {
-    await sola.goto('/notifications');
-    await urlOrExplain(sola, /\/login/);
+  await test.step('the switched-off person is out at once: their open page notices by itself, or their next click does', async () => {
+    // The open page's live check sends them to /signed-out → /login?error=… with the reason. Clicking while that
+    // happens would race it (the cookie is already gone → a plain /login), so the click only comes if it has not.
+    const byItself = await sola.waitForURL(/\/login\?error=/, { timeout: 30_000 }).then(() => true).catch(() => false);
+    if (!byItself) await sola.goto('/notifications');
+    await urlOrExplain(sola, /\/login\?error=/);
     await visibleOrExplain(sola, sola.getByText(/switched off|session ended/i).first(), 'a message saying why they were signed out');
   });
   await test.step('and cannot sign back in', async () => {

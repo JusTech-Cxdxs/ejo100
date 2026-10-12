@@ -22,11 +22,21 @@ const paymentRows = (page: Page) => card(page, 'Payments').getByText(/— (Bank 
 /** Pick from a SearchableSelect (role=combobox + role=option buttons). */
 export async function pickSearchable(scope: Locator | Page, page: Page, text: string, option: RegExp | string, placeholder?: string) {
   const box = placeholder ? scope.getByPlaceholder(placeholder) : scope.getByRole('combobox').first();
-  await box.click();
-  await box.fill(text);
-  // The dropdown's own <button role="option"> — never a native <option> of
-  // some other <select> on the page (e.g. a multi-select of staff).
-  await suggestion(page, option).click();
+  const picked = option instanceof RegExp ? option : new RegExp(option.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  for (let attempt = 1; ; attempt++) {
+    await box.click();
+    await box.fill(text);
+    // The dropdown's own <button role="option"> — never a native <option> of
+    // some other <select> on the page (e.g. a multi-select of staff).
+    await suggestion(page, option).click();
+    // Picked = the field now shows the option's label (a late re-render can drop it: pick again once).
+    try {
+      await expect(box).toHaveValue(picked, { timeout: 5_000 });
+      return;
+    } catch (e) {
+      if (attempt >= 2) throw e;
+    }
+  }
 }
 
 /** A suggestion in a SearchableSelect / FilterSelect dropdown. */
