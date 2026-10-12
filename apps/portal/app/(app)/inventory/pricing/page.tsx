@@ -5,7 +5,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { formatDateTime } from '@/lib/utils/format-date';
-import { BackLink, PageTitle } from '@/components/ui';
+import { HeaderAction, PageHeader } from '@/components/ui';
 
 function formatNaira(amount: number): string {
   return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -47,17 +47,16 @@ export default async function PricingCommandCenterPage({
 
   return (
     <div className="p-8">
-      <BackLink href="/inventory" label="Back to Inventory" className="mb-4" />
-      <div className="mb-2">
-        <PageTitle icon="tag">Pricing Command Center</PageTitle>
-        <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">
-          Every real delivery cost, auto-compared against each Part&apos;s own target margin the moment it&apos;s
-          recorded.
-        </p>
-        <LoadingLink href="/inventory/analytics" className="mt-1 inline-block text-xs text-[var(--ejo-primary)] hover:underline">
-          See profitability, margins and reorder intelligence in Inventory Analytics →
-        </LoadingLink>
-      </div>
+      <PageHeader
+        hero
+        live
+        icon="tag"
+        back={{ href: '/inventory', label: 'Back to Inventory' }}
+        eyebrow="Store"
+        title="Pricing Command Center"
+        description="Every real delivery cost, auto-compared against each Part's own target margin the moment it's recorded."
+        actions={<HeaderAction href="/inventory/analytics" icon="chart" variant="secondary">See profitability, margins and reorder intelligence in Inventory Analytics →</HeaderAction>}
+      />
 
       {params.error ? (
         <div className="mt-4 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 px-4 py-2.5 text-sm text-[var(--ejo-error)]">
