@@ -86,7 +86,8 @@ Every change narrows access; nothing was widened.
 
 *What can be deleted*
 - Only Job Cards, Vehicle Services, customers, vehicles and parts created by mistake, with a reason.
-- Anything with a payment, refund, submitted estimate, parts, warranty, gate exit, road test or hand-over is refused, and the page points to Cancel or Close instead.
+- Anything with a payment, refund, submitted estimate, supervisor decision, assigned technician, parts, warranty, gate exit, road test or hand-over is refused, and the page points to Cancel or Close instead.
+- A binned Job Card or Vehicle Service keeps its number: new records never reuse it, so an old reference in an email or audit entry never opens a different job.
 
 *Restore*
 - The organisation's administrators restore within 30 days (`RECYCLE_BIN_DAYS`, 7–90). The record comes back with its original id.
