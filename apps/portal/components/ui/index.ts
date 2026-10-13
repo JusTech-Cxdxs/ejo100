@@ -6,3 +6,4 @@ export { StatusChip, statusTone, humanStatus } from './StatusChip';
 export { TONE_TILE, TONE_TEXT, type Tone } from './tones';
 export { SubNav } from './SubNav';
 export { PriorityActions, BarRow, DataRow, PeriodPills, CHART, type PriorityItem } from './Analytics';
+export { ResponsiveTable } from './ResponsiveTable';
