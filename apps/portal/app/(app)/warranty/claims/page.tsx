@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { listWarrantyClaims } from '@/lib/actions/warranty-claims';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -108,7 +109,7 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
       {shown.length === 0 ? (
         <p className="text-sm text-[var(--ejo-text-muted)]">{claims.length === 0 ? 'No claims yet. Open a warranty and choose "Start a claim".' : 'No claims in this view.'}</p>
       ) : (
-        <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -133,34 +134,34 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
                       <div className="text-xs"><LoadingLink href={`/warranty/${c.warranty.id}`} className="text-[var(--ejo-text-muted)] hover:underline">{c.warranty.warrantyNumber}</LoadingLink></div>
                       {c.resubmissionCount > 0 ? <div className="text-xs text-[var(--ejo-warning)]">Resubmission {c.resubmissionCount}</div> : null}
                     </td>
-                    <td className="px-3 py-2 text-[var(--ejo-text)]">
+                    <td data-label="Causal part" className="px-3 py-2 text-[var(--ejo-text)]">
                       {c.causalPart}
                       <div className="text-xs text-[var(--ejo-text-muted)]">{REMEDY_LABEL[c.remedy]}{c.partReturnRequired ? ` · ${c.partReturnStatus === 'SENT' ? 'part sent' : c.partReturnStatus === 'RECEIVED_BY_PROVIDER' ? 'part received' : 'part to send'}` : ''}</div>
                     </td>
-                    <td className="px-3 py-2 text-xs text-[var(--ejo-text)]">
+                    <td data-label="Customer / vehicle" className="px-3 py-2 text-xs text-[var(--ejo-text)]">
                       <CustomerLink id={c.customerId} name={c.customer.fullName} canView={canSeeCustomers} />
                       <div className="text-[var(--ejo-text-muted)]">{c.vehicle ? [c.vehicle.make, c.vehicle.model, c.vehicle.plateNumber].filter(Boolean).join(' ') : ''}</div>
                     </td>
-                    <td className="px-3 py-2 text-xs text-[var(--ejo-text)]">
+                    <td data-label="Provider" className="px-3 py-2 text-xs text-[var(--ejo-text)]">
                       {c.provider.name}
                       {c.providerReference ? <div className="text-[var(--ejo-text-muted)]">Ref: {c.providerReference}</div> : null}
                     </td>
-                    <td className="px-3 py-2 text-right text-[var(--ejo-text)]">{naira(Number(c.claimedAmount))}</td>
-                    <td className="px-3 py-2 text-right text-xs text-[var(--ejo-text)]">
+                    <td data-label="Claimed" className="px-3 py-2 text-right text-[var(--ejo-text)]">{naira(Number(c.claimedAmount))}</td>
+                    <td data-label="Approved / received" className="px-3 py-2 text-right text-xs text-[var(--ejo-text)]">
                       {c.approvedAmount !== null ? naira(Number(c.approvedAmount)) : '—'}
                       {c.settledAmount !== null ? <div className="text-[var(--ejo-success)]">{naira(Number(c.settledAmount))} received</div> : null}
                     </td>
-                    <td className={`px-3 py-2 text-xs ${open && daysLeft !== null && daysLeft < 0 ? 'font-medium text-[var(--ejo-error)]' : open && daysLeft !== null && daysLeft <= 5 ? 'font-medium text-[var(--ejo-warning)]' : 'text-[var(--ejo-text-muted)]'}`}>
+                    <td data-label="Deadline" className={`px-3 py-2 text-xs ${open && daysLeft !== null && daysLeft < 0 ? 'font-medium text-[var(--ejo-error)]' : open && daysLeft !== null && daysLeft <= 5 ? 'font-medium text-[var(--ejo-warning)]' : 'text-[var(--ejo-text-muted)]'}`}>
                       {c.deadlineAt ? formatDateOnly(c.deadlineAt) : '—'}
                       {open && daysLeft !== null ? <div>{daysLeft < 0 ? `${Math.abs(daysLeft)} ${Math.abs(daysLeft) === 1 ? 'day' : 'days'} late` : `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left`}</div> : null}
                     </td>
-                    <td className="px-3 py-2"><StatusChip status={c.status} label={CLAIM_STATUS_LABEL[c.status]} /></td>
+                    <td data-label="Status" className="px-3 py-2"><StatusChip status={c.status} label={CLAIM_STATUS_LABEL[c.status]} /></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
     </div>
   );

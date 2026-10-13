@@ -1,3 +1,5 @@
+import { FormJumpLink } from '@/components/ui/FormJumpLink';
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { redirect } from 'next/navigation';
 import { allows, guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
@@ -61,8 +63,9 @@ export default async function WorkshopCustomersPage({
         </button>
       </form>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-x-auto">
+      <FormJumpLink target="add-customer">New customer</FormJumpLink>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           {customers.length === 0 ? (
             <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
               No customers yet. Add the first one using the form on the right.
@@ -82,13 +85,13 @@ export default async function WorkshopCustomersPage({
                 {customers.map((c: (typeof customers)[number]) => (
                   <tr key={c.id} className="border-b border-[var(--ejo-border)] last:border-0">
                     <td className="px-4 py-3 font-medium text-[var(--ejo-text)]">{c.fullName}</td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
+                    <td data-label="Contact" className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       {c.email}
                       {c.phone ? <><br />{c.phone}</> : null}
                     </td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{c._count.vehicles}</td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{c._count.jobCards}</td>
-                    <td className="px-4 py-3 text-xs text-[var(--ejo-text-muted)]">
+                    <td data-label="Vehicles" className="px-4 py-3 text-[var(--ejo-text-muted)]">{c._count.vehicles}</td>
+                    <td data-label="Job Cards" className="px-4 py-3 text-[var(--ejo-text-muted)]">{c._count.jobCards}</td>
+                    <td data-label="Registered" className="px-4 py-3 text-xs text-[var(--ejo-text-muted)]">
                       {formatDateTimeCompact(c.createdAt)}
                       {c.createdBy ? <><br />by {c.createdBy.fullName}</> : null}
                     </td>
@@ -97,9 +100,9 @@ export default async function WorkshopCustomersPage({
               </tbody>
             </table>
           )}
-        </div>
+        </ResponsiveTable>
 
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6">
+        <div id="add-customer" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 xl:sticky xl:top-6 scroll-mt-20">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Add customer</h2>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
             If the email already belongs to an existing customer, their existing record is reused —

@@ -77,7 +77,7 @@ export function EstimateLinesTable({ lines, withActions }: { lines: EstimateLine
                   {line.unitPrice}
                   {line.liveTag ? <span className="ml-1 text-[9px] font-medium uppercase text-[var(--ejo-success)]">live</span> : null}
                 </td>
-                <td data-cell="amount" className="whitespace-nowrap py-2 pr-3 text-right text-[13px] font-semibold text-[var(--ejo-text)]">{line.amount}</td>
+                <td data-cell="amount" data-empty={line.amount === '—' ? '' : undefined} className="whitespace-nowrap py-2 pr-3 text-right text-[13px] font-semibold text-[var(--ejo-text)]">{line.amount}</td>
                 <td data-cell="by" className="py-2 pr-3 text-[11px] text-[var(--ejo-text-muted)]">
                   <span className="ejo-lines-by block max-w-[8rem] break-words">{line.enteredBy}</span>
                 </td>

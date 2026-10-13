@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { allows, guardAnyPage } from '@/lib/authz/server';
 import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
 import { OrgTrail } from '@/components/OrgTrail';
@@ -43,7 +44,7 @@ export default async function GoodsReceiptsPage({
       {receipts.length === 0 ? (
         <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="receipt" title="No goods receipts recorded yet." /></div>
       ) : (
-        <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -62,8 +63,8 @@ export default async function GoodsReceiptsPage({
                       {receipt.referenceNumber}
                     </LoadingLink>
                   </td>
-                  <td className="px-4 py-2 text-[var(--ejo-text)]">{receipt.supplierName}</td>
-                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">
+                  <td data-label="Supplier" className="px-4 py-2 text-[var(--ejo-text)]">{receipt.supplierName}</td>
+                  <td data-label="Received Into" className="px-4 py-2 text-[var(--ejo-text-muted)]">
                     {/* The parts this delivery was received into. */}
                     <div className="flex flex-wrap gap-x-2 gap-y-0.5">
                       {receipt.lines.map((l: (typeof receipt.lines)[number], i: number) => (
@@ -77,13 +78,13 @@ export default async function GoodsReceiptsPage({
                     </div>
                     <div className="text-[11px]">{pluralize(receipt.lines.length, 'line')}</div>
                   </td>
-                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{receipt.receivedBy.fullName}</td>
-                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(receipt.receivedAt))}</td>
+                  <td data-label="Received By" className="px-4 py-2 text-[var(--ejo-text-muted)]">{receipt.receivedBy.fullName}</td>
+                  <td data-label="Received At" className="px-4 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(receipt.receivedAt))}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
     </div>
   );

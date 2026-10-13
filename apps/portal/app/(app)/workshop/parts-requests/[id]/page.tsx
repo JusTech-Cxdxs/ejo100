@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
 import { GrnRef } from '@/components/GrnRef';
@@ -168,7 +169,7 @@ export default async function PartRequestSlipDetailPage({
           </div>
         </div>
 
-        <div className="overflow-x-auto py-4">
+        <ResponsiveTable flush className="py-4">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -184,21 +185,21 @@ export default async function PartRequestSlipDetailPage({
             <tbody>
               {slip.lines.map((line: (typeof slip.lines)[number], i: number) => (
                 <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                  <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{i + 1}</td>
-                  <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{line.part.partNumber ?? '—'}</td>
-                  <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{line.part.name}</td>
-                  <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{(line.estimateLineItem ?? line.serviceEstimateLineItem)?.description ?? '—'}</td>
-                  <td className="px-3 py-2 text-right text-[var(--ejo-text)]">
+                  <td data-hide-stacked className="px-3 py-2 text-[var(--ejo-text-muted)]">{i + 1}</td>
+                  <td data-label="Part No." className="px-3 py-2 text-[var(--ejo-text-muted)]">{line.part.partNumber ?? '—'}</td>
+                  <td data-wide data-label="Part Name" className="px-3 py-2 font-medium text-[var(--ejo-text)]">{line.part.name}</td>
+                  <td data-label="Description" className="px-3 py-2 text-[var(--ejo-text-muted)]">{(line.estimateLineItem ?? line.serviceEstimateLineItem)?.description ?? '—'}</td>
+                  <td data-label="Quantity" className="px-3 py-2 text-right text-[var(--ejo-text)]">
                     {Number(line.quantityRequested)} {pluralizeWord(Number(line.quantityRequested), line.part.baseUnitOfMeasure)}
                   </td>
-                  <td className="px-3 py-2 text-right text-[var(--ejo-text)]">
+                  <td data-label="Amount" className="px-3 py-2 text-right text-[var(--ejo-text)]">
                     {(() => {
                       // Each line links to either a Job Card or a Vehicle Service estimate line.
                       const amount = (line.estimateLineItem ?? line.serviceEstimateLineItem)?.amount;
                       return amount !== null && amount !== undefined ? formatNaira(Number(amount)) : '—';
                     })()}
                   </td>
-                  <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)] print:hidden">
+                  <td data-label="Status" className="px-3 py-2 text-xs text-[var(--ejo-text-muted)] print:hidden">
                     {line.quantityReleased !== null ? (
                       <>
                         Released: {Number(line.quantityReleased)} {pluralizeWord(Number(line.quantityReleased), line.part.baseUnitOfMeasure)}
@@ -274,10 +275,10 @@ export default async function PartRequestSlipDetailPage({
               </tr>
             </tfoot>
           </table>
-        </div>
+        </ResponsiveTable>
       </div>
 
-      <div className="mt-6 grid max-w-4xl gap-6 lg:grid-cols-[1fr_360px] print:hidden">
+      <div className="mt-6 grid max-w-4xl gap-6 xl:grid-cols-[minmax(0,1fr)_360px] print:hidden">
         <div className="space-y-6">
           {slip.status === 'RELEASED' ? (
             <PrintMenu orgHref={`/print/parts-requests/${slip.id}`} clientHref={`/print/parts-requests/${slip.id}?variant=client`} clientLabel="Collector Copy" />
@@ -372,7 +373,7 @@ export default async function PartRequestSlipDetailPage({
           <WarrantyList warranties={warranties} title="Warranties issued with this release" />
         </div>
 
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Timeline</h2>
           <dl className="mt-3 space-y-3 text-sm">
             <div>

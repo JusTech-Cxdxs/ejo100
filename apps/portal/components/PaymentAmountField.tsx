@@ -32,7 +32,7 @@ export function PaymentAmountField({ options }: { options: PaymentAmountOption[]
         value={selected}
         onChange={(e) => setSelected(e.target.value)}
         required
-        className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+        className="col-span-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
       >
         <option value="" disabled>
           Select amount…
@@ -53,7 +53,7 @@ export function PaymentAmountField({ options }: { options: PaymentAmountOption[]
           value={customValue}
           onChange={(e) => setCustomValue(e.target.value)}
           placeholder="Enter amount"
-          className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
+          className="col-span-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
         />
       ) : null}
       <input type="hidden" name="amount" value={amount} />

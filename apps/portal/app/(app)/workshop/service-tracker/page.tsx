@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { getServiceTracker } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
@@ -183,7 +184,7 @@ export default async function ServiceTrackerPage({
           {vehicles.length === 0 ? 'No vehicles are being tracked yet — tracking starts the moment a Vehicle Service is completed.' : 'Nothing matches this view.'}
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -223,7 +224,7 @@ export default async function ServiceTrackerPage({
                         {v.plateNumber ?? '—'} · <CustomerLink id={v.customerId} name={v.customerName} canView={canSeeCustomers} />
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-xs">
+                    <td data-label="Last Service" className="px-3 py-2 text-xs">
                       <LoadingLink href={`/workshop/vehicle-service/${v.lastService.id}`} className="text-[var(--ejo-primary)] hover:underline">
                         {v.lastService.serviceNumber}
                       </LoadingLink>
@@ -240,7 +241,7 @@ export default async function ServiceTrackerPage({
                         {v.lastService.mileage != null ? ` · ${v.lastService.mileage.toLocaleString('en-NG')} km` : ''}
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-xs">
+                    <td data-label="Next Due" className="px-3 py-2 text-xs">
                       <div className="text-[var(--ejo-text)]">
                         {v.nextServiceDueOdometer != null ? `${v.nextServiceDueOdometer.toLocaleString('en-NG')} km` : ''}
                         {v.nextServiceDueOdometer != null && v.nextServiceDueDate ? ' or ' : ''}
@@ -248,7 +249,7 @@ export default async function ServiceTrackerPage({
                       </div>
                       {left ? <div className="text-[var(--ejo-text-muted)]">{left}</div> : null}
                     </td>
-                    <td className="px-3 py-2">
+                    <td data-label="Status" className="px-3 py-2">
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.text}</span>
                       {v.inWorkshop ? (
                         <div className="mt-1 text-xs">
@@ -261,7 +262,7 @@ export default async function ServiceTrackerPage({
                         </div>
                       ) : null}
                     </td>
-                    <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
+                    <td data-label="Reminders (this cycle)" className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
                       {v.reminderDue ? (
                         <div className="mb-1 font-medium text-[var(--ejo-warning)]">Due now: {STAGE_LABEL[v.reminderDue.stage]}</div>
                       ) : v.nextReminderFrom ? (
@@ -286,7 +287,7 @@ export default async function ServiceTrackerPage({
                         </>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td data-actions className="px-3 py-2">
                       <div className="flex flex-wrap justify-end gap-2">
                         {v.reminderDue ? (
                           <form action={sendManualServiceReminderFormAction}>
@@ -330,7 +331,7 @@ export default async function ServiceTrackerPage({
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
     </div>
   );

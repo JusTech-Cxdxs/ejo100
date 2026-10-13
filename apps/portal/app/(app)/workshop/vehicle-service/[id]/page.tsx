@@ -564,7 +564,7 @@ export default async function VehicleServiceDetailPage({
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Customer &amp; vehicle</h2>
@@ -1208,7 +1208,7 @@ export default async function VehicleServiceDetailPage({
                     Once payments reach the 70% minimum deposit, the service moves to In Service automatically.
                     Pick a suggested amount or choose &quot;Other&quot; to enter a different one.
                   </p>
-                  <form key={payments.length} action={recordServicePaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
+                  <form key={payments.length} action={recordServicePaymentFormAction} className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <IdempotencyKey />
                     <input type="hidden" name="vehicleServiceId" value={service.id} />
                     <FormPendingOverlay />
@@ -1239,7 +1239,7 @@ export default async function VehicleServiceDetailPage({
                     <SubmitButton
                       label="Record payment"
                       pendingLabel="Recording…"
-                      className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                      className="col-span-full min-h-11 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
                     />
                   </form>
                 </>
@@ -1323,7 +1323,7 @@ export default async function VehicleServiceDetailPage({
           ) : null}
         </div>
 
-        <div className="space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6">
+        <div className="space-y-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:pb-6">
           {isApprover && service.approvalStatus === 'PENDING' && !isReadOnly ? (
             <div id="review-approval" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Review this Vehicle Service</h2>

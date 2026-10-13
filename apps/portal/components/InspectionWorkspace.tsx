@@ -132,8 +132,8 @@ export function InspectionWorkspace({
               {vehicleDescription}
             </LoadingLink>
           </p>
-          <div className="mt-3 inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-info)]/10 px-3 py-2 text-sm text-[var(--ejo-text)]">
-            <span className="font-medium">{vehicleType === 'COMMERCIAL' ? 'Commercial Vehicle' : 'Passenger Vehicle'}</span>
+          <div className="mt-3 inline-block rounded-[var(--ejo-radius-md)] bg-[var(--ejo-info)]/10 px-3 py-2 text-sm text-[var(--ejo-text)]">
+            <span className="font-medium">{vehicleType === 'COMMERCIAL' ? 'Commercial Vehicle' : 'Passenger Vehicle'}</span>{' '}
             <span className="text-[var(--ejo-text-muted)]">
               — {vehicleType === 'COMMERCIAL' ? 'commercial-specific items (air brakes, chassis, kingpins…) are included below.' : 'showing the standard passenger checklist.'}
             </span>

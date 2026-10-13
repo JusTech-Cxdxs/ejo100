@@ -540,7 +540,7 @@ export default async function JobCardDetailPage({
         })()}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Customer & vehicle</h2>
@@ -1079,7 +1079,7 @@ export default async function JobCardDetailPage({
                     Once payments reach the 70% minimum deposit, the Job Card moves to In Progress automatically.
                     Pick a suggested amount or choose &quot;Other&quot; to enter a different one.
                   </p>
-                  <form key={payments.length} action={recordPaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
+                  <form key={payments.length} action={recordPaymentFormAction} className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <IdempotencyKey />
                     <input type="hidden" name="jobCardId" value={jobCard.id} />
                     <FormPendingOverlay />
@@ -1110,7 +1110,7 @@ export default async function JobCardDetailPage({
                     <SubmitButton
                       label="Record payment"
                       pendingLabel="Recording…"
-                      className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                      className="col-span-full min-h-11 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
                     />
                   </form>
                 </>
@@ -1257,7 +1257,7 @@ export default async function JobCardDetailPage({
           </div>
         </div>
 
-        <div className="space-y-6 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6">
+        <div className="space-y-6 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:pb-6">
           {isCreator && !jobCard.supervisor && !isCheckedOut ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Reassign supervisor</h2>

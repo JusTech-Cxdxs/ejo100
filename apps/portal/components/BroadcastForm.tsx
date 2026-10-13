@@ -21,7 +21,7 @@ export function BroadcastForm({ options, action, initialAudience, initialCustome
   const meta = category ? BROADCAST_CATEGORY[category] : null;
   const choices = audience === 'BRANCH' ? options.branches.map((b) => ({ v: b.id, l: b.name })) : audience === 'DEPARTMENT' ? options.departments.map((d) => ({ v: d.id, l: d.name })) : audience === 'ROLE' ? options.roles.map((r) => ({ v: r.slug, l: r.name })) : [];
   return (
-    <form action={action} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <form action={action} className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="space-y-5">
         <FormPendingOverlay />
         <div>

@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardPage } from '@/lib/authz/server';
 import type { ReactNode } from 'react';
 import { getWarrantyAnalytics } from '@/lib/actions/warranty-analytics';
@@ -111,6 +112,7 @@ export default async function WarrantyAnalyticsPage() {
           </div>
           <div className={card}>
             <CardTitle icon="handshake">How providers make it right</CardTitle>
+            <ResponsiveTable layout="scroll" minWidth="24rem" label="Claims by remedy">
             <table className="w-full">
               <thead><tr><th className={th}>Remedy</th><th className={`${th} text-right`}>Claims</th><th className={`${th} text-right`}>Recovered</th></tr></thead>
               <tbody>
@@ -119,6 +121,7 @@ export default async function WarrantyAnalyticsPage() {
                 ))}
               </tbody>
             </table>
+            </ResponsiveTable>
           </div>
         </div>
       </Section>
@@ -128,15 +131,18 @@ export default async function WarrantyAnalyticsPage() {
           <div className={card}>
             <CardTitle icon="alert">Top failing parts</CardTitle>
             {g.topParts.length === 0 ? <p className="text-xs text-[var(--ejo-text-muted)]">No claims yet.</p> : (
+              <ResponsiveTable layout="scroll" minWidth="24rem" label="Claims by part">
               <table className="w-full">
                 <thead><tr><th className={th}>Part</th><th className={`${th} text-right`}>Claims</th><th className={`${th} text-right`}>Claimed</th><th className={`${th} text-right`}>Rejected</th></tr></thead>
                 <tbody>{g.topParts.map((t) => <tr key={t.part} className="border-t border-[var(--ejo-border)]"><td className={td}>{t.part}</td><td className={`${td} text-right`}>{t.claims}</td><td className={`${td} text-right`}>{naira(t.claimed)}</td><td className={`${td} text-right`}>{pct(t.rejectionRate)}</td></tr>)}</tbody>
               </table>
+              </ResponsiveTable>
             )}
           </div>
           <div className={card}>
             <CardTitle icon="building">Provider performance</CardTitle>
             {g.providers.length === 0 ? <p className="text-xs text-[var(--ejo-text-muted)]">No claims yet.</p> : (
+              <ResponsiveTable layout="scroll" minWidth="24rem" label="Claims by provider">
               <table className="w-full">
                 <thead><tr><th className={th}>Provider</th><th className={`${th} text-right`}>Claims</th><th className={`${th} text-right`}>Approval</th><th className={`${th} text-right`}>Avg decision</th><th className={`${th} text-right`}>Recovered</th></tr></thead>
                 <tbody>
@@ -148,6 +154,7 @@ export default async function WarrantyAnalyticsPage() {
                   ))}
                 </tbody>
               </table>
+              </ResponsiveTable>
             )}
           </div>
           <div className={card}>
@@ -161,10 +168,12 @@ export default async function WarrantyAnalyticsPage() {
           <div className={card}>
             <CardTitle icon="car">Claims by vehicle model</CardTitle>
             {g.models.length === 0 ? <p className="text-xs text-[var(--ejo-text-muted)]">No vehicle warranties yet.</p> : (
+              <ResponsiveTable layout="scroll" minWidth="24rem" label="Claims by model">
               <table className="w-full">
                 <thead><tr><th className={th}>Model</th><th className={`${th} text-right`}>Warranties</th><th className={`${th} text-right`}>Claims</th><th className={`${th} text-right`}>Per warranty</th></tr></thead>
                 <tbody>{g.models.map((m) => <tr key={m.model} className="border-t border-[var(--ejo-border)]"><td className={td}>{m.model}</td><td className={`${td} text-right`}>{m.warranties}</td><td className={`${td} text-right`}>{m.claims}</td><td className={`${td} text-right`}>{m.claimsPerWarranty === null ? '—' : m.claimsPerWarranty.toFixed(2)}</td></tr>)}</tbody>
               </table>
+              </ResponsiveTable>
             )}
           </div>
           <div className={`${card} lg:col-span-2`}>
@@ -192,6 +201,7 @@ export default async function WarrantyAnalyticsPage() {
           </div>
           <div className={card}>
             <CardTitle icon="gauge">Turnaround</CardTitle>
+            <ResponsiveTable layout="scroll" minWidth="24rem" label="Time per stage">
             <table className="w-full">
               <thead><tr><th className={th}>Stage</th><th className={`${th} text-right`}>Mean</th><th className={`${th} text-right`}>Median</th></tr></thead>
               <tbody>
@@ -200,6 +210,7 @@ export default async function WarrantyAnalyticsPage() {
                 ))}
               </tbody>
             </table>
+            </ResponsiveTable>
           </div>
           <div className={card}>
             <CardTitle icon="bars">Last 12 months</CardTitle>

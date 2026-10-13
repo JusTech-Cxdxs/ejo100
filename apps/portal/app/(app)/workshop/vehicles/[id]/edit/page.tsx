@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { actorLabel } from '@/lib/assist/rules';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
@@ -657,6 +658,7 @@ export default async function VehiclePage({
             {reminderHistory.length > 0 ? (
               <>
                 <p className="mt-3 text-xs font-medium text-[var(--ejo-text)]">This service cycle{currentCycle.length && (currentCycle[0]!.estimatedDueOdometer || currentCycle[0]!.estimatedDueDate) ? ` — due ${currentCycle[0]!.estimatedDueOdometer ? `${currentCycle[0]!.estimatedDueOdometer.toLocaleString('en-NG')} km` : ''}${currentCycle[0]!.estimatedDueOdometer && currentCycle[0]!.estimatedDueDate ? ' / ' : ''}${currentCycle[0]!.estimatedDueDate ? formatDateOnly(currentCycle[0]!.estimatedDueDate) : ''}` : ''}</p>
+              <ResponsiveTable flush>
               <table className="mt-2 w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -671,25 +673,27 @@ export default async function VehiclePage({
                   {currentCycle.map((r: (typeof reminderHistory)[number]) => (
                     <tr key={r.id} className="border-b border-[var(--ejo-border)] last:border-0">
                       <td className="py-2 text-[var(--ejo-text)]">{formatDateTime(r.sentAt)}</td>
-                      <td className="py-2 text-[var(--ejo-text)]">
+                      <td data-label="Reminder" className="py-2 text-[var(--ejo-text)]">
                         {REMINDER_STAGE_LABEL[r.reminderNumber] ?? `Stage ${r.reminderNumber}`}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">
+                      <td data-label="Sent by" className="py-2 text-[var(--ejo-text-muted)]">
                         {reminderSender(r.sentAt, r.reminderNumber, auditTrail) ?? (r.trigger === 'MANUAL' ? 'Not recorded (sent before sender tracking)' : 'System (automatic, before reminders became manual)')}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">
+                      <td data-label="Estimated Due" className="py-2 text-[var(--ejo-text-muted)]">
                         {r.estimatedDueOdometer ? `${r.estimatedDueOdometer.toLocaleString('en-NG')} km` : null}
                         {r.estimatedDueOdometer && r.estimatedDueDate ? ' / ' : null}
                         {r.estimatedDueDate ? formatDateOnly(r.estimatedDueDate) : null}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">{r.recordedOdometerAtSend ? `${r.recordedOdometerAtSend.toLocaleString('en-NG')} km` : '—'}</td>
+                      <td data-label="Odometer at Send" className="py-2 text-[var(--ejo-text-muted)]">{r.recordedOdometerAtSend ? `${r.recordedOdometerAtSend.toLocaleString('en-NG')} km` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </ResponsiveTable>
                 {earlierCycles.length ? (
                   <details className="mt-3">
                     <summary className="cursor-pointer text-xs font-medium text-[var(--ejo-primary)]">Earlier service cycles ({earlierCycles.length} {earlierCycles.length === 1 ? 'reminder' : 'reminders'})</summary>
+              <ResponsiveTable flush>
               <table className="mt-2 w-full text-sm opacity-80">
                 <thead>
                   <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -704,22 +708,23 @@ export default async function VehiclePage({
                   {earlierCycles.map((r: (typeof reminderHistory)[number]) => (
                     <tr key={r.id} className="border-b border-[var(--ejo-border)] last:border-0">
                       <td className="py-2 text-[var(--ejo-text)]">{formatDateTime(r.sentAt)}</td>
-                      <td className="py-2 text-[var(--ejo-text)]">
+                      <td data-label="Reminder" className="py-2 text-[var(--ejo-text)]">
                         {REMINDER_STAGE_LABEL[r.reminderNumber] ?? `Stage ${r.reminderNumber}`}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">
+                      <td data-label="Sent by" className="py-2 text-[var(--ejo-text-muted)]">
                         {reminderSender(r.sentAt, r.reminderNumber, auditTrail) ?? (r.trigger === 'MANUAL' ? 'Not recorded (sent before sender tracking)' : 'System (automatic, before reminders became manual)')}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">
+                      <td data-label="Estimated Due" className="py-2 text-[var(--ejo-text-muted)]">
                         {r.estimatedDueOdometer ? `${r.estimatedDueOdometer.toLocaleString('en-NG')} km` : null}
                         {r.estimatedDueOdometer && r.estimatedDueDate ? ' / ' : null}
                         {r.estimatedDueDate ? formatDateOnly(r.estimatedDueDate) : null}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">{r.recordedOdometerAtSend ? `${r.recordedOdometerAtSend.toLocaleString('en-NG')} km` : '—'}</td>
+                      <td data-label="Odometer at Send" className="py-2 text-[var(--ejo-text-muted)]">{r.recordedOdometerAtSend ? `${r.recordedOdometerAtSend.toLocaleString('en-NG')} km` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </ResponsiveTable>
                   </details>
                 ) : null}
               </>

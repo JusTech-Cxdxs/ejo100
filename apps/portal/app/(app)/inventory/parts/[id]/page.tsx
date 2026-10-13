@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
 import { notFound } from 'next/navigation';
@@ -139,7 +140,7 @@ export default async function PartDetailPage({
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
           {!canSeeCosts ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
@@ -156,7 +157,7 @@ export default async function PartDetailPage({
               {part.batches.length === 0 ? (
                 <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No batches recorded yet.</p>
               ) : (
-                <div className="mt-4 overflow-x-auto">
+                <ResponsiveTable flush className="mt-4">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -194,7 +195,7 @@ export default async function PartDetailPage({
                                 </span>
                               ) : null}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                            <td data-label="Source GRN" className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {batch.goodsReceiptLine?.goodsReceipt ? (
                                 <LoadingLink href={`/inventory/goods-receipts/${batch.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
                                   {batch.goodsReceiptLine.goodsReceipt.referenceNumber}
@@ -203,20 +204,20 @@ export default async function PartDetailPage({
                                 '—'
                               )}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                            <td data-label="Received" className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {formatQty(received)} {pluralizeWord(received, part.baseUnitOfMeasure)}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text)]">
+                            <td data-label="Sold So Far" className="px-3 py-2 text-[var(--ejo-text)]">
                               {formatQty(soldSoFar)} {pluralizeWord(soldSoFar, part.baseUnitOfMeasure)}
                             </td>
-                            <td className={`px-3 py-2 ${remaining === 0 ? 'text-[var(--ejo-text-muted)]' : 'text-[var(--ejo-text)]'}`}>
+                            <td data-label="Remaining" className={`px-3 py-2 ${remaining === 0 ? 'text-[var(--ejo-text-muted)]' : 'text-[var(--ejo-text)]'}`}>
                               {formatQty(remaining)} {pluralizeWord(remaining, part.baseUnitOfMeasure)}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text)]">{revenue !== null ? formatNaira(revenue) : '—'}</td>
-                            <td className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
+                            <td data-label="Revenue (Est.)" className="px-3 py-2 text-[var(--ejo-text)]">{revenue !== null ? formatNaira(revenue) : '—'}</td>
+                            <td data-label="Profit (Est.)" className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
                               {profit !== null ? formatNaira(profit) : '—'}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(batch.receivedAt))}</td>
+                            <td data-label="Received At" className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(batch.receivedAt))}</td>
                           </tr>
                         );
                         });
@@ -287,7 +288,7 @@ export default async function PartDetailPage({
                       </div>
                     </div>
                   ) : null}
-                </div>
+                </ResponsiveTable>
               )}
             </div>
           ) : part.trackingType === 'SERIALIZED' ? (
@@ -300,7 +301,7 @@ export default async function PartDetailPage({
               {part.serials.length === 0 ? (
                 <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No serial numbers recorded yet.</p>
               ) : (
-                <div className="mt-4 overflow-x-auto">
+                <ResponsiveTable flush className="mt-4">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -333,7 +334,7 @@ export default async function PartDetailPage({
                                 </span>
                               ) : null}
                             </td>
-                            <td className="px-3 py-2">
+                            <td data-label="Status" className="px-3 py-2">
                               <span
                                 className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                                   isIssued ? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]' : 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
@@ -342,14 +343,14 @@ export default async function PartDetailPage({
                                 {isIssued ? 'Issued' : 'In Stock'}
                               </span>
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                            <td data-label="Destination PRS" className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {serial.issuedToSlipLine ? (
                                 <IssuedToLinks slip={serial.issuedToSlipLine.slip} showCustomer canSeeCustomers={canSeeCustomers} />
                               ) : (
                                 '—'
                               )}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                            <td data-label="Source GRN" className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {serial.goodsReceiptLine?.goodsReceipt ? (
                                 <LoadingLink href={`/inventory/goods-receipts/${serial.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
                                   {serial.goodsReceiptLine.goodsReceipt.referenceNumber}
@@ -358,10 +359,10 @@ export default async function PartDetailPage({
                                 '—'
                               )}
                             </td>
-                            <td className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
+                            <td data-label="Profit (Est.)" className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
                               {profit !== null ? formatNaira(profit) : '—'}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(serial.receivedAt))}</td>
+                            <td data-label="Received At" className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(serial.receivedAt))}</td>
                           </tr>
                         );
                         });
@@ -384,11 +385,11 @@ export default async function PartDetailPage({
                             <td className="px-3 py-2">
                               {pluralizeWord(totalUnits, 'Unit')} total ({inStockCount} in stock, {issuedCount} issued)
                             </td>
-                            <td />
-                            <td />
-                            <td />
-                            <td className={totalProfit < 0 ? 'px-3 py-2 text-[var(--ejo-error)]' : 'px-3 py-2 text-[var(--ejo-success)]'}>{formatNaira(totalProfit)}</td>
-                            <td />
+                            <td data-label="Status" />
+                            <td data-label="Destination PRS" />
+                            <td data-label="Source GRN" />
+                            <td data-label="Profit (Est.)" className={totalProfit < 0 ? 'px-3 py-2 text-[var(--ejo-error)]' : 'px-3 py-2 text-[var(--ejo-success)]'}>{formatNaira(totalProfit)}</td>
+                            <td data-label="Received At" />
                           </tr>
                         );
                       })()}
@@ -426,7 +427,7 @@ export default async function PartDetailPage({
                       </div>
                     </div>
                   ) : null}
-                </div>
+                </ResponsiveTable>
               )}
             </div>
           ) : (
@@ -441,7 +442,7 @@ export default async function PartDetailPage({
               {part.goodsReceiptLines.length > 0 ? (
                 <div className="mt-4">
                   <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Deliveries (GRNs) that make up this total</p>
-                  <div className="overflow-x-auto">
+                  <ResponsiveTable flush>
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -486,20 +487,20 @@ export default async function PartDetailPage({
                                     </span>
                                   ) : null}
                                 </td>
-                                <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                                <td data-label="Received" className="px-3 py-2 text-[var(--ejo-text-muted)]">
                                   {formatQty(received)} {pluralizeWord(received, part.baseUnitOfMeasure)}
                                 </td>
-                                <td className="px-3 py-2 text-[var(--ejo-text)]">
+                                <td data-label="Sold So Far" className="px-3 py-2 text-[var(--ejo-text)]">
                                   {formatQty(soldSoFar)} {pluralizeWord(soldSoFar, part.baseUnitOfMeasure)}
                                 </td>
-                                <td className={`px-3 py-2 ${remaining === 0 ? 'text-[var(--ejo-text-muted)]' : 'text-[var(--ejo-text)]'}`}>
+                                <td data-label="Remaining" className={`px-3 py-2 ${remaining === 0 ? 'text-[var(--ejo-text-muted)]' : 'text-[var(--ejo-text)]'}`}>
                                   {formatQty(remaining)} {pluralizeWord(remaining, part.baseUnitOfMeasure)}
                                 </td>
-                                <td className="px-3 py-2 text-[var(--ejo-text)]">{revenue !== null ? formatNaira(revenue) : '—'}</td>
-                                <td className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
+                                <td data-label="Revenue (Est.)" className="px-3 py-2 text-[var(--ejo-text)]">{revenue !== null ? formatNaira(revenue) : '—'}</td>
+                                <td data-label="Profit (Est.)" className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
                                   {profit !== null ? formatNaira(profit) : '—'}
                                 </td>
-                                <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(line.goodsReceipt.receivedAt))}</td>
+                                <td data-label="Received At" className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(line.goodsReceipt.receivedAt))}</td>
                               </tr>
                             );
                           });
@@ -532,26 +533,26 @@ export default async function PartDetailPage({
                           return (
                             <tr className="border-t border-[var(--ejo-border)] font-medium text-[var(--ejo-text)]">
                               <td className="px-3 py-2">Total</td>
-                              <td className="px-3 py-2">
+                              <td data-label="Received" className="px-3 py-2">
                                 {formatQty(totalReceived)} {pluralizeWord(totalReceived, part.baseUnitOfMeasure)}
                               </td>
-                              <td className="px-3 py-2">
+                              <td data-label="Sold So Far" className="px-3 py-2">
                                 {formatQty(totalSold)} {pluralizeWord(totalSold, part.baseUnitOfMeasure)}
                               </td>
-                              <td className="px-3 py-2">
+                              <td data-label="Remaining" className="px-3 py-2">
                                 {formatQty(totalRemaining)} {pluralizeWord(totalRemaining, part.baseUnitOfMeasure)}
                               </td>
-                              <td className="px-3 py-2">{totalRevenue !== null ? formatNaira(totalRevenue) : '—'}</td>
-                              <td className={totalProfit !== null && totalProfit < 0 ? 'px-3 py-2 text-[var(--ejo-error)]' : 'px-3 py-2 text-[var(--ejo-success)]'}>
+                              <td data-label="Revenue (Est.)" className="px-3 py-2">{totalRevenue !== null ? formatNaira(totalRevenue) : '—'}</td>
+                              <td data-label="Profit (Est.)" className={totalProfit !== null && totalProfit < 0 ? 'px-3 py-2 text-[var(--ejo-error)]' : 'px-3 py-2 text-[var(--ejo-success)]'}>
                                 {totalProfit !== null ? formatNaira(totalProfit) : '—'}
                               </td>
-                              <td />
+                              <td data-label="Received At" />
                             </tr>
                           );
                         })()}
                       </tfoot>
                     </table>
-                  </div>
+                  </ResponsiveTable>
                 </div>
               ) : null}
 
@@ -673,7 +674,7 @@ export default async function PartDetailPage({
                 : 'Only fits the vehicle configurations listed below.'}
             </p>
             {part.fitments.length > 0 ? (
-              <div className="mt-3 overflow-x-auto">
+              <ResponsiveTable flush className="mt-3">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -743,12 +744,12 @@ export default async function PartDetailPage({
                       ) : (
                         <tr key={fitment.id} className="border-b border-[var(--ejo-border)] last:border-0">
                           <td className="px-2 py-1.5 font-medium text-[var(--ejo-text)]">{fitment.make}</td>
-                          <td className="px-2 py-1.5 text-[var(--ejo-text)]">{fitment.model ?? 'Any'}</td>
-                          <td className="px-2 py-1.5 text-[var(--ejo-text-muted)]">{fitment.engineType ?? 'Any'}</td>
-                          <td className="px-2 py-1.5 text-[var(--ejo-text-muted)]">
+                          <td data-label="Model" className="px-2 py-1.5 text-[var(--ejo-text)]">{fitment.model ?? 'Any'}</td>
+                          <td data-label="Engine" className="px-2 py-1.5 text-[var(--ejo-text-muted)]">{fitment.engineType ?? 'Any'}</td>
+                          <td data-label="Years" className="px-2 py-1.5 text-[var(--ejo-text-muted)]">
                             {fitment.yearFrom || fitment.yearTo ? `${fitment.yearFrom ?? '…'}–${fitment.yearTo ?? '…'}` : 'Any'}
                           </td>
-                          <td className="px-2 py-1.5 text-right">
+                          <td data-actions className="px-2 py-1.5 text-right">
                             <div className="flex items-center justify-end gap-3">
                               <LoadingLink
                                 href={`/inventory/parts/${part.id}?editFitmentId=${fitment.id}`}
@@ -770,7 +771,7 @@ export default async function PartDetailPage({
                     )}
                   </tbody>
                 </table>
-              </div>
+              </ResponsiveTable>
             ) : null}
 
             <details className="mt-4 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-3">
@@ -861,7 +862,7 @@ export default async function PartDetailPage({
           {part.warrantyPolicyId || partWarrantyTrace.length > 0 ? <PartWarrantyTraceTable rows={partWarrantyTrace} canSeeCustomers={canSeeCustomers} /> : null}
         </div>
 
-        <div className="h-fit space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6">
+        <div className="h-fit space-y-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:pb-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <p className="text-xs text-[var(--ejo-text-muted)]">On Hand</p>
             <p className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">

@@ -69,16 +69,16 @@ export function RefundsPanel({
         </span>
       </div>
 
-      <dl className="mt-3 grid grid-cols-3 gap-3 text-sm">
-        <div>
+      <dl className="mt-3 grid grid-cols-1 gap-1.5 text-sm min-[420px]:grid-cols-3 min-[420px]:gap-3">
+        <div className="flex items-baseline justify-between gap-3 min-[420px]:block">
           <dt className="text-xs text-[var(--ejo-text-muted)]">Paid</dt>
           <dd className="font-semibold text-[var(--ejo-text)]">{naira(paid)}</dd>
         </div>
-        <div>
+        <div className="flex items-baseline justify-between gap-3 min-[420px]:block">
           <dt className="text-xs text-[var(--ejo-text-muted)]">Refunded</dt>
           <dd className="font-semibold text-[var(--ejo-text)]">{naira(refunded)}</dd>
         </div>
-        <div>
+        <div className="flex items-baseline justify-between gap-3 min-[420px]:block">
           <dt className="text-xs text-[var(--ejo-text-muted)]">Still to refund</dt>
           <dd className={`font-semibold ${remaining > 0 ? 'text-[var(--ejo-warning)]' : 'text-[var(--ejo-success)]'}`}>{naira(remaining)}</dd>
         </div>

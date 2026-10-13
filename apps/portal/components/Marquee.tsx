@@ -31,17 +31,19 @@ export function Marquee() {
         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--ejo-primary)]" aria-hidden="true" />
         <span className="hidden sm:inline">Latest</span>
       </span>
-      <div className="min-w-0 flex-1 overflow-hidden py-1.5 [mask-image:linear-gradient(90deg,transparent,#000_24px,#000_calc(100%-24px),transparent)]">
-        <div className="ejo-marquee-track flex w-max gap-8" style={{ animationDuration: `${Math.max(30, items.length * 8)}s` }}>
+      <div className="min-w-0 flex-1 overflow-hidden py-0.5 [mask-image:linear-gradient(90deg,transparent,#000_24px,#000_calc(100%-24px),transparent)]">
+        <div className="ejo-marquee-track flex w-max" style={{ animationDuration: `${Math.max(30, items.length * 8)}s` }}>
           {doubled.map((item, i) => (
             // eslint-disable-next-line react/no-array-index-key
-            <Link key={`${item.id}-${i}`} href={item.url} aria-hidden={i >= items.length ? true : undefined} tabIndex={i >= items.length ? -1 : undefined} className="group flex items-center gap-2 whitespace-nowrap text-xs">
+            <Link key={`${item.id}-${i}`} href={item.url} aria-hidden={i >= items.length ? true : undefined} tabIndex={i >= items.length ? -1 : undefined} className="group flex items-center gap-2 whitespace-nowrap py-1 pr-8 text-xs">
               <span className={`flex h-5 w-5 items-center justify-center rounded-md ${item.iconTone}`}><Icon name={item.icon} size={12} strokeWidth={2} /></span>
               <span className={`${item.tone} group-hover:underline`}>{item.text}</span>
             </Link>
           ))}
         </div>
       </div>
+      {/* Spacing sits inside each item (pr-8), not in a flex gap, so the two
+          copies are exactly the same width and the loop at -50% never jumps. */}
       <style>{`
         .ejo-marquee-track { animation: ejo-marquee linear infinite; }
         .ejo-marquee:hover .ejo-marquee-track, .ejo-marquee:focus-within .ejo-marquee-track { animation-play-state: paused; }

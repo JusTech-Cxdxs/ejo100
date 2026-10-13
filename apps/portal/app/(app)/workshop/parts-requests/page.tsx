@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage } from '@/lib/authz/server';
 import { listPartRequestSlips } from '@/lib/actions/sourcing';
 import { getStoreBranchId } from '@/lib/actions/store';
@@ -105,7 +106,7 @@ export default async function PartsRequestsPage({
       {slips.length === 0 ? (
         <p className="text-sm text-[var(--ejo-text-muted)]">{q || type ? 'No parts requests match your search.' : 'No parts requests raised yet.'}</p>
       ) : (
-        <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -124,7 +125,7 @@ export default async function PartsRequestsPage({
                       {slip.referenceNumber}
                     </LoadingLink>
                   </td>
-                  <td className="px-4 py-2">
+                  <td data-label="Job Card / Service" className="px-4 py-2">
                     {slip.jobCard ? (
                       <LoadingLink href={`/workshop/job-cards/${slip.jobCard.id}`} className="text-[var(--ejo-primary)] hover:underline">
                         {slip.jobCard.jobNumber}
@@ -137,9 +138,9 @@ export default async function PartsRequestsPage({
                       <span className="text-[var(--ejo-text-muted)]">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{slip.requestedBy.fullName}</td>
-                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{pluralize(slip.lines.length, 'line')}</td>
-                  <td className="px-4 py-2">
+                  <td data-label="Requested By" className="px-4 py-2 text-[var(--ejo-text-muted)]">{slip.requestedBy.fullName}</td>
+                  <td data-label="Lines" className="px-4 py-2 text-[var(--ejo-text-muted)]">{pluralize(slip.lines.length, 'line')}</td>
+                  <td data-label="Status" className="px-4 py-2">
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASS[slip.status] ?? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'}`}>
                       {STATUS_LABEL[slip.status] ?? slip.status}
                     </span>
@@ -148,7 +149,7 @@ export default async function PartsRequestsPage({
               ))}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
     </div>
   );

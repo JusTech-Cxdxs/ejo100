@@ -85,9 +85,12 @@ export function StatTile({
         <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 ${TONE_TILE[tone]}`}><Icon name={icon} size={18} /></span>
         {href ? <span className="text-[var(--ejo-text-muted)] opacity-0 transition-all group-hover:translate-x-0.5 group-hover:text-[var(--ejo-primary)] group-hover:opacity-100" aria-hidden="true"><Icon name="arrow-right" size={16} /></span> : null}
       </div>
-      <p className={`mt-3 truncate text-xl font-bold leading-none tracking-tight sm:text-2xl ${valueColour}`}>
+      {/* Sized to the tile (cqi), so ₦12,430,500 fits a phone's half-width tile on one line. */}
+      <div className="@container mt-3">
+        <p className={`break-words text-[clamp(0.875rem,12.5cqi,1.5rem)] font-bold leading-tight tracking-tight sm:leading-none ${valueColour}`}>
         {value === null ? '—' : typeof value === 'number' ? <CountUp value={value} prefix={prefix} suffix={suffix} decimals={decimals} /> : value}
       </p>
+      </div>
       <p className="mt-1.5 text-[13px] font-medium text-[var(--ejo-text-muted)]">{label}</p>
       {delta !== undefined ? (
         delta === null ? <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">No comparison yet</p> : (

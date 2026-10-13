@@ -82,7 +82,7 @@ export default async function CrmHubPage({ searchParams }: { searchParams: Promi
         <Kpi icon="wallet" label="Spend this year" value={k.spendThisYear} format="naira" hint="Paid, net of refunds" href={qs({ sort: 'spend', page: undefined })} delay={200} />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           {hub.canRegister ? (
             <details id="register" open={sp.register === '1' || undefined} className="group ejo-rise scroll-mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">

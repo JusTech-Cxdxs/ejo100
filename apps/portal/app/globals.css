@@ -193,7 +193,7 @@ body {
 @media (max-width: 639px) {
   .ejo-page > div.p-8, .ejo-page > div.p-6 { padding: 1rem; }
   /* Bordered cards keep more of a narrow screen for their content. */
-  .ejo-page :is(.p-6, .p-5).border { padding: 1rem; }
+  .ejo-page :is(.p-8, .p-6, .p-5).border { padding: 1rem; }
 }
 
 /* Cards that are links lift a little; buttons press. */
@@ -227,6 +227,12 @@ body {
     var(--ejo-fade-bg, var(--ejo-surface));
 }
 .ejo-scroll-x > table { min-width: var(--ejo-table-min, 40rem); }
+/* References, plates and part numbers stay on one line in a table (a job
+   number broken over three lines is hard to read); the box scrolls instead. */
+.ejo-scroll-x > table > tbody > tr > td:first-child,
+.ejo-scroll-x > table > tbody > tr > td.font-mono,
+.ejo-scroll-x > table > tbody > tr > td .font-mono { white-space: nowrap; }
+@media print { .ejo-scroll-x { overflow: visible; background: none; } }
 
 /* Stacked tables: when their box is narrower than a small tablet, every row
    becomes a small card and each cell shows its column name (data-label). A
@@ -236,7 +242,12 @@ body {
 .ejo-stack { container: ejo-stack / inline-size; }
 @container ejo-stack (max-width: 40rem) {
   .ejo-stack > table { min-width: 0; }
-  .ejo-stack > table, .ejo-stack > table > tbody { display: block; width: 100%; }
+  .ejo-stack > table, .ejo-stack > table > tbody, .ejo-stack > table > tfoot { display: block; width: 100%; }
+  /* Totals: the label on the left, the figure on the right. */
+  .ejo-stack > table > tfoot > tr { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 1rem; padding: 0.75rem 1rem; border-top: 1px solid var(--ejo-border); }
+  .ejo-stack-flush > table > tfoot > tr { padding-inline: 0; }
+  .ejo-stack > table > tfoot > tr > td { display: block; padding: 0; text-align: left; }
+  .ejo-stack > table > tfoot > tr > td:empty { display: none; }
   .ejo-stack > table > thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .ejo-stack > table > tbody > tr {
     display: grid;
@@ -245,6 +256,7 @@ body {
     padding: 0.875rem 1rem;
     border-bottom: 1px solid var(--ejo-border);
   }
+  .ejo-stack-flush > table > tbody > tr { padding-inline: 0; }
   .ejo-stack > table > tbody > tr:last-child { border-bottom: 0; }
   .ejo-stack > table > tbody > tr > td {
     display: block;
@@ -254,6 +266,10 @@ body {
     white-space: normal;
     overflow-wrap: anywhere;
   }
+  /* On a card there is room to wrap: chips and references never get cut off. */
+  .ejo-stack.ejo-scroll-x > table > tbody > tr > td,
+  .ejo-stack.ejo-scroll-x > table > tbody > tr > td :is(.font-mono, .truncate, .whitespace-nowrap) { white-space: normal; overflow: visible; text-overflow: clip; }
+  .ejo-stack.ejo-scroll-x > table > tbody > tr > td .rounded-full:has(> .truncate) { border-radius: 0.75rem; }
   .ejo-stack > table > tbody > tr > td:not([data-label]),
   .ejo-stack > table > tbody > tr > td[data-wide] { grid-column: 1 / -1; }
   .ejo-stack > table > tbody > tr > td[data-label]::before {
@@ -299,6 +315,8 @@ body {
   .ejo-lines td[data-cell="desc"] { grid-area: desc; }
   .ejo-lines td[data-cell="qty"], .ejo-lines td[data-cell="unit"], .ejo-lines td[data-cell="price"] { display: none; }
   .ejo-lines td[data-cell="amount"] { grid-area: amount; text-align: right; white-space: nowrap; }
+  /* No price yet (awaiting the Store): a lone dash in the corner says nothing; the line's note does. */
+  .ejo-lines td[data-cell="amount"][data-empty] { visibility: hidden; }
   .ejo-lines td[data-cell="by"] { grid-area: by; }
   .ejo-lines td[data-cell="actions"] { grid-area: actions; padding-top: 0.25rem; border-top: 1px dashed var(--ejo-border); }
   .ejo-lines td[data-cell="actions"] > div { justify-content: flex-end; }
@@ -308,6 +326,12 @@ body {
   .ejo-lines .ejo-lines-summary { display: block; }
   .ejo-lines .ejo-lines-by::before { content: "Entered by "; }
   .ejo-lines .ejo-line-action { min-height: 2.5rem; min-width: 2.75rem; padding: 0 0.875rem; border: 1px solid var(--ejo-border); border-radius: 999px; justify-content: center; background: var(--ejo-surface); }
+}
+/* Wider line cards (tablets, the Job Card's main column on a laptop): Edit
+   and Remove sit beside "Entered by" rather than on a row of their own. */
+@container ejo-lines (min-width: 26rem) and (max-width: 44rem) {
+  .ejo-lines > table > tbody > tr { grid-template-areas: "type amount" "desc desc" "by actions"; }
+  .ejo-lines td[data-cell="actions"] { padding-top: 0; border-top: 0; }
 }
 
 /* Phones: form fields at 16px (iOS zooms into anything smaller) and at least
@@ -319,6 +343,8 @@ body {
   :is(input:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"], [type="file"]), select) {
     min-height: 2.75rem;
   }
+  /* Form buttons (Submit, Approve, Record payment…) get the same thumb-sized height. */
+  .ejo-page form :is(button[type="submit"], button:not([type])) { min-height: 2.75rem; }
 }
 
 /* Keyboard focus: a clear green ring everywhere (in the base layer, so a
