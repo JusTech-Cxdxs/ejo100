@@ -26,9 +26,11 @@ test('people who are not on the Security desk get their own exit passes, not the
     assert.ok(k.includes('exit-passes'), `${role}: My exit passes`);
     assert.ok(!k.includes('security'), `${role}: no Security desk`);
     assert.equal(navigationFor(who([role])).find((i) => i.key === 'exit-passes')?.name, 'My exit passes');
+    assert.equal(navigationFor(who([role])).find((i) => i.key === 'my-visitors')?.href, '/security/my-visitors', `${role}: My visitors`);
   }
   for (const role of ['security-officer', 'chief-security-officer', 'receptionist', 'administrator', 'branch-administrator']) {
     assert.ok(keys([role]).includes('security'), `${role}: the Security desk`);
+    assert.ok(!keys([role]).includes('my-visitors'), `${role}: visitors are on the desk itself`);
   }
 });
 

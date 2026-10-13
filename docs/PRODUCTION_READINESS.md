@@ -36,6 +36,17 @@ records what is verified, what was fixed, what is deliberately deferred, and wha
 | Queues / workers | Emails and reminders are small and logged; cron covers schedules | Bulk work (mass emails, exports, imports) exceeds request time |
 | Read replicas / partitioning | Data volume is small | Analytics queries slow live work, or tables pass tens of millions of rows |
 | Kubernetes | Managed platforms already scale | Never, unless self-hosting is required |
+| Service worker / offline mode | The staff portal and the customer portal are installable (see "Installable app" below) but have no service worker, so no page is kept on the phone. Pages carry personal and business data; caching them offline needs its own design (what may be stored, encryption, clearing on sign-out, stale approvals) | Offline use is a business need, with that design reviewed |
+
+### Installable app
+Both apps can be added to a phone's home screen and open full screen. The staff portal's
+`apps/portal/app/manifest.ts` starts on `/dashboard`; the website's `apps/website/app/manifest.ts`
+installs the customer portal (start `/customer-portal/dashboard`, scope `/customer-portal`). Names
+come from `NEXT_PUBLIC_ORGANISATION_NAME`. Icons in each app's `public/icons/` were made from
+`public/images/logo/logo.png` with sharp (192/512 px, maskable versions with a safe margin, a
+180 px Apple touch icon); regenerate them the same way if the logo changes. The manifest
+(`/manifest.webmanifest`) and the icons are plain GET files, open without a session, and fall
+under the Content-Security-Policy's `default-src 'self'`.
 
 ## 3. Recovery runbook
 - **Code**: Vercel → Deployments → previous → Instant Rollback (seconds). Render → Deploys → Rollback.

@@ -91,7 +91,7 @@ export function AppShell({
   }, []);
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-[var(--ejo-bg)]">
+    <div className="flex h-dvh overflow-hidden bg-[var(--ejo-bg)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       <a href="#main" className="sr-only z-[70] rounded-md bg-[var(--ejo-primary)] px-3 py-2 text-sm font-medium text-white focus:not-sr-only focus:fixed focus:left-3 focus:top-3">Skip to the page</a>
 
       {/* Desktop: always there, sticky, full height. */}
@@ -101,9 +101,9 @@ export function AppShell({
 
       {/* Phones and tablets: the slide-in drawer. */}
       {drawer ? (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+        <div className="fixed inset-0 z-50 overscroll-contain lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
           <div className="ejo-fade absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" onClick={closeDrawer} aria-hidden="true" />
-          <div ref={drawerRef} className="ejo-slide-in absolute inset-y-0 left-0 max-w-[86vw] shadow-2xl">
+          <div ref={drawerRef} className="ejo-slide-in absolute inset-y-0 left-0 max-w-[86vw] bg-[var(--ejo-surface)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pt-[env(safe-area-inset-top)] shadow-2xl">
             <Sidebar items={items} organisationName={organisationName} variant="drawer" onNavigate={closeDrawer} />
           </div>
         </div>
@@ -116,7 +116,7 @@ export function AppShell({
         {/* The working area. Loading and saving overlays cover only this box
             (see CONTENT_AREA_ID), so the menu, header and ticker never disappear. */}
         <div id={CONTENT_AREA_ID} className="relative flex min-h-0 min-w-0 flex-1">
-          <main id="main" tabIndex={-1} className="ejo-scroll flex min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--ejo-bg)] focus:outline-none">
+          <main id="main" tabIndex={-1} className="ejo-scroll flex min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--ejo-bg)] pb-[env(safe-area-inset-bottom)] focus:outline-none">
             <NavigationLoadingProvider>{children}</NavigationLoadingProvider>
           </main>
         </div>

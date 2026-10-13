@@ -45,7 +45,7 @@ export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen 
   // (No backdrop-filter on the header: it would make the header the containing
   // block of the phone search sheet and menus, which are position: fixed.)
   return (
-    <header className="relative z-40 flex h-16 shrink-0 items-center gap-2 border-b border-[var(--ejo-border)] bg-[color-mix(in_srgb,var(--ejo-bg)_92%,var(--ejo-primary))] px-3 shadow-[0_1px_0_0_rgba(0,0,0,0.02)] sm:gap-3 sm:px-5">
+    <header className="relative z-40 box-content flex h-16 shrink-0 pt-[env(safe-area-inset-top)] items-center gap-2 border-b border-[var(--ejo-border)] bg-[color-mix(in_srgb,var(--ejo-bg)_92%,var(--ejo-primary))] px-3 shadow-[0_1px_0_0_rgba(0,0,0,0.02)] sm:gap-3 sm:px-5">
       {/* Phones and tablets: the menu button and the logo. */}
       <button
         type="button"
@@ -87,7 +87,7 @@ export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen 
             <span className={`hidden text-[var(--ejo-text-muted)] transition-transform md:inline ${account ? 'rotate-180' : ''}`} aria-hidden="true"><Icon name="chevron-down" size={14} /></span>
           </button>
           {account ? (
-            <div className="ejo-pop fixed inset-x-2 top-16 z-50 overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-2xl shadow-black/10 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-72">
+            <div className="ejo-pop fixed inset-x-2 top-[calc(4rem+env(safe-area-inset-top))] z-50 overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-2xl shadow-black/10 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-72">
               <div className="flex items-center gap-3 border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4">
                 <Avatar name={userName} size={40} />
                 <div className="min-w-0">

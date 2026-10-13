@@ -71,7 +71,7 @@ export function Sidebar({
         ) : null}
       </div>
 
-      <nav aria-label="Main" className={`ejo-scroll flex-1 overflow-y-auto py-3 ${mini ? 'px-2' : 'px-3'}`}>
+      <nav aria-label="Main" className={`ejo-scroll flex-1 overflow-y-auto overscroll-contain py-3 ${mini ? 'px-2' : 'px-3'}`}>
         {grouped(items).map((g) => (
           <div key={g.title} className="mb-3">
             {mini ? <div className="mx-3 mb-2 mt-1 h-px bg-[var(--ejo-border)] first:hidden" aria-hidden="true" /> : (

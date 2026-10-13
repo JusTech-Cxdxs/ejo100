@@ -211,7 +211,7 @@ export function SearchableSelect({
                 >
                   <span className="text-[var(--ejo-text)]">{option.label}</span>
                   {option.sublabel ? (
-                    <span className="ml-2 text-xs text-[var(--ejo-text-muted)]">{option.sublabel}</span>
+                    <span className="block break-words text-xs text-[var(--ejo-text-muted)] [overflow-wrap:anywhere] sm:ml-2 sm:inline">{option.sublabel}</span>
                   ) : null}
                 </button>
               ))}

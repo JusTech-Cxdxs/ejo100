@@ -2,7 +2,7 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 import { CUSTOMER, SUPERMANAGER } from './people';
 import { as, open, expectHealthy, noSidewaysScroll } from './helpers';
 import { db, freshVehicle } from './db';
-import { addLine, assignTechnician, card, openJobCard, supervisorApproves, technicianAccepts } from './workflows';
+import { addLine, assignTechnician, card, jcForm, managerApprovesEstimate, notifyCustomer, openJobCard, recordPayment, submitEstimate, supervisorApproves, supervisorApprovesEstimate, technicianAccepts } from './workflows';
 
 /**
  * Phone layout regressions the owner reported, on a small Android phone
@@ -109,6 +109,61 @@ test('estimate on a phone: lines are added on the phone and each line reads with
       expect(box.height, `${name} button height`).toBeGreaterThanOrEqual(38);
     }
   });
+  await noSidewaysScroll(page, S.url);
+});
+
+/** Every visible control of a form: inside the screen, clear of the others, and thumb-sized. */
+async function formFitsPhone(form: Locator, what: string) {
+  const controls: { name: string; box: Box }[] = [];
+  for (const el of await form.locator('input:not([type="hidden"]), select, textarea, button').all()) {
+    if (!(await el.isVisible())) continue;
+    const box = (await el.boundingBox())!;
+    const name = (await el.getAttribute('name')) ?? (await el.getAttribute('aria-label')) ?? ((await el.textContent()) ?? '').trim().slice(0, 30);
+    expect(box.x, `${what}: ${name} starts off the screen`).toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width, `${what}: ${name} is wider than the screen`).toBeLessThanOrEqual(361);
+    expect(box.height, `${what}: ${name} is too small to tap`).toBeGreaterThanOrEqual(38);
+    controls.push({ name, box });
+  }
+  expect(controls.length, `${what}: controls on the form`).toBeGreaterThan(1);
+  for (let i = 0; i < controls.length; i++) {
+    for (let j = i + 1; j < controls.length; j++) {
+      expect(overlaps(controls[i]!.box, controls[j]!.box), `${what}: ${controls[i]!.name} overlaps ${controls[j]!.name}`).toBe(false);
+    }
+  }
+}
+
+test('opening a Job Card on a phone: the form fits and nothing overlaps', async ({ page }) => {
+  await as(page, 'receptionist');
+  await open(page, '/workshop/job-cards');
+  const form = jcForm(page, 'Open Job Card');
+  await form.getByRole('button', { name: '+ Add another complaint' }).click();
+  await formFitsPhone(form, 'Open Job Card');
+  await noSidewaysScroll(page, '/workshop/job-cards');
+});
+
+test('approving the estimate and recording a payment on a phone', async ({ page }) => {
+  test.skip(!S.url, 'needs the Job Card from the estimate test');
+  await as(page, SUPERMANAGER);
+  await open(page, S.url);
+  await submitEstimate(page);
+  await supervisorApprovesEstimate(page);
+  await as(page, 'workshop-manager');
+  await open(page, S.url);
+  await managerApprovesEstimate(page);
+  await as(page, 'receptionist');
+  await open(page, S.url);
+  await notifyCustomer(page);
+
+  await as(page, 'finance-officer');
+  await open(page, S.url);
+  const pay = jcForm(page, 'Record payment');
+  await pay.scrollIntoViewIfNeeded();
+  await formFitsPhone(pay, 'Record payment');
+  // Typing an amount shows one more field; it fits too.
+  await pay.locator('select').first().selectOption('OTHER');
+  await formFitsPhone(pay, 'Record payment (other amount)');
+  await pay.locator('select').first().selectOption('SEVENTY_PERCENT');
+  await recordPayment(page, 'SEVENTY_PERCENT');
   await noSidewaysScroll(page, S.url);
 });
 

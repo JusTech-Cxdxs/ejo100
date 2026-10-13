@@ -122,7 +122,7 @@ export function PortalShell({ who, initialUnread, children }: { who: Who; initia
   );
 
   return (
-    <div className="min-h-[100dvh] bg-[var(--ejo-bg)] lg:flex">
+    <div className="min-h-[100dvh] bg-[var(--ejo-bg)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] lg:flex">
       <a href="#portal-main" className="sr-only z-[60] rounded bg-[var(--ejo-primary)] px-3 py-2 text-white focus:not-sr-only focus:fixed focus:left-3 focus:top-3">Skip to content</a>
 
       {/* Sidebar — desktop */}
@@ -144,7 +144,7 @@ export function PortalShell({ who, initialUnread, children }: { who: Who; initia
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="sticky top-0 z-40 border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)]/85 backdrop-blur supports-[backdrop-filter]:bg-[var(--ejo-bg)]/75">
+        <header className="sticky top-0 z-40 border-b pt-[env(safe-area-inset-top)] border-[var(--ejo-border)] bg-[var(--ejo-bg)]/85 backdrop-blur supports-[backdrop-filter]:bg-[var(--ejo-bg)]/75">
           <div className="flex h-16 items-center gap-2 px-3 sm:gap-3 sm:px-6 lg:px-8">
             <button
               ref={menuButton}
@@ -208,9 +208,9 @@ export function PortalShell({ who, initialUnread, children }: { who: Who; initia
 
       {/* Drawer — phones and tablets */}
       {drawer ? (
-        <div className="fixed inset-0 z-50 lg:hidden" id="portal-drawer">
+        <div className="fixed inset-0 z-50 overscroll-contain lg:hidden" id="portal-drawer">
           <button type="button" className="ejo-fade absolute inset-0 h-full w-full cursor-default bg-slate-950/50 backdrop-blur-[2px]" aria-label="Close menu" tabIndex={-1} onClick={() => setDrawer(false)} />
-          <div ref={drawerRef} role="dialog" aria-modal="true" aria-label="Menu" className="ejo-slide-in absolute inset-y-0 left-0 flex w-[86%] max-w-[320px] flex-col bg-[var(--ejo-bg)] shadow-2xl">
+          <div ref={drawerRef} role="dialog" aria-modal="true" aria-label="Menu" className="ejo-slide-in absolute inset-y-0 left-0 flex w-[86%] max-w-[320px] flex-col bg-[var(--ejo-bg)] pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-[var(--ejo-border)] px-4 py-4">
               <div className="min-w-0"><Wordmark name={siteConfig.companyShortName} /></div>
               <button type="button" onClick={() => setDrawer(false)} aria-label="Close menu" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--ejo-border)] text-[var(--ejo-text)]">
@@ -224,7 +224,7 @@ export function PortalShell({ who, initialUnread, children }: { who: Who; initia
                 <p className="truncate text-xs text-[var(--ejo-text-muted)]">{who.email}</p>
               </div>
             </div>
-            <nav className="flex-1 overflow-y-auto px-3" aria-label="Main">{navList(true)}</nav>
+            <nav className="flex-1 overflow-y-auto overscroll-contain px-3" aria-label="Main">{navList(true)}</nav>
             <div className="space-y-4 border-t border-[var(--ejo-border)] px-4 py-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-[var(--ejo-text-muted)]">Appearance</span>

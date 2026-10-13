@@ -381,3 +381,18 @@ mark.ejo-hit { background: color-mix(in srgb, var(--ejo-primary) 22%, transparen
 @keyframes ejo-spin-in { from { transform: rotate(-90deg) scale(0.9); opacity: 0; } to { transform: none; opacity: 1; } }
 .ejo-spin-in { animation: ejo-spin-in 800ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 @media (prefers-reduced-motion: reduce) { .ejo-spin-in { animation: none; } }
+
+/* Installed app and phones: no grey flash on tap (buttons and links have
+   their own pressed state), no font inflation when the phone is turned, and
+   the whole frame never rubber-bands; only the working area scrolls. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+html, body { overscroll-behavior-x: none; }
+body { overscroll-behavior-y: none; }
+@media (display-mode: standalone) {
+  /* Installed: text in the menu and header is not selected by a long press. */
+  header, aside, [role="dialog"] nav { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+}

@@ -93,7 +93,7 @@ export default async function VehicleServiceRequestPartsPage({
             </div>
           </div>
 
-          <ResponsiveTable flush>
+          <ResponsiveTable>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-left text-xs text-[var(--ejo-text-muted)]">

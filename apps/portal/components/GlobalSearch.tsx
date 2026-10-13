@@ -163,7 +163,7 @@ export function GlobalSearch() {
         <Icon name="search" size={19} />
       </button>
       {sheet ? (
-        <div className="ejo-fade fixed inset-0 z-[60] flex flex-col bg-[var(--ejo-bg)] md:hidden" role="dialog" aria-modal="true" aria-label="Search">
+        <div className="ejo-fade fixed inset-0 z-[60] flex flex-col overscroll-contain bg-[var(--ejo-bg)] pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] md:hidden" role="dialog" aria-modal="true" aria-label="Search">
           <div className="flex items-center gap-2 border-b border-[var(--ejo-border)] p-3">
             <div className="min-w-0 flex-1">{field(sheetInput, true)}</div>
             <button type="button" onClick={() => { setSheet(false); setQ(''); }} className="shrink-0 rounded-full px-3 py-2 text-sm font-medium text-[var(--ejo-primary)]">Cancel</button>
