@@ -40,6 +40,12 @@ Requested by the owner and recorded on `/roadmap` (`apps/portal/lib/roadmap.ts`)
 - From a review of SAP S/4HANA, Dynamics 365, Odoo and dealer-management systems: Approvals & workflow designer, Quality & checklists, Technician app (offline, job clocking), Vehicle sales, Service plans & contracts, Customer feedback, Price lists / promotions / loyalty, Fleet & business accounts, Tax & e-invoicing (NRS MBS), Data warehouse & BI. Existing entries extended: Finance (budgets), Documents (e-signature), Fixed assets & tools (tool crib), Customer app (online booking), Integrations (manufacturers, open API).
 - The AI phase is marked **Next**: AI support centre (customer and staff tickets with a drafting assistant) and Intelligence, both behind a separate Python service (`docs/AI_READINESS.md`).
 
+## V1 final closure — 13 Oct 2026 (PR #19)
+Roles and approvals, Branch Assistant with assisted sessions, error references with an IT lookup, rewritten emails, dependency and
+configuration hardening, plain-language copy, extended roadmap and AI-readiness. Status and owner actions:
+[V1_FINAL_RELEASE_REPORT.md](V1_FINAL_RELEASE_REPORT.md). Closure waits for CI on the release candidate (GitHub billing) and the
+owner prerequisites listed there.
+
 ## Customer portal + CRM + redesign + full test programme — 12 Oct 2026 (PR #11)
 Customer portal rebuilt (mobile-first, forgot/reset, services, payments, warranties, notifications, profile), staff CRM (hub, customer 360,
 portal access, customer broadcasts), portal shell and module redesign, and a free/open-source test programme (Playwright 135 tests, Gitleaks,

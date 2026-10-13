@@ -81,7 +81,7 @@ flowchart LR
   end
 
   subgraph Render
-    A["API<br/>NestJS 10"]
+    A["API<br/>NestJS 11"]
   end
 
   subgraph Supabase
@@ -154,16 +154,16 @@ it does.
 
 | Layer | Technology | Version |
 |---|---|---|
-| Runtime | Node.js | 20.x (`.node-version`: 20.18.1) |
-| Language | TypeScript (strict) | 5.6.3 |
+| Runtime | Node.js | 24.x (`.node-version`: 24) |
+| Language | TypeScript (strict) | 5.9.3 |
 | Staff portal, website | Next.js (App Router, server actions) | 15.5.27 |
-| UI | React | 19.2.8 |
+| UI | React | 19.3.0 |
 | Styling | Tailwind CSS | 4.3.3 |
 | Charts / motion / PDF | Recharts / Framer Motion / @react-pdf/renderer | 3.10.1 / 11.18.2 / 4.9.0 |
-| Authentication | Better Auth (database sessions, HTTP-only cookies) | 1.6.30 |
+| Authentication | Better Auth (database sessions, HTTP-only cookies) | 1.6.33 |
 | ORM | Prisma Client and CLI | 5.22.0 |
 | Database | PostgreSQL on Supabase (CI: `postgres:16`) | 16 |
-| API | NestJS | 10.4.22 |
+| API | NestJS (Express 5) | 11.2.7 |
 | Email | Nodemailer over SMTP | 10.1.0 |
 | Realtime | Supabase Realtime (broadcast) | hosted |
 | E2E tests | Playwright | 1.64.0 |
@@ -188,7 +188,7 @@ realtime, `pg_cron`).
 | Audit | `packages/database/src/audit-journal.ts`, `writeAuditLog` in `lib/workshop-core.ts` | Every data change journalled with before/after values (secrets redacted, rolled-back transactions dropped); every business step written as a named event with the person and organisation. Audit rows are never edited or deleted. |
 | Integrity | `lib/integrity.ts` | Compare-and-set on workflow status, row locks for payments, refunds and stock, idempotency keys on payments, refunds and goods receipts. |
 | Rate limits | `middleware.ts`, Better Auth config, API middleware | Submissions: 120 a minute per person, 1,500 per shared address. Sign-in: 20 a minute; password-reset requests: 5 per 5 minutes. Limits are per instance (a global limit needs an edge WAF). |
-| Headers | `next.config.ts` (both apps) | HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, COOP, CORP, and a CSP with `default-src 'self'`. `'unsafe-inline'` remains for Next.js scripts; a nonce-based CSP is the planned fix. |
+| Headers | `next.config.ts` (both apps) | HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, COOP, CORP, and a CSP with `default-src 'self'`. Signed-in portal pages and the customer portal use a per-request nonce with `'strict-dynamic'` (no `'unsafe-inline'` scripts); the static public pages keep a fixed policy. |
 | Secrets | `.env` only, never the repository | Gitleaks scans the full history in CI. Only public values (`NEXT_PUBLIC_*`) reach the browser bundle; a CI scan checks the built bundles for secret values. |
 
 Known limitations and the plan for each are listed in
@@ -215,7 +215,7 @@ workflows run on pull requests to `main`. None of them touch production.
 
 ## Running it locally
 
-Requirements: Node.js 20, npm, and a PostgreSQL 16 database (local or a
+Requirements: Node.js 24, npm, and a PostgreSQL 16 database (local or a
 Supabase project you own for development).
 
 ```bash
