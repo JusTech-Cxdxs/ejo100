@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/actions/workshop';
+import { currentAssist } from '@/lib/authz/server';
 import { getDashboardNotifications } from '@/lib/actions/dashboard';
 import { approvalArea, APPROVAL_AREAS, type ApprovalArea } from '@/lib/approvals';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -25,7 +26,9 @@ const AREA_HINT: Record<ApprovalArea, string> = {
  */
 export default async function ApprovalsPage() {
   await requireUser().catch(() => redirect('/signed-out'));
-  const items = (await getDashboardNotifications())
+  // Nothing is decided during an assisted session, so nothing is listed.
+  const assisting = await currentAssist();
+  const items = (assisting ? [] : await getDashboardNotifications())
     .map((n) => ({ ...n, area: approvalArea(n) }))
     .filter((n): n is typeof n & { area: ApprovalArea } => n.area !== null)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());

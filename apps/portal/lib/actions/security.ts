@@ -9,7 +9,7 @@ import { cache } from 'react';
 
 import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
-import { actingOrgWhere, allows, authorize, branchOwnedByMyOrganisation, canSeeRecord, firstReach, getPrincipal, orgWhere, reachWhere, refuse, seeBranchAnyOf, NOT_AVAILABLE } from '@/lib/authz/server';
+import { actingOrgWhere, allows, authorize, branchOwnedByMyOrganisation, canSeeRecord, firstReach, getPrincipal, orgWhere, reachWhere, refuse, seeBranchAnyOf, NOT_AVAILABLE, refuseDuringAssist, currentAssist } from '@/lib/authz/server';
 import { decide, type PermissionKey } from '@/lib/authz/catalogue';
 import { jobCardInside, serviceInside } from '@/lib/custody';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
@@ -488,6 +488,8 @@ export async function createExitPass(input: ExitPassInput): Promise<{ id: string
 }
 
 export async function decideExitPass(passId: string, approve: boolean, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('decideExitPass');
   const user = await requireUser();
   await inMyOrganisation('exitPass', passId);
   const roles = await getSecurityRoles();
@@ -759,6 +761,7 @@ export async function getExitPass(id: string) {
 
 /** Can this viewer decide this pass right now? (for the pass page) */
 export async function canDecideExitPass(passId: string): Promise<boolean> {
+  if (await currentAssist()) return false;
   const user = await requireUser();
   const roles = await getSecurityRoles();
   const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, requestedById: true } });
@@ -1159,6 +1162,8 @@ async function roadTestRecordAudit(p: { jobCardId: string | null; vehicleService
 }
 
 export async function decideRoadTest(id: string, approve: boolean, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('decideRoadTest');
   const user = await requireUser();
   await inMyOrganisation('roadTestPermit', id);
   const roles = await getSecurityRoles();
@@ -1294,6 +1299,7 @@ export async function getRoadTest(id: string) {
 }
 
 export async function canDecideRoadTest(id: string): Promise<boolean> {
+  if (await currentAssist()) return false;
   const user = await requireUser();
   const roles = await getSecurityRoles();
   const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, requestedById: true, branchId: true } });
@@ -1635,6 +1641,8 @@ async function contractorPeople(passId: string) {
 }
 
 export async function decideContractorPass(id: string, approve: boolean, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('decideContractorPass');
   const user = await requireUser();
   await inMyOrganisation('contractorPass', id);
   const roles = await getSecurityRoles();
@@ -1766,6 +1774,7 @@ export async function getContractorPass(id: string) {
 }
 
 export async function canDecideContractorPass(id: string): Promise<boolean> {
+  if (await currentAssist()) return false;
   const user = await requireUser();
   const roles = await getSecurityRoles();
   const p = await prisma.contractorPass.findUnique({ where: { id }, select: { status: true, requestedById: true, branchId: true } });

@@ -3,7 +3,7 @@ import { actorLabel } from '@/lib/assist/rules';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
-import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach, seeBranchAnyOf, seeJobCard, seeService } from '@/lib/authz/server';
+import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach, seeBranchAnyOf, seeJobCard, seeService, refuseDuringAssist } from '@/lib/authz/server';
 
 /**
  * Sourcing for a Job Card (or Vehicle Service) once work has started:
@@ -883,6 +883,8 @@ export async function requestServiceEstimatePartRequestSlip(serviceEstimateId: s
 
 /** Step 1 of 3: the Workshop HOD confirms the request before Store checks stock. */
 export async function approvePartRequestSlipByHod(slipId: string, notes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approvePartRequestSlipByHod');
   // Catalogue check first (who may attempt this); branch eligibility and
   // workflow state are checked below.
   await authorize('store.prs.approve_hod', undefined, 'approvePartRequestSlipByHod');
@@ -1018,6 +1020,8 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
  * at release, stops a later request from being promised the same units.
  * Every line's availability (on hand minus reserved) is checked first. */
 export async function approvePartRequestSlipByStore(slipId: string, notes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approvePartRequestSlipByStore');
   // Catalogue check first (who may attempt this); branch eligibility and
   // workflow state are checked below.
   await authorize('store.prs.release', undefined, 'approvePartRequestSlipByStore');
@@ -1117,6 +1121,8 @@ export async function releasePartRequestSlip(
   receivedBy: { receivedByUserId?: string; receivedByName?: string },
   lineSerials?: Record<string, string[]>,
 ): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('releasePartRequestSlip');
   // Catalogue check first (who may attempt this); branch eligibility and
   // workflow state are checked below.
   await authorize('store.prs.release', undefined, 'releasePartRequestSlip');
@@ -1315,6 +1321,8 @@ export async function releasePartRequestSlip(
 /** Rejects a request still awaiting HOD or Store approval, by whoever would
  * approve at that stage. Not possible once APPROVED, since stock is reserved. */
 export async function rejectPartRequestSlip(slipId: string, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('rejectPartRequestSlip');
   const slip = await prisma.partRequestSlip.findUnique({ where: { id: slipId }, select: { status: true, branchId: true, jobCardId: true, vehicleServiceId: true, referenceNumber: true } });
   if (!slip) {
     throw new SourcingActionError('Request not found.');
@@ -1702,6 +1710,8 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
 /** A Workshop Manager approves the full total (original estimate plus
  * Finance's supplementary lines) before any money moves. */
 export async function approveExternalProcurementRequest(requestId: string, notes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveExternalProcurementRequest');
   // Catalogue check first (who may attempt this); branch eligibility and
   // workflow state are checked below.
   await authorize('procurement.epr.approve', undefined, 'approveExternalProcurementRequest');
@@ -1768,6 +1778,8 @@ export async function disburseExternalProcurementRequest(
   requestId: string,
   payment: { paymentMethod: string; paymentReference?: string; disbursementNotes?: string },
 ): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('disburseExternalProcurementRequest');
   // Catalogue check first (who may attempt this); branch eligibility and
   // workflow state are checked below.
   await authorize('procurement.epr.disburse', undefined, 'disburseExternalProcurementRequest');
@@ -1832,6 +1844,8 @@ export async function disburseExternalProcurementRequest(
 /** Rejects a request in Finance review or awaiting Manager approval, by
  * whoever decides at that stage. Not possible once approved. */
 export async function rejectExternalProcurementRequest(requestId: string, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('rejectExternalProcurementRequest');
   const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
   if (!request) {
     throw new SourcingActionError('Request not found.');

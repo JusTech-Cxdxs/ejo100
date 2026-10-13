@@ -5,7 +5,7 @@ import { logFailure } from '@/lib/log';
 import { claimed, lockExisting } from '@/lib/integrity';
 import { retryOnNumberClash } from '@/lib/integrity-core';
 import { withdrawOpenSourcing } from '@/lib/sourcing-lifecycle';
-import { authorize, canSeeRecord, reachWhere, authorizeOnService, refuse, branchWithinReach, orgWhere, seeService, seeVehicle } from '@/lib/authz/server';
+import { authorize, canSeeRecord, reachWhere, authorizeOnService, refuse, branchWithinReach, orgWhere, seeService, seeVehicle, refuseDuringAssist } from '@/lib/authz/server';
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal } from '@/lib/estimate-billing';
@@ -184,6 +184,8 @@ export async function getVehicleServiceAuditTrail(serviceId: string): Promise<Ve
 }
 
 export async function approveVehicleService(serviceId: string, notes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveVehicleService');
   await assertServiceNotEscalated({ vehicleServiceId: serviceId });
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
@@ -225,6 +227,8 @@ export async function approveVehicleService(serviceId: string, notes?: string): 
 /** `reason` is shown on the status badge. A rejection can be about
  * availability or workload, not only the vehicle. */
 export async function rejectVehicleService(serviceId: string, reason: string, notes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('rejectVehicleService');
   await assertServiceNotEscalated({ vehicleServiceId: serviceId });
   const trimmedReason = reason.trim();
   if (!trimmedReason) {
@@ -1544,6 +1548,8 @@ export async function requestVehicleServiceCancellation(serviceId: string, reaso
  * resolved, and service tracking stops until the next completed service.
  * The customer and staff are emailed. */
 export async function approveVehicleServiceCancellationRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveVehicleServiceCancellationRequest');
   const request = await prisma.vehicleServiceCancellationRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -1667,6 +1673,8 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
 
 /** A Manager declines. Status is unchanged; only the requester is emailed. */
 export async function declineVehicleServiceCancellationRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('declineVehicleServiceCancellationRequest');
   const request = await prisma.vehicleServiceCancellationRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -1871,6 +1879,8 @@ export async function requestVehicleServiceClose(serviceId: string): Promise<voi
 /** A Manager approves: the service becomes CLOSED. Status and payment are
  * re-checked at decision time. The customer and staff are emailed. */
 export async function approveVehicleServiceCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveVehicleServiceCloseRequest');
   const request = await prisma.vehicleServiceCloseRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -1981,6 +1991,8 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
 
 /** A Manager declines. Status is unchanged; only the requester is told. */
 export async function declineVehicleServiceCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('declineVehicleServiceCloseRequest');
   const request = await prisma.vehicleServiceCloseRequest.findUnique({
     where: { id: requestId },
     select: {

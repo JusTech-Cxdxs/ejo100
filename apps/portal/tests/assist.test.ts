@@ -133,3 +133,29 @@ test('the wiring: business rules run as the colleague, every audit row names the
   assert.doesNotMatch(actions, /metadata: \{[^}]*password/);
   assert.match(actions, /httpOnly: true,\s*sameSite: 'lax',\s*secure: process\.env\.NODE_ENV === 'production'/);
 });
+
+test('every decision or cost permission in the catalogue makes a person non-assistable', async () => {
+  const { APPROVAL_PERMISSIONS, STORE_COST_PERMISSIONS } = await import('../lib/authz/catalogue');
+  for (const k of [...APPROVAL_PERMISSIONS, ...STORE_COST_PERMISSIONS.filter((x) => x !== 'warranty.view'), 'workshop.technician.assign', 'warranty.manage']) {
+    assert.equal(isSensitivePermission(k), true, `${k} must be sensitive`);
+  }
+  // A technician given release or supervise rights by a database grant can no longer be assisted.
+  const t = party('tech-x', ['technician'], { extraGrants: { 'store.prs.release': 'BRANCH', 'workshop.job.supervise': 'BRANCH' } } as Partial<AssistParty>);
+  assert.ok(sensitivePermissionsOf(t).length > 0);
+});
+
+test('no decision is taken during an assisted session: every approve/decide/decline/release/verify action refuses', () => {
+  const { readdirSync } = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', 'lib', 'actions');
+  const missing: string[] = [];
+  for (const f of readdirSync(dir).filter((x: string) => x.endsWith('.ts'))) {
+    const src = readFileSync(join(dir, f), 'utf8');
+    const re = /export async function ((?:approve|decide|decline|disburse|release|verify|reject|returnEstimate)[A-Za-z]*)\([^)]*\)[^{]*\{([\s\S]*?)\n\}/g;
+    for (const m of src.matchAll(re)) {
+      const name = m[1]!;
+      if (name.endsWith('FormAction') || name.includes('TechnicianAssignment')) continue;
+      if (!m[2]!.includes('refuseDuringAssist(')) missing.push(`${f}:${name}`);
+    }
+  }
+  assert.deepEqual(missing, []);
+});

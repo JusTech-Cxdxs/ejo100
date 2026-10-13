@@ -7,10 +7,11 @@ export const dynamic = 'force-dynamic';
 /**
  * POST /api/error-report: a failure that happened in the browser (no server
  * digest) is stored under the reference the error screen shows. Same-origin
- * only, small bodies only, at most 20 a minute per server instance. Answers
+ * only, small bodies only, at most 10 a minute per server instance, from a
+ * budget separate from server errors. Answers
  * 204 whatever happens, so it reveals nothing.
  */
-const allow = createRateGate(20);
+const allow = createRateGate(10);
 const done = () => new NextResponse(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
 
 export async function POST(request: NextRequest) {
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest) {
     method: 'GET',
     path: typeof body.path === 'string' ? body.path.slice(0, 300) : null,
     route: 'browser',
+    ownBudget: true,
   });
   return done();
 }

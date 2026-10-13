@@ -9,7 +9,7 @@ import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { getWarrantyRoles, type WarrantyRoles } from './warranty';
-import { authorize, orgWhere } from '@/lib/authz/server';
+import { authorize, orgWhere, refuseDuringAssist } from '@/lib/authz/server';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { claimReadiness } from '@/lib/warranty-claim-readiness';
@@ -220,6 +220,8 @@ export async function submitWarrantyClaimForApproval(claimId: string): Promise<v
 }
 
 export async function approveWarrantyClaim(claimId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveWarrantyClaim');
   const user = await requireApprover();
   const claim = await prisma.warrantyClaim.findFirst({ where: { customer: await orgWhere(), id: claimId }, select: { status: true, createdById: true, claimNumber: true, causalPart: true, claimedAmount: true, managerApprovedAt: true } });
   if (!claim) throw new WarrantyClaimError('Claim not found.');

@@ -2,7 +2,7 @@
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
-import { allows, authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE } from '@/lib/authz/server';
+import { allows, authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE, refuseDuringAssist } from '@/lib/authz/server';
 import { cleanEmail, cleanName, cleanPhone, cleanPrimaryAddress, normaliseTags } from '@/lib/crm';
 import { sendCustomerAccessEmail } from '@/lib/customer-access';
 import { withdrawOpenSourcing } from '@/lib/sourcing-lifecycle';
@@ -1377,6 +1377,8 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
 /** The supervisor (or Master Admin) confirms the Job Card is correctly
  * opened. Separate from `status`. */
 export async function approveJobCard(jobCardId: string, notes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveJobCard');
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
     select: { supervisorId: true, jobNumber: true, approvalStatus: true },
@@ -1419,6 +1421,8 @@ export async function approveJobCard(jobCardId: string, notes?: string): Promise
 /** Returns the Job Card to its creator. `reason` is the short text shown on
  * the status badge; `notes` is optional detail. */
 export async function rejectJobCard(jobCardId: string, reason: string, notes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('rejectJobCard');
   const trimmedReason = reason.trim();
   if (!trimmedReason) {
     throw new WorkshopActionError('A reason is required to reject a Job Card.');
@@ -2418,6 +2422,8 @@ export async function requireEligibleManager(branchId: string, key: ManagerPermi
 /** The assigned supervisor (or a Master Admin) approves a submitted
  * estimate; it then goes to the branch's Managers. */
 export async function approveEstimate(jobCardId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveEstimate');
   const estimate = await prisma.estimate.findUnique({
     where: { jobCardId },
     select: {
@@ -2502,6 +2508,8 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
  * estimate is ready; sending it to the customer is a separate, explicit
  * step (notifyCustomerOfApprovedEstimate). */
 export async function approveEstimateAsManager(jobCardId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveEstimateAsManager');
   const estimate = await prisma.estimate.findUnique({
     where: { jobCardId },
     select: {
@@ -2578,6 +2586,8 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
  * Manager always decides on what the supervisor last approved.
  */
 export async function returnEstimateForChanges(jobCardId: string, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('returnEstimateForChanges');
   const why = reason.trim().slice(0, 500);
   if (why.length < 3) throw new WorkshopActionError('Say what needs to change.');
   const estimate = await prisma.estimate.findUnique({ where: { jobCardId }, select: { id: true, status: true, jobCard: { select: { branchId: true, jobNumber: true, supervisorId: true, assignedTechnicianId: true } } } });
@@ -3237,6 +3247,8 @@ export async function requestJobCardCancellation(jobCardId: string, reason: stri
 /** The Manager approves: the Job Card becomes CANCELLED and staff and the
  * customer are emailed. */
 export async function approveCancellationRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveCancellationRequest');
   const request = await prisma.cancellationRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -3379,6 +3391,8 @@ export async function approveCancellationRequest(requestId: string, decisionNote
 
 /** The Manager declines. Status is untouched; only the requester is notified. */
 export async function declineCancellationRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('declineCancellationRequest');
   const request = await prisma.cancellationRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -3551,6 +3565,8 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
 /** The Manager approves: the Job Card becomes CLOSED (set here, since
  * updateJobCardStatus refuses CLOSED) and staff and the customer are emailed. */
 export async function approveCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveCloseRequest');
   // Catalogue check first (who may attempt this); branch eligibility and
   // workflow state are checked below.
   await authorize('workshop.close.approve', undefined, 'approveCloseRequest');
@@ -3686,6 +3702,8 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
 
 /** The Manager declines. Status is untouched; only the requester is notified. */
 export async function declineCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('declineCloseRequest');
   const request = await prisma.closeRequest.findUnique({
     where: { id: requestId },
     select: {

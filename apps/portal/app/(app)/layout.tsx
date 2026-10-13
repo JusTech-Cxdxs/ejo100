@@ -1,3 +1,4 @@
+import { signedInSession } from '@/lib/assist/server';
 import type { ReactNode } from 'react';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -17,7 +18,7 @@ import { portalConfig } from '@/lib/site-config';
  * have. Notifications and the marquee are fetched once here for every page.
  */
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await signedInSession();
   if (!session?.user?.id) {
     // A cookie the server no longer accepts (session ended): clear it, then sign in —
     // never a /login ↔ /dashboard loop with the middleware.
@@ -50,7 +51,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const collapsed = (await cookies()).get('ejo-sidebar')?.value === 'collapsed';
 
   return (
-    <NotificationProvider userId={session?.user?.id ?? null}>
+    <NotificationProvider userId={session?.user?.id ? (assist ? `${session.user.id}.assist.${assist.subject.id}` : session.user.id) : null}>
       <AppShell
         items={navigationFor(principal)}
         organisationName={user.organisation?.name ?? portalConfig.companyName}

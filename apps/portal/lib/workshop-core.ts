@@ -1,3 +1,4 @@
+import { signedInSession } from '@/lib/assist/server';
 import { logFailure } from '@/lib/log';
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
@@ -47,7 +48,7 @@ const departmentBranchShared = unstable_cache(
 /** The signed-in person's branch and organisation (null outside a request, e.g. cron). */
 const whereIWork = cache(async (): Promise<{ branchId: string | null; organisationId: string | null; isPlatformTeam: boolean }> => {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
+    const session = await signedInSession();
     const id = session?.user?.id;
     if (!id) return { branchId: null, organisationId: null, isPlatformTeam: false };
     const u = await prisma.user.findUnique({ where: { id }, select: { branchId: true, organisationId: true, roles: { where: { role: { isSuperAdmin: true } }, select: { roleId: true }, take: 1 } } });

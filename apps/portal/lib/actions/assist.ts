@@ -84,31 +84,44 @@ export async function startAssistSession(input: { colleagueId: string; password:
   }
   if (!password) return { ok: false, error: `Ask ${colleague.fullName} to type their password.` };
 
+  // Count, check and record the attempt under one lock per assistant, so
+  // parallel submissions cannot each see "under the limit" (5 tries per
+  // colleague, 15 in all, per 15 minutes). A failed try is written inside the
+  // same transaction; if that write fails, the try is refused.
   const since = new Date(Date.now() - ASSIST_ATTEMPT_WINDOW_MS);
-  const [failures, allFailures] = await Promise.all([
-    prisma.auditLog.count({ where: { userId: p.userId, action: 'assist.consent_failed', entityType: 'User', entityId: colleague.id, createdAt: { gte: since } } }),
-    prisma.auditLog.count({ where: { userId: p.userId, action: 'assist.consent_failed', createdAt: { gte: since } } }),
-  ]);
-  // Per colleague, and across colleagues (no trying many people's passwords in turn).
-  if (failures >= ASSIST_MAX_FAILED_ATTEMPTS || allFailures >= ASSIST_MAX_FAILED_ATTEMPTS * 3) {
+  const account = await prisma.account.findFirst({ where: { userId: colleague.id, providerId: 'credential' }, select: { password: true } });
+  const authCtx = await auth.$context;
+  type Attempt = { kind: 'blocked' } | { kind: 'wrong'; failures: number } | { kind: 'ok' };
+  let attempt: Attempt;
+  try {
+    attempt = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`assist-consent:${p.userId}`}))`;
+      const [failures, allFailures] = await Promise.all([
+        tx.auditLog.count({ where: { userId: p.userId, action: 'assist.consent_failed', entityType: 'User', entityId: colleague.id, createdAt: { gte: since } } }),
+        tx.auditLog.count({ where: { userId: p.userId, action: 'assist.consent_failed', createdAt: { gte: since } } }),
+      ]);
+      if (failures >= ASSIST_MAX_FAILED_ATTEMPTS || allFailures >= ASSIST_MAX_FAILED_ATTEMPTS * 3) return { kind: 'blocked' } as const;
+      // Better Auth's own password check; over-long input is refused before hashing.
+      let valid = false;
+      if (account?.password && password.length <= 256) {
+        try {
+          valid = await authCtx.password.verify({ hash: account.password, password });
+        } catch {
+          valid = false;
+        }
+      }
+      if (valid) return { kind: 'ok' } as const;
+      await tx.auditLog.create({ data: { userId: p.userId, organisationId: me.organisationId, action: 'assist.consent_failed', entityType: 'User', entityId: colleague.id, metadata: { colleague: colleague.fullName, attempt: failures + 1 } } });
+      return { kind: 'wrong', failures: failures + 1 } as const;
+    }, { timeout: 15_000 });
+  } catch {
+    return { ok: false, error: 'We could not check the password just now. Please try again in a moment.' };
+  }
+  if (attempt.kind === 'blocked') {
     return { ok: false, error: 'Too many wrong passwords for this colleague. Wait 15 minutes, or ask them to reset their password with an administrator.' };
   }
-
-  // Better Auth's own password check against the colleague's sign-in account.
-  // Over-long input is refused before hashing.
-  const account = await prisma.account.findFirst({ where: { userId: colleague.id, providerId: 'credential' }, select: { password: true } });
-  let valid = false;
-  if (account?.password && password.length <= 256) {
-    try {
-      const authCtx = await auth.$context;
-      valid = await authCtx.password.verify({ hash: account.password, password });
-    } catch {
-      valid = false;
-    }
-  }
-  if (!valid) {
-    await writeAuditLog({ userId: p.userId, action: 'assist.consent_failed', entityType: 'User', entityId: colleague.id, metadata: { colleague: colleague.fullName, attempt: failures + 1 } });
-    const left = ASSIST_MAX_FAILED_ATTEMPTS - failures - 1;
+  if (attempt.kind === 'wrong') {
+    const left = ASSIST_MAX_FAILED_ATTEMPTS - attempt.failures;
     return { ok: false, error: left > 0 ? `That password is not right. ${colleague.fullName} can try again (${pluralize(left, 'try', 'tries')} left).` : 'That password is not right. No tries left for 15 minutes.' };
   }
 

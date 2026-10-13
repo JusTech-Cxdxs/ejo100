@@ -1,4 +1,4 @@
-import { PERMISSIONS, scopeFor, type PermissionKey, type Principal } from '../authz/catalogue';
+import { APPROVAL_PERMISSIONS, PERMISSIONS, STORE_COST_PERMISSIONS, scopeFor, type PermissionKey, type Principal } from '../authz/catalogue';
 import { pluralize } from '../utils/pluralize';
 
 /**
@@ -30,9 +30,18 @@ const SENSITIVE_EXACT = new Set<string>([
   'store.parts.manage',
 ]);
 const SENSITIVE_PREFIXES = ['admin.', 'analytics.', 'procurement.epr.'];
+// Also everything the catalogue lists as a decision or as showing purchase
+// costs (kept in step by a unit test), and assigning or managing other
+// people's work. Viewing warranties is not sensitive.
+const SENSITIVE_FROM_CATALOGUE = new Set<string>([
+  ...APPROVAL_PERMISSIONS,
+  ...STORE_COST_PERMISSIONS.filter((k) => k !== 'warranty.view'),
+  'workshop.technician.assign',
+  'warranty.manage',
+]);
 
 export function isSensitivePermission(key: string): boolean {
-  if (SENSITIVE_EXACT.has(key)) return true;
+  if (SENSITIVE_EXACT.has(key) || SENSITIVE_FROM_CATALOGUE.has(key)) return true;
   if (/approve/.test(key)) return true;
   return SENSITIVE_PREFIXES.some((p) => key.startsWith(p));
 }

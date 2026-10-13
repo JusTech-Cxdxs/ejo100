@@ -3,7 +3,7 @@ import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
-import { authorize, authorizeOnService, refuse, branchWithinReach, seeService } from '@/lib/authz/server';
+import { authorize, authorizeOnService, refuse, branchWithinReach, seeService, refuseDuringAssist } from '@/lib/authz/server';
 
 import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
 import { prisma } from '@ejo/database';
@@ -580,6 +580,8 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
 }
 
 export async function approveServiceEstimate(estimateId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveServiceEstimate');
   await assertServiceNotEscalated({ estimateId });
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },
@@ -661,6 +663,8 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
  * sending to the customer is a separate step
  * (notifyCustomerOfApprovedServiceEstimate). */
 export async function approveServiceEstimateAsManager(estimateId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveServiceEstimateAsManager');
   await assertServiceNotEscalated({ estimateId });
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },

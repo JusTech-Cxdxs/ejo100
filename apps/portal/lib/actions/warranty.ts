@@ -8,7 +8,7 @@ import { retryOnNumberClash } from '@/lib/integrity-core';
 import { prisma } from '@ejo/database';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
-import { authorize, getPrincipal, inMyOrganisation, myOrganisationId, orgOwned, orgWhere, partsOfMyOrganisation, seePart } from '@/lib/authz/server';
+import { authorize, getPrincipal, inMyOrganisation, myOrganisationId, orgOwned, orgWhere, partsOfMyOrganisation, seePart, refuseDuringAssist } from '@/lib/authz/server';
 import { decide } from '@/lib/authz/catalogue';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
@@ -459,6 +459,8 @@ export async function registerAssetWarranty(input: RegisterAssetWarrantyInput): 
 /** The second pair of eyes: a Manager (not the person who registered it,
  * unless Master Admin) confirms the evidence → ACTIVE. */
 export async function verifyWarranty(warrantyId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('verifyWarranty');
   const user = await requireWarrantyApprover();
   const w = await prisma.warranty.findFirst({ where: { customer: await orgWhere(), id: warrantyId }, select: { status: true, issuedById: true, warrantyNumber: true, vehicleId: true } });
   if (!w) throw new WarrantyActionError('Warranty not found.');
@@ -825,6 +827,8 @@ export async function requestWarrantyPolicyDeletion(policyId: string, reason: st
 /** Approve at the current level: HOD step, then Manager step. Nobody
  * approves their own request (Master Administrators excepted). */
 export async function approveWarrantyPolicyDeletion(requestId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveWarrantyPolicyDeletion');
   const user = await requireWarrantyApprover();
   const req = await prisma.warrantyPolicyDeletionRequest.findFirst({ where: { id: requestId, policy: await orgOwned() }, select: { status: true, requestedById: true, policyId: true, policyCode: true, policyName: true, reason: true, managerDecidedAt: true } });
   if (!req) throw new WarrantyActionError('Deletion request not found.');
@@ -897,6 +901,8 @@ async function completePolicyDeletion(requestId: string, actorId: string): Promi
 }
 
 export async function declineWarrantyPolicyDeletion(requestId: string, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('declineWarrantyPolicyDeletion');
   const user = await requireWarrantyApprover();
   const why = reason.trim();
   if (!why) throw new WarrantyActionError('A reason is required to decline.');
@@ -1082,6 +1088,8 @@ export async function requestWarrantyProviderDeletion(providerId: string, reason
 }
 
 export async function approveWarrantyProviderDeletion(requestId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveWarrantyProviderDeletion');
   const user = await requireWarrantyApprover();
   const req = await prisma.warrantyProviderDeletionRequest.findFirst({ where: { id: requestId, provider: await orgOwned() }, select: { status: true, requestedById: true, providerId: true, providerName: true, reason: true, managerDecidedAt: true } });
   if (!req) throw new WarrantyActionError('Deletion request not found.');
@@ -1155,6 +1163,8 @@ async function completeProviderDeletion(requestId: string, actorId: string): Pro
 }
 
 export async function declineWarrantyProviderDeletion(requestId: string, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('declineWarrantyProviderDeletion');
   const user = await requireWarrantyApprover();
   const why = reason.trim();
   if (!why) throw new WarrantyActionError('A reason is required to decline.');

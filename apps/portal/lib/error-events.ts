@@ -48,12 +48,14 @@ function toHeaders(raw: Record<string, string | string[] | undefined> | Headers 
 export type ErrorEventInput = {
   ref: string; err: unknown; kind?: ErrorKind; headers?: Headers | Record<string, string | string[] | undefined> | null;
   method?: string | null; path?: string | null; route?: string | null;
+  /** Browser reports have their own budget, so anonymous posts can't crowd out server errors. */
+  ownBudget?: boolean;
 };
 
 /** Store one reference. Resolves when written (or skipped); never rejects. */
 export async function recordErrorEvent(input: ErrorEventInput): Promise<void> {
   if (!input.ref || alreadySeen(input.ref)) return;
-  if (Date.now() < pausedUntil || !allow()) return;
+  if (Date.now() < pausedUntil || (!input.ownBudget && !allow())) return;
   try {
     const who = await whoFromHeaders(toHeaders(input.headers));
     const data = buildErrorEventRow({ ref: input.ref, app: 'portal', err: input.err, kind: input.kind, ...who, method: input.method, path: input.path, route: input.route });

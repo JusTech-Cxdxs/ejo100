@@ -1,3 +1,4 @@
+import { signedInSession } from '@/lib/assist/server';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { headers } from 'next/headers';
 import { getVehicleServiceOutcomes } from '@/lib/actions/visit-outcomes';
@@ -52,7 +53,7 @@ export default async function VehicleServicePage({
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   const [branchId, session] = await Promise.all([
     getWorkshopBranchId().catch(() => null),
-    auth.api.getSession({ headers: await headers() }),
+    signedInSession(),
   ]);
   const [isMasterAdmin, organisation] = await Promise.all([
     currentUserIsMasterAdmin(),
