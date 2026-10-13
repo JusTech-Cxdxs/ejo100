@@ -5,11 +5,9 @@
 
 ## Recommendation
 
-**V1 can close once two things happen:**
-1. CI passes on the release-candidate commit.
-2. The owner completes the release prerequisites in section D.
+**Ready to merge.** Every CI check passed on the release candidate `b037ba8` (section B). V1 closes once the owner completes the release prerequisites in section D.
 
-I found no unresolved critical or high defect in the code. GitHub billing was fixed by the owner on 13 Oct, so CI can now run on the candidate. The definition of done requires every check to pass on the exact candidate; section B records the result.
+I found no unresolved critical or high defect in the code. Any later commit on this branch changes documentation only; `git diff b037ba8 HEAD -- apps packages` is empty.
 
 This report does not claim the system is free of vulnerabilities or can scale without limit. It states what was checked and how.
 
@@ -175,10 +173,12 @@ Every change narrows access; nothing was widened.
 | Check | Result |
 |---|---|
 | Production = `main` | Vercel shows `0696ab0` deployed for the portal and website. Live `/api/health` on both returns `{"status":"ok","database":"connected"}` (12 Oct 2026, 21:50 UTC). That endpoint only exists from `0696ab0` on, which confirms production runs it. |
-| Release candidate, local (`3a16cdc`) | Typechecks pass for portal, website and api. Portal unit tests: 145 pass, 0 fail (database tests are skipped locally). Portal and website `next build` and `nest build` pass. `npm audit --omit=dev` finds 0. Lockfile is consistent. |
+| Release candidate, local (`b037ba8`) | Typechecks pass for portal, website and api. Portal unit tests: 176 pass, 0 fail (8 database tests are skipped locally). Portal and website `next build` and `nest build` pass. `npm audit --omit=dev` finds 0. Lockfile is consistent. |
 | Release candidate, Vercel previews | Portal and website preview deployments succeeded on Node 24. |
 | CI by workstream (before GitHub stopped running jobs) | **Roles (PR #14):** all jobs green, including E2E of 152 tests across 2 shards, the dynamic security scan and load. **Docs (PR #13):** all jobs green. **Quality (PR #17):** E2E shard 2 passed 71/71; shard 1 had one failure, a selector in the new spec, since fixed. Link-expiry, dynamic, load, SAST, secrets and dependencies passed. **Assist (PR #15):** E2E shard 1 passed 75/75, including `assisted-session.spec.ts`. One workshop test failed on shard 2 and one dynamic-scan item was flagged; both were fixed but not re-run. **Deps (PR #18) and Emails (PR #16):** CI was not run. |
-| CI on the merged candidate | **Not run.** Every job was refused with "recent account payments have failed or your spending limit needs to be increased". |
+| CI on the merged candidate, first run (`8cdfe72`) | Build, secrets, SAST, dependencies and load passed. **6 E2E failures and 1 dynamic check** pointed to: assisted sessions could not start (the consent lock query returned a `void` column that Prisma cannot read), the Recycle bin offer answered a signed-out caller, and four out-of-date test scripts (email subjects, a menu check matching a roadmap entry, a missing sign-out, a selector matching the new content wrapper). All fixed in `b037ba8`. |
+| **CI on the release candidate `b037ba8`** | **All green.** Build, secrets, SAST, dependencies. **E2E: 187 tests, 0 failing** (shard 1: 95 passed, 1 passed on retry; shard 2: 92 passed — the first attempt had one test skipped after an intermittent retry in `workshop.spec.ts`; re-running that job on the same commit passed 92/92 with no retries). **Dynamic:** RLS on all 96 tables with 0 grants to `anon`/`authenticated`, 643 server actions refused with a forged session, cross-organisation IDOR sweep (1,678 calls) leaked nothing, role × page matrix (22 accounts × 76 pages) never served a denied page, concurrency 12/12, ZAP High = 0. **Load:** 0 % errors in every stage. |
+| Independent review of the new features | Found 1 P1 (an approved Job Card could be deleted), 3 P2s (customer portal sign-in check, reused numbers, restoring onto a vehicle that changed owner) and 3 P3s. All fixed in `fc4b5bc` with unit tests. Confirmed sound: the delete lock and re-check, snapshot completeness against every cascade, organisation fencing, purge limited to the platform team, search permissions and branch re-checks, My visitors, the overlays. |
 | Independent audit of the merged candidate | Verdict: **NOT READY** because of one P1, two P2s and four P3s. Fixed since: the P1, both P2s, and the browser-error budget, notification-cache key and duplicate-session-lookup P3s. The remaining P3 (missing site addresses on non-Vercel production) is accepted, see E. Confirmed sound: assisted-session cookie and binding, organisation fencing, CSP nonce, email escaping, the comment rewrite (no logic change), Express 5 routes. |
 | Last full green CI on production code | PR #11 (`c5fe835`): 135 E2E tests, the dynamic security scan (RLS 93/93 tables, IDOR, signed-out sweep, concurrency 12/12) and k6 load. |
 
@@ -186,7 +186,7 @@ Every change narrows access; nothing was widened.
 
 ## C. Unresolved critical or high risks
 - **No known critical or high defect in the code.**
-- **The release candidate has not run CI.** This is a process blocker, not a known defect. The parts most at risk are the nonce-based CSP (browser hydration) and the merged assisted-session and role flows.
+- **Search under heavy load.** Search now covers every numbered record type, so it is slower under stress: on one 2-vCPU test machine, p95 was 0.4 s at 10 users, 1.7 s at 50, 4.4 s in the 25-user soak, and 12.9 s at a 120-user spike, with 0 errors. Pages, sign-in and live updates stayed within their targets except in the spike. This is fine for normal branch use; trigram indexes are the planned fix if real traffic gets close to this (E).
 - **High-priority follow-up:** Next.js 15 is in maintenance support, which by our reading of Vercel's policy ends around **21 October 2026**. Plan the Next 16 upgrade straight after V1.
 
 ## D. Owner-only actions
@@ -214,6 +214,7 @@ Every change narrows access; nothing was widened.
 |---|---|
 | P2 | Upgrades: Next 16 (soon, see C), then Prisma 6 or 7, NestJS 12 and ESLint 9. |
 | P2 | Rate limits are per instance. Add Vercel WAF rules (D6) for a global limit. |
+| P2 | Search speed under heavy load: trigram indexes on number and name columns, and a shorter list per type for prefix-only searches. |
 | P3 | Narrow the front desk's Security view to visitors only (needs a reception-only permission). |
 | P3 | On non-Vercel production, missing site addresses only log an error; a hard failure is possible. Website translations still carry the older marketing lines. |
 | P3 | The goods-receipt email goes out once per line. The customer portal shows 24-hour times while the staff portal uses 12-hour. |
