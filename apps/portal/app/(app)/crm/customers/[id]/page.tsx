@@ -146,7 +146,7 @@ export default async function Customer360Page({ params, searchParams }: { params
         <ul className="flex flex-wrap gap-1 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-1">
           {TABS.map((t) => (
             <li key={t.key}>
-              <Link href={t.key === 'overview' ? base : `${base}?tab=${t.key}`} scroll={false} aria-current={tab === t.key ? 'page' : undefined} className={`flex items-center gap-1.5 whitespace-nowrap rounded-[var(--ejo-radius-md)] px-3 py-1.5 text-sm font-medium transition ${tab === t.key ? 'bg-[var(--ejo-primary)] text-white shadow-sm' : 'text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-text)]'}`}>
+              <Link href={t.key === 'overview' ? base : `${base}?tab=${t.key}`} scroll={false} aria-current={tab === t.key ? 'page' : undefined} className={`flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-[var(--ejo-radius-md)] px-3 py-1.5 text-sm font-medium transition sm:min-h-0 ${tab === t.key ? 'bg-[var(--ejo-primary)] text-white shadow-sm' : 'text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-text)]'}`}>
                 <CrmIcon name={t.icon} size={14} />{t.label}
                 {t.key === 'notes' && data.notes.length ? <span className={`rounded-full px-1.5 text-[10px] ${tab === t.key ? 'bg-white/25' : 'bg-[var(--ejo-bg)]'}`}>{data.notes.length}</span> : null}
               </Link>
@@ -157,7 +157,7 @@ export default async function Customer360Page({ params, searchParams }: { params
 
       <div className="mt-4">
         {tab === 'overview' ? (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="min-w-0 space-y-6">
               <Section icon="chart" title="Spend over the last 12 months" subtitle="Paid in each month (net of refunds), and work billed to them when it was finished · Lagos calendar months">
                 {data.months.some((m) => m.net || m.billed) ? <SpendChart data={data.months} /> : <Empty icon="chart" title="No money in or out in the last 12 months." />}

@@ -257,3 +257,9 @@ export function linkIn(html: string, match: RegExp): string {
   expect(hit, `link matching ${match}`).toBeTruthy();
   return hit!;
 }
+
+/** The page itself never scrolls sideways (a wide table scrolls inside its own box). */
+export async function noSidewaysScroll(page: Page, url = page.url()) {
+  const { scroll, inner } = await page.evaluate(() => ({ scroll: document.scrollingElement!.scrollWidth, inner: window.innerWidth }));
+  expect(scroll, `${url}: page scrolls sideways (${scroll} > ${inner})`).toBeLessThanOrEqual(inner + 1);
+}

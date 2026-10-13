@@ -13,7 +13,9 @@ export function UnitOfMeasureInput({
   defaultValue,
   placeholder,
   required,
+  id,
 }: {
+  id?: string;
   name: string;
   defaultValue?: string;
   placeholder?: string;
@@ -23,6 +25,7 @@ export function UnitOfMeasureInput({
   return (
     <>
       <input
+        id={id}
         name={name}
         list={listId}
         required={required}

@@ -62,7 +62,7 @@ import { PrintMenu } from '@/components/print/PrintMenu';
 import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
-import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
+import { EstimateLinesTable, EstimateLineEditLink, EstimateLineRemoveButton, EstimateLineEditor, type EstimateLineView } from '@/components/EstimateLinesTable';
 import { IdempotencyKey } from '@/components/IdempotencyKey';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
@@ -564,7 +564,7 @@ export default async function VehicleServiceDetailPage({
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Customer &amp; vehicle</h2>
@@ -885,149 +885,88 @@ export default async function VehicleServiceDetailPage({
               {serviceEstimate ? (
                 <>
                   {serviceEstimate.lineItems.length > 0 ? (
-                    <table className="mt-4 w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
-                          <th className="py-1.5 pr-2 font-medium">Type</th>
-                          <th className="py-1.5 pr-2 font-medium">Description</th>
-                          <th className="py-1.5 pr-2 text-right font-medium">Qty</th>
-                          <th className="py-1.5 pr-2 font-medium">Unit</th>
-                          <th className="py-1.5 pr-2 text-right font-medium">Unit price</th>
-                          <th className="py-1.5 pr-2 text-right font-medium">Amount</th>
-                          <th className="py-1.5 pr-2 font-medium">Entered by</th>
-                          {isEstimateContributor ? <th className="py-1.5 font-medium">&nbsp;</th> : null}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {serviceEstimate.lineItems.map((line: (typeof serviceEstimate.lineItems)[number]) => {
-                          const canModifyThis = serviceEstimate.status !== 'MANAGER_APPROVED' && isEstimateContributor && (viewerId === line.enteredById || isApprover);
-                          const isEditingThis = editLineId === line.id && canModifyThis;
-                          const needsMatch = line.type === 'STORE_PART' && !line.matchedPartId;
-                          // Display only: the matched unit, or the Part Type's typical unit.
-                          const storePartPreviewUnit =
-                            line.type === 'STORE_PART'
-                              ? (line.unitOfMeasure ?? partTypes.find((t: (typeof partTypes)[number]) => t.id === line.partTypeId)?.typicalUnit ?? null)
+                    <div className="mt-4">
+                    <EstimateLinesTable
+                      withActions={isEstimateContributor}
+                      lines={serviceEstimate.lineItems.map((line: (typeof serviceEstimate.lineItems)[number]): EstimateLineView => {
+                        const canModifyThis = serviceEstimate.status !== 'MANAGER_APPROVED' && isEstimateContributor && (viewerId === line.enteredById || isApprover);
+                        const isEditingThis = editLineId === line.id && canModifyThis;
+                        const needsMatch = line.type === 'STORE_PART' && !line.matchedPartId;
+                        // Display only: the matched unit, or the Part Type's typical unit.
+                        const storePartPreviewUnit =
+                          line.type === 'STORE_PART'
+                            ? (line.unitOfMeasure ?? partTypes.find((t: (typeof partTypes)[number]) => t.id === line.partTypeId)?.typicalUnit ?? null)
+                            : null;
+                        const rawUnit = line.type === 'STORE_PART' ? storePartPreviewUnit : line.unitOfMeasure;
+                        const displayUnit = rawUnit ? pluralizeWord(Number(line.quantity), rawUnit) : '—';
+                        // While Draft, show the matched part's current selling price.
+                        const liveUnitPrice =
+                          line.type === 'STORE_PART' && line.matchedPart && serviceEstimate.status === 'DRAFT' && line.matchedPart.sellingPrice !== null
+                            ? Number(line.matchedPart.sellingPrice)
+                            : line.unitPrice != null
+                              ? Number(line.unitPrice)
                               : null;
-                          const rawUnit = line.type === 'STORE_PART' ? storePartPreviewUnit : line.unitOfMeasure;
-                          const displayUnit = rawUnit ? pluralizeWord(Number(line.quantity), rawUnit) : '—';
-                          // While Draft, show the matched part's current selling price.
-                          const liveUnitPrice =
-                            line.type === 'STORE_PART' && line.matchedPart && serviceEstimate.status === 'DRAFT' && line.matchedPart.sellingPrice !== null
-                              ? Number(line.matchedPart.sellingPrice)
-                              : line.unitPrice != null
-                                ? Number(line.unitPrice)
-                                : null;
-                          const liveAmount = liveUnitPrice != null ? Math.round(Number(line.quantity) * liveUnitPrice * 100) / 100 : null;
-
-                          if (isEditingThis) {
-                            return (
-                              <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                                <td colSpan={isEstimateContributor ? 8 : 7} className="py-2">
-                                  <form action={updateServiceEstimateLineItemFormAction} className="flex flex-wrap items-center gap-2">
-                                    <FormPendingOverlay />
-                                    <input type="hidden" name="vehicleServiceId" value={service.id} />
-                                    <input type="hidden" name="lineItemId" value={line.id} />
-                                    <span className="w-24 shrink-0 text-xs text-[var(--ejo-text-muted)]">{SERVICE_ESTIMATE_LINE_TYPE_DISPLAY[line.type] ?? line.type}</span>
-                                    <input
-                                      name="description"
-                                      defaultValue={line.description}
-                                      required
-                                      list="service-estimate-line-suggestions"
-                                      className="min-w-[120px] flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
-                                    />
-                                    <input
-                                      name="quantity"
-                                      type="number"
-                                      step="1"
-                                      min="1"
-                                      required
-                                      defaultValue={Number(line.quantity)}
-                                      className="w-16 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
-                                    />
-                                    {line.type === 'STORE_PART' ? (
-                                      <span className="w-24 shrink-0 text-xs text-[var(--ejo-text)]">
-                                        {storePartPreviewUnit ?? <span className="text-[11px] text-[var(--ejo-text-muted)]">Awaiting Store match</span>}
-                                      </span>
-                                    ) : (
-                                      <div className="w-24 shrink-0">
-                                        <UnitOfMeasureInput name="unitOfMeasure" defaultValue={line.unitOfMeasure ?? undefined} placeholder="Unit" />
-                                      </div>
-                                    )}
-                                    {line.type !== 'STORE_PART' ? (
-                                      <input
-                                        name="unitPrice"
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        placeholder="Unit Price"
-                                        defaultValue={line.unitPrice != null ? Number(line.unitPrice) : ''}
-                                        className="w-24 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
-                                      />
-                                    ) : null}
-                                    <SubmitButton
-                                      label="Save"
-                                      pendingLabel="Saving…"
-                                      className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-                                    />
-                                    <LoadingLink href={`/workshop/vehicle-service/${service.id}`} className="text-xs text-[var(--ejo-text-muted)] hover:underline">
-                                      Cancel
-                                    </LoadingLink>
-                                  </form>
-                                </td>
-                              </tr>
-                            );
-                          }
-
-                          return (
-                            <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                              <td className="py-1.5 pr-2 text-[var(--ejo-text-muted)]">{SERVICE_ESTIMATE_LINE_TYPE_DISPLAY[line.type] ?? line.type}</td>
-                              <td className="py-1.5 pr-2 break-words text-[var(--ejo-text)]">
-                                {line.description}
-                                { line.type === 'STORE_PART' && line.matchedPartId && partWarrantyBadges[line.matchedPartId] ? (
-                                  <div className="mt-0.5 text-[10px] font-medium text-[var(--ejo-success)]">Warranty: {partWarrantyBadges[line.matchedPartId]} — issued automatically when released</div>
-                                ) : null}
-                                {line.type === 'STORE_PART' ? (
-                                  line.matchedPart ? (
-                                    <div className="mt-0.5 text-[10px] text-[var(--ejo-success)]">Matched: {line.matchedPart.name}</div>
-                                  ) : (
-                                    <div className="mt-0.5 text-[10px] text-[var(--ejo-warning)]">Awaiting Store match</div>
-                                  )
-                                ) : null}
-                              </td>
-                              <td className="py-1.5 pr-2 text-right text-[var(--ejo-text)]">{Number(line.quantity)}</td>
-                              <td className="py-1.5 pr-2 text-[var(--ejo-text-muted)]">{displayUnit}</td>
-                              <td className="py-1.5 pr-2 text-right text-[var(--ejo-text-muted)]">
-                                {liveUnitPrice != null ? `₦${liveUnitPrice.toLocaleString('en-NG')}` : needsMatch ? 'Awaiting match' : '—'}
-                                {line.type === 'STORE_PART' && line.matchedPart && serviceEstimate.status === 'DRAFT' ? (
-                                  <span className="ml-1 text-[9px] font-medium uppercase text-[var(--ejo-success)]">live</span>
-                                ) : null}
-                              </td>
-                              <td className="py-1.5 pr-2 text-right font-medium text-[var(--ejo-text)]">{liveAmount != null ? `₦${liveAmount.toLocaleString('en-NG')}` : '—'}</td>
-                              <td className="py-1.5 pr-2 truncate text-[11px] text-[var(--ejo-text-muted)]">{line.enteredBy.fullName}</td>
-                              {isEstimateContributor ? (
-                                <td className="py-1.5">
-                                  {canModifyThis ? (
-                                    <div className="flex items-center gap-3">
-                                      <LoadingLink href={`/workshop/vehicle-service/${service.id}?editLineId=${line.id}`} className="inline-flex items-center text-xs font-medium leading-none text-[var(--ejo-primary)] hover:underline">
-                                        Edit
-                                      </LoadingLink>
-                                      <form action={removeServiceEstimateLineItemFormAction} className="inline-flex items-center">
-                                        <FormPendingOverlay />
-                                        <input type="hidden" name="lineItemId" value={line.id} />
-                                        <input type="hidden" name="vehicleServiceId" value={service.id} />
-                                        <button type="submit" className="inline-flex items-center text-xs font-medium leading-none text-[var(--ejo-error)] hover:underline">
-                                          Remove
-                                        </button>
-                                      </form>
-                                    </div>
-                                  ) : null}
-                                </td>
+                        const liveAmount = liveUnitPrice != null ? Math.round(Number(line.quantity) * liveUnitPrice * 100) / 100 : null;
+                        const typeLabel = SERVICE_ESTIMATE_LINE_TYPE_DISPLAY[line.type] ?? line.type;
+                        return {
+                          id: line.id,
+                          typeLabel,
+                          description: line.description,
+                          notes: (
+                            <>
+                              {line.type === 'STORE_PART' && line.matchedPartId && partWarrantyBadges[line.matchedPartId] ? (
+                                <div className="mt-0.5 text-[11px] font-medium text-[var(--ejo-success)]">Warranty: {partWarrantyBadges[line.matchedPartId]} — issued automatically when released</div>
                               ) : null}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                              {line.type === 'STORE_PART' ? (
+                                line.matchedPart ? (
+                                  <div className="mt-0.5 text-[11px] text-[var(--ejo-success)]">Matched: {line.matchedPart.name}</div>
+                                ) : (
+                                  <div className="mt-0.5 text-[11px] font-medium text-[var(--ejo-warning-text)]">Awaiting Store match</div>
+                                )
+                              ) : null}
+                            </>
+                          ),
+                          quantity: Number(line.quantity),
+                          unit: displayUnit,
+                          unitPrice: liveUnitPrice != null ? formatNaira(liveUnitPrice) : needsMatch ? 'Awaiting match' : '—',
+                          liveTag: line.type === 'STORE_PART' && Boolean(line.matchedPart) && serviceEstimate.status === 'DRAFT',
+                          amount: liveAmount != null ? formatNaira(liveAmount) : '—',
+                          enteredBy: line.enteredBy.fullName,
+                          actions: canModifyThis ? (
+                            <>
+                              <EstimateLineEditLink href={`/workshop/vehicle-service/${service.id}?editLineId=${line.id}`} />
+                              <form action={removeServiceEstimateLineItemFormAction} className="inline-flex items-center">
+                                <FormPendingOverlay />
+                                <input type="hidden" name="lineItemId" value={line.id} />
+                                <input type="hidden" name="vehicleServiceId" value={service.id} />
+                                <EstimateLineRemoveButton />
+                              </form>
+                            </>
+                          ) : null,
+                          editor: isEditingThis ? (
+                            <EstimateLineEditor
+                              action={updateServiceEstimateLineItemFormAction}
+                              hidden={
+                                <>
+                                  <input type="hidden" name="vehicleServiceId" value={service.id} />
+                                  <input type="hidden" name="lineItemId" value={line.id} />
+                                </>
+                              }
+                              typeLabel={typeLabel}
+                              description={line.description}
+                              quantity={Number(line.quantity)}
+                              unitOfMeasure={line.unitOfMeasure}
+                              storePartUnit={storePartPreviewUnit}
+                              isStorePart={line.type === 'STORE_PART'}
+                              unitPrice={line.unitPrice != null ? Number(line.unitPrice) : null}
+                              datalistId="service-estimate-line-suggestions"
+                              cancelHref={`/workshop/vehicle-service/${service.id}`}
+                            />
+                          ) : undefined,
+                        };
+                      })}
+                    />
+                    </div>
                   ) : (
                     <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">No line items yet.</p>
                   )}
@@ -1269,7 +1208,7 @@ export default async function VehicleServiceDetailPage({
                     Once payments reach the 70% minimum deposit, the service moves to In Service automatically.
                     Pick a suggested amount or choose &quot;Other&quot; to enter a different one.
                   </p>
-                  <form key={payments.length} action={recordServicePaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
+                  <form key={payments.length} action={recordServicePaymentFormAction} className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <IdempotencyKey />
                     <input type="hidden" name="vehicleServiceId" value={service.id} />
                     <FormPendingOverlay />
@@ -1300,7 +1239,7 @@ export default async function VehicleServiceDetailPage({
                     <SubmitButton
                       label="Record payment"
                       pendingLabel="Recording…"
-                      className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                      className="col-span-full min-h-11 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
                     />
                   </form>
                 </>
@@ -1384,7 +1323,7 @@ export default async function VehicleServiceDetailPage({
           ) : null}
         </div>
 
-        <div className="space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6">
+        <div className="space-y-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:pb-6">
           {isApprover && service.approvalStatus === 'PENDING' && !isReadOnly ? (
             <div id="review-approval" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Review this Vehicle Service</h2>

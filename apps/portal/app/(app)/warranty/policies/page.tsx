@@ -191,7 +191,7 @@ export default async function WarrantyPoliciesPage({
               <div><label className={label}>Brand (vehicle)</label><input name="brand" placeholder="Foton" className={input} /></div>
               <div><label className={label}>Model (optional)</label><input name="model" placeholder="Tunland" className={input} /></div>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <div><label className={label}>Duration</label><input name="durationMonths" type="number" min={1} max={3650} required className={input} /></div>
               <div>
                 <label className={label}>In</label>
@@ -202,7 +202,7 @@ export default async function WarrantyPoliciesPage({
                   <option value="MONTHS">Months</option>
                 </select>
               </div>
-              <div><label className={label}>Km limit (blank = none)</label><input name="distanceLimit" type="number" min={1} className={input} /></div>
+              <div className="col-span-2 sm:col-span-1"><label className={label}>Km limit (blank = none)</label><input name="distanceLimit" type="number" min={1} className={input} /></div>
             </div>
             <PolicyCoverageFields />
             <div><label className={label}>What is covered</label><LineItemsInput name="coverageItem" required placeholder="e.g. Engine" addLabel="+ Add covered item" /></div>

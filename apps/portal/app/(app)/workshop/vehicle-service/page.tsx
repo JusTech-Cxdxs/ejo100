@@ -1,3 +1,5 @@
+import { FormJumpLink } from '@/components/ui/FormJumpLink';
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { signedInSession } from '@/lib/assist/server';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { headers } from 'next/headers';
@@ -200,8 +202,9 @@ export default async function VehicleServicePage({
         </button>
       </form>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-x-auto">
+      <FormJumpLink target="open-vehicle-service">New Vehicle Service</FormJumpLink>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           {shown.length === 0 ? (
             <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
               {q || vehicleType || outcomeFilter ? 'No Vehicle Service matches this search or filter.' : 'No Vehicle Service records yet.'}
@@ -235,32 +238,32 @@ export default async function VehicleServicePage({
                         </LoadingLink>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3 text-[var(--ejo-text)]"><CustomerLink id={s.customerId} name={s.customer.fullName} canView={canSeeCustomers} /></td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
+                    <td data-label="Customer" className="px-4 py-3 text-[var(--ejo-text)]"><CustomerLink id={s.customerId} name={s.customer.fullName} canView={canSeeCustomers} /></td>
+                    <td data-label="Vehicle" className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       <LoadingLink href={`/workshop/vehicles/${s.vehicle.id}/edit`} className="hover:underline hover:text-[var(--ejo-text)]">
                         {[s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || '—'}
                         {s.vehicle.plateNumber ? ` — ${s.vehicle.plateNumber}` : ''}
                       </LoadingLink>
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-label="Status" className="px-4 py-3">
                       {s.escalatedToJobCard ? <StatusChip tone="warning">Escalated</StatusChip> : <StatusChip status={s.status} label={STATUS_LABEL[s.status]} />}
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-label="Outcome" className="px-4 py-3">
                       {(() => {
                         const o = outcomes[s.id];
                         const badge = o ? outcomeBadge(o.outcome, o.refund) : null;
                         return badge ? <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span> : <span className="text-xs text-[var(--ejo-text-muted)]">In progress</span>;
                       })()}
                     </td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{formatDateOnly(s.createdAt)}</td>
+                    <td data-label="Opened" className="px-4 py-3 text-[var(--ejo-text-muted)]">{formatDateOnly(s.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-        </div>
+        </ResponsiveTable>
 
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6">
+        <div id="open-vehicle-service" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 xl:sticky xl:top-6 scroll-mt-20">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Open a Vehicle Service</h2>
           <form action={createVehicleServiceFormAction} className="mt-4 space-y-3">
             <FormPendingOverlay />

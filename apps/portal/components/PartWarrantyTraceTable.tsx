@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { LoadingLink } from '@/components/LoadingLink';
 import { CustomerLink } from '@/components/CustomerLink';
 import { PrintMenu } from '@/components/print/PrintMenu';
@@ -40,7 +41,7 @@ export function PartWarrantyTraceTable({ rows, canSeeCustomers = false }: { rows
       {rows.length === 0 ? (
         <p className="mt-3 text-sm text-[var(--ejo-text-muted)]">None yet — a warranty number is issued automatically each time this part is released to a customer.</p>
       ) : (
-        <div className="mt-3 overflow-x-auto">
+        <ResponsiveTable flush className="mt-3">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -61,7 +62,7 @@ export function PartWarrantyTraceTable({ rows, canSeeCustomers = false }: { rows
                       <LoadingLink href={`/warranty/${w.id}`} className={`font-medium ${link}`}>{w.warrantyNumber}</LoadingLink>
                       <div className="mt-1"><PrintMenu orgHref={`/print/warranty/${w.id}`} clientHref={`/print/warranty/${w.id}?variant=client`} clientLabel="Customer Copy" size="compact" /></div>
                     </td>
-                    <td className="px-3 py-2 text-xs text-[var(--ejo-text)]">
+                    <td data-label="Source" className="px-3 py-2 text-xs text-[var(--ejo-text)]">
                       {w.partSerial ? <div>Serial {w.partSerial.serialNumber}</div> : null}
                       {w.batchNumbers.length ? <div>Batch {w.batchNumbers.join(', ')}</div> : null}
                       {!w.partSerial && !w.batchNumbers.length && w.quantity !== null ? <div>{pluralize(Number(w.quantity), 'unit')}</div> : null}
@@ -69,12 +70,12 @@ export function PartWarrantyTraceTable({ rows, canSeeCustomers = false }: { rows
                         <LoadingLink key={g.id} href={`/inventory/goods-receipts/${g.id}`} className={`block ${link}`}>{g.referenceNumber}</LoadingLink>
                       ))}
                     </td>
-                    <td className="px-3 py-2 text-xs">
+                    <td data-label="Issued via" className="px-3 py-2 text-xs">
                       {w.slipLine ? <LoadingLink href={`/workshop/parts-requests/${w.slipLine.slip.id}`} className={`block ${link}`}>{w.slipLine.slip.referenceNumber}</LoadingLink> : null}
                       {w.jobCard ? <LoadingLink href={`/workshop/job-cards/${w.jobCard.id}`} className={`block ${link}`}>{w.jobCard.jobNumber}</LoadingLink> : null}
                       {w.vehicleService ? <LoadingLink href={`/workshop/vehicle-service/${w.vehicleService.id}`} className={`block ${link}`}>{w.vehicleService.serviceNumber}</LoadingLink> : null}
                     </td>
-                    <td className="px-3 py-2 text-xs text-[var(--ejo-text)]">
+                    <td data-label="Customer / vehicle" className="px-3 py-2 text-xs text-[var(--ejo-text)]">
                       <CustomerLink id={w.customer.id} name={w.customer.fullName} canView={canSeeCustomers} />
                       {w.vehicle ? (
                         <LoadingLink href={`/workshop/vehicles/${w.vehicle.id}/edit`} className={`block ${link}`}>
@@ -82,11 +83,11 @@ export function PartWarrantyTraceTable({ rows, canSeeCustomers = false }: { rows
                         </LoadingLink>
                       ) : null}
                     </td>
-                    <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
+                    <td data-label="Valid until" className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
                       {formatDateOnly(w.endsAt)}
                       {w.startReading !== null && w.distanceLimit !== null ? <div>or {(w.startReading + w.distanceLimit).toLocaleString('en-NG')} km</div> : null}
                     </td>
-                    <td className="px-3 py-2">
+                    <td data-label="Coverage" className="px-3 py-2">
                       <StatusChip status={cov.state} label={WARRANTY_STATE_LABEL[cov.state]} />
                     </td>
                   </tr>
@@ -94,7 +95,7 @@ export function PartWarrantyTraceTable({ rows, canSeeCustomers = false }: { rows
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
     </div>
   );

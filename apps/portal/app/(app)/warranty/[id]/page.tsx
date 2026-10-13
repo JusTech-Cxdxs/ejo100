@@ -94,7 +94,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
         {w.policy.isSample ? <p className="mt-1 text-xs font-medium text-[var(--ejo-warning)]">Sample terms — replace with the provider&apos;s real warranty terms before relying on this.</p> : null}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Coverage</h2>

@@ -23,7 +23,7 @@ import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayment
 import { getJobCardSourcingNeeds } from '@/lib/actions/sourcing';
 import { listPartCategories, listPartTypes } from '@/lib/actions/store';
 import { EstimateLineItemForm } from '@/components/EstimateLineItemForm';
-import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
+import { EstimateLinesTable, EstimateLineEditLink, EstimateLineRemoveButton, EstimateLineEditor, type EstimateLineView } from '@/components/EstimateLinesTable';
 import { requestStoreMatchingFormAction } from '@/lib/actions/store-form-handlers';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, returnEstimateForChangesFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction, requestJobCardCloseFormAction, approveCloseRequestFormAction, declineCloseRequestFormAction, updateJobCardStatusFormAction } from '@/lib/actions/workshop-form-handlers';
@@ -540,7 +540,7 @@ export default async function JobCardDetailPage({
         })()}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Customer & vehicle</h2>
@@ -735,174 +735,89 @@ export default async function JobCardDetailPage({
               <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No estimate lines yet.</p>
             ) : (
               <>
-                <div className="mt-3">
-                  <table className="w-full table-fixed text-xs">
-                    <colgroup>
-                      <col className="w-[9%]" />
-                      <col className="w-[27%]" />
-                      <col className="w-[6%]" />
-                      <col className="w-[9%]" />
-                      <col className="w-[13%]" />
-                      <col className="w-[13%]" />
-                      <col className="w-[13%]" />
-                      {isEstimateContributor ? <col className="w-[10%]" /> : null}
-                    </colgroup>
-                    <thead>
-                      <tr className="border-b border-[var(--ejo-border)] text-left text-[11px] text-[var(--ejo-text-muted)]">
-                        <th className="py-2 pr-2 font-medium">Type</th>
-                        <th className="py-2 pr-2 font-medium">Description</th>
-                        <th className="py-2 pr-2 text-right font-medium">Qty</th>
-                        <th className="py-2 pr-2 font-medium">Unit</th>
-                        <th className="py-2 pr-2 text-right font-medium">Unit price</th>
-                        <th className="py-2 pr-2 text-right font-medium">Amount</th>
-                        <th className="py-2 pr-2 font-medium">Entered by</th>
-                        {isEstimateContributor ? <th className="py-2 font-medium">&nbsp;</th> : null}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {estimate.lineItems.map((item: (typeof estimate.lineItems)[number]) => {
-                        const canModifyThis =
-                          estimate.status !== 'MANAGER_APPROVED' && isEstimateContributor && (viewerId === item.enteredById || isApprover);
-                        const isEditingThis = editLineId === item.id && canModifyThis;
-                        // The matched part's unit, or the Part Type's typical
-                        // unit until the Store matches it. Shared by both rows.
-                        const storePartPreviewUnit =
-                          item.type === 'STORE_PART'
-                            ? (item.unitOfMeasure ?? partTypes.find((t: (typeof partTypes)[number]) => t.id === item.partTypeId)?.typicalUnit ?? null)
-                            : null;
-                        // "1 Set", "2 Sets".
-                        const rawUnit = item.type === 'STORE_PART' ? storePartPreviewUnit : item.unitOfMeasure;
-                        const displayUnit = rawUnit ? pluralizeWord(item.quantity, rawUnit) : '—';
-                        // While Draft, a matched Store Part line shows the
-                        // part's current selling price. After Draft, the
-                        // stored figures are shown as recorded.
-                        const liveUnitPrice =
-                          item.type === 'STORE_PART' && item.matchedPart && estimate?.status === 'DRAFT' && item.matchedPart.sellingPrice !== null
-                            ? Number(item.matchedPart.sellingPrice)
-                            : item.unitPrice !== null
-                              ? Number(item.unitPrice)
-                              : null;
-                        const liveAmount = liveUnitPrice !== null ? getLiveLineAmount(item) : null;
-
-                        if (isEditingThis) {
-                          return (
-                            <tr key={item.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                              <td colSpan={isEstimateContributor ? 8 : 7} className="py-2">
-                                <form action={updateEstimateLineItemFormAction} className="flex flex-wrap items-center gap-2">
-                                  <FormPendingOverlay />
-                                  <input type="hidden" name="jobCardId" value={jobCard.id} />
-                                  <input type="hidden" name="lineItemId" value={item.id} />
-                                  <span className="w-24 shrink-0 text-xs text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</span>
-                                  <input
-                                    name="description"
-                                    defaultValue={item.description}
-                                    required
-                                    list="internal-job-suggestions"
-                                    className="min-w-[120px] flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
-                                  />
-                                  <input
-                                    name="quantity"
-                                    type="number"
-                                    step="1"
-                                    min="1"
-                                    required
-                                    defaultValue={item.quantity}
-                                    className="w-16 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
-                                  />
-                                  {item.type === 'STORE_PART' ? (
-                                    <span className="w-24 shrink-0 text-xs text-[var(--ejo-text)]">
-                                      {storePartPreviewUnit ?? <span className="text-[11px] text-[var(--ejo-text-muted)]">Awaiting Store match</span>}
-                                    </span>
-                                  ) : (
-                                    <div className="w-24 shrink-0">
-                                      <UnitOfMeasureInput name="unitOfMeasure" defaultValue={item.unitOfMeasure ?? undefined} placeholder="Unit" />
-                                    </div>
-                                  )}
-                                  {item.type !== 'STORE_PART' ? (
-                                    <input
-                                      name="unitPrice"
-                                      type="number"
-                                      step="0.01"
-                                      min="0"
-                                      placeholder="Unit Price"
-                                      defaultValue={item.unitPrice != null ? Number(item.unitPrice) : ''}
-                                      className="w-24 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
-                                    />
-                                  ) : null}
-                                  <SubmitButton
-                                    label="Save"
-                                    pendingLabel="Saving…"
-                                    className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-                                  />
-                                  <LoadingLink
-                                    href={`/workshop/job-cards/${jobCard.id}`}
-                                    className="text-xs text-[var(--ejo-text-muted)] hover:underline"
-                                  >
-                                    Cancel
-                                  </LoadingLink>
-                                </form>
-                              </td>
-                            </tr>
-                          );
-                        }
-
-                        return (
-                          <tr key={item.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                            <td className="py-2 pr-2 text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</td>
-                            <td className="py-2 pr-2 break-words text-[var(--ejo-text)]">
-                              {item.description}
-                              { item.type === 'STORE_PART' && item.matchedPartId && partWarrantyBadges[item.matchedPartId] ? (
-                                  <div className="mt-0.5 text-[10px] font-medium text-[var(--ejo-success)]">Warranty: {partWarrantyBadges[item.matchedPartId]} — issued automatically when released</div>
-                                ) : null}
-                              {item.type === 'STORE_PART' ? (
-                                item.matchedPart ? (
-                                  <div className="mt-0.5 text-[10px] text-[var(--ejo-success)]">Matched: {item.matchedPart.name}</div>
-                                ) : (
-                                  <div className="mt-0.5 text-[10px] text-[var(--ejo-warning)]">Awaiting Store match</div>
-                                )
-                              ) : null}
-                            </td>
-                            <td className="py-2 pr-2 text-right text-[var(--ejo-text)]">{item.quantity}</td>
-                            <td className="py-2 pr-2 text-[var(--ejo-text-muted)]">{displayUnit}</td>
-                            <td className="py-2 pr-2 text-right text-[var(--ejo-text)]">
-                              {formatNaira(liveUnitPrice)}
-                              {item.type === 'STORE_PART' && item.matchedPart && estimate?.status === 'DRAFT' ? (
-                                <span className="ml-1 text-[9px] font-medium uppercase text-[var(--ejo-success)]">live</span>
-                              ) : null}
-                            </td>
-                            <td className="py-2 pr-2 text-right font-medium text-[var(--ejo-text)]">{formatNaira(liveAmount)}</td>
-                            <td className="py-2 pr-2 truncate text-[11px] text-[var(--ejo-text-muted)]">{item.enteredBy.fullName}</td>
-                            {isEstimateContributor ? (
-                              <td className="py-2">
-                                {canModifyThis ? (
-                                  <div className="flex items-center gap-3">
-                                    <LoadingLink
-                                      href={`/workshop/job-cards/${jobCard.id}?editLineId=${item.id}`}
-                                      className="inline-flex items-center text-xs font-medium leading-none text-[var(--ejo-primary)] hover:underline"
-                                    >
-                                      Edit
-                                    </LoadingLink>
-                                    <form action={deleteEstimateLineItemFormAction} className="inline-flex items-center">
-                                      <FormPendingOverlay />
-                                      <input type="hidden" name="jobCardId" value={jobCard.id} />
-                                      <input type="hidden" name="lineItemId" value={item.id} />
-                                      <button
-                                        type="submit"
-                                        className="inline-flex items-center text-xs font-medium leading-none text-[var(--ejo-error)] hover:underline"
-                                      >
-                                        Remove
-                                      </button>
-                                    </form>
-                                  </div>
-                                ) : null}
-                              </td>
-                            ) : null}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <EstimateLinesTable
+                  withActions={isEstimateContributor}
+                  lines={estimate.lineItems.map((item: (typeof estimate.lineItems)[number]): EstimateLineView => {
+                    const canModifyThis =
+                      estimate.status !== 'MANAGER_APPROVED' && isEstimateContributor && (viewerId === item.enteredById || isApprover);
+                    const isEditingThis = editLineId === item.id && canModifyThis;
+                    // The matched part's unit, or the Part Type's typical
+                    // unit until the Store matches it.
+                    const storePartPreviewUnit =
+                      item.type === 'STORE_PART'
+                        ? (item.unitOfMeasure ?? partTypes.find((t: (typeof partTypes)[number]) => t.id === item.partTypeId)?.typicalUnit ?? null)
+                        : null;
+                    // "1 Set", "2 Sets".
+                    const rawUnit = item.type === 'STORE_PART' ? storePartPreviewUnit : item.unitOfMeasure;
+                    const displayUnit = rawUnit ? pluralizeWord(item.quantity, rawUnit) : '—';
+                    // While Draft, a matched Store Part line shows the
+                    // part's current selling price. After Draft, the
+                    // stored figures are shown as recorded.
+                    const liveUnitPrice =
+                      item.type === 'STORE_PART' && item.matchedPart && estimate?.status === 'DRAFT' && item.matchedPart.sellingPrice !== null
+                        ? Number(item.matchedPart.sellingPrice)
+                        : item.unitPrice !== null
+                          ? Number(item.unitPrice)
+                          : null;
+                    const liveAmount = liveUnitPrice !== null ? getLiveLineAmount(item) : null;
+                    return {
+                      id: item.id,
+                      typeLabel: ESTIMATE_TYPE_LABEL[item.type] ?? item.type,
+                      description: item.description,
+                      notes: (
+                        <>
+                          {item.type === 'STORE_PART' && item.matchedPartId && partWarrantyBadges[item.matchedPartId] ? (
+                            <div className="mt-0.5 text-[11px] font-medium text-[var(--ejo-success)]">Warranty: {partWarrantyBadges[item.matchedPartId]} — issued automatically when released</div>
+                          ) : null}
+                          {item.type === 'STORE_PART' ? (
+                            item.matchedPart ? (
+                              <div className="mt-0.5 text-[11px] text-[var(--ejo-success)]">Matched: {item.matchedPart.name}</div>
+                            ) : (
+                              <div className="mt-0.5 text-[11px] font-medium text-[var(--ejo-warning-text)]">Awaiting Store match</div>
+                            )
+                          ) : null}
+                        </>
+                      ),
+                      quantity: item.quantity,
+                      unit: displayUnit,
+                      unitPrice: formatNaira(liveUnitPrice),
+                      liveTag: item.type === 'STORE_PART' && Boolean(item.matchedPart) && estimate?.status === 'DRAFT',
+                      amount: formatNaira(liveAmount),
+                      enteredBy: item.enteredBy.fullName,
+                      actions: canModifyThis ? (
+                        <>
+                          <EstimateLineEditLink href={`/workshop/job-cards/${jobCard.id}?editLineId=${item.id}`} />
+                          <form action={deleteEstimateLineItemFormAction} className="inline-flex items-center">
+                            <FormPendingOverlay />
+                            <input type="hidden" name="jobCardId" value={jobCard.id} />
+                            <input type="hidden" name="lineItemId" value={item.id} />
+                            <EstimateLineRemoveButton />
+                          </form>
+                        </>
+                      ) : null,
+                      editor: isEditingThis ? (
+                        <EstimateLineEditor
+                          action={updateEstimateLineItemFormAction}
+                          hidden={
+                            <>
+                              <input type="hidden" name="jobCardId" value={jobCard.id} />
+                              <input type="hidden" name="lineItemId" value={item.id} />
+                            </>
+                          }
+                          typeLabel={ESTIMATE_TYPE_LABEL[item.type] ?? item.type}
+                          description={item.description}
+                          quantity={item.quantity}
+                          unitOfMeasure={item.unitOfMeasure}
+                          storePartUnit={storePartPreviewUnit}
+                          isStorePart={item.type === 'STORE_PART'}
+                          unitPrice={item.unitPrice != null ? Number(item.unitPrice) : null}
+                          datalistId="internal-job-suggestions"
+                          cancelHref={`/workshop/job-cards/${jobCard.id}`}
+                        />
+                      ) : undefined,
+                    };
+                  })}
+                />
                 <div className="mt-3 space-y-1 border-t border-[var(--ejo-border)] pt-3 text-sm">
                   {(['STORE_PART', 'EXTERNAL_PART', 'EXTERNAL_JOB', 'INTERNAL_JOB', 'LABOUR', 'SUNDRY'] as const).map((type) => {
                     const subtotal = estimate.lineItems
@@ -1164,7 +1079,7 @@ export default async function JobCardDetailPage({
                     Once payments reach the 70% minimum deposit, the Job Card moves to In Progress automatically.
                     Pick a suggested amount or choose &quot;Other&quot; to enter a different one.
                   </p>
-                  <form key={payments.length} action={recordPaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
+                  <form key={payments.length} action={recordPaymentFormAction} className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <IdempotencyKey />
                     <input type="hidden" name="jobCardId" value={jobCard.id} />
                     <FormPendingOverlay />
@@ -1195,7 +1110,7 @@ export default async function JobCardDetailPage({
                     <SubmitButton
                       label="Record payment"
                       pendingLabel="Recording…"
-                      className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                      className="col-span-full min-h-11 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
                     />
                   </form>
                 </>
@@ -1342,7 +1257,7 @@ export default async function JobCardDetailPage({
           </div>
         </div>
 
-        <div className="space-y-6 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6">
+        <div className="space-y-6 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:pb-6">
           {isCreator && !jobCard.supervisor && !isCheckedOut ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Reassign supervisor</h2>

@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { OrgTrail } from '@/components/OrgTrail';
 import { allows, guardAnyPage } from '@/lib/authz/server';
 import { getWorkshopCustodySummary, type WorkshopCustodyEntry, currentUserIsMasterAdmin, listEligibleManagersForBranch, currentUserId } from '@/lib/actions/workshop';
@@ -545,7 +546,7 @@ export default async function WorkshopCustodyPage({
         {summary.inService.length === 0 ? (
           <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="garage" title="No vehicles currently in service." /></div>
         ) : (
-          <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+          <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -563,18 +564,18 @@ export default async function WorkshopCustodyPage({
                         {entry.jobNumber}
                       </LoadingLink>
                     </td>
-                    <td className="px-4 py-2 text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></td>
-                    <td className="px-4 py-2">
+                    <td data-label="Customer" className="px-4 py-2 text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></td>
+                    <td data-label="Vehicle" className="px-4 py-2">
                       <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-text)] hover:underline">
                         {entry.vehicleDescription}
                       </LoadingLink>
                     </td>
-                    <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{STATUS_LABEL[entry.status] ?? entry.status}</td>
+                    <td data-label="Status" className="px-4 py-2 text-[var(--ejo-text-muted)]">{STATUS_LABEL[entry.status] ?? entry.status}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTable>
         )}
       </section>
       ) : null}

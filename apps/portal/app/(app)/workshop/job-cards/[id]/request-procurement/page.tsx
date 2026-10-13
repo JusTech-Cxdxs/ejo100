@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getJobCard } from '@/lib/actions/workshop';
@@ -96,7 +97,7 @@ export default async function RequestProcurementPage({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <ResponsiveTable flush>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -110,11 +111,11 @@ export default async function RequestProcurementPage({
                 {requestableLines.map((line: (typeof requestableLines)[number]) => (
                   <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
                     <td className="px-4 py-2 font-medium text-[var(--ejo-text)]">{line.description}</td>
-                    <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{TYPE_LABEL[line.type] ?? line.type}</td>
-                    <td className="px-4 py-2 text-right text-[var(--ejo-text)]">
+                    <td data-label="Type" className="px-4 py-2 text-[var(--ejo-text-muted)]">{TYPE_LABEL[line.type] ?? line.type}</td>
+                    <td data-label="Quantity" className="px-4 py-2 text-right text-[var(--ejo-text)]">
                       {line.quantity} {line.unitOfMeasure ? pluralizeWord(line.quantity, line.unitOfMeasure) : ''}
                     </td>
-                    <td className="px-4 py-2 text-right text-[var(--ejo-text)]">{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
+                    <td data-label="Amount" className="px-4 py-2 text-right text-[var(--ejo-text)]">{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -128,7 +129,7 @@ export default async function RequestProcurementPage({
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </ResponsiveTable>
           <form action={requestExternalProcurementFormAction} className="border-t border-[var(--ejo-border)] p-4">
             <FormPendingOverlay />
             <input type="hidden" name="jobCardId" value={id} />

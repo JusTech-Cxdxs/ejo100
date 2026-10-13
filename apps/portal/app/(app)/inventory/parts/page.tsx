@@ -1,3 +1,5 @@
+import { FormJumpLink } from '@/components/ui/FormJumpLink';
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { allows, guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { listParts, getStoreBranchId, listAllPartTypesForSelect, searchPartTypesForSelect } from '@/lib/actions/store';
@@ -80,12 +82,13 @@ export default async function InventoryPartsPage({
         ) : null}
       </form>
 
-      <div className={canManage ? 'grid gap-6 lg:grid-cols-[1fr_360px]' : 'grid gap-6'}>
+      {canManage ? <FormJumpLink target="add-part">New Part</FormJumpLink> : null}
+      <div className={canManage ? 'grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]' : 'grid gap-6'}>
         <div>
           {parts.length === 0 ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="package" title="No parts in the catalog yet." /></div>
           ) : (
-            <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+            <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -112,9 +115,9 @@ export default async function InventoryPartsPage({
                         </LoadingLink>
                         {part.category ? <p className="text-xs text-[var(--ejo-text-muted)]">{part.category}</p> : null}
                       </td>
-                      <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{part.partNumber ?? '—'}</td>
-                      <td className="px-4 py-2 text-[var(--ejo-text)]">{TRACKING_TYPE_LABEL[part.trackingType] ?? part.trackingType}</td>
-                      <td className="px-4 py-2 text-xs">
+                      <td data-label="Part No." className="px-4 py-2 text-[var(--ejo-text-muted)]">{part.partNumber ?? '—'}</td>
+                      <td data-label="Tracking" className="px-4 py-2 text-[var(--ejo-text)]">{TRACKING_TYPE_LABEL[part.trackingType] ?? part.trackingType}</td>
+                      <td data-label="Warranty" className="px-4 py-2 text-xs">
                         {part.warrantyPolicyId ? (
                           <LoadingLink href={`/warranty/policies/${part.warrantyPolicyId}`} className="rounded-full bg-[var(--ejo-success)]/15 px-2 py-0.5 font-medium text-[var(--ejo-success)] hover:underline">
                             {(() => {
@@ -126,8 +129,8 @@ export default async function InventoryPartsPage({
                           <span className="text-[var(--ejo-text-muted)]">None</span>
                         )}
                       </td>
-                      <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{part.baseUnitOfMeasure}</td>
-                      <td className="px-4 py-2 font-medium text-[var(--ejo-text)]">
+                      <td data-label="Unit" className="px-4 py-2 text-[var(--ejo-text-muted)]">{part.baseUnitOfMeasure}</td>
+                      <td data-label="On hand" className="px-4 py-2 font-medium text-[var(--ejo-text)]">
                         {part.stock ? Number(part.stock.quantityOnHand).toLocaleString('en-NG', { maximumFractionDigits: 3 }) : '0'}
                         <StockLevelDot
                           level={stockLevel(
@@ -141,12 +144,12 @@ export default async function InventoryPartsPage({
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ResponsiveTable>
           )}
         </div>
 
         {canManage ? (
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6">
+        <div id="add-part" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 xl:sticky xl:top-6 scroll-mt-20">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Add a Part</h2>
           <form action={createPartFormAction} className="mt-4 space-y-3">
             <FormPendingOverlay />

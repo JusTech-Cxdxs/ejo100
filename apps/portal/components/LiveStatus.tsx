@@ -18,9 +18,10 @@ export function LiveStatus() {
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 5000); return () => clearInterval(t); }, []);
   const ago = lastSync ? Math.max(0, Math.round((Date.now() - lastSync) / 1000)) : null;
   return (
-    <span className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--ejo-border)] px-2 py-0.5 text-[11px] text-[var(--ejo-text-muted)] md:inline-flex" title={`${HINT[mode]}${ago !== null ? ` Last update ${ago < 5 ? 'just now' : `${ago} seconds ago`}.` : ''}`}>
+    <span className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--ejo-border)] px-1.5 py-1 text-[11px] xl:px-2 xl:py-0.5 text-[var(--ejo-text-muted)] md:inline-flex" title={`${HINT[mode]}${ago !== null ? ` Last update ${ago < 5 ? 'just now' : `${ago} seconds ago`}.` : ''}`}>
       <span className={`h-2 w-2 rounded-full ${DOT[mode]} ${mode !== 'offline' ? 'animate-pulse' : ''}`} />
-      {LABEL[mode]}
+      {/* Tablets and small laptops: the dot alone, so the header never crowds. */}
+      <span className="sr-only xl:not-sr-only">{LABEL[mode]}</span>
     </span>
   );
 }

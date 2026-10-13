@@ -29,6 +29,7 @@ export function SearchableSelect({
   emptyMessage = 'No matches.',
   minQueryLength = 1,
   debounceMs = 300,
+  id,
 }: {
   name: string;
   search: (query: string) => Promise<SearchableOption[]>;
@@ -44,6 +45,8 @@ export function SearchableSelect({
   emptyMessage?: string;
   minQueryLength?: number;
   debounceMs?: number;
+  /** The text field's id, for a <label htmlFor>. */
+  id?: string;
 }) {
   const [selectedValue, setSelectedValue] = useState(defaultValue ?? '');
   const [query, setQuery] = useState(defaultLabel ?? '');
@@ -148,6 +151,7 @@ export function SearchableSelect({
     <div ref={containerRef} className="relative">
       <input type="hidden" name={name} value={selectedValue} required={required} />
       <input
+        id={id}
         type="text"
         role="combobox"
         aria-expanded={showDropdown}
@@ -170,7 +174,7 @@ export function SearchableSelect({
         <div
           id={listboxId}
           role="listbox"
-          className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-lg"
+          className="absolute z-10 mt-1 max-h-[min(16rem,45dvh)] w-full overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-lg"
         >
           {state === 'loading' ? (
             <p className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
@@ -201,7 +205,7 @@ export function SearchableSelect({
                   type="button"
                   onClick={() => selectOption(option)}
                   onMouseEnter={() => setHighlightIndex(i)}
-                  className={`block w-full px-3 py-2 text-left text-sm ${
+                  className={`block min-h-10 w-full px-3 py-2 text-left text-sm ${
                     i === highlightIndex ? 'bg-[var(--ejo-primary)]/10' : ''
                   }`}
                 >

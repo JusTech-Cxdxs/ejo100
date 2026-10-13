@@ -91,7 +91,7 @@ export default async function WarrantyProviderPage({ params, searchParams }: { p
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
           {editing ? (
             <form action={updateWarrantyProviderFormAction} className="space-y-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-primary)]/40 bg-[var(--ejo-surface)] p-6">

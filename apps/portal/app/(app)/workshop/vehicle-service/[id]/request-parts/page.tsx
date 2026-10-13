@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getVehicleService } from '@/lib/actions/vehicle-service';
@@ -92,7 +93,7 @@ export default async function VehicleServiceRequestPartsPage({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <ResponsiveTable flush>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -109,12 +110,12 @@ export default async function VehicleServiceRequestPartsPage({
                   return (
                     <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
                       <td className="px-4 py-2 font-medium text-[var(--ejo-text)]">{line.matchedPart?.name ?? line.description}</td>
-                      <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{line.partType?.name ?? '—'}</td>
-                      <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{line.matchedPart?.partNumber ?? '—'}</td>
-                      <td className="px-4 py-2 text-right text-[var(--ejo-text)]">
+                      <td data-label="Part Type" className="px-4 py-2 text-[var(--ejo-text-muted)]">{line.partType?.name ?? '—'}</td>
+                      <td data-label="Part No." className="px-4 py-2 text-[var(--ejo-text-muted)]">{line.matchedPart?.partNumber ?? '—'}</td>
+                      <td data-label="Quantity" className="px-4 py-2 text-right text-[var(--ejo-text)]">
                         {quantity} {line.unitOfMeasure ? pluralizeWord(quantity, line.unitOfMeasure) : ''}
                       </td>
-                      <td className="px-4 py-2 text-right text-[var(--ejo-text)]">{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
+                      <td data-label="Amount" className="px-4 py-2 text-right text-[var(--ejo-text)]">{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
                     </tr>
                   );
                 })}
@@ -129,7 +130,7 @@ export default async function VehicleServiceRequestPartsPage({
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </ResponsiveTable>
           <form action={requestServiceEstimatePartRequestSlipFormAction} className="border-t border-[var(--ejo-border)] p-4">
             <FormPendingOverlay />
             <input type="hidden" name="serviceEstimateId" value={sourcingNeeds.serviceEstimateId ?? ''} />
