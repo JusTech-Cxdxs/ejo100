@@ -52,7 +52,7 @@ test('a technician has exactly My exit passes and My visitors under Security', a
 
 test('the front desk books a visitor for the technician; Security lets another one in', async ({ page }) => {
   await as(page, 'receptionist');
-  await page.goto('/security/visitors');
+  await open(page, '/security/visitors');
   const book = page.locator('form').filter({ has: page.locator('select[name="party"]') }).first();
   await book.locator('select[name="party"]').selectOption('ONE');
   await book.locator('select[name="affiliation"]').selectOption('INDIVIDUAL');
@@ -66,7 +66,7 @@ test('the front desk books a visitor for the technician; Security lets another o
   S.bookedUrl = new URL(page.url()).pathname;
 
   await as(page, 'security-officer');
-  await page.goto('/security/visitors');
+  await open(page, '/security/visitors');
   const gate = page.locator('form').filter({ has: page.locator('select[name="mode"]') }).first();
   await gate.locator('select[name="mode"]').selectOption('ARRIVED');
   await gate.locator('select[name="party"]').selectOption('ONE');

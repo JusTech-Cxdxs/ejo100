@@ -51,7 +51,7 @@ test('phone: the header shows the full brand, and the main pages fit the screen'
 
   for (const path of ['/dashboard', '/dashboard/vehicles', '/dashboard/services', '/dashboard/payments', '/dashboard/warranties', '/dashboard/notifications', '/dashboard/profile', '/dashboard/support']) {
     await test.step(path, async () => {
-      await page.goto(portal(path));
+      await open(page, portal(path));
       await page.getByRole('heading', { level: 1 }).first().waitFor();
       await noSidewaysScroll(page, path);
     });
@@ -86,7 +86,7 @@ test.describe('a Job Card estimate on a phone', () => {
   test('the customer reads it at 360 px: lines, amounts and the total never overlap', async ({ page }) => {
     test.skip(!S.id, 'needs the Job Card from the previous step');
     await customerSignedIn(page, PORTAL_CUSTOMER);
-    await page.goto(portal(`/dashboard/services/jc/${S.id}`));
+    await open(page, portal(`/dashboard/services/jc/${S.id}`));
     const estimate = page.getByTestId('customer-estimate');
     await estimate.scrollIntoViewIfNeeded();
     await expect(estimate).toBeVisible();
@@ -125,7 +125,7 @@ test('phone: the profile form saves', async ({ page }) => {
   const digits = String(Date.now()).slice(-7);
   const phone = `0803 ${digits.slice(0, 3)} ${digits.slice(3)}`;
   await customerSignedIn(page, PORTAL_CUSTOMER);
-  await page.goto(portal('/dashboard/profile'));
+  await open(page, portal('/dashboard/profile'));
   await expect(page.getByRole('heading', { level: 1, name: 'Your details' })).toBeVisible();
   await noSidewaysScroll(page, 'profile');
 
@@ -138,6 +138,7 @@ test('phone: the profile form saves', async ({ page }) => {
   expect((await save.boundingBox())!.height, 'the save button is easy to tap').toBeGreaterThanOrEqual(44);
 
   await field.fill(phone);
+  await expect(field).toHaveValue(phone);
   await save.click();
   await expect(page.getByRole('status').filter({ hasText: 'Your contact details are saved.' })).toBeVisible();
   await page.reload();

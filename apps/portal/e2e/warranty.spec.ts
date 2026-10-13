@@ -52,9 +52,10 @@ test('the Warranty HOD adds a provider and a vehicle policy', async ({ page }) =
 
 test('a Warranty Officer registers the vehicle warranty; the HOD verifies it', async ({ page }) => {
   await as(page, 'warranty-officer');
-  await page.goto(`/warranty/register?q=${encodeURIComponent(S.plate)}`);
+  await open(page, `/warranty/register?q=${encodeURIComponent(S.plate)}`);
   await page.getByRole('link', { name: new RegExp(S.plate) }).first().click();
   await page.waitForURL(/vehicleId=/);
+  await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined);
   const form = jcForm(page, 'Register warranty');
   const policyValue = await form.locator('select[name="policyId"] option', { hasText: S.policy }).first().getAttribute('value');
   await form.locator('select[name="policyId"]').selectOption(policyValue!);
@@ -148,9 +149,10 @@ test('the register, claims, analytics and part warranties are all visible', asyn
 test('the person who registered a warranty is not offered the Verify button', async ({ page }) => {
   const plate = (await freshVehicle('WTV', { make: 'Toyota', model: 'Hilux', year: 2026 })).plate;
   await as(page, 'warranty-officer');
-  await page.goto(`/warranty/register?q=${encodeURIComponent(plate)}`);
+  await open(page, `/warranty/register?q=${encodeURIComponent(plate)}`);
   await page.getByRole('link', { name: new RegExp(plate) }).first().click();
   await page.waitForURL(/vehicleId=/);
+  await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined);
   const form = jcForm(page, 'Register warranty');
   const policyValue = await form.locator('select[name="policyId"] option', { hasText: S.policy }).first().getAttribute('value');
   await form.locator('select[name="policyId"]').selectOption(policyValue!);
