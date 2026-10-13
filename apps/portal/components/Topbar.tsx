@@ -11,6 +11,7 @@ import { NotificationBell } from '@/components/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Avatar } from '@/components/Avatar';
 import { Icon } from '@/components/ui/Icon';
+import { Wordmark } from '@/components/Wordmark';
 
 /**
  * The sticky header: menu button and logo (phones/tablets), the master
@@ -55,10 +56,9 @@ export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen 
       >
         <Icon name="menu" size={20} />
       </button>
-      <Link href="/dashboard" className="flex shrink-0 items-center gap-2 lg:hidden" aria-label={`${organisationName ?? 'Home'} — dashboard`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/images/logo/logo.png" alt="" width={26} height={32} className="h-8 w-auto object-contain" />
-        <span className="hidden text-base font-extrabold tracking-tight text-[var(--ejo-text)] min-[420px]:inline">{(organisationName ?? '').split(/\s+/)[0]}</span>
+      {/* Phones and tablets: the full wordmark (logo, name, green rule), scaled to fit. */}
+      <Link href="/dashboard" className="flex min-w-0 shrink items-center lg:hidden" aria-label={`${organisationName ?? 'Home'}: dashboard`}>
+        <Wordmark name={organisationName ?? ''} size="sm" />
       </Link>
 
       <div className="flex min-w-0 flex-1 justify-end md:justify-center">
