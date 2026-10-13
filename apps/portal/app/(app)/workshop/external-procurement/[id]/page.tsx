@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getExternalProcurementRequest, getExternalProcurementRequestAuditTrail } from '@/lib/actions/sourcing';
@@ -61,18 +62,12 @@ export default async function ExternalProcurementDetailPage({
   ]);
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
-  // Every real move Finance has made on their own supplementary
-  // lines — added, edited, removed — shown right on the Timeline
-  // alongside the request's own bigger milestones, so a removed line
-  // (which no longer exists to display anywhere else) still has a
-  // real, visible record of what happened and when.
+  // Finance's changes to supplementary lines go on the timeline, so a
+  // removed line still has a record.
   const supplementaryLineEvents = auditTrail.filter((e: (typeof auditTrail)[number]) => e.action.startsWith('external_procurement.supplementary_line_'));
 
-  // The real running total as it stands right now — the technician's
-  // own original figure plus every real supplementary line Finance has
-  // added so far. Shown throughout review, but never itself the
-  // number that gets locked in — that only happens once, explicitly,
-  // at the Manager's own approval (request.approvedTotal below).
+  // Running total during review (original figure plus Finance's lines).
+  // The figure is fixed only at Manager approval (request.approvedTotal).
   const supplementaryTotal = request.supplementaryLines.reduce(
     (sum: number, line: (typeof request.supplementaryLines)[number]) => sum + Number(line.amount),
     0,
@@ -174,7 +169,7 @@ export default async function ExternalProcurementDetailPage({
           </div>
         </div>
 
-        <div className="overflow-x-auto p-6">
+        <ResponsiveTable flush className="p-4 sm:p-6">
           {request.lines.length > 0 ? (
             <table className="w-full text-sm">
               <thead>
@@ -189,13 +184,13 @@ export default async function ExternalProcurementDetailPage({
               <tbody>
                 {request.lines.map((line: (typeof request.lines)[number], i: number) => (
                   <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                    <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{i + 1}</td>
-                    <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{line.description}</td>
-                    <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{line.estimateLineItem?.type ? (TYPE_LABEL[line.estimateLineItem.type] ?? line.estimateLineItem.type) : '—'}</td>
-                    <td className="px-3 py-2 text-right text-[var(--ejo-text)]">
+                    <td data-hide-stacked className="px-3 py-2 text-[var(--ejo-text-muted)]">{i + 1}</td>
+                    <td data-wide data-label="Description" className="px-3 py-2 font-medium text-[var(--ejo-text)]">{line.description}</td>
+                    <td data-label="Type" className="px-3 py-2 text-[var(--ejo-text-muted)]">{line.estimateLineItem?.type ? (TYPE_LABEL[line.estimateLineItem.type] ?? line.estimateLineItem.type) : '—'}</td>
+                    <td data-label="Quantity" className="px-3 py-2 text-right text-[var(--ejo-text)]">
                       {Number(line.quantity)} {line.unitOfMeasure ? pluralizeWord(Number(line.quantity), line.unitOfMeasure) : ''}
                     </td>
-                    <td className="px-3 py-2 text-right text-[var(--ejo-text)]">{formatNaira(Number(line.amount))}</td>
+                    <td data-label="Amount" className="px-3 py-2 text-right text-[var(--ejo-text)]">{formatNaira(Number(line.amount))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -210,9 +205,7 @@ export default async function ExternalProcurementDetailPage({
               </tfoot>
             </table>
           ) : (
-            // A legacy, single-line request from before this model
-            // gained real multi-line support — its one real fact
-            // stays exactly as it always was.
+            // Older single-line request.
             <div>
               <p className="text-sm text-[var(--ejo-text)]">{request.description}</p>
               {request.estimateLineItem ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">From estimate: {request.estimateLineItem.description}</p> : null}
@@ -258,10 +251,10 @@ export default async function ExternalProcurementDetailPage({
               </>
             ) : null}
           </p>
-        </div>
+        </ResponsiveTable>
       </div>
 
-      <div className="mt-6 grid max-w-4xl gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="mt-6 grid max-w-4xl gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
           {request.status === 'DISBURSED' ? (
             <PrintMenu orgHref={`/print/external-procurement/${request.id}`} clientHref={`/print/external-procurement/${request.id}?variant=client`} clientLabel="Requester Copy" />
@@ -270,7 +263,7 @@ export default async function ExternalProcurementDetailPage({
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/30 bg-[var(--ejo-info)]/5 p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Finance Review</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Add any real supplementary cost (transport, logistics) — the technician&apos;s own figure above can never be changed here, only added to.
+                Add any extra costs (transport, logistics). The technician&apos;s figure above can&apos;t be changed, only added to.
               </p>
               <form action={addExternalProcurementSupplementaryLineFormAction} className="mt-3 flex flex-wrap items-end gap-2">
                 <FormPendingOverlay />
@@ -391,7 +384,7 @@ export default async function ExternalProcurementDetailPage({
           ) : null}
         </div>
 
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Timeline</h2>
           <dl className="mt-3 space-y-3 text-sm">
             <div>

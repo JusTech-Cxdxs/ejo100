@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { allows, guardAnyPage } from '@/lib/authz/server';
 import { listWarranties, listWarrantyIdsWithReminderDue } from '@/lib/actions/warranty';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -99,7 +100,7 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
           </EmptyState>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -124,9 +125,9 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
                       {w.policy.isSample ? ' · Sample terms' : ''}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-[var(--ejo-text)]">{w.subjectDescription}</td>
-                  <td className="px-3 py-2 text-[var(--ejo-text)]"><CustomerLink id={w.customerId} name={w.customer.fullName} canView={canSeeCustomers} /></td>
-                  <td className="px-3 py-2 text-xs">
+                  <td data-label="Covers" className="px-3 py-2 text-[var(--ejo-text)]">{w.subjectDescription}</td>
+                  <td data-label="Customer" className="px-3 py-2 text-[var(--ejo-text)]"><CustomerLink id={w.customerId} name={w.customer.fullName} canView={canSeeCustomers} /></td>
+                  <td data-label="Linked to" className="px-3 py-2 text-xs">
                     {w.jobCard ? (
                       <LoadingLink href={`/workshop/job-cards/${w.jobCard.id}`} className="block text-[var(--ejo-primary)] hover:underline">
                         {w.jobCard.jobNumber}
@@ -148,21 +149,21 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
                       </LoadingLink>
                     ) : null}
                   </td>
-                  <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
+                  <td data-label="Period" className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
                     {formatDateOnly(w.startsAt)} → {formatDateOnly(w.endsAt)}
                     {w.distanceLimit !== null && w.startReading !== null ? <div>or {(w.startReading + w.distanceLimit).toLocaleString('en-NG')} km</div> : null}
                   </td>
-                  <td className="px-3 py-2">
+                  <td data-label="Coverage" className="px-3 py-2">
                     <StatusChip status={cov.state} label={WARRANTY_STATE_LABEL[cov.state]} />
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td data-actions className="px-3 py-2 text-right">
                     <PrintMenu orgHref={`/print/warranty/${w.id}`} clientHref={`/print/warranty/${w.id}?variant=client`} clientLabel="Customer Copy" size="compact" align="right" />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
     </div>
   );

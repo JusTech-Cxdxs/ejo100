@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardPage } from '@/lib/authz/server';
 import type { ReactNode } from 'react';
 import { getWarrantyAnalytics } from '@/lib/actions/warranty-analytics';
@@ -75,7 +76,7 @@ export default async function WarrantyAnalyticsPage() {
             and claim. Each figure says how it is calculated.</>}
       />
 
-      <Section icon="bolt" title="What to do now" subtitle="Prescriptive — prioritised actions, each linked to its record. Priority 1 protects money at risk today.">
+      <Section icon="bolt" title="What to do now" subtitle="Actions in priority order, each linked to its record. Priority 1 is money at risk today.">
         {a.prescriptive.actions.length === 0 ? (
           <div className={card}><EmptyState compact icon="check-circle" title="Nothing needs attention right now." /></div>
         ) : (
@@ -111,6 +112,7 @@ export default async function WarrantyAnalyticsPage() {
           </div>
           <div className={card}>
             <CardTitle icon="handshake">How providers make it right</CardTitle>
+            <ResponsiveTable layout="scroll" minWidth="24rem" label="Claims by remedy">
             <table className="w-full">
               <thead><tr><th className={th}>Remedy</th><th className={`${th} text-right`}>Claims</th><th className={`${th} text-right`}>Recovered</th></tr></thead>
               <tbody>
@@ -119,6 +121,7 @@ export default async function WarrantyAnalyticsPage() {
                 ))}
               </tbody>
             </table>
+            </ResponsiveTable>
           </div>
         </div>
       </Section>
@@ -128,15 +131,18 @@ export default async function WarrantyAnalyticsPage() {
           <div className={card}>
             <CardTitle icon="alert">Top failing parts</CardTitle>
             {g.topParts.length === 0 ? <p className="text-xs text-[var(--ejo-text-muted)]">No claims yet.</p> : (
+              <ResponsiveTable layout="scroll" minWidth="24rem" label="Claims by part">
               <table className="w-full">
                 <thead><tr><th className={th}>Part</th><th className={`${th} text-right`}>Claims</th><th className={`${th} text-right`}>Claimed</th><th className={`${th} text-right`}>Rejected</th></tr></thead>
                 <tbody>{g.topParts.map((t) => <tr key={t.part} className="border-t border-[var(--ejo-border)]"><td className={td}>{t.part}</td><td className={`${td} text-right`}>{t.claims}</td><td className={`${td} text-right`}>{naira(t.claimed)}</td><td className={`${td} text-right`}>{pct(t.rejectionRate)}</td></tr>)}</tbody>
               </table>
+              </ResponsiveTable>
             )}
           </div>
           <div className={card}>
             <CardTitle icon="building">Provider performance</CardTitle>
             {g.providers.length === 0 ? <p className="text-xs text-[var(--ejo-text-muted)]">No claims yet.</p> : (
+              <ResponsiveTable layout="scroll" minWidth="24rem" label="Claims by provider">
               <table className="w-full">
                 <thead><tr><th className={th}>Provider</th><th className={`${th} text-right`}>Claims</th><th className={`${th} text-right`}>Approval</th><th className={`${th} text-right`}>Avg decision</th><th className={`${th} text-right`}>Recovered</th></tr></thead>
                 <tbody>
@@ -148,6 +154,7 @@ export default async function WarrantyAnalyticsPage() {
                   ))}
                 </tbody>
               </table>
+              </ResponsiveTable>
             )}
           </div>
           <div className={card}>
@@ -161,10 +168,12 @@ export default async function WarrantyAnalyticsPage() {
           <div className={card}>
             <CardTitle icon="car">Claims by vehicle model</CardTitle>
             {g.models.length === 0 ? <p className="text-xs text-[var(--ejo-text-muted)]">No vehicle warranties yet.</p> : (
+              <ResponsiveTable layout="scroll" minWidth="24rem" label="Claims by model">
               <table className="w-full">
                 <thead><tr><th className={th}>Model</th><th className={`${th} text-right`}>Warranties</th><th className={`${th} text-right`}>Claims</th><th className={`${th} text-right`}>Per warranty</th></tr></thead>
                 <tbody>{g.models.map((m) => <tr key={m.model} className="border-t border-[var(--ejo-border)]"><td className={td}>{m.model}</td><td className={`${td} text-right`}>{m.warranties}</td><td className={`${td} text-right`}>{m.claims}</td><td className={`${td} text-right`}>{m.claimsPerWarranty === null ? '—' : m.claimsPerWarranty.toFixed(2)}</td></tr>)}</tbody>
               </table>
+              </ResponsiveTable>
             )}
           </div>
           <div className={`${card} lg:col-span-2`}>
@@ -192,6 +201,7 @@ export default async function WarrantyAnalyticsPage() {
           </div>
           <div className={card}>
             <CardTitle icon="gauge">Turnaround</CardTitle>
+            <ResponsiveTable layout="scroll" minWidth="24rem" label="Time per stage">
             <table className="w-full">
               <thead><tr><th className={th}>Stage</th><th className={`${th} text-right`}>Mean</th><th className={`${th} text-right`}>Median</th></tr></thead>
               <tbody>
@@ -200,6 +210,7 @@ export default async function WarrantyAnalyticsPage() {
                 ))}
               </tbody>
             </table>
+            </ResponsiveTable>
           </div>
           <div className={card}>
             <CardTitle icon="bars">Last 12 months</CardTitle>
@@ -222,10 +233,10 @@ export default async function WarrantyAnalyticsPage() {
         </div>
       </Section>
 
-      <Section icon="sparkles" title="Predictive" subtitle="What is coming — based on this organisation's own history (not guesses).">
+      <Section icon="trend-up" title="Predictive" subtitle="What is coming — based on this organisation's own history (not guesses).">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Kpi icon="clock" label="Expiring in 30 / 60 / 90 days" value={`${p.expiring30} / ${p.expiring60} / ${p.expiring90}`} hint="Warranties still covering that will end" tone="text-[var(--ejo-warning)]" />
-          <Kpi icon="sparkles" label="Expected claims, next 90 days" value={p.expectedClaims90 === null ? '—' : p.expectedClaims90.toFixed(1)} hint={p.claimRatePerWarrantyMonth === null ? 'Not enough history yet' : `${(p.claimRatePerWarrantyMonth * 100).toFixed(2)} claims per 100 warranty-months × ${p.basis.activeWarranties} covering × 3 months`} />
+          <Kpi icon="trend-up" label="Expected claims, next 90 days" value={p.expectedClaims90 === null ? '—' : p.expectedClaims90.toFixed(1)} hint={p.claimRatePerWarrantyMonth === null ? 'Not enough history yet' : `${(p.claimRatePerWarrantyMonth * 100).toFixed(2)} claims per 100 warranty-months × ${p.basis.activeWarranties} covering × 3 months`} />
           <Kpi icon="money" label="Expected claim cost, next 90 days" value={naira(p.expectedCost90)} hint="Expected claims × median claim value" />
           <Kpi icon="activity" label="In progress (not yet decided)" value={naira(p.pipelineValue)} hint={`Expected to be approved: ${naira(p.expectedPipelineRecovery)} (at the value-approval rate)`} />
           <Kpi label="Approved, awaiting settlement" value={naira(p.awaitingMoney)} hint="Money, replacements or repairs still to arrive"  icon="clock" />

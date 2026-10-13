@@ -4,18 +4,11 @@ import { AppModule } from './app.module';
 import { securityHeaders, rateLimit } from './common/middleware/security';
 
 /**
- * EJO 100 API entrypoint. Phase 1: bootstraps the app with every domain
- * module registered (see app.module.ts) but no business logic or
- * database-backed endpoints yet — those land module-by-module in later
- * phases per the project's incremental build rule.
+ * EJO 100 API entry point. Modules are registered in app.module.ts.
  */
 
-// Browsers never send an Origin header with a trailing slash — if the
-// configured env var has one (e.g. "https://portal.example.com/"), a
-// strict-equality CORS allow-list check against it would never match a
-// real request's Origin, silently rejecting every cross-origin call.
-// Stripping it here means the env var can be set either way without
-// breaking CORS.
+// Browsers never send an Origin with a trailing slash, so strip one from the
+// configured URL; otherwise the CORS allow-list would never match.
 function stripTrailingSlash(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
@@ -23,13 +16,17 @@ function stripTrailingSlash(url: string): string {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Without this, Nest never listens for SIGTERM/SIGINT, so
-  // onModuleDestroy hooks (e.g. PrismaService's clean $disconnect())
-  // never run — a Render rolling deploy would kill the process mid-query
-  // instead of letting it shut down cleanly.
+  // Lets onModuleDestroy hooks (PrismaService's $disconnect) run on
+  // SIGTERM/SIGINT, so a rolling deploy doesn't cut queries off mid-way.
   app.enableShutdownHooks();
 
-  const portalOrigin = stripTrailingSlash(process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001');
+  // The only browser origin allowed to call the API. Required in production:
+  // the API refuses to start rather than fall back to a default address.
+  const configuredOrigin = process.env.NEXT_PUBLIC_PORTAL_URL?.trim();
+  if (!configuredOrigin && process.env.NODE_ENV === 'production') {
+    throw new Error('NEXT_PUBLIC_PORTAL_URL is not set. Set it in Render → Environment, then redeploy.');
+  }
+  const portalOrigin = stripTrailingSlash(configuredOrigin || 'http://localhost:3001');
   app.enableCors({
     origin: [portalOrigin],
     credentials: true, // required so an explicitly-attached session token is accepted cross-origin

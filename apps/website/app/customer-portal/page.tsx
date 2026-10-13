@@ -22,7 +22,7 @@ const INACTIVE = 'This account is switched off. Please contact your branch and w
 const ARRIVAL: Record<string, { kind: 'error' | 'success' | 'info'; text: string }> = {
   inactive: { kind: 'error', text: INACTIVE },
   expired: { kind: 'info', text: 'Your session ended. Please sign in again.' },
-  signed_out: { kind: 'info', text: 'You’re signed out. See you soon!' },
+  signed_out: { kind: 'info', text: 'You’re signed out.' },
 };
 
 /** Plain words for every way signing in can fail — never a raw server message. */

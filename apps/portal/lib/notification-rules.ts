@@ -14,10 +14,11 @@ export const AREAS: Record<string, string[]> = {
   SCHEDULING: ['Appointment', 'MeetingRoom', 'CalendarDelegate'],
 };
 
-/** Heads see EVERYTHING in their area; administrators see everything. */
+/** Heads see EVERYTHING in their area; administrators see everything.
+ * Everyone else (supervisors and technicians included) hears about the
+ * records they are part of — their own jobs, requests and passes. */
 export const ROLE_AREAS: Record<string, string[]> = {
   'workshop-manager': ['WORKSHOP'],
-  'workshop-supervisor': ['WORKSHOP'],
   'store-manager': ['STORE'],
   'warranty-hod': ['WARRANTY'],
   'chief-security-officer': ['SECURITY'],
@@ -27,7 +28,12 @@ export const ALL_ACTIVITY_ROLES = ['administrator'];
 
 /** Bookkeeping entries that are never shown as activity. */
 /** Routine machinery — recorded for audit and health, never shown as people's activity. */
-export const HIDDEN_ACTIONS = ['security.email_sent', 'security.email_failed', 'appointment.reminder_sent', 'system.job_run'];
+// Kept in Audit Logs and on the customer's CRM page, but not news for staff:
+// routine sign-ins and password activity by customers on their own portal.
+export const HIDDEN_ACTIONS = [
+  'security.email_sent', 'security.email_failed', 'appointment.reminder_sent', 'system.job_run',
+  'customer.signed_in', 'customer.password_reset_requested', 'customer.password_reset', 'customer.password_changed', 'customer.preferences_updated',
+];
 
 export function entityTypesForRoles(slugs: string[]): string[] | 'ALL' {
   if (slugs.some((s) => ALL_ACTIVITY_ROLES.includes(s))) return 'ALL';
@@ -71,6 +77,7 @@ export function recordUrl(entityType: string, id: string): string {
     Announcement: '/notifications/broadcasts',
     Organisation: '/organisation',
     Branch: '/branches',
+    AssistSession: '/profile#assisted',
   };
   return map[entityType] ?? '/audit-logs';
 }

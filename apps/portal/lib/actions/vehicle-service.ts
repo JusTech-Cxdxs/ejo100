@@ -1,10 +1,12 @@
 'use server';
+import { highestBinnedReference, highestSequence } from '@/lib/recycle-bin/numbers';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { claimed, lockExisting } from '@/lib/integrity';
 import { retryOnNumberClash } from '@/lib/integrity-core';
 import { withdrawOpenSourcing } from '@/lib/sourcing-lifecycle';
-import { authorize, canSeeRecord, reachWhere, authorizeOnService, refuse, branchWithinReach, orgWhere, seeService, seeVehicle } from '@/lib/authz/server';
+import { authorize, canSeeRecord, reachWhere, authorizeOnService, refuse, branchWithinReach, orgWhere, seeService, seeVehicle, refuseDuringAssist } from '@/lib/authz/server';
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal } from '@/lib/estimate-billing';
@@ -35,18 +37,21 @@ import { renderSupervisorVehicleServiceAssignedEmail } from '@/lib/email-templat
 import { renderVehicleServiceDecisionEmail } from '@/lib/email-templates/vehicle-service-decision';
 import { renderTechnicianVehicleServiceAssignedEmail } from '@/lib/email-templates/technician-vehicle-service-assigned';
 import { renderTechnicianVehicleServiceResponseEmail } from '@/lib/email-templates/technician-vehicle-service-response';
+import { lagosDayKey, lagosYear } from '@/lib/utils/format-date';
 
 class VehicleServiceActionError extends Error {}
 
 async function generateServiceNumber(): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = lagosYear();
   const prefix = `SV-${year}-`;
   const latest = await prisma.vehicleService.findFirst({
     where: { serviceNumber: { startsWith: prefix } },
     orderBy: { serviceNumber: 'desc' },
     select: { serviceNumber: true },
   });
-  const nextSequence = latest ? parseInt(latest.serviceNumber.slice(prefix.length), 10) + 1 : 1;
+  // A binned number stays reserved (lib/recycle-bin/numbers.ts).
+  const binned = await highestBinnedReference('VehicleService', prefix);
+  const nextSequence = highestSequence(prefix, [latest?.serviceNumber, binned]) + 1;
   return `${prefix}${String(nextSequence).padStart(6, '0')}`;
 }
 
@@ -69,17 +74,14 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
     select: { customerId: true, vehicleType: true },
   });
   if (!vehicle || vehicle.customerId !== input.customerId) {
-    throw new VehicleServiceActionError('This vehicle does not genuinely belong to the selected customer.');
+    throw new VehicleServiceActionError('This vehicle does not belong to the selected customer.');
   }
   if (!vehicle.vehicleType) {
     throw new VehicleServiceActionError(
       'This vehicle has no Passenger/Commercial type on file yet — set it on the Vehicles page before opening a Vehicle Service for it.',
     );
   }
-  // The same real, department-derived routing Job Card already uses —
-  // never taken from client input, so it's structurally impossible
-  // for a Vehicle Service to be routed to the wrong Workshop
-  // department by a client-side mistake.
+  // Department comes from the vehicle's type, never from client input (as for Job Cards).
   const department = await getWorkshopDepartmentForVehicleType(vehicle.vehicleType);
   if (!(await isEligibleSupervisor(input.supervisorId, department.id))) {
     throw new VehicleServiceActionError("The selected supervisor is not eligible for this vehicle's Workshop department.");
@@ -116,10 +118,8 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
   const serviceNumber = service.serviceNumber;
   await writeAuditLog({ userId: user.id, action: 'vehicle_service.created', entityType: 'VehicleService', entityId: service.id, metadata: { serviceNumber } });
 
-  // Notify the assigned supervisor — best-effort, fail-soft, matching
-  // the exact same pattern createJobCard already uses: a transient
-  // SMTP hiccup is never a reason to undo a real, already-successful
-  // Vehicle Service creation.
+  // Notify the assigned supervisor. Fail-soft: an email failure never undoes
+  // the booking.
   try {
     const [supervisor, customer, vehicleFull, complaints] = await Promise.all([
       prisma.user.findUnique({ where: { id: input.supervisorId }, select: { fullName: true, email: true } }),
@@ -129,7 +129,7 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
     ]);
     if (supervisor && customer) {
       const orgContext = await getWorkshopOrgContext(department.name);
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const portalUrl = portalBaseUrl();
       await sendEmail(
         supervisor.email,
         `New Vehicle Service ${serviceNumber} assigned to you`,
@@ -140,7 +140,7 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
           vehicleDescription: [vehicleFull?.make, vehicleFull?.model].filter(Boolean).join(' ') || 'Vehicle',
           reasons: complaints.map((c: (typeof complaints)[number]) => c.description),
           serviceUrl: `${portalUrl}/workshop/vehicle-service/${service.id}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -148,7 +148,6 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send supervisor notification email for Vehicle Service', serviceNumber, err);
   }
 
@@ -163,16 +162,13 @@ export type VehicleServiceAuditEntry = {
   user: { fullName: string } | null;
 };
 
-/** No take limit here, deliberately — same real reasoning as Job
- * Card's own audit trail: a Vehicle Service's real history is never
- * something that quietly gets cut off once it accumulates enough
- * entries. */
+/** Full audit history, not capped (same as the Job Card trail). */
 export async function getVehicleServiceAuditTrail(serviceId: string): Promise<VehicleServiceAuditEntry[]> {
   await requireUser();
   await seeService(serviceId, 'getVehicleServiceAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'VehicleService', entityId: serviceId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
   });
   const userIds = [
     ...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id))),
@@ -191,6 +187,8 @@ export async function getVehicleServiceAuditTrail(serviceId: string): Promise<Ve
 }
 
 export async function approveVehicleService(serviceId: string, notes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveVehicleService');
   await assertServiceNotEscalated({ vehicleServiceId: serviceId });
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
@@ -229,11 +227,11 @@ export async function approveVehicleService(serviceId: string, notes?: string): 
   });
 }
 
-/** The required `reason` is what would show in a real status badge —
- * a rejection doesn't have to mean something was wrong with the
- * vehicle itself; availability or workload are valid real reasons
- * too, same as Job Card. */
+/** `reason` is shown on the status badge. A rejection can be about
+ * availability or workload, not only the vehicle. */
 export async function rejectVehicleService(serviceId: string, reason: string, notes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('rejectVehicleService');
   await assertServiceNotEscalated({ vehicleServiceId: serviceId });
   const trimmedReason = reason.trim();
   if (!trimmedReason) {
@@ -277,12 +275,7 @@ export async function rejectVehicleService(serviceId: string, reason: string, no
   });
 }
 
-/** Shared by approveVehicleService/rejectVehicleService above rather
- * than duplicated — the "fetch context, build the email, send it"
- * logic is identical either way, only the content differs. Fail-soft,
- * matching every other notification in this file: a transient SMTP
- * hiccup is never a reason to undo a real, already-successful
- * approval/rejection. */
+/** Emails the creator when the service is approved or rejected. Fail-soft. */
 async function notifyVehicleServiceCreatorOfDecision(params: {
   serviceId: string;
   serviceNumber: string;
@@ -301,10 +294,10 @@ async function notifyVehicleServiceCreatorOfDecision(params: {
     ]);
     if (!creator || !approver) return;
     const orgContext = await getWorkshopOrgContext(params.departmentName);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       creator.email,
-      params.decision === 'APPROVED' ? `Vehicle Service ${params.serviceNumber} approved` : `Vehicle Service ${params.serviceNumber} rejected`,
+      params.decision === 'APPROVED' ? `Vehicle Service ${params.serviceNumber} approved` : `Vehicle Service ${params.serviceNumber} returned for correction`,
       renderVehicleServiceDecisionEmail({
         decision: params.decision,
         recipientName: creator.fullName,
@@ -314,23 +307,19 @@ async function notifyVehicleServiceCreatorOfDecision(params: {
         rejectionReason: params.rejectionReason,
         notes: params.notes,
         serviceUrl: `${portalUrl}/workshop/vehicle-service/${params.serviceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send decision email for Vehicle Service', params.serviceNumber, err);
   }
 }
 
-/** Never enforced server-side that approval must happen first — same
- * real design as Job Card's own assignTechnician — but the UI only
- * ever shows this action once a supervisor has actually approved the
- * visit, so a technician is never pulled onto an unreviewed job in
- * real practice. */
+/** Approval first is not enforced here (same as Job Card's
+ * assignTechnician); the UI only offers this after supervisor approval. */
 export async function assignTechnicianToVehicleService(serviceId: string, technicianId: string): Promise<void> {
   await assertServiceNotEscalated({ vehicleServiceId: serviceId });
   const user = await requireUser();
@@ -377,10 +366,10 @@ export async function assignTechnicianToVehicleService(serviceId: string, techni
 
   try {
     const orgContext = await getWorkshopOrgContext(service.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       technician.email,
-      `You've been assigned to Vehicle Service ${service.serviceNumber}`,
+      `You are assigned to Vehicle Service ${service.serviceNumber}`,
       renderTechnicianVehicleServiceAssignedEmail({
         technicianName: technician.fullName,
         serviceNumber: service.serviceNumber,
@@ -388,21 +377,18 @@ export async function assignTechnicianToVehicleService(serviceId: string, techni
         vehicleDescription: [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         supervisorName: service.supervisor?.fullName ?? 'Supervisor',
         serviceUrl: `${portalUrl}/workshop/vehicle-service/${serviceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send technician notification email for Vehicle Service', service.serviceNumber, err);
   }
 }
 
-/** Only the assigned technician, or a Master Administrator, may respond
- * to a Vehicle Service assignment — same reasoning and shape as Job
- * Card's own requireAssignedTechnician, applied to this record type. */
+/** Only the assigned technician, or a Master Administrator, may respond to an assignment. */
 async function requireAssignedVehicleServiceTechnician(service: { assignedTechnicianId: string | null }): Promise<{ id: string }> {
   const user = await requireUser();
   if (service.assignedTechnicianId === user.id) {
@@ -414,9 +400,7 @@ async function requireAssignedVehicleServiceTechnician(service: { assignedTechni
   return refuse('workshop.job.work', 'requireAssignedVehicleServiceTechnician', 'Only the assigned technician can respond to this assignment.');
 }
 
-/** Notifies the supervisor of a technician's response — shared by
- * acceptVehicleServiceTechnicianAssignment/rejectVehicleServiceTechnicianAssignment
- * below, same real "one shared notify function" pattern as Job Card's own. */
+/** Emails the supervisor when the technician accepts or rejects. */
 async function notifySupervisorOfVehicleServiceTechnicianResponse(params: {
   serviceId: string;
   serviceNumber: string;
@@ -434,15 +418,15 @@ async function notifySupervisorOfVehicleServiceTechnicianResponse(params: {
       },
     });
     if (!service?.supervisor) return;
-    // Independent lookups for the email — run together.
+    // Independent lookups for the email, run in parallel.
     const [technician, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: params.technicianId }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
 
     await sendEmail(
       service.supervisor.email,
       params.response === 'ACCEPTED'
         ? `Assignment accepted on Vehicle Service ${params.serviceNumber}`
-        : `Assignment rejected on Vehicle Service ${params.serviceNumber}`,
+        : `Assignment declined on Vehicle Service ${params.serviceNumber}`,
       renderTechnicianVehicleServiceResponseEmail({
         response: params.response,
         supervisorName: service.supervisor.fullName,
@@ -451,14 +435,13 @@ async function notifySupervisorOfVehicleServiceTechnicianResponse(params: {
         technicianName: technician?.fullName ?? 'Technician',
         rejectionReason: params.rejectionReason,
         serviceUrl: `${portalUrl}/workshop/vehicle-service/${params.serviceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send technician response email to supervisor', params.serviceNumber, err);
   }
 }
@@ -504,10 +487,8 @@ export async function rejectVehicleServiceTechnicianAssignment(serviceId: string
   const technician = await requireAssignedVehicleServiceTechnician(service);
 
   claimed(await prisma.vehicleService.updateMany({ where: { id: serviceId, assignedTechnicianId: technician.id, technicianAcceptanceStatus: service.technicianAcceptanceStatus },
-    // Fully reset back to "never assigned" — same reasoning as Job
-    // Card's own reject: the rejecting technician shouldn't still show
-    // as assigned while the supervisor picks someone else. The full
-    // record (who, when, why) lives in the audit log regardless.
+    // Back to unassigned so the supervisor can pick someone else; the
+    // rejection is kept in the audit log.
     data: { assignedTechnicianId: null, technicianAcceptanceStatus: null, technicianRespondedAt: null, technicianRejectionReason: null },
   }), 'This assignment changed just now — refresh the page to see who it is assigned to.');
 
@@ -528,18 +509,6 @@ export async function rejectVehicleServiceTechnicianAssignment(serviceId: string
   });
 }
 
-export async function deleteVehicleService(serviceId: string): Promise<void> {
-  const isMasterAdmin = await currentUserIsMasterAdmin();
-  if (!isMasterAdmin) {
-    throw new VehicleServiceActionError('You do not have permission to delete a Vehicle Service.');
-  }
-  const user = await requireUser();
-  const snapshot = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { serviceNumber: true, status: true, customerId: true, vehicleId: true } });
-  await prisma.vehicleService.delete({ where: { id: serviceId } });
-  // Kept after the record itself is gone.
-  await writeAuditLog({ userId: user.id, action: 'vehicle_service.deleted', entityType: 'VehicleService', entityId: serviceId, metadata: { ...snapshot } });
-}
-
 export type VehicleServiceHealth = {
   status: 'UP_TO_DATE' | 'DUE_SOON' | 'OVERDUE' | 'NO_DATA';
   nextServiceDueOdometer: number | null;
@@ -551,32 +520,26 @@ export type VehicleServiceHealth = {
   kmRemaining: number | null;
   daysRemaining: number | null;
   attendedAt: Date | null;
-  /** Back in the workshop right now — reminders are held while it is. */
+  /** The vehicle is back in the workshop now; reminders are held meanwhile. */
   inWorkshop: WorkshopVisit | null;
   remindersSentThisCycle: number;
   lastReminderAt: Date | null;
-  /** Semi-automatic: the reminder a person can send now, if any. */
+  /** The reminder a person can send now, if any (reminders are semi-automatic). */
   reminderDue: { stage: 1 | 2 | 3 | 4 } | null;
   nextReminderFrom: Date | null;
   viaJobCard: { id: string; jobNumber: string } | null;
 };
 
 /**
- * The vehicle's own real service status, right now — up to date, due
- * soon, or overdue — based on the most recent completed Vehicle
- * Service that actually has a real next-due prediction. Genuinely
- * different from that Vehicle Service's own real status; this
- * answers "is this vehicle due", not "is this visit finished".
- * DUE_SOON is a deliberately generous real window (1,000km or 30
- * days) — a workshop wants advance notice, not a surprise on the due
- * date itself. NO_DATA means honestly what it says: no completed
- * Primary Service exists yet to calculate from, never treated as
- * OVERDUE by default.
+ * The vehicle's service status (up to date, due soon, overdue), from the
+ * latest completed service with a next-due prediction. This is about the
+ * vehicle, not the status of any one visit. DUE_SOON starts 1,000 km or
+ * 30 days before the due point. NO_DATA means no completed Primary Service
+ * yet; it is never treated as overdue.
  */
 export async function getVehicleServiceHealth(vehicleId: string): Promise<VehicleServiceHealth | null> {
   await requireUser();
-  // The one shared calculation — identical to custody, the Service
-  // Tracker and the reminder engine, so they can never disagree.
+  // Shared calculation, so custody, the Service Tracker and reminders agree.
   const [t] = await loadServiceTracking({ vehicleId });
   if (!t) return null;
   return {
@@ -609,13 +572,13 @@ export type VehicleAnalytics = {
   visitHistory: VehicleVisitMonth[];
   /** Every inspection finding ever recorded for this vehicle. */
   findingsBreakdown: VehicleFindingsBreakdown;
-  /** The most recent completed inspection — the vehicle's current condition. */
+  /** The most recent completed inspection: the vehicle's current condition. */
   latestInspection: { serviceNumber: string; completedAt: Date | null; breakdown: VehicleFindingsBreakdown } | null;
   spendTimeline: VehicleSpendPoint[];
   totalVisits: number;
   jobCardVisits: number;
   serviceVisits: number;
-  /** Final (Manager-approved) estimate value — kept for compatibility. */
+  /** Final (Manager-approved) estimate value; kept for compatibility. */
   totalSpend: number;
   approvedJobCard: number;
   approvedService: number;
@@ -626,24 +589,17 @@ export type VehicleAnalytics = {
 };
 
 /**
- * The real, full history behind this one vehicle — genuinely
- * combining both real real-world paths it may have gone through
- * (routine Vehicle Service visits and real repair Job Cards), never
- * just one or the other, since a vehicle's actual health story spans
- * both. Every point here is a real, recorded fact — an actual
- * odometer reading, an actual approved amount, an actual inspection
- * finding — never a smoothed or invented value. The one real
- * prediction anywhere in this data (the next service due point)
- * still comes from getVehicleServiceHealth, kept as its own,
- * separate, clearly-labeled function rather than folded in here.
+ * A vehicle's history across Vehicle Services and Job Cards: odometer
+ * readings, approved amounts and inspection findings, as recorded. The
+ * next-service prediction comes from getVehicleServiceHealth().
  */
 export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAnalytics> {
   await requireUser();
   await seeVehicle(vehicleId, 'getVehicleAnalytics');
 
   const [services, jobCards, inspections, payments] = await Promise.all([
-    // An escalated service became a Job Card — counting both would
-    // double-count one visit, so the Job Card side carries it.
+    // An escalated service became a Job Card; count the visit once, on the
+    // Job Card side.
     prisma.vehicleService.findMany({
       where: { vehicleId, escalatedToJobCardId: null, status: { not: 'CANCELLED' } },
       orderBy: { createdAt: 'asc' },
@@ -674,7 +630,7 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
       select: { amount: true, jobCardId: true, vehicleServiceId: true },
     }),
   ]);
-  // Money returned (cancelled after a deposit) — "paid" means kept.
+  // Refunds (cancelled after a deposit): "paid" means money kept.
   const refunds = await prisma.refund.findMany({
     where: { OR: [{ jobCard: { vehicleId } }, { vehicleService: { vehicleId } }] },
     select: { amount: true, jobCardId: true, vehicleServiceId: true },
@@ -691,7 +647,7 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
       .map((j: (typeof jobCards)[number]) => ({ date: j.createdAt, mileage: j.mileageAtCheckIn as number, label: j.jobNumber, source: 'JOB_CARD' as const })),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const monthKey = (d: Date) => lagosDayKey(d).slice(0, 7);
   const monthLabel = (d: Date) => d.toLocaleDateString('en-NG', { month: 'short', year: '2-digit', timeZone: 'Africa/Lagos' });
   const visitsByMonth = new Map<string, VehicleVisitMonth>();
   for (const s of services) {
@@ -724,8 +680,8 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
     ? { serviceNumber: latestDone.vehicleService.serviceNumber, completedAt: latestDone.completedAt, breakdown: tally(latestDone.items) }
     : null;
 
-  // Final value only: an estimate counts once the Manager has given the
-  // final approval — the same rule for Job Cards and Vehicle Services.
+  // An estimate counts once the Manager has given final approval, for both
+  // Job Cards and Vehicle Services.
   const sumLines = (lines: { amount: unknown }[]) => lines.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
   const spendTimeline: VehicleSpendPoint[] = [
     ...services
@@ -733,8 +689,8 @@ export async function getVehicleAnalytics(vehicleId: string): Promise<VehicleAna
       .map((s: (typeof services)[number]) => ({ date: s.createdAt, amount: sumLines(s.serviceEstimate?.lineItems ?? []), label: s.serviceNumber, source: 'VEHICLE_SERVICE' as const })),
     ...jobCards
       .filter((j: (typeof jobCards)[number]) => j.estimate?.status === 'MANAGER_APPROVED')
-      // Job Cards: only what the CUSTOMER pays — warranty / goodwill /
-      // internal lines are never counted as the customer's spend or balance.
+      // Job Cards: only what the customer pays. Warranty, goodwill and internal
+      // lines are not the customer's spend or balance.
       .map((j: (typeof jobCards)[number]) => ({ date: j.createdAt, amount: customerTotal(j.estimate?.lineItems ?? []), label: j.jobNumber, source: 'JOB_CARD' as const })),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
   const approvedJobCard = spendTimeline.filter((p) => p.source === 'JOB_CARD').reduce((sum, p) => sum + p.amount, 0);
@@ -775,7 +731,7 @@ export type VehicleDueForService = {
   nextServiceDueDate: Date | null;
   kmRemaining: number | null;
   daysRemaining: number | null;
-  /** Back in the workshop right now — still listed, named, never reminded. */
+  /** Back in the workshop now: still listed and named, never reminded. */
   inWorkshop: WorkshopVisit | null;
   remindersSentThisCycle: number;
   reminderDue: { stage: 1 | 2 | 3 | 4 } | null;
@@ -784,19 +740,15 @@ export type VehicleDueForService = {
 };
 
 /**
- * Every real vehicle at this branch genuinely due soon or overdue —
- * the workshop's own real "who needs a reminder" list. Only ever the
- * latest Primary Service completion per vehicle counts; an older,
- * superseded prediction from a previous visit never lingers here
- * once a newer one exists.
+ * Vehicles at this branch that are due soon or overdue. Only each vehicle's
+ * latest Primary Service completion counts.
  */
 export async function listVehiclesDueForService(branchId: string): Promise<VehicleDueForService[]> {
   await requireUser();
   branchId = await branchWithinReach('workshop.job_card.view', branchId);
-  // Built on the one shared calculation (see lib/vehicle-service-cycle).
-  // A vehicle back in the workshop is still listed — tagged with the
-  // visit it's in on — rather than silently hidden; only a prediction
-  // staff have already handled (Attend To) is left out.
+  // Uses the shared calculation (lib/vehicle-service-cycle). A vehicle back
+  // in the workshop is listed and tagged with its current visit; only
+  // predictions already handled (Attend To) are left out.
   const tracked = await loadServiceTracking({ branchId });
   return tracked
     .filter((t) => (t.status === 'DUE_SOON' || t.status === 'OVERDUE') && !t.attendedAt && !t.lapsed)
@@ -822,18 +774,14 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
 }
 
 /**
- * The real "handled" action for an overdue prediction — a customer
- * who's finally back in, or a vehicle staff now know is genuinely
- * being looked after, without the old prediction hanging around
- * forever demanding attention on something already moving. Marks the
- * old record done, once, and never revisits it — the new Vehicle
- * Service opened for the same vehicle carries its own real future
- * prediction once it's actually serviced again.
+ * Marks an overdue prediction as handled (the customer is back, or staff
+ * are dealing with it). The new Vehicle Service will carry its own
+ * prediction once completed.
  */
 export async function attendToOverdueVehicle(serviceId: string): Promise<void> {
   await authorize('workshop.customer.manage', undefined, 'attendToOverdueVehicle');
   const user = await requireUser();
-  // On a service within reach only (never another branch's or organisation's).
+  // Only on a service within reach (never another branch's or organisation's).
   await authorizeOnService('workshop.customer.manage', serviceId, 'attendToOverdueVehicle');
   const service = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { attendedAt: true, serviceNumber: true, vehicleId: true } });
   if (!service) {
@@ -863,7 +811,7 @@ export type VehicleServiceCustodyEntry = {
   status: string;
   createdAt: Date;
   completedAt: Date | null;
-  /** Ready-for-Collection deadline tracking — same figures as Job Card's custody. */
+  /** Ready-for-Collection deadline, same figures as Job Card custody. */
   collection?: {
     graceWorkingDays: number;
     daysElapsed: number;
@@ -871,7 +819,7 @@ export type VehicleServiceCustodyEntry = {
     dueDate: Date;
     isOverdue: boolean;
     remindersSent: number;
-    /** Staged, semi-automatic (lib/custody-reminders) — same as the Service Tracker. */
+    /** Staged reminders (lib/custody-reminders), same as the Service Tracker. */
     nextNumber: number;
     dueNow: boolean;
     dueFrom: Date;
@@ -881,21 +829,16 @@ export type VehicleServiceCustodyEntry = {
 };
 
 /**
- * The Vehicle Service equivalent of getWorkshopCustodySummary — real
- * categories that match what staff actually need to act on here,
- * genuinely different from Job Card's own physical-custody/collection-
- * deadline categories: what's currently in service, what's done but
- * not yet collected, and — reusing listVehiclesDueForService directly
- * rather than duplicating its logic — which real vehicles are coming
- * due or already overdue for their next service. This is also the
- * one real place a future reminder job would read from.
+ * Vehicle Service custody: in service, done but not collected, and
+ * vehicles due or overdue for their next service (from
+ * listVehiclesDueForService()).
  */
 export async function getVehicleServiceCustodySummary(branchId: string, search?: string) {
   branchId = await branchWithinReach('workshop.job_card.view', branchId);
   const [checkedIn, inService, completed, dueForService, cancelledAwaitingHandBack] = await Promise.all([
     listVehicleServicesByStatuses(branchId, ['CHECKED_IN'], search),
     listVehicleServicesByStatuses(branchId, ['IN_SERVICE'], search),
-    // Still physically with us: work done, but not yet checked out.
+    // Work done but not yet checked out: the vehicle is still here.
     listVehicleServicesByStatuses(branchId, ['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED'], search),
     listVehiclesDueForService(branchId),
     listCancelledAwaitingHandBack(branchId, search),
@@ -911,8 +854,8 @@ export async function getVehicleServiceCustodySummary(branchId: string, search?:
   };
 }
 
-/** A cancelled Vehicle Service whose vehicle is still with us — the
- * mirror of Job Card custody's "Cancelled — pending collection". */
+/** A cancelled Vehicle Service whose vehicle is still here; the equivalent
+ * of Job Card custody's "Cancelled, pending collection". */
 export type VehicleServiceCancelledEntry = {
   id: string;
   vehicleId: string;
@@ -926,7 +869,7 @@ export type VehicleServiceCancelledEntry = {
   daysElapsed: number;
   graceWorkingDays: number;
   isOverdue: boolean;
-  /** Paid and not yet refunded — hand-back is blocked until this is 0. */
+  /** Paid and not yet refunded. Hand-back is blocked until this is 0. */
   refundOwed: number;
   notice: { sent: number; nextNumber: number; dueNow: boolean; dueFrom: Date; lastSentByName: string | null; lastSentAt: Date | null };
 };
@@ -1017,12 +960,8 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
     where: {
       branchId,
       status: { in: statuses as never[] },
-      // Once escalated, all real work moves to the Job Card — this
-      // record should never keep showing as "In Service" here
-      // forever just because its own status field was never touched
-      // at escalation time. escalatedToJobCardId is the one real,
-      // unambiguous signal that this record is done being tracked on
-      // its own.
+      // Once escalated, the work is tracked on the Job Card; the service's own
+      // status isn't changed at escalation, so filter on escalatedToJobCardId.
       escalatedToJobCardId: null,
       ...(q
         ? {
@@ -1046,8 +985,8 @@ async function listVehicleServicesByStatuses(branchId: string, statuses: string[
       vehicle: { select: { id: true, make: true, model: true, plateNumber: true, vehicleType: true } },
     },
   });
-  // Ready-for-Collection deadline — working days only (the same rule
-  // as Job Card's custody) plus how many collection reminders went out.
+  // Ready-for-Collection deadline in working days (as for Job Cards), plus
+  // how many collection reminders were sent.
   const readyIds = services.filter((s: (typeof services)[number]) => s.status === 'READY_FOR_COLLECTION').map((s: (typeof services)[number]) => s.id);
   const sentLog = readyIds.length
     ? await prisma.auditLog.findMany({
@@ -1104,7 +1043,7 @@ export async function listVehicleServices(branchId: string, search?: string, veh
   const reach = await reachWhere('workshop.job_card.view');
   return prisma.vehicleService.findMany({
     where: {
-      // Both must hold: the branch asked for, within this person's reach.
+      // Both must hold: the requested branch, within this person's reach.
       AND: [reach, { branchId }],
       ...(status ? { status: status as never } : {}),
       ...(vehicleType ? { vehicle: { vehicleType } } : {}),
@@ -1154,29 +1093,17 @@ async function getVehicleServiceUnscoped(serviceId: string) {
   });
 }
 
-/** The real status ladder this whole module is built to be lighter
- * than Job Card's own — a strict forward line, one real branch point
- * (Cancelled), no parallel/backward states at all, matching the
- * user's own explicit request for something that "does not take
- * much." Odometer, next-service calculation, and the real write-back
- * onto CustomerVehicle.mileage all happen exactly once, at the real
- * moment of completion — never recomputed or re-triggered by any
- * later status change. */
-/** Real payment position of one Vehicle Service — the same rule Job
- * Card's own close/checkout gates use: fully paid means total recorded
- * payments cover the estimate's full total. A service with no priced
- * estimate at all owes nothing. Read from the real figures, never from
- * an estimate status value (a stale status check here once let a
- * vehicle be collected unpaid). */
+/** Whether recorded payments cover the estimate total (a service with no
+ * priced estimate owes nothing). Computed from the figures, not from the
+ * estimate status: a status check once let a vehicle be collected unpaid. */
 function servicePaymentPosition(service: { serviceEstimate: { lineItems: { amount: unknown }[] } | null; payments: { amount: unknown }[] }) {
   const total = (service.serviceEstimate?.lineItems ?? []).reduce((sum: number, l: { amount: unknown }) => sum + (l.amount !== null ? Number(l.amount) : 0), 0);
   const paid = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
   return { total, paid, isPaidInFull: paid >= total };
 }
 
-/** Who may take each step — the Vehicle Service equivalent of Job
- * Card's own getSelectableJobCardStatuses role rules. Master Admin
- * bypasses, exactly as everywhere else. */
+/** Who may take each step (the Vehicle Service version of
+ * getSelectableJobCardStatuses). Master Admin bypasses. */
 async function requireVehicleServiceStepRole(
   service: { supervisorId: string | null; assignedTechnicianId: string | null; branchId: string },
   step: 'COMPLETE' | 'SIGN_OFF' | 'CHECK_OUT',
@@ -1200,6 +1127,8 @@ async function requireVehicleServiceStepRole(
   }
 }
 
+/** Moves a Vehicle Service along its forward-only status line. CANCELLED
+ * and CLOSED are only set by Manager approval. */
 export async function updateVehicleServiceStatus(
   serviceId: string,
   newStatus: 'CHECKED_IN' | 'IN_SERVICE' | 'COMPLETED' | 'READY_FOR_COLLECTION' | 'CLOSED' | 'COLLECTED' | 'CANCELLED',
@@ -1228,24 +1157,19 @@ export async function updateVehicleServiceStatus(
   if (!service) {
     throw new VehicleServiceActionError('Vehicle Service record not found.');
   }
-  // Cancelled is reached only by a Manager approving a cancellation
-  // request — exactly like Job Card; never set directly.
+  // CANCELLED is only set when a Manager approves a cancellation request.
   if (newStatus === 'CANCELLED') {
     throw new VehicleServiceActionError('A Vehicle Service is cancelled by a Manager approving a cancellation request, not directly — see Request cancellation.');
   }
-  // Closed is reached only by a Manager approving a close request —
-  // never set directly, the same rule Job Card's own updateJobCardStatus
-  // enforces server-side (not just hidden from the page).
+  // CLOSED is only set when a Manager approves a close request.
   if (newStatus === 'CLOSED') {
     throw new VehicleServiceActionError('A Vehicle Service is closed by a Manager approving a close request, not directly — see Request Close.');
   }
-  // Same real rule as Job Card's own 70%-deposit gate — no free visit:
-  // payment is what moves a Vehicle Service into service.
+  // IN_SERVICE is reached through the deposit payment only, as for Job Cards.
   if (newStatus === 'IN_SERVICE') {
     throw new VehicleServiceActionError('This Vehicle Service moves to In Service automatically once the required deposit is paid.');
   }
-  // Completed can only follow a genuine In Service, itself reachable
-  // only through the real payment flow.
+  // COMPLETED only follows IN_SERVICE.
   if (newStatus === 'COMPLETED' && service.status !== 'IN_SERVICE') {
     throw new VehicleServiceActionError('This Vehicle Service must be In Service, with its deposit paid, before it can be marked Completed.');
   }
@@ -1277,12 +1201,11 @@ export async function updateVehicleServiceStatus(
   if (newStatus === 'READY_FOR_COLLECTION') await requireVehicleServiceStepRole(service, 'SIGN_OFF', user.id);
   if (newStatus === 'COLLECTED') {
     await requireVehicleServiceStepRole(service, 'CHECK_OUT', user.id);
-    // Same real rule as Job Card's own checkout — the vehicle can't
-    // physically leave while money is still owed on it.
+    // No collection while money is owed, as at Job Card checkout.
     if (!servicePaymentPosition(service).isPaidInFull) {
       throw new VehicleServiceActionError('Payment must be completed in full before this vehicle can be checked out.');
     }
-    // A real name for whoever is physically driving away with it.
+    // Name of the person collecting the vehicle.
     if (!input?.collectedByName?.trim()) {
       throw new VehicleServiceActionError('The name of whoever is collecting the vehicle is required to check it out.');
     }
@@ -1298,8 +1221,8 @@ export async function updateVehicleServiceStatus(
   if (newStatus === 'COMPLETED') {
     data.completedAt = now;
     if (input?.technicianNotes !== undefined) data.technicianNotes = input.technicianNotes.trim() || null;
-    // Every completed service starts the next-service count — anchored
-    // on this visit's own odometer reading and completion date.
+    // Each completed service starts the next-service count from this visit's
+    // odometer reading and completion date.
     cycle = computeServiceCycle(input?.odometerAtService ?? service.odometerAtService, now, service);
     Object.assign(data, cycle);
   }
@@ -1311,11 +1234,10 @@ export async function updateVehicleServiceStatus(
 
   await prisma.$transaction(async (tx) => {
     claimed(await tx.vehicleService.updateMany({ where: { id: serviceId, status: service.status }, data }));
-    // The one real, shared "last known odometer" — the same field Job
-    // Card check-in writes to, never a second competing value.
+    // Same "last known odometer" field that Job Card check-in writes.
     if (newStatus === 'CHECKED_IN' && input?.odometerAtService !== undefined) {
-      // Only ever forward: a lower reading (a mistyped figure, a replaced
-      // instrument cluster) stays on this visit but never lowers the vehicle's.
+      // Only ever forward: a lower reading (a typo, a replaced instrument
+      // cluster) stays on this visit but never lowers the vehicle's mileage.
       await tx.customerVehicle.updateMany({ where: { id: service.vehicleId, OR: [{ mileage: null }, { mileage: { lt: input.odometerAtService } }] }, data: { mileage: input.odometerAtService } });
     }
   });
@@ -1339,22 +1261,21 @@ export async function updateVehicleServiceStatus(
     await notifyGateOfRelease('VEHICLE_SERVICE', serviceId, user.id);
   }
 
-  // Lifecycle emails — each fires exactly once, on a real transition,
-  // the same pattern as Job Card's own updateJobCardStatus.
+  // Lifecycle emails, once per actual transition.
   if (newStatus !== 'COMPLETED' && newStatus !== 'READY_FOR_COLLECTION' && newStatus !== 'COLLECTED') return;
   try {
     const orgContext = await getWorkshopOrgContext(service.department?.name);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const websiteUrl = websiteBaseUrl();
+    const portalUrl = portalBaseUrl();
     const vehicleDescription = [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     const dashboardUrl = `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`;
-    const websiteLogoUrl = `${websiteUrl}/images/logo/logo.png`;
+    const websiteLogoUrl = `${websiteUrl}/images/logo/email-logo.png`;
     const longDate = (d: Date) => d.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' });
 
     if (newStatus === 'COMPLETED') {
       await sendEmail(
         service.customer.email,
-        `Your service is complete — Vehicle Service ${service.serviceNumber}`,
+        `Your vehicle service is complete — ${service.serviceNumber}`,
         renderCustomerServiceCompletedEmail({
           customerName: service.customer.fullName,
           serviceNumber: service.serviceNumber,
@@ -1370,7 +1291,7 @@ export async function updateVehicleServiceStatus(
     } else if (newStatus === 'READY_FOR_COLLECTION') {
       await sendEmail(
         service.customer.email,
-        `Ready for collection — Vehicle Service ${service.serviceNumber}`,
+        `Your vehicle is ready for collection — ${service.serviceNumber}`,
         renderCustomerServiceReadyForCollectionEmail({
           customerName: service.customer.fullName,
           serviceNumber: service.serviceNumber,
@@ -1386,7 +1307,7 @@ export async function updateVehicleServiceStatus(
       const collectedByName = input?.collectedByName?.trim() ?? 'the customer';
       await sendEmail(
         service.customer.email,
-        `Your vehicle has been collected — Vehicle Service ${service.serviceNumber}`,
+        `Your vehicle has been collected — ${service.serviceNumber}`,
         renderCustomerServiceCheckedOutEmail({
           customerName: service.customer.fullName,
           serviceNumber: service.serviceNumber,
@@ -1398,20 +1319,19 @@ export async function updateVehicleServiceStatus(
           branchName: orgContext.branchName,
         }),
       );
-      // Every real staff party — creator, supervisor, technician and
-      // every branch Manager — same broadcast as Job Card's checkout.
+      // Creator, supervisor, technician and every branch Manager, as at Job Card checkout.
       const staff = await vehicleServiceStaffRecipients(service);
       for (const recipient of staff) {
         await sendEmail(
           recipient.email,
-          `Vehicle Service ${service.serviceNumber} — vehicle checked out`,
+          `Vehicle checked out — Vehicle Service ${service.serviceNumber}`,
           renderVehicleServiceCheckedOutStaffEmail({
             recipientName: recipient.fullName,
             serviceNumber: service.serviceNumber,
             customerName: service.customer.fullName,
             collectedByName,
             serviceUrl: `${portalUrl}/workshop/vehicle-service/${serviceId}`,
-            logoUrl: `${portalUrl}/images/logo/logo.png`,
+            logoUrl: `${portalUrl}/images/logo/email-logo.png`,
             companyName: orgContext.companyName,
             branchName: orgContext.branchName,
             departmentName: orgContext.departmentName,
@@ -1420,15 +1340,12 @@ export async function updateVehicleServiceStatus(
       }
     }
   } catch (err) {
-    // Fail-soft, like every other notification in this project — the
-    // status change itself has already been saved.
-    // eslint-disable-next-line no-console
+    // Fail-soft: the status change is already saved.
     logFailure('Failed to send Vehicle Service lifecycle email', serviceId, newStatus, err);
   }
 }
 
-/** Creator, supervisor, assigned technician and every branch Manager
- * — de-duplicated — the same staff broadcast list Job Card uses. */
+/** Creator, supervisor, assigned technician and every branch Manager, de-duplicated. */
 async function vehicleServiceStaffRecipients(service: { createdById: string; supervisorId: string | null; assignedTechnicianId: string | null; branchId: string }) {
   const ids = new Set<string>([service.createdById]);
   if (service.supervisorId) ids.add(service.supervisorId);
@@ -1438,13 +1355,10 @@ async function vehicleServiceStaffRecipients(service: { createdById: string; sup
   return prisma.user.findMany({ where: { id: { in: [...ids] } }, select: { id: true, fullName: true, email: true } });
 }
 
-/** A reminder to a customer whose vehicle is Ready for Collection —
- * the Vehicle Service equivalent of Job Card's own
- * sendReadyForCollectionReminder: repeatable, available to any
- * workshop staff while the vehicle is Ready for Collection, every send
- * audited (`vehicle_service.collection_reminder_sent`) and numbered, and
- * reusing the same customer email as the original notice with the same
- * expected-collection date. */
+/** Reminds a customer whose vehicle is Ready for Collection (Vehicle Service
+ * version of sendReadyForCollectionReminder). Repeatable, audited
+ * (`vehicle_service.collection_reminder_sent`) and numbered; reuses the
+ * original notice email and collection date. */
 export async function sendVehicleServiceCollectionReminder(serviceId: string): Promise<void> {
   const user = await requireUser();
   // Telling the customer is front-desk work, on a service within reach.
@@ -1480,11 +1394,11 @@ export async function sendVehicleServiceCollectionReminder(serviceId: string): P
   // Counted after the audit entry above, so this send is included.
   const reminderNumber = await prisma.auditLog.count({ where: { entityId: serviceId, action: 'vehicle_service.collection_reminder_sent' } });
   const dueDate = addWorkingDays(service.readyForCollectionAt, READY_FOR_COLLECTION_GRACE_WORKING_DAYS);
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const orgContext = await getWorkshopOrgContext(service.department?.name);
   await sendEmail(
     service.customer.email,
-    `Reminder — ready for collection, Vehicle Service ${service.serviceNumber}`,
+    `Reminder: your vehicle is ready for collection — ${service.serviceNumber}`,
     renderCustomerServiceReadyForCollectionEmail({
       customerName: service.customer.fullName,
       serviceNumber: service.serviceNumber,
@@ -1492,7 +1406,7 @@ export async function sendVehicleServiceCollectionReminder(serviceId: string): P
       dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
       reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),
@@ -1500,10 +1414,9 @@ export async function sendVehicleServiceCollectionReminder(serviceId: string): P
 }
 
 /**
- * The Service Tracker — every vehicle's current next-service prediction
- * at this branch, after it has left the workshop. Built on the one
- * shared calculation (lib/vehicle-service-cycle), so it always agrees
- * with the vehicle page, custody and the reminder engine.
+ * Every vehicle's current next-service prediction at this branch, once it
+ * has left the workshop. Uses the shared calculation in
+ * lib/vehicle-service-cycle.
  */
 export async function getServiceTracker(branchId: string) {
   await requireUser();
@@ -1532,11 +1445,9 @@ export async function getServiceTracker(branchId: string) {
 }
 
 /**
- * Stop tracking a vehicle's current service cycle — e.g. the customer has
- * asked not to be reminded, sold the vehicle, or moved away. A reason is
- * required and recorded on the vehicle's audit trail by name. The
- * vehicle drops out of reminders and due lists; tracking restarts on its
- * own, as a fresh cycle, the next time a service is completed for it.
+ * Stops tracking a vehicle's current service cycle (e.g. the customer asked
+ * not to be reminded, or sold the vehicle). A reason is required and audited.
+ * Tracking restarts with a fresh cycle at the next completed service.
  */
 export async function stopTrackingVehicle(vehicleId: string, reason: string): Promise<void> {
   await authorize('workshop.customer.manage', undefined, 'stopTrackingVehicle');
@@ -1570,10 +1481,9 @@ export async function getVehicleServiceCancellationRequests(serviceId: string) {
 /** Statuses a Vehicle Service can still be cancelled from. */
 const CANCELLABLE_SERVICE_STATUSES = ['SCHEDULED', 'CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'];
 
-/** The Vehicle Service equivalent of Job Card's requestJobCardCancellation
- * — a reason is required, the status is deliberately untouched, only the
- * creator, the supervisor or a Master Admin may ask, never twice at once,
- * and every branch Manager is emailed to review it. */
+/** Vehicle Service version of requestJobCardCancellation(): reason required,
+ * status unchanged, only the creator, supervisor or a Master Admin, never
+ * two pending at once; branch Managers are emailed. */
 export async function requestVehicleServiceCancellation(serviceId: string, reason: string): Promise<void> {
   const trimmedReason = reason.trim();
   if (!trimmedReason) throw new VehicleServiceActionError('A reason is required to request cancellation.');
@@ -1589,7 +1499,7 @@ export async function requestVehicleServiceCancellation(serviceId: string, reaso
   if (user.id !== service.createdById && user.id !== service.supervisorId && !(await currentUserIsMasterAdmin())) {
     return refuse('workshop.close.request', 'requestVehicleServiceCancellation', "Only this Vehicle Service's creator or its assigned supervisor can request a cancellation.");
   }
-  // Checked and created with the service locked — never two pending requests.
+  // Checked and created with the service locked: never two pending requests.
   await prisma.$transaction(async (tx) => {
     await lockExisting(tx, 'vehicleService', [serviceId]);
     const existingPending = await tx.vehicleServiceCancellationRequest.findFirst({ where: { vehicleServiceId: serviceId, status: 'PENDING' }, select: { id: true } });
@@ -1598,14 +1508,14 @@ export async function requestVehicleServiceCancellation(serviceId: string, reaso
   });
   await writeAuditLog({ userId: user.id, action: 'vehicle_service.cancellation_requested', entityType: 'VehicleService', entityId: serviceId, metadata: { reason: trimmedReason } });
   try {
-    // Independent lookups for the email — run together.
+    // Independent lookups for the email, run in parallel.
     const [requester, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const managers = await listEligibleManagersForBranch(service.branchId);
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
-        `Cancellation requested — Vehicle Service ${service.serviceNumber}`,
+        `Cancellation request needs your decision — Vehicle Service ${service.serviceNumber}`,
         renderServiceCancellationRequestedEmail({
           managerName: manager.fullName,
           serviceNumber: service.serviceNumber,
@@ -1613,25 +1523,24 @@ export async function requestVehicleServiceCancellation(serviceId: string, reaso
           requestedByName: requester?.fullName ?? 'A team member',
           reason: trimmedReason,
           serviceUrl: `${portalUrl}/workshop/vehicle-service/${serviceId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
         }),
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Vehicle Service cancellation-requested emails', serviceId, err);
   }
 }
 
-/** A Manager's approval — the one moment a Vehicle Service becomes
- * CANCELLED. Also: authorises a refund of anything paid (Finance then
- * records it), resolves any pending close request, and stops the
- * vehicle's service tracking (restarts after its next completed
- * service). Customer and every staff party are emailed — the same
- * broadcast as Job Card's approveCancellationRequest. */
+/** A Manager approves: the service becomes CANCELLED, any amount paid is
+ * authorised for refund (Finance records it), a pending close request is
+ * resolved, and service tracking stops until the next completed service.
+ * The customer and staff are emailed. */
 export async function approveVehicleServiceCancellationRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveVehicleServiceCancellationRequest');
   const request = await prisma.vehicleServiceCancellationRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -1664,18 +1573,18 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
   const user = await requireEligibleManager(service.branchId, 'workshop.close.approve');
   const now = new Date();
   const paid = service.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
-  // All-or-nothing, each step only from the state it was decided on — a
-  // close approved at the same moment, or a second click, changes nothing.
+  // All-or-nothing, each step only from the state it was decided on: a close
+  // approved at the same moment, or a second click, changes nothing.
   let withdrawn: Awaited<ReturnType<typeof withdrawOpenSourcing>> | undefined;
   await prisma.$transaction(async (tx) => {
-    // The service first, so a close and a cancellation queue rather than deadlock.
+    // Lock the service first so a close and a cancellation queue instead of deadlocking.
     await lockExisting(tx, 'vehicleService', [request.vehicleServiceId]);
     claimed(await tx.vehicleServiceCancellationRequest.updateMany({
       where: { id: requestId, status: 'PENDING' },
       data: { status: 'APPROVED', decidedById: user.id, decidedAt: now, decisionNotes: decisionNotes?.trim() || null },
     }), 'This cancellation request was just decided by someone else — refresh the page.');
     claimed(await tx.vehicleService.updateMany({
-      // …and never while an escalation is opening its Job Card (escalatedAt claim).
+      // ...and never while an escalation is opening its Job Card (escalatedAt claim).
       where: { id: request.vehicleServiceId, status: { in: CANCELLABLE_SERVICE_STATUSES as VehicleServiceStatus[] }, escalatedToJobCardId: null, OR: [{ escalatedAt: null }, { escalatedAt: { lt: new Date(Date.now() - ESCALATION_CLAIM_MS) } }] },
       data: { status: 'CANCELLED', cancelledAt: now },
     }), 'This Vehicle Service was just closed, checked out or escalated — refresh the page.');
@@ -1683,8 +1592,8 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
       where: { vehicleServiceId: request.vehicleServiceId, status: 'PENDING' },
       data: { status: 'DECLINED', decidedById: user.id, decidedAt: now, decisionNotes: 'Superseded — the Vehicle Service was cancelled.' },
     });
-    // Parts requests and outside purchases still in flight for it are withdrawn,
-    // and stock reserved for them goes back on the shelf.
+    // Withdraw parts requests and outside purchases still open for it, and
+    // return reserved stock to the shelf.
     withdrawn = await withdrawOpenSourcing(tx, { vehicleServiceId: request.vehicleServiceId }, user.id, 'Withdrawn automatically — the Vehicle Service was cancelled.');
   });
   await writeAuditLog({
@@ -1694,8 +1603,7 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
     entityId: request.vehicleServiceId,
     metadata: { withdrawn: withdrawn && (withdrawn.slips.length || withdrawn.procurements.length) ? withdrawn : undefined,  reason: request.reason, notes: decisionNotes?.trim() || undefined, ...(paid > 0 ? { refundAuthorised: Math.round(paid * 100) / 100 } : {}) },
   });
-  // Cancelling a service stops the vehicle's service tracking — the
-  // customer isn't reminded until a service is next completed.
+  // Cancelling stops service tracking; no reminders until a service is next completed.
   const [tracked] = await loadServiceTracking({ vehicleId: service.vehicleId });
   if (tracked && !tracked.attendedAt) {
     await prisma.vehicleService.update({ where: { id: tracked.lastService.id }, data: { attendedAt: now } });
@@ -1708,9 +1616,9 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
     });
   }
   try {
-    // Independent lookups for the email — run together.
+    // Independent lookups for the email, run in parallel.
     const [approver, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const staff = await vehicleServiceStaffRecipients(service);
     for (const recipient of staff) {
       await sendEmail(
@@ -1723,7 +1631,7 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
           approvedByName: approver?.fullName ?? 'The manager',
           reason: request.reason,
           serviceUrl: `${portalUrl}/workshop/vehicle-service/${request.vehicleServiceId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -1731,34 +1639,33 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Vehicle Service staff cancellation emails', request.vehicleServiceId, err);
   }
   try {
     const orgContext = await getWorkshopOrgContext(service.department?.name);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     await sendEmail(
       service.customer.email,
-      `Vehicle Service ${service.serviceNumber} cancelled`,
+      `Your vehicle service ${service.serviceNumber} has been cancelled`,
       renderCustomerServiceCancelledEmail({
         customerName: service.customer.fullName,
         serviceNumber: service.serviceNumber,
         vehicleDescription: [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${request.vehicleServiceId}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send customer Vehicle Service cancellation email', request.vehicleServiceId, err);
   }
 }
 
-/** A Manager's decline — status never touched; only the requester is
- * emailed, the same as Job Card's declineCancellationRequest. */
+/** A Manager declines. Status is unchanged; only the requester is emailed. */
 export async function declineVehicleServiceCancellationRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('declineVehicleServiceCancellationRequest');
   const request = await prisma.vehicleServiceCancellationRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -1782,7 +1689,7 @@ export async function declineVehicleServiceCancellationRequest(requestId: string
     ]);
     if (!requester) return;
     const orgContext = await getWorkshopOrgContext(request.vehicleService.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       requester.email,
       `Cancellation request declined — Vehicle Service ${request.vehicleService.serviceNumber}`,
@@ -1793,21 +1700,19 @@ export async function declineVehicleServiceCancellationRequest(requestId: string
         declinedByName: decliner?.fullName ?? 'The manager',
         decisionNotes,
         serviceUrl: `${portalUrl}/workshop/vehicle-service/${request.vehicleServiceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Vehicle Service cancellation-declined email', request.vehicleServiceId, err);
   }
 }
 
-/** Handing the vehicle back after a cancellation — the Vehicle Service
- * equivalent of Job Card's CANCELLED → CHECKED_OUT. Records who collected
- * it and when; the status stays CANCELLED (no service was performed).
- * Refused until anything paid has been fully refunded. */
+/** Hands the vehicle back after a cancellation (like Job Card CANCELLED →
+ * CHECKED_OUT). Records who collected it and when; status stays CANCELLED.
+ * Refused until anything paid has been refunded. */
 export async function handBackCancelledVehicleService(serviceId: string, collectedByName: string): Promise<void> {
   await authorize('workshop.job_card.create', undefined, 'handBackCancelledVehicleService');
   const user = await requireUser();
@@ -1831,11 +1736,11 @@ export async function handBackCancelledVehicleService(serviceId: string, collect
   await writeAuditLog({ userId: user.id, action: 'vehicle_service.handed_back', entityType: 'VehicleService', entityId: serviceId, metadata: { serviceNumber: service.serviceNumber, collectedByName: name } });
 }
 
-/** A notice to a customer whose CANCELLED Vehicle Service vehicle is still
- * with us — the exact mirror of Job Card's notifyOverdueCancelledVehicle:
- * a Workshop Manager's action, staged and numbered (lib/custody-reminders
- * CANCELLED_COLLECTION: first once the 7-working-day grace has passed,
- * then every 2 working days), refused until due, audited. */
+/** Notifies the customer that a cancelled service's vehicle is still here
+ * (Vehicle Service version of notifyOverdueCancelledVehicle). Workshop
+ * Manager only; staged per lib/custody-reminders CANCELLED_COLLECTION
+ * (first after the 7-working-day grace, then every 2 working days);
+ * refused until due; audited. */
 export async function sendVehicleServiceCancelledCollectionNotice(serviceId: string, notes?: string): Promise<void> {
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
@@ -1859,11 +1764,11 @@ export async function sendVehicleServiceCancelledCollectionNotice(serviceId: str
     entityId: serviceId,
     metadata: { daysElapsed, notes: notes?.trim() || undefined },
   });
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const orgContext = await getWorkshopOrgContext();
   await sendEmail(
     service.customer.email,
-    `Please arrange collection — Vehicle Service ${service.serviceNumber}`,
+    `Please collect your vehicle — ${service.serviceNumber}`,
     renderCustomerServiceCollectionOverdueEmail({
       customerName: service.customer.fullName,
       serviceNumber: service.serviceNumber,
@@ -1871,7 +1776,7 @@ export async function sendVehicleServiceCancelledCollectionNotice(serviceId: str
       daysSinceCancellationLabel: pluralize(daysElapsed, 'working day'),
       reminderNumber: reminderState.nextNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),
@@ -1888,10 +1793,9 @@ export async function getVehicleServiceCloseRequests(serviceId: string) {
   });
 }
 
-/** The Vehicle Service equivalent of Job Card's requestJobCardClose —
- * only once the vehicle is Ready for Collection and fully paid, only
- * by the creator, the supervisor or a Master Admin, and never twice at
- * once. Every branch Manager is emailed to review it. */
+/** Vehicle Service version of requestJobCardClose(): only when Ready for
+ * Collection and fully paid, only by the creator, supervisor or a Master
+ * Admin, never two pending at once. Branch Managers are emailed. */
 export async function requestVehicleServiceClose(serviceId: string): Promise<void> {
   const service = await prisma.vehicleService.findUnique({
     where: { id: serviceId },
@@ -1913,8 +1817,7 @@ export async function requestVehicleServiceClose(serviceId: string): Promise<voi
   if (service.status !== 'READY_FOR_COLLECTION') {
     throw new VehicleServiceActionError('A close can only be requested once this Vehicle Service is Ready for Collection.');
   }
-  // Checked at the earliest point, like Job Card's own — no point
-  // routing a request to a Manager that could never be approved.
+  // Checked now so a request that could never be approved isn't sent.
   if (!servicePaymentPosition(service).isPaidInFull) {
     throw new VehicleServiceActionError('Payment must be completed in full before a close can be requested.');
   }
@@ -1939,37 +1842,36 @@ export async function requestVehicleServiceClose(serviceId: string): Promise<voi
   });
 
   try {
-    // Independent lookups for the email — run together.
+    // Independent lookups for the email, run in parallel.
     const [requester, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const managers = await listEligibleManagersForBranch(service.branchId);
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
-        `Close requested — Vehicle Service ${service.serviceNumber}`,
+        `Close request needs your decision — Vehicle Service ${service.serviceNumber}`,
         renderServiceCloseRequestedEmail({
           managerName: manager.fullName,
           serviceNumber: service.serviceNumber,
           customerName: service.customer.fullName,
           requestedByName: requester?.fullName ?? 'A team member',
           serviceUrl: `${portalUrl}/workshop/vehicle-service/${serviceId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
         }),
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Vehicle Service close-requested emails', serviceId, err);
   }
 }
 
-/** A Manager's approval — the one moment a Vehicle Service becomes
- * CLOSED. Re-checks status and payment at decision time (things can
- * change after the request was raised). Customer and every staff party
- * are emailed, same as Job Card's own approveCloseRequest. */
+/** A Manager approves: the service becomes CLOSED. Status and payment are
+ * re-checked at decision time. The customer and staff are emailed. */
 export async function approveVehicleServiceCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveVehicleServiceCloseRequest');
   const request = await prisma.vehicleServiceCloseRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -2009,7 +1911,7 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
   const now = new Date();
   let withdrawn: Awaited<ReturnType<typeof withdrawOpenSourcing>> | undefined;
   await prisma.$transaction(async (tx) => {
-    // The service first, so a close and a cancellation queue rather than deadlock.
+    // Lock the service first so a close and a cancellation queue instead of deadlocking.
     await lockExisting(tx, 'vehicleService', [request.vehicleServiceId]);
     claimed(await tx.vehicleServiceCloseRequest.updateMany({
       where: { id: requestId, status: 'PENDING' },
@@ -2019,13 +1921,13 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
       where: { id: request.vehicleServiceId, status: 'READY_FOR_COLLECTION' },
       data: { status: 'CLOSED', closedAt: now },
     }), 'This Vehicle Service is no longer Ready for Collection (it was just changed) — refresh the page.');
-    // A cancellation requested earlier can never happen now — resolve it.
+    // A pending cancellation can no longer happen; resolve it.
     await tx.vehicleServiceCancellationRequest.updateMany({
       where: { vehicleServiceId: request.vehicleServiceId, status: 'PENDING' },
       data: { status: 'DECLINED', decidedById: user.id, decidedAt: now, decisionNotes: 'Superseded — the Vehicle Service was closed.' },
     });
-    // Parts requests and outside purchases still in flight for it are withdrawn,
-    // and stock reserved for them goes back on the shelf.
+    // Withdraw parts requests and outside purchases still open for it, and
+    // return reserved stock to the shelf.
     withdrawn = await withdrawOpenSourcing(tx, { vehicleServiceId: request.vehicleServiceId }, user.id, 'Withdrawn automatically — the Vehicle Service was closed.');
   });
   await writeAuditLog({
@@ -2037,20 +1939,20 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
   });
 
   try {
-    // Independent lookups for the email — run together.
+    // Independent lookups for the email, run in parallel.
     const [approver, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(service.department?.name)]);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const websiteUrl = websiteBaseUrl();
+    const portalUrl = portalBaseUrl();
     const vehicleDescription = [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     await sendEmail(
       service.customer.email,
-      `Vehicle Service ${service.serviceNumber} has been closed`,
+      `Your vehicle service ${service.serviceNumber} is closed`,
       renderCustomerServiceClosedEmail({
         customerName: service.customer.fullName,
         serviceNumber: service.serviceNumber,
         vehicleDescription,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${request.vehicleServiceId}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
@@ -2066,7 +1968,7 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
           customerName: service.customer.fullName,
           closedByName: approver?.fullName ?? 'The manager',
           serviceUrl: `${portalUrl}/workshop/vehicle-service/${request.vehicleServiceId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -2074,14 +1976,14 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Vehicle Service close-approval emails', request.vehicleServiceId, err);
   }
 }
 
-/** A Manager's decline — status is never touched; only the requester
- * is told, same as Job Card's own declineCloseRequest. */
+/** A Manager declines. Status is unchanged; only the requester is told. */
 export async function declineVehicleServiceCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('declineVehicleServiceCloseRequest');
   const request = await prisma.vehicleServiceCloseRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -2115,7 +2017,7 @@ export async function declineVehicleServiceCloseRequest(requestId: string, decis
     ]);
     if (!requester) return;
     const orgContext = await getWorkshopOrgContext(request.vehicleService.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       requester.email,
       `Close request declined — Vehicle Service ${request.vehicleService.serviceNumber}`,
@@ -2125,22 +2027,19 @@ export async function declineVehicleServiceCloseRequest(requestId: string, decis
         customerName: request.vehicleService.customer.fullName,
         declinedByName: decliner?.fullName ?? 'The manager',
         serviceUrl: `${portalUrl}/workshop/vehicle-service/${request.vehicleServiceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Vehicle Service close-declined email', request.vehicleServiceId, err);
   }
 }
 
-/** The one real, deliberate door out of this lighter workflow — a
- * genuine Job Card gets created from the service's own real
- * customer/vehicle/complaint, and this Vehicle Service is marked as
- * escalated and stops progressing on its own. Reuses createJobCard
- * directly rather than duplicating its own real logic. */
+/** Moves the visit to a Job Card created from the service's customer,
+ * vehicle and complaint (via createJobCard). The service becomes ESCALATED
+ * and read-only. */
 export async function escalateVehicleServiceToJobCard(
   serviceId: string,
   supervisorId: string,
@@ -2172,19 +2071,18 @@ export async function escalateVehicleServiceToJobCard(
     throw new VehicleServiceActionError('Vehicle Service record not found.');
   }
   if (service.escalatedToJobCardId) {
-    throw new VehicleServiceActionError('This Vehicle Service has already been escalated to a real Job Card.');
+    throw new VehicleServiceActionError('This Vehicle Service has already been escalated to a Job Card.');
   }
   // Once the work is done (completed, ready, closed, collected) or the
   // service is cancelled, there is nothing left to escalate.
   if (['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED', 'COLLECTED', 'CANCELLED', 'ESCALATED'].includes(service.status)) {
     throw new VehicleServiceActionError(`A Vehicle Service that's already ${service.status.toLowerCase().replace(/_/g, ' ')} cannot be escalated.`);
   }
-  // Escalation hands the visit over before any money or pricing is
-  // committed. Once an estimate exists (the customer may have been
-  // quoted) or money has been taken, escalating would orphan them —
-  // cancel the estimate first (only possible before Manager approval,
-  // i.e. before any payment), or finish this service and open a
-  // separate Job Card for the repair.
+  // Escalation happens before any pricing or money. Once an estimate exists
+  // (the customer may have been quoted) or a payment is recorded, escalating
+  // would orphan them: cancel the estimate first (only possible before
+  // Manager approval, so before any payment), or finish this service and open
+  // a separate Job Card.
   const [estimateExists, paymentCount] = await Promise.all([
     prisma.serviceEstimate.findUnique({ where: { vehicleServiceId: serviceId }, select: { id: true } }),
     prisma.payment.count({ where: { vehicleServiceId: serviceId } }),
@@ -2196,11 +2094,8 @@ export async function escalateVehicleServiceToJobCard(
     throw new VehicleServiceActionError('This Vehicle Service already has an estimate — cancel the estimate first, then escalate.');
   }
 
-  // Real inspection findings carry straight into the new Job Card as
-  // their own real complaint lines — the supervisor building the
-  // estimate there sees exactly what was actually found, in the
-  // inspection's own words, rather than having to reopen the
-  // inspection separately or have it retyped from memory.
+  // Inspection findings become complaint lines on the new Job Card, in the
+  // inspection's own words.
   const findingLines = (service.inspection?.items ?? []).map((item: { section: string; name: string; condition: string | null; severity: string | null; action: string | null }) => {
     const severityLabel = item.severity === 'CRITICAL' ? 'Critical' : item.severity === 'SERVICE_REQUIRED' ? 'Service Required' : 'Attention';
     const detail = [item.condition, item.action].filter(Boolean).join(' — ');
@@ -2213,10 +2108,9 @@ export async function escalateVehicleServiceToJobCard(
     additionalComplaint?.trim(),
   ].filter((c): c is string => Boolean(c));
   // Claim the hand-over first (compare-and-set on escalatedAt): a second
-  // escalation — a double click while the first is still opening its Job
-  // Card, or a second person — stops here instead of opening a second Job
-  // Card. The service keeps its status meanwhile. A claim left behind by a
-  // request that died part-way expires after ten minutes.
+  // escalation (double click, or a second person) stops here instead of
+  // opening a second Job Card. The service keeps its status meanwhile. A claim
+  // left by a request that died part-way expires after ten minutes.
   const claimedAt = new Date();
   claimed(await prisma.vehicleService.updateMany({
     where: {
@@ -2228,8 +2122,8 @@ export async function escalateVehicleServiceToJobCard(
     data: { escalatedAt: claimedAt },
   }), 'This Vehicle Service is already being escalated — refresh the page in a moment.');
   // Re-checked now that the claim is held (estimates and payments refuse an
-  // in-flight escalation from here on): one added in the instant before the
-  // claim releases it and stops.
+  // in-flight escalation from here on): one added just before the claim
+  // releases it and stops.
   const [estimateNow, paymentsNow] = await Promise.all([
     prisma.serviceEstimate.findUnique({ where: { vehicleServiceId: serviceId }, select: { id: true } }),
     prisma.payment.count({ where: { vehicleServiceId: serviceId } }),
@@ -2240,12 +2134,12 @@ export async function escalateVehicleServiceToJobCard(
   }
   let jobCard: Awaited<ReturnType<typeof createJobCard>>;
   try {
-    // The Job Card is created already linked to this service (one database
-    // write), so a Job Card can never exist without the link back to it.
+    // Created already linked to this service (one write), so a Job Card never
+    // exists without the link back.
     jobCard = await createJobCard({
       customerId: service.customerId,
       vehicleId: service.vehicleId,
-      complaints: complaints.length > 0 ? complaints : ['Escalated from Vehicle Service — see linked record for the original real request.'],
+      complaints: complaints.length > 0 ? complaints : ['Escalated from Vehicle Service — see the linked record for the original request.'],
       supervisorId,
       mileageAtCheckIn: service.odometerAtService ?? undefined,
       escalatedFromServiceNumber: service.serviceNumber,
@@ -2259,9 +2153,9 @@ export async function escalateVehicleServiceToJobCard(
     throw err;
   }
 
-  // Handed over: the Vehicle Service becomes ESCALATED — terminal and
-  // read-only; everything continues on the Job Card. (If this request died
-  // right here, normaliseEscalatedServices completes it: linked → ESCALATED.)
+  // Handed over: the service becomes ESCALATED, terminal and read-only. If
+  // the request dies right here, normaliseEscalatedServices completes it
+  // (linked → ESCALATED).
   claimed(await prisma.vehicleService.updateMany({
     where: { id: serviceId, escalatedToJobCardId: jobCard.id },
     data: { status: 'ESCALATED', escalatedAt: claimedAt },
@@ -2273,9 +2167,7 @@ export async function escalateVehicleServiceToJobCard(
     entityId: serviceId,
     metadata: { serviceNumber: service.serviceNumber, jobCardId: jobCard.id, jobNumber: jobCard.jobNumber, findingsIncluded: findingLines.length },
   });
-  // The real cross-reference the other direction — the new Job Card's
-  // own audit trail should say plainly where it actually came from,
-  // not just the Vehicle Service's own trail saying where it went.
+  // Also log on the new Job Card where it came from.
   await writeAuditLog({
     userId: user.id,
     action: 'job_card.created_from_vehicle_service',
@@ -2284,9 +2176,9 @@ export async function escalateVehicleServiceToJobCard(
     metadata: { serviceNumber: service.serviceNumber, vehicleServiceId: serviceId },
   });
 
-  // Everyone on the original service is told it moved, and where to.
-  // (The Job Card's own supervisor gets the normal "assigned" email, and
-  // the customer's acknowledgment explains the escalation.)
+  // Everyone on the original service is told where it moved. (The Job Card's
+  // supervisor gets the normal "assigned" email, and the customer's
+  // acknowledgment explains the escalation.)
   try {
     const people = await prisma.vehicleService.findUnique({
       where: { id: serviceId },
@@ -2300,11 +2192,11 @@ export async function escalateVehicleServiceToJobCard(
         prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
         getWorkshopOrgContext(),
       ]);
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const portalUrl = portalBaseUrl();
       for (const r of recipients) {
         await sendEmail(
           r.email,
-          `Vehicle Service ${service.serviceNumber} escalated to Job Card ${jobCard.jobNumber}`,
+          `Vehicle Service ${service.serviceNumber} moved to Job Card ${jobCard.jobNumber}`,
           renderVehicleServiceEscalatedStaffEmail({
             recipientName: r.fullName,
             serviceNumber: service.serviceNumber,
@@ -2312,7 +2204,7 @@ export async function escalateVehicleServiceToJobCard(
             customerName: people?.customer.fullName ?? 'the customer',
             escalatedByName: escalator?.fullName ?? 'A team member',
             jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCard.id}`,
-            logoUrl: `${portalUrl}/images/logo/logo.png`,
+            logoUrl: `${portalUrl}/images/logo/email-logo.png`,
             companyName: orgContext.companyName,
             branchName: orgContext.branchName,
           }),
@@ -2320,16 +2212,13 @@ export async function escalateVehicleServiceToJobCard(
       }
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send escalation emails', serviceId, err);
   }
   return { jobCardId: jobCard.id };
 }
 
-/** The organisation's own configured Primary Service policy — the
- * real "whichever comes first" rule Vehicle Service's own
- * next-service prediction is anchored to. Master Admin only, same
- * real trust level as everything else in this module. */
+/** The organisation's Primary Service interval ("whichever comes first"),
+ * which next-service predictions are based on. Master Admin only. */
 export async function updatePrimaryServiceInterval(
   organisationId: string,
   intervalKm: number | undefined,
@@ -2353,7 +2242,7 @@ export async function updatePrimaryServiceInterval(
   });
 }
 
-/** VehicleService — only within the person's scope (branch); out of scope behaves as "not found". */
+/** Only within the person's scope (branch); out of scope behaves as "not found". */
 export async function getVehicleService(serviceId: string) {
   const rec = await getVehicleServiceUnscoped(serviceId);
   if (!rec) return rec;

@@ -31,12 +31,9 @@ const TAG_ICON = (
 );
 
 /**
- * The real, two-level Part Category / Part Type hierarchy — Filter
- * containing Oil Filter/Fuel Filter, Fluid containing Coolant/Engine
- * Oil/Brake Fluid, and so on. This is what a technician actually
- * browses when adding a Store Part line to an estimate — never a
- * real, vehicle-specific catalog Part, and never a price. Store
- * builds this list once; technicians pick from it every time after.
+ * Part Categories and Part Types (e.g. Filter → Oil Filter, Fuel Filter).
+ * Technicians pick a Part Type on an estimate; the Store later matches it to
+ * a catalogue part and price.
  */
 export default async function PartTypesPage({
   searchParams,
@@ -61,8 +58,8 @@ export default async function PartTypesPage({
         icon="layers"
         back={{ href: "/inventory", label: "Back to Inventory" }}
         title="Part Categories & Types"
-        description={<>The generic classification a technician picks from when requesting a Store Part on an estimate — Store then
-        matches each request to the real, vehicle-fitting catalog Part.</>}
+        description={<>Technicians choose a Part Type when adding a Store Part to an estimate. The Store then matches it to a
+        catalogue part that fits the vehicle.</>}
       />
 
       {error ? (
@@ -81,7 +78,7 @@ export default async function PartTypesPage({
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-3">
           {categories.length === 0 ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="layers" title="No Part Categories yet — add the first one on the right." /></div>
@@ -120,7 +117,7 @@ export default async function PartTypesPage({
           )}
         </div>
 
-        <div className="h-fit space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+        <div className="h-fit space-y-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <div className="flex items-center gap-2">
               {FOLDER_ICON}

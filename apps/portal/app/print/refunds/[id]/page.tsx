@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { getRefund } from '@/lib/actions/refunds';
 import { getOrganisation } from '@/lib/actions/organisation';
@@ -44,7 +45,7 @@ export default async function PrintRefundPage({ params, searchParams }: { params
       <DocumentHeader
         organisation={organisation}
         branch={record.branch}
-        logoUrl={`${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app'}/images/logo/logo.png`}
+        logoUrl={`${portalBaseUrl()}/images/logo/logo.png`}
         documentTitle={isOrgCopy ? 'Refund Receipt — Organisation Copy' : 'Refund Receipt'}
         referenceNumber={refund.referenceNumber}
         statusLabel="Refunded"

@@ -1,32 +1,29 @@
 import type { NextConfig } from 'next';
 import path from 'path';
+import { PERMISSIONS_POLICY } from './lib/security-headers';
 
-// Content-Security-Policy (SEC-04): only this site's own scripts, styles,
-// fonts and connections (plus Supabase realtime). Next.js still needs inline
-// scripts for hydration, hence 'unsafe-inline' (a nonce-based policy is the
-// planned next step); development also needs 'unsafe-eval' for fast refresh.
-const CSP = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'production' ? '' : " 'unsafe-eval'"}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
-  "media-src 'self' data: blob:",
-  "worker-src 'self' blob:",
-  "frame-src 'self' blob:",
-  "frame-ancestors 'self'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "object-src 'none'",
-  'upgrade-insecure-requests',
-].join('; ');
+/**
+ * A production deployment on Vercel stops at build time when an address or
+ * secret it depends on is missing, instead of sending emails with broken links
+ * or running with a default. The previous deployment stays live.
+ */
+const REQUIRED_IN_PRODUCTION = ['DATABASE_URL', 'BETTER_AUTH_SECRET', 'BETTER_AUTH_URL', 'NEXT_PUBLIC_PORTAL_URL', 'NEXT_PUBLIC_WEBSITE_URL', 'NEXT_PUBLIC_ORGANISATION_NAME', 'CRON_SECRET'];
+if (process.env.VERCEL_ENV === 'production') {
+  const missing = REQUIRED_IN_PRODUCTION.filter((name) => !process.env[name]?.trim());
+  if (missing.length > 0) {
+    throw new Error(`Missing environment variables for production: ${missing.join(', ')}. Set them in Vercel → Settings → Environment Variables (Production), then redeploy. See docs/OPERATIONS_CHECKLIST.md.`);
+  }
+}
+
+/** Extra origins allowed to call server actions, e.g. when a proxy in front changes the host. Comma-separated host names. */
+const serverActionOrigins = (process.env.SERVER_ACTIONS_ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
 const nextConfig: NextConfig = {
   transpilePackages: ['@ejo/ui', '@ejo/types', '@ejo/utils'],
   reactStrictMode: true,
   // Don't advertise the framework.
   poweredByHeader: false,
+  ...(serverActionOrigins.length > 0 ? { experimental: { serverActions: { allowedOrigins: serverActionOrigins } } } : {}),
   // Addresses of modules planned next open their roadmap page.
   async redirects() {
     const planned = ['hr', 'payroll', 'finance', 'procurement', 'suppliers', 'warehouse', 'manufacturing', 'documents', 'reports', 'branding', 'help'];
@@ -36,7 +33,8 @@ const nextConfig: NextConfig = {
       ...['business-units', 'departments', 'teams', 'countries', 'states', 'cities'].map((k) => ({ source: `/${k}`, destination: '/structure', permanent: false })),
     ];
   },
-  // Security headers on every response.
+  // Security headers on every response. The Content-Security-Policy is set
+  // per request by middleware.ts, because it carries a fresh nonce.
   async headers() {
     return [
       {
@@ -44,14 +42,12 @@ const nextConfig: NextConfig = {
         headers: [
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
+          // Same rule as the policy's frame-ancestors 'self', for older browsers.
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' },
+          { key: 'Permissions-Policy', value: PERMISSIONS_POLICY },
           { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
           { key: 'X-DNS-Prefetch-Control', value: 'on' },
-          // Blocks plugins, foreign form targets, base-URL hijacking and being
-          // framed by other sites — without breaking Next.js's own scripts.
-          { key: 'Content-Security-Policy', value: CSP },
           { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
         ],
       },
@@ -59,32 +55,13 @@ const nextConfig: NextConfig = {
       { source: '/images/:path*', headers: [{ key: 'Cross-Origin-Resource-Policy', value: 'cross-origin' }] },
     ];
   },
-  // This is an npm workspaces monorepo (apps/*, packages/*) — a
-  // transitive dependency like pdfkit (pulled in by
-  // @react-pdf/renderer) gets hoisted to the real repo ROOT's
-  // node_modules, not apps/portal/node_modules. Without this,
-  // Next.js's own file-tracing root defaults to apps/portal itself,
-  // so the outputFileTracingIncludes glob below silently matches
-  // nothing — the real, actual cause of a real, recurring production
-  // error, confirmed directly: a fresh `npm install` at the repo
-  // root places pdfkit at ./node_modules/pdfkit, never inside
-  // apps/portal/node_modules at all.
+  // npm workspaces hoist pdfkit (a dependency of @react-pdf/renderer) to the
+  // repository root, so file tracing must start there.
   outputFileTracingRoot: path.join(__dirname, '../../'),
-  // The real, known cause of a real, recurring production error:
-  // @react-pdf/renderer's own transitive dependency, pdfkit, loads its
-  // standard font files (.afm/.cjs) from disk at runtime via a
-  // relative path Next.js's own static analysis can't always follow —
-  // so those files can genuinely get left out of the serverless
-  // function bundle even though the code that needs them is included.
-  // Server Actions can be invoked from effectively any route, so this
-  // explicitly traces pdfkit's font files into every real function
-  // bundle, not just the one route that happens to render the PDF.
-  // Confirmed directly, by building a minimal reproduction of this
-  // monorepo's exact layout: outputFileTracingIncludes globs stay
-  // relative to THIS config file's own directory (apps/portal), never
-  // to outputFileTracingRoot above, no matter where that root points —
-  // a real, subtle Next.js behavior, not the intuitive one. pdfkit's
-  // real, hoisted location is two levels up from here.
+  // pdfkit reads its standard font files from disk at run time, which file
+  // tracing cannot see. Server actions can render a PDF from any route, so the
+  // fonts go into every function. The glob is relative to this file, not to
+  // outputFileTracingRoot.
   outputFileTracingIncludes: {
     '/**': ['../../node_modules/pdfkit/js/standard-fonts/**'],
   },

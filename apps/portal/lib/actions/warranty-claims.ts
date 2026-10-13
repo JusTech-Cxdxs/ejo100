@@ -1,4 +1,6 @@
 'use server';
+import { actorLabel } from '@/lib/assist/rules';
+import { portalBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { claimed as stillAsSeen } from '@/lib/integrity';
@@ -7,10 +9,11 @@ import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { getWarrantyRoles, type WarrantyRoles } from './warranty';
-import { authorize, orgWhere } from '@/lib/authz/server';
+import { authorize, orgWhere, refuseDuringAssist } from '@/lib/authz/server';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { claimReadiness } from '@/lib/warranty-claim-readiness';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class WarrantyClaimError extends Error {}
 
@@ -47,23 +50,22 @@ async function hodsAndManagers(): Promise<{ id: string; fullName: string; email:
 async function notify(recipients: { fullName: string; email: string }[], subject: string, heading: string, lines: string[], claimId: string) {
   try {
     const orgContext = await getWorkshopOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     for (const r of recipients) {
       await sendEmail(
         r.email,
         subject,
-        renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portalUrl}/warranty/claims/${claimId}`, logoUrl: `${portalUrl}/images/logo/logo.png`, companyName: orgContext.companyName, branchName: orgContext.branchName }),
+        renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portalUrl}/warranty/claims/${claimId}`, logoUrl: `${portalUrl}/images/logo/email-logo.png`, companyName: orgContext.companyName, branchName: orgContext.branchName }),
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send warranty claim notice', subject, err);
   }
 }
 
 /** WC-2026-000001 */
 async function nextClaimNumber(): Promise<string> {
-  const prefix = `WC-${new Date().getFullYear()}-`;
+  const prefix = `WC-${lagosYear()}-`;
   const latest = await prisma.warrantyClaim.findFirst({ where: { claimNumber: { startsWith: prefix } }, orderBy: { claimNumber: 'desc' }, select: { claimNumber: true } });
   const next = latest ? parseInt(latest.claimNumber.slice(prefix.length), 10) + 1 : 1;
   return `${prefix}${String(next).padStart(6, '0')}`;
@@ -218,6 +220,8 @@ export async function submitWarrantyClaimForApproval(claimId: string): Promise<v
 }
 
 export async function approveWarrantyClaim(claimId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveWarrantyClaim');
   const user = await requireApprover();
   const claim = await prisma.warrantyClaim.findFirst({ where: { customer: await orgWhere(), id: claimId }, select: { status: true, createdById: true, claimNumber: true, causalPart: true, claimedAmount: true, managerApprovedAt: true } });
   if (!claim) throw new WarrantyClaimError('Claim not found.');
@@ -489,11 +493,11 @@ export async function getWarrantyClaimAuditTrail(claimId: string) {
   await requireUser();
   // Only as visible as the record itself (its organisation).
   const visibleId = (await prisma.warrantyClaim.findFirst({ where: { ...({ customer: await orgWhere() }), id: claimId }, select: { id: true } }))?.id ?? '__no_access__';
-  const entries = await prisma.auditLog.findMany({ where: { entityType: 'WarrantyClaim', entityId: visibleId }, orderBy: { createdAt: 'asc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } });
+  const entries = await prisma.auditLog.findMany({ where: { entityType: 'WarrantyClaim', entityId: visibleId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, action: true, createdAt: true, metadata: true, userId: true } });
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null }));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null }));
 }
 
 /** Claims waiting on this viewer (for the dashboard) — at their step in

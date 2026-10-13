@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <PagePlaceholder
       title="Sustainability"
-      description="Our commitment to sustainable practices that protect the planet and empower communities."
+      description="How we reduce our impact on the environment and support the communities we work in."
     />
   );
 }

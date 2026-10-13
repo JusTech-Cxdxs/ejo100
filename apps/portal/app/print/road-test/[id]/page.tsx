@@ -1,3 +1,4 @@
+import { portalConfig } from '@/lib/site-config';
 import { notFound } from 'next/navigation';
 import { getRoadTest } from '@/lib/actions/security';
 import { getOrganisation } from '@/lib/actions/organisation';
@@ -19,7 +20,7 @@ export default async function RoadTestPrint({ params, searchParams }: { params: 
   return (
     <>
       <PrintOnLoad />
-      <PassSheet copyLabel={isOrg ? 'Organisation copy' : 'Driver copy'} orgName={org?.name ?? 'Kewalram Chanrai Group'} subName={r.branch.name} title="ROAD TEST PERMIT" note={isOrg ? undefined : 'Keep this permit in the vehicle during the road test and return through the gate by the expected time.'}>
+      <PassSheet copyLabel={isOrg ? 'Organisation copy' : 'Driver copy'} orgName={org?.name ?? portalConfig.organisationName} subName={r.branch.name} title="ROAD TEST PERMIT" note={isOrg ? undefined : 'Keep this permit in the vehicle during the road test and return through the gate by the expected time.'}>
         <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '1.2em', marginBottom: '4px' }}>{r.permitNumber}{valid ? '' : ` — NOT VALID (${ROAD_TEST_STATUS_LABEL[r.status]})`}</div>
         <PassLine label="Vehicle" value={[r.vehicle.make, r.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'} />
         <PassLine label="Plate" value={r.vehicle.plateNumber} />

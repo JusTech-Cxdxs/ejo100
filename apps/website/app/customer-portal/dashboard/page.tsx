@@ -3,7 +3,7 @@ import { requireCustomer } from '@/lib/customer-portal/session';
 import { loadServices, loadVehicles, loadWarranties, nextServiceFor, outstanding } from '@/lib/customer-portal/data';
 import { loadNotices } from '@/lib/customer-portal/notifications';
 import { DAY_MS, firstName, fmtDate, naira, timeAgo, COLLECTION_FRIENDLY_NOTICE_DAYS } from '@/lib/customer-portal/format';
-import { AttentionCard, Card, EmptyState, SectionTitle } from '@/components/customer/ui';
+import { AttentionCard, Card, EmptyState, KeepCodes, SectionTitle } from '@/components/customer/ui';
 import { ServiceCard } from '@/components/customer/ServiceCard';
 import { MonthlyBars } from '@/components/customer/Charts';
 import { CountUp } from '@/components/customer/CountUp';
@@ -160,7 +160,7 @@ export default async function CustomerOverviewPage() {
         <SectionTitle id="attention-title" icon="alert" title="Needs your attention" />
         {attention.length ? (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {attention.slice(0, 8).map((a, idx) => <AttentionCard key={a.key} icon={a.icon} tone={a.tone} title={a.title} text={a.text} href={a.href} cta={a.cta} delay={idx * 50} />)}
+            {attention.slice(0, 8).map((a, idx) => <AttentionCard key={a.key} icon={a.icon} tone={a.tone} title={a.title} text={<KeepCodes text={a.text} />} href={a.href} cta={a.cta} delay={idx * 50} />)}
           </div>
         ) : (
           <Card className="flex items-center gap-3 p-4">
@@ -220,7 +220,7 @@ export default async function CustomerOverviewPage() {
               <Link key={n.key} href={n.href} className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-[var(--ejo-bg)]">
                 <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]"><Icon name={n.icon} size={15} /></span>
                 <span className="min-w-0 flex-1">
-                  <span className={`block truncate text-sm ${n.read ? 'text-[var(--ejo-text)]' : 'font-semibold text-[var(--ejo-text)]'}`}>{n.title}</span>
+                  <span className={`line-clamp-2 block text-sm ${n.read ? 'text-[var(--ejo-text)]' : 'font-semibold text-[var(--ejo-text)]'}`}>{n.title}</span>
                   <span className="block truncate text-xs text-[var(--ejo-text-muted)]">{n.body}</span>
                 </span>
                 <span className="shrink-0 text-[11px] text-[var(--ejo-text-muted)]">{timeAgo(n.at, now)}</span>

@@ -56,3 +56,15 @@ test('CONC-01: number clashes are retried with a short random pause, then succee
   assert.equal(value, 'JC-2026-000004');
   assert.equal(calls, 4);
 });
+
+test('SEC-01c: the seed never replaces an existing Master Admin password unless explicitly asked', () => {
+  const { readFileSync } = require('node:fs') as typeof import('node:fs');
+  const { join } = require('node:path') as typeof import('node:path');
+  const src = readFileSync(join(__dirname, '..', '..', '..', '..', 'packages', 'database', 'prisma', 'seed.ts'), 'utf8');
+  const update = src.indexOf('prisma.account.update(');
+  assert.ok(update > 0, 'the reset path exists');
+  const guard = src.lastIndexOf("RESET_MASTER_ADMIN_PASSWORD === 'yes'", update);
+  assert.ok(guard > 0, 'the only password update sits behind RESET_MASTER_ADMIN_PASSWORD=yes');
+  assert.equal(src.split('prisma.account.update(').length - 1, 1, 'no other path updates the password');
+  assert.ok(!/password:\s*requireEnv\('MASTER_ADMIN_PASSWORD'\)/.test(src), 'the password is not required on every run');
+});

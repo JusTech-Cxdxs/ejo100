@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details, callout } from './layout';
 
 export type CustomerJobCompletedEmailOptions = {
   customerName: string;
@@ -8,43 +8,30 @@ export type CustomerJobCompletedEmailOptions = {
   logoUrl: string;
   companyName: string;
   branchName: string;
-  /** This follows a rework — say so, so the customer isn't told the same
-   * news twice as if it were new. */
   afterRework?: boolean;
 };
 
-/**
- * Fires once, the moment a Job Card's status genuinely transitions to
- * COMPLETED — deliberately NOT the "come collect your vehicle" call.
- * Completed means the quality inspection has passed; Ready for
- * Collection (a separate, later, deliberate step) is the real
- * actionable moment with real logistics attached. This email builds
- * anticipation honestly, without asking the customer to act on
- * something that isn't ready yet.
- */
-export function renderCustomerJobCompletedEmail(opts: CustomerJobCompletedEmailOptions): string {
-  const { customerName, jobNumber, vehicleDescription, dashboardUrl, logoUrl, companyName, branchName, afterRework } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      Good news — your ${escapeHtml(vehicleDescription)} (Job Card ${escapeHtml(jobNumber)}) has passed quality
-      inspection. We're finalizing everything now to prepare it for collection, and you'll hear from us again
-      shortly with the details.
-    </p>
-    ${afterRework ? '<p style="margin: 16px 0 0 0; padding: 10px 14px; background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 10px; font-size: 13px; color: #166534;">This follows the additional work we let you know about — it is now complete.</p>' : ''}
-  `;
-
+/** The vehicle passed the final quality inspection; collection details follow in a separate email. */
+export function renderCustomerJobCompletedEmail(o: CustomerJobCompletedEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.customerName)}
+    ${para(`Your ${o.vehicleDescription} has passed our final quality inspection. We are now preparing it for collection and will email you shortly with the collection details.`)}
+    ${o.afterRework ? callout('The additional work we told you about is complete.', 'success') : ''}
+    ${details([
+      ['Job Card', o.jobNumber],
+      ['Vehicle', o.vehicleDescription],
+      ['Status', 'Passed quality inspection'],
+    ])}`;
   return renderEmailLayout({
-    previewText: `Quality inspection passed — Job Card ${jobNumber}.`,
-    companyName,
-    orgContext: [companyName, branchName],
-    iconGlyph: '✓',
-    iconTone: 'positive',
-    heading: 'Quality inspection passed',
+    previewText: `Your ${o.vehicleDescription} has passed its final quality inspection.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName],
+    status: { label: 'Inspection passed', tone: 'success' },
+    heading: 'Your vehicle passed its quality inspection',
     bodyHtml,
-    ctaLabel: 'Track progress',
-    ctaUrl: dashboardUrl,
-    logoUrl,
+    ctaLabel: 'Follow progress',
+    ctaUrl: o.dashboardUrl,
+    audience: 'customer',
   });
 }

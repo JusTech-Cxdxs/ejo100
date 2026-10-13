@@ -1,21 +1,13 @@
 import { jobStatuses } from '@/lib/job-runs';
 import { getPrincipal, guardPage } from '@/lib/authz/server';
-import { formatDateTime } from '@/lib/utils/format-date';
+import { formatDateTime, formatRelative } from '@/lib/utils/format-date';
 import { PageHeader } from '@/components/ui';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6';
 
-function ago(d: Date | null): string {
-  if (!d) return 'Never yet';
-  const m = Math.round((Date.now() - d.getTime()) / 60000);
-  if (m < 60) return `${m} ${m === 1 ? 'minute' : 'minutes'} ago`;
-  const h = Math.round(m / 60);
-  if (h < 48) return `${h} ${h === 1 ? 'hour' : 'hours'} ago`;
-  const days = Math.round(h / 24);
-  return `${days} days ago`;
-}
+const ago = (d: Date | null): string => (d ? formatRelative(d) : 'Never yet');
 
-const LABEL: Record<string, string> = { remindersSent: 'reminders sent', broadcastEmailsSent: 'broadcast emails sent', digestsSent: 'digests sent', branchesWithOpenAlerts: 'branches with open alerts', emailsSent: 'emails sent', emailsFailed: 'emails failed', rolesChanged: 'roles changed' };
+const LABEL: Record<string, string> = { remindersSent: 'reminders sent', broadcastEmailsSent: 'broadcast emails sent', digestsSent: 'digests sent', branchesWithOpenAlerts: 'branches with open alerts', emailsSent: 'emails sent', emailsFailed: 'emails failed', rolesChanged: 'roles changed', errorReferencesRemoved: 'old error references removed' };
 
 /** Settings — the health of everything that runs on its own. */
 export default async function SettingsPage() {
@@ -31,7 +23,7 @@ export default async function SettingsPage() {
 
       <section className={`${card} mt-8`}>
         <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Scheduled jobs</h2>
-        <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Each run is recorded. A job that sends nothing has simply found nothing to send (no appointments today, no open alerts).</p>
+        <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Each run is recorded. A run that sends nothing had nothing to send (for example, no appointments today).</p>
         <div className="mt-4 divide-y divide-[var(--ejo-border)]">
           {jobs.map((j) => {
             const stale = !j.lastRun || Date.now() - j.lastRun.getTime() > (j.key === 'appointment-reminders' ? 3600000 : 3 * 86400000);

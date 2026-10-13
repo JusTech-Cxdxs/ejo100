@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { OrgTrail } from '@/components/OrgTrail';
 import { allows, guardAnyPage } from '@/lib/authz/server';
 import { getVehicleServiceCustodySummary, type VehicleDueForService } from '@/lib/actions/vehicle-service';
@@ -24,15 +25,9 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
- * "Vehicles In Custody — Vehicle Service", the real Vehicle Service
- * equivalent of Job Card's own custody page. Genuinely different
- * categories, since this is about routine servicing rather than
- * physical-custody/collection deadlines: what's currently in
- * service, what's done and waiting on the customer, and — this is
- * the one real place a future reminder job would read from — which
- * real vehicles are coming due or already overdue for their next
- * service, reusing listVehiclesDueForService directly rather than a
- * second, separately-maintained calculation.
+ * Vehicle Service custody: what is in service, what is done and waiting for
+ * the customer, and which vehicles are due or overdue for their next service
+ * (from listVehiclesDueForService).
  */
 const REMINDER_STAGE_LABEL: Record<number, string> = { 1: '1st — Friendly', 2: '2nd — Follow-up', 3: '3rd — Due', 4: 'Overdue' };
 
@@ -261,7 +256,7 @@ export default async function VehicleServiceCustodyPage({
           {summary.checkedIn.length === 0 ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="key" title="No vehicles currently checked in." /></div>
           ) : (
-            <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+            <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -279,18 +274,18 @@ export default async function VehicleServiceCustodyPage({
                           {entry.serviceNumber}
                         </LoadingLink>
                       </td>
-                      <td className="px-4 py-2 text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></td>
-                      <td className="px-4 py-2">
+                      <td data-label="Customer" className="px-4 py-2 text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></td>
+                      <td data-label="Vehicle" className="px-4 py-2">
                         <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-primary)] hover:underline">
                           {entry.vehicleDescription}
                         </LoadingLink>
                       </td>
-                      <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{STATUS_LABEL[entry.status] ?? entry.status}</td>
+                      <td data-label="Status" className="px-4 py-2 text-[var(--ejo-text-muted)]">{STATUS_LABEL[entry.status] ?? entry.status}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ResponsiveTable>
           )}
         </section>
       ) : null}
@@ -301,7 +296,7 @@ export default async function VehicleServiceCustodyPage({
           {summary.inService.length === 0 ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="key" title="No vehicles currently in service." /></div>
           ) : (
-            <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+            <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -319,18 +314,18 @@ export default async function VehicleServiceCustodyPage({
                           {entry.serviceNumber}
                         </LoadingLink>
                       </td>
-                      <td className="px-4 py-2 text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></td>
-                      <td className="px-4 py-2">
+                      <td data-label="Customer" className="px-4 py-2 text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></td>
+                      <td data-label="Vehicle" className="px-4 py-2">
                         <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-primary)] hover:underline">
                           {entry.vehicleDescription}
                         </LoadingLink>
                       </td>
-                      <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{STATUS_LABEL[entry.status] ?? entry.status}</td>
+                      <td data-label="Status" className="px-4 py-2 text-[var(--ejo-text-muted)]">{STATUS_LABEL[entry.status] ?? entry.status}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ResponsiveTable>
           )}
         </section>
       ) : null}

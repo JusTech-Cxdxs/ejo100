@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { jobCardVisible } from '@/lib/authz/server';
 import { getJobCard, getJobCardEstimate, getJobCardPayments, getJobCardAuditTrail } from '@/lib/actions/workshop';
@@ -16,11 +17,7 @@ const TYPE_LABEL: Record<string, string> = {
   SUNDRY: 'Sundry',
 };
 
-/**
- * Printable estimate for a Job Card — Organisation Copy by default,
- * Customer Copy with ?variant=client. Only exists once the Manager has
- * given final approval, the same moment the customer can be told.
- */
+/** Printable Job Card estimate. Customer copy with ?variant=client. Available after Manager approval. */
 export default async function PrintJobCardEstimatePage({
   params,
   searchParams,
@@ -30,7 +27,7 @@ export default async function PrintJobCardEstimatePage({
 }) {
   const { id } = await params;
   const { variant } = await searchParams;
-  // A stale, mistyped or out-of-reach id is simply "not found".
+  // An id the viewer can't see is a 404.
   if (!(await jobCardVisible(id, 'estimate'))) notFound();
   const [jobCard, estimate, payments, auditTrail, organisation] = await Promise.all([
     getJobCard(id),
@@ -43,7 +40,7 @@ export default async function PrintJobCardEstimatePage({
   if (estimate.status !== 'MANAGER_APPROVED') notFound();
 
   const vehicleDescription = [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
-  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const portalUrl = portalBaseUrl();
 
   return (
     <EstimatePrintDocument

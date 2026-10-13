@@ -1,11 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 /**
- * Ends a session the server no longer accepts (the account was switched off,
- * or removed) and shows the sign-in page with the reason. The browser's
- * session cookies are cleared here, so the person is never caught between
- * "/login → you are signed in → /dashboard → you are not allowed" redirects —
- * and once switched back on they can simply sign in again.
+ * Ends a session the server no longer accepts (account switched off or
+ * removed) and shows the sign-in page with the reason. Clearing the cookies
+ * here prevents a /login ↔ /dashboard redirect loop.
  */
 const COOKIES = ['session_token', 'session_data', 'dont_remember'];
 

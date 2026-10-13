@@ -7,6 +7,7 @@ import { customerAuth } from '@/lib/auth-customer';
 import { clientIp, diffFields, writeCustomerAudit } from '@/lib/customer-audit';
 import { currentCustomer } from './session';
 import { ownNoticeKeys } from './notifications';
+import { logCustomerError } from '@/lib/error-events';
 
 /**
  * Customer self-service changes. Every action:
@@ -24,7 +25,10 @@ const SIGNED_OUT: ActionState = { ok: false, error: 'Your session has ended. Ple
 const MAX_EXTRA_ADDRESSES = 5;
 const PRIMARY_ADDRESS_MAX = 80;
 
-const text = (fd: FormData, k: string) => String(fd.get(k) ?? '').replace(/\s+/g, ' ').trim();
+// Any one field is cut to 2,000 characters before it is cleaned, so an oversized
+// post costs nothing; each field's own limit below then gives the friendly error.
+const FIELD_CAP = 2000;
+const text = (fd: FormData, k: string) => String(fd.get(k) ?? '').slice(0, FIELD_CAP).replace(/\s+/g, ' ').trim();
 
 function checkPhone(v: string, required: boolean): string | null {
   if (!v) return required ? 'Enter your phone number.' : null;
@@ -66,8 +70,9 @@ export async function updateContactDetails(_prev: ActionState, fd: FormData): Pr
   if (!Object.keys(changes).length) return { ok: true, message: 'Nothing to change — your details are up to date.', at: Date.now() };
   try {
     await prisma.customer.update({ where: { id: me.id }, data: after });
-  } catch {
-    return { ok: false, error: 'We couldn’t save your details just now. Please try again.' };
+  } catch (err) {
+    const ref = await logCustomerError('updateContactDetails', err);
+    return { ok: false, error: `We couldn’t save your details just now. Please try again. If it keeps happening, call your branch and quote reference ${ref}.` };
   }
   await writeCustomerAudit({ customerId: me.id, organisationId: me.organisationId, verb: 'profile_updated', changes, ipAddress: await ip() });
   return done('Your contact details are saved.');
@@ -105,8 +110,9 @@ export async function addAddress(_prev: ActionState, fd: FormData): Promise<Acti
   let id: string;
   try {
     id = (await prisma.customerAddress.create({ data: { ...value, customerId: me.id }, select: { id: true } })).id;
-  } catch {
-    return { ok: false, error: 'We couldn’t add that address just now. Please try again.' };
+  } catch (err) {
+    const ref = await logCustomerError('addAddress', err);
+    return { ok: false, error: `We couldn’t add that address just now. Please try again. If it keeps happening, call your branch and quote reference ${ref}.` };
   }
   await writeCustomerAudit({
     customerId: me.id, organisationId: me.organisationId, verb: 'address_added', ipAddress: await ip(),
@@ -173,9 +179,9 @@ function strongEnough(pw: string): boolean {
 export async function changePassword(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const me = await currentCustomer();
   if (!me) return SIGNED_OUT;
-  const currentPassword = String(fd.get('currentPassword') ?? '');
-  const newPassword = String(fd.get('newPassword') ?? '');
-  const confirmPassword = String(fd.get('confirmPassword') ?? '');
+  const currentPassword = String(fd.get('currentPassword') ?? '').slice(0, FIELD_CAP);
+  const newPassword = String(fd.get('newPassword') ?? '').slice(0, FIELD_CAP);
+  const confirmPassword = String(fd.get('confirmPassword') ?? '').slice(0, FIELD_CAP);
   const fieldErrors: Record<string, string> = {};
   if (!currentPassword) fieldErrors.currentPassword = 'Enter your current password.';
   if (newPassword.length < 8) fieldErrors.newPassword = 'Use at least 8 characters.';
@@ -199,7 +205,8 @@ export async function changePassword(_prev: ActionState, fd: FormData): Promise<
     if (err.statusCode === 429 || err.status === 429 || err.status === 'TOO_MANY_REQUESTS') return { ok: false, error: 'Too many attempts. Please wait a minute, then try again.' };
     if (code === 'CREDENTIAL_ACCOUNT_NOT_FOUND') return { ok: false, error: 'Your account has no password yet. Use “Forgot password?” on the sign-in page to set one.' };
     if (code === 'PASSWORD_TOO_SHORT') return { ok: false, error: 'Use at least 8 characters.' };
-    return { ok: false, error: 'We couldn’t change your password just now. Please try again.' };
+    const ref = await logCustomerError('changePassword', e);
+    return { ok: false, error: `We couldn’t change your password just now. Please try again. If it keeps happening, call your branch and quote reference ${ref}.` };
   }
   await writeCustomerAudit({ customerId: me.id, organisationId: me.organisationId, verb: 'password_changed', details: { otherSessionsSignedOut: true }, ipAddress: await ip() });
   return { ok: true, message: 'Your password is changed. Other devices have been signed out.', at: Date.now() };

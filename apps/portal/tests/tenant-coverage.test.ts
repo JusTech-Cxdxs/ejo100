@@ -1,15 +1,14 @@
 /**
- * Phase 4 — "what you are supposed to see is what you see", enforced on the
- * source. Every exported server action is an endpoint a signed-in browser can
- * call directly with any id, so each one must check the RECORD, not only the
- * person's role:
+ * "What you are supposed to see is what you see", checked on the source.
+ * Every exported server action is an endpoint a signed-in browser can call
+ * with any id, so each one must check the record, not only the person's role:
  *
  *  1. Reads that take an id check the record's branch / organisation.
  *  2. Writes that take an id check the record (branch, organisation or assignment).
  *  3. The security desk acts only on its own branch's records.
  *  4. Nobody can create an account from the internet; a deactivated person
  *     cannot sign in and is signed out at once.
- *  5. Lists that used to read platform-wide are fenced.
+ *  5. Lists are fenced to the person's organisation.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -160,7 +159,7 @@ test('adding a staff member never emails a password and stays inside the organis
   assert.doesNotMatch(create, /input\.employeeId/, 'nobody chooses an employee ID');
   const onboarding = read('lib/staff-onboarding.ts');
   assert.match(onboarding, /createVerificationValue\(\{ value: userId, identifier: `reset-password:\$\{token\}`/, 'the link is the auth library\'s own one-time reset token');
-  assert.match(onboarding, /randomBytes\(18\)/, 'an unguessable token');
+  assert.match(onboarding, /randomBytes\((18|2[4-9]|3[0-2])\)/, 'an unguessable token (at least 144 bits)');
   assert.doesNotMatch(create, /temporaryPassword|generateSecurePassword/, 'no password is ever emailed');
   assert.match(create, /Choose a branch of your organisation/);
   assert.match(create, /You can only add people to your own branch/);

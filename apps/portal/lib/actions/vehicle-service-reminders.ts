@@ -8,9 +8,7 @@ import { writeAuditLog, getWorkshopBranchId } from '@/lib/workshop-core';
 import { loadServiceTracking } from '@/lib/vehicle-service-cycle';
 import { type ServiceReminderStage } from '@/lib/email-templates/service-reminder';
 import { getVehiclesNeedingServiceReminder, sendServiceReminder } from '@/lib/service-reminders-core';
-/** The real, permanent reminder history for one vehicle — shown on
- * its own page so nobody wonders whether a reminder actually went
- * out, or has to guess at what it said at the time. */
+/** Reminder history for one vehicle, shown on its page: what was sent and when. */
 export async function getVehicleReminderHistory(vehicleId: string) {
   await requireUser();
   await seeVehicle(vehicleId, 'getVehicleReminderHistory');
@@ -21,13 +19,10 @@ export async function getVehicleReminderHistory(vehicleId: string) {
 }
 
 /**
- * A staff member sending a reminder right now, from the Service Tracker
- * or the vehicle's page. Picks the honest stage for where the vehicle
- * actually stands (overdue → the overdue reminder; due soon → the next
- * stage in the sequence) — refused until it is actually due,
- * because a person deliberately chose to send it. Logged (trigger
- * MANUAL) and audited like every other reminder. Never sent to a
- * vehicle that's back in the workshop, or one not yet due.
+ * Sends a reminder now, from the Service Tracker or the vehicle's page.
+ * Picks the stage for where the vehicle stands (overdue → the overdue
+ * reminder; due soon → the next stage). Refused when not yet due, or when
+ * the vehicle is back in the workshop. Logged (trigger MANUAL) and audited.
  */
 export async function sendManualServiceReminder(vehicleId: string): Promise<void> {
   const user = await requireUser();
@@ -61,10 +56,9 @@ export async function sendManualServiceReminder(vehicleId: string): Promise<void
 }
 
 /**
- * "Send all due reminders" — one click by a Workshop Manager or Master
- * Admin sends exactly the reminders the system says are due right now
- * (same stages, 7-working-day spacing and skips). Staff-triggered, never
- * scheduled: nothing is ever emailed without a person choosing to.
+ * "Send all due reminders": a Workshop Manager or Master Admin sends the
+ * reminders that are due now (same stages, 7-working-day spacing and skips).
+ * Never scheduled: nothing is emailed without a person choosing to.
  */
 export async function runServiceRemindersNow(): Promise<{ evaluated: number; sent: number; failed: number }> {
   const user = await requireUser();
@@ -83,7 +77,6 @@ export async function runServiceRemindersNow(): Promise<{ evaluated: number; sen
       sent += 1;
     } catch (err) {
       failed += 1;
-      // eslint-disable-next-line no-console
       logFailure('Failed to send service reminder', need.vehicleId, err);
     }
   }

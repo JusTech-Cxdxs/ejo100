@@ -1,7 +1,9 @@
 'use server';
+import { highestBinnedReference, highestSequence } from '@/lib/recycle-bin/numbers';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
-import { allows, authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE } from '@/lib/authz/server';
+import { allows, authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE, refuseDuringAssist } from '@/lib/authz/server';
 import { cleanEmail, cleanName, cleanPhone, cleanPrimaryAddress, normaliseTags } from '@/lib/crm';
 import { sendCustomerAccessEmail } from '@/lib/customer-access';
 import { withdrawOpenSourcing } from '@/lib/sourcing-lifecycle';
@@ -16,29 +18,16 @@ import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 
 /**
- * Workshop Server Actions — Customers, Vehicles, Job Cards.
+ * Workshop server actions: customers, vehicles, Job Cards, estimates,
+ * payments, cancellation/close requests and custody.
  *
- * Deliberately implemented as Next.js Server Actions calling @ejo/database
- * directly, NOT as calls to the Render API. Reasoning: apps/portal and
- * apps/api are on different origins (vercel.app vs onrender.com), so a
- * client-side fetch from the portal to the API cannot carry the portal's
- * httpOnly Better Auth session cookie cross-origin. apps/portal already
- * has @ejo/database as a direct dependency and already runs Better Auth
- * itself (see lib/auth.ts) — so verifying the session and querying the
- * database can both happen server-side, in-process, with no cross-origin
- * auth-forwarding problem to solve. The Render API's Workshop module
- * remains available for future external consumers (customer portal,
- * mobile) but the portal's own screens use this, matching how
- * apps/portal/app/api/auth/[...all]/route.ts already runs Better Auth
- * in-process rather than proxying to the API for auth either.
- *
- * No new npm dependencies were added for this file — every import below
- * is already a dependency of apps/portal or packages/database.
+ * These run as Next.js server actions against @ejo/database rather than
+ * calling apps/api: the portal and the API are on different origins, so the
+ * portal's httpOnly session cookie cannot be forwarded to it.
  */
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal, isCustomerLine, coveredLabel } from '@/lib/estimate-billing';
-import { headers } from 'next/headers';
 import { prisma, JobCardStatus, setAuditActor, setAuditActorResolver } from '@ejo/database';
 import { claimed, lockExisting } from '@/lib/integrity';
 import { exceedsBalance, NUMBER_CLASH_TRIES, numberClashPause } from '@/lib/integrity-core';
@@ -51,7 +40,7 @@ import { anchorEscalatedServiceFromJobCard } from '@/lib/vehicle-service-cycle';
 import { custodyReminderState, notDueYetMessage, type CustodyReminderKind } from '@/lib/custody-reminders';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
-import { auth } from '@/lib/auth';
+import { activeAssistFor, signedInSession, type ActiveAssist } from '@/lib/assist/server';
 import { sendEmail } from '@/lib/email';
 import { renderSupervisorJobCardAssignedEmail } from '@/lib/email-templates/supervisor-job-card-assigned';
 import { renderCustomerJobCardAcknowledgmentEmail } from '@/lib/email-templates/customer-job-card-acknowledgment';
@@ -84,63 +73,60 @@ import { renderCustomerJobInProgressEmail } from '@/lib/email-templates/customer
 import { renderCustomerQualityCheckEmail } from '@/lib/email-templates/customer-quality-check';
 import { renderCustomerJobCompletedEmail } from '@/lib/email-templates/customer-job-completed';
 import { renderCustomerReadyForCollectionEmail } from '@/lib/email-templates/customer-ready-for-collection';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class WorkshopActionError extends Error {}
 
-/** Verifies the current request has a valid employee session and returns
- * just the authenticated user's id. Every action below calls this first —
- * there is no unauthenticated path into any Workshop data.
- *
- * Deliberately typed as only `{ id: string }`, not the full Prisma `User`
- * shape: Better Auth's own session.user type includes a `name` field,
- * while this project's `User` model has `fullName` instead — the same
- * class of field-naming gap already found and fixed once this session
- * (Account.passwordHash vs Better Auth's expected `password`). Since none
- * of the actions below need anything but the id, claiming the full `User`
- * type here would be an unproven, unnecessary assumption — not something
- * this change should guess at. */
 /** The signed-in session — looked up once per request, then reused. */
 const sessionForRequest = cache(async () => {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await signedInSession();
   if (!session?.user?.id) return null;
-  // A deactivated person is signed out everywhere, at once — an open session
-  // (or a 5-minute session cookie cache) never outlives the deactivation.
+  // A deactivated person is signed out immediately; an open session (or the
+  // 5-minute cookie cache) never outlives the deactivation.
   const u = await prisma.user.findUnique({ where: { id: session.user.id }, select: { isActive: true } });
   return u?.isActive ? session : null;
 });
 
-// The data journal asks "who is acting?" from this request's cached session:
+// The audit journal resolves the actor from this request's cached session:
 // an actor set inside requireUser() does not flow back to its caller (E2E-09).
-// Outside a request (scheduled jobs, after()) there is no one: null.
+// Outside a request (scheduled jobs, after()) there is no actor.
 setAuditActorResolver(async () => {
   try {
-    const session = await sessionForRequest();
-    if (!session?.user?.id) return null;
-    return { userId: session.user.id, source: 'portal', organisationId: (session.user as { organisationId?: string | null }).organisationId ?? null };
+    const acting = await actingForRequest();
+    if (!acting) return null;
+    const actor = { userId: acting.id, source: 'portal', organisationId: acting.organisationId, assistedBy: acting.assist ? { id: acting.assist.assistant.id, name: acting.assist.assistant.name } : null, assistSessionId: acting.assist?.sessionId ?? null };
+    return actor;
   } catch {
     return null;
   }
 });
 
-export async function requireUser(): Promise<{ id: string }> {
+/**
+ * Who the business rules run as in this request. Normally the signed-in
+ * person. During an assisted session (lib/assist) it is the colleague being
+ * helped, so "only the assigned technician" checks see the technician; the
+ * assistant is carried alongside and named in every audit entry.
+ */
+const actingForRequest = cache(async (): Promise<{ id: string; organisationId: string | null; assist: ActiveAssist | null } | null> => {
   const session = await sessionForRequest();
-  if (!session?.user?.id) {
+  if (!session?.user?.id) return null;
+  const organisationId = (session.user as { organisationId?: string | null }).organisationId ?? null;
+  const assist = await activeAssistFor(session.user.id, session.session.id);
+  if (assist) return { id: assist.subject.id, organisationId: assist.subject.organisationId, assist };
+  return { id: session.user.id, organisationId, assist: null };
+});
+
+export async function requireUser(): Promise<{ id: string }> {
+  const acting = await actingForRequest();
+  if (!acting) {
     throw new WorkshopActionError('Not authenticated.');
   }
-  // Every database write for the rest of this request is attributed to
-  // this user in the audit journal (see @ejo/database audit-journal).
-  setAuditActor(session.user.id, 'portal', (session.user as { organisationId?: string | null }).organisationId ?? null);
-  return { id: session.user.id };
+  // Every write for the rest of this request is attributed to this user in
+  // the audit journal (@ejo/database audit-journal).
+  setAuditActor(acting.id, 'portal', acting.organisationId, acting.assist ? { assistedBy: { id: acting.assist.assistant.id, name: acting.assist.assistant.name }, assistSessionId: acting.assist.sessionId } : null);
+  return { id: acting.id };
 }
 
-/** Whether the current user holds any role with isSuperAdmin=true — the
- * bootstrap Master Administrator role, matching exactly the same check
- * apps/api's PermissionsGuard uses (see permissions.guard.ts). Built
- * natively here rather than calling apps/api, since portal Server
- * Actions query Prisma directly per this project's established
- * architecture (cross-origin cookies make calling the Render API from
- * here impractical — the same reason every other Workshop action
- * already works this way). */
 export async function currentUserId(): Promise<string> {
   const user = await requireUser();
   return user.id;
@@ -154,27 +140,8 @@ async function currentUserIsMasterAdminUncached(): Promise<boolean> {
   return Boolean(match);
 }
 
-/** Guards any destructive action — deleting a Vehicle or Job Card
- * removes real data permanently (see deleteVehicle/deleteJobCard below),
- * so only a Master Administrator may do it, matching exactly what was
- * asked for: "not all roles can delete... but I'm master admin so I can
- * do everything." */
-async function requireMasterAdmin(): Promise<{ id: string }> {
-  const user = await requireUser();
-  const match = await prisma.userRole.findFirst({
-    where: { userId: user.id, role: { isSuperAdmin: true } },
-  });
-  if (!match) {
-    throw new WorkshopActionError('You do not have permission to delete records.');
-  }
-  return user;
-}
 
-
-/** Only the Job Card's own assigned supervisor, or a Master
- * Administrator, may approve or reject it — matching "approval must be
- * explicit" and giving a real, checkable answer to "who is allowed to
- * sign off on this," not just whoever happens to open the page. */
+/** Only the Job Card's assigned supervisor, or a Master Administrator, may approve or reject it. */
 export async function requireJobCardApprover(jobCard: { supervisorId: string | null }): Promise<{ id: string }> {
   const user = await requireUser();
   if (jobCard.supervisorId === user.id) {
@@ -186,11 +153,10 @@ export async function requireJobCardApprover(jobCard: { supervisorId: string | n
   return refuse('workshop.job.supervise', 'requireJobCardApprover', 'Only the assigned supervisor can approve or reject this Job Card.');
 }
 
-/** Every change to an estimate's lines happens inside one transaction that
- * first re-claims the estimate in the status the editor saw (a no-op write
- * that takes the estimate's row lock). An approval landing at the same moment
- * is therefore either fully before the edit — and the edit is refused — or
- * fully after it; an approved estimate can never be changed underneath. */
+/** Runs an estimate line change in one transaction that first re-claims the
+ * estimate in the status the editor saw (a no-op write that takes the row
+ * lock). A concurrent approval is then either fully before the edit, which
+ * is refused, or fully after it: an approved estimate never changes underneath. */
 async function withEstimateUnchanged<T>(estimateId: string, seenStatus: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'MANAGER_APPROVED', work: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => Promise<T>): Promise<T> {
   return prisma.$transaction(async (tx) => {
     claimed(
@@ -201,13 +167,8 @@ async function withEstimateUnchanged<T>(estimateId: string, seenStatus: 'DRAFT' 
   });
 }
 
-/** Notifies whoever created a Job Card the moment it's approved or
- * rejected — shared by approveJobCard/rejectJobCard below rather than
- * duplicated, since the "fetch context, build the email, send it"
- * logic is identical either way, only the content differs (handled by
- * renderJobCardDecisionEmail's own branching). Fail-soft, matching
- * every other notification in this file: a transient SMTP hiccup is
- * never a reason to undo a real, already-successful approval/rejection. */
+/** Emails the Job Card's creator when it is approved or rejected. Fail-soft:
+ * an email failure never undoes the decision. */
 async function notifyJobCardCreatorOfDecision(params: {
   jobCardId: string;
   jobNumber: string;
@@ -231,7 +192,7 @@ async function notifyJobCardCreatorOfDecision(params: {
       select: { fullName: true },
     });
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
 
     await sendEmail(
       jobCard.createdBy.email,
@@ -247,59 +208,37 @@ async function notifyJobCardCreatorOfDecision(params: {
         rejectionReason: params.rejectionReason,
         notes: params.notes,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${params.jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Job Card decision email to creator', params.jobNumber, err);
   }
 }
 
-/** The Workshop is currently scoped to a single branch (Isolo) per the
- * project's Phase-One rule — found by its Workshop department rather than
- * a hardcoded ID/name, so this keeps working unchanged once more Workshop
- * branches are added later. */
+/** Found via the Workshop department, not a hard-coded id or name. */
 
 
 
 export type EligibleSupervisor = { id: string; fullName: string; email: string };
 export type EligibleSupervisorResult = {
   supervisors: EligibleSupervisor[];
-  // true when no one has actually been placed into this department with
-  // the "Workshop Supervisor" role yet, and the list below is Master
-  // Administrators standing in instead — see the note on the function
-  // itself for why this exists. The UI must show this plainly, not hide
-  // it, so nobody mistakes a fallback list for real department staff.
+  // True when nobody holds the Workshop Supervisor role in this department yet
+  // and the list is Master Administrators standing in. The UI must say so.
   usingFallback: boolean;
 };
 
-/** Users eligible to be the assigned supervisor/HOD for a given vehicle
- * type — must belong to that vehicle type's Workshop department (via
- * User.departmentId) AND hold the "Workshop Supervisor" role (seeded in
- * seed.ts, reused here rather than inventing a separate "HOD" role
- * name). This is what makes it structurally impossible for the Job Card
- * creation picker to even show a Commercial-side supervisor for a
- * Passenger vehicle, or vice versa.
- *
- * Falls back to Master Administrators when the department has nobody
- * placed into it with that role yet — confirmed by inspection that
- * `/users` and `/roles` are currently placeholder pages with zero
- * functionality, so there is genuinely no way for anyone to set a
- * user's department or role through the product yet. Without this
- * fallback, requiring a real eligible supervisor would make Job Card
- * creation completely blocked for both departments until a separate,
- * much larger Users/Roles admin area is built. The fallback is surfaced
- * to the UI explicitly (`usingFallback: true`), never silently. */
-/** The actual eligibility query, shared by both entry points below —
- * one takes a vehicle type (creation flow, department not yet known),
- * the other takes a Job Card whose department is already resolved
- * (reassignment flow). Extracted here rather than duplicated so the
- * eligibility rule (and its Master Admin fallback) only ever lives in
- * one place. */
+/** Users eligible to supervise a Job Card for the given vehicle type: members
+ * of that type's Workshop department holding the "Workshop Supervisor" role,
+ * so a Passenger job can never be given a Commercial supervisor.
+ * Falls back to Master Administrators when the department has nobody yet,
+ * flagged with `usingFallback: true`. */
+/** The eligibility query shared by the creation picker (by vehicle type) and
+ * the reassignment picker (by Job Card), so the rule and its fallback live
+ * in one place. */
 async function listEligibleSupervisorsForDepartmentId(departmentId: string): Promise<EligibleSupervisorResult> {
   const departmentSupervisors = await prisma.user.findMany({
     where: {
@@ -332,9 +271,7 @@ export async function listEligibleSupervisorsForVehicleType(
   return listEligibleSupervisorsForDepartmentId(department.id);
 }
 
-/** For the "reassign supervisor" picker on a Job Card whose department
- * is already known (set at creation, from the vehicle's own type) —
- * no need to re-derive it from a vehicle type again. */
+/** Reassignment picker: the Job Card's department is already known. */
 export async function listEligibleSupervisorsForJobCard(jobCardId: string): Promise<EligibleSupervisorResult> {
   await requireUser();
   await seeJobCard(jobCardId, 'listEligibleSupervisorsForJobCard');
@@ -385,18 +322,9 @@ export type CustomerSearchResult = {
 const PICKER_RESULT_LIMIT = 20;
 
 /**
- * Purpose-built for search-as-you-type pickers (SearchableSelect) —
- * deliberately separate from listCustomers() above, not a shared
- * function with an extra flag. listCustomers() powers the full
- * Customers table page: it needs `_count`/`createdBy`, orders by recency,
- * and caps at 100 for a page of rows. A typeahead dropdown wants none of
- * that — it wants the top ~20 real matches for whatever's been typed,
- * as fast and light as possible, queried against the FULL customer
- * table every time (not a pre-loaded, capped snapshot) so search results
- * are always complete regardless of how large the customer base grows.
- * An empty/blank query deliberately returns nothing rather than "the
- * first 20 customers" — a picker should stay empty until the person
- * actually starts typing, not dump an arbitrary slice of the table.
+ * Typeahead search for SearchableSelect. Separate from listCustomers(),
+ * which serves the full table page. Queries the whole customer table and
+ * returns the top 20 matches; a blank query returns nothing.
  */
 export async function searchCustomers(query: string): Promise<CustomerSearchResult[]> {
   await requireUser();
@@ -417,14 +345,7 @@ export async function searchCustomers(query: string): Promise<CustomerSearchResu
   });
 }
 
-/**
- * The default suggestions shown in a customer picker before anyone
- * types anything — most-recently-registered customers, matching the
- * "recent" convention already used elsewhere in this file (page-list
- * ordering is `createdAt: 'desc'` throughout). A returning customer
- * from earlier today/this week is very likely to be near the top of a
- * "recent" list, saving staff from typing at all for the common case.
- */
+/** Default picker suggestions before anything is typed: most recently registered customers. */
 export async function listRecentCustomers(): Promise<CustomerSearchResult[]> {
   await requireUser();
   return prisma.customer.findMany({
@@ -438,21 +359,20 @@ export async function listRecentCustomers(): Promise<CustomerSearchResult[]> {
 export type CreateCustomerInput = {
   customerType: 'INDIVIDUAL' | 'ORGANIZATION';
   fullName: string;
-  /** Primary address — required from v28 on (one short line, ≤ 80 characters). */
+  /** Primary address, required from v28 (one short line, max 80 characters). */
   address: string;
   email: string;
-  /** Primary phone — required from v28 on. */
+  /** Primary phone, required from v28. */
   phone: string;
   altPhone?: string;
   tags?: string[];
 };
 
-/** Finds an existing customer by email first — per the project rule that
- * a returning customer must never get a duplicate record. Only creates a
- * new row when no existing customer has that email. A new customer must
- * have a primary address and phone; they get a welcome email with a
- * one-time set-password link (never a password). Front desk registers
- * customers; the CRM's managers and administrators may too. */
+/** Returns the existing customer with this email, or creates one, so a
+ * returning customer never gets a duplicate record. New customers need a
+ * primary address and phone, and receive a welcome email with a one-time
+ * set-password link (never a password). Front desk registers customers;
+ * CRM managers and administrators may too. */
 export async function findOrCreateCustomer(input: CreateCustomerInput) {
   if (!(await allows('workshop.customer.manage'))) await authorize('crm.manage', undefined, 'findOrCreateCustomer', 'Only front desk, managers and administrators can register customers.');
   const currentUser = await requireUser();
@@ -468,7 +388,7 @@ export async function findOrCreateCustomer(input: CreateCustomerInput) {
     return { customer: existing, wasExisting: true, welcomeEmailSent: false };
   }
 
-  // Required for every new customer (older records may still lack them).
+  // Required for new customers (older records may lack them).
   const address = cleanPrimaryAddress(input.address);
   const phone = cleanPhone(input.phone, { required: true, label: 'Phone number' })!;
   const altPhone = cleanPhone(input.altPhone, { required: false, label: 'Second phone number' });
@@ -523,16 +443,9 @@ export type VehicleSearchResult = {
 };
 
 /**
- * Every vehicle belonging to one customer, for the Job Card cascading
- * picker — always scoped to a single customerId (never the whole
- * table), so no search query or debouncing is needed here: a real
- * customer's own vehicle count is inherently small and bounded, unlike
- * "search all customers" or "search all vehicles system-wide". The
- * `take: 50` is a sanity cap, not a real-world limit anyone should hit.
- *
- * Includes vehicleType now — the Job Card creation picker needs to know
- * a selected vehicle's type immediately, to fetch the right department's
- * eligible supervisors without a separate round trip.
+ * A customer's vehicles for the Job Card picker. Scoped to one customer, so
+ * no search is needed; `take: 50` is only a safety cap. Includes
+ * vehicleType so the picker can load the right supervisors straight away.
  */
 export async function listVehiclesForCustomer(customerId: string): Promise<VehicleSearchResult[]> {
   await requireUser();
@@ -597,17 +510,13 @@ export type CreateVehicleInput = {
   mileage?: number;
 };
 
-/** Nigerian plates (2011 format) are 3 letters + 3 digits + 2 letters,
- * commonly written with spaces (e.g. "LAG 123 AA"). Stored normalized —
- * uppercased, spaces collapsed to single spaces — so "lag123aa" and
- * "LAG 123 AA" are correctly treated as the same plate for duplicate
- * detection, rather than silently allowed as two different rows. */
+/** Nigerian plates are written like "LAG 123 AA". Stored uppercased with
+ * single spaces so "lag 123  aa" and "LAG 123 AA" count as the same plate. */
 function normalizePlate(value: string): string {
   return value.trim().toUpperCase().replace(/\s+/g, ' ');
 }
 
-/** VINs are internationally standardized at exactly 17 characters, no
- * spaces. Stored uppercased for consistent duplicate matching. */
+/** VINs are 17 characters with no spaces. Stored uppercased for duplicate matching. */
 function normalizeChassis(value: string): string {
   return value.trim().toUpperCase().replace(/\s+/g, '');
 }
@@ -621,14 +530,9 @@ export async function createVehicle(input: CreateVehicleInput) {
   const owner = await prisma.customer.findFirst({ where: { id: input.customerId, ...(await orgWhere()) }, select: { id: true } });
   if (!owner) throw new WorkshopActionError('That customer could not be found.');
 
-  // Required at the server, not just via the form's `required` attribute
-  // — a form's client-side validation can always be bypassed, so this is
-  // the actual enforcement. Mileage and engine number stay optional
-  // (mileage is also captured per Job Card check-in; engine number is
-  // sometimes genuinely unavailable) — Make/Model/Year/Plate/Chassis/
-  // Vehicle Type are the fields that make a registration meaningfully
-  // identify a real, specific vehicle rather than an empty placeholder
-  // row, and correctly place it in one of the Workshop's two sections.
+  // Enforced server-side; the form's `required` attributes can be bypassed.
+  // Mileage and engine number stay optional (mileage is captured at Job Card
+  // check-in; engine numbers are sometimes unavailable).
   const make = input.make?.trim();
   const model = input.model?.trim();
   const plateNumberRaw = input.plateNumber?.trim();
@@ -644,9 +548,8 @@ export async function createVehicle(input: CreateVehicleInput) {
     throw new WorkshopActionError('Chassis / VIN must be exactly 17 characters.');
   }
 
-  // Friendly, specific error before hitting the database's own unique
-  // constraint (which still exists as a safety net for the rare case of
-  // two near-simultaneous submissions racing past this check).
+  // Friendly error before the unique constraint, which still catches two
+  // submissions racing past this check.
   const existingByPlate = await prisma.customerVehicle.findUnique({ where: { plateNumber } });
   if (existingByPlate) {
     throw new WorkshopActionError(`A vehicle with plate number "${plateNumber}" is already registered.`);
@@ -671,7 +574,7 @@ export async function createVehicle(input: CreateVehicleInput) {
       createdById: currentUser.id,
     },
   });
-  // "Vehicle registered" — the first entry on every vehicle's own trail.
+  // "Vehicle registered": the first entry on the vehicle's trail.
   await writeAuditLog({
     userId: currentUser.id,
     action: 'vehicle.created',
@@ -697,12 +600,7 @@ export type UpdateVehicleInput = {
   serviceIntervalDays?: number;
 };
 
-/** Mirrors createVehicle()'s own validation exactly — same required
- * fields, same normalization, same 17-character VIN check — with the
- * one necessary difference: duplicate plate/chassis checks exclude
- * this vehicle's own current row, so saving a vehicle's existing
- * plate/chassis back unchanged never wrongly flags itself as a
- * duplicate. */
+/** Same validation as createVehicle(); duplicate checks exclude this vehicle's own row. */
 export async function updateVehicle(input: UpdateVehicleInput): Promise<void> {
   await authorize('workshop.customer.manage', undefined, 'updateVehicle');
   const currentUser = await requireUser();
@@ -761,13 +659,8 @@ export async function updateVehicle(input: UpdateVehicleInput): Promise<void> {
   });
 }
 
-/** The real "who last edited this, and when" — derived from AuditLog,
- * the single source of truth already used everywhere else in this
- * project for counts and history, never a separate updatedBy/updatedAt
- * pair on the entity itself that could silently drift out of sync with
- * what the audit trail actually says happened. Returns null when no
- * matching entry exists yet — an entity that's never been edited since
- * creation genuinely has no "last edited" story to tell. */
+/** Who last performed `action` on the entity and when, read from AuditLog
+ * rather than a separate updatedBy column. Null if there is no such entry. */
 export async function getLastEditInfo(entityType: string, entityId: string, action: string): Promise<{ userName: string; at: Date } | null> {
   await requireUser();
   // Only for records the person can see (today: vehicles and parts).
@@ -793,18 +686,13 @@ export type VehicleAuditEntry = {
   user: { fullName: string } | null;
 };
 
-/** The vehicle's own full real history — every registration, edit,
- * and deletion attempt ever logged against it, not just the single
- * most recent edit getLastEditInfo above shows. No take limit,
- * deliberately, matching every other real audit trail in this
- * project — a vehicle's own history is never quietly cut off once it
- * accumulates enough entries. */
+/** The vehicle's full audit history. Not capped. */
 export async function getVehicleAuditTrail(vehicleId: string): Promise<VehicleAuditEntry[]> {
   await requireUser();
   await seeVehicle(vehicleId, 'getVehicleAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'CustomerVehicle', entityId: vehicleId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
   });
   const userIds = [
     ...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id))),
@@ -822,60 +710,29 @@ export async function getVehicleAuditTrail(vehicleId: string): Promise<VehicleAu
   }));
 }
 
-/** Permanently removes a vehicle and, via schema-level cascades, every
- * Job Card (and each of those Job Cards' complaints) that reference it —
- * exactly "every of their job data... entirely from database" as asked
- * for. Irreversible; the UI must confirm before calling this. */
-export async function deleteVehicle(vehicleId: string): Promise<void> {
-  const user = await requireMasterAdmin();
-  const snapshot = await prisma.customerVehicle.findUnique({ where: { id: vehicleId }, select: { plateNumber: true, chassisNumber: true, make: true, model: true, year: true, customerId: true } });
-  await prisma.customerVehicle.delete({ where: { id: vehicleId } });
-  // Kept on the record after the vehicle itself is gone.
-  await writeAuditLog({ userId: user.id, action: 'vehicle.deleted', entityType: 'CustomerVehicle', entityId: vehicleId, metadata: { ...snapshot } });
-}
-
 // ---------------------------------------------------------------------------
 // JOB CARDS
 // ---------------------------------------------------------------------------
 
-/** JC-<year>-<sequence>, e.g. "JC-2026-000042". Sequence is derived from
- * the count of Job Cards already created this year — simple and readable.
- * Two calls close enough together can read the same count before either
- * insert lands, both producing the same number — this DID happen in
- * production (a real "Unique constraint failed on jobNumber" crash, not
- * just the theoretical risk this comment used to describe). Not fixed
- * here directly — the caller (createJobCard) retries with a fresh call
- * to this function on exactly that collision, which is what actually
- * closes the gap; regenerating the format here alone wouldn't help. */
 /** JC-<year>-<sequence>, e.g. "JC-2026-000042".
  *
- * Previously derived the sequence from a row COUNT, which turned out to
- * be the actual bug behind the reported crash: a count only matches the
- * highest sequence in use if every number from 1 upward is still
- * present with no gaps. If even one Job Card was ever deleted directly
- * (the same way other data has been cleared via Supabase before), the
- * count permanently undercounts relative to what's actually been used —
- * and since a FAILED create doesn't add a row, retrying this function
- * after a collision recomputed the exact same wrong number every time,
- * which is exactly what the Vercel logs showed: the identical error,
- * five times in a row, for one request.
- *
- * Fixed by deriving the next number from the MAXIMUM existing jobNumber
- * for this year instead of a count — this is correct regardless of any
- * gaps from deletions. String-descending order on `jobNumber` correctly
- * matches numeric order here specifically because the sequence portion
- * is always zero-padded to a fixed 6 digits (e.g. "000002" sorts before
- * "000010" as a string too, unlike unpadded numbers).
+ * The next number comes from the highest jobNumber this year, not a row
+ * count: a count undercounts once any Job Card is deleted and then repeats
+ * the same number on every retry. The sequence is zero-padded to 6 digits,
+ * so a descending string sort matches numeric order. Concurrent creates can
+ * still collide; createJobCard retries on that.
  */
 async function generateJobNumber(): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = lagosYear();
   const prefix = `JC-${year}-`;
   const latest = await prisma.jobCard.findFirst({
     where: { jobNumber: { startsWith: prefix } },
     orderBy: { jobNumber: 'desc' },
     select: { jobNumber: true },
   });
-  const nextSequence = latest ? parseInt(latest.jobNumber.slice(prefix.length), 10) + 1 : 1;
+  // A binned number stays reserved (lib/recycle-bin/numbers.ts).
+  const binned = await highestBinnedReference('JobCard', prefix);
+  const nextSequence = highestSequence(prefix, [latest?.jobNumber, binned]) + 1;
   return `${prefix}${String(nextSequence).padStart(6, '0')}`;
 }
 
@@ -926,20 +783,14 @@ async function getJobCardUnscoped(id: string) {
       createdBy: { select: { id: true, fullName: true } },
       branch: { select: { name: true, address: true, hotlines: true, email: true } },
       complaints: { orderBy: { sequenceNumber: 'asc' } },
-      // The real, full estimate breakdown and every real payment made
-      // against it — the two things a genuine Vehicle Collection
-      // Receipt needs to show what was actually done and what was
-      // actually paid, not just the vehicle's own details.
+      // Estimate lines and payments, for the Vehicle Collection Receipt.
       estimate: { include: { lineItems: { orderBy: { createdAt: 'asc' }, include: { coveringWarranty: { select: { id: true, warrantyNumber: true } } } } } },
       payments: { orderBy: { recordedAt: 'asc' }, include: { recordedBy: { select: { fullName: true } } } },
       refunds: { orderBy: { recordedAt: 'asc' }, include: { recordedBy: { select: { fullName: true } } } },
       escalatedFromVehicleService: { select: { id: true, serviceNumber: true, escalatedAt: true } },
-      // Only ever needed for one real thing: detecting whether this
-      // Job Card was ever cancelled at all, for the Vehicle Collection
-      // Receipt's own cancelled-vehicle variant. Once a cancelled Job
-      // Card is checked out, its own status field becomes CHECKED_OUT
-      // — identical to a normal completed one — so this is the only
-      // real place that fact still survives.
+      // Used only to tell whether the Job Card was ever cancelled (for the
+      // receipt's cancelled variant). After checkout its status is CHECKED_OUT
+      // either way, so this is the only place that fact survives.
       cancellationRequests: {
         where: { status: 'APPROVED' },
         orderBy: { decidedAt: 'desc' },
@@ -951,12 +802,8 @@ async function getJobCardUnscoped(id: string) {
           decidedBy: { select: { fullName: true } },
         },
       },
-      // Only ever needed for one real thing: the Vehicle Collection
-      // Receipt's own organisation copy showing which real Store
-      // Parts Request / External Procurement Request documents are
-      // attached to this Job Card, for reference — the same real
-      // reciprocal link those two documents already show back to
-      // this Job Card's own number.
+      // Store Parts Request / External Procurement numbers, listed on the
+      // receipt's organisation copy.
       partRequestSlips: { select: { referenceNumber: true } },
       externalProcurementRequests: { select: { referenceNumber: true } },
     },
@@ -971,25 +818,15 @@ export type JobCardAuditEntry = {
   user: { fullName: string } | null;
 };
 
-/** The Job Card's own chronological audit trail — reads the same
- * AuditLog rows writeAuditLog() creates, filtered to this one entity,
- * newest first. Nothing here is a separate history mechanism; it's a
- * read view onto the one shared audit log. */
+/** The Job Card's audit trail (AuditLog rows for this entity), newest first. */
 export async function getJobCardAuditTrail(jobCardId: string): Promise<JobCardAuditEntry[]> {
   await requireUser();
   await seeJobCard(jobCardId, 'getJobCardAuditTrail');
-  // No take limit here, deliberately — a Job Card's own real history
-  // is never something that gets quietly cut off once it accumulates
-  // enough entries. A 50-row cap here once silently dropped a Job
-  // Card's earliest entries (including, for a busy Job Card, its own
-  // real creation record) the moment it grew past that count — a real
-  // data-loss-looking bug, not a display choice. Fetching everything
-  // here and letting the UI decide how much to show at once is the
-  // right split: never lose the data itself, only ever limit what's
-  // rendered on screen at a time.
+  // Not capped: a 50-row cap once hid a busy Job Card's earliest entries,
+  // including its creation. The UI decides how many to show.
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'JobCard', entityId: jobCardId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
   });
   const userIds = [
     ...new Set(
@@ -1015,7 +852,7 @@ export type CreateJobCardInput = {
   complaints: string[];
   supervisorId: string;
   mileageAtCheckIn?: number;
-  /** Set when this Job Card continues an escalated Vehicle Service — the
+  /** Set when this Job Card continues an escalated Vehicle Service; the
    * customer's acknowledgment email then explains the escalation. */
   escalatedFromServiceNumber?: string;
 };
@@ -1024,13 +861,13 @@ export type CreateJobCardInput = {
 export async function createJobCard(input: CreateJobCardInput) {
   let escalatedServiceId: string | null = null;
   if (input.escalatedFromServiceNumber) {
-    // Escalating a Vehicle Service: done by the people working on it (its
-    // supervisor or technician) — checked on the real service record, never on
-    // the caller's word: same customer, same vehicle, not already escalated.
+    // Escalating a Vehicle Service is done by its supervisor or technician,
+    // checked against the service record itself: same customer, same vehicle,
+    // not already escalated.
     const sv = await prisma.vehicleService.findFirst({
-      // Only a service that escalateVehicleService has just CLAIMED for hand-over
-      // (its checks — status, no payments, not cancelled — already passed):
-      // never a direct call that skips them.
+      // Only a service that escalateVehicleService has just claimed for hand-over
+      // (status, payments and cancellation already checked); never a direct call
+      // that skips those checks.
       where: { serviceNumber: input.escalatedFromServiceNumber, customerId: input.customerId, vehicleId: input.vehicleId, escalatedToJobCardId: null, escalatedAt: { gte: new Date(Date.now() - ESCALATION_CLAIM_MS) } },
       select: { id: true },
     });
@@ -1055,11 +892,8 @@ export async function createJobCard(input: CreateJobCardInput) {
     throw new WorkshopActionError('Keep each complaint under 500 characters.');
   }
 
-  // The routed department is derived from the vehicle's own recorded
-  // type — never taken from client input — so it's structurally
-  // impossible for a Job Card to be routed to the wrong department by a
-  // client-side mistake or tampering.
-  // The vehicle must belong to this organisation (never another's).
+  // The department is derived from the vehicle's recorded type, never from
+  // client input. The vehicle must belong to this organisation.
   const vehicle = await prisma.customerVehicle.findFirst({
     where: { id: input.vehicleId, customer: await orgWhere() },
     select: { vehicleType: true, make: true, model: true, plateNumber: true, customerId: true },
@@ -1067,7 +901,7 @@ export async function createJobCard(input: CreateJobCardInput) {
   if (!vehicle) {
     throw new WorkshopActionError('That vehicle could not be found.');
   }
-  // The Job Card is always filed under the vehicle's own owner.
+  // The Job Card is always filed under the vehicle's owner.
   if (vehicle.customerId !== input.customerId) {
     throw new WorkshopActionError('That vehicle belongs to a different customer — choose the customer again.');
   }
@@ -1084,23 +918,13 @@ export async function createJobCard(input: CreateJobCardInput) {
 
   const branchId = await getWorkshopBranchId();
 
-  // Retries on a jobNumber collision specifically — now a genuine
-  // safety net for true concurrent-request races (two creations landing
-  // close enough together to both read the same "latest" number before
-  // either insert completes), rather than the primary fix — the actual
-  // bug (a permanently wrong number from a row-count/gap mismatch, not
-  // a timing race) is fixed in generateJobNumber() itself above. Any
-  // other kind of failure (validation, connection issue, etc.) is
-  // re-thrown immediately, not retried.
-  //
-  // Captures the created row into `created` and `break`s on success,
-  // rather than returning directly from inside the loop — the
-  // supervisor notification email below needs to run exactly once,
-  // after a genuinely successful creation, never inside the retry loop
-  // itself (which could otherwise fire it multiple times on retries).
+  // Retries only on a jobNumber collision (two creates reading the same
+  // latest number). Any other error is re-thrown immediately.
+  // On success we break out with `created` so the notification emails below
+  // run once, outside the retry loop.
   async function attemptCreate(jobNumber: string) {
     return prisma.$transaction(async (tx) => {
-    // One open Job Card per vehicle: the vehicle is locked while this is
+    // One open Job Card per vehicle: the vehicle row is locked while this is
     // decided, so a double click (or two desks at once) opens exactly one.
     await lockExisting(tx, 'customerVehicle', [input.vehicleId], 'That vehicle could not be found.');
     const open = await tx.jobCard.findFirst({ where: { vehicleId: input.vehicleId, status: { notIn: [JobCardStatus.CANCELLED, JobCardStatus.CLOSED, JobCardStatus.CHECKED_OUT] } }, select: { jobNumber: true } });
@@ -1145,10 +969,8 @@ export async function createJobCard(input: CreateJobCardInput) {
     } catch (err) {
       const code = (err as { code?: string } | null)?.code;
       const target = (err as { meta?: { target?: unknown } } | null)?.meta?.target;
-      // Prisma's `meta.target` shape for a unique-constraint violation
-      // varies slightly by database provider — usually an array of
-      // column names on Postgres, but checking for a string too costs
-      // nothing and removes any dependency on getting that exactly right.
+      // `meta.target` is usually an array of column names on Postgres, but can
+      // be a string; accept both.
       const isJobNumberCollision =
         code === 'P2002' &&
         ((Array.isArray(target) && target.includes('jobNumber')) ||
@@ -1165,13 +987,11 @@ export async function createJobCard(input: CreateJobCardInput) {
     throw new WorkshopActionError('Could not generate a unique Job Card number after several attempts — please try again.');
   }
 
-  // Notify the assigned supervisor — best-effort, fail-soft, matching
-  // the exact same pattern already used for the customer welcome email
-  // (Phase 3): a transient SMTP hiccup is not a reason to undo a real,
-  // already-successful Job Card creation.
+  // Notify the assigned supervisor. Fail-soft: an email failure never undoes
+  // the creation.
   try {
     const orgContext = await getWorkshopOrgContext(department.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       created.supervisor!.email,
       `New Job Card ${created.jobNumber} assigned to you`,
@@ -1182,37 +1002,33 @@ export async function createJobCard(input: CreateJobCardInput) {
         vehicleDescription: [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         complaints: created.complaints.map((c: (typeof created.complaints)[number]) => c.description),
         jobCardUrl: `${portalUrl}/workshop/job-cards/${created.id}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send supervisor notification email for Job Card', created.jobNumber, err);
   }
 
-  // Notify the customer too — a genuinely separate try/catch from the
-  // supervisor email above, deliberately: one failing (e.g. a bad
-  // customer email address) must never prevent the other from sending,
-  // and vice versa. Website URL, not portal — the customer's own
-  // dashboard lives on apps/website, not apps/portal.
+  // Customer email in its own try/catch so one failure doesn't stop the other.
+  // Links go to the website, where the customer's dashboard lives.
   try {
     const orgContext = await getWorkshopOrgContext(department.name);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     await sendEmail(
       created.customer.email,
       input.escalatedFromServiceNumber
         ? `Your service continues as Job Card ${created.jobNumber}`
-        : `We've received your vehicle — Job Card ${created.jobNumber}`,
+        : `Your vehicle is checked in — Job Card ${created.jobNumber}`,
       renderCustomerJobCardAcknowledgmentEmail({
         customerName: created.customer.fullName,
         jobNumber: created.jobNumber,
         vehicleDescription: [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         complaints: created.complaints.map((c: (typeof created.complaints)[number]) => c.description),
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${created.id}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
@@ -1220,7 +1036,6 @@ export async function createJobCard(input: CreateJobCardInput) {
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send customer acknowledgment email for Job Card', created.jobNumber, err);
   }
 
@@ -1262,41 +1077,31 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
     throw new WorkshopActionError('Job Card not found.');
   }
   // Only someone who may see this Job Card (its branch, their organisation)
-  // can move it at all — a refusal is audited and reads as "not available".
+  // can move it. A refusal is audited and reads as "not available".
   await authorizeOnJobCard('workshop.job_card.view', id, 'workshop.updateJobCardStatus');
-  // Re-saving the status it already has changes nothing (no reset of the
-  // collection clock, no overwritten collector, no false audit entry).
+  // Re-saving the current status is a no-op: no reset of the collection
+  // clock, no overwritten collector, no audit entry.
   if (jobCard.status === status) {
     return (await prisma.jobCard.findUnique({ where: { id } }))!;
   }
-  // Closed and Cancelled are no longer things this function ever sets
-  // directly — both now go through their own real request → Manager
-  // approve/decline flow (requestJobCardClose/approveCloseRequest,
-  // requestJobCardCancellation/approveCancellationRequest), the exact
-  // same real workflow-integrity standard already applied to every
-  // other consequential decision in this system: never just hide an
-  // option from a form, actually refuse it server-side too. Genuinely
-  // reached only via those two functions, which update status
-  // themselves — never via a direct call here.
+  // CLOSED and CANCELLED are only set by the Manager approval flows
+  // (approveCloseRequest, approveCancellationRequest), never here.
   if (status === JobCardStatus.CLOSED) {
     throw new WorkshopActionError('A Job Card is closed by approving a close request, not directly — see Request Close.');
   }
   if (status === JobCardStatus.CANCELLED) {
     throw new WorkshopActionError('A Job Card is cancelled by approving a cancellation request, not directly — see Request Cancellation.');
   }
-  // A cancelled Job Card is terminal — dead, in the plainest sense.
-  // Nothing about it can be edited or re-progressed; the one thing
-  // that still legitimately happens to it is the vehicle's eventual
-  // physical exit, once whoever finally collects it does.
+  // A cancelled Job Card is terminal; the only remaining step is handing the
+  // vehicle back (CHECKED_OUT).
   if (jobCard.status === JobCardStatus.CANCELLED && status !== JobCardStatus.CHECKED_OUT) {
     throw new WorkshopActionError('This Job Card is cancelled — the only status change available is checking the vehicle out.');
   }
-  // A cancelled Job Card that took money can't hand the vehicle back
-  // until Finance has refunded all of it — so a refund can never be
-  // forgotten once the customer has driven away.
+  // A cancelled Job Card that took money can't hand the vehicle back until
+  // Finance has refunded all of it, so a refund is never forgotten.
   if (jobCard.status === JobCardStatus.CANCELLED && status === JobCardStatus.CHECKED_OUT) {
     // Handing a cancelled vehicle back is the front desk's step for that
-    // branch (the same rule as a cancelled Vehicle Service hand-back).
+    // branch (same rule as a cancelled Vehicle Service).
     await authorizeOnJobCard('workshop.job_card.create', id, 'workshop.handBackCancelledJobCard');
     const paid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
     const refunded = jobCard.refunds.reduce((sum: number, r: { amount: unknown }) => sum + Number(r.amount), 0);
@@ -1305,13 +1110,8 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       throw new WorkshopActionError(`₦${owed.toLocaleString('en-NG', { minimumFractionDigits: 2 })} paid on this Job Card must be refunded (recorded under Refunds) before the vehicle can be handed back.`);
     }
   }
-  // A non-cancelled Job Card can't genuinely be checked out — the
-  // vehicle physically leaving — while real money is still owed on
-  // it. Enforced here, server-side, not just hidden from the status
-  // dropdown — the same "don't just hide the option, actually refuse
-  // it" standard already applied to every other real business rule in
-  // this system. A cancelled Job Card is exempt: there's no service
-  // being paid for anymore, only a vehicle waiting to be collected.
+  // No checkout while money is owed. Cancelled Job Cards are exempt: nothing
+  // is being paid for, the vehicle is only waiting to be collected.
   if (
     status === JobCardStatus.CHECKED_OUT
     && jobCard.status !== JobCardStatus.CANCELLED
@@ -1323,21 +1123,13 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
     }
   }
   const priorStatus = jobCard.status;
-  // A real name for whoever's physically walking out with the vehicle
-  // is required the moment this transition genuinely happens — the
-  // same "can't release without knowing who to" reasoning already
-  // enforced on a parts release.
+  // The collector's name is required on checkout, as on a parts release.
   if (status === JobCardStatus.CHECKED_OUT && priorStatus !== JobCardStatus.CHECKED_OUT && !collectedByName?.trim()) {
     throw new WorkshopActionError('The name of whoever is collecting the vehicle is required to check it out.');
   }
-  // The real, standard status progression — never just hidden from
-  // the dropdown, actually refused here too, the same standard
-  // already applied to every other real decision in this system.
-  // Master Admin bypasses this entirely, matching how that role
-  // already bypasses every other check here. Skipped for CHECKED_OUT
-  // and CANCELLED-related transitions already fully governed by their
-  // own guards above (payment gating, the cancelled-only-checkout
-  // rule) — this only needs to cover the plain, single-step moves.
+  // Enforce the standard forward progression server-side. Master Admin
+  // bypasses it. CHECKED_OUT and cancellation moves are covered by the guards
+  // above; this only handles plain single-step moves.
   if (priorStatus !== status && priorStatus !== JobCardStatus.CANCELLED) {
     const isMasterAdmin = await currentUserIsMasterAdmin();
     if (!isMasterAdmin) {
@@ -1350,21 +1142,18 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       };
       const allowed = getSelectableJobCardStatuses(priorStatus, roleContext);
       if (!allowed.includes(status)) {
-        throw new WorkshopActionError(`This Job Card can't move from ${priorStatus} to ${status} directly — that isn't one of the real next steps available to you from here.`);
+        throw new WorkshopActionError(`This Job Card can't move from ${priorStatus} to ${status} directly — choose one of the next steps offered on the page.`);
       }
     }
   }
-  // Rework — the one deliberate, named exception to "never move
-  // backward" (see job-card-status-rules.ts for the full reasoning).
-  // Requires a real reason and is logged as its own distinct action,
-  // not folded into a generic status-updated entry, so it's always
-  // genuinely auditable rather than a quiet loophole.
+  // Rework is the one allowed backward move (see job-card-status-rules.ts).
+  // It needs a reason and is logged as its own action.
   const isReworkTransition = isReworkMove(priorStatus, status);
   if (isReworkTransition && !reworkReason?.trim()) {
     throw new WorkshopActionError('A reason is required to send this Job Card back for rework.');
   }
   // Reworking a vehicle whose close is already being decided would leave
-  // a Manager approving a close for work that's no longer finished.
+  // a Manager approving a close for unfinished work.
   if (isReworkTransition) {
     const pendingClose = await prisma.closeRequest.findFirst({ where: { jobCardId: id, status: 'PENDING' }, select: { id: true } });
     if (pendingClose) {
@@ -1372,21 +1161,19 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
     }
   }
   // Compare-and-set: the move only happens if the Job Card is still in the
-  // status this person saw — two people moving it at once can't both win,
-  // and a cancellation approved meanwhile can't be overwritten.
+  // status this person saw. Two concurrent moves can't both win, and a
+  // cancellation approved meanwhile can't be overwritten.
   claimed(await prisma.jobCard.updateMany({
     where: { id, status: priorStatus },
     data: {
       status,
       readyForCollectionAt: isReworkTransition && priorStatus === JobCardStatus.READY_FOR_COLLECTION ? null : status === JobCardStatus.READY_FOR_COLLECTION ? new Date() : undefined,
-      // Only ever set once — the first genuine arrival at each status
-      // — never overwritten by a later return to the same status
-      // (e.g. IN_PROGRESS after AWAITING_PARTS resolves), so these
-      // stay a true "when did this actually start/finish" record.
+      // Set only on first arrival at each status, never overwritten by a later
+      // return (e.g. IN_PROGRESS again after AWAITING_PARTS).
       workStartedAt: status === JobCardStatus.IN_PROGRESS && !jobCard.workStartedAt ? new Date() : undefined,
       // Rework after sign-off reopens the work: completion and
-      // ready-for-collection are cleared so they record the FINAL
-      // finish (the audit trail keeps the history of each pass).
+      // ready-for-collection are cleared so they record the final finish
+      // (the audit trail keeps each pass).
       completedAt: isReworkTransition && priorStatus !== JobCardStatus.QUALITY_CHECK ? null : status === JobCardStatus.COMPLETED && !jobCard.completedAt ? new Date() : undefined,
       checkedOutAt: status === JobCardStatus.CHECKED_OUT && !jobCard.checkedOutAt ? new Date() : undefined,
       collectedByName: status === JobCardStatus.CHECKED_OUT ? collectedByName?.trim() : undefined,
@@ -1394,28 +1181,24 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   }));
   const result = (await prisma.jobCard.findUnique({ where: { id } }))!;
 
-  // Security expects the vehicle at the gate — checkout or hand-back.
+  // Security expects the vehicle at the gate: checkout or hand-back.
   if (status === JobCardStatus.CHECKED_OUT && priorStatus !== JobCardStatus.CHECKED_OUT) {
     await notifyGateOfRelease('JOB_CARD', id, user.id);
   }
 
-  // A Job Card that came from a Vehicle Service: its genuine checkout
-  // (never a cancelled hand-back) is when that vehicle's service was
-  // actually finished — the next-service count starts from here.
+  // For a Job Card that came from a Vehicle Service, a real checkout (not a
+  // cancelled hand-back) completes that service; the next-service count
+  // starts here.
   if (status === JobCardStatus.CHECKED_OUT && priorStatus !== JobCardStatus.CANCELLED && priorStatus !== JobCardStatus.CHECKED_OUT) {
     try {
       await anchorEscalatedServiceFromJobCard(id);
     } catch (err) {
-      // eslint-disable-next-line no-console
       logFailure('Failed to start the next-service count from this Job Card checkout', id, err);
     }
   }
 
-  // Fires exactly once, on a real transition into one of these four
-  // statuses — never on a no-op re-save of the same status. AWAITING_
-  // PARTS deliberately has no customer email at all (internal-only by
-  // design — reflects on the portal, notifies the store/finance
-  // department once that system exists, not built yet).
+  // Customer emails on an actual transition into these statuses only.
+  // AWAITING_PARTS is internal and sends no customer email.
   if (priorStatus !== status && (
     status === JobCardStatus.IN_PROGRESS
     || status === JobCardStatus.QUALITY_CHECK
@@ -1424,12 +1207,12 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   )) {
     try {
       const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-      const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+      const websiteUrl = websiteBaseUrl();
       const vehicleDescription = [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
       const dashboardUrl = `${websiteUrl}/customer-portal/dashboard#jobcard-${id}`;
-      const logoUrl = `${websiteUrl}/images/logo/logo.png`;
-      // Has this Job Card been sent back for rework before (this move not
-      // counted — its own audit entry is written after these emails)?
+      const logoUrl = `${websiteUrl}/images/logo/email-logo.png`;
+      // Has this Job Card been sent back for rework before? (This move isn't
+      // counted; its audit entry is written after these emails.)
       const reworkedBefore =
         isReworkTransition ||
         (await prisma.auditLog.count({ where: { entityType: 'JobCard', entityId: id, action: 'job_card.rework_requested' } })) > 0;
@@ -1443,47 +1226,46 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
         branchName: orgContext.branchName,
       };
 
-      // Each email tells the customer what genuinely happened — never the
-      // same "work has started" news twice as if it were new.
+      // After a rework, tell the customer it's a rework, not "work has started" again.
       if (status === JobCardStatus.IN_PROGRESS && isReworkTransition) {
         await sendEmail(
           jobCard.customer.email,
-          `A quick update on your vehicle — Job Card ${jobCard.jobNumber}`,
+          `An update on your vehicle — Job Card ${jobCard.jobNumber}`,
           renderCustomerJobWorkUpdateEmail({ ...shared, kind: 'REWORK' }),
         );
       } else if (status === JobCardStatus.IN_PROGRESS && priorStatus === JobCardStatus.AWAITING_PARTS) {
         await sendEmail(
           jobCard.customer.email,
-          `Work has resumed — Job Card ${jobCard.jobNumber}`,
+          `Work on your vehicle has resumed — Job Card ${jobCard.jobNumber}`,
           renderCustomerJobWorkUpdateEmail({ ...shared, kind: 'RESUMED' }),
         );
       } else if (status === JobCardStatus.IN_PROGRESS) {
         await sendEmail(
           jobCard.customer.email,
-          `Your vehicle is now in progress — Job Card ${jobCard.jobNumber}`,
+          `Work on your vehicle has started — Job Card ${jobCard.jobNumber}`,
           renderCustomerJobInProgressEmail(shared),
         );
       } else if (status === JobCardStatus.QUALITY_CHECK) {
-        // After a rework the customer already knows further checks are
-        // under way — no duplicate "quality assurance" email.
+        // After a rework the customer already knows checks are under way; no
+        // duplicate quality-check email.
         if (!reworkedBefore) {
           await sendEmail(
             jobCard.customer.email,
-            `Quality assurance in progress — Job Card ${jobCard.jobNumber}`,
+            `Your vehicle is in final quality checks — Job Card ${jobCard.jobNumber}`,
             renderCustomerQualityCheckEmail(shared),
           );
         }
       } else if (status === JobCardStatus.COMPLETED) {
         await sendEmail(
           jobCard.customer.email,
-          `Quality inspection passed — Job Card ${jobCard.jobNumber}`,
+          `Your vehicle passed its quality inspection — Job Card ${jobCard.jobNumber}`,
           renderCustomerJobCompletedEmail({ ...shared, afterRework: reworkedBefore }),
         );
       } else {
         const dueDate = addWorkingDays(new Date(), READY_FOR_COLLECTION_GRACE_WORKING_DAYS);
         await sendEmail(
           jobCard.customer.email,
-          `Ready for collection — Job Card ${jobCard.jobNumber}`,
+          `Your vehicle is ready for collection — Job Card ${jobCard.jobNumber}`,
           renderCustomerReadyForCollectionEmail({
             ...shared,
             dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
@@ -1492,37 +1274,23 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
         );
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
       logFailure('Failed to send status-lifecycle email', id, status, err);
     }
   }
 
-  // CLOSED and CHECKED_OUT each get their own real, separate email
-  // chain to the customer AND every real staff party on the Job Card
-  // — creator, supervisor, assigned technician, and every eligible
-  // branch Manager — the same broadcast pattern already proven for
-  // cancellation approval. Fires exactly once, on a real transition,
-  // same "never on a no-op re-save" rule as every other lifecycle
-  // email in this function.
-  // CHECKED_OUT gets its own real email chain to the customer AND
-  // every real staff party on the Job Card — creator, supervisor,
-  // assigned technician, and every eligible branch Manager — the
-  // same broadcast pattern already proven for cancellation approval.
-  // CLOSED never reaches here anymore (see the guard above) — its own
-  // email chain now fires from approveCloseRequest instead, the one
-  // real place status genuinely becomes CLOSED. Fires exactly once,
-  // on a real transition, same "never on a no-op re-save" rule as
-  // every other lifecycle email in this function.
+  // CHECKED_OUT emails the customer and every staff party on the Job Card
+  // (creator, supervisor, technician, branch Managers), once per transition.
+  // CLOSED never reaches here; its emails are sent from approveCloseRequest.
   if (priorStatus !== status && status === JobCardStatus.CHECKED_OUT) {
     try {
       const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-      const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const websiteUrl = websiteBaseUrl();
+      const portalUrl = portalBaseUrl();
       const vehicleDescription = [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
       const dashboardUrl = `${websiteUrl}/customer-portal/dashboard`;
       const jobCardUrl = `${portalUrl}/workshop/job-cards/${id}`;
-      const websiteLogoUrl = `${websiteUrl}/images/logo/logo.png`;
-      const portalLogoUrl = `${portalUrl}/images/logo/logo.png`;
+      const websiteLogoUrl = `${websiteUrl}/images/logo/email-logo.png`;
+      const portalLogoUrl = `${portalUrl}/images/logo/email-logo.png`;
       const realCollectedByName = result.collectedByName ?? collectedByName?.trim() ?? 'the customer';
 
       await sendEmail(
@@ -1555,7 +1323,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       for (const recipient of staffRecipients) {
         await sendEmail(
           recipient.email,
-          `Job Card ${jobCard.jobNumber} — vehicle checked out`,
+          `Vehicle checked out — Job Card ${jobCard.jobNumber}`,
           renderVehicleCheckedOutStaffEmail({
             recipientName: recipient.fullName,
             jobNumber: jobCard.jobNumber,
@@ -1570,7 +1338,6 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
         );
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
       logFailure('Failed to send checkout email chain', id, status, err);
     }
   }
@@ -1588,10 +1355,11 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   return result;
 }
 
-/** The supervisor (or Master Admin) signs off that the Job Card is
- * correctly opened and ready to proceed — the explicit approval step,
- * separate from and not inferable from `status`. */
+/** The supervisor (or Master Admin) confirms the Job Card is correctly
+ * opened. Separate from `status`. */
 export async function approveJobCard(jobCardId: string, notes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveJobCard');
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
     select: { supervisorId: true, jobNumber: true, approvalStatus: true },
@@ -1601,8 +1369,8 @@ export async function approveJobCard(jobCardId: string, notes?: string): Promise
   }
   const approver = await requireJobCardApprover(jobCard);
 
-  // Compare-and-set on the decision this person saw (and on who supervises
-  // it): an approve and a reject — or a reassignment — racing can't both land.
+  // Compare-and-set on the decision this person saw (and on the supervisor):
+  // a racing approve/reject or reassignment can't both land.
   claimed(await prisma.jobCard.updateMany({
     where: { id: jobCardId, approvalStatus: jobCard.approvalStatus, supervisorId: jobCard.supervisorId },
     data: {
@@ -1631,11 +1399,11 @@ export async function approveJobCard(jobCardId: string, notes?: string): Promise
   });
 }
 
-/** Returns the Job Card to the creator for correction — the required
- * short `reason` is what shows in the UI's status badge (e.g.
- * "Rejected — Incomplete vehicle information"); `notes` is optional,
- * longer commentary. */
+/** Returns the Job Card to its creator. `reason` is the short text shown on
+ * the status badge; `notes` is optional detail. */
 export async function rejectJobCard(jobCardId: string, reason: string, notes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('rejectJobCard');
   const trimmedReason = reason.trim();
   if (!trimmedReason) {
     throw new WorkshopActionError('A reason is required to reject a Job Card.');
@@ -1657,14 +1425,8 @@ export async function rejectJobCard(jobCardId: string, reason: string, notes?: s
       approvedAt: new Date(),
       rejectionReason: trimmedReason,
       approvalNotes: notes?.trim() || null,
-      // Deliberately cleared, not left pointing at the rejecting
-      // supervisor — a rejection means nobody currently owns this Job
-      // Card as supervisor, freeing the creator to route it to someone
-      // else eligible in the same department. The rejection itself,
-      // who made it, and why all stay fully visible via the fields
-      // above and the audit log below — clearing this one field only
-      // affects "who is currently assigned," never the historical
-      // record of what happened.
+      // Cleared so the creator can route the Job Card to another supervisor.
+      // Who rejected it and why stays in the fields above and the audit log.
       supervisorId: null,
     },
   }));
@@ -1687,19 +1449,10 @@ export async function rejectJobCard(jobCardId: string, reason: string, notes?: s
   });
 }
 
-/** Routes a Job Card to a different supervisor — used after the
- * current one has rejected it (their name is deliberately no longer
- * attached; see rejectJobCard above) and the creator wants to try
- * someone else eligible in the same department. Only the Job Card's
- * own creator, or a Master Administrator, may do this — matching
- * exactly who was asked to be able to.
- *
- * Resets the whole approval dimension back to PENDING and clears the
- * previous decision's fields — a fresh supervisor deserves a fresh
- * decision, not one carried over from someone else. This mirrors
- * exactly how assignTechnician() already resets the acceptance
- * dimension on every (re)assignment; same principle, applied here for
- * consistency. */
+/** Routes a Job Card to a different supervisor, typically after a
+ * rejection. Only the creator or a Master Administrator may do this.
+ * Resets approval to PENDING and clears the previous decision, as
+ * assignTechnician() does for acceptance. */
 export async function reassignSupervisor(jobCardId: string, newSupervisorId: string): Promise<void> {
   const user = await requireUser();
   const jobCard = await prisma.jobCard.findUnique({
@@ -1727,8 +1480,8 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
     throw new WorkshopActionError('The selected supervisor is not eligible for this Job Card\'s Workshop department.');
   }
 
-  // Only if the supervisor is still the one this person saw — a decision
-  // or another reassignment in the meantime wins, and this one stops.
+  // Only if the supervisor is still the one this person saw; a decision or
+  // another reassignment in the meantime wins.
   claimed(await prisma.jobCard.updateMany({
     where: { id: jobCardId, supervisorId: jobCard.supervisorId },
     data: {
@@ -1760,7 +1513,7 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
       select: { name: true },
     });
     const orgContext = await getWorkshopOrgContext(department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       supervisor.email,
       `New Job Card ${jobCard.jobNumber} assigned to you`,
@@ -1771,46 +1524,23 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
         vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         complaints: jobCard.complaints.map((c: (typeof jobCard.complaints)[number]) => c.description),
         jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send supervisor reassignment email for Job Card', jobCard.jobNumber, err);
   }
 }
 
-/** Permanently removes a Job Card and, via schema-level cascades, its
- * complaints. Does NOT touch the Customer or Vehicle it belonged to.
- * Irreversible; the UI must confirm before calling this. */
-export async function deleteJobCard(jobCardId: string): Promise<void> {
-  const user = await requireMasterAdmin();
-  const snapshot = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { jobNumber: true, status: true, customerId: true, vehicleId: true } });
-  // A Vehicle Service escalated into this Job Card would otherwise be
-  // left "Escalated" to nothing — read-only forever. Its hand-over no
-  // longer exists, so it is cancelled, honestly and on the record.
-  await prisma.vehicleService.updateMany({
-    where: { escalatedToJobCardId: jobCardId },
-    data: { status: 'CANCELLED', cancelledAt: new Date(), escalatedToJobCardId: null },
-  });
-  await prisma.jobCard.delete({ where: { id: jobCardId } });
-  await writeAuditLog({ userId: user.id, action: 'job_card.deleted', entityType: 'JobCard', entityId: jobCardId, metadata: { ...snapshot } });
-}
-
-/** Assigns a technician and resets the acceptance workflow to PENDING —
- * being assigned isn't the same as having agreed to do it (see the
- * technicianAcceptanceStatus field comment on JobCard). Reassigning to
- * someone new correctly clears any previous person's response; their
- * accept/reject has no bearing on a different person's assignment.
- * Notifies the technician — fail-soft, matching every other
- * notification in this file. */
+/** Assigns a technician and resets acceptance to PENDING; a previous
+ * technician's response doesn't carry over. Emails the technician (fail-soft). */
 export async function assignTechnician(jobCardId: string, technicianId: string) {
   const actor = await requireUser();
-  // Only this job's supervisor (Master Admin always) assigns its technician —
-  // checked on the record itself, never on the browser's word.
+  // Only this job's supervisor (Master Admin always) assigns its technician,
+  // checked on the record itself.
   await authorizeOnJobCard('workshop.technician.assign', jobCardId, 'assignTechnician');
   const current = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { status: true, supervisorId: true } });
   if (!current) throw new WorkshopActionError('Job Card not found.');
@@ -1860,10 +1590,10 @@ export async function assignTechnician(jobCardId: string, technicianId: string) 
     });
     if (!technician) return jobCard;
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       technician.email,
-      `You've been assigned to Job Card ${jobCard.jobNumber}`,
+      `You are assigned to Job Card ${jobCard.jobNumber}`,
       renderTechnicianJobCardAssignedEmail({
         technicianName: technician.fullName,
         jobNumber: jobCard.jobNumber,
@@ -1872,23 +1602,20 @@ export async function assignTechnician(jobCardId: string, technicianId: string) 
         complaints: jobCard.complaints.map((c: (typeof jobCard.complaints)[number]) => c.description),
         supervisorName: jobCard.supervisor?.fullName ?? 'Supervisor',
         jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCard.id}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send technician assignment email for Job Card', jobCard.jobNumber, err);
   }
 
   return jobCard;
 }
 
-/** Only the assigned technician, or a Master Administrator, may respond
- * to an assignment — same reasoning and shape as
- * requireJobCardApprover above, applied to a different actor. */
+/** Only the assigned technician, or a Master Administrator, may respond to an assignment. */
 async function requireAssignedTechnician(jobCard: { assignedTechnicianId: string | null }): Promise<{ id: string }> {
   const user = await requireUser();
   if (jobCard.assignedTechnicianId === user.id) {
@@ -1900,10 +1627,7 @@ async function requireAssignedTechnician(jobCard: { assignedTechnicianId: string
   return refuse('workshop.job.work', 'requireAssignedTechnician', 'Only the assigned technician can respond to this assignment.');
 }
 
-/** Notifies the supervisor of a technician's response — shared by
- * acceptTechnicianAssignment/rejectTechnicianAssignment below, same
- * "one shared notify function, template branches internally" pattern
- * as notifyJobCardCreatorOfDecision. */
+/** Emails the supervisor when the technician accepts or rejects. */
 async function notifySupervisorOfTechnicianResponse(params: {
   jobCardId: string;
   jobNumber: string;
@@ -1926,13 +1650,13 @@ async function notifySupervisorOfTechnicianResponse(params: {
       select: { fullName: true },
     });
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
 
     await sendEmail(
       jobCard.supervisor.email,
       params.response === 'ACCEPTED'
         ? `Assignment accepted on Job Card ${params.jobNumber}`
-        : `Assignment rejected on Job Card ${params.jobNumber}`,
+        : `Assignment declined on Job Card ${params.jobNumber}`,
       renderTechnicianResponseEmail({
         response: params.response,
         supervisorName: jobCard.supervisor.fullName,
@@ -1941,14 +1665,13 @@ async function notifySupervisorOfTechnicianResponse(params: {
         technicianName: technician?.fullName ?? 'Technician',
         rejectionReason: params.rejectionReason,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${params.jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send technician response email to supervisor', params.jobNumber, err);
   }
 }
@@ -1963,9 +1686,9 @@ export async function acceptTechnicianAssignment(jobCardId: string): Promise<voi
   }
   const technician = await requireAssignedTechnician(jobCard);
 
-  // Only if this person is STILL the assigned technician: if the supervisor
-  // reassigned the job meanwhile, this accept must not mark the NEW
-  // technician as having accepted something they never saw.
+  // Only if this person is still the assigned technician: if the supervisor
+  // reassigned the job meanwhile, this must not mark the new technician as
+  // having accepted.
   claimed(await prisma.jobCard.updateMany({
     where: { id: jobCardId, assignedTechnicianId: technician.id, technicianAcceptanceStatus: jobCard.technicianAcceptanceStatus },
     data: {
@@ -2004,18 +1727,13 @@ export async function rejectTechnicianAssignment(jobCardId: string, reason: stri
   }
   const technician = await requireAssignedTechnician(jobCard);
 
-  // Only if this person is still the assigned technician — never unassign
+  // Only if this person is still the assigned technician; never unassign
   // someone the supervisor assigned a moment ago.
   claimed(await prisma.jobCard.updateMany({
     where: { id: jobCardId, assignedTechnicianId: technician.id, technicianAcceptanceStatus: jobCard.technicianAcceptanceStatus },
     data: {
-      // Fully reset back to the "never assigned" state, not left
-      // pointing at the rejecting technician — they said no, so they
-      // shouldn't still show as "the assigned technician" while the
-      // supervisor picks someone else. The full rejection record (who,
-      // when, why) is preserved below in the audit log regardless of
-      // these fields being cleared — clearing only affects "who is
-      // currently assigned," never the historical record.
+      // Back to unassigned so the supervisor can pick someone else. The
+      // rejection (who, when, why) is kept in the audit log.
       assignedTechnicianId: null,
       technicianAcceptanceStatus: null,
       technicianRespondedAt: null,
@@ -2040,20 +1758,13 @@ export async function rejectTechnicianAssignment(jobCardId: string, reason: stri
   });
 }
 
-/** Users who can be assigned to a Job Card. Deliberately not filtered by
- * a "Technician" role yet — this project's Roles/Permissions admin UI
- * doesn't have a way to assign roles to users yet, so filtering by role
- * here would just hide every real user until that's built. Showing each
- * user's role name(s) alongside their name lets staff pick correctly in
- * the meantime; narrowing this to a real role filter is a small, natural
- * follow-up once role assignment exists, not a redesign. */
+/** People who can be assigned to a Job Card, with their role names shown. */
 const WORKSHOP_HANDS = ['technician', 'workshop-supervisor'] as const;
 
 export async function listTechnicianCandidates() {
   await requireUser();
   return prisma.user.findMany({
-    // Only people who actually do workshop work: technicians, and supervisors
-    // (a supervisor can do anything a technician can).
+    // Technicians and supervisors (a supervisor can do anything a technician can).
     where: { isActive: true, ...(await orgWhere()), roles: { some: { role: { slug: { in: [...WORKSHOP_HANDS] } } } } },
     orderBy: { fullName: 'asc' },
     select: {
@@ -2065,13 +1776,13 @@ export async function listTechnicianCandidates() {
 }
 
 // ---------------------------------------------------------------------------
-// DASHBOARD — real counts, replacing the hardcoded 32/7/18/11
+// DASHBOARD
 // ---------------------------------------------------------------------------
 
 export async function getWorkshopDashboardCounts() {
   await requireUser();
-  // Shared definitions (lib/custody.ts) — the same "active" and "still
-  // inside" the custody pages and the Security dashboard use — and the same
+  // Uses the shared definitions in lib/custody.ts (the same "active" and
+  // "still inside" as the custody pages and Security dashboard) and the same
   // reach (a branch-scoped person counts their branch).
   const reach = await reachWhere('workshop.job_card.view');
   const [activeJobCards, totalCustomers, totalVehicles, inWorkshop, servicesInWorkshop] = await Promise.all([
@@ -2085,33 +1796,19 @@ export async function getWorkshopDashboardCounts() {
 }
 
 // ---------------------------------------------------------------------------
-// ESTIMATES — structured line items across four types (Store Part /
-// External Job / Labour / Sundry), one Estimate per Job Card for now.
-// `version` on Estimate exists for a later phase (revision approval) to
-// extend into real versioning without restructuring this — nothing here
-// increments it yet.
+// ESTIMATES: one per Job Card, with line items of type Store Part, External
+// Part, External Job, Internal Job, Labour or Sundry.
 //
-// Lifecycle: DRAFT (technician and supervisor build it up together,
-// prices can be left blank — real workshop practice is that different
-// people fill in their own portion at different times) → SUBMITTED
-// (technician marks it done; every line must have a price by this
-// point, enforced right here, not before) → APPROVED (supervisor signs
-// off). A Manager-level approval tier above this, and the customer/
-// admin-facing hand-off once approved, are a later phase — not modeled
-// yet, so this phase's terminal state is the supervisor's own approval.
-//
-// Deliberately still out of scope here: the cash-advance/receipt
-// tracking for EXTERNAL_JOB entries, real store-inventory sync/pricing,
-// Part Request/Issue Slips, and photo/evidence attachments — each is
-// its own real, separate piece of work, not folded in.
+// DRAFT: technician and supervisor build it; prices may be blank.
+// SUBMITTED: every line must be priced (checked on submit).
+// APPROVED: supervisor sign-off. MANAGER_APPROVED: the Manager's sign-off,
+// after which the creator sends it to the customer.
 // ---------------------------------------------------------------------------
 
 export type EstimateLineItemType = 'STORE_PART' | 'EXTERNAL_PART' | 'EXTERNAL_JOB' | 'INTERNAL_JOB' | 'LABOUR' | 'SUNDRY';
 
-/** Human-readable names for server-side error messages — a small,
- * separate map from the UI's own display labels (which live in the
- * page component and can't be imported into a 'use server' file, per
- * the export-shape rule that broke a build once already). */
+/** Line type names for server-side error messages. The UI labels live in
+ * the page component and can't be imported into a 'use server' file. */
 const ESTIMATE_LINE_TYPE_DISPLAY: Record<EstimateLineItemType, string> = {
   STORE_PART: 'Store Part',
   EXTERNAL_PART: 'External Part',
@@ -2125,27 +1822,19 @@ export type EstimateLineItemInput = {
   type: EstimateLineItemType;
   description: string;
   quantity: number;
-  /** Optional while the estimate is still DRAFT — see the lifecycle
-   * note above. Required (validated) once submitForValidation() runs. */
+  /** Optional while DRAFT; required by submitEstimateForValidation(). */
   unitPrice?: number;
-  /** Only meaningful for a STORE_PART line — which generic kind of
-   * part the technician is actually requesting (e.g. "Fuel Filter"),
-   * for Store to later match against the real, vehicle-fitting
-   * catalog Part. `description` still gets filled in from the chosen
-   * PartType's own name for display, but this is the real, structured
-   * link Store's matching step depends on. */
+  /** STORE_PART only: the generic part type requested (e.g. "Fuel Filter"),
+   * which Store later matches to a catalogue Part. `description` is filled
+   * from the type's name. */
   partTypeId?: string;
-  /** Only meaningful for a non-STORE_PART line — a STORE_PART line's
-   * unit is set automatically once Store matches it, never by
-   * whoever adds the line. */
+  /** Non-STORE_PART lines only. A Store Part's unit is set when Store matches it. */
   unitOfMeasure?: string;
 };
 
-/** Who can add to or edit a Job Card's estimate — the assigned
- * supervisor, the assigned technician, or a Master Administrator.
- * Deliberately permissive at this stage (the controlled-approval gate
- * is a later phase's job), but every line still records exactly who
- * entered or last touched it. */
+/** Who may add to or edit an estimate: the assigned supervisor, the assigned
+ * technician, or a Master Administrator. Every line records who entered or
+ * last changed it. */
 async function requireEstimateContributor(jobCard: {
   supervisorId: string | null;
   assignedTechnicianId: string | null;
@@ -2162,17 +1851,10 @@ async function requireEstimateContributor(jobCard: {
   );
 }
 
-/** Who's actually allowed to set the PRICE on a given line type — a
- * real, deliberate restriction distinct from requireEstimateContributor
- * above, which only governs adding/editing a line at all. A technician
- * only knows the true cost of what they personally sourced or had done
- * outside the workshop (EXTERNAL_PART/EXTERNAL_JOB) — everything else
- * (Store's own parts, the organisation's Labour/Sundry charges) is priced
- * by the supervisor, who has broader pricing authority across every
- * type, matching the same supervisor-outranks-technician hierarchy
- * already established everywhere else in this file. Only checked when
- * a price is actually being set — leaving a line unpriced (still
- * allowed while DRAFT) never needs this check at all. */
+/** Who may set the price on a line type. A technician may price only what
+ * they sourced outside (EXTERNAL_PART, EXTERNAL_JOB); Store parts, labour
+ * and sundry are priced by the supervisor. Checked only when a price is
+ * being set. */
 async function requirePricingAuthority(
   type: EstimateLineItemType,
   jobCard: { supervisorId: string | null; assignedTechnicianId: string | null },
@@ -2210,21 +1892,13 @@ export async function getJobCardEstimate(jobCardId: string) {
   });
 }
 
-/** Adds one line item, creating the Estimate itself on first use — a
- * Job Card has no estimate until someone actually adds a line, and
- * only once the Job Card itself has been approved by its supervisor
- * (an unapproved Job Card shouldn't have pricing work happening on it
- * yet). `amount` is only ever computed here, server-side, from
- * `quantity * unitPrice` when both are actually known — never taken
- * from client input, and left null when unitPrice is still blank
- * (DRAFT-stage entries are allowed to have no price yet). */
+/** Adds a line, creating the estimate on first use. Only on a Job Card its
+ * supervisor has approved. `amount` is always computed here from
+ * quantity × unitPrice (null while the price is blank), never taken from
+ * the client. */
 export async function addEstimateLineItem(jobCardId: string, input: EstimateLineItemInput): Promise<void> {
-  // A Store Part line's description is never trusted from client input
-  // — it's derived server-side from the real PartType's own name below,
-  // the same "never trust the client for something authoritative"
-  // principle as amount always being computed here, never taken as
-  // given. Every other line type still requires a real, non-empty
-  // description as before.
+  // A Store Part line's description comes from its PartType below, not from
+  // the client. Other line types need a non-empty description.
   let description = input.description.trim();
   if (input.type !== 'STORE_PART' && !description) {
     throw new WorkshopActionError('A description is required for this line item.');
@@ -2257,10 +1931,8 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
   if (estimate.status !== 'DRAFT') {
     throw new WorkshopActionError('This estimate has already been submitted and can no longer have lines added — edit an existing line instead.');
   }
-  // Only Sundry is capped at one line — real evidence (an actual
-  // Kewalram paper estimate showing "Labour for Service" and "Labour
-  // for Brake" as two separate lines on one job) confirmed Labour
-  // needs to support multiple entries too, same as INTERNAL_JOB.
+  // Only Sundry is limited to one line; Labour can have several (e.g.
+  // "Labour for Service" and "Labour for Brake").
   const cappedTypes: EstimateLineItemType[] = ['SUNDRY'];
   if (cappedTypes.includes(input.type) && estimate.lineItems.some((li: { type: string }) => li.type === input.type)) {
     throw new WorkshopActionError(
@@ -2268,28 +1940,20 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
     );
   }
   if (input.unitPrice !== undefined) {
-    // A Store Part line's price can only ever come from Store's own
-    // real match against the catalog (matchEstimateStorePartLine) —
-    // never typed directly here, not even by a Supervisor. Allowing
-    // it here would silently defeat the entire reason this exists:
-    // every store-sourced price staying tied to a real, current
-    // Goods Receipt cost, never a guess.
+    // A Store Part price only comes from Store matching
+    // (matchEstimateStorePartLine), never typed here, even by a supervisor.
     if (input.type === 'STORE_PART') {
-      throw new WorkshopActionError('A Store Part line is priced by Store matching it to a real catalog Part, not typed in directly.');
+      throw new WorkshopActionError('A Store Part line is priced when Store matches it to a catalogue part, not typed in.');
     }
     await requirePricingAuthority(input.type, jobCard, contributor.id);
   }
-  // A Store Part line is meaningless without a real PartType to match
-  // against later — this is the one thing that genuinely can't be
-  // filled in after the fact the way a price can, so it's enforced
-  // right at creation, not left as a gap Store discovers downstream.
+  // The part type can't be filled in later the way a price can, so it is
+  // required when the line is added.
   if (input.type === 'STORE_PART' && !input.partTypeId) {
     throw new WorkshopActionError('A Store Part line must specify which Part Type is needed.');
   }
   if (input.type === 'STORE_PART' && input.partTypeId) {
-    // The real description, looked up here rather than trusted from
-    // whatever the client happened to send — the same principle as
-    // amount always being computed server-side below.
+    // Description from the PartType, not from the client.
     const partType = await prisma.partType.findUnique({ where: { id: input.partTypeId }, select: { name: true } });
     if (!partType) {
       throw new WorkshopActionError('That Part Type no longer exists.');
@@ -2297,9 +1961,7 @@ export async function addEstimateLineItem(jobCardId: string, input: EstimateLine
     description = partType.name;
   }
   if (input.type === 'STORE_PART' && input.unitOfMeasure) {
-    // Same principle as price: a Store Part's real unit can only ever
-    // come from the matched Part's own baseUnitOfMeasure once Store
-    // matches it — never set here, even if something was passed in.
+    // A Store Part's unit comes from the matched part, never from here.
     throw new WorkshopActionError('A Store Part line\'s unit is set automatically once Store matches it, not entered directly.');
   }
 
@@ -2332,16 +1994,13 @@ export type EstimateLineItemUpdateInput = {
   description: string;
   quantity: number;
   unitPrice?: number;
-  /** Only meaningful for a non-STORE_PART line — same reasoning as
-   * addEstimateLineItem's own unitOfMeasure field. */
+  /** Non-STORE_PART lines only (as in EstimateLineItemInput). */
   unitOfMeasure?: string;
 };
 
-/** Edits an existing line — description, quantity, and/or price.
- * Allowed while the estimate is DRAFT or SUBMITTED (the supervisor
- * validating a submitted estimate can still correct it, per the
- * workflow this phase implements), locked once APPROVED, matching how
- * a closed Job Card is treated elsewhere in this codebase. */
+/** Edits a line's description, quantity and/or price. Allowed while DRAFT or
+ * SUBMITTED (the supervisor may correct a submitted estimate); locked once
+ * approved. */
 export async function updateEstimateLineItem(lineItemId: string, input: EstimateLineItemUpdateInput): Promise<void> {
   const description = input.description.trim();
   if (!description) {
@@ -2374,7 +2033,7 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
     throw new WorkshopActionError('Estimate line item not found.');
   }
   // Once the supervisor has approved it, the Manager decides on exactly what
-  // the supervisor saw — no edits in between (the same rule as Vehicle Service).
+  // the supervisor saw; no edits in between (same rule as Vehicle Service).
   if (lineItem.estimate.status === 'MANAGER_APPROVED' || lineItem.estimate.status === 'APPROVED') {
     throw new WorkshopActionError(lineItem.estimate.status === 'APPROVED'
       ? 'This estimate has been approved by the supervisor and is waiting for the Manager — it can no longer be edited. Ask the Manager to send it back if it needs changing.'
@@ -2383,7 +2042,7 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
   const editor = await requireEstimateContributor(lineItem.estimate.jobCard);
   if (input.unitPrice !== undefined) {
     if (lineItem.type === 'STORE_PART') {
-      throw new WorkshopActionError('A Store Part line is priced by Store matching it to a real catalog Part, not typed in directly.');
+      throw new WorkshopActionError('A Store Part line is priced when Store matches it to a catalogue part, not typed in.');
     }
     await requirePricingAuthority(lineItem.type, lineItem.estimate.jobCard, editor.id);
   }
@@ -2391,13 +2050,8 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
     throw new WorkshopActionError('A Store Part line\'s unit is set automatically once Store matches it, not entered directly.');
   }
 
-  // A matched Store Part line is a live link to Store's real catalog,
-  // not a one-time snapshot frozen the moment it was matched — while
-  // the estimate is still open for editing at all, its price always
-  // tracks the Part's own current selling price. Changing the
-  // quantity here recomputes against that current price; it never
-  // requires going back through Store to re-match just to adjust how
-  // many are needed.
+  // While the estimate is open, a matched Store Part line follows the part's
+  // current selling price; changing the quantity reprices without re-matching.
   let unitPrice = input.unitPrice;
   let amount: number | null = input.unitPrice !== undefined ? Math.round(input.quantity * input.unitPrice * 100) / 100 : null;
   if (lineItem.type === 'STORE_PART' && lineItem.matchedPartId) {
@@ -2429,9 +2083,7 @@ export async function updateEstimateLineItem(lineItemId: string, input: Estimate
 }
 
 /** Whoever entered a line, the assigned supervisor, or a Master
- * Administrator may remove it — a technician can correct their own
- * mistake, but can't erase someone else's entry without the
- * supervisor's or an admin's oversight. Locked once APPROVED. */
+ * Administrator may remove it. Locked once approved. */
 export async function deleteEstimateLineItem(lineItemId: string): Promise<void> {
   const lineItem = await prisma.estimateLineItem.findUnique({
     where: { id: lineItemId },
@@ -2452,7 +2104,7 @@ export async function deleteEstimateLineItem(lineItemId: string): Promise<void> 
     throw new WorkshopActionError('Estimate line item not found.');
   }
   // Once the supervisor has approved it, the Manager decides on exactly what
-  // the supervisor saw — no edits in between (the same rule as Vehicle Service).
+  // the supervisor saw; no edits in between (same rule as Vehicle Service).
   if (lineItem.estimate.status === 'MANAGER_APPROVED' || lineItem.estimate.status === 'APPROVED') {
     throw new WorkshopActionError(lineItem.estimate.status === 'APPROVED'
       ? 'This estimate has been approved by the supervisor and is waiting for the Manager — it can no longer be edited. Ask the Manager to send it back if it needs changing.'
@@ -2477,19 +2129,9 @@ export async function deleteEstimateLineItem(lineItemId: string): Promise<void> 
   });
 }
 
-/** Technician (or supervisor/admin) marks the estimate done and sends
- * it to the supervisor to validate — this is the one place pricing
- * actually becomes required: every line must have a unit price before
- * this transition is allowed. Draft-stage blanks are fine right up
- * until this point, never before it. */
-/** Shared by notifySupervisorAboutEstimate/notifyTechnicianAboutEstimate
- * below — a lightweight, repeatable "please take a look" nudge while
- * the estimate is still being built, genuinely distinct from
- * submitEstimateForValidation()'s one-time, formal, all-prices-required
- * hand-off. This never changes the estimate's status at all — it's
- * just informal communication, which is exactly why it doesn't reuse
- * that function. Records an audit entry either way (even if the email
- * fails) so the back-and-forth itself stays visible in the trail. */
+/** An informal "please take a look" email while the estimate is being
+ * built. Unlike submitEstimateForValidation() it never changes status.
+ * Audited even if the email fails. */
 async function sendEstimateNudge(params: {
   jobCardId: string;
   fromRole: 'supervisor' | 'technician';
@@ -2524,10 +2166,10 @@ async function sendEstimateNudge(params: {
     ]);
     if (!toUser) return;
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       toUser.email,
-      `A note on the estimate for Job Card ${jobCard.jobNumber}`,
+      `Please look at the estimate — Job Card ${jobCard.jobNumber}`,
       renderEstimateNudgeEmail({
         recipientName: toUser.fullName,
         fromName: fromUser?.fullName ?? 'A team member',
@@ -2536,21 +2178,18 @@ async function sendEstimateNudge(params: {
         customerName: jobCard.customer.fullName,
         note: params.note,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${params.jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send estimate nudge email', params.jobCardId, err);
   }
 }
 
-/** The assigned technician nudges the supervisor to check the
- * estimate — the informal counterpart to a formal submission, usable
- * any time while still building it up together. */
+/** The technician nudges the supervisor to check the estimate. */
 export async function notifySupervisorAboutEstimate(jobCardId: string, note?: string): Promise<void> {
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
@@ -2576,8 +2215,7 @@ export async function notifySupervisorAboutEstimate(jobCardId: string, note?: st
   });
 }
 
-/** The supervisor nudges the assigned technician to review or price
- * the estimate. */
+/** The supervisor nudges the technician to review or price the estimate. */
 export async function notifyTechnicianAboutEstimate(jobCardId: string, note?: string): Promise<void> {
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
@@ -2599,6 +2237,8 @@ export async function notifyTechnicianAboutEstimate(jobCardId: string, note?: st
   });
 }
 
+/** Sends the estimate to the supervisor for validation. Every line must be
+ * priced from this point. */
 export async function submitEstimateForValidation(jobCardId: string): Promise<void> {
   const estimate = await prisma.estimate.findUnique({
     where: { jobCardId },
@@ -2630,9 +2270,9 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
   // Who may submit is checked before anything is written.
   const user = await requireEstimateContributor(estimate.jobCard);
 
-  // Read, reprice, check and submit as ONE step with the estimate locked: a
-  // line added (or changed) at the same moment either lands before — and is
-  // checked here — or is refused because the estimate is no longer a draft.
+  // Read, reprice, check and submit as one step with the estimate locked: a
+  // line added or changed at the same moment either lands before (and is
+  // checked here) or is refused because the estimate is no longer a draft.
   await withEstimateUnchanged(estimate.id, 'DRAFT', async (tx) => {
     const lines = await tx.estimateLineItem.findMany({
       where: { estimateId: estimate.id },
@@ -2641,10 +2281,8 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
     if (lines.length === 0) {
       throw new WorkshopActionError('Add at least one line item before submitting the estimate.');
     }
-    // The real transition from "live" to "locked" — a matched Store Part
-    // line's price has tracked Store's current selling price the whole time
-    // it's been Draft; this is the one moment that number is written down as
-    // the estimate's own permanent record.
+    // A matched Store Part line has tracked the current selling price while
+    // in draft; submission fixes that price on the estimate.
     for (const li of lines as (typeof lines)[number][]) {
       if (li.type === 'STORE_PART' && li.matchedPartId && li.matchedPart?.sellingPrice !== null && li.matchedPart?.sellingPrice !== undefined) {
         const liveUnitPrice = Number(li.matchedPart.sellingPrice);
@@ -2675,13 +2313,12 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
     entityId: jobCardId,
   });
 
-  // Notify the supervisor — fail-soft, matching every other
-  // notification in this file.
+  // Notify the supervisor (fail-soft).
   try {
     if (!estimate.jobCard.supervisor) return;
     // Independent lookups for the email — run together.
     const [submitter, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(estimate.jobCard.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const total = customerTotal(estimate.lineItems);
     await sendEmail(
       estimate.jobCard.supervisor.email,
@@ -2693,39 +2330,28 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
         submittedByName: submitter?.fullName ?? 'A team member',
         totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send estimate-submitted email to supervisor', jobCardId, err);
   }
 }
 
-/** The assigned supervisor (or a Master Admin) signs off on a
- * submitted estimate. This phase's terminal state — routing to a
- * Manager tier above this is a later phase, not modeled yet. */
-/** A Manager oversees a whole branch — both Passenger and Commercial
- * Workshop departments — unlike a Supervisor, who's scoped to one
- * department. Eligibility is therefore checked by branch, reusing the
- * existing seeded "Workshop Manager" role (confirmed already present
- * in seed.ts, not a role invented for this phase) rather than the
- * department-scoped pattern used for supervisors. Same Master Admin
- * fallback as everywhere else this project checks eligibility — see
- * listEligibleSupervisorsForVehicleType's own comment for why that
- * exists (no admin UI yet to place anyone into a role). */
+/** Workshop Managers for the branch (a Manager covers both Passenger and
+ * Commercial departments, so eligibility is by branch). Falls back to
+ * Master Admins like the supervisor list. */
 async function listEligibleManagersForBranchUncached(branchId: string): Promise<EligibleSupervisorResult> {
   await requireUser();
   return managersForBranchShared(branchId);
 }
 
-/** Branch managers rarely change, so the list is shared across requests for
- * up to 60 seconds (a newly appointed manager appears within a minute).
- * Only ids, names and emails — nothing private beyond what every staff
- * member already sees on the approval screens. */
+/** Branch managers rarely change, so the list is cached across requests for
+ * up to 60 seconds. Only ids, names and emails, which staff already see on
+ * the approval screens. */
 const managersForBranchShared = unstable_cache(async (branchId: string): Promise<EligibleSupervisorResult> => {
   const branchManagers = await prisma.user.findMany({
     where: {
@@ -2747,23 +2373,23 @@ const managersForBranchShared = unstable_cache(async (branchId: string): Promise
   return { supervisors: masterAdmins, usingFallback: true };
 }, ['branch-managers-v1'], { revalidate: 60, tags: ['org-structure'] });
 
-/** Any eligible manager for the branch, or a Master Admin, may perform
- * the manager-approval step — there's no single "assigned manager" on
- * a Job Card the way there is a supervisor or technician, since a
- * Manager's oversight spans the whole branch; whichever eligible
- * manager acts first completes the review. */
+/** There is no single assigned manager: any eligible manager for the branch
+ * (or a Master Admin) may act, and the first to act completes the step. */
 type ManagerPermission = 'workshop.close.approve' | 'workshop.estimate.final_approve' | 'store.prs.approve_hod' | 'procurement.epr.approve';
 
 export async function requireEligibleManager(branchId: string, key: ManagerPermission = 'workshop.close.approve'): Promise<{ id: string }> {
   const user = await requireUser();
-  // The Authorization Catalogue (Workshop Manager by default, plus any grant
-  // added on the Roles page; Master Admin always), checked against the
-  // branch that owns the record — each caller names the step's permission.
+  // Authorization Catalogue (Workshop Manager by default, plus Roles-page
+  // grants; Master Admin always), checked against the record's branch.
   await authorize(key, { branchId, homeBranch: true }, `manager:${key}`, 'Only a Workshop Manager for this branch can approve this.');
   return user;
 }
 
+/** The assigned supervisor (or a Master Admin) approves a submitted
+ * estimate; it then goes to the branch's Managers. */
 export async function approveEstimate(jobCardId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveEstimate');
   const estimate = await prisma.estimate.findUnique({
     where: { jobCardId },
     select: {
@@ -2787,11 +2413,8 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
   if (estimate.status !== 'SUBMITTED') {
     throw new WorkshopActionError('This estimate has not been submitted for validation yet.');
   }
-  // Every Store Part line must have been matched to a real, priced
-  // catalog Part by Store before the Supervisor can give final sign-
-  // off — the whole reason for this gate: nothing should reach HOD,
-  // and nothing should reach the customer, with a store-sourced line
-  // still priced on nothing more than a technician's guess.
+  // Every Store Part line must be matched (and so priced by Store) before
+  // supervisor sign-off.
   const unmatchedStoreParts = estimate.lineItems.filter(
     (li: (typeof estimate.lineItems)[number]) => li.type === 'STORE_PART' && !li.matchedPartId,
   );
@@ -2815,23 +2438,20 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
     entityId: jobCardId,
   });
 
-  // Notify every eligible manager for the branch — fail-soft, matching
-  // every other notification in this file. Sent once the approval and
-  // audit log are already committed, so a failed send here never
-  // undoes the real, already-successful approval.
+  // Notify the branch managers after the approval is committed (fail-soft).
   try {
     const managers = await listEligibleManagersForBranch(estimate.jobCard.branchId);
     if (managers.supervisors.length === 0) return;
     const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
     const lineItems = await prisma.estimateLineItem.findMany({ where: { estimateId: estimate.id }, select: { amount: true, billTo: true } });
     const total = customerTotal(lineItems);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const companyName = estimate.jobCard.branch.businessUnit.organisation.name;
     const branchName = estimate.jobCard.branch.name;
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
-        `Estimate for Job Card ${estimate.jobCard.jobNumber} ready for your review`,
+        `Estimate for Job Card ${estimate.jobCard.jobNumber} needs your approval`,
         renderEstimateReadyForManagerEmail({
           managerName: manager.fullName,
           jobNumber: estimate.jobCard.jobNumber,
@@ -2839,29 +2459,23 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
           approvedByName: approver?.fullName ?? 'The supervisor',
           totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName,
           branchName,
         }),
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send estimate-ready-for-manager email', jobCardId, err);
   }
 }
 
-/** The Workshop Manager's own sign-off — this phase's actual terminal
- * state. The customer is notified the moment this happens, with the
- * unified, type-hidden view (see customer-estimate-approved.ts's own
- * comment for why the internal Store Part/External/Labour/Sundry
- * breakdown must never reach this specific email). Simplified from the
- * fuller "Manager reviews, sends to an Admin block, which then notifies
- * the customer" chain described — a distinct third role beyond Manager
- * and Master Admin wasn't clearly specified, so this step notifies the
- * customer directly rather than guess at what a separate Admin role
- * would add. */
+/** The Workshop Manager's sign-off. The Job Card's creator is then told the
+ * estimate is ready; sending it to the customer is a separate, explicit
+ * step (notifyCustomerOfApprovedEstimate). */
 export async function approveEstimateAsManager(jobCardId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveEstimateAsManager');
   const estimate = await prisma.estimate.findUnique({
     where: { jobCardId },
     select: {
@@ -2887,8 +2501,8 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
   }
   const user = await requireEligibleManager(estimate.jobCard.branchId, 'workshop.estimate.final_approve');
   await authorize('workshop.estimate.final_approve', { branchId: estimate.jobCard.branchId }, 'approveEstimateAsManager');
-  // Segregation of duties: the Manager's final approval is a second pair of
-  // eyes — never the same person who approved it as supervisor.
+  // Segregation of duties: the Manager's approval must come from someone other
+  // than the supervisor who approved it.
   if (estimate.approvedById === user.id && !(await currentUserIsMasterAdmin())) {
     throw new WorkshopActionError('You approved this estimate as its supervisor — another Manager gives the final approval.');
   }
@@ -2905,20 +2519,16 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
     entityId: jobCardId,
   });
 
-  // Notify whoever created the Job Card — the Manager approving is
-  // not the same as anyone deciding the customer should be told. That
-  // decision belongs to this person specifically; see
-  // notifyCustomerOfApprovedEstimate below for the actual customer
-  // hand-off, which this person triggers explicitly, not automatically.
-  // Fail-soft, matching every other notification in this file.
+  // Tell the Job Card's creator; they decide when the customer is notified
+  // (notifyCustomerOfApprovedEstimate). Fail-soft.
   try {
     const manager = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
     const lineItems = await prisma.estimateLineItem.findMany({ where: { estimateId: estimate.id }, select: { amount: true, billTo: true } });
     const total = customerTotal(lineItems);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       estimate.jobCard.createdBy.email,
-      `Estimate for Job Card ${estimate.jobCard.jobNumber} approved by manager`,
+      `Estimate for Job Card ${estimate.jobCard.jobNumber} approved by manager — ready to send`,
       renderEstimateReadyForCustomerNotificationEmail({
         recipientName: estimate.jobCard.createdBy.fullName,
         jobNumber: estimate.jobCard.jobNumber,
@@ -2926,29 +2536,24 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
         approvedByManagerName: manager?.fullName ?? 'The manager',
         totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: estimate.jobCard.branch.businessUnit.organisation.name,
         branchName: estimate.jobCard.branch.name,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send estimate-ready-for-customer-notification email', jobCardId, err);
   }
 }
 
-/** The explicit hand-off to the customer — only the Job Card's own
- * creator, or a Master Admin, may trigger this, and only once the
- * Manager has approved. Deliberately not automatic: the Manager
- * approving means the numbers are right, not that anyone has decided
- * the customer should be told yet. That's this person's call. */
 /**
- * The Manager sends a supervisor-approved estimate back for changes (with a
- * reason): it returns to SUBMITTED, so the supervisor and technician can edit
- * it and the supervisor approves again — the Manager always decides on exactly
- * what the supervisor approved last.
+ * The Manager sends a supervisor-approved estimate back with a reason. It
+ * returns to SUBMITTED for edits and needs supervisor approval again, so the
+ * Manager always decides on what the supervisor last approved.
  */
 export async function returnEstimateForChanges(jobCardId: string, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('returnEstimateForChanges');
   const why = reason.trim().slice(0, 500);
   if (why.length < 3) throw new WorkshopActionError('Say what needs to change.');
   const estimate = await prisma.estimate.findUnique({ where: { jobCardId }, select: { id: true, status: true, jobCard: { select: { branchId: true, jobNumber: true, supervisorId: true, assignedTechnicianId: true } } } });
@@ -2963,6 +2568,9 @@ export async function returnEstimateForChanges(jobCardId: string, reason: string
   await writeAuditLog({ userId: user.id, action: 'estimate.returned_for_changes', entityType: 'JobCard', entityId: jobCardId, metadata: { reason: why } });
 }
 
+/** Sends the Manager-approved estimate to the customer. Only the Job Card's
+ * creator or a Master Admin, and only after Manager approval. Not automatic:
+ * approval means the numbers are right, not that the customer should be told yet. */
 export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promise<void> {
   const estimate = await prisma.estimate.findUnique({
     where: { jobCardId },
@@ -2999,14 +2607,13 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
 
   await prisma.$transaction(async (tx) => {
     // Exactly once: a second click (or a second person) finds it already
-    // notified and stops — the customer never gets the estimate twice.
+    // notified and stops, so the customer never gets the estimate twice.
     claimed(await tx.estimate.updateMany({
       where: { id: estimate.id, status: 'MANAGER_APPROVED', customerNotifiedAt: null },
       data: { customerNotifiedAt: new Date(), customerNotifiedById: user.id },
     }), 'The customer was just notified about this estimate by someone else — refresh the page.');
-    // The workshop's own process is done the moment the customer is
-    // told — this transition happens right here, not as a separate
-    // manual step. Never on a Job Card cancelled or finished meanwhile.
+    // Notifying the customer moves the Job Card to awaiting approval, unless it
+    // was cancelled or finished meanwhile.
     claimed(await tx.jobCard.updateMany({
       where: { id: jobCardId, status: { notIn: [JobCardStatus.CANCELLED, JobCardStatus.CLOSED, JobCardStatus.CHECKED_OUT] } },
       data: { status: JobCardStatus.AWAITING_CUSTOMER_APPROVAL },
@@ -3021,16 +2628,14 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
   });
 
   try {
-    // Combined "Parts & Services" figure — every kind of parts/work
-    // sourced or performed, merged into one — versus Labour and
-    // Sundry kept separate, exactly the three-way split the customer
-    // should see. Never STORE_PART/EXTERNAL_PART/etc individually.
+    // The customer sees three figures: Parts & Services (all parts and work
+    // types combined), Labour and Sundry. Never the internal line types.
     const servicesTypes = new Set(['STORE_PART', 'EXTERNAL_PART', 'EXTERNAL_JOB', 'INTERNAL_JOB']);
     let servicesTotal = 0;
     let labourTotal = 0;
     let sundryTotal = 0;
     for (const li of estimate.lineItems as { type: string; amount: unknown; billTo?: string | null }[]) {
-      // Covered lines (warranty / goodwill / internal) are never charged.
+      // Covered lines (warranty, goodwill, internal) are never charged.
       if (!isCustomerLine(li)) continue;
       const amount = Number(li.amount ?? 0);
       if (li.type === 'LABOUR') labourTotal += amount;
@@ -3040,31 +2645,26 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
     const total = servicesTotal + labourTotal + sundryTotal;
     const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
     const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    // The PDF's own default font (Helvetica, a standard built-in PDF
-    // font) has no glyph for ₦ — confirmed directly, it rendered as a
-    // broken character. Registering an external font just to fix one
-    // symbol would mean every single estimate email now depends on a
-    // font server being reachable at send time — a real, needless
-    // production risk for one character. "NGN" is what the PDF uses
-    // instead — a standard, genuinely professional currency code on
-    // real financial documents, not a downgrade.
+    // Helvetica (the PDF default) has no ₦ glyph, and embedding a font would make
+    // every send depend on fetching it, so the PDF uses "NGN".
     const formatNairaForPdf = (value: number) => `NGN ${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     const vehicleDescription = [estimate.jobCard.vehicle.make, estimate.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     const paymentRemarkSuggestion = [estimate.jobCard.jobNumber, vehicleDescription, estimate.jobCard.vehicle.plateNumber]
       .filter(Boolean)
-      .join(' — ');
+      .join(' ');
 
     const rawLineItems = estimate.lineItems as { description: string; quantity: number; unitOfMeasure: string | null; amount: unknown; billTo?: string | null; coveringWarranty?: { warrantyNumber: string } | null }[];
 
     await sendEmail(
       estimate.jobCard.customer.email,
-      `Your estimate for Job Card ${estimate.jobCard.jobNumber} has been approved`,
+      `Estimate ready for ${estimate.jobCard.jobNumber} — ${[vehicleDescription, estimate.jobCard.vehicle.plateNumber ? `(${estimate.jobCard.vehicle.plateNumber})` : ''].filter(Boolean).join(' ')}`,
       renderCustomerEstimateApprovedEmail({
         customerName: estimate.jobCard.customer.fullName,
         jobNumber: estimate.jobCard.jobNumber,
         vehicleDescription,
+        plateNumber: estimate.jobCard.vehicle.plateNumber,
         lineItems: rawLineItems.map((li) => ({
           description: li.description,
           quantity: li.quantity,
@@ -3076,22 +2676,20 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
         sundrySubtotal: sundryTotal > 0 ? formatNaira(sundryTotal) : undefined,
         totalAmount: formatNaira(total),
         minimumDepositAmount: formatNaira(minimumDeposit),
+        depositPercent: Math.round(MINIMUM_DEPOSIT_FRACTION * 100),
         ...(await bankDetailsFor(estimate.jobCard.branch.id)),
         paymentRemarkSuggestion,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: estimate.jobCard.branch.businessUnit.organisation.name,
         branchName: estimate.jobCard.branch.name,
       }),
       await (async () => {
-        // The real, styled PDF attachment — a genuine document, not
-        // just the HTML email body. Reuses the exact same real
-        // Organisation record the print system's own letterhead
-        // already pulls from, so the two never drift apart.
+        // PDF attachment, using the same Organisation record as the print letterhead.
         try {
           const organisation = await getOrganisation();
           if (!organisation) return undefined;
-          const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+          const portalUrl = portalBaseUrl();
           const pdfBuffer = await renderToBuffer(
             EstimatePdf({
               organisation: {
@@ -3134,40 +2732,28 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
           );
           return [{ filename: `Estimate-${estimate.jobCard.jobNumber}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }];
         } catch (pdfErr) {
-          // A failed PDF must never block the email itself — the
-          // customer still needs the approval notice either way.
-          // eslint-disable-next-line no-console
+          // A failed PDF never blocks the email.
           logFailure('Failed to generate estimate PDF attachment', jobCardId, pdfErr);
           return undefined;
         }
       })(),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send customer estimate-approved email', jobCardId, err);
   }
 }
 
 
 // ---------------------------------------------------------------------------
-// PAYMENTS — recorded by Finance after seeing proof of a bank transfer or
-// receiving cash at the cashier. A real, minimal audit record (who, how
-// much, by what method) rather than a bare "paid" flag. Deliberately
-// separate from the approval decision below: recording can happen more
-// than once (deposit, then balance), approval is the one deliberate act
-// that actually unblocks the workshop's own work.
-//
-// The customer uploading their own proof directly, and a real payment
-// gateway, are both later phases — this is the foundation they'd build
-// on, not a substitute for them.
+// PAYMENTS: recorded by Finance from proof of a bank transfer or cash at the
+// cashier (who, how much, which method). A Job Card can take several
+// payments (deposit, then balance).
 // ---------------------------------------------------------------------------
 
 export type PaymentMethod = 'BANK_TRANSFER' | 'CASH';
 
-/** A Finance Officer for the branch, or a Master Admin, may record or
- * approve payments — same branch-scoped eligibility pattern already
- * used for Workshop Managers (Finance, like Manager, oversees the
- * whole branch, not one department), same Master Admin fallback. */
+/** Finance Officers for the branch (with the Master Admin fallback), who may
+ * record payments. Branch-scoped like Workshop Managers. */
 export async function listEligibleFinanceOfficersForBranch(branchId: string): Promise<EligibleSupervisorResult> {
   await requireUser();
   // Never another organisation's staff list (names and emails).
@@ -3208,35 +2794,16 @@ export async function getJobCardPayments(jobCardId: string) {
   });
 }
 
-/** Records one payment toward a Job Card — only meaningful once the
- * customer has actually been asked to pay. */
-/** Records one payment toward a Job Card — `amount` is always exactly
- * what's recorded, full stop. Any dropdown of suggestions in the UI
- * (70%, full, remaining balance) is purely a convenience that fills
- * this field in before the form is submitted; it is never a separate
- * value the server trusts on its own. This function has no concept of
- * "preset" at all — it only ever sees the final number, which is the
- * actual, correct fix for a real reported bug where a stale dropdown
- * selection silently overrode a manually-typed amount.
+/** Records one payment toward a Job Card.
  *
- * Rejects any amount that would push the cumulative total past the
- * estimate — recording ₦12,000.01 against a ₦12,000 estimate, or
- * ₦3,700 against a ₦3,600 remaining balance, is refused with a clear
- * message rather than silently accepted.
+ * `amount` is exactly what is recorded; the UI's suggestions (70%, full,
+ * remaining balance) only prefill the field. Amounts that would take the
+ * total past the estimate are refused. There is no per-payment minimum:
+ * what matters is the cumulative total.
  *
- * No per-payment minimum otherwise — payments genuinely accumulate
- * over multiple entries (a deposit, then a balance later, in
- * whatever increments the customer actually pays in), and it's the
- * *cumulative* total that matters.
- *
- * Approval is fully automatic: the moment the cumulative total first
- * reaches the 70% minimum deposit, this same call moves the Job Card
- * to IN_PROGRESS and sends the "requirement met" broadcast — there is
- * no separate manual approval step for Finance to remember to click.
- * A customer who pays in several small installments (₦1,000, then
- * ₦2,000, then ₦3,000, and so on) is still recorded correctly every
- * time; approval fires automatically the moment the running total
- * first clears 70%, whichever specific payment that happens to be. */
+ * When the total first reaches the minimum deposit (70%), this call moves
+ * the Job Card to IN_PROGRESS and sends the "requirement met" emails; there
+ * is no separate approval step. */
 export async function recordPayment(
   jobCardId: string,
   amount: number,
@@ -3244,8 +2811,8 @@ export async function recordPayment(
   notes?: string,
   idempotencyKey?: string,
 ): Promise<void> {
-  // Central catalogue first (who may attempt this); branch eligibility and the
-  // workflow state are still checked below, exactly as before.
+  // Catalogue check first (who may attempt this); branch eligibility and
+  // workflow state are checked below.
   await authorize('workshop.payment.record', undefined, 'recordPayment');
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new WorkshopActionError('Enter a valid payment amount.');
@@ -3269,13 +2836,11 @@ export async function recordPayment(
   if (!jobCard) {
     throw new WorkshopActionError('Job Card not found.');
   }
-  // Payments continue to accumulate right up to the full amount — well
-  // after the 70% deposit has moved the Job Card to IN_PROGRESS. The
-  // balance is commonly settled while parts are awaited, after quality
-  // check, or at collection; close and check-out both require full
-  // payment, so refusing it at those stages would deadlock the Job Card.
-  // Overpayment is still refused below, and the automatic move to
-  // IN_PROGRESS only ever fires from AWAITING_CUSTOMER_APPROVAL.
+  // Payments are accepted up to the full amount after the deposit has moved
+  // the Job Card to IN_PROGRESS: the balance is often settled while parts are
+  // awaited, after quality check, or at collection, and close/checkout require
+  // full payment. Overpayment is still refused, and the automatic move to
+  // IN_PROGRESS only happens from AWAITING_CUSTOMER_APPROVAL.
   const PAYABLE_STATUSES: JobCardStatus[] = [
     JobCardStatus.AWAITING_CUSTOMER_APPROVAL,
     JobCardStatus.IN_PROGRESS,
@@ -3288,9 +2853,9 @@ export async function recordPayment(
     throw new WorkshopActionError('Payments can be recorded from the moment the customer is notified until the vehicle is ready for collection.');
   }
   const user = await requireEligibleFinanceOfficer(jobCard.branchId, 'workshop.payment.record');
-  // Same form submitted again (e.g. after a dropped connection): already done — nothing to record.
-  // Same form submitted again (e.g. after a dropped connection): if it is the SAME
-  // payment, it is already done; if the id was reused for anything different, refuse.
+  // Same form submitted again (e.g. after a dropped connection): if it is the
+  // same payment, it is already done; if the key was reused for something
+  // different, refuse.
   if (idempotencyKey) {
     const done = await prisma.payment.findUnique({ where: { idempotencyKey }, select: { jobCardId: true, amount: true, method: true } });
     if (done) {
@@ -3298,8 +2863,8 @@ export async function recordPayment(
       throw new WorkshopActionError('This form was already used for a different payment — refresh the page and enter it again.');
     }
   }
-  // Duplicate guard: the same amount, method and record by the same person
-  // within 20 seconds is a double click or a resend after a dropped network.
+  // Duplicate guard: same amount, method and recorder within 20 seconds is a
+  // double click or a resend after a dropped connection.
   if (await prisma.payment.findFirst({ where: { jobCardId, amount, method, recordedById: user.id, recordedAt: { gte: new Date(Date.now() - 20000) } }, select: { id: true } })) {
     throw new WorkshopActionError('This payment was just recorded — check the payments list before recording it again.');
   }
@@ -3323,14 +2888,13 @@ export async function recordPayment(
     );
   }
 
-  // Two cashiers at once: the checks above are only a fast answer. The real
-  // decision is made again below with the Job Card row locked, against the
-  // payments as they are at that instant — so two payments can never both
-  // fit into the same remaining balance.
+  // Two cashiers at once: the checks above are only a fast answer. The
+  // decision is made again here with the Job Card row locked, against the
+  // payments as they are now, so two payments can never both fit into the
+  // same remaining balance.
   const settled = await prisma.$transaction(async (tx) => {
     await lockExisting(tx, 'jobCard', [jobCardId], 'This Job Card no longer exists — refresh the page.');
-    // The same form, resent while the first was still being saved: it is
-    // recorded now — nothing more to do.
+    // The same form, resent while the first was still saving: already recorded.
     if (idempotencyKey && (await tx.payment.findUnique({ where: { idempotencyKey }, select: { id: true } }))) return null;
     const now = await tx.jobCard.findUnique({
       where: { id: jobCardId },
@@ -3367,9 +2931,8 @@ export async function recordPayment(
         where: { id: jobCardId, status: JobCardStatus.AWAITING_CUSTOMER_APPROVAL },
         data: {
           status: JobCardStatus.IN_PROGRESS,
-          // Only set once, the first real time work genuinely starts — the
-          // payment-crossing-the-deposit path is the most common way a Job
-          // Card reaches IN_PROGRESS, so it must start the "In Service" clock.
+          // Set once. Crossing the deposit is the usual way a Job Card reaches
+          // IN_PROGRESS, so it starts the "In Service" clock.
           workStartedAt: now.workStartedAt ?? new Date(),
         },
       }));
@@ -3404,14 +2967,11 @@ export async function recordPayment(
     });
   }
 
-  // "Recorded" — Finance and Manager only, every time, no threshold
-  // language at all. The technician, supervisor, and Job Card creator
-  // have no financial role and don't need every individual amount;
-  // what actually concerns them is the milestone below, not the raw
-  // recording event.
+  // "Payment recorded" goes to Finance and the Manager only. Other parties
+  // only hear about the milestones below.
   try {
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const balance = roundedTotal - newTotal;
 
     const recipientIds = new Set<string>();
@@ -3438,7 +2998,7 @@ export async function recordPayment(
           totalEstimate: formatNaira(roundedTotal),
           balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
           jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -3446,20 +3006,16 @@ export async function recordPayment(
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send payment-recorded update emails', jobCardId, err);
   }
 
-  // The milestone broadcasts — every real party on the Job Card
-  // (creator, supervisor, technician, every eligible Manager, every
-  // eligible Finance Officer), but only ever ONE of these two, and
-  // only on the specific payment that actually crosses the line. If a
-  // single payment crosses both thresholds at once (paid in full in
-  // one go), only the more complete "paid in full" fact is sent.
+  // Milestone emails to every party on the Job Card, sent only by the
+  // payment that crosses the line. If one payment crosses both thresholds,
+  // only "paid in full" is sent.
   if (justMetDeposit || justCompletedFull) {
     try {
       const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const portalUrl = portalBaseUrl();
 
       const recipientIds = new Set<string>();
       if (jobCard.createdById) recipientIds.add(jobCard.createdById);
@@ -3486,7 +3042,7 @@ export async function recordPayment(
               customerName: jobCard.customer.fullName,
               totalPaid: formatNaira(newTotal),
               jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-              logoUrl: `${portalUrl}/images/logo/logo.png`,
+              logoUrl: `${portalUrl}/images/logo/email-logo.png`,
               companyName: orgContext.companyName,
               branchName: orgContext.branchName,
               departmentName: orgContext.departmentName,
@@ -3495,7 +3051,7 @@ export async function recordPayment(
         } else {
           await sendEmail(
             recipient.email,
-            `Deposit requirement met on Job Card ${jobCard.jobNumber}`,
+            `Deposit paid, work can start — Job Card ${jobCard.jobNumber}`,
             renderPaymentRequirementMetEmail({
               recipientName: recipient.fullName,
               jobNumber: jobCard.jobNumber,
@@ -3503,7 +3059,7 @@ export async function recordPayment(
               totalPaidSoFar: formatNaira(newTotal),
               totalEstimate: formatNaira(roundedTotal),
               jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-              logoUrl: `${portalUrl}/images/logo/logo.png`,
+              logoUrl: `${portalUrl}/images/logo/email-logo.png`,
               companyName: orgContext.companyName,
               branchName: orgContext.branchName,
               departmentName: orgContext.departmentName,
@@ -3512,14 +3068,13 @@ export async function recordPayment(
         }
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
       logFailure('Failed to send payment milestone emails', jobCardId, err);
     }
   }
 
   try {
     const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     const balance = roundedTotal - newTotal;
     await sendEmail(
       jobCard.customer.email,
@@ -3532,26 +3087,21 @@ export async function recordPayment(
         totalEstimate: formatNaira(roundedTotal),
         balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send customer payment-received email', jobCardId, err);
   }
 }
 
 // ---------------------------------------------------------------------------
-// CANCELLATION — a two-step request/decision workflow, same shape as every
-// other approval gate in this file: an employee (the creator, the assigned
-// supervisor, or a Master Admin) logs a cancellation request with a reason
-// — covering a request that arrived by phone, email, in person, or through
-// the customer's own dashboard — and a Workshop Manager approves or
-// declines it. JobCard.status is never touched until an actual approval
-// happens; a declined request needs nothing "reverted" because nothing
-// was ever changed in the first place.
+// CANCELLATION: the creator, the assigned supervisor or a Master Admin
+// raises a request with a reason (however the customer asked), and a
+// Workshop Manager approves or declines it. JobCard.status only changes on
+// approval, so a decline has nothing to revert.
 // ---------------------------------------------------------------------------
 
 async function requireJobCardCreatorOrSupervisor(jobCard: {
@@ -3583,8 +3133,7 @@ export async function getCancellationRequests(jobCardId: string) {
   });
 }
 
-/** Logs the request and notifies every eligible Manager for the
- * branch — the Job Card's own status is deliberately untouched here. */
+/** Logs the request and notifies the branch's Managers. Status is unchanged. */
 export async function requestJobCardCancellation(jobCardId: string, reason: string): Promise<void> {
   const trimmedReason = reason.trim();
   if (!trimmedReason) {
@@ -3635,14 +3184,14 @@ export async function requestJobCardCancellation(jobCardId: string, reason: stri
   });
 
   try {
-    // Independent lookups for the email — run together.
+    // Independent lookups for the email, run in parallel.
     const [requester, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(jobCard.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const managers = await listEligibleManagersForBranch(jobCard.branchId);
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
-        `Cancellation requested — Job Card ${jobCard.jobNumber}`,
+        `Cancellation request needs your decision — Job Card ${jobCard.jobNumber}`,
         renderCancellationRequestedEmail({
           managerName: manager.fullName,
           jobNumber: jobCard.jobNumber,
@@ -3650,23 +3199,22 @@ export async function requestJobCardCancellation(jobCardId: string, reason: stri
           requestedByName: requester?.fullName ?? 'A team member',
           reason: trimmedReason,
           jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
         }),
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send cancellation-requested emails', jobCardId, err);
   }
 }
 
-/** The Manager's approval — the one moment JobCard.status actually
- * changes to CANCELLED, and the only moment the full broadcast (every
- * real staff party, plus the customer, each their own appropriately-
- * scoped email) goes out. */
+/** The Manager approves: the Job Card becomes CANCELLED and staff and the
+ * customer are emailed. */
 export async function approveCancellationRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveCancellationRequest');
   const request = await prisma.cancellationRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -3695,8 +3243,8 @@ export async function approveCancellationRequest(requestId: string, decisionNote
   if (request.status !== 'PENDING') {
     throw new WorkshopActionError('This cancellation request has already been decided.');
   }
-  // Re-checked at decision time: a Job Card closed or checked out since
-  // the request was raised is finished — it can't be cancelled after.
+  // Re-checked at decision time: a Job Card closed or checked out since the
+  // request was raised can't be cancelled.
   const current = await prisma.jobCard.findUnique({ where: { id: request.jobCardId }, select: { status: true } });
   if (current?.status === JobCardStatus.CLOSED || current?.status === JobCardStatus.CHECKED_OUT) {
     throw new WorkshopActionError('This Job Card has since been closed or checked out, so it can no longer be cancelled — decline this request.');
@@ -3708,13 +3256,12 @@ export async function approveCancellationRequest(requestId: string, decisionNote
   }
 
   // All-or-nothing, and each step only from the state it was decided on: a
-  // close approved at the same moment, or a second click, makes this stop
-  // with nothing changed — a Job Card can never end up both closed and
-  // cancelled.
+  // close approved at the same moment, or a second click, stops this with
+  // nothing changed. A Job Card can never end up both closed and cancelled.
   let withdrawn: Awaited<ReturnType<typeof withdrawOpenSourcing>> | undefined;
   await prisma.$transaction(async (tx) => {
-    // The Job Card first: a close and a cancellation decided at the same
-    // moment queue on it instead of deadlocking on each other's requests.
+    // Lock the Job Card first so a concurrent close and cancellation queue on
+    // it instead of deadlocking on each other's request rows.
     await lockExisting(tx, 'jobCard', [request.jobCardId]);
     claimed(await tx.cancellationRequest.updateMany({
       where: { id: requestId, status: 'PENDING' },
@@ -3729,14 +3276,14 @@ export async function approveCancellationRequest(requestId: string, decisionNote
       where: { id: request.jobCardId, status: { notIn: [JobCardStatus.CANCELLED, JobCardStatus.CLOSED, JobCardStatus.CHECKED_OUT] } },
       data: { status: JobCardStatus.CANCELLED },
     }), 'This Job Card was just closed or checked out, so it can no longer be cancelled — refresh the page.');
-    // A close requested earlier can never happen now — resolve it here
-    // so it doesn't sit pending (and in Managers' notifications) forever.
+    // A pending close request can no longer happen; resolve it so it doesn't
+    // stay in Managers' notifications.
     await tx.closeRequest.updateMany({
       where: { jobCardId: request.jobCardId, status: 'PENDING' },
       data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: 'Superseded — the Job Card was cancelled.' },
     });
-    // Parts requests and outside purchases still in flight for it are withdrawn,
-    // and stock reserved for them goes back on the shelf.
+    // Withdraw parts requests and outside purchases still open for it, and
+    // return reserved stock to the shelf.
     withdrawn = await withdrawOpenSourcing(tx, { jobCardId: request.jobCardId }, user.id, 'Withdrawn automatically — the Job Card was cancelled.');
   });
 
@@ -3749,9 +3296,9 @@ export async function approveCancellationRequest(requestId: string, decisionNote
   });
 
   try {
-    // Independent lookups for the email — run together.
+    // Independent lookups for the email, run in parallel.
     const [approver, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(request.jobCard.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
 
     const recipientIds = new Set<string>();
     if (request.jobCard.createdById) recipientIds.add(request.jobCard.createdById);
@@ -3776,7 +3323,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
           approvedByName: approver?.fullName ?? 'The manager',
           reason: request.reason,
           jobCardUrl: `${portalUrl}/workshop/job-cards/${request.jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -3784,36 +3331,34 @@ export async function approveCancellationRequest(requestId: string, decisionNote
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send staff cancellation-broadcast emails', request.jobCardId, err);
   }
 
   try {
     const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     await sendEmail(
       request.jobCard.customer.email,
-      `Job Card ${request.jobCard.jobNumber} cancelled`,
+      `Your Job Card ${request.jobCard.jobNumber} has been cancelled`,
       renderCustomerJobCardCancelledEmail({
         customerName: request.jobCard.customer.fullName,
         jobNumber: request.jobCard.jobNumber,
         vehicleDescription: [request.jobCard.vehicle.make, request.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${request.jobCardId}`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send customer cancellation email', request.jobCardId, err);
   }
 }
 
-/** The Manager's decline — the Job Card's status is never touched,
- * matching how nothing was ever changed by the request itself. Only
- * the original requester is notified. */
+/** The Manager declines. Status is untouched; only the requester is notified. */
 export async function declineCancellationRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('declineCancellationRequest');
   const request = await prisma.cancellationRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -3864,7 +3409,7 @@ export async function declineCancellationRequest(requestId: string, decisionNote
     ]);
     if (!requester) return;
     const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       requester.email,
       `Cancellation request declined — Job Card ${request.jobCard.jobNumber}`,
@@ -3875,13 +3420,12 @@ export async function declineCancellationRequest(requestId: string, decisionNote
         declinedByName: decliner?.fullName ?? 'The manager',
         decisionNotes,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${request.jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send cancellation-declined email', request.jobCardId, err);
   }
 }
@@ -3899,10 +3443,8 @@ export async function getCloseRequests(jobCardId: string) {
   });
 }
 
-/** Logs the request and notifies every eligible Manager for the
- * branch — the Job Card's own status is deliberately untouched here,
- * the exact same real reasoning as requestJobCardCancellation: a
- * request is not a decision, only a real Manager's approval is. */
+/** Logs a close request and notifies the branch's Managers. Status is
+ * unchanged until a Manager approves. */
 export async function requestJobCardClose(jobCardId: string): Promise<void> {
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
@@ -3924,17 +3466,13 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
   if (jobCard.status === JobCardStatus.CANCELLED || jobCard.status === JobCardStatus.CLOSED || jobCard.status === JobCardStatus.CHECKED_OUT) {
     throw new WorkshopActionError('This Job Card is already cancelled, closed, or checked out.');
   }
-  // Close means the work is genuinely finished and handed over — so
-  // only from Ready for Collection. A Job Card abandoned before that
-  // (no work done, customer declined) is cancelled, not closed.
+  // Close means the work is finished and handed over, so only from Ready for
+  // Collection. A Job Card abandoned earlier is cancelled, not closed.
   if (jobCard.status !== JobCardStatus.READY_FOR_COLLECTION) {
     throw new WorkshopActionError('A close can only be requested once this Job Card is Ready for Collection. To stop a Job Card before then, request a cancellation instead.');
   }
-  // The same real payment-completion rule that already gates
-  // CHECKED_OUT — a Job Card can't genuinely be closed while real
-  // money is still owed on it. Checked here, at the earliest possible
-  // point, rather than only at approval — no point routing a request
-  // to a Manager that could never legitimately be approved anyway.
+  // Same full-payment rule as checkout, checked now so a request that could
+  // never be approved isn't sent to a Manager.
   const totalEstimate = customerTotal(jobCard.estimate?.lineItems ?? []);
   const totalPaid = jobCard.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
   if (totalPaid < totalEstimate) {
@@ -3942,7 +3480,7 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
   }
   const user = await requireJobCardCreatorOrSupervisor(jobCard);
 
-  // Checked and created with the Job Card locked — never two pending closes.
+  // Checked and created with the Job Card locked: never two pending closes.
   await prisma.$transaction(async (tx) => {
     await lockExisting(tx, 'jobCard', [jobCardId]);
     const existingPending = await tx.closeRequest.findFirst({
@@ -3965,41 +3503,38 @@ export async function requestJobCardClose(jobCardId: string): Promise<void> {
   });
 
   try {
-    // Independent lookups for the email — run together.
+    // Independent lookups for the email, run in parallel.
     const [requester, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(jobCard.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const managers = await listEligibleManagersForBranch(jobCard.branchId);
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
-        `Close requested — Job Card ${jobCard.jobNumber}`,
+        `Close request needs your decision — Job Card ${jobCard.jobNumber}`,
         renderCloseRequestedEmail({
           managerName: manager.fullName,
           jobNumber: jobCard.jobNumber,
           customerName: jobCard.customer.fullName,
           requestedByName: requester?.fullName ?? 'A team member',
           jobCardUrl: `${portalUrl}/workshop/job-cards/${jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
         }),
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send close-requested emails', jobCardId, err);
   }
 }
 
-/** The Manager's approval — the one moment JobCard.status actually
- * changes to CLOSED, and the only moment the full broadcast (every
- * real staff party, plus the customer, each their own appropriately-
- * scoped email) goes out. Sets status directly here, not through
- * updateJobCardStatus — that function now refuses CLOSED outright,
- * reachable only via this real approval path. */
+/** The Manager approves: the Job Card becomes CLOSED (set here, since
+ * updateJobCardStatus refuses CLOSED) and staff and the customer are emailed. */
 export async function approveCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
-  // Central catalogue first (who may attempt this); branch eligibility and the
-  // workflow state are still checked below, exactly as before.
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveCloseRequest');
+  // Catalogue check first (who may attempt this); branch eligibility and
+  // workflow state are checked below.
   await authorize('workshop.close.approve', undefined, 'approveCloseRequest');
   const request = await prisma.closeRequest.findUnique({
     where: { id: requestId },
@@ -4029,8 +3564,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
   if (request.status !== 'PENDING') {
     throw new WorkshopActionError('This close request has already been decided.');
   }
-  // Re-checked at decision time — the Job Card may have been sent back
-  // for rework since the request was raised.
+  // Re-checked at decision time: the Job Card may have gone back for rework.
   if (request.jobCard.status !== JobCardStatus.READY_FOR_COLLECTION) {
     throw new WorkshopActionError('This Job Card is no longer Ready for Collection, so it cannot be closed — decline this request.');
   }
@@ -4043,8 +3577,8 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
   // Same all-or-nothing, compare-and-set shape as approving a cancellation.
   let withdrawn: Awaited<ReturnType<typeof withdrawOpenSourcing>> | undefined;
   await prisma.$transaction(async (tx) => {
-    // The Job Card first: a close and a cancellation decided at the same
-    // moment queue on it instead of deadlocking on each other's requests.
+    // Lock the Job Card first so a concurrent close and cancellation queue on
+    // it instead of deadlocking on each other's request rows.
     await lockExisting(tx, 'jobCard', [request.jobCardId]);
     claimed(await tx.closeRequest.updateMany({
       where: { id: requestId, status: 'PENDING' },
@@ -4059,13 +3593,13 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
       where: { id: request.jobCardId, status: JobCardStatus.READY_FOR_COLLECTION },
       data: { status: JobCardStatus.CLOSED, closedAt: new Date() },
     }), 'This Job Card is no longer Ready for Collection (it was just changed) — refresh the page.');
-    // A pending cancellation can never happen now — resolve it.
+    // A pending cancellation can no longer happen; resolve it.
     await tx.cancellationRequest.updateMany({
       where: { jobCardId: request.jobCardId, status: 'PENDING' },
       data: { status: 'DECLINED', decidedById: user.id, decidedAt: new Date(), decisionNotes: 'Superseded — the Job Card was closed.' },
     });
-    // Parts requests and outside purchases still in flight for it are withdrawn,
-    // and stock reserved for them goes back on the shelf.
+    // Withdraw parts requests and outside purchases still open for it, and
+    // return reserved stock to the shelf.
     withdrawn = await withdrawOpenSourcing(tx, { jobCardId: request.jobCardId }, user.id, 'Withdrawn automatically — the Job Card was closed.');
   });
 
@@ -4078,21 +3612,21 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
   });
 
   try {
-    // Independent lookups for the email — run together.
+    // Independent lookups for the email, run in parallel.
     const [approver, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(request.jobCard.department?.name)]);
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const websiteUrl = websiteBaseUrl();
+    const portalUrl = portalBaseUrl();
     const vehicleDescription = [request.jobCard.vehicle.make, request.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
 
     await sendEmail(
       request.jobCard.customer.email,
-      `Job Card ${request.jobCard.jobNumber} has been closed`,
+      `Your Job Card ${request.jobCard.jobNumber} is closed`,
       renderCustomerJobCardClosedEmail({
         customerName: request.jobCard.customer.fullName,
         jobNumber: request.jobCard.jobNumber,
         vehicleDescription,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard`,
-        logoUrl: `${websiteUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
@@ -4120,7 +3654,7 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
           customerName: request.jobCard.customer.fullName,
           closedByName: approver?.fullName ?? 'The manager',
           jobCardUrl: `${portalUrl}/workshop/job-cards/${request.jobCardId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -4128,15 +3662,14 @@ export async function approveCloseRequest(requestId: string, decisionNotes?: str
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send close-approval emails', request.jobCardId, err);
   }
 }
 
-/** The Manager's decline — the Job Card's status is never touched,
- * matching how nothing was ever changed by the request itself. Only
- * the original requester is notified. */
+/** The Manager declines. Status is untouched; only the requester is notified. */
 export async function declineCloseRequest(requestId: string, decisionNotes?: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('declineCloseRequest');
   const request = await prisma.closeRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -4187,7 +3720,7 @@ export async function declineCloseRequest(requestId: string, decisionNotes?: str
     ]);
     if (!requester) return;
     const orgContext = await getWorkshopOrgContext(request.jobCard.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       requester.email,
       `Close request declined — Job Card ${request.jobCard.jobNumber}`,
@@ -4198,22 +3731,20 @@ export async function declineCloseRequest(requestId: string, decisionNotes?: str
         declinedByName: decliner?.fullName ?? 'The manager',
         decisionNotes,
         jobCardUrl: `${portalUrl}/workshop/job-cards/${request.jobCardId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send close-declined email', request.jobCardId, err);
   }
 }
 
 // ---------------------------------------------------------------------------
-// WORKSHOP CUSTODY — vehicles physically present and not yet checked out
-// (every Job Card not CLOSED), categorized for the "Vehicles In Custody"
-// dashboard, plus the approval-deadline and cancellation-collection-grace
-// engine described above each function.
+// WORKSHOP CUSTODY: vehicles on site and not checked out, grouped for the
+// "Vehicles In Custody" dashboard, plus the approval-deadline and
+// collection reminders.
 // ---------------------------------------------------------------------------
 
 export type WorkshopCustodyEntry = {
@@ -4225,52 +3756,35 @@ export type WorkshopCustodyEntry = {
   customerName: string;
   vehicleDescription: string;
   status: string;
-  /** Working days elapsed since the relevant anchor — customer
-   * notification for AWAITING_CUSTOMER_APPROVAL, cancellation approval
-   * for CANCELLED, the move to Ready for Collection for that status.
-   * Always 0 for In Service entries, which have no deadline of this
-   * kind. */
+  /** Working days since the category's anchor: customer notified (awaiting
+   * approval), cancellation approved (cancelled), or moved to Ready for
+   * Collection. Always 0 for In Service. */
   daysElapsed: number;
-  /** The full working-day grace period this category allows — only
-   * set for the three action-required categories. */
+  /** Grace period in working days; set for the three action-required categories only. */
   totalGraceWorkingDays?: number;
-  /** MAX(0, totalGraceWorkingDays - daysElapsed) — never negative,
-   * reads naturally as "how much time is genuinely left." */
+  /** max(0, totalGraceWorkingDays - daysElapsed). */
   daysRemaining?: number;
-  /** How many reminder/notice emails have actually gone out for this
-   * entry, derived from the audit trail itself — never a separate
-   * counter that could drift out of sync with what was really sent. */
+  /** Reminders sent so far, counted from the audit trail. */
   remindersSent?: number;
-  /** Staged, semi-automatic reminder state (lib/custody-reminders): the
-   * next number, whether it can be sent now or from when, and who sent
-   * the last one — by name. */
+  /** Staged reminder state (lib/custody-reminders): next number, whether it
+   * can be sent now or from when, and who sent the last one. */
   reminder?: { sent: number; nextNumber: number; dueNow: boolean; dueFrom: string; lastSentByName: string | null; lastSentAt: string | null };
   /** ISO date the category's clock started (notified / cancelled / ready). */
   anchorAt?: string;
-  /** ISO date string — set for AWAITING_CUSTOMER_APPROVAL, CANCELLED,
-   * and READY_FOR_COLLECTION alike, the real calendar date the
-   * deadline falls on. */
+  /** ISO date the deadline falls on (all three action-required categories). */
   dueDate?: string;
   isOverdue: boolean;
-  /** Only ever set for an AWAITING_CUSTOMER_APPROVAL entry that
-   * currently has a cancellation request awaiting a Manager's
-   * decision — lets the dashboard show the exact same pending-request
-   * state (and the same Approve/Decline actions) the Job Card detail
-   * page already shows, so a Manager can act from either place. */
+  /** Set on an awaiting-approval entry with a cancellation request pending,
+   * so a Manager can approve or decline it from the dashboard. */
   pendingCancellationRequest?: { id: string; reason: string; requestedByName: string };
 };
 
 const CUSTODY_REMINDER_ACTIONS = ['approval.reminder_sent', 'collection.overdue_notice_sent', 'collection.ready_reminder_sent'] as const;
 
-/** The data behind the "Vehicles In Custody" dashboard — every real
- * vehicle physically present in the workshop and not yet checked out,
- * categorized the way staff actually need to act on them: the three
- * genuinely time-sensitive, action-required categories (awaiting the
- * customer's approval, cancelled but not yet collected, ready for
- * collection but not yet collected — each with a real deadline, a
- * real days-remaining figure, and a real reminder count pulled from
- * the audit trail), and In Service as the simpler catch-all for
- * everything still moving through the workshop's own process. */
+/** Data for the "Vehicles In Custody" dashboard: awaiting customer
+ * approval, cancelled but not collected, and ready but not collected (each
+ * with a deadline, days remaining and reminder count), plus In Service for
+ * everything else still being worked on. */
 export async function getWorkshopCustodySummary(search?: string): Promise<{
   total: number;
   awaitingApproval: WorkshopCustodyEntry[];
@@ -4282,11 +3796,8 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
   const trimmedSearch = search?.trim();
   const jobCards = await prisma.jobCard.findMany({
     where: {
-      // Excludes only CHECKED_OUT — the genuine "physically left the
-      // workshop" marker. CLOSED is deliberately still included: it's
-      // an administrative sign-off, not confirmation the vehicle has
-      // actually gone, so a Job Card can sit CLOSED with its vehicle
-      // still in the yard for a moment before check-out.
+      // Only CHECKED_OUT means the vehicle has left. CLOSED is an administrative
+      // sign-off and the vehicle may still be in the yard.
       status: { not: JobCardStatus.CHECKED_OUT },
       ...(await reachWhere('workshop.job_card.view')),
       ...(trimmedSearch
@@ -4308,10 +3819,8 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       customer: { select: { id: true, fullName: true } },
       vehicle: { select: { id: true, make: true, model: true, vehicleType: true } },
       estimate: { select: { customerNotifiedAt: true } },
-      // Every request, not just approved ones — the same array
-      // yields both the "most recent approval" anchor for a cancelled
-      // entry AND the current pending request (if any) for an
-      // awaiting-approval entry, without a second query.
+      // All requests: gives both the latest approval (cancelled entries) and any
+      // pending request (awaiting-approval entries) from one query.
       cancellationRequests: {
         orderBy: { requestedAt: 'desc' },
         select: {
@@ -4401,15 +3910,11 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
     }
   }
 
-  // One batched count query for every action-required entry's real
-  // reminder history, rather than one query per entry — the audit
-  // trail is the single source of truth for this count, never a
-  // separate field that could quietly drift out of sync with what was
-  // actually sent.
+  // One batched query for every action-required entry's reminder history.
   const actionRequiredIds = [...awaitingApproval, ...cancelledPendingCollection, ...readyForCollection].map((e) => e.id);
   if (actionRequiredIds.length > 0) {
-    // Every reminder actually sent (with who and when) — the audit trail
-    // is the single source of truth for the staged reminder state.
+    // Every reminder sent (with who and when); the audit trail is the source of
+    // truth for the reminder state.
     const sentLog = await prisma.auditLog.findMany({
       where: { entityId: { in: actionRequiredIds }, action: { in: [...CUSTODY_REMINDER_ACTIONS] } },
       orderBy: { createdAt: 'asc' },
@@ -4442,11 +3947,8 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
       where: { entityId: { in: actionRequiredIds }, action: { in: [...CUSTODY_REMINDER_ACTIONS] } },
       _count: { _all: true },
     });
-    // entityId is nullable on AuditLog in general (some historical
-    // actions don't relate to a specific entity), even though every
-    // row this specific query returns is guaranteed non-null by the
-    // where clause above — the type system doesn't know that, so this
-    // filters defensively rather than asserting it.
+    // AuditLog.entityId is nullable in the schema, though the where clause
+    // above guarantees it here.
     const countByEntityId = new Map<string, number>(
       counts
         .filter((c: { entityId: string | null; _count: { _all: number } }): c is { entityId: string; _count: { _all: number } } => c.entityId !== null)
@@ -4464,15 +3966,10 @@ export async function getWorkshopCustodySummary(search?: string): Promise<{
   return { total: jobCards.length, awaitingApproval, cancelledPendingCollection, readyForCollection, inService };
 }
 
-/** Sends the "action required" reminder to a customer whose estimate
- * is awaiting approval — repeatable, not a one-time send, since a
- * single reminder isn't always enough to get a response. Every send
- * is logged to the audit trail (`approval.reminder_sent`), which is
- * also how the real count shown on the dashboard is derived — no
- * separate counter field to keep in sync, the audit trail is the one
- * source of truth. `reminderSentAt` still tracks the most recent send
- * for display. Callable by the front desk (workshop.customer.notify), and also
- * called automatically by runApprovalDeadlineChecks() below. */
+/** Reminds a customer whose estimate is awaiting approval. Repeatable; each
+ * send is audited (`approval.reminder_sent`), which is where the dashboard
+ * count comes from. `reminderSentAt` holds the latest send. Used by the
+ * front desk (workshop.customer.notify) and by runApprovalDeadlineChecks(). */
 export async function sendApprovalReminder(jobCardId: string): Promise<void> {
   await authorizeOnJobCard('workshop.customer.notify', jobCardId, 'sendApprovalReminder');
   const user = await requireUser();
@@ -4500,12 +3997,12 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
   const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
   const dueDate = addWorkingDays(jobCard.estimate.customerNotifiedAt, APPROVAL_DEADLINE_WORKING_DAYS);
   const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const orgContext = await getWorkshopOrgContext();
 
   await prisma.estimate.update({ where: { id: jobCard.estimate.id }, data: { reminderSentAt: new Date() } });
 
-  // Staged, semi-automatic (lib/custody-reminders): refused until due.
+  // Staged reminders (lib/custody-reminders): refused until due.
   const priorSends = await prisma.auditLog.findMany({ where: { entityId: jobCardId, action: 'approval.reminder_sent' }, select: { createdAt: true } });
   const reminderState = custodyReminderState('APPROVAL', jobCard.estimate.customerNotifiedAt, priorSends.map((r: { createdAt: Date }) => r.createdAt));
   if (!reminderState.dueNow) {
@@ -4519,44 +4016,35 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
     entityId: jobCardId,
   });
 
-  // Counted after writing the audit entry above, so this send is
-  // itself included — "our 1st reminder" on the very first one, "our
-  // 2nd" on the next, and so on, always derived from the real trail.
+  // Counted after the audit entry above, so this send is included.
   const reminderNumber = await prisma.auditLog.count({
     where: { entityId: jobCardId, action: 'approval.reminder_sent' },
   });
 
   await sendEmail(
     jobCard.customer.email,
-    `Action required — Job Card ${jobCard.jobNumber} awaiting your approval`,
+    `Reminder: your estimate is waiting — Job Card ${jobCard.jobNumber}`,
     renderCustomerApprovalReminderEmail({
       customerName: jobCard.customer.fullName,
       jobNumber: jobCard.jobNumber,
       vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
       totalEstimate: formatNaira(total),
       minimumDepositAmount: formatNaira(minimumDeposit),
-      dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+      depositPercent: Math.round(MINIMUM_DEPOSIT_FRACTION * 100),
+      dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
       reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),
   );
 }
 
-/** Stands in for the future scheduled job until Vercel Cron (or
- * equivalent) is actually wired up — Master Admin only, since this
- * represents "run today's automated checks now," not a normal staff
- * action. Sends the reminder to anyone who's reached the reminder
- * threshold and hasn't been sent one yet. Deliberately never
- * auto-cancels anything, even once the full deadline has passed — a
- * business shouldn't lose the ability to extend genuine grace (a
- * customer who calls to explain, asks for one more day), so a Job
- * Card past its deadline is only counted here, surfaced for a human
- * to review. Actually cancelling it still goes through the normal,
- * Manager-approved cancellation request, the same as any other
- * cancellation — never this function's own decision. */
+/** Master Admin's manual "run today's checks": sends due approval reminders
+ * and counts Job Cards past the deadline. Never cancels anything; that
+ * stays a Manager-approved cancellation request, so staff can still extend
+ * grace when a customer asks. */
 export async function runApprovalDeadlineChecks(): Promise<{ remindersSent: number; overdueCount: number }> {
   if (!(await currentUserIsMasterAdmin())) {
     throw new WorkshopActionError('You do not have permission to run this check.');
@@ -4578,12 +4066,7 @@ export async function runApprovalDeadlineChecks(): Promise<{ remindersSent: numb
     if (!jc.estimate?.customerNotifiedAt) continue;
     const daysElapsed = workingDaysBetween(jc.estimate.customerNotifiedAt, now);
 
-    // Deliberately never auto-cancels — a business shouldn't lose the
-    // ability to extend grace for a genuine reason (a customer who
-    // calls to explain, asks for one more day). Past the deadline,
-    // this only counts the Job Card as needing a human decision;
-    // actually cancelling it still goes through the normal, Manager-
-    // approved cancellation request, same as any other cancellation.
+    // Past the deadline: count it for review, never auto-cancel.
     if (daysElapsed >= APPROVAL_DEADLINE_WORKING_DAYS) {
       overdueCount += 1;
     } else if (daysElapsed >= APPROVAL_REMINDER_WORKING_DAYS && !jc.estimate.reminderSentAt) {
@@ -4591,7 +4074,6 @@ export async function runApprovalDeadlineChecks(): Promise<{ remindersSent: numb
         await sendApprovalReminder(jc.id);
         remindersSent += 1;
       } catch (err) {
-        // eslint-disable-next-line no-console
         logFailure('Failed to send approval reminder', jc.id, err);
       }
     }
@@ -4600,12 +4082,8 @@ export async function runApprovalDeadlineChecks(): Promise<{ remindersSent: numb
   return { remindersSent, overdueCount };
 }
 
-/** The deliberate, manual step for a cancelled Job Card's uncollected
- * vehicle — never automatic. A Manager or HOD reviews what the
- * dashboard surfaces and decides whether to actually notify the
- * customer; this function is both the review action and the trigger,
- * since only an eligible Manager (or Master Admin) can call it at
- * all. */
+/** Manually notifies the customer of a cancelled Job Card's uncollected
+ * vehicle. Only an eligible Manager (or Master Admin). Never automatic. */
 export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: string): Promise<void> {
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
@@ -4631,7 +4109,7 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
     throw new WorkshopActionError('No cancellation record found for this Job Card.');
   }
   const user = await requireEligibleManager(jobCard.branchId, 'workshop.close.approve');
-  // Staged, semi-automatic (lib/custody-reminders): refused until due.
+  // Staged reminders (lib/custody-reminders): refused until due.
   const priorSends = await prisma.auditLog.findMany({ where: { entityId: jobCardId, action: 'collection.overdue_notice_sent' }, select: { createdAt: true } });
   const reminderState = custodyReminderState('CANCELLED_COLLECTION', anchor, priorSends.map((r: { createdAt: Date }) => r.createdAt));
   if (!reminderState.dueNow) {
@@ -4647,17 +4125,16 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
     metadata: { daysElapsed, notes: notes?.trim() || undefined },
   });
 
-  // Counted after writing the audit entry above, so this send is
-  // itself included.
+  // Counted after the audit entry above, so this send is included.
   const reminderNumber = await prisma.auditLog.count({
     where: { entityId: jobCardId, action: 'collection.overdue_notice_sent' },
   });
 
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const orgContext = await getWorkshopOrgContext();
   await sendEmail(
     jobCard.customer.email,
-    `Please arrange collection — Job Card ${jobCard.jobNumber}`,
+    `Please collect your vehicle — Job Card ${jobCard.jobNumber}`,
     renderCustomerCollectionOverdueEmail({
       customerName: jobCard.customer.fullName,
       jobNumber: jobCard.jobNumber,
@@ -4665,21 +4142,16 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
       daysSinceCancellationLabel: pluralize(daysElapsed, 'working day'),
       reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),
   );
 }
 
-/** Sends a reminder to a customer whose vehicle is ready for
- * collection — repeatable, same as the other two reminder actions,
- * every send logged to the audit trail (`collection.ready_reminder_
- * sent`), callable by the front desk (workshop.customer.notify) whenever this Job Card is
- * READY_FOR_COLLECTION, not gated on being overdue first. Reuses the
- * exact same customer email as the original "ready for collection"
- * notice — the facts haven't changed, just that this is a repeat of
- * them. */
+/** Reminds a customer whose vehicle is ready for collection. Repeatable and
+ * audited (`collection.ready_reminder_sent`); front desk
+ * (workshop.customer.notify). Reuses the original "ready for collection" email. */
 export async function sendReadyForCollectionReminder(jobCardId: string): Promise<void> {
   const user = await requireUser();
   // Telling the customer is front-desk work, on a Job Card within reach.
@@ -4699,10 +4171,10 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
   }
 
   const dueDate = addWorkingDays(jobCard.readyForCollectionAt, READY_FOR_COLLECTION_GRACE_WORKING_DAYS);
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const orgContext = await getWorkshopOrgContext();
 
-  // Staged, semi-automatic (lib/custody-reminders): refused until due.
+  // Staged reminders (lib/custody-reminders): refused until due.
   const priorSends = await prisma.auditLog.findMany({ where: { entityId: jobCardId, action: 'collection.ready_reminder_sent' }, select: { createdAt: true } });
   const reminderState = custodyReminderState('COLLECTION', jobCard.readyForCollectionAt, priorSends.map((r: { createdAt: Date }) => r.createdAt));
   if (!reminderState.dueNow) {
@@ -4716,15 +4188,14 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
     entityId: jobCardId,
   });
 
-  // Counted after writing the audit entry above, so this send is
-  // itself included.
+  // Counted after the audit entry above, so this send is included.
   const reminderNumber = await prisma.auditLog.count({
     where: { entityId: jobCardId, action: 'collection.ready_reminder_sent' },
   });
 
   await sendEmail(
     jobCard.customer.email,
-    `Reminder — ready for collection, Job Card ${jobCard.jobNumber}`,
+    `Reminder: your vehicle is ready for collection — Job Card ${jobCard.jobNumber}`,
     renderCustomerReadyForCollectionEmail({
       customerName: jobCard.customer.fullName,
       jobNumber: jobCard.jobNumber,
@@ -4732,7 +4203,7 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
       dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
       reminderNumber,
       dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),
@@ -4740,21 +4211,21 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
 }
 
 
-// Once per request: repeated calls during one page load reuse the answer.
+// Cached per request.
 const currentUserIsMasterAdminCached = cache(currentUserIsMasterAdminUncached);
 export async function currentUserIsMasterAdmin(): Promise<boolean> {
   return currentUserIsMasterAdminCached();
 }
 
 
-// Once per request: repeated calls during one page load reuse the answer.
+// Cached per request.
 const listEligibleManagersForBranchCached = cache(listEligibleManagersForBranchUncached);
 export async function listEligibleManagersForBranch(branchId: string): Promise<EligibleSupervisorResult> {
   if (!(await branchInMyOrganisationOrSystem(branchId))) return { supervisors: [], usingFallback: false };
   return listEligibleManagersForBranchCached(branchId);
 }
 
-/** JobCard — only within the person's scope (branch); out of scope behaves as "not found". */
+/** Only within the person's scope (branch); out of scope behaves as "not found". */
 export async function getJobCard(id: string) {
   const rec = await getJobCardUnscoped(id);
   if (!rec) return rec;

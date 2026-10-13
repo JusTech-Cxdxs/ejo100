@@ -12,11 +12,8 @@ import { sendLoggedEmail } from '@/lib/logged-email';
 
 class VehicleInspectionActionError extends Error {}
 
-/** Every inspection event is logged twice on purpose — once against
- * the inspection itself, once against the Vehicle Service it belongs
- * to — so it shows up on both real timelines, matching the user's
- * own explicit request that nothing on the inspection side goes
- * unrecorded on the Vehicle Service's own audit trail. */
+/** Logs each inspection event against both the inspection and its Vehicle
+ * Service, so it shows on both timelines. */
 async function logInspectionEvent(params: {
   userId: string;
   action: string;
@@ -31,12 +28,9 @@ async function logInspectionEvent(params: {
 }
 
 /**
- * Creates the one real inspection record for a Vehicle Service and
- * generates its items from the vehicle-type-aware template — called
- * once, the first time anyone opens the inspection workspace for
- * this visit. Calling it again on an already-started inspection is a
- * harmless no-op, returning the existing record rather than erroring
- * or duplicating items.
+ * Creates the Vehicle Service's inspection with items from the
+ * vehicle-type template. Called the first time the inspection is opened;
+ * calling it again returns the existing record.
  */
 export async function startVehicleInspection(vehicleServiceId: string): Promise<{ id: string }> {
   await authorizeOnService('workshop.inspection.perform', vehicleServiceId, 'startVehicleInspection');
@@ -87,13 +81,9 @@ export type InspectionItemInput = {
   notes?: string;
 };
 
-/** The one real, deliberate door out of doing an inspection at all —
- * still creates a real record, so a skip is exactly as visible and
- * accountable in the audit trail as a completed inspection, never a
- * silent absence. Calling it on an already-started or already-decided
- * inspection is refused rather than silently overwriting real work —
- * cancelVehicleInspection is the real way to undo a prior choice
- * first. */
+/** Records that the inspection was skipped, so a skip is as visible in the
+ * audit trail as a completed inspection. Refused if the inspection was
+ * already started or decided; cancelVehicleInspection undoes that first. */
 export async function skipVehicleInspection(vehicleServiceId: string, reason?: string): Promise<{ id: string }> {
   await authorizeOnService('workshop.inspection.perform', vehicleServiceId, 'skipVehicleInspection');
   await assertServiceNotEscalated({ vehicleServiceId });
@@ -120,14 +110,9 @@ export async function skipVehicleInspection(vehicleServiceId: string, reason?: s
 }
 
 /**
- * The one real, deliberate way to undo a prior choice — whether that
- * was starting an inspection, completing one, or skipping one. Never
- * a soft "cancelled" status: the record is genuinely removed, so the
- * next visit to this Vehicle Service starts clean at the real
- * Start/Skip choice again. What actually happened is never lost —
- * logged against the Vehicle Service's own timeline (and, for the
- * historical record, against the inspection's own id) before the row
- * itself is deleted.
+ * Undoes a start, completion or skip by deleting the inspection, so the
+ * service is back at the Start/Skip choice. Logged against the Vehicle
+ * Service (and the inspection id) before the delete.
  */
 export async function cancelVehicleInspection(vehicleServiceId: string, reason?: string): Promise<void> {
   await authorizeOnService('workshop.inspection.perform', vehicleServiceId, 'cancelVehicleInspection');
@@ -148,14 +133,9 @@ export async function cancelVehicleInspection(vehicleServiceId: string, reason?:
   await prisma.vehicleInspection.delete({ where: { id: inspection.id } });
 }
 
-/** One real save per section — a technician reviews a group of
- * related items together and saves them at once, rather than firing
- * a server action per keystroke. Items with nothing entered at all
- * are left exactly as they were (still genuinely not-yet-reviewed),
- * never overwritten with empty values. Deliberately allowed even
- * after the inspection's own status is Completed — completing marks
- * "done for now," it doesn't lock the record; clearing an item's
- * severity here genuinely moves it back to Not Reviewed. */
+/** Saves one section at a time. Items left blank keep their current
+ * values. Allowed after completion too (completion doesn't lock the
+ * record); clearing an item's severity moves it back to Not Reviewed. */
 export async function updateInspectionItems(inspectionId: string, items: InspectionItemInput[]): Promise<void> {
   {
     const owner = await prisma.vehicleInspection.findUnique({ where: { id: inspectionId }, select: { vehicleServiceId: true } });
@@ -169,10 +149,10 @@ export async function updateInspectionItems(inspectionId: string, items: Inspect
     throw new VehicleInspectionActionError('Inspection record not found.');
   }
   if (inspection.status === 'SKIPPED') {
-    throw new VehicleInspectionActionError('This inspection was skipped — cancel the skip first to start a real inspection.');
+    throw new VehicleInspectionActionError('This inspection was skipped. Cancel the skip first to start an inspection.');
   }
-  // Every item must belong to THIS inspection (the one just authorised) —
-  // an item id from another vehicle's inspection is refused, all-or-nothing.
+  // Every item must belong to this inspection (the one just authorised); an
+  // item id from another inspection rejects the whole save.
   await prisma.$transaction(async (tx) => {
     for (const item of items) {
       const saved = await tx.vehicleInspectionItem.updateMany({
@@ -196,9 +176,7 @@ export async function updateInspectionItems(inspectionId: string, items: Inspect
   });
 }
 
-/** Also deliberately re-callable — marking "done for now" a second
- * time (after editing an already-completed inspection further) just
- * updates the real completedAt/notes rather than refusing. */
+/** Can be called again after further edits; updates completedAt and notes. */
 export async function completeVehicleInspection(inspectionId: string, notes?: string): Promise<void> {
   {
     const owner = await prisma.vehicleInspection.findUnique({ where: { id: inspectionId }, select: { vehicleServiceId: true } });
@@ -219,7 +197,7 @@ export async function completeVehicleInspection(inspectionId: string, notes?: st
     data: { status: 'COMPLETED', completedAt: new Date(), notes: notes?.trim() || null },
   });
   await logInspectionEvent({ userId: user.id, action: 'vehicle_inspection.completed', inspectionId, vehicleServiceId: inspection.vehicleServiceId });
-  // Tell the supervisor (and the service technician) — the estimate is next.
+  // Tell the supervisor (and the service technician): the estimate is next.
   try {
     const sv = await prisma.vehicleService.findUnique({ where: { id: inspection.vehicleServiceId }, select: { serviceNumber: true, supervisor: { select: { fullName: true, email: true } }, assignedTechnician: { select: { fullName: true, email: true } } } });
     if (sv) await sendLoggedEmail({ entityType: 'VehicleService', entityId: inspection.vehicleServiceId, recipients: [sv.supervisor, sv.assignedTechnician].filter((x): x is { fullName: string; email: string } => Boolean(x?.email)), subject: `Inspection completed — ${sv.serviceNumber}`, heading: 'The vehicle inspection is complete', lines: [sv.serviceNumber, 'The findings are recorded — the estimate can now be prepared.'], path: `/workshop/vehicle-service/${inspection.vehicleServiceId}`, actorId: user.id });
@@ -239,10 +217,7 @@ export async function getVehicleInspection(vehicleServiceId: string) {
     },
   });
   if (!inspection) return inspection;
-  // Re-sorted here to the template's own real priority order — never
-  // the database's own default row order, which reflects nothing
-  // meaningful and would silently undo the deliberate "most commonly
-  // reached-for item first" ordering the template itself encodes.
+  // Sort by the template's section order, not database row order.
   const sectionOrder = VEHICLE_INSPECTION_TEMPLATE.map((s) => s.section);
   const itemOrder = new Map(VEHICLE_INSPECTION_TEMPLATE.flatMap((s) => s.items.map((i, idx) => [`${s.section}::${i.name}`, idx])));
   const items = [...inspection.items].sort((a, b) => {

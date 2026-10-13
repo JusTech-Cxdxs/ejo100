@@ -9,7 +9,7 @@ export type ExplorerChain = { name: string; steps: string[] };
 const SCOPE_LABEL: Record<string, string> = { ALL: 'Everything', BRANCH: 'Their branch', DEPARTMENT: 'Their department', ASSIGNED: 'Jobs assigned to them', OWN: 'Their own' };
 const SCOPE_TONE: Record<string, string> = {
   ALL: 'bg-[var(--ejo-primary)]/15 text-[var(--ejo-primary)]', BRANCH: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]',
-  DEPARTMENT: 'bg-purple-500/15 text-purple-600', ASSIGNED: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]', OWN: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+  DEPARTMENT: 'bg-teal-500/15 text-teal-600', ASSIGNED: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]', OWN: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
 };
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]';
 const Scope = ({ s }: { s: string }) => <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium ${SCOPE_TONE[s] ?? ''}`}>{SCOPE_LABEL[s] ?? s}</span>;

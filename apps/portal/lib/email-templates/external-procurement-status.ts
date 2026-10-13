@@ -1,20 +1,6 @@
-import { renderEmailLayout, escapeHtml } from './layout';
-import { pluralize } from '@/lib/utils/pluralize';
-
-function formatNaira(amount: number): string {
-  return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import { renderEmailLayout, html, greeting, para, details, moneyTable, sectionTitle, callout, plural, formatNaira, type EmailTone } from './layout';
 
 export type ExternalProcurementLineInfo = { description: string; quantity: number; unitOfMeasure: string | null; amount: number };
-
-function lineItemsList(lines: ExternalProcurementLineInfo[]): string {
-  return lines
-    .map(
-      (l) =>
-        `<li style="margin-bottom: 4px;">${escapeHtml(l.description)}${l.unitOfMeasure ? ` — ${escapeHtml(pluralize(l.quantity, l.unitOfMeasure))}` : ''} — ${formatNaira(l.amount)}</li>`,
-    )
-    .join('');
-}
 
 export type ExternalProcurementApprovalNeededEmailOptions = {
   recipientName: string;
@@ -31,48 +17,32 @@ export type ExternalProcurementApprovalNeededEmailOptions = {
   departmentName: string;
 };
 
-/**
- * Sent at each of this request's own two real approval gates — first
- * to Finance for their review, then to the Manager once Finance has
- * sent it forward — with the real Job Card and every real line right
- * there, so approving or declining never requires opening the portal
- * just to see what's actually being asked for. One real request, one
- * real email — every item it covers shown together, the same way the
- * request itself now actually works.
- */
-export function renderExternalProcurementApprovalNeededEmail(opts: ExternalProcurementApprovalNeededEmailOptions): string {
-  const { recipientName, requestedByName, referenceNumber, jobNumber, customerName, lines, estimatedAmount, approvalUrl, logoUrl, companyName, branchName, departmentName } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      ${escapeHtml(requestedByName)} raised External Procurement Request ${escapeHtml(referenceNumber)} for Job Card
-      ${escapeHtml(jobNumber)} — your approval is needed before this can move forward.
-    </p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 16px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Job Card</p>
-          <p style="margin: 0 0 12px 0; font-size: 15px; color: #0F172A;">${escapeHtml(jobNumber)} — ${escapeHtml(customerName)}</p>
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">${escapeHtml(pluralize(lines.length, 'Item'))}</p>
-          <ul style="margin: 0 0 12px 0; padding-left: 20px; font-size: 14px; color: #0F172A;">${lineItemsList(lines)}</ul>
-          <p style="margin: 0; font-size: 18px; font-weight: 700; color: #0F172A;">Total: ${formatNaira(estimatedAmount)}</p>
-        </td>
-      </tr>
-    </table>
-  `;
-
+export function renderExternalProcurementApprovalNeededEmail(o: ExternalProcurementApprovalNeededEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.recipientName)}
+    ${para(`${o.requestedByName} raised external procurement request ${o.referenceNumber} for Job Card ${o.jobNumber} (${o.customerName}). It needs your approval before it can go ahead.`)}
+    ${sectionTitle(`${plural(o.lines.length, 'item')} requested`)}
+    ${moneyTable(o.lines.map((l) => ({
+      label: l.description,
+      meta: l.unitOfMeasure ? plural(l.quantity, l.unitOfMeasure) : `Quantity ${l.quantity}`,
+      amount: formatNaira(l.amount),
+    })), [{ label: 'Total', amount: formatNaira(o.estimatedAmount), emphasis: true }])}
+    ${details([
+      ['Request', o.referenceNumber],
+      ['Job Card', o.jobNumber],
+      ['Requested by', o.requestedByName],
+    ])}`;
   return renderEmailLayout({
-    previewText: `${requestedByName} raised ${referenceNumber} for ${jobNumber} — your approval is needed.`,
-    companyName,
-    orgContext: [companyName, branchName, departmentName],
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    heading: 'Procurement request needs your approval',
+    previewText: `${o.requestedByName} requested ${formatNaira(o.estimatedAmount)} for ${o.jobNumber}. Your approval is needed.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName, o.departmentName],
+    status: { label: 'Approval needed', tone: 'warning' },
+    heading: `Procurement request ${o.referenceNumber} needs your approval`,
     bodyHtml,
-    ctaLabel: 'Review Request',
-    ctaUrl: approvalUrl,
-    logoUrl,
+    ctaLabel: 'Review request',
+    ctaUrl: o.approvalUrl,
+    audience: 'staff',
   });
 }
 
@@ -91,77 +61,55 @@ export type ExternalProcurementStatusEmailOptions = {
   departmentName: string;
 };
 
-const STATUS_COPY: Record<ExternalProcurementStatusEmailOptions['kind'], { heading: string; line: string; tone: 'positive' | 'negative' | 'neutral' }> = {
+export const EXTERNAL_PROCUREMENT_STATUS: Record<ExternalProcurementStatusEmailOptions['kind'], { label: string; heading: string; line: string; tone: EmailTone }> = {
   sent_to_manager: {
-    heading: 'Procurement request sent to Manager',
-    line: 'has passed Finance review and is now with the Workshop Manager for approval.',
-    tone: 'positive',
+    label: 'With the manager',
+    heading: 'Procurement request sent to the manager',
+    line: 'passed Finance review and is now with the workshop manager for approval.',
+    tone: 'info',
   },
   approved: {
+    label: 'Approved',
     heading: 'Procurement request approved',
-    line: 'has been approved by the Manager and is now ready for Finance to disburse.',
-    tone: 'positive',
+    line: 'was approved by the manager and is ready for Finance to pay out.',
+    tone: 'success',
   },
   disbursed: {
-    heading: 'Procurement funds disbursed',
-    line: 'has been disbursed by Finance — the cash advance is now available.',
-    tone: 'positive',
+    label: 'Funds paid out',
+    heading: 'Procurement funds paid out',
+    line: 'has been paid out by Finance. The cash advance is available.',
+    tone: 'success',
   },
   rejected: {
+    label: 'Rejected',
     heading: 'Procurement request rejected',
     line: 'was rejected.',
-    tone: 'negative',
+    tone: 'danger',
   },
 };
 
-/**
- * One shared template, sent to both the Technician and the
- * Supervisor at every real stage this request moves through — the
- * same reasoning already proven for the Store Parts chain: the
- * Supervisor's own genuine ability to follow up depends on actually
- * knowing what's happening, not just the Technician who raised it.
- */
-export function renderExternalProcurementStatusEmail(opts: ExternalProcurementStatusEmailOptions): string {
-  const { recipientName, kind, referenceNumber, jobNumber, customerName, amount, rejectionReason, requestUrl, logoUrl, companyName, branchName, departmentName } = opts;
-  const copy = STATUS_COPY[kind];
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      External Procurement Request ${escapeHtml(referenceNumber)} for Job Card ${escapeHtml(jobNumber)}
-      (${escapeHtml(customerName)}) ${copy.line}
-    </p>
-    ${
-      amount !== undefined
-        ? `<p style="margin: 0 0 16px 0; font-size: 18px; font-weight: 700; color: #0F172A;">${formatNaira(amount)}</p>`
-        : ''
-    }
-    ${
-      kind === 'rejected' && rejectionReason
-        ? `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 16px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Reason</p>
-          <p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(rejectionReason)}</p>
-        </td>
-      </tr>
-    </table>
-    `
-        : ''
-    }
-  `;
-
+export function renderExternalProcurementStatusEmail(o: ExternalProcurementStatusEmailOptions): string {
+  const s = EXTERNAL_PROCUREMENT_STATUS[o.kind];
+  const bodyHtml = html`
+    ${greeting(o.recipientName)}
+    ${para(`External procurement request ${o.referenceNumber} for Job Card ${o.jobNumber} (${o.customerName}) ${s.line}`)}
+    ${o.kind === 'rejected' && o.rejectionReason?.trim() ? callout(o.rejectionReason.trim(), 'danger', 'Reason given') : ''}
+    ${details([
+      ['Request', o.referenceNumber],
+      ['Job Card', o.jobNumber],
+      ['Customer', o.customerName],
+      ['Amount', o.amount !== undefined ? formatNaira(o.amount) : null],
+    ])}`;
   return renderEmailLayout({
-    previewText: `${referenceNumber} for ${jobNumber} ${copy.line}`,
-    companyName,
-    orgContext: [companyName, branchName, departmentName],
-    iconGlyph: kind === 'rejected' ? '\u2715' : '\u2713',
-    iconTone: copy.tone,
-    heading: copy.heading,
+    previewText: `${o.referenceNumber} for ${o.jobNumber} ${s.line}`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName, o.departmentName],
+    status: { label: s.label, tone: s.tone },
+    heading: `${s.heading}: ${o.referenceNumber}`,
     bodyHtml,
-    ctaLabel: 'View Request',
-    ctaUrl: requestUrl,
-    logoUrl,
+    ctaLabel: 'View request',
+    ctaUrl: o.requestUrl,
+    audience: 'staff',
   });
 }

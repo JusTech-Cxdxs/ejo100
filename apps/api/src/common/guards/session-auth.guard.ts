@@ -6,16 +6,12 @@ import { setAuditActor } from '@ejo/database';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
- * Validates a Better Auth session token against the shared `sessions`
- * table (see packages/database schema + apps/portal/lib/auth.ts — both
- * write into the same Postgres database, which is what lets the API
- * trust a session created by the portal's login flow).
+ * Validates a Better Auth session token against the `sessions` table the
+ * portal writes, which is how the API trusts a portal sign-in.
  *
- * Token is read from the `Authorization: Bearer <token>` header (for
- * server-to-server / mobile clients) or the `better-auth.session_token`
- * cookie Better Auth sets in the browser. Expired or unknown tokens are
- * rejected; this guard does NOT distinguish roles/permissions — combine
- * with a RolesGuard (see roles.guard.ts, hierarchy phase) for that.
+ * The token comes from `Authorization: Bearer <token>` (server-to-server or
+ * mobile clients) or the Better Auth session cookie. Expired or unknown
+ * tokens are refused. Permissions are checked separately (PermissionsGuard).
  */
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
@@ -61,7 +57,10 @@ export class SessionAuthGuard implements CanActivate {
     if (authHeader?.startsWith('Bearer ')) {
       return authHeader.slice('Bearer '.length);
     }
-    const cookieToken = request.cookies?.['better-auth.session_token'];
-    return typeof cookieToken === 'string' ? cookieToken : null;
+    // Over HTTPS Better Auth names the cookie with the __Secure- prefix. Its
+    // value is "<token>.<signature>"; the token alone is the lookup key.
+    const cookieToken = request.cookies?.['__Secure-better-auth.session_token'] ?? request.cookies?.['better-auth.session_token'];
+    if (typeof cookieToken !== 'string' || !cookieToken) return null;
+    return cookieToken.split('.')[0] || null;
   }
 }

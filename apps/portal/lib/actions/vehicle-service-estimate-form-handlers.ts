@@ -95,11 +95,8 @@ export async function matchServiceEstimateStorePartLineFormAction(formData: Form
   }
   revalidatePath('/inventory/estimate-matching');
   if (vehicleServiceId) revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
-  // Same real "stay here until this Vehicle Service's own queue is
-  // genuinely empty" reasoning the user asked for directly — matching
-  // one of several lines shouldn't bounce Store back out to the
-  // general list; only the real last one should, right when the real
-  // "matching complete" email actually fires.
+  // Stay on this service's matching page until its last line is matched
+  // (when the "matching complete" email goes out).
   const stillHasUnmatched = vehicleServiceId ? await serviceEstimateHasUnmatchedStoreParts(vehicleServiceId) : false;
   redirect(stillHasUnmatched ? `/inventory/service-estimate-matching/${vehicleServiceId}?status=line_matched` : '/inventory/estimate-matching?status=line_matched');
 }
@@ -131,11 +128,8 @@ export async function updateServiceEstimateLineItemFormAction(formData: FormData
     redirect(`/workshop/vehicle-service/${vehicleServiceId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
-  // Explicit success redirect back to the plain URL, clearing
-  // ?editLineId= — same exact real reason as Job Card's own version:
-  // without this, revalidatePath() alone re-renders with the SAME
-  // url still present, so the row stays stuck in edit mode even
-  // though the save genuinely succeeded.
+  // Redirect to the plain URL to clear ?editLineId=; revalidatePath alone
+  // would keep the row in edit mode.
   redirect(`/workshop/vehicle-service/${vehicleServiceId}?status=line_updated`);
 }
 

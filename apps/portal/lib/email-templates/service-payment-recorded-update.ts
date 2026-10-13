@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details } from './layout';
 
 export type ServicePaymentRecordedUpdateEmailOptions = {
   recipientName: string;
@@ -15,47 +15,27 @@ export type ServicePaymentRecordedUpdateEmailOptions = {
   departmentName: string;
 };
 
-/**
- * The real Vehicle Service equivalent of renderPaymentRecordedUpdateEmail
- * — same real reasoning (Finance/Manager only, never the technician or
- * supervisor, and never claims a threshold was met), entirely its own
- * file rather than a branch inside the Job Card one.
- */
-export function renderServicePaymentRecordedUpdateEmail(opts: ServicePaymentRecordedUpdateEmailOptions): string {
-  const { recipientName, serviceNumber, customerName, amountReceived, totalPaidSoFar, totalEstimate, balanceRemaining, serviceUrl, logoUrl, companyName, branchName, departmentName } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(recipientName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      A payment of ${escapeHtml(amountReceived)} was recorded on Vehicle Service ${escapeHtml(serviceNumber)} for
-      ${escapeHtml(customerName)}.
-    </p>
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Vehicle Service</p>
-          <p style="margin: 0 0 16px 0; font-size: 15px; color: #0F172A; font-weight: bold;">${escapeHtml(serviceNumber)}</p>
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Total Received So Far</p>
-          <p style="margin: 0 ${balanceRemaining ? '0 16px 0' : '0'}; font-size: 15px; color: #0F172A;">${escapeHtml(totalPaidSoFar)} of ${escapeHtml(totalEstimate)}</p>
-          ${balanceRemaining
-            ? `<p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Balance Remaining</p><p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(balanceRemaining)}</p>`
-            : ''}
-        </td>
-      </tr>
-    </table>
-  `;
-
+export function renderServicePaymentRecordedUpdateEmail(o: ServicePaymentRecordedUpdateEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.recipientName)}
+    ${para(`A payment of ${o.amountReceived} was recorded on Vehicle Service ${o.serviceNumber} for ${o.customerName}.`)}
+    ${details([
+      ['Vehicle Service', o.serviceNumber],
+      ['Customer', o.customerName],
+      ['This payment', o.amountReceived],
+      ['Paid so far', `${o.totalPaidSoFar} of ${o.totalEstimate}`],
+      ['Balance due', o.balanceRemaining],
+    ])}`;
   return renderEmailLayout({
-    previewText: `${amountReceived} recorded on Vehicle Service ${serviceNumber}.`,
-    companyName,
-    orgContext: [companyName, branchName, departmentName],
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    heading: 'Payment recorded',
+    previewText: `${o.amountReceived} recorded on Vehicle Service ${o.serviceNumber}.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName, o.departmentName],
+    status: { label: 'Payment recorded', tone: 'success' },
+    heading: `Payment recorded on ${o.serviceNumber}`,
     bodyHtml,
     ctaLabel: 'Open Vehicle Service',
-    ctaUrl: serviceUrl,
-    logoUrl,
+    ctaUrl: o.serviceUrl,
+    audience: 'staff',
   });
 }

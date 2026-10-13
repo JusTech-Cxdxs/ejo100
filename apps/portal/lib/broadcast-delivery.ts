@@ -1,3 +1,4 @@
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { prisma } from '@ejo/database';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
@@ -15,16 +16,19 @@ async function emailCustomers(b: { id: string; title: string; message: string; c
     select: { id: true, fullName: true, email: true },
   });
   const meta = BROADCAST_CATEGORY[b.category] ?? BROADCAST_CATEGORY.ANNOUNCEMENT!;
-  const website = (process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app').replace(/\/+$/, '');
+  const website = websiteBaseUrl();
   let sent = 0, failed = 0;
   for (let i = 0; i < customers.length; i += CUSTOMER_BATCH) {
     const batch = customers.slice(i, i + CUSTOMER_BATCH);
     const results = await Promise.allSettled(batch.map((c: (typeof batch)[number]) => {
+      const preferencesUrl = `${website}/customer-portal/dashboard/profile`;
       const { subject, html } = renderCustomerBroadcastEmail({
         customerName: c.fullName, title: b.title, message: b.message, categoryLabel: meta.heading,
-        portalUrl: `${website}/customer-portal`, logoUrl: `${website}/images/logo/logo.png`, companyName: b.organisation.name,
+        portalUrl: `${website}/customer-portal`, logoUrl: `${website}/images/logo/email-logo.png`, companyName: b.organisation.name,
+        preferencesUrl,
       });
-      return sendEmail(c.email, subject, html);
+      // Announcements are optional (notifyByEmail), so mail clients may offer an unsubscribe link to the preference page.
+      return sendEmail(c.email, subject, html, undefined, { headers: { 'List-Unsubscribe': `<${preferencesUrl}>` } });
     }));
     for (let k = 0; k < results.length; k += 1) {
       const r = results[k]!;
@@ -62,13 +66,15 @@ export async function deliverDueBroadcastEmails(now: Date = new Date()): Promise
     const users = await prisma.user.findMany({ where: { organisationId: b.organisationId, isActive: true }, select: { fullName: true, email: true, branchId: true, departmentId: true, roles: { select: { role: { select: { slug: true } } } } } });
     const audience = users.filter((u: (typeof users)[number]) => u.email && reaches(b, { branchId: u.branchId, departmentId: u.departmentId, roleSlugs: u.roles.map((r: { role: { slug: string } }) => r.role.slug) }));
     const meta = BROADCAST_CATEGORY[b.category] ?? BROADCAST_CATEGORY.ANNOUNCEMENT!;
-    const portal = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portal = portalBaseUrl();
     let sent = 0, failed = 0;
     for (const u of audience) {
       try {
-        await sendEmail(u.email, `${meta.icon} ${meta.heading}: ${b.title}`, renderWarrantyStaffNoticeEmail({
-          recipientName: u.fullName, heading: `${meta.icon} ${b.title}`, lines: b.message.split(/\n+/).map((l: string) => l.trim()).filter(Boolean),
-          actionUrl: `${portal}/notifications?tab=broadcasts`, logoUrl: `${portal}/images/logo/logo.png`, companyName: b.organisation.name, branchName: meta.heading,
+        await sendEmail(u.email, `${meta.heading}: ${b.title}`, renderWarrantyStaffNoticeEmail({
+          recipientName: u.fullName, heading: b.title, lines: b.message.split(/\n+/).map((l: string) => l.trim()).filter(Boolean),
+          actionUrl: `${portal}/notifications?tab=broadcasts`, actionLabel: 'Read in EJO 100', statusLabel: meta.label,
+          statusTone: b.category === 'URGENT' || b.category === 'SECURITY_ALERT' ? 'danger' : b.category === 'IMPORTANT' ? 'warning' : 'info',
+          logoUrl: `${portal}/images/logo/email-logo.png`, companyName: b.organisation.name, branchName: '',
         }));
         sent += 1;
       } catch {

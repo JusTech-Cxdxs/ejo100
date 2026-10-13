@@ -14,8 +14,8 @@ records what is verified, what was fixed, what is deliberately deferred, and wha
 | Database public API | **v20**: RLS on every table automatically; public roles have no table / sequence / function access; future tables locked by default |
 | Secrets | None in the repository; only Supabase URL + anon key are public (by design, used only for the change ping) |
 | Injection / XSS | Prisma parameterised queries only; React escaping; names escaped in emails |
-| Login | Rate-limited (5 / min); "redirect back" only to pages on this site (open redirect closed) |
-| Submissions | Per-address flood limit on form posts / actions (120 / min / instance) → friendly 429 |
+| Login | Rate-limited per instance (staff and customers: 20 sign-ins a minute, 5 reset requests per 5 minutes by default); "redirect back" only to pages on this site (open redirect closed) |
+| Submissions | Flood limit on form posts / actions per instance: 120 a minute per signed-in person, 1,500 per shared address, 120 per address when signed out → friendly 429 |
 | Double processing | PRS HOD / Store / Release and EPR Finance / Manager / Disburse use compare-and-set (second request refused, stock release rolled back); payments and refunds refuse an identical repeat within 20 s |
 | Errors | Users see plain words or "quote reference ABC123" — never technical text (116 handlers); error / not-found pages |
 | Logs | Structured JSON error lines with reference, route, time; secrets redacted; `instrumentation.ts` catches every server error |
@@ -23,7 +23,7 @@ records what is verified, what was fixed, what is deliberately deferred, and wha
 | Notifications | Every workflow step → action item (until done) + activity + email + audit trail; live updates with push + fallback |
 | Performance | Request / cross-request caching, parallel loading, indexes, cursor paging, search as you type |
 | CI | Install → database build → lint → typecheck → build → dependency vulnerability report |
-| Production build | Full `next build` passes (96 pages); every data page is dynamic (no frozen data) |
+| Production build | Full `next build` of portal and website on every pull request; every data page is dynamic (no frozen data) |
 | Durable idempotency | Payments and refunds carry a form operation id with a UNIQUE constraint (v21) — never recorded twice, even after a dropped connection |
 | Large data | Ever-growing lists (GRNs, PRS, EPR, services by status) capped at the newest 500, search reaches older; analytics all-history reads documented with a pre-computation trigger |
 | Runbooks | `docs/RUNBOOKS.md` — GitHub hardening, Supabase surface proof, staging, restore drill, load test, failure drills, infrastructure triggers |
@@ -36,13 +36,24 @@ records what is verified, what was fixed, what is deliberately deferred, and wha
 | Queues / workers | Emails and reminders are small and logged; cron covers schedules | Bulk work (mass emails, exports, imports) exceeds request time |
 | Read replicas / partitioning | Data volume is small | Analytics queries slow live work, or tables pass tens of millions of rows |
 | Kubernetes | Managed platforms already scale | Never, unless self-hosting is required |
+| Service worker / offline mode | The staff portal and the customer portal are installable (see "Installable app" below) but have no service worker, so no page is kept on the phone. Pages carry personal and business data; caching them offline needs its own design (what may be stored, encryption, clearing on sign-out, stale approvals) | Offline use is a business need, with that design reviewed |
+
+### Installable app
+Both apps can be added to a phone's home screen and open full screen. The staff portal's
+`apps/portal/app/manifest.ts` starts on `/dashboard`; the website's `apps/website/app/manifest.ts`
+installs the customer portal (start `/customer-portal/dashboard`, scope `/customer-portal`). Names
+come from `NEXT_PUBLIC_ORGANISATION_NAME`. Icons in each app's `public/icons/` were made from
+`public/images/logo/logo.png` with sharp (192/512 px, maskable versions with a safe margin, a
+180 px Apple touch icon); regenerate them the same way if the logo changes. The manifest
+(`/manifest.webmanifest`) and the icons are plain GET files, open without a session, and fall
+under the Content-Security-Policy's `default-src 'self'`.
 
 ## 3. Recovery runbook
 - **Code**: Vercel → Deployments → previous → Instant Rollback (seconds). Render → Deploys → Rollback.
 - **Database**: every schema change ships as additive, re-runnable SQL — no destructive migrations.
 - **Backups**: the Supabase free plan has limited backup coverage. Before go-live: upgrade to a plan
   with daily backups + point-in-time recovery, and do one **real restore test** into a new project.
-  Do NOT store database dumps as GitHub artifacts while the repository is public.
+  Do not store database dumps as GitHub artifacts.
 - **Targets to agree with the business**: RPO (data you can afford to lose) and RTO (time to recover).
 
 ## 4. Remaining risks (owned, not hidden)
@@ -67,7 +78,7 @@ exports, documents, notifications, realtime and analytics — with allowed AND d
 ## 6. Phase B — Authorization (status)
 | Piece | State |
 |---|---|
-| Catalogue (`lib/authz/catalogue.ts`) | 46 permissions, 16 roles, 5 scopes; pure `decide()`; `homeBranch` for approvals and money (the person must belong to the branch) |
+| Catalogue (`lib/authz/catalogue.ts`) | 49 permissions, 17 organisation roles, 5 scopes (12 Oct 2026); pure `decide()`; `homeBranch` for approvals and money (the person must belong to the branch) |
 | Enforcement (`lib/authz/server.ts`) | `guardPage` (pages), `authorize` / `authorizeOn…` (actions), `allows` (buttons — same rule), `refuse` (workflow refusals), `canSeeRecord` / `seeOrNull` (records), `reachWhere` / `branchWithinReach` (lists); every refusal audited as `access.denied` |
 | Actions | Every data-changing server action passes the catalogue or an audited workflow check — **locked by a CI test** (`tests/guard-coverage.test.ts`) |
 | Module checks on the catalogue | Store, Finance, Manager approvals, Warranty, Security gate, Scheduling, Broadcasts, Audit, Analytics, Organisation / Branch editing — a grant added on the Roles page now really works |
@@ -82,7 +93,8 @@ exports, documents, notifications, realtime and analytics — with allowed AND d
 | Deploys | Only production changes the database, and never with `--accept-data-loss` |
 | Roles (realistic, v24) | Segregation of duties per department (Front Desk · Supervisor · Technician · Manager · Finance · Store · Warranty · Security · Scheduling); two administration levels — Organisation Administrator (headquarters, all branches) and Branch Administrator (one branch, cannot create administrators); everyone else may only request their own exit pass; menu, dashboard and search follow the same rules |
 | Scheduled jobs (v25) | Vercel (daily): morning digest 7:00, pricing alerts 8:00; Supabase pg_cron (every 10 min): appointment reminders + scheduled broadcast emails; every run recorded and shown on Settings with email delivery health |
-| Next | Recycle Bin (deletion flag, restore, platform purge after retention); per-organisation uniqueness (customer e-mail, plates, provider names) and per-organisation API routes — before a second organisation joins |
+| Recycle Bin (V1) | Job Cards, Vehicle Services, customers, vehicles and parts created by mistake go to the bin with a reason; restore within 30 days (`RECYCLE_BIN_DAYS`); daily clean-up removes expired items for good; records with money, approvals, parts, warranties or gate movements are refused and must be cancelled |
+| Next | Per-organisation uniqueness (customer e-mail, plates, provider names) and per-organisation API routes — before a second organisation joins |
 
 ## 7. Permanent architectural principles (binding on every change)
 1. **No subsystem on another's critical path without a compelling reason.** Prefer independent

@@ -1,8 +1,10 @@
 'use client';
 
-import { createContext, useContext, useTransition, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useTransition, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { PageLoading } from './PageLoading';
+import { contentArea } from './content-area';
 
 type NavigationLoadingContextValue = {
   isPending: boolean;
@@ -12,67 +14,39 @@ type NavigationLoadingContextValue = {
 const NavigationLoadingContext = createContext<NavigationLoadingContextValue | null>(null);
 
 /**
- * The single, shared mechanism for "every navigation shows the branded
- * EJO loader" — built once here, used everywhere via `<LoadingLink>`
- * instead of plain `next/link`, rather than re-solved per page.
- *
- * This exists because relying purely on Next.js's ambient `loading.tsx`
- * Suspense boundaries has proven unreliable for several real navigation
- * patterns in this app already (sibling routes not reliably re-firing a
- * shared ancestor boundary; a dynamic `[id]` route not always
- * suspending the way a plain route does) — each one required its own
- * investigation and fix. Rather than keep chasing individual gaps,
- * this ties the loading state directly and deterministically to the
- * click itself via `useTransition` + `router.push`, the same proven
- * pattern already used successfully for the Workshop filter tabs —
- * independent of whatever the ambient Suspense boundary happens to do.
- *
- * Wraps `<main>` in the shared (app) layout, not the whole viewport —
- * Sidebar and Topbar stay mounted (never unmount/remount) during
- * navigation, but the loading overlay itself is deliberately full
- * viewport (fixed, not scoped to just the main content area) — see
- * the real reasoning on that inside the component below.
+ * Shows the loader for every navigation made through <LoadingLink>.
+ * loading.tsx boundaries don't always re-show (sibling routes, some dynamic
+ * routes), so the loading state is tied to the click with useTransition +
+ * router.push instead. Wraps <main>; the sidebar and top bar stay mounted.
  */
 export function NavigationLoadingProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [area, setArea] = useState<HTMLElement | null>(null);
+  useEffect(() => { setArea(contentArea()); }, []);
 
   function navigate(href: string) {
     startTransition(() => router.push(href));
   }
 
+  // Covers only the working area: the menu, header and ticker stay in place.
+  const overlay = (
+    <div className="ejo-fade absolute inset-0 z-10 bg-[var(--ejo-bg)]/85 backdrop-blur-[1px]" role="status" aria-live="polite">
+      <PageLoading />
+    </div>
+  );
+
   return (
     <NavigationLoadingContext.Provider value={{ isPending, navigate }}>
       <div className="ejo-page relative min-w-0 flex-1">
-        {isPending ? (
-          // Fixed, not absolute — the real bug this fixes. `absolute`
-          // was positioned relative to this own div, which (before a
-          // separate real fix made every column scroll independently)
-          // could genuinely stretch to the full height of a very long
-          // page's content — meaning the loader centered itself in the
-          // middle of the WHOLE page, not the visible viewport, and
-          // scrolled off-screen above on a long page. `fixed` is
-          // always relative to the real viewport, regardless of how
-          // tall the page's own content is or how far it's scrolled.
-          // Deliberately covers the full viewport (Sidebar/Topbar
-          // included) rather than trying to carve out a Sidebar-width,
-          // Topbar-height-aware inset — those dimensions can change,
-          // and a loader that's occasionally, briefly full-screen is a
-          // far smaller real problem than one that's sometimes
-          // invisible.
-          <div className="fixed inset-0 z-10 bg-[var(--ejo-bg)]">
-            <PageLoading />
-          </div>
-        ) : null}
+        {isPending ? (area ? createPortal(overlay, area) : overlay) : null}
         {children}
       </div>
     </NavigationLoadingContext.Provider>
   );
 }
 
-/** Thrown deliberately if used outside the provider — a silent no-op
- * fallback would make it too easy to add a LoadingLink somewhere the
- * provider isn't mounted and never notice it's not actually working. */
+/** Throws outside the provider so a missing provider is noticed at once. */
 export function useNavigationLoading(): NavigationLoadingContextValue {
   const ctx = useContext(NavigationLoadingContext);
   if (!ctx) {

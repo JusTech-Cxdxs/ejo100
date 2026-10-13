@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import type { ReactNode } from 'react';
 
 const ACCENT = '#16A34A';
@@ -5,11 +6,11 @@ const ACCENT = '#16A34A';
 /**
  * A pass on a POS receipt roll (58 / 80 mm): fills the roll's width, with
  * the same header as every EJO document — logo beside the organisation
- * wordmark ("Kewalram" over an accent rule and "Chanrai Group") — then the
+ * wordmark (first word over an accent rule, the rest beneath) — then the
  * copy label, a boxed title, the content and an optional note.
  */
 export function PassSheet({ copyLabel, orgName, subName, title, children, note }: { copyLabel: string; orgName: string; subName?: string | null; title: string; children: ReactNode; note?: string }) {
-  const logo = `${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app'}/images/logo/logo.png`;
+  const logo = `${portalBaseUrl()}/images/logo/logo.png`;
   const words = orgName.trim().split(/\s+/);
   const top = words[0] ?? orgName;
   const bottom = words.slice(1).join(' ');
@@ -39,7 +40,7 @@ export function PassSheet({ copyLabel, orgName, subName, title, children, note }
         <div style={{ padding: '6px' }}>{children}</div>
         {note ? <div style={{ borderTop: '1.5px solid #0F172A', padding: '5px', fontSize: '9.5px', fontWeight: 600 }}>{note}</div> : null}
       </div>
-      <div style={{ textAlign: 'center', fontSize: '8.5px', color: '#64748B', marginTop: '4px' }}>Printed {new Date().toLocaleString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+      <div style={{ textAlign: 'center', fontSize: '8.5px', color: '#64748B', marginTop: '4px' }}>Printed {new Date().toLocaleString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' })}</div>
       <div style={{ textAlign: 'center', fontSize: '8px', color: '#CBD5E1', marginTop: '2px' }}>Powered by EJO 100 Enterprise Platform</div>
     </div>
   );

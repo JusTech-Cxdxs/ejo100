@@ -1,4 +1,5 @@
 'use server';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { authorize, seeService } from '@/lib/authz/server';
@@ -29,14 +30,11 @@ export async function getVehicleServicePayments(vehicleServiceId: string) {
 }
 
 /**
- * Records one payment toward a Vehicle Service's own approved
- * estimate — the exact real Vehicle Service equivalent of Job Card's
- * own recordPayment(). Same real reasoning throughout: `amount` is
- * always exactly what's recorded (never a trusted "preset"), rejects
- * anything that would push the cumulative total past the estimate,
- * and approval — moving the Vehicle Service to IN_SERVICE — is fully
- * automatic the moment the running total first crosses the real 70%
- * minimum deposit, whichever specific payment that happens to be.
+ * Records one payment toward a Vehicle Service's approved estimate (Vehicle
+ * Service version of recordPayment()). `amount` is exactly what is recorded;
+ * amounts that would take the total past the estimate are refused. When the
+ * total first reaches the 70% deposit, the service moves to IN_SERVICE
+ * automatically.
  */
 export async function recordServicePayment(
   vehicleServiceId: string,
@@ -45,8 +43,8 @@ export async function recordServicePayment(
   notes?: string,
   idempotencyKey?: string,
 ): Promise<void> {
-  // Central catalogue first (who may attempt this); branch eligibility and the
-  // workflow state are still checked below, exactly as before.
+  // Catalogue check first (who may attempt this); branch eligibility and
+  // workflow state are checked below.
   await authorize('workshop.payment.record', undefined, 'recordServicePayment');
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new ServicePaymentActionError('Enter a valid payment amount.');
@@ -72,22 +70,16 @@ export async function recordServicePayment(
   if (!service.serviceEstimate || !service.serviceEstimate.customerNotifiedAt) {
     throw new ServicePaymentActionError('Payments can only be recorded once the customer has been notified of the approved estimate.');
   }
-  // Same real reasoning as Job Card's own gate — payments keep
-  // accumulating right up to full payment, well after the 70%
-  // deposit has already moved this Vehicle Service to IN_SERVICE, not
-  // just during the brief window before work starts.
-  // The balance is commonly settled at collection time — so payments
-  // stay open through Completed and Ready for Collection too. Without
-  // this, a customer who paid the 70% deposit could never clear the
-  // balance, and close/check-out (which require full payment) would be
-  // permanently blocked. Overpayment is still refused below.
+  // Payments stay open through Completed and Ready for Collection: the
+  // balance is often settled at collection, and close/checkout require full
+  // payment. Overpayment is still refused below.
   if (!['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'].includes(service.status)) {
     throw new ServicePaymentActionError('Payments can only be recorded while this Vehicle Service is checked in, in service, completed or ready for collection.');
   }
   const user = await requireEligibleFinanceOfficer(service.branchId, 'workshop.payment.record');
-  // Same form submitted again (e.g. after a dropped connection): already done — nothing to record.
-  // Same form submitted again (e.g. after a dropped connection): if it is the SAME
-  // payment, it is already done; if the id was reused for anything different, refuse.
+  // Same form submitted again (e.g. after a dropped connection): if it is the
+  // same payment, it is already done; if the key was reused for something
+  // different, refuse.
   if (idempotencyKey) {
     const done = await prisma.payment.findUnique({ where: { idempotencyKey }, select: { vehicleServiceId: true, amount: true, method: true } });
     if (done) {
@@ -95,8 +87,8 @@ export async function recordServicePayment(
       throw new ServicePaymentActionError('This form was already used for a different payment — refresh the page and enter it again.');
     }
   }
-  // Duplicate guard: the same amount, method and record by the same person
-  // within 20 seconds is a double click or a resend after a dropped network.
+  // Duplicate guard: same amount, method and recorder within 20 seconds is a
+  // double click or a resend after a dropped connection.
   if (await prisma.payment.findFirst({ where: { vehicleServiceId, amount, method, recordedById: user.id, recordedAt: { gte: new Date(Date.now() - 20000) } }, select: { id: true } })) {
     throw new Error('This payment was just recorded — check the payments list before recording it again.');
   }
@@ -120,12 +112,12 @@ export async function recordServicePayment(
     );
   }
 
-  // Two cashiers at once: re-decide with the Vehicle Service row locked,
-  // against the payments as they are at that instant (see lib/integrity.ts).
+  // Two cashiers at once: decide again with the Vehicle Service row locked,
+  // against the payments as they are now (see lib/integrity.ts).
   const PAYABLE = ['CHECKED_IN', 'IN_SERVICE', 'COMPLETED', 'READY_FOR_COLLECTION'];
   const settled = await prisma.$transaction(async (tx) => {
     await lockExisting(tx, 'vehicleService', [vehicleServiceId], 'This Vehicle Service no longer exists — refresh the page.');
-    // The same form, resent while the first was still being saved: done.
+    // The same form, resent while the first was still saving: already recorded.
     if (idempotencyKey && (await tx.payment.findUnique({ where: { idempotencyKey }, select: { id: true } }))) return null;
     const now = await tx.vehicleService.findUnique({
       where: { id: vehicleServiceId },
@@ -190,7 +182,7 @@ export async function recordServicePayment(
 
   try {
     const orgContext = await getWorkshopOrgContext(service.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const balance = roundedTotal - newTotal;
 
     const recipientIds = new Set<string>();
@@ -217,7 +209,7 @@ export async function recordServicePayment(
           totalEstimate: formatNaira(roundedTotal),
           balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
           serviceUrl: `${portalUrl}/workshop/vehicle-service/${vehicleServiceId}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -225,14 +217,13 @@ export async function recordServicePayment(
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send payment-recorded update emails for Vehicle Service', service.serviceNumber, err);
   }
 
   if (justMetDeposit || justCompletedFull) {
     try {
       const orgContext = await getWorkshopOrgContext(service.department?.name);
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const portalUrl = portalBaseUrl();
 
       const recipientIds = new Set<string>();
       if (service.supervisorId) recipientIds.add(service.supervisorId);
@@ -258,7 +249,7 @@ export async function recordServicePayment(
               customerName: service.customer.fullName,
               totalPaid: formatNaira(newTotal),
               serviceUrl: `${portalUrl}/workshop/vehicle-service/${vehicleServiceId}`,
-              logoUrl: `${portalUrl}/images/logo/logo.png`,
+              logoUrl: `${portalUrl}/images/logo/email-logo.png`,
               companyName: orgContext.companyName,
               branchName: orgContext.branchName,
               departmentName: orgContext.departmentName,
@@ -267,7 +258,7 @@ export async function recordServicePayment(
         } else {
           await sendEmail(
             recipient.email,
-            `Deposit requirement met on Vehicle Service ${service.serviceNumber}`,
+            `Deposit paid, work can start — Vehicle Service ${service.serviceNumber}`,
             renderServicePaymentRequirementMetEmail({
               recipientName: recipient.fullName,
               serviceNumber: service.serviceNumber,
@@ -275,7 +266,7 @@ export async function recordServicePayment(
               totalPaidSoFar: formatNaira(newTotal),
               totalEstimate: formatNaira(roundedTotal),
               serviceUrl: `${portalUrl}/workshop/vehicle-service/${vehicleServiceId}`,
-              logoUrl: `${portalUrl}/images/logo/logo.png`,
+              logoUrl: `${portalUrl}/images/logo/email-logo.png`,
               companyName: orgContext.companyName,
               branchName: orgContext.branchName,
               departmentName: orgContext.departmentName,
@@ -284,14 +275,13 @@ export async function recordServicePayment(
         }
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
       logFailure('Failed to send payment milestone emails for Vehicle Service', service.serviceNumber, err);
     }
   }
 
   try {
     const orgContext = await getWorkshopOrgContext(service.department?.name);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const websiteUrl = websiteBaseUrl();
     const balance = roundedTotal - newTotal;
     await sendEmail(
       service.customer.email,
@@ -303,14 +293,13 @@ export async function recordServicePayment(
         totalPaidSoFar: formatNaira(newTotal),
         totalEstimate: formatNaira(roundedTotal),
         balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
-        serviceUrl: `${portalUrl}/workshop/vehicle-service/${vehicleServiceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        serviceUrl: `${websiteUrl}/customer-portal/dashboard#service-${vehicleServiceId}`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send customer payment-received email for Vehicle Service', service.serviceNumber, err);
   }
 }

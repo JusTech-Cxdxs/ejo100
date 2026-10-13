@@ -28,7 +28,7 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
       type="button"
       onClick={() => void copy()}
       aria-label={copied ? `${label} copied` : `Copy ${label}`}
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors ${copied ? 'border-[var(--ejo-success)]/40 bg-[var(--ejo-success)]/10 text-[var(--ejo-success)]' : 'border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)]'}`}
+      className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs sm:h-8 sm:px-2.5 font-medium transition-colors ${copied ? 'border-[var(--ejo-success)]/40 bg-[var(--ejo-success)]/10 text-[var(--ejo-success)]' : 'border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)]'}`}
     >
       <Icon name={copied ? 'check' : 'copy'} size={13} strokeWidth={2.2} />
       <span aria-live="polite">{copied ? 'Copied' : 'Copy'}</span>

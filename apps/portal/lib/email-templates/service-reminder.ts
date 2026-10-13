@@ -1,5 +1,5 @@
-import { renderEmailLayout, escapeHtml } from './layout';
-import { pluralize } from '@/lib/utils/pluralize';
+import { renderEmailLayout, html, greeting, para, details, highlight, callout, plural, formatEmailDate, vehicleLabel, type EmailTone } from './layout';
+import { ordinal } from '../utils/ordinal';
 
 export type ServiceReminderStage = 1 | 2 | 3 | 4;
 
@@ -16,8 +16,7 @@ export type ServiceReminderEmailOptions = {
   kmRemaining: number | null;
   daysRemaining: number | null;
   isOverdue: boolean;
-  /** Which reminder this is for the current service cycle (1st, 2nd, …) —
-   * shown to the customer so the count is transparent. */
+  /** Which reminder this is in the current service cycle (1st, 2nd, ...). */
   reminderCount: number;
   vehicleUrl: string;
   logoUrl: string;
@@ -25,168 +24,85 @@ export type ServiceReminderEmailOptions = {
   branchName: string;
 };
 
-function ordinal(n: number): string {
-  const v = n % 100;
-  if (v >= 11 && v <= 13) return `${n}th`;
-  return `${n}${n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th'}`;
-}
-
-function formatDate(d: Date): string {
-  return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Lagos' });
-}
-
-/** Real, actual facts only — never invents a number the system
- * doesn't genuinely have. */
-function vehicleInfoCard(opts: ServiceReminderEmailOptions): string {
-  const { vehicleDescription, plateNumber, currentMileage, lastServiceMileage, lastServiceDate, estimatedDueOdometer, estimatedDueDate, kmRemaining, daysRemaining, isOverdue } = opts;
-
-  const remainingParts = [
-    kmRemaining !== null ? `about ${kmRemaining.toLocaleString('en-NG')} km` : null,
-    daysRemaining !== null ? pluralize(daysRemaining, 'day') : null,
-  ].filter(Boolean);
-  const statusLine = isOverdue
-    ? '<span style="color: #DC2626; font-weight: bold;">Estimated service point reached</span>'
-    : remainingParts.length > 0
-      ? `<span style="color: #CA8A04; font-weight: bold;">${remainingParts.join(' or ')} to go — whichever comes first</span>`
-      : '';
-  const accent = isOverdue ? '#DC2626' : '#16A34A';
-  const accentBg = isOverdue ? '#FEF2F2' : '#F0FDF4';
-  const accentBorder = isOverdue ? '#FECACA' : '#BBF7D0';
-  const dueCell = (label: string, value: string) =>
-    `<td style="padding: 6px 12px 6px 0; vertical-align: top;"><p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #475569;">${label}</p><p style="margin: 2px 0 0 0; font-size: 26px; line-height: 1.15; font-weight: 800; color: ${accent};">${value}</p></td>`;
-  const nextServiceBlock =
-    estimatedDueOdometer !== null || estimatedDueDate
-      ? `
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 14px 0 4px 0; background-color: ${accentBg}; border: 2px solid ${accentBorder}; border-radius: 12px;">
-            <tr><td style="padding: 16px 18px;">
-              <p style="margin: 0 0 8px 0; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.06em; color: ${accent};">Next routine service</p>
-              <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-                ${estimatedDueOdometer !== null ? dueCell('At odometer', `${estimatedDueOdometer.toLocaleString('en-NG')} km`) : ''}
-                ${estimatedDueOdometer !== null && estimatedDueDate ? '<td style="padding: 22px 12px 0 0; font-size: 14px; font-weight: bold; color: #475569;">or</td>' : ''}
-                ${estimatedDueDate ? dueCell('By date', formatDate(estimatedDueDate)) : ''}
-              </tr></table>
-              ${estimatedDueOdometer !== null && estimatedDueDate ? '<p style="margin: 6px 0 0 0; font-size: 12px; color: #475569;">Whichever comes first.</p>' : ''}
-            </td></tr>
-          </table>`
-      : '';
-
-  return `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 20px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 2px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Your Vehicle</p>
-          <p style="margin: 0 0 10px 0; font-size: 15px; font-weight: bold; color: #0F172A;">${escapeHtml(vehicleDescription)}${plateNumber ? ` — ${escapeHtml(plateNumber)}` : ''}</p>
-          ${currentMileage !== null ? `<p style="margin: 0 0 2px 0; font-size: 12px; color: #64748B;">Current recorded mileage</p><p style="margin: 0 0 10px 0; font-size: 13px; color: #0F172A;">${currentMileage.toLocaleString('en-NG')} km</p>` : ''}
-          ${lastServiceMileage !== null || lastServiceDate ? `<p style="margin: 0 0 2px 0; font-size: 12px; color: #64748B;">Last recorded service</p><p style="margin: 0 0 10px 0; font-size: 13px; color: #0F172A;">${lastServiceMileage !== null ? `${lastServiceMileage.toLocaleString('en-NG')} km` : ''}${lastServiceMileage !== null && lastServiceDate ? ' — ' : ''}${lastServiceDate ? formatDate(lastServiceDate) : ''}</p>` : ''}
-          ${nextServiceBlock}
-          ${statusLine ? `<p style="margin: 8px 0 0 0; font-size: 13px;">${statusLine}</p>` : ''}
-          <p style="margin: 10px 0 0 0; font-size: 11px; color: #94A3B8; font-style: italic;">
-            The date and mileage shown above are estimates based on the latest service information available to us. Actual timing depends on how the vehicle is used — please check your current odometer regularly.
-          </p>
-        </td>
-      </tr>
-    </table>
-  `;
-}
-
-/** The same recognizable safety paragraph on every single stage —
- * deliberately never varies, so it becomes a familiar, trusted part
- * of every reminder rather than sounding like the system claims to
- * know the vehicle's actual condition. */
-function safetyParagraph(): string {
-  return `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 16px 0; background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px;">
-      <tr>
-        <td style="padding: 16px 20px;">
-          <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; color: #92400E;">A quick reminder about your vehicle</p>
-          <p style="margin: 0; font-size: 13px; color: #78350F; line-height: 1.5;">
-            Your vehicle can sometimes give you small signs before a problem becomes more serious — warning lights, unusual sounds, changes in braking or steering, overheating, fluid leaks, tyre problems, or anything that feels different from normal.
-            Please don't wait for your next routine service if something feels off. Contact us and we'll help you work out the right next step.
-          </p>
-        </td>
-      </tr>
-    </table>
-  `;
-}
-
-function alreadyServicedLine(): string {
-  return `<p style="margin: 16px 0 0 0; font-size: 12px; color: #64748B;">If you've already had this vehicle serviced elsewhere, please let us know so we can update your service information.</p>`;
-}
-
-const STAGE_COPY: Record<ServiceReminderStage, { subject: string; heading: string; iconGlyph: string; iconTone: 'neutral' | 'positive' | 'negative'; opening: (name: string, vehicle: string) => string; body: string }> = {
+/**
+ * Four stages, the tone moving from a light reminder to a clear "due now".
+ * Every stage says plainly that the due point is an estimate, and only shows
+ * figures the system actually has.
+ */
+const STAGES: Record<ServiceReminderStage, { status: string; tone: EmailTone; heading: string; subject: (v: string) => string; body: (v: string) => string }> = {
   1: {
-    subject: 'A friendly reminder to keep your vehicle on track',
-    heading: 'Keeping an eye on your vehicle',
-    iconGlyph: '🚗',
-    iconTone: 'neutral',
-    opening: (name, vehicle) => `Hello ${escapeHtml(name)}, we hope everything is going well with you and your ${escapeHtml(vehicle)}.`,
-    body: `Based on your vehicle's service information, your next routine service is currently estimated below. Please note this is an estimate based on the information currently available to us — your actual service timing may change depending on how much you drive and how the vehicle is used. If you've been driving more than usual, your current odometer reading is the best guide.`,
+    status: 'Service reminder',
+    tone: 'info',
+    heading: 'Your next service is coming up',
+    subject: (v) => `Service reminder for your ${v}`,
+    body: (v) => `We hope your ${v} is running well. Based on its service history, the next routine service is estimated below. If you have been driving more than usual, your odometer reading is the best guide.`,
   },
   2: {
-    subject: 'Your vehicle is getting closer to its next routine service',
-    heading: 'Getting closer to your next service',
-    iconGlyph: '🚗',
-    iconTone: 'neutral',
-    opening: (name, vehicle) => `Hello ${escapeHtml(name)}, we hope you're doing well and that your ${escapeHtml(vehicle)} is serving you well.`,
-    body: `This is a follow-up reminder about your vehicle's next routine service. Please remember this is a maintenance estimate, not a fixed appointment date or exact mileage — your actual service point depends on how the vehicle is being used. If you've been driving more than usual, please use your current odometer reading as your best guide.`,
+    status: 'Service reminder',
+    tone: 'info',
+    heading: 'Your next service is getting close',
+    subject: (v) => `Your ${v} is getting close to its next service`,
+    body: (v) => `Your ${v} is getting close to its next routine service. The point shown below is an estimate, not a fixed appointment; how the vehicle is used can bring it forward or push it back.`,
   },
   3: {
-    subject: 'Your vehicle may be due for its next routine service',
-    heading: 'Your vehicle may be due',
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    opening: (name, vehicle) => `Hello ${escapeHtml(name)}, this is another reminder about the next routine service for your ${escapeHtml(vehicle)}.`,
-    body: `Because vehicle usage varies, we recommend checking your current odometer reading rather than relying on the estimated date alone. If your vehicle has reached the recommended mileage interval, or the estimated date has passed, please consider arranging your routine service — even a small issue can become a larger one when left unattended.`,
+    status: 'Service may be due',
+    tone: 'warning',
+    heading: 'Your vehicle may be due for a service',
+    subject: (v) => `Your ${v} may be due for a service`,
+    body: (v) => `Your ${v} may now be due for its routine service. Please check the odometer: if it has reached the mileage below, or the date has passed, it is a good time to book. Small issues are cheaper to fix early.`,
   },
   4: {
-    subject: "Your vehicle's routine service may now be due",
-    heading: 'Routine service may now be due',
-    iconGlyph: '!',
-    iconTone: 'negative',
-    opening: (name) => `Hello ${escapeHtml(name)}, we hope you're doing well.`,
-    body: `Our records indicate that your ${'{{VEHICLE}}'} has reached or passed its current estimated routine service point. This reminder is based on the service information currently available to us — actual usage can cause the real interval to be reached earlier or later than the original estimate. We recommend checking your current odometer reading and arranging a routine service if the interval has genuinely been reached.`,
+    status: 'Service due',
+    tone: 'danger',
+    heading: 'Your vehicle is due for a service',
+    subject: (v) => `Your ${v} is due for a service`,
+    body: (v) => `By our records, your ${v} has reached or passed its estimated service point. Actual use can move this earlier or later, so please check the odometer and book a routine service if the interval has been reached.`,
   },
 };
 
-/**
- * The one real, shared email covering all four progressive stages —
- * same real layout throughout, the tone and wording genuinely
- * shifting stage by stage exactly as agreed: warm and preventive
- * first, more attentive second, more actionable third, and factual
- * rather than alarmist once truly overdue. Never claims the estimate
- * is exact; always tells the customer plainly that real usage moves
- * the real date.
- */
-export function renderServiceReminderEmail(opts: ServiceReminderEmailOptions): string {
-  const stage = STAGE_COPY[opts.stage];
-  const openingLine = stage.opening(opts.customerName, opts.vehicleDescription).replace('{{VEHICLE}}', escapeHtml(opts.vehicleDescription));
-  const bodyLine = stage.body.replace('{{VEHICLE}}', escapeHtml(opts.vehicleDescription));
+function km(n: number): string {
+  return `${n.toLocaleString('en-NG')} km`;
+}
 
-  const counter = `<p style="margin: 0 0 14px 0; display: inline-block; padding: 4px 10px; border-radius: 999px; background-color: #EEF2FF; color: #3730A3; font-size: 12px; font-weight: bold;">This is our ${ordinal(Math.max(1, opts.reminderCount))} reminder about this service</p>`;
-  const bodyHtml = `
-    ${counter}
-    <p style="margin: 0 0 16px 0;">${openingLine}</p>
-    <p style="margin: 0 0 8px 0;">${bodyLine}</p>
-    ${vehicleInfoCard(opts)}
-    ${safetyParagraph()}
-    <p style="margin: 16px 0 0 0;">If you notice anything unusual, or would simply like us to take a look, please contact our service team.</p>
-    ${alreadyServicedLine()}
-  `;
+export function renderServiceReminderEmail(o: ServiceReminderEmailOptions): string {
+  const s = STAGES[o.stage];
+  const vehicle = vehicleLabel(o.vehicleDescription, o.plateNumber);
+  const due = [o.estimatedDueOdometer !== null ? km(o.estimatedDueOdometer) : null, o.estimatedDueDate ? formatEmailDate(o.estimatedDueDate) : null].filter(Boolean).join(' or ');
+  const remaining = [o.kmRemaining !== null ? `about ${km(o.kmRemaining)}` : null, o.daysRemaining !== null ? plural(o.daysRemaining, 'day') : null].filter(Boolean).join(' or ');
+  const dueSub = o.isOverdue
+    ? 'The estimated service point has been reached.'
+    : remaining
+      ? `${remaining} to go${o.estimatedDueOdometer !== null && o.estimatedDueDate ? ', whichever comes first' : ''}.`
+      : undefined;
+  const lastService = [o.lastServiceMileage !== null ? km(o.lastServiceMileage) : null, o.lastServiceDate ? formatEmailDate(o.lastServiceDate) : null].filter(Boolean).join(' on ');
+
+  const bodyHtml = html`
+    ${greeting(o.customerName)}
+    ${para(s.body(vehicle))}
+    ${due ? highlight('Next routine service', due, dueSub, o.isOverdue ? 'danger' : o.stage >= 3 ? 'warning' : 'success') : ''}
+    ${details([
+      ['Vehicle', vehicle],
+      ['Recorded mileage', o.currentMileage !== null ? km(o.currentMileage) : null],
+      ['Last service', lastService],
+      ['Reminder', `${ordinal(Math.max(1, o.reminderCount))} reminder for this service`],
+    ])}
+    ${callout('Do not wait for the next service if something feels wrong: warning lights, unusual noises, changes in braking or steering, overheating, leaks or tyre problems. Contact us and we will help you decide what to do.', 'neutral', 'Between services')}
+    ${para('These dates and distances are estimates from the latest service information we hold. If the vehicle has been serviced elsewhere, let us know and we will update our records.', 'small')}`;
 
   return renderEmailLayout({
-    previewText: stage.subject,
-    companyName: opts.companyName,
-    orgContext: [opts.companyName, opts.branchName],
-    iconGlyph: stage.iconGlyph,
-    iconTone: stage.iconTone,
-    heading: stage.heading,
+    previewText: due ? `Next routine service for your ${vehicle}: ${due}.` : s.subject(vehicle),
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName],
+    status: { label: s.status, tone: s.tone },
+    heading: s.heading,
     bodyHtml,
-    ctaLabel: 'View Vehicle',
-    ctaUrl: opts.vehicleUrl,
-    logoUrl: opts.logoUrl,
+    ctaLabel: 'View my vehicle',
+    ctaUrl: o.vehicleUrl,
+    audience: 'customer',
   });
 }
 
-export function serviceReminderSubject(stage: ServiceReminderStage): string {
-  return STAGE_COPY[stage].subject;
+export function serviceReminderSubject(stage: ServiceReminderStage, vehicle?: string): string {
+  return STAGES[stage].subject(vehicle?.trim() || 'vehicle');
 }

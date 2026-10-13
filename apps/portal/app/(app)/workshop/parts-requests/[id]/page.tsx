@@ -1,4 +1,7 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
+import { GrnRef } from '@/components/GrnRef';
 import { notFound } from 'next/navigation';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
 import { WarrantyList } from '@/components/WarrantyList';
@@ -37,13 +40,9 @@ function formatNaira(value: number): string {
 }
 
 /**
- * The real document this whole request always was — a standard,
- * non-editable slip, exactly like a real printed store requisition:
- * who/what/where it's for at the top, every real Part in a proper
- * numbered table underneath, a real total, and a genuine approval
- * chain below that. Nothing on this page asks anyone to fill
- * anything in, because there's genuinely nothing left to decide —
- * Store already matched and priced every line back at estimate time.
+ * The parts request slip, laid out like a printed store requisition: header,
+ * numbered parts table, total, then the approval chain. Lines were matched
+ * and priced at estimate time, so nothing here is editable.
  */
 export default async function PartRequestSlipDetailPage({
   params,
@@ -60,6 +59,8 @@ export default async function PartRequestSlipDetailPage({
   if (!slip) notFound();
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
+  // Goods receipts show delivery costs: a link only for those who may open them.
+  const canSeeGrn = (await Promise.all(STORE_COST_PERMISSIONS.map((k) => allows(k)))).some(Boolean);
   // Who usually collects: the job's assigned technician.
   const receiver = (slip.jobCard?.assignedTechnician ?? slip.vehicleService?.assignedTechnician) ?? null;
 
@@ -76,9 +77,8 @@ export default async function PartRequestSlipDetailPage({
     eligibleStoreManagers.staff.some((s) => s.id === viewerId) ||
     eligibleStoreOfficers.staff.some((s) => s.id === viewerId);
   const serializedLines = slip.lines.filter((l: (typeof slip.lines)[number]) => l.part.trackingType === 'SERIALIZED');
-  // Resolves to whichever real record this slip was actually sourced
-  // from — a Job Card or a Vehicle Service's own Service Estimate.
-  // Exactly one of the two is ever set; this never guesses which.
+  // A slip comes from either a Job Card or a Vehicle Service estimate;
+  // exactly one of the two is set.
   const source = slip.jobCard ?? slip.vehicleService;
   const sourceLabel = slip.jobCard ? 'Job Card' : 'Vehicle Service';
   const sourceNumber = slip.jobCard ? slip.jobCard.jobNumber : slip.vehicleService?.serviceNumber;
@@ -122,9 +122,7 @@ export default async function PartRequestSlipDetailPage({
         </div>
       ) : null}
 
-      {/* The real slip — printable on its own, everything else on
-          this page (the approval actions, the timeline) is workflow
-          UI that has no business appearing on a printed copy. */}
+      {/* The slip prints on its own; approval actions and the timeline don't. */}
       <div className="max-w-4xl rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-8 print:border-0 print:p-0 print:shadow-none">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--ejo-border)] pb-4">
           <div>
@@ -171,7 +169,7 @@ export default async function PartRequestSlipDetailPage({
           </div>
         </div>
 
-        <div className="overflow-x-auto py-4">
+        <ResponsiveTable flush className="py-4">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -187,23 +185,21 @@ export default async function PartRequestSlipDetailPage({
             <tbody>
               {slip.lines.map((line: (typeof slip.lines)[number], i: number) => (
                 <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                  <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{i + 1}</td>
-                  <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{line.part.partNumber ?? '—'}</td>
-                  <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{line.part.name}</td>
-                  <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{(line.estimateLineItem ?? line.serviceEstimateLineItem)?.description ?? '—'}</td>
-                  <td className="px-3 py-2 text-right text-[var(--ejo-text)]">
+                  <td data-hide-stacked className="px-3 py-2 text-[var(--ejo-text-muted)]">{i + 1}</td>
+                  <td data-label="Part No." className="px-3 py-2 text-[var(--ejo-text-muted)]">{line.part.partNumber ?? '—'}</td>
+                  <td data-wide data-label="Part Name" className="px-3 py-2 font-medium text-[var(--ejo-text)]">{line.part.name}</td>
+                  <td data-label="Description" className="px-3 py-2 text-[var(--ejo-text-muted)]">{(line.estimateLineItem ?? line.serviceEstimateLineItem)?.description ?? '—'}</td>
+                  <td data-label="Quantity" className="px-3 py-2 text-right text-[var(--ejo-text)]">
                     {Number(line.quantityRequested)} {pluralizeWord(Number(line.quantityRequested), line.part.baseUnitOfMeasure)}
                   </td>
-                  <td className="px-3 py-2 text-right text-[var(--ejo-text)]">
+                  <td data-label="Amount" className="px-3 py-2 text-right text-[var(--ejo-text)]">
                     {(() => {
-                      // A slip is linked to exactly one kind of estimate line — Job
-                      // Card's own, or Vehicle Service's own — so read whichever one
-                      // it actually has, the same way totalAmount above already does.
+                      // Each line links to either a Job Card or a Vehicle Service estimate line.
                       const amount = (line.estimateLineItem ?? line.serviceEstimateLineItem)?.amount;
                       return amount !== null && amount !== undefined ? formatNaira(Number(amount)) : '—';
                     })()}
                   </td>
-                  <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)] print:hidden">
+                  <td data-label="Status" className="px-3 py-2 text-xs text-[var(--ejo-text-muted)] print:hidden">
                     {line.quantityReleased !== null ? (
                       <>
                         Released: {Number(line.quantityReleased)} {pluralizeWord(Number(line.quantityReleased), line.part.baseUnitOfMeasure)}
@@ -216,9 +212,7 @@ export default async function PartRequestSlipDetailPage({
                                   <>
                                     {' '}
                                     — from{' '}
-                                    <LoadingLink href={`/inventory/goods-receipts/${s.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
-                                      {s.goodsReceiptLine.goodsReceipt.referenceNumber}
-                                    </LoadingLink>
+                                    <GrnRef id={s.goodsReceiptLine.goodsReceipt.id} label={s.goodsReceiptLine.goodsReceipt.referenceNumber} link={canSeeGrn} />
                                   </>
                                 ) : null}
                               </div>
@@ -235,9 +229,7 @@ export default async function PartRequestSlipDetailPage({
                                   <>
                                     {' '}
                                     (
-                                    <LoadingLink href={`/inventory/goods-receipts/${c.batch.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
-                                      {c.batch.goodsReceiptLine.goodsReceipt.referenceNumber}
-                                    </LoadingLink>
+                                    <GrnRef id={c.batch.goodsReceiptLine.goodsReceipt.id} label={c.batch.goodsReceiptLine.goodsReceipt.referenceNumber} link={canSeeGrn} />
                                     )
                                   </>
                                 ) : null}
@@ -252,9 +244,7 @@ export default async function PartRequestSlipDetailPage({
                                 {src.goodsReceiptId ? (
                                   <>
                                     From{' '}
-                                    <LoadingLink href={`/inventory/goods-receipts/${src.goodsReceiptId}`} className="text-[var(--ejo-primary)] hover:underline">
-                                      {src.referenceNumber}
-                                    </LoadingLink>{' '}
+                                    <GrnRef id={src.goodsReceiptId} label={src.referenceNumber ?? 'Goods receipt'} link={canSeeGrn} />{' '}
                                     — {src.quantity} {pluralizeWord(src.quantity, line.part.baseUnitOfMeasure)}
                                   </>
                                 ) : (
@@ -285,10 +275,10 @@ export default async function PartRequestSlipDetailPage({
               </tr>
             </tfoot>
           </table>
-        </div>
+        </ResponsiveTable>
       </div>
 
-      <div className="mt-6 grid max-w-4xl gap-6 lg:grid-cols-[1fr_360px] print:hidden">
+      <div className="mt-6 grid max-w-4xl gap-6 xl:grid-cols-[minmax(0,1fr)_360px] print:hidden">
         <div className="space-y-6">
           {slip.status === 'RELEASED' ? (
             <PrintMenu orgHref={`/print/parts-requests/${slip.id}`} clientHref={`/print/parts-requests/${slip.id}?variant=client`} clientLabel="Collector Copy" />
@@ -383,7 +373,7 @@ export default async function PartRequestSlipDetailPage({
           <WarrantyList warranties={warranties} title="Warranties issued with this release" />
         </div>
 
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Timeline</h2>
           <dl className="mt-3 space-y-3 text-sm">
             <div>

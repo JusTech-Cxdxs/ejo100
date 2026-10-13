@@ -3,18 +3,20 @@
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { useI18n, type TranslationKey } from '@/lib/i18n';
-import { BrandLogo } from './BrandLogo';
+import { siteConfig } from '@/lib/site-config';
+import { SiteWordmark } from './SiteWordmark';
 import { FooterBadge } from './FooterBadge';
 import { PoweredByBadge } from './PoweredByBadge';
 import { FacebookIcon, LinkedInIcon, XIcon, YouTubeIcon, InstagramIcon } from './icons';
 
+// Social links come from lib/site-config.ts; only the ones that are set show.
 const SOCIALS = [
-  { label: 'Facebook', icon: FacebookIcon, href: '#' },
-  { label: 'LinkedIn', icon: LinkedInIcon, href: '#' },
-  { label: 'X (Twitter)', icon: XIcon, href: '#' },
-  { label: 'YouTube', icon: YouTubeIcon, href: '#' },
-  { label: 'Instagram', icon: InstagramIcon, href: '#' },
-];
+  { label: 'Facebook', icon: FacebookIcon, href: siteConfig.social.facebook },
+  { label: 'LinkedIn', icon: LinkedInIcon, href: siteConfig.social.linkedin },
+  { label: 'X (Twitter)', icon: XIcon, href: siteConfig.social.x },
+  { label: 'YouTube', icon: YouTubeIcon, href: siteConfig.social.youtube },
+  { label: 'Instagram', icon: InstagramIcon, href: siteConfig.social.instagram },
+].filter((s) => s.href);
 
 // Upload up to three files to public/images/footer-badges/ with these
 // exact names to populate the badge row — see README_CHANGES.md.
@@ -45,105 +47,63 @@ const BUSINESS_LINKS: [TranslationKey, string][] = [
 
 export function Footer() {
   const { t } = useI18n();
+  const contact = siteConfig.contact;
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
 
   function handleSubscribe(e: FormEvent) {
     e.preventDefault();
-    // No newsletter backend wired up yet — this just confirms the intent
-    // was captured client-side so the form isn't a dead end.
+    // There is no newsletter service yet; this only acknowledges the sign-up.
     setSubscribed(true);
     setEmail('');
   }
 
   return (
     <footer className="relative bg-[var(--ejo-secondary)] text-white">
-      <div className="mx-auto grid max-w-7xl gap-10 px-6 py-16 md:grid-cols-6">
+      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-x-6 gap-y-10 px-4 py-14 sm:px-6 md:grid-cols-6 md:py-16">
         {/* Column 1 — logo, name, description, badge row, social icons */}
-        <div className="md:col-span-2">
-          {/* Same real wordmark idea as the print document's own
-              DocumentHeader and the site's own Header — a rule that
-              grows to fill exactly the leftover space so "Chanrai
-              Group" ends flush with "Kewalram" above it, whatever the
-              exact text width turns out to be, the same way print's
-              own version is mathematically guaranteed to line up. Two
-              earlier attempts at this on the website both turned out
-              wrong once actually viewed — a nested flex/grid version
-              that silently failed to grow at all, then a fixed-width
-              version that "Chanrai Group" ran past "Kewalram" on.
-              Traced the real, working difference directly against
-              print's own proven markup this time, one variable at a
-              time, rather than guess again: the growing rule only
-              works reliably here inside a real two-column table,
-              exactly like print's own structure — not a flex or grid
-              row on its own. Built with plain inline styles
-              throughout, the same as print's own version, so every
-              piece of it could be verified directly against real
-              rendered pixels before shipping, nothing left on trust.
-              Logo height matches the real measured two-line stack
-              height exactly, not larger — the same real design rule
-              used everywhere else this wordmark appears.
-              Note: this replaces the single i18n `footer.companyName`
-              string with the same hardcoded "Kewalram" / "Chanrai
-              Group" split the Header already uses for its own wordmark
-              — matching print and the Header exactly meant the brand
-              name here no longer flows through the Arabic/Hindi/Chinese
-              translations that string previously had (the Header's own
-              wordmark already works this same way, so this makes both
-              consistent with each other, not a new inconsistency). */}
-          <table role="presentation" style={{ borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr>
-                <td style={{ verticalAlign: 'middle', padding: 0 }}>
-                  <BrandLogo size={36} />
-                </td>
-                <td style={{ verticalAlign: 'middle', paddingLeft: '2px' }}>
-                  <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch', whiteSpace: 'nowrap' }}>
-                    <span className="block text-lg font-bold leading-tight">Kewalram</span>
-                    <span style={{ display: 'flex', alignItems: 'center', marginTop: '2px' }}>
-                      <span style={{ flex: 1, marginRight: '6px', borderBottom: '1px solid var(--ejo-primary)' }} />
-                      <span className="block text-xs leading-tight text-white/70">Chanrai Group</span>
-                    </span>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="col-span-2">
+          <SiteWordmark tone="light" size="footer" />
           <p className="mt-3 max-w-xs text-sm text-white/60">{t('footer.companyDescription')}</p>
 
-          <div className="mt-5 flex items-center justify-start gap-4">
+          <div className="mt-5 flex flex-wrap items-center justify-start gap-3 sm:gap-4">
             {BADGES.map((badge) => (
               <FooterBadge key={badge.src} src={badge.src} alt={badge.alt} />
             ))}
           </div>
 
+          {SOCIALS.length > 0 ? (
           <div className="mt-5 flex gap-3">
             {SOCIALS.map(({ label, icon: Icon, href }) => (
               <a
                 key={label}
                 href={href}
+                target="_blank"
+                rel="noopener noreferrer"
                 aria-label={label}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-[var(--ejo-primary)]"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-[var(--ejo-primary)]"
               >
                 <Icon />
               </a>
             ))}
           </div>
+          ) : null}
         </div>
 
         <FooterColumn title={t('footer.quickLinks')} links={QUICK_LINKS} />
         <FooterColumn title={t('footer.ourBusinesses')} links={BUSINESS_LINKS} />
 
-        <div>
+        <div className="col-span-2 sm:col-span-1">
           <p className="text-sm font-semibold text-white">{t('footer.contactUs')}</p>
           <address className="mt-3 space-y-2 text-sm not-italic text-white/60">
             <p>{t('footer.headOffice')}</p>
-            <p>{t('footer.location')}</p>
-            <p>info@kewalram.com</p>
+            {contact.address ? <p>{contact.address}</p> : null}
+            {contact.phone ? <p><a href={`tel:${contact.phone.replace(/[^\d+]/g, '')}`} className="hover:text-white">{contact.phone}</a></p> : null}
+            {contact.email ? <p><a href={`mailto:${contact.email}`} className="hover:text-white">{contact.email}</a></p> : null}
           </address>
         </div>
 
-        <div>
+        <div className="col-span-2 sm:col-span-1">
           <p className="text-sm font-semibold text-white">{t('footer.newsletter')}</p>
           <p className="mt-3 text-sm text-white/60">{t('footer.newsletterText')}</p>
           {subscribed ? (
@@ -156,12 +116,12 @@ export function Footer() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder={t('footer.newsletterPlaceholder')}
-                className="w-full rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm text-white placeholder-white/40 outline-none focus:border-[var(--ejo-primary)]"
+                className="min-h-11 w-full min-w-0 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm text-white placeholder-white/40 outline-none focus:border-[var(--ejo-primary)]"
               />
               <button
                 type="submit"
                 aria-label="Subscribe"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ejo-primary)] hover:opacity-90"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ejo-primary)] hover:opacity-90"
               >
                 →
               </button>
@@ -170,10 +130,10 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="border-t border-white/10 px-6 py-6">
+      <div className="border-t border-white/10 px-4 py-6 sm:px-6">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
           <p className="text-xs text-white/50">
-            © {new Date().getFullYear()} {t('footer.companyName')}. {t('footer.rights')}
+            © {new Date().getFullYear()} {siteConfig.legalName}. {t('footer.rights')}
           </p>
           <div className="flex flex-wrap items-center gap-5 text-xs text-white/50">
             <Link href="/privacy" className="hover:text-white">{t('footer.privacy')}</Link>
@@ -193,10 +153,10 @@ function FooterColumn({ title, links }: { title: string; links: [TranslationKey,
   return (
     <div>
       <p className="text-sm font-semibold text-white">{title}</p>
-      <ul className="mt-3 space-y-2">
+      <ul className="mt-3 space-y-1">
         {links.map(([key, href]) => (
           <li key={href}>
-            <Link href={href} className="text-sm text-white/60 hover:text-[var(--ejo-accent)]">
+            <Link href={href} className="inline-block py-1 text-sm text-white/60 hover:text-[var(--ejo-accent)]">
               {t(key)}
             </Link>
           </li>

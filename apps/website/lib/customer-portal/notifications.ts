@@ -70,9 +70,9 @@ export async function loadNotices(customer: { id: string; organisationId: string
   const events: Omit<NoticeItem, 'read'>[] = servicesEvents(items);
   for (const w of warranties) {
     const href = `/customer-portal/dashboard/warranties/${w.id}`;
-    events.push({ key: `wty:${w.id}:issued`, title: `Warranty ${w.number} issued`, body: `${w.subject} is covered until ${w.endsAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}.`, at: w.issuedAt, href, icon: 'shield', tone: 'success' });
+    events.push({ key: `wty:${w.id}:issued`, title: `Warranty ${w.number} issued`, body: `${w.subject} is covered until ${w.endsAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Lagos' })}.`, at: w.issuedAt, href, icon: 'shield', tone: 'success' });
     if (w.state === 'expiring') {
-      events.push({ key: `wty:${w.id}:expiring`, title: `Warranty ${w.number} ends soon`, body: `${w.subject} — cover ends ${w.endsAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}.`, at: new Date(Math.min(now, w.endsAt.getTime() - WARRANTY_EXPIRY_NOTICE_DAYS * DAY_MS)), href, icon: 'clock', tone: 'attention' });
+      events.push({ key: `wty:${w.id}:expiring`, title: `Warranty ${w.number} ends soon`, body: `${w.subject} — cover ends ${w.endsAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Lagos' })}.`, at: new Date(Math.min(now, w.endsAt.getTime() - WARRANTY_EXPIRY_NOTICE_DAYS * DAY_MS)), href, icon: 'clock', tone: 'attention' });
     }
   }
   for (const b of broadcasts) {

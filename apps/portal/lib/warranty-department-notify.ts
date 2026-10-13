@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 import { prisma } from '@ejo/database';
 import { sendEmail } from '@/lib/email';
@@ -52,7 +53,7 @@ export async function notifyWarrantyDepartmentOfPartWarranty(opts: { partId: str
         : ['Units released from now on will not get a warranty number. Warranties already issued are unchanged.']),
       `Changed by: ${actor?.fullName ?? 'a staff member'}`,
     ];
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     for (const r of recipients) {
       await sendEmail(
         r.email,
@@ -62,14 +63,13 @@ export async function notifyWarrantyDepartmentOfPartWarranty(opts: { partId: str
           heading,
           lines,
           actionUrl: `${portalUrl}/inventory/parts/${part.id}#warranty`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: org?.name ?? 'EJO 100',
           branchName: branch?.name ?? '',
         }),
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to notify the warranty department', err);
   }
 }

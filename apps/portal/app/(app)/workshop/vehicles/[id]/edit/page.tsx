@@ -1,3 +1,5 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
+import { actorLabel } from '@/lib/assist/rules';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { listPartsFittedToVehicle, getVehicleCoveredValue } from '@/lib/actions/vehicle-history';
@@ -8,10 +10,12 @@ import { VehiclePartsFitted } from '@/components/VehiclePartsFitted';
 import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
 import { WarrantyList } from '@/components/WarrantyList';
-import { getVehicle, getLastEditInfo, getVehicleAuditTrail, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
+import { getVehicle, getLastEditInfo, getVehicleAuditTrail } from '@/lib/actions/workshop';
+import { getRecycleBinOffer } from '@/lib/actions/recycle-bin';
+import { RecycleBinPanel } from '@/components/RecycleBinPanel';
 import { getVehicleServiceHealth, getVehicleAnalytics } from '@/lib/actions/vehicle-service';
 import { getVehicleReminderHistory } from '@/lib/actions/vehicle-service-reminders';
-import { updateVehicleFormAction, deleteVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
+import { updateVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { sendManualServiceReminderFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -19,7 +23,6 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
-import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { AuditTrail } from '@/components/AuditTrail';
 import { VehicleMileageTrendChart } from '@/components/LazyCharts';
 import { VehicleVisitHistoryChart } from '@/components/LazyCharts';
@@ -34,6 +37,8 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle.created': 'Vehicle registered',
   'vehicle.updated': 'Vehicle details updated',
   'vehicle.deleted': 'Vehicle deleted',
+  'vehicle.moved_to_recycle_bin': 'Moved to the Recycle bin',
+  'vehicle.restored_from_recycle_bin': 'Restored from the Recycle bin',
   'vehicle.service_reminder_sent': 'Service reminder emailed to the customer',
 };
 
@@ -66,12 +71,9 @@ function reminderSender(
 }
 
 /**
- * The vehicle's own real page — read-only by default, the same
- * standard view/edit toggle every other detail page in this project
- * uses, rather than opening straight into an editable form. Shows
- * real Service Health, this vehicle's own genuine mileage-interval
- * override (separate from the organisation's own default), and its
- * full real audit trail.
+ * Vehicle page, read-only until Edit is chosen. Shows service health, the
+ * vehicle's own mileage interval (if it overrides the organisation default)
+ * and the audit trail.
  */
 export default async function VehiclePage({
   params,
@@ -84,13 +86,13 @@ export default async function VehiclePage({
   const { id } = await params;
   const { error, edit, status } = await searchParams;
   // Everything on this page needs only the vehicle's id — one round, all at once.
-  const [vehicle, vehicleWarranties, partsFitted, lastEdit, auditTrail, isMasterAdmin, serviceHealth, analytics, reminderHistory, coveredValue] = await Promise.all([
+  const [vehicle, vehicleWarranties, partsFitted, lastEdit, auditTrail, binOffer, serviceHealth, analytics, reminderHistory, coveredValue] = await Promise.all([
     getVehicle(id),
     listWarrantiesFor({ vehicleId: id }),
     listPartsFittedToVehicle(id),
     getLastEditInfo('CustomerVehicle', id, 'vehicle.updated'),
     getVehicleAuditTrail(id),
-    currentUserIsMasterAdmin(),
+    getRecycleBinOffer('CustomerVehicle', id),
     getVehicleServiceHealth(id),
     getVehicleAnalytics(id),
     getVehicleReminderHistory(id),
@@ -228,8 +230,8 @@ export default async function VehiclePage({
             <div className="border-t border-[var(--ejo-border)] pt-4">
               <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">This vehicle&apos;s own service interval</p>
               <p className="mb-3 text-[11px] text-[var(--ejo-text-muted)]">
-                Leave both blank to use the workshop&apos;s own default interval. Only set these if this
-                particular vehicle&apos;s manufacturer manual actually calls for something different.
+                Leave both blank to use the workshop&apos;s default interval. Set them only if the
+                manufacturer&apos;s manual for this vehicle says otherwise.
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -274,7 +276,7 @@ export default async function VehiclePage({
         ) : (
           <div className="space-y-6">
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Details</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle details</h2>
               <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <dt className="text-xs text-[var(--ejo-text-muted)]">Type</dt>
@@ -335,7 +337,7 @@ export default async function VehiclePage({
             </div>
 
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit Trail</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit trail</h2>
               {auditTrail.length === 0 ? (
                 <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No recorded activity yet.</p>
               ) : (
@@ -343,7 +345,7 @@ export default async function VehiclePage({
                   entries={auditTrail.map((entry: (typeof auditTrail)[number]) => ({
                     id: entry.id,
                     actionLabel: AUDIT_ACTION_LABEL[entry.action] ?? humanizeAction(entry.action),
-                    userName: entry.user?.fullName ?? null,
+                    userName: actorLabel(entry.user?.fullName ?? null, entry.metadata),
                     detail: formatAuditDetail(entry),
                     dateLabel: formatDateTime(entry.createdAt),
                   }))}
@@ -365,9 +367,9 @@ export default async function VehiclePage({
                     : 'border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5'
               }`}
             >
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Service Health</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Service health</h2>
               <p className="mt-2 flex items-center gap-2 text-sm font-medium text-[var(--ejo-text)]">
-                <span>{serviceHealth.status === 'OVERDUE' ? '🔴' : serviceHealth.status === 'DUE_SOON' ? '🟡' : '🟢'}</span>
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${serviceHealth.status === 'OVERDUE' ? 'bg-[var(--ejo-error)]' : serviceHealth.status === 'DUE_SOON' ? 'bg-[var(--ejo-warning)]' : 'bg-[var(--ejo-success)]'}`} aria-hidden="true" />
                 {serviceHealth.status === 'OVERDUE' ? 'Overdue' : serviceHealth.status === 'DUE_SOON' ? 'Due Soon' : 'Up to Date'}
               </p>
               <dl className="mt-3 space-y-2 text-xs">
@@ -506,23 +508,7 @@ export default async function VehiclePage({
           </dl>
           </div>
 
-          {isMasterAdmin ? (
-            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
-              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Danger zone</h2>
-              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Permanently deletes this vehicle and every Job Card for it. This cannot be undone.
-              </p>
-              <form action={deleteVehicleFormAction} className="mt-4">
-                <FormPendingOverlay />
-                <input type="hidden" name="vehicleId" value={vehicle.id} />
-                <ConfirmDeleteButton
-                  confirmMessage={`Delete ${vehicle.plateNumber || vehicle.chassisNumber || 'this vehicle'}? This permanently removes it and every Job Card for it. This cannot be undone.`}
-                  label="Delete this vehicle"
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
-                />
-              </form>
-            </div>
-          ) : null}
+          <RecycleBinPanel offer={binOffer} entity="CustomerVehicle" id={vehicle.id} />
         </div>
       </div>
 
@@ -549,7 +535,7 @@ export default async function VehiclePage({
       </div>
 
       <div className="mt-6 space-y-6">
-        <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Analytics</h2>
+        <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle analytics</h2>
         <VehicleIntelligenceCard vi={intelligence} />
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
@@ -647,7 +633,7 @@ export default async function VehiclePage({
                     {analytics.outstanding > 0 ? `Outstanding: ${naira(analytics.outstanding)}` : 'Nothing outstanding.'}
                   </p>
                   <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
-                    Approved = estimates with the Manager&apos;s final approval. Paid = payments actually recorded. Real figures, never a projection.
+                    Approved = estimates with the Manager&apos;s final approval. Paid = payments recorded.
                   </p>
                 </>
               );
@@ -659,6 +645,7 @@ export default async function VehiclePage({
             {reminderHistory.length > 0 ? (
               <>
                 <p className="mt-3 text-xs font-medium text-[var(--ejo-text)]">This service cycle{currentCycle.length && (currentCycle[0]!.estimatedDueOdometer || currentCycle[0]!.estimatedDueDate) ? ` — due ${currentCycle[0]!.estimatedDueOdometer ? `${currentCycle[0]!.estimatedDueOdometer.toLocaleString('en-NG')} km` : ''}${currentCycle[0]!.estimatedDueOdometer && currentCycle[0]!.estimatedDueDate ? ' / ' : ''}${currentCycle[0]!.estimatedDueDate ? formatDateOnly(currentCycle[0]!.estimatedDueDate) : ''}` : ''}</p>
+              <ResponsiveTable flush>
               <table className="mt-2 w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -673,25 +660,27 @@ export default async function VehiclePage({
                   {currentCycle.map((r: (typeof reminderHistory)[number]) => (
                     <tr key={r.id} className="border-b border-[var(--ejo-border)] last:border-0">
                       <td className="py-2 text-[var(--ejo-text)]">{formatDateTime(r.sentAt)}</td>
-                      <td className="py-2 text-[var(--ejo-text)]">
+                      <td data-label="Reminder" className="py-2 text-[var(--ejo-text)]">
                         {REMINDER_STAGE_LABEL[r.reminderNumber] ?? `Stage ${r.reminderNumber}`}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">
+                      <td data-label="Sent by" className="py-2 text-[var(--ejo-text-muted)]">
                         {reminderSender(r.sentAt, r.reminderNumber, auditTrail) ?? (r.trigger === 'MANUAL' ? 'Not recorded (sent before sender tracking)' : 'System (automatic, before reminders became manual)')}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">
+                      <td data-label="Estimated Due" className="py-2 text-[var(--ejo-text-muted)]">
                         {r.estimatedDueOdometer ? `${r.estimatedDueOdometer.toLocaleString('en-NG')} km` : null}
                         {r.estimatedDueOdometer && r.estimatedDueDate ? ' / ' : null}
                         {r.estimatedDueDate ? formatDateOnly(r.estimatedDueDate) : null}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">{r.recordedOdometerAtSend ? `${r.recordedOdometerAtSend.toLocaleString('en-NG')} km` : '—'}</td>
+                      <td data-label="Odometer at Send" className="py-2 text-[var(--ejo-text-muted)]">{r.recordedOdometerAtSend ? `${r.recordedOdometerAtSend.toLocaleString('en-NG')} km` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </ResponsiveTable>
                 {earlierCycles.length ? (
                   <details className="mt-3">
                     <summary className="cursor-pointer text-xs font-medium text-[var(--ejo-primary)]">Earlier service cycles ({earlierCycles.length} {earlierCycles.length === 1 ? 'reminder' : 'reminders'})</summary>
+              <ResponsiveTable flush>
               <table className="mt-2 w-full text-sm opacity-80">
                 <thead>
                   <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -706,22 +695,23 @@ export default async function VehiclePage({
                   {earlierCycles.map((r: (typeof reminderHistory)[number]) => (
                     <tr key={r.id} className="border-b border-[var(--ejo-border)] last:border-0">
                       <td className="py-2 text-[var(--ejo-text)]">{formatDateTime(r.sentAt)}</td>
-                      <td className="py-2 text-[var(--ejo-text)]">
+                      <td data-label="Reminder" className="py-2 text-[var(--ejo-text)]">
                         {REMINDER_STAGE_LABEL[r.reminderNumber] ?? `Stage ${r.reminderNumber}`}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">
+                      <td data-label="Sent by" className="py-2 text-[var(--ejo-text-muted)]">
                         {reminderSender(r.sentAt, r.reminderNumber, auditTrail) ?? (r.trigger === 'MANUAL' ? 'Not recorded (sent before sender tracking)' : 'System (automatic, before reminders became manual)')}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">
+                      <td data-label="Estimated Due" className="py-2 text-[var(--ejo-text-muted)]">
                         {r.estimatedDueOdometer ? `${r.estimatedDueOdometer.toLocaleString('en-NG')} km` : null}
                         {r.estimatedDueOdometer && r.estimatedDueDate ? ' / ' : null}
                         {r.estimatedDueDate ? formatDateOnly(r.estimatedDueDate) : null}
                       </td>
-                      <td className="py-2 text-[var(--ejo-text-muted)]">{r.recordedOdometerAtSend ? `${r.recordedOdometerAtSend.toLocaleString('en-NG')} km` : '—'}</td>
+                      <td data-label="Odometer at Send" className="py-2 text-[var(--ejo-text-muted)]">{r.recordedOdometerAtSend ? `${r.recordedOdometerAtSend.toLocaleString('en-NG')} km` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </ResponsiveTable>
                   </details>
                 ) : null}
               </>

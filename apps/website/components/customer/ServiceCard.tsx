@@ -23,7 +23,7 @@ export function ServiceCard({ item, delay }: { item: ServiceItem; delay?: number
             <p className="text-sm font-semibold text-[var(--ejo-text)]">{item.number}</p>
             <span className="text-xs text-[var(--ejo-text-muted)]">{item.kind === 'jc' ? 'Job Card' : 'Vehicle service'}</span>
           </div>
-          <p className="mt-0.5 truncate text-sm text-[var(--ejo-text-muted)]">{item.vehicle.label}{item.vehicle.plate ? ` · ${item.vehicle.plate}` : ''}</p>
+          <p className="mt-0.5 break-words text-sm text-[var(--ejo-text-muted)]">{item.vehicle.label}{item.vehicle.plate ? <> · <span className="whitespace-nowrap">{item.vehicle.plate}</span></> : null}</p>
           <div className="mt-1.5 sm:hidden"><Badge tone={item.info.tone}>{item.info.label}</Badge></div>
         </div>
         <div className="hidden shrink-0 sm:block"><Badge tone={item.info.tone}>{item.info.label}</Badge></div>

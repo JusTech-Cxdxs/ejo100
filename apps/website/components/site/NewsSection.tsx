@@ -1,20 +1,17 @@
 'use client';
 
+import { siteConfig } from '@/lib/site-config';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useI18n } from '@/lib/i18n';
 
 /**
- * Article titles/dates stay as plain content data for now (not translation
- * keys) — real news content will come from the News Manager described in
- * the project's CMS architecture notes; hardcoding placeholder headlines
- * into 8 languages would be thrown away the moment real articles exist.
- * Section chrome (headers, "Read More", sustainability card) is fully
- * translated below.
+ * Sample headlines until the News Manager (roadmap) supplies real articles.
+ * They are page content, not translation keys; the section chrome is translated.
  */
 const ARTICLES = [
-  { date: 'May 15, 2026', title: 'Kewalram Chanrai Group Expands Operations in West Africa', href: '/news' },
-  { date: 'May 5, 2026', title: 'KCG Partners With Global Industry Leaders', href: '/news' },
+  { date: 'May 15, 2026', title: `${siteConfig.organisationName} Expands Operations in West Africa`, href: '/news' },
+  { date: 'May 5, 2026', title: 'New Partnerships With Industry Leaders', href: '/news' },
   { date: 'April 28, 2026', title: 'New Manufacturing Facility Officially Opened', href: '/news' },
 ];
 

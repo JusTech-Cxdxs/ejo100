@@ -7,7 +7,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { dayKind, lagosYmd } from '@/lib/nigeria-calendar';
 import { PageHeader, HeaderAction, SectionCard, StatTile, PriorityActions, BarRow, EmptyState, type IconName } from '@/components/ui';
 
-const t = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' });
+const t = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' });
 const dd = (d: Date) => new Date(d).toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short' });
 const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 

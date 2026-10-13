@@ -1,3 +1,5 @@
+import { FormJumpLink } from '@/components/ui/FormJumpLink';
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -6,6 +8,7 @@ import { createVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
 import { CustomerSearchField } from '@/components/CustomerSearchField';
 import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
@@ -18,16 +21,14 @@ import { CustomerLink } from '@/components/CustomerLink';
 export default async function WorkshopVehiclesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string; binned?: string }>;
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
-  const { q, type, status, error } = await searchParams;
+  const { q, type, status, error, binned } = await searchParams;
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
-  // Delete now lives in its own Danger Zone on the Edit Vehicle page,
-  // not here — this list no longer needs to know who's a Master Admin
-  // at all.
+  // Deleting a vehicle is done from its own page (Danger zone).
   const vehicles = await listAllVehicles(q, vehicleType);
 
   return (
@@ -45,9 +46,7 @@ export default async function WorkshopVehiclesPage({
       {status === 'vehicle_updated' ? (
         <FormFeedbackBanner kind="success" message="Vehicle updated." />
       ) : null}
-      {status === 'vehicle_deleted' ? (
-        <FormFeedbackBanner kind="success" message="Vehicle deleted." />
-      ) : null}
+      <BinnedNotice reference={binned} />
       {error ? <FormFeedbackBanner kind="error" message={error} /> : null}
 
       <CategoryFilterTabs basePath="/workshop/vehicles" currentType={vehicleType} preserveParams={{ q }} />
@@ -68,8 +67,9 @@ export default async function WorkshopVehiclesPage({
         </button>
       </form>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-x-auto">
+      <FormJumpLink target="register-vehicle">New vehicle</FormJumpLink>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           {vehicles.length === 0 ? (
             <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
               {q || vehicleType
@@ -96,26 +96,26 @@ export default async function WorkshopVehiclesPage({
                     <td className="px-4 py-3 font-medium text-[var(--ejo-text)]">
                       {v.plateNumber || <span className="text-[var(--ejo-text-muted)]">—</span>}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-[var(--ejo-text-muted)]">
+                    <td data-label="Chassis / VIN" className="px-4 py-3 font-mono text-xs text-[var(--ejo-text-muted)]">
                       {v.chassisNumber || '—'}
                     </td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
+                    <td data-label="Vehicle" className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       <LoadingLink href={`/workshop/vehicles/${v.id}/edit`} className="hover:underline hover:text-[var(--ejo-text)]">
                         {[v.year, v.make, v.model].filter(Boolean).join(' ') || '—'}
                       </LoadingLink>
                     </td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
+                    <td data-label="Type" className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       {v.vehicleType === 'PASSENGER' ? 'Passenger' : v.vehicleType === 'COMMERCIAL' ? 'Commercial' : '—'}
                     </td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]"><CustomerLink id={v.customerId} name={v.customer.fullName} canView={canSeeCustomers} /></td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
-                      {v.mileage != null ? `${v.mileage.toLocaleString()} km` : '—'}
+                    <td data-label="Owner" className="px-4 py-3 text-[var(--ejo-text-muted)]"><CustomerLink id={v.customerId} name={v.customer.fullName} canView={canSeeCustomers} /></td>
+                    <td data-label="Mileage" className="px-4 py-3 text-[var(--ejo-text-muted)]">
+                      {v.mileage != null ? `${v.mileage.toLocaleString('en-NG')} km` : '—'}
                     </td>
-                    <td className="px-4 py-3 text-xs text-[var(--ejo-text-muted)]">
+                    <td data-label="Registered" className="px-4 py-3 text-xs text-[var(--ejo-text-muted)]">
                       {formatDateTimeCompact(v.createdAt)}
                       {v.createdBy ? <><br />by {v.createdBy.fullName}</> : null}
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-actions className="px-4 py-3">
                       <LoadingLink href={`/workshop/vehicles/${v.id}/edit`} className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">
                         View
                       </LoadingLink>
@@ -125,9 +125,9 @@ export default async function WorkshopVehiclesPage({
               </tbody>
             </table>
           )}
-        </div>
+        </ResponsiveTable>
 
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6">
+        <div id="register-vehicle" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 xl:sticky xl:top-6 scroll-mt-20">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Register vehicle</h2>
           <form action={createVehicleFormAction} className="mt-4 space-y-4">
               <FormPendingOverlay />

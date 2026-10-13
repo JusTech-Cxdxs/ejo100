@@ -12,11 +12,10 @@ import {
 } from '@/lib/crm';
 
 /**
- * Customers (CRM) — server actions. Customers belong to an organisation:
- * every read and write is fenced to the person's own organisation (the
- * platform team sees all), exactly like the Workshop's customer lists.
- * Jobs, payments and spend are fenced to the person's reach (their branch
- * for branch staff, the whole organisation for headquarters).
+ * Customers (CRM). Every read and write is fenced to the person's own
+ * organisation (the platform team sees all), as in the Workshop customer
+ * lists. Jobs, payments and spend are fenced to the person's reach (their
+ * branch for branch staff, the whole organisation for headquarters).
  *
  *  • crm.view   — the hub and the 360 pages.
  *  • crm.manage — edit details, contacts, addresses, notes, tags, portal access.

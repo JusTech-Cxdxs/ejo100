@@ -1,34 +1,17 @@
--- Enables Row-Level Security on every table in the public schema, with
--- zero permissive policies attached — a deliberate default-deny.
+-- Enables Row-Level Security on every table in the public schema, with no
+-- policies: default deny.
 --
--- WHY THIS IS SAFE FOR THIS APP SPECIFICALLY: this project's apps
--- (portal, website, api) never use Supabase's own client library or
--- its auto-generated PostgREST API — every database access goes
--- through Prisma, connecting directly to Postgres with the database
--- owner/service-role connection string, which bypasses RLS by design
--- (RLS only restricts roles it's explicitly applied to; the owner
--- role is exempt). Enabling RLS here does NOT touch or break the
--- application's own access at all.
+-- The apps never use Supabase's client library or its PostgREST API; all
+-- access goes through Prisma as the database owner, which RLS does not
+-- restrict. So this changes nothing for the apps, and closes Supabase's
+-- public REST API to anonymous and authenticated clients (the "Table
+-- publicly accessible" advisories).
 --
--- WHAT THIS ACTUALLY FIXES: Supabase exposes every public-schema
--- table through its REST API by default, regardless of whether an
--- app uses that API — this is what the "Table publicly accessible"
--- and "Sensitive data publicly accessible" advisories are about.
--- With RLS enabled and no policies, that API path is fully blocked
--- for every anonymous or authenticated Supabase client — exactly the
--- intended state, since nothing in this project is meant to use that
--- API path at all.
+-- Run in the Supabase SQL Editor. Safe to re-run (ENABLE ROW LEVEL SECURITY
+-- is idempotent).
 --
--- Run this once in the Supabase SQL Editor (Project → SQL Editor →
--- New query → paste → Run). Safe to re-run — ENABLE ROW LEVEL
--- SECURITY is idempotent, and running it again on an
--- already-protected table is a no-op, not an error.
---
--- IMPORTANT: any NEW table added to schema.prisma in the future needs
--- its own line added here too — Prisma's schema has no concept of
--- RLS, so this can never be automated from the schema itself. Treat
--- this file as the living checklist; keep it in sync with
--- schema.prisma's own @@map() table names.
+-- Every new table in schema.prisma needs a line here too: Prisma has no
+-- concept of RLS. Keep in step with the @@map() table names.
 
 ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;

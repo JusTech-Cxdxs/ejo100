@@ -133,8 +133,7 @@ function SectionTitle({ children }: { children: string }) {
 }
 
 /**
- * The one real printable estimate, shared by Job Card and Vehicle
- * Service so both always print identically.
+ * The printable estimate, shared by Job Card and Vehicle Service.
  *
  * Customer Copy — exactly what the customer already receives by email
  * and as the attached PDF: line items with no internal type, the three
@@ -201,9 +200,8 @@ export function EstimatePrintDocument({
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   const balance = Math.max(0, Math.round((total - totalPaid) * 100) / 100);
 
-  // Same real three-way customer split as the email and the attached
-  // PDF — Labour and Sundry kept on their own, everything else is
-  // "Parts & Services". Never the internal type per line.
+  // Customer subtotals as in the email and PDF: Labour, Sundry, and
+  // "Parts & Services" for everything else.
   let servicesTotal = 0;
   let labourTotal = 0;
   let sundryTotal = 0;
@@ -269,9 +267,7 @@ export function EstimatePrintDocument({
           <tr style={{ borderBottom: '1.5px solid #0F172A', textAlign: 'left' }}>
             <th style={cell}>S/N</th>
             <th style={cell}>Description</th>
-            {/* Internal type breakdown and who entered each line are
-                company-internal — Organisation Copy only, the same rule
-                the customer email and PDF already follow. */}
+            {/* Line types and who entered each line: organisation copy only. */}
             {isOrgCopy ? <th style={cell}>Type</th> : null}
             <th style={cellRight}>Quantity</th>
             <th style={cellRight}>Unit Price</th>

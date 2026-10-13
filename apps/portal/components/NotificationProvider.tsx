@@ -58,7 +58,7 @@ const NotificationContext = createContext<Ctx>({ summary: EMPTY, loaded: false, 
 export const useNotifications = () => useContext(NotificationContext);
 
 /**
- * Real notification sounds, made in the browser (no sound files to load):
+ * Notification sounds, made in the browser (no sound files to load):
  *  • message — a soft two-note "ding-dong" with a natural attack and fade;
  *  • ring    — a distinct three-note ring, played twice, for actions that
  *              need you (repeats every 2 minutes until done, unless muted).

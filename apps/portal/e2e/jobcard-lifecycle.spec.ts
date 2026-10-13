@@ -108,7 +108,7 @@ test('approvals respect segregation of duties; the customer is notified by email
   await as(page, 'receptionist');
   await open(page, S.url);
   await notifyCustomer(page);
-  const mail = await latestMail(request, CUSTOMER.email, new RegExp(`Your estimate for Job Card ${S.number} has been approved`));
+  const mail = await latestMail(request, CUSTOMER.email, new RegExp(`Estimate ready for ${S.number}`));
   expect(mail.html).toContain(S.number);
   // The customer sees one combined figure — never the internal line types.
   expect(mail.html).not.toContain('STORE_PART');
@@ -301,5 +301,5 @@ test('the whole story is on the audit trail and in the Audit Logs', async ({ pag
   expect(res?.status()).toBeLessThan(400);
   await expect(page.getByText(S.number).first()).toBeVisible();
   expect(await db().jobCard.count({ where: { id: S.id, status: 'CHECKED_OUT' } })).toBe(1);
-  expect(await countMail(page.request, CUSTOMER.email, new RegExp(`Your estimate for Job Card ${S.number}`))).toBe(1);
+  expect(await countMail(page.request, CUSTOMER.email, new RegExp(`Estimate ready for ${S.number}`))).toBe(1);
 });

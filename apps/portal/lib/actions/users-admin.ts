@@ -19,9 +19,9 @@ async function actorOrg() {
   const p = await getPrincipal();
   const me = await prisma.user.findUnique({ where: { id: p.userId }, select: { organisationId: true } });
   // Headquarters administrators manage the whole organisation; a Branch
-  // Administrator only the people of their own branch.
-  // Decided by the SCOPE the person holds, whatever role gave it: a custom role
-  // granted user management on the Roles page manages only its own branch.
+  // Administrator only their own branch. Decided by the scope held, whatever
+  // role gave it: a custom role granted user management on the Roles page
+  // manages only its own branch.
   const branchOnly = !p.isSuperAdmin && scopeFor(p, 'admin.users.manage') === 'BRANCH' ? (p.branchId ?? '__no_branch__') : null;
   return { p, organisationId: me?.organisationId ?? null, branchOnly };
 }

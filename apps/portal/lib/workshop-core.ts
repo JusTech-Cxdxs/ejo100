@@ -1,20 +1,19 @@
+import { signedInSession } from '@/lib/assist/server';
 import { logFailure } from '@/lib/log';
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 import { after } from 'next/server';
-import { prisma, type Prisma } from '@ejo/database';
+import { prisma, currentAuditActor, type Prisma } from '@ejo/database';
 import { announceChange } from '@/lib/realtime-ping';
 import { headers } from 'next/headers';
 import { auth } from '@/lib/auth';
 
 /**
- * Server-only Workshop core — the audit writer and the organisation /
- * branch / department / supervisor lookups that every module uses.
+ * Server-only Workshop core: the audit writer and the organisation, branch,
+ * department and supervisor lookups every module uses.
  *
- * SECURITY: this file is deliberately NOT a 'use server' file. Everything
- * exported from a 'use server' file is a public endpoint that anyone could
- * call directly; these are internal building blocks, so they live here and
- * can only ever be called by code running on the server.
+ * SECURITY: not a 'use server' file. Every export of a 'use server' file is
+ * a public endpoint; these are internal helpers and must stay server-only.
  */
 class WorkshopActionError extends Error {}
 
@@ -49,7 +48,7 @@ const departmentBranchShared = unstable_cache(
 /** The signed-in person's branch and organisation (null outside a request, e.g. cron). */
 const whereIWork = cache(async (): Promise<{ branchId: string | null; organisationId: string | null; isPlatformTeam: boolean }> => {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
+    const session = await signedInSession();
     const id = session?.user?.id;
     if (!id) return { branchId: null, organisationId: null, isPlatformTeam: false };
     const u = await prisma.user.findUnique({ where: { id }, select: { branchId: true, organisationId: true, roles: { where: { role: { isSuperAdmin: true } }, select: { roleId: true }, take: 1 } } });
@@ -59,14 +58,9 @@ const whereIWork = cache(async (): Promise<{ branchId: string | null; organisati
   }
 });
 
-/** Writes to the existing AuditLog model — reused exactly as it already
- * is (its own example action string is literally "job_card.approved"),
- * not duplicated with a parallel history mechanism. Deliberately never
- * throws: an audit-log write failing should never block or roll back
- * the real action it's recording, only be logged for someone to notice.
- * `action` follows a `entity.verb` convention (e.g. "job_card.created",
- * "job_card.approved", "job_card.rejected") so a later reporting view
- * can group/filter by entity or by verb consistently. */
+/** Writes an AuditLog row. Never throws: a failed audit write is logged but
+ * never blocks or rolls back the action it records. `action` follows
+ * `entity.verb` (e.g. "job_card.created", "job_card.approved"). */
 export async function writeAuditLog(params: {
   userId: string | null;
   action: string;
@@ -78,6 +72,11 @@ export async function writeAuditLog(params: {
   organisationId?: string | null;
 }): Promise<void> {
   try {
+    // During an assisted session the entry is the colleague's, with the
+    // assistant named beside it ("Musa Ibrahim (assisted by Ada Okafor)").
+    const actor = params.userId ? await currentAuditActor().catch(() => null) : null;
+    const assisted = actor?.assistedBy && actor.userId === params.userId ? { assistedBy: actor.assistedBy, assistSessionId: actor.assistSessionId ?? null } : null;
+    const metadata = assisted ? { ...(params.metadata ?? {}), ...assisted } : params.metadata;
     await prisma.auditLog.create({
       data: {
         ...(params.organisationId ? { organisationId: params.organisationId } : {}),
@@ -85,17 +84,10 @@ export async function writeAuditLog(params: {
         action: params.action,
         entityType: params.entityType,
         entityId: params.entityId,
-        // Prisma's generated type for a Json column (InputJsonValue) is
-        // stricter than a plain `Record<string, unknown>` — it needs
-        // every value to be provably JSON-safe, which `unknown` can't
-        // guarantee at the type level even though every real call site
-        // here only ever passes plain strings/objects it just built
-        // itself. This sandbox's local verification stubs Prisma as
-        // fully permissive, so this specific mismatch could only be
-        // caught by a real build — exactly what happened. Narrow,
-        // deliberate cast at the one point it's actually needed, not a
-        // blanket `any` on the function's own signature.
-        metadata: params.metadata as Prisma.InputJsonValue | undefined,
+        // Prisma's InputJsonValue is stricter than Record<string, unknown>; every
+        // caller passes plain JSON it just built, so cast here rather than widen
+        // the signature.
+        metadata: metadata as Prisma.InputJsonValue | undefined,
       },
     });
     // Tell every open browser "something changed" — sent after the response,
@@ -106,21 +98,14 @@ export async function writeAuditLog(params: {
       void announceChange();
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to write audit log:', params.action, params.entityId, err);
   }
 }
 
-/** Real Organisation/Branch/Department names for the branded email layout's
- * organizational context line — e.g. "Kewalram Nigeria · Isolo Branch ·
- * Workshop". Kept separate from getWorkshopBranchId() above rather than
- * changing its return shape, since that function has another caller
- * (createJobCard) that only ever needs the bare id.
- *
- * `departmentNameOverride` lets a caller show the actual routed
- * department (e.g. "Passenger Vehicle Workshop") instead of the generic
- * "Workshop" — the organisation/branch lookup is identical either way, only
- * the department label in the returned context changes. */
+/** Organisation, branch and department names for the email header line,
+ * e.g. "Kewalram Nigeria · Isolo Branch · Workshop".
+ * `departmentNameOverride` shows the routed department (e.g. "Passenger
+ * Vehicle Workshop") instead of "Workshop". */
 export async function getWorkshopOrgContext(departmentNameOverride?: string): Promise<{
   companyName: string;
   branchName: string;
@@ -146,12 +131,8 @@ export async function getWorkshopOrgContext(departmentNameOverride?: string): Pr
   };
 }
 
-/** Resolves which of the two Workshop departments (Passenger / Commercial)
- * a vehicle's Job Cards belong to, using CustomerVehicle.vehicleType as
- * the source of truth — never chosen manually, always derived. Kept
- * separate from getWorkshopBranchId() above (which still resolves the
- * original single "workshop" department, unchanged) so nothing that
- * already depends on that function's exact behavior is affected. */
+/** The Workshop department (Passenger / Commercial) for a vehicle type.
+ * Always derived from CustomerVehicle.vehicleType, never chosen. */
 export async function getWorkshopDepartmentForVehicleType(
   vehicleType: 'PASSENGER' | 'COMMERCIAL',
 ): Promise<{ id: string; name: string }> {
@@ -170,11 +151,9 @@ export async function getWorkshopDepartmentForVehicleType(
   return department;
 }
 
-/** Re-validates a chosen supervisor server-side — never trusts that the
- * client-side picker's own filtering was followed correctly. Mirrors
- * exactly the two cases listEligibleSupervisorsForVehicleType() can
- * return: a real department supervisor, or (while no one has been
- * placed into the department yet) a Master Administrator standing in. */
+/** Re-checks a chosen supervisor server-side: a supervisor in the
+ * department, or a Master Administrator standing in while the department
+ * has none (the same two cases the picker offers). */
 export async function isEligibleSupervisor(userId: string, departmentId: string): Promise<boolean> {
   const match = await prisma.user.findFirst({
     where: {
@@ -218,7 +197,7 @@ export const getStoreBranchIdForMe = cache(async (): Promise<string | null> => {
   return (await departmentBranchShared('store', me.branchId, me.organisationId))?.branchId ?? null;
 });
 
-// Once per request: repeated calls during one page load reuse the answer.
+// Cached per request.
 const getWorkshopBranchIdCached = cache(getWorkshopBranchIdUncached);
 export async function getWorkshopBranchId(): Promise<string> {
   return getWorkshopBranchIdCached();

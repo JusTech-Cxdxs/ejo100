@@ -1,19 +1,36 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LANGUAGES } from '@/lib/languages';
 import { useI18n } from '@/lib/i18n';
 
-export function LanguageSelector({ dark = false }: { dark?: boolean }) {
+/** align: which edge the list opens from ("left" inside the phone menu, so it stays on screen). */
+export function LanguageSelector({ dark = false, align = 'right' }: { dark?: boolean; align?: 'left' | 'right' }) {
   const { language, setLanguage } = useI18n();
   const [open, setOpen] = useState(false);
   const current = LANGUAGES.find((l) => l.code === language) ?? LANGUAGES[0];
+  const wrap = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent | TouchEvent) => { if (!wrap.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [open]);
 
   return (
-    <div className="relative">
+    <div className="relative" ref={wrap}>
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+        className={`flex min-h-9 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
           dark ? 'text-white/90 hover:bg-white/10' : 'text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]'
         }`}
         aria-haspopup="listbox"
@@ -27,7 +44,7 @@ export function LanguageSelector({ dark = false }: { dark?: boolean }) {
       {open && (
         <ul
           role="listbox"
-          className="absolute right-0 z-50 mt-2 max-h-72 w-44 overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] py-1 shadow-xl"
+          className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} z-50 mt-2 max-h-72 w-44 overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] py-1 shadow-xl`}
         >
           {LANGUAGES.map((lang) => (
             <li key={lang.code}>
@@ -38,7 +55,8 @@ export function LanguageSelector({ dark = false }: { dark?: boolean }) {
                   setLanguage(lang.code);
                   setOpen(false);
                 }}
-                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--ejo-surface)] ${
+                type="button"
+                className={`flex min-h-10 w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--ejo-surface)] ${
                   current.code === lang.code ? 'text-[var(--ejo-primary)]' : 'text-[var(--ejo-text)]'
                 }`}
               >

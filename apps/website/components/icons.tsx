@@ -1,11 +1,6 @@
 import type { SVGProps } from 'react';
 
-/**
- * Small, self-contained line-icon set used across the site (stats,
- * business cards, footer social links). Deliberately hand-drawn SVGs
- * rather than a new npm dependency — keeps this a pure frontend change
- * with nothing new to install.
- */
+/** Line icons used across the site (stats, business cards, footer social links), as inline SVG. */
 type IconProps = SVGProps<SVGSVGElement>;
 
 const base = {

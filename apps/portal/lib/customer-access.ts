@@ -1,3 +1,5 @@
+import { portalConfig } from '@/lib/site-config';
+import { websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@ejo/database';
@@ -20,9 +22,7 @@ import { renderCustomerWelcomeEmail } from '@/lib/email-templates/customer-welco
 
 export const CUSTOMER_SET_PASSWORD_HOURS = 72;
 
-export function websiteBaseUrl(): string {
-  return (process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app').replace(/\/+$/, '');
-}
+export { websiteBaseUrl };
 
 /** A new one-time set-password link for a customer (72 hours by default). */
 export async function issueCustomerSetPasswordLink(customerId: string, hours = CUSTOMER_SET_PASSWORD_HOURS): Promise<string> {
@@ -86,7 +86,7 @@ export async function sendCustomerAccessEmail(customerId: string, kind: 'welcome
     const setPasswordUrl = await issueCustomerSetPasswordLink(customer.id);
     const branch = await branchDetails();
     const website = websiteBaseUrl();
-    const companyName = branch?.businessUnit.organisation.name ?? (await prisma.organisation.findUnique({ where: { id: customer.organisationId }, select: { name: true } }))?.name ?? 'Kewalram';
+    const companyName = branch?.businessUnit.organisation.name ?? (await prisma.organisation.findUnique({ where: { id: customer.organisationId }, select: { name: true } }))?.name ?? portalConfig.organisationName;
     const rendered = renderCustomerWelcomeEmail({
       kind,
       customerName: customer.fullName,
@@ -94,7 +94,7 @@ export async function sendCustomerAccessEmail(customerId: string, kind: 'welcome
       setPasswordUrl,
       setPasswordHours: CUSTOMER_SET_PASSWORD_HOURS,
       signInUrl: `${website}/customer-portal`,
-      logoUrl: `${website}/images/logo/logo.png`,
+      logoUrl: `${website}/images/logo/email-logo.png`,
       companyName,
       branchName: branch?.name ?? '',
       branchContact: branch ? { address: branch.address, phones: branch.hotlines, email: branch.email } : undefined,
@@ -103,7 +103,6 @@ export async function sendCustomerAccessEmail(customerId: string, kind: 'welcome
     await sendEmail(customer.email, rendered.subject, rendered.html);
   } catch (err) {
     error = redact(err instanceof Error ? err.message : String(err)).slice(0, 300);
-    // eslint-disable-next-line no-console
     logFailure('Customer access email failed', customer.id, kind, error);
   }
   await prisma.securityEmailLog.create({ data: { entityType: 'Customer', entityId: customer.id, recipient: `${customer.fullName} <${customer.email}>`, subject, sent: !error, error } }).catch(() => undefined);

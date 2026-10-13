@@ -1,4 +1,5 @@
 'use server';
+import { portalBaseUrl } from '@/lib/portal-url';
 
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
@@ -52,10 +53,8 @@ export type UpdateBranchInput = {
   bankAccountNumber?: string;
 };
 
-/** Only a Master Administrator edits a branch's own real, printed
- * identity — the same real letterhead reasoning as Organisation, just
- * one level down: this is what a Job Card's own "Executing Facility"
- * block pulls its address and hotlines from. */
+/** Edits a branch's printed identity: the address and hotlines on a Job
+ * Card's "Executing Facility" block, and its bank details. */
 export async function updateBranch(branchId: string, input: UpdateBranchInput): Promise<void> {
   const user = await requireUser();
   // The organisation's own administrators manage their branches (catalogue:
@@ -121,7 +120,7 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
           prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
           prisma.user.findMany({ where: { isActive: true, branchId, roles: { some: { role: { slug: { in: ['workshop-manager', 'finance-officer'] } } } } }, select: { fullName: true, email: true } }),
         ]);
-        const portal = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+        const portal = portalBaseUrl();
         for (const w of watchers) {
           if (!w.email) continue;
           await sendEmail(
@@ -132,7 +131,7 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
               heading: 'The branch bank account was changed',
               lines: [`Branch: ${trimmedName}`, `From: ${from}`, `To: ${to}`, `Changed by: ${actor?.fullName ?? 'an administrator'}`, 'Customers are told to pay into this account on every estimate. If you did not expect this change, report it immediately.'],
               actionUrl: `${portal}/branches/${branchId}`,
-              logoUrl: `${portal}/images/logo/logo.png`,
+              logoUrl: `${portal}/images/logo/email-logo.png`,
               companyName: 'EJO 100',
               branchName: trimmedName,
             }),

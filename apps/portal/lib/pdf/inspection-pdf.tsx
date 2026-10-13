@@ -86,19 +86,15 @@ export type InspectionPdfProps = {
   chassisNumber: string | null;
   inspectedByName: string;
   completedOnLabel: string;
-  /** Reviewed items only — the customer's own copy never lists what
-   * wasn't looked at, matching exactly the real client-copy rule the
-   * print page already applies. */
+  /** Reviewed items only: the customer copy never lists what wasn't checked
+   * (same rule as the print page). */
   reviewedItems: InspectionPdfItem[];
 };
 
 /**
- * The customer's own real, styled inspection report — attached
- * alongside the estimate PDF on the same approval email, never a
- * separate document to track. Deliberately the client-copy content
- * only (reviewed items, no internal notes column) — same real rule
- * print/vehicle-inspections/[id]/page.tsx already applies for a
- * customer viewing that same report on screen.
+ * The customer's inspection report PDF, attached with the estimate PDF on
+ * the approval email. Customer-copy content only (reviewed items, no
+ * internal notes), as on print/vehicle-inspections/[id].
  */
 export function InspectionPdf(props: InspectionPdfProps) {
   const { organisation, branch, logoUrl, serviceNumber, customerName, vehicleDescription, plateNumber, chassisNumber, inspectedByName, completedOnLabel, reviewedItems } = props;

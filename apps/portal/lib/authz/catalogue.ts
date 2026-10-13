@@ -1,19 +1,18 @@
 /**
- * EJO 100 — Authorization Catalogue (Phase B foundation).
+ * EJO 100 Authorization Catalogue.
  *
- * The ONE definition of what can be done in EJO 100, and the default grants
+ * The one definition of what can be done in EJO 100, and the default grants
  * per role. Model: User → Role → Permission → Scope → Record → State → Action.
  *
- *  • Permissions are DEFINED here (version-controlled, reviewed): a permission
- *    without code that enforces it is meaningless, so definitions never come
- *    from a click. Grants can later be added per organisation in the database
- *    (RolePermission) — but only for permissions defined here.
- *  • Scope says WHICH records: ALL · BRANCH · DEPARTMENT · ASSIGNED · OWN.
- *  • `decide()` is a pure function — the same rule everywhere (pages, actions,
- *    search, exports, notifications, realtime, analytics, future AI), and fully
- *    testable with allowed AND denied cases.
- *  • State rules (who may move a record from one stage to the next) stay in
- *    each workflow action, which already checks the current status atomically.
+ *  • Permissions are defined here, in reviewed code: a permission needs code
+ *    that enforces it. Organisations can add grants in the database
+ *    (RolePermission), but only for permissions defined here.
+ *  • Scope says which records: ALL · BRANCH · DEPARTMENT · ASSIGNED · OWN.
+ *  • `decide()` is a pure function used everywhere (pages, actions, search,
+ *    exports, notifications, realtime, analytics), tested with allowed and
+ *    denied cases.
+ *  • State rules (who may move a record to its next stage) stay in each
+ *    workflow action, which checks the current status atomically.
  */
 export type Scope = 'ALL' | 'BRANCH' | 'DEPARTMENT' | 'ASSIGNED' | 'OWN';
 const RANK: Record<Scope, number> = { OWN: 1, ASSIGNED: 2, DEPARTMENT: 3, BRANCH: 4, ALL: 5 };
@@ -26,6 +25,7 @@ export const PERMISSIONS = {
   'admin.roles.manage': { module: 'Administration', label: 'Manage roles and permissions' },
   'admin.settings.manage': { module: 'Administration', label: 'Manage settings, branding and modules' },
   'audit.view': { module: 'Administration', label: 'View the full audit trail' },
+  'admin.recycle_bin.manage': { module: 'Administration', label: 'Open the Recycle bin, restore records deleted by mistake, and delete such records' },
   // Analytics
   'analytics.business.view': { module: 'Analytics', label: 'View Business Analytics (sales, cost, profit, cash)' },
   'analytics.inventory.view': { module: 'Analytics', label: 'View Inventory Analytics' },
@@ -76,14 +76,15 @@ export const PERMISSIONS = {
   'schedule.view': { module: 'Scheduling', label: 'Keep a calendar and book appointments (own calendar, or as an aide)' },
   'schedule.manage': { module: 'Scheduling', label: 'Manage meeting rooms and aides, and book on any calendar' },
   'notifications.broadcast.send': { module: 'Notifications', label: 'Send broadcasts' },
+  // Support
+  'support.assist': { module: 'Support', label: 'Help colleagues with their tasks (assisted session)' },
 } as const;
 export type PermissionKey = keyof typeof PERMISSIONS;
 
 /**
- * Everyone signed in — ONLY what every employee genuinely does: request
- * their own exit pass. Everything else comes from the role a person holds
- * (a person may hold several — the widest grant wins). Approvals routed to
- * a person by the workflow (e.g. the requester's reporting manager on an
+ * Everyone signed in: only requesting their own exit pass. Everything else
+ * comes from the roles a person holds (the widest grant wins). Approvals the
+ * workflow routes to a person (e.g. the requester's reporting manager on an
  * exit pass) are decided by that workflow, not by this list.
  */
 const BASELINE: Partial<Record<PermissionKey, Scope>> = {
@@ -112,13 +113,13 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'admin.organisation.manage': A, 'admin.structure.manage': A, 'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A,
     'audit.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A, 'notifications.broadcast.send': A,
     'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'schedule.view': 'OWN',
-    'crm.view': A, 'crm.manage': A,
+    'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A,
   },
   // One branch: its people and their roles, and oversight of that branch.
   'branch-administrator': {
     'admin.users.manage': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
-    'crm.view': B, 'crm.manage': B,
+    'crm.view': B, 'crm.manage': B, 'admin.recycle_bin.manage': B,
   },
   // ── Workshop ─────────────────────────────────────────────────────
   // Front desk: the customer relationship — customers, vehicles, opening
@@ -140,8 +141,10 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'workshop.job.work': MINE, 'workshop.estimate.edit': MINE, 'workshop.inspection.perform': MINE, 'sourcing.request': MINE,
   },
   // Approves and closes — never opens jobs.
+  // Approves for the branch (passes, road tests, contractors included) but does
+  // not run the gate: no Security desk registers.
   'workshop-manager': {
-    ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B,
+    ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B,
     'workshop.estimate.final_approve': B, 'workshop.close.approve': B, 'store.prs.approve_hod': B, 'procurement.epr.approve': B,
     'warranty.manage': B, 'warranty.claim.approve': B, 'security.pass.approve': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
@@ -172,11 +175,16 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   'calendar-user': { 'schedule.view': 'OWN' },
   'scheduling-admin': { 'schedule.view': A, 'schedule.manage': A },
   broadcaster: { 'notifications.broadcast.send': A },
+  // ── Support ──────────────────────────────────────────────────────
+  // Sits with a colleague who is not at ease with computers and works on
+  // their behalf, with their password as consent. Nothing else: while
+  // assisting, what can be done is exactly what the colleague can do.
+  'branch-assistant': { 'support.assist': B },
 };
 
 /** Steps only the platform team may take — never grantable to organisation roles. */
 export const PLATFORM_ONLY: string[] = [
-  'Permanently delete Job Cards, Vehicle Services and vehicles',
+  'Permanently remove items from the Recycle bin before their time runs out',
   "Change a job's supervisor after it has been set",
   'Override a Job Card status directly',
   'Change the organisation-wide service interval',
@@ -228,7 +236,7 @@ export const PAGE_PERMISSIONS: Record<string, PermissionKey> = {
   organisation: 'admin.organisation.manage', structure: 'admin.structure.manage', 'business-units': 'admin.structure.manage', countries: 'admin.structure.manage', states: 'admin.structure.manage',
   cities: 'admin.structure.manage', branches: 'admin.structure.manage', departments: 'admin.structure.manage', teams: 'admin.structure.manage',
   users: 'admin.users.manage', roles: 'admin.roles.manage', permissions: 'admin.roles.manage', settings: 'admin.settings.manage', branding: 'admin.settings.manage',
-  'module-registry': 'admin.settings.manage', 'audit-logs': 'audit.view', analytics: 'analytics.business.view', crm: 'crm.view',
+  'module-registry': 'admin.settings.manage', 'audit-logs': 'audit.view', 'recycle-bin': 'admin.recycle_bin.manage', analytics: 'analytics.business.view', crm: 'crm.view',
 };
 
 /** How each role is named to people. */
@@ -237,4 +245,47 @@ export const ROLE_LABELS: Record<string, string> = {
   'finance-officer': 'Finance Officer', 'store-manager': 'Store Manager', 'store-officer': 'Store Officer', 'warranty-hod': 'Warranty HOD',
   'warranty-officer': 'Warranty Officer', 'department-head': 'Department Head', 'chief-security-officer': 'Chief Security Officer',
   'security-officer': 'Security Officer', receptionist: 'Front Desk (Receptionist)', 'calendar-user': 'Calendar User', 'scheduling-admin': 'Scheduling Admin', broadcaster: 'Broadcaster',
+  'branch-assistant': 'Branch Assistant (IT support)',
+};
+
+/**
+ * What each role is for, in plain words — shown on the Roles page so an
+ * administrator understands a role before giving it to someone.
+ */
+export const ROLE_DESCRIPTIONS: Record<string, string> = {
+  administrator: 'Sets up the organisation for every branch: people, roles, structure, settings and branding. Sees every module read-only, the audit trail and all analytics. Does not open jobs, approve money or record payments.',
+  'branch-administrator': 'Looks after one branch: adds people and gives them roles, and keeps an eye on the branch (workshop, store, warranty, security and analytics) without doing the departments\' work.',
+  receptionist: 'The front desk. Registers customers and vehicles, opens Job Cards and Vehicle Services, tells customers when estimates are approved, asks for jobs to be closed, and receives visitors.',
+  'workshop-supervisor': 'Runs the jobs given to them: accepts supervising a job, assigns the technician, checks and approves the estimate, and marks the work ready for collection.',
+  technician: 'Does the work on the jobs assigned to them: accepts or turns down a job, inspects the vehicle, writes the estimate and raises parts requests.',
+  'workshop-manager': 'The branch manager. Gives final approval to estimates, approves closing and cancelling jobs, parts requests, outside purchases, warranty claims, exit passes, road tests and contractor passes. Sees the branch analytics.',
+  'finance-officer': 'Handles money: records payments and refunds, reviews outside purchases and pays out the cash once approved.',
+  'store-manager': 'Runs the store: parts, prices, stock levels, goods receipts, matching estimate parts and releasing parts. Authorises exit passes for the store team.',
+  'store-officer': 'Works in the store: records goods receipts, matches estimate parts to stock, and approves, reserves and releases parts requests.',
+  'warranty-hod': 'Heads warranty: registers and verifies warranties, approves warranty claims and manages providers and policies. Authorises exit passes for the warranty team.',
+  'warranty-officer': 'Registers warranties and prepares warranty claims for the head of warranty to approve.',
+  'department-head': 'Authorises exit passes for the people in their department before the Manager approves them.',
+  'chief-security-officer': 'Runs the Security desk: the gate, visitors, vehicles, deliveries and contractors, and assigns, closes and reopens incidents.',
+  'security-officer': 'Works the gate: signs visitors, vehicles, deliveries and contractors in and out, records exit-pass times and reports incidents.',
+  'calendar-user': 'Keeps their own calendar and books appointments and meeting rooms.',
+  'scheduling-admin': 'Manages meeting rooms and calendar aides, and can book on anyone\'s calendar.',
+  broadcaster: 'Sends broadcasts (notices) to staff and customers.',
+  'branch-assistant': 'IT support at the branch. Helps colleagues who are not comfortable with computers: with the colleague\'s own password, works on their tasks for a limited time. Every action is recorded as done for that colleague, with the assistant named. Cannot help managers, supervisors, finance or administrators, and approves nothing.',
+};
+
+/** Permissions that DECIDE something (approve, authorise, release, pay) —
+ * listed separately on the Roles page and used for the Approvals menu. */
+export const APPROVAL_PERMISSIONS: PermissionKey[] = [
+  'workshop.job.supervise', 'workshop.estimate.approve', 'workshop.estimate.final_approve', 'workshop.close.approve', 'store.prs.approve_hod',
+  'store.prs.release', 'procurement.epr.review', 'procurement.epr.approve', 'procurement.epr.disburse', 'warranty.claim.approve', 'security.pass.approve',
+];
+
+/** Store pages that show purchase costs and margins (goods receipts, pricing
+ * alerts, cost per batch): the Store, Finance, management analytics and
+ * Warranty (which traces parts back to their receipts). Not the workshop floor. */
+export const STORE_COST_PERMISSIONS: PermissionKey[] = ['store.parts.manage', 'store.grn.record', 'analytics.inventory.view', 'warranty.view'];
+
+/** How a scope reads to people. */
+export const SCOPE_WORDS: Record<Scope, string> = {
+  ALL: 'everywhere in the organisation', BRANCH: 'in their branch', DEPARTMENT: 'for their department', ASSIGNED: 'on work assigned to them', OWN: 'their own',
 };

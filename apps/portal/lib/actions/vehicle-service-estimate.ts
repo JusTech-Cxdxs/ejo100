@@ -1,8 +1,9 @@
 'use server';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
-import { authorize, authorizeOnService, refuse, branchWithinReach, seeService } from '@/lib/authz/server';
+import { authorize, authorizeOnService, refuse, branchWithinReach, seeService, refuseDuringAssist } from '@/lib/authz/server';
 
 import { assertServiceNotEscalated } from '@/lib/vehicle-service-cycle';
 import { prisma } from '@ejo/database';
@@ -26,13 +27,6 @@ import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 
 class ServiceEstimateActionError extends Error {}
 
-/**
- * Creates the one real estimate for a Vehicle Service — refused if
- * the visit has already been escalated to a real Job Card (that
- * Job Card's own Estimate is the real one from that point on, never
- * this one — the two are mutually exclusive by design), and a
- * harmless no-op if a draft already exists.
- */
 /** Same guarantee as the Job Card estimate's withEstimateUnchanged: a line
  * change only lands if the estimate is still in the status the editor saw,
  * serialised against any approval of it (see lib/integrity.ts). */
@@ -46,6 +40,9 @@ async function withServiceEstimateUnchanged<T>(estimateId: string, seenStatus: '
   });
 }
 
+/** Creates the Vehicle Service's estimate. Refused once the visit is
+ * escalated (the Job Card's estimate applies from then); a no-op if a draft
+ * already exists. */
 export async function createServiceEstimate(vehicleServiceId: string): Promise<{ id: string }> {
   await authorizeOnService('workshop.estimate.edit', vehicleServiceId, 'createServiceEstimate');
   await assertServiceNotEscalated({ vehicleServiceId });
@@ -61,7 +58,7 @@ export async function createServiceEstimate(vehicleServiceId: string): Promise<{
     throw new ServiceEstimateActionError('Vehicle Service record not found.');
   }
   if (service.escalatedToJobCardId) {
-    throw new ServiceEstimateActionError('This Vehicle Service was already escalated to a real Job Card — write the estimate there instead.');
+    throw new ServiceEstimateActionError('This Vehicle Service was escalated to a Job Card. Write the estimate there instead.');
   }
 
   const estimate = await prisma.serviceEstimate.create({
@@ -78,14 +75,9 @@ export async function createServiceEstimate(vehicleServiceId: string): Promise<{
 }
 
 /**
- * The one real, deliberate way to undo choosing the "normal service"
- * path — same flexibility as cancelVehicleInspection: genuinely
- * deletes the record after logging what happened first, so choosing
- * to escalate instead is never blocked by an abandoned draft. Only
- * while still DRAFT or SUBMITTED — once APPROVED, real Store Part
- * requests or real payments may already exist against this estimate,
- * so cancelling it at that point would orphan real, live records
- * rather than undo a choice that was never acted on yet.
+ * Undoes choosing the normal-service path: logs, then deletes the estimate,
+ * so an abandoned draft never blocks escalation. Only while DRAFT or
+ * SUBMITTED; once approved, Store requests or payments may depend on it.
  */
 export async function cancelServiceEstimate(vehicleServiceId: string): Promise<void> {
   await assertServiceNotEscalated({ vehicleServiceId });
@@ -111,7 +103,7 @@ export async function cancelServiceEstimate(vehicleServiceId: string): Promise<v
     entityId: vehicleServiceId,
     metadata: { serviceNumber: service?.serviceNumber, previousStatus: estimate.status },
   });
-  // Only if it is still in the status checked above — never delete an
+  // Only if it is still in the status checked above; never delete an
   // estimate a manager approved a moment ago.
   claimed(await prisma.serviceEstimate.deleteMany({ where: { id: estimate.id, status: estimate.status } }), 'This estimate was just approved or changed by someone else — refresh the page.');
 }
@@ -121,20 +113,15 @@ export type ServiceEstimateLineItemInput = {
   description: string;
   quantity: number;
   unitPrice?: number;
-  /** Only meaningful for a STORE_PART line — which generic kind of
-   * part is actually needed (e.g. "Engine Oil Filter"); Store later
-   * matches this to a real, specific, vehicle-fitting Part from the
-   * actual catalogue via matchServiceEstimateStorePartLine below. */
+  /** STORE_PART only: the generic part type needed (e.g. "Engine Oil Filter"),
+   * which Store matches to a catalogue part (matchServiceEstimateStorePartLine). */
   partTypeId?: string;
-  /** Only meaningful for a non-STORE_PART line — a STORE_PART line's
-   * unit is set automatically once Store matches it, never by
-   * whoever adds the line. Same real rule as Job Card's own estimate. */
+  /** Non-STORE_PART lines only. A Store Part's unit is set when Store matches it. */
   unitOfMeasure?: string;
 };
 
-/** Who can add to or edit a Vehicle Service's estimate — the assigned
- * supervisor, the assigned technician, or a Master Administrator.
- * Same real shape as Job Card's own requireEstimateContributor. */
+/** Who may add to or edit the estimate: the assigned supervisor, the
+ * assigned technician, or a Master Administrator. */
 async function requireServiceEstimateContributor(service: {
   supervisorId: string | null;
   assignedTechnicianId: string | null;
@@ -151,13 +138,9 @@ async function requireServiceEstimateContributor(service: {
   );
 }
 
-/** Who's actually allowed to set the PRICE on a given line — same
- * real reasoning as Job Card's own requirePricingAuthority, just
- * simpler since Vehicle Service has no External Part/Job concept at
- * all: every priceable type here (Internal Job, Labour, Sundry) is
- * priced by the supervisor alone, never the technician. Store Part
- * is never priced here regardless of who's asking — that price can
- * only ever come from Store's own real match against the catalog. */
+/** Who may set a line's price. Vehicle Service has no external lines, so
+ * every priceable type (Internal Job, Labour, Sundry) is priced by the
+ * supervisor. Store Part prices only come from Store matching. */
 async function requireServicePricingAuthority(service: { supervisorId: string | null }, userId: string): Promise<void> {
   if (await currentUserIsMasterAdmin()) return;
   if (userId === service.supervisorId) return;
@@ -196,24 +179,20 @@ export async function addServiceEstimateLineItem(estimateId: string, input: Serv
   }
   const contributor = await requireServiceEstimateContributor(estimate.vehicleService);
 
-  // Same real evidence-based rule as Job Card's own estimate — only
-  // Sundry is capped at one line; Internal Job and Labour both need
-  // to support multiple real entries.
+  // Only Sundry is limited to one line, as on Job Card estimates.
   if (input.type === 'SUNDRY' && estimate.lineItems.some((li: { type: string }) => li.type === 'SUNDRY')) {
     throw new ServiceEstimateActionError('A Sundry line already exists on this estimate — edit it instead of adding another.');
   }
 
   if (input.unitPrice !== undefined) {
     if (input.type === 'STORE_PART') {
-      throw new ServiceEstimateActionError('A Store Part line is priced by Store matching it to a real catalog Part, not typed in directly.');
+      throw new ServiceEstimateActionError('A Store Part line is priced when Store matches it to a catalogue part, not typed in.');
     }
     await requireServicePricingAuthority(estimate.vehicleService, contributor.id);
   }
 
   if (input.type === 'STORE_PART' && input.partTypeId) {
-    // A Store Part line's own description is never trusted from
-    // client input — always derived server-side from the real
-    // PartType's own name, same principle as Job Card's own estimate.
+    // Description comes from the PartType, never from the client.
     const partType = await prisma.partType.findUnique({ where: { id: input.partTypeId }, select: { name: true } });
     if (!partType) {
       throw new ServiceEstimateActionError('That part type could not be found.');
@@ -248,13 +227,7 @@ export async function addServiceEstimateLineItem(estimateId: string, input: Serv
   });
 }
 
-/**
- * The real Vehicle Service equivalent of Job Card's own
- * jobCardHasUnmatchedStoreParts — the one honest check that decides
- * whether Store should stay right here matching this Vehicle
- * Service's next line, or genuinely be done and sent back to the
- * general queue.
- */
+/** Vehicle Service version of jobCardHasUnmatchedStoreParts(). */
 export async function serviceEstimateHasUnmatchedStoreParts(vehicleServiceId: string): Promise<boolean> {
   await requireUser();
   await seeService(vehicleServiceId, 'serviceEstimateHasUnmatchedStoreParts');
@@ -264,10 +237,8 @@ export async function serviceEstimateHasUnmatchedStoreParts(vehicleServiceId: st
   return remaining > 0;
 }
 
-/** The real Store-matching step — same two-moment flow, same
- * pricing-alert hard-stop, as Job Card's own estimate matching: a
- * Part currently priced below its own real cost can never be matched
- * onto a customer's estimate, here either. */
+/** Store matching for a Vehicle Service estimate line. Same rules as the
+ * Job Card version, including the hard stop on parts priced below cost. */
 export async function matchServiceEstimateStorePartLine(lineItemId: string, partId: string): Promise<void> {
   await assertServiceNotEscalated({ lineItemId });
   const lineItem = await prisma.serviceEstimateLineItem.findUnique({
@@ -299,13 +270,10 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
     throw new ServiceEstimateActionError('Line item not found.');
   }
   if (lineItem.type !== 'STORE_PART') {
-    throw new ServiceEstimateActionError('Only a Store Part line can be matched to a real Part.');
+    throw new ServiceEstimateActionError('Only a Store Part line can be matched to a catalogue part.');
   }
-  // DRAFT included deliberately, not just SUBMITTED — same real
-  // reasoning as Job Card's own estimate: matching has to be
-  // possible before submission whenever a Store Part is involved, or
-  // submitting an estimate with one in it would be a genuine
-  // deadlock.
+  // DRAFT is allowed as well as SUBMITTED: submission requires every line to
+  // be priced, so matching has to be possible before it.
   if (lineItem.estimate.status !== 'DRAFT' && lineItem.estimate.status !== 'SUBMITTED') {
     throw new ServiceEstimateActionError('This estimate is not currently awaiting Store matching.');
   }
@@ -324,13 +292,8 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
   if (part.branchId !== lineItem.estimate.vehicleService.branchId) {
     throw new ServiceEstimateActionError('This Part does not belong to the same branch as this Vehicle Service.');
   }
-  // Same real, deliberate safeguard as Job Card's own matching — a
-  // Part with no fitment rows at all is genuinely universal (fluids,
-  // cleaners, generic consumables) and always allowed through; a
-  // Part that DOES have real fitment rows on record is a discrete
-  // component this workshop has said only fits specific vehicles,
-  // and matching it onto the wrong one is the exact real mistake
-  // this exists to prevent.
+  // A part with no fitment rows is universal and always allowed. A part with
+  // fitment rows can only be matched to a vehicle on that list.
   if (part.fitments.length > 0) {
     const vehicle = lineItem.estimate.vehicleService.vehicle;
     const canCheck = vehicle?.make && vehicle?.model;
@@ -348,7 +311,7 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
     if (!fits) {
       const vehicleLabel = [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(' ') || 'this Vehicle Service\'s own vehicle';
       throw new ServiceEstimateActionError(
-        `${part.name} is only recorded to fit specific vehicles, and ${vehicleLabel} isn't one of them — this would be the exact real mistake Vehicle Fitment exists to prevent. If this Part genuinely does fit, add ${vehicleLabel} to its Vehicle Fitment list first.`,
+        `${part.name} is only recorded to fit specific vehicles, and ${vehicleLabel} isn't one of them. If it does fit, add ${vehicleLabel} to the part's Vehicle Fitment list first.`,
       );
     }
   }
@@ -360,7 +323,7 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
   }
   const openCriticalLoss = await prisma.pricingAlert.findFirst({ where: { partId, severity: 'CRITICAL_LOSS', status: 'OPEN' }, select: { id: true } });
   if (openCriticalLoss) {
-    throw new ServiceEstimateActionError(`${part.name} is currently priced below its own real cost — resolve the open Pricing Alert on this Part before matching it to an estimate.`);
+    throw new ServiceEstimateActionError(`${part.name} is priced below cost. Resolve the open Pricing Alert on this part before matching it to an estimate.`);
   }
   const unitPrice = Number(part.sellingPrice);
   const amount = Math.round(unitPrice * Number(lineItem.quantity) * 100) / 100;
@@ -375,10 +338,7 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
     entityId: lineItemId,
     metadata: { partId, partName: part.name, unitPrice, amount },
   });
-  // Same real "one entry against the real entity, one against the
-  // parent record" pattern already used everywhere else — without
-  // this second entry, Store's own matching work never shows up on
-  // the Vehicle Service's own timeline at all.
+  // Also log against the Vehicle Service so matching shows on its timeline.
   await writeAuditLog({
     userId: user.id,
     action: 'service_estimate.line_store_matched',
@@ -387,10 +347,8 @@ export async function matchServiceEstimateStorePartLine(lineItemId: string, part
     metadata: { serviceNumber: lineItem.estimate.vehicleService.serviceNumber, partName: part.name, unitPrice, amount },
   });
 
-  // Same real automatic replacement for a manual "Notify — Matching
-  // Complete" button as Job Card's own version — checked fresh here
-  // rather than trusted from before this match, since this match
-  // itself is what might have just made it true.
+  // When nothing is left unmatched, notify automatically. Counted after this
+  // match because this match may have been the last one.
   const remainingUnmatched = await prisma.serviceEstimateLineItem.count({
     where: { estimateId: lineItem.estimate.id, type: 'STORE_PART', matchedPartId: null },
   });
@@ -415,10 +373,8 @@ export async function removeServiceEstimateLineItem(lineItemId: string): Promise
   if (line.estimate.status === 'APPROVED' || line.estimate.status === 'MANAGER_APPROVED') {
     throw new ServiceEstimateActionError('This estimate is already approved — it can no longer be changed here.');
   }
-  // Same real "whoever entered it, the supervisor, or a Master
-  // Administrator" rule as Job Card's own estimate — a technician can
-  // correct their own mistake, but can't erase someone else's entry
-  // without real oversight.
+  // Whoever entered the line, the supervisor, or a Master Administrator may
+  // remove it.
   const user = await requireUser();
   const isOwnEntry = line.enteredById === user.id;
   const isSupervisor = line.estimate.vehicleService.supervisorId === user.id;
@@ -444,13 +400,9 @@ export type ServiceEstimateLineItemUpdateInput = {
 };
 
 /**
- * Real, after-the-fact correction of a line already on the estimate
- * — same exact real reasoning as Job Card's own updateEstimateLineItem,
- * including the one real detail that makes it trustworthy: a matched
- * Store Part line's own price is never frozen the moment it was
- * matched — while the estimate is still genuinely open for editing,
- * changing the quantity here recomputes against the Part's own
- * CURRENT real selling price, never a stale snapshot.
+ * Edits a line on the estimate. While the estimate is open, a matched Store
+ * Part line is repriced from the part's current selling price when the
+ * quantity changes.
  */
 export async function updateServiceEstimateLineItem(lineItemId: string, input: ServiceEstimateLineItemUpdateInput): Promise<void> {
   await assertServiceNotEscalated({ lineItemId });
@@ -490,7 +442,7 @@ export async function updateServiceEstimateLineItem(lineItemId: string, input: S
   const editor = await requireServiceEstimateContributor(lineItem.estimate.vehicleService);
   if (input.unitPrice !== undefined) {
     if (lineItem.type === 'STORE_PART') {
-      throw new ServiceEstimateActionError('A Store Part line is priced by Store matching it to a real catalog Part, not typed in directly.');
+      throw new ServiceEstimateActionError('A Store Part line is priced when Store matches it to a catalogue part, not typed in.');
     }
     await requireServicePricingAuthority(lineItem.estimate.vehicleService, editor.id);
   }
@@ -527,10 +479,7 @@ export async function updateServiceEstimateLineItem(lineItemId: string, input: S
   });
 }
 
-/** Submitted is a real, deliberate "ready for the customer to see"
- * moment, distinct from still being drafted — same real reasoning
- * Job Card's own estimate uses, just without the extra Manager stage
- * that a routine Vehicle Service visit doesn't need. */
+/** Marks the estimate ready for approval. Every line must be priced. */
 export async function submitServiceEstimate(estimateId: string): Promise<void> {
   await assertServiceNotEscalated({ estimateId });
   const estimate = await prisma.serviceEstimate.findUnique({
@@ -563,7 +512,7 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
   // Who may submit is checked before anything is written.
   const user = await requireServiceEstimateContributor(estimate.vehicleService);
 
-  // Read, reprice, check and submit as ONE step with the estimate locked
+  // Read, reprice, check and submit as one step with the estimate locked
   // (same as the Job Card estimate's submit).
   await withServiceEstimateUnchanged(estimateId, 'DRAFT', async (tx) => {
     const lines = await tx.serviceEstimateLineItem.findMany({
@@ -573,8 +522,7 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
     if (lines.length === 0) {
       throw new ServiceEstimateActionError('Add at least one line item before submitting this estimate.');
     }
-    // The one moment a matched Store Part line's live price is written down
-    // as the estimate's own permanent record.
+    // Submission fixes a matched Store Part line's current price on the estimate.
     for (const li of lines as (typeof lines)[number][]) {
       if (li.type === 'STORE_PART' && li.matchedPartId && li.matchedPart?.sellingPrice !== null && li.matchedPart?.sellingPrice !== undefined) {
         const liveUnitPrice = Number(li.matchedPart.sellingPrice);
@@ -586,7 +534,7 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
       }
     }
     // An unmatched Store Part line never has a unitPrice, so this one check
-    // catches both "forgot to price a line" and "Store hasn't matched it".
+    // catches both an unpriced line and one Store hasn't matched.
     const missingPricesOn = lines.filter((li: { unitPrice: unknown }) => li.unitPrice === null);
     if (missingPricesOn.length > 0) {
       throw new ServiceEstimateActionError(
@@ -603,13 +551,12 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
     metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
   });
 
-  // Notify whoever approves it — fail-soft, matching every other
-  // notification in this project.
+  // Notify whoever approves it (fail-soft).
   try {
     if (!estimate.vehicleService.supervisor) return;
-    // Independent lookups for the email — run together.
+    // Independent lookups for the email, run in parallel.
     const [submitter, orgContext] = await Promise.all([prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }), getWorkshopOrgContext(estimate.vehicleService.department?.name)]);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
     await sendEmail(
       estimate.vehicleService.supervisor.email,
@@ -621,19 +568,20 @@ export async function submitServiceEstimate(estimateId: string): Promise<void> {
         submittedByName: submitter?.fullName ?? 'A team member',
         totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         serviceUrl: `${portalUrl}/workshop/vehicle-service/${estimate.vehicleService.id}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
         departmentName: orgContext.departmentName,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send estimate-submitted email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
   }
 }
 
 export async function approveServiceEstimate(estimateId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveServiceEstimate');
   await assertServiceNotEscalated({ estimateId });
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },
@@ -658,11 +606,8 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
   if (estimate.status !== 'SUBMITTED') {
     throw new ServiceEstimateActionError('Only a submitted estimate can be approved.');
   }
-  // Same real re-check as Job Card's own approveEstimate — a new
-  // unmatched Store Part line could genuinely have been added since
-  // submission (editing stays open right up until real approval),
-  // so nothing should reach a Manager, let alone the customer, still
-  // priced on a technician's guess rather than Store's own real match.
+  // Re-check at approval: a Store Part line may have been added since
+  // submission, and nothing goes to a Manager unmatched.
   const unmatchedStoreParts = estimate.lineItems.filter((li: { type: string; matchedPartId: string | null }) => li.type === 'STORE_PART' && !li.matchedPartId);
   if (unmatchedStoreParts.length > 0) {
     throw new ServiceEstimateActionError(
@@ -682,23 +627,20 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
     metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
   });
 
-  // Same real hand-off as Job Card's own approveEstimate — the
-  // supervisor's own approval is not the final word; every eligible
-  // Workshop Manager for the branch is notified next, and whichever
-  // one acts first completes the review. Fail-soft, matching every
-  // other notification in this file.
+  // Supervisor approval is not final: the branch's Workshop Managers are
+  // notified and the first to act completes the review. Fail-soft.
   try {
     const managers = await listEligibleManagersForBranch(estimate.vehicleService.branchId);
     if (managers.supervisors.length === 0) return;
     const approver = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
     const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const companyName = estimate.vehicleService.branch.businessUnit.organisation.name;
     const branchName = estimate.vehicleService.branch.name;
     for (const manager of managers.supervisors) {
       await sendEmail(
         manager.email,
-        `Estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} ready for your review`,
+        `Estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} needs your approval`,
         renderServiceEstimateReadyForManagerEmail({
           managerName: manager.fullName,
           serviceNumber: estimate.vehicleService.serviceNumber,
@@ -706,24 +648,23 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
           approvedByName: approver?.fullName ?? 'The supervisor',
           totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           vehicleServiceUrl: `${portalUrl}/workshop/vehicle-service/${estimate.vehicleService.id}`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName,
           branchName,
         }),
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send estimate-ready-for-manager email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
   }
 }
 
-/** The Workshop Manager's own real sign-off — same real two-role
- * shape as Job Card's own approveEstimateAsManager. Notifies whoever
- * created this Vehicle Service next, never the customer directly —
- * that hand-off is a separate, explicit step (see
- * notifyCustomerOfApprovedServiceEstimate below). */
+/** The Workshop Manager's sign-off. The service's creator is notified;
+ * sending to the customer is a separate step
+ * (notifyCustomerOfApprovedServiceEstimate). */
 export async function approveServiceEstimateAsManager(estimateId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveServiceEstimateAsManager');
   await assertServiceNotEscalated({ estimateId });
   const estimate = await prisma.serviceEstimate.findUnique({
     where: { id: estimateId },
@@ -764,19 +705,15 @@ export async function approveServiceEstimateAsManager(estimateId: string): Promi
     metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
   });
 
-  // Notify whoever created this Vehicle Service — the Manager
-  // approving is not the same as anyone deciding the customer should
-  // be told. That decision belongs to this person specifically; see
-  // notifyCustomerOfApprovedServiceEstimate below for the actual
-  // customer hand-off, which this person triggers explicitly. Fail-
-  // soft, matching every other notification in this file.
+  // Tell the Vehicle Service's creator; they decide when the customer is
+  // notified. Fail-soft.
   try {
     const manager = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
     const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       estimate.vehicleService.createdBy.email,
-      `Estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} approved by manager`,
+      `Estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} approved by manager — ready to send`,
       renderServiceEstimateReadyForCustomerNotificationEmail({
         recipientName: estimate.vehicleService.createdBy.fullName,
         serviceNumber: estimate.vehicleService.serviceNumber,
@@ -784,23 +721,19 @@ export async function approveServiceEstimateAsManager(estimateId: string): Promi
         approvedByManagerName: manager?.fullName ?? 'The manager',
         totalAmount: `₦${total.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         vehicleServiceUrl: `${portalUrl}/workshop/vehicle-service/${estimate.vehicleService.id}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: estimate.vehicleService.branch.businessUnit.organisation.name,
         branchName: estimate.vehicleService.branch.name,
       }),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send estimate-ready-for-customer-notification email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
   }
 }
 
-/** The explicit, real hand-off to the customer — only whoever created
- * this Vehicle Service, or a Master Admin, may trigger this, and only
- * once the Manager has approved. Deliberately never automatic — same
- * real reasoning as Job Card's own notifyCustomerOfApprovedEstimate.
- * Carries the same real estimate PDF (and inspection PDF, when one
- * exists) the customer has always received at this point. */
+/** Sends the Manager-approved estimate to the customer, with the estimate
+ * PDF (and the inspection PDF when there is one). Only the service's
+ * creator or a Master Admin, and only after Manager approval. */
 export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string): Promise<void> {
   await assertServiceNotEscalated({ estimateId });
   const estimate = await prisma.serviceEstimate.findUnique({
@@ -866,11 +799,10 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
   try {
     const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const total = estimate.lineItems.reduce((sum: number, li: { amount: unknown }) => sum + Number(li.amount ?? 0), 0);
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     const vehicleDescription = [estimate.vehicleService.vehicle.make, estimate.vehicleService.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
-    // Same real three-way customer-facing split as Job Card's own —
-    // Store Part + Internal Job merged into "Parts & Services", Labour
-    // and Sundry kept separate, never the internal type per line.
+    // Customer-facing split, as for Job Cards: Parts & Services (Store Part +
+    // Internal Job), Labour and Sundry. Never the internal line types.
     let servicesTotal = 0;
     let labourTotal = 0;
     let sundryTotal = 0;
@@ -881,18 +813,19 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
       else servicesTotal += amount;
     }
     const minimumDepositForEmail = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
-    // Same real reference shape as Job Card's own: number — vehicle — plate.
+    // Payment reference: number, vehicle, plate (same as Job Cards).
     const paymentRemarkSuggestion = [estimate.vehicleService.serviceNumber, vehicleDescription, estimate.vehicleService.vehicle.plateNumber]
       .filter(Boolean)
-      .join(' — ');
-    const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+      .join(' ');
+    const websiteUrl = websiteBaseUrl();
     await sendEmail(
       estimate.vehicleService.customer.email,
-      `Your estimate for Vehicle Service ${estimate.vehicleService.serviceNumber} has been approved`,
+      `Estimate ready for ${estimate.vehicleService.serviceNumber} — ${[vehicleDescription, estimate.vehicleService.vehicle.plateNumber ? `(${estimate.vehicleService.vehicle.plateNumber})` : ''].filter(Boolean).join(' ')}`,
       renderCustomerServiceEstimateApprovedEmail({
         customerName: estimate.vehicleService.customer.fullName,
         serviceNumber: estimate.vehicleService.serviceNumber,
         vehicleDescription,
+        plateNumber: estimate.vehicleService.vehicle.plateNumber,
         lineItems: (estimate.lineItems as { description: string; quantity: unknown; amount: unknown; unitOfMeasure: string | null }[]).map((li) => ({
           description: li.description,
           quantity: Number(li.quantity),
@@ -904,21 +837,17 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
         sundrySubtotal: sundryTotal > 0 ? formatNaira(sundryTotal) : undefined,
         totalAmount: formatNaira(total),
         minimumDepositAmount: formatNaira(minimumDepositForEmail),
+        depositPercent: Math.round(MINIMUM_DEPOSIT_FRACTION * 100),
         ...(await bankDetailsFor((await prisma.vehicleService.findUnique({ where: { id: estimate.vehicleService.id }, select: { branchId: true } }))?.branchId)),
         paymentRemarkSuggestion,
         dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${estimate.vehicleService.id}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: estimate.vehicleService.branch.businessUnit.organisation.name,
         branchName: estimate.vehicleService.branch.name,
       }),
       await (async () => {
-        // The real, styled PDF attachment — reuses Job Card's own
-        // exact PDF layout component (EstimatePdf), just with its
-        // reference label parameterized to say "VEHICLE SERVICE"
-        // instead of the default "JOB CARD" — everything else about
-        // the document, including the real minimum-deposit section
-        // now that Vehicle Service has its own real payment system,
-        // is identical.
+        // Uses the Job Card PDF layout (EstimatePdf) with the reference label set to
+        // "VEHICLE SERVICE".
         try {
           const org = estimate.vehicleService.branch.businessUnit.organisation;
           const formatNairaForPdf = (value: number) => `NGN ${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -968,11 +897,8 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
             { filename: `Estimate-${estimate.vehicleService.serviceNumber}.pdf`, content: pdfBuffer, contentType: 'application/pdf' },
           ];
 
-          // The inspection report rides along on the same email, same
-          // moment, only when there's a real completed inspection to
-          // show — a skipped inspection has no real findings to hand
-          // the customer at all, by the same honest design already
-          // used for the print route itself.
+          // Attach the inspection report only for a completed inspection; a skipped
+          // inspection has no findings.
           const inspection = estimate.vehicleService.inspection;
           if (inspection && inspection.status === 'COMPLETED') {
             try {
@@ -1014,25 +940,20 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
               );
               attachments.push({ filename: `Inspection-${estimate.vehicleService.serviceNumber}.pdf`, content: inspectionPdfBuffer, contentType: 'application/pdf' });
             } catch (inspectionPdfErr) {
-              // Same real rule — never let the inspection PDF block
-              // either the estimate PDF or the email itself.
-              // eslint-disable-next-line no-console
+              // Never let the inspection PDF block the estimate PDF or the email.
               logFailure('Failed to generate Vehicle Service inspection PDF attachment', estimate.vehicleService.serviceNumber, inspectionPdfErr);
             }
           }
 
           return attachments;
         } catch (pdfErr) {
-          // A failed PDF must never block the email itself — the
-          // customer still needs the approval notice either way.
-          // eslint-disable-next-line no-console
+          // A failed PDF never blocks the email.
           logFailure('Failed to generate Vehicle Service estimate PDF attachment', estimate.vehicleService.serviceNumber, pdfErr);
           return undefined;
         }
       })(),
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send customer estimate-approved email for Vehicle Service', estimate.vehicleService.serviceNumber, err);
   }
 }
@@ -1083,10 +1004,10 @@ async function sendServiceEstimateNudge(params: {
     ]);
     if (!toUser) return;
     const orgContext = await getWorkshopOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     await sendEmail(
       toUser.email,
-      `A note on the estimate for Vehicle Service ${service.serviceNumber}`,
+      `Please look at the estimate — Vehicle Service ${service.serviceNumber}`,
       renderServiceEstimateNudgeEmail({
         recipientName: toUser.fullName,
         fromName: fromUser?.fullName ?? 'A team member',
@@ -1095,20 +1016,17 @@ async function sendServiceEstimateNudge(params: {
         customerName: service.customer.fullName,
         note: params.note,
         vehicleServiceUrl: `${portalUrl}/workshop/vehicle-service/${params.vehicleServiceId}`,
-        logoUrl: `${portalUrl}/images/logo/logo.png`,
+        logoUrl: `${portalUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
       }),
     );
   } catch {
-    // Same real "the note is logged either way" reasoning as Job
-    // Card's own version — a failed email never blocks the real,
-    // permanent record of the nudge itself.
+    // The note is audited even if the email fails.
   }
 }
 
-/** The technician nudges the assigned supervisor to review or price
- * the estimate — same real informal back-and-forth as Job Card's own. */
+/** The technician nudges the supervisor to review or price the estimate. */
 export async function notifySupervisorAboutServiceEstimate(vehicleServiceId: string, note?: string): Promise<void> {
   await assertServiceNotEscalated({ vehicleServiceId });
   const service = await prisma.vehicleService.findUnique({
@@ -1129,8 +1047,7 @@ export async function notifySupervisorAboutServiceEstimate(vehicleServiceId: str
   await sendServiceEstimateNudge({ vehicleServiceId, fromRole: 'technician', fromUserId: user.id, toUserId: service.supervisorId, note });
 }
 
-/** The supervisor nudges the assigned technician to review or price
- * the estimate — same real informal back-and-forth as Job Card's own. */
+/** The supervisor nudges the technician to review or price the estimate. */
 export async function notifyTechnicianAboutServiceEstimate(vehicleServiceId: string, note?: string): Promise<void> {
   await assertServiceNotEscalated({ vehicleServiceId });
   const service = await prisma.vehicleService.findUnique({
@@ -1161,8 +1078,8 @@ async function sendServiceStoreMatchingCompleteNotification(
   });
   try {
     const orgContext = await getWorkshopOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const portalUrl = portalBaseUrl();
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     const recipientIds = [service.supervisorId, service.assignedTechnicianId].filter((id): id is string => Boolean(id));
     const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
     for (const recipient of recipients) {
@@ -1183,17 +1100,14 @@ async function sendServiceStoreMatchingCompleteNotification(
       );
     }
   } catch {
-    // Real, permanent audit entry above stands regardless of whether
-    // the email itself goes out.
+    // The audit entry above stands even if the email fails.
   }
 }
 
 /**
- * The real "Store, please come match this" request — same real
- * purpose as Job Card's own requestStoreMatching: explicit, not
- * merely implied by unmatched lines existing, and it emails every
- * real eligible Store Officer/Manager for the branch with exactly
- * which lines are waiting.
+ * Asks Store to match this service's Store Part lines (Vehicle Service
+ * version of requestStoreMatching). Emails the branch's Store staff with the
+ * waiting lines.
  */
 export async function requestServiceEstimateStoreMatching(vehicleServiceId: string, note?: string): Promise<void> {
   await assertServiceNotEscalated({ vehicleServiceId });
@@ -1258,12 +1172,12 @@ export async function requestServiceEstimateStoreMatching(vehicleServiceId: stri
       storeRecipients.set(staffMember.id, staffMember);
     }
     const orgContext = await getWorkshopOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const portalUrl = portalBaseUrl();
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const recipient of storeRecipients.values()) {
       await sendEmail(
         recipient.email,
-        `Store matching requested — Vehicle Service ${service.serviceNumber}`,
+        `Please match parts — Vehicle Service ${service.serviceNumber}`,
         renderServiceStoreMatchingRequestedEmail({
           recipientName: recipient.fullName,
           requestedByName: requestedByUser?.fullName ?? 'A team member',
@@ -1282,15 +1196,14 @@ export async function requestServiceEstimateStoreMatching(vehicleServiceId: stri
         }),
       );
     }
-    // Same real status-only nudge back to supervisor/technician as
-    // Job Card's own version, distinct from the detailed request
-    // Store itself receives above.
+    // Status-only email to the supervisor and technician; Store gets the
+    // detailed one above.
     const statusRecipientIds = [service.supervisorId, service.assignedTechnicianId].filter((id): id is string => Boolean(id));
     const statusRecipients = await prisma.user.findMany({ where: { id: { in: statusRecipientIds } }, select: { fullName: true, email: true } });
     for (const recipient of statusRecipients) {
       await sendEmail(
         recipient.email,
-        `Store matching requested — Vehicle Service ${service.serviceNumber}`,
+        `Waiting for Store to match parts — Vehicle Service ${service.serviceNumber}`,
         renderServiceStoreMatchingStatusEmail({
           recipientName: recipient.fullName,
           kind: 'awaiting',
@@ -1305,18 +1218,13 @@ export async function requestServiceEstimateStoreMatching(vehicleServiceId: stri
       );
     }
   } catch {
-    // Real, permanent audit entry above stands regardless of whether
-    // any of these emails go out.
+    // The audit entry above stands even if these emails fail.
   }
 }
 
 /**
- * Store's own real starting queue for Vehicle Service — same real
- * "only what's been deliberately requested" honesty as Job Card's
- * own listUnmatchedStorePartLines: matchingRequestedAt not being null
- * is what actually keeps this queue meaningful, not merely having an
- * unmatched line, or every in-progress Draft someone's still
- * mid-way through building would show up here too.
+ * Store's Vehicle Service queue: unmatched lines on estimates that were sent
+ * for matching (matchingRequestedAt set), not every draft in progress.
  */
 export async function listUnmatchedServiceEstimateStorePartLines(branchId: string) {
   await requireUser();

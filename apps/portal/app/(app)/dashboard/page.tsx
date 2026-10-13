@@ -5,18 +5,23 @@ import { OrgTrail } from '@/components/OrgTrail';
 import { getWorkshopDashboardCounts, requireUser } from '@/lib/actions/workshop';
 import { getDashboardTrend, getDashboardNotifications, getPlatformGlance } from '@/lib/actions/dashboard';
 import { getMyBroadcasts, canBroadcast } from '@/lib/actions/notifications';
+import { getMyJobs, getMyNumbers } from '@/lib/actions/my-work';
+import { isApproval } from '@/lib/approvals';
+import { JOB_STATUS_LABEL, jobTone } from '@/lib/crm';
+import { formatDateTimeCompact } from '@/lib/utils/format-date';
+import { pluralize } from '@/lib/utils/pluralize';
 import { BROADCAST_CATEGORY } from '@/lib/notification-rules';
 import { DashboardTrendChart } from '@/components/LazyCharts';
 import { LoadingLink } from '@/components/LoadingLink';
 import { DashboardActivity } from '@/components/DashboardActivity';
 import { EmptyState, Icon, PageHeader, SectionCard, StatTile, type IconName, type Tone } from '@/components/ui';
 import { ACTION_ICON, CATEGORY_ICON, CATEGORY_TILE } from '@/components/ui/notify-icons';
-import type { PermissionKey } from '@/lib/authz/catalogue';
+import { APPROVAL_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
 
 /** The shortcuts a person sees — only for what they may do. */
 const QUICK: { key: PermissionKey; label: string; href: string; icon: IconName }[] = [
   { key: 'workshop.job_card.create', label: 'Open a Job Card', href: '/workshop/job-cards', icon: 'clipboard' },
-  { key: 'workshop.view', label: 'Book a service', href: '/workshop/vehicle-service/book', icon: 'droplet' },
+  { key: 'workshop.job_card.create', label: 'Book a service', href: '/workshop/vehicle-service/book', icon: 'droplet' },
   { key: 'workshop.view', label: 'Vehicles in custody', href: '/workshop/custody', icon: 'garage' },
   { key: 'store.grn.record', label: 'Record goods receipt', href: '/inventory/goods-receipts/new', icon: 'receipt' },
   { key: 'store.view', label: 'Parts catalog', href: '/inventory/parts', icon: 'package' },
@@ -35,6 +40,10 @@ const GLANCE_ICON: Record<string, IconName> = {
   '/schedule/appointments?show=today': 'calendar', '/notifications?tab=broadcasts': 'megaphone',
 };
 const GLANCE_TONE: Record<string, Tone> = { warning: 'warning', error: 'error', muted: 'neutral' };
+const TONE_CHIP: Record<string, string> = {
+  success: 'bg-[var(--ejo-success)]/12 text-[var(--ejo-success)]', warning: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning-text)]', error: 'bg-[var(--ejo-error)]/12 text-[var(--ejo-error)]',
+  info: 'bg-[var(--ejo-info)]/12 text-[var(--ejo-info)]', brand: 'bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]', muted: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]',
+};
 
 function greeting(): string {
   const h = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Africa/Lagos' }).format(new Date()));
@@ -42,21 +51,20 @@ function greeting(): string {
 }
 
 /**
- * Real counts, real trend, and a real "needs your attention" summary
- * — no hardcoded numbers, no filler chart data. The revenue trend and
- * the announcement composer are only ever shown to Master Admin or a
- * real eligible Manager, matching how every other management-level
- * view already works in this system — everyone else still gets the
- * real Job Cards trend and the same real attention summary, since
- * those are genuinely everyone's business, not just management's.
+ * Counts, trends and the "needs your attention" summary. The revenue trend
+ * and announcement composer are for Master Admin and Managers only.
  */
 export default async function DashboardPage() {
   // What this person works with — the dashboard shows only their areas.
   // A session that just ended (account switched off) goes to sign-in quietly,
   // like the layout does, instead of a render error.
   const me = await requireUser().catch(() => redirect('/signed-out'));
-  const [seesWorkshop, seesMoney, quickAllowed] = await Promise.all([allows('workshop.view'), allows('analytics.business.view'), Promise.all(QUICK.map((q) => allows(q.key)))]);
-  const [counts, trend, notifications, myBroadcasts, broadcaster, glance, person] = await Promise.all([
+  const [seesWorkshop, seesMoney, quickAllowed, approverFlags, worksJobs] = await Promise.all([
+    allows('workshop.view'), allows('analytics.business.view'), Promise.all(QUICK.map((q) => allows(q.key))), Promise.all(APPROVAL_PERMISSIONS.map((k) => allows(k))),
+    Promise.all([allows('workshop.job.work'), allows('workshop.job.supervise')]).then((xs) => xs.some(Boolean)),
+  ]);
+  const approver = approverFlags.some(Boolean);
+  const [counts, trend, notifications, myBroadcasts, broadcaster, glance, person, myNumbers, myJobs] = await Promise.all([
     getWorkshopDashboardCounts(),
     getDashboardTrend(),
     getDashboardNotifications(),
@@ -64,7 +72,10 @@ export default async function DashboardPage() {
     canBroadcast(),
     getPlatformGlance(),
     prisma.user.findUnique({ where: { id: me.id }, select: { fullName: true } }).catch(() => null),
+    getMyNumbers().catch(() => []),
+    worksJobs ? getMyJobs().catch(() => []) : Promise.resolve([]),
   ]);
+  const approvals = notifications.filter(isApproval);
   const quick = QUICK.filter((_, i) => quickAllowed[i]).slice(0, 8);
   const firstName = person?.fullName?.trim().split(/\s+/)[0];
   const today = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Lagos' }).format(new Date());
@@ -74,7 +85,7 @@ export default async function DashboardPage() {
     { label: 'Job Cards in custody', value: counts.inWorkshop, href: '/workshop/custody', icon: 'garage' },
     { label: 'Vehicle Services in custody', value: counts.servicesInWorkshop, href: '/workshop/vehicle-service-custody', icon: 'droplet' },
     { label: 'Total Customers', value: counts.totalCustomers, href: '/workshop/customers', icon: 'users' },
-    { label: 'Total Vehicles Registered', value: counts.totalVehicles, href: '/workshop/vehicles', icon: 'car' },
+    { label: 'Vehicles registered', value: counts.totalVehicles, href: '/workshop/vehicles', icon: 'car' },
   ];
 
   return (
@@ -102,6 +113,47 @@ export default async function DashboardPage() {
         </div>
       ) : null}
 
+      {approver || approvals.length ? (
+        <LoadingLink href="/approvals" className={`ejo-lift mb-6 flex items-center gap-3 rounded-[var(--ejo-radius-lg)] border p-4 ${approvals.length ? 'border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/8' : 'border-[var(--ejo-border)] bg-[var(--ejo-surface)]'}`}>
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${approvals.length ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning-text)]' : 'bg-[var(--ejo-success)]/12 text-[var(--ejo-success)]'}`}><Icon name="check-circle" size={20} /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-[var(--ejo-text)]">{approvals.length ? `${pluralize(approvals.length, 'decision')} waiting for your approval` : 'Nothing waiting for your approval'}</span>
+            <span className="block text-xs text-[var(--ejo-text-muted)]">{approvals.length ? 'Estimates, closes, parts, purchases, claims and passes — oldest first.' : 'Requests that need your decision appear here as soon as they reach you.'}</span>
+          </span>
+          <span className="shrink-0 text-sm font-medium text-[var(--ejo-primary)]">Open Approvals →</span>
+        </LoadingLink>
+      ) : null}
+
+      {myNumbers.length ? (
+        <div className="mb-6">
+          <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ejo-text-muted)]"><Icon name="user" size={13} />My numbers this month</h2>
+          <div className="ejo-stagger grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4" aria-label="My numbers">
+            {myNumbers.map((t) => (
+              <StatTile key={t.label} icon={t.icon as IconName} label={t.label} value={t.value} hint={t.hint} href={t.href} decimals={t.decimals} suffix={t.suffix} tone={t.tone ?? 'brand'} emphasis={t.tone === 'warning'} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {worksJobs ? (
+        <SectionCard id="my-jobs" icon="wrench" title={<>My jobs {myJobs.length ? <span className="ml-1 rounded-full bg-[var(--ejo-bg)] px-2 py-0.5 text-xs text-[var(--ejo-text-muted)] ring-1 ring-[var(--ejo-border)]">{myJobs.length}</span> : null}</>} description="Open Job Cards and Vehicle Services where you are the technician or the supervisor." className="mb-6">
+          {myJobs.length === 0 ? <p className="text-sm text-[var(--ejo-text-muted)]">No open jobs are assigned to you right now.</p> : (
+            <ul className="divide-y divide-[var(--ejo-border)]">
+              {myJobs.map((j) => (
+                <li key={`${j.kind}-${j.id}`}>
+                  <LoadingLink href={j.url} className="group flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm">
+                    <span className="font-medium text-[var(--ejo-primary)] group-hover:underline">{j.number}</span>
+                    <span className="min-w-0 flex-1 truncate text-[var(--ejo-text)]">{j.vehicle}</span>
+                    <span className="text-xs text-[var(--ejo-text-muted)]">{j.as} · {formatDateTimeCompact(j.updatedAt)}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${TONE_CHIP[jobTone(j.kind, j.status)] ?? TONE_CHIP.muted}`}>{JOB_STATUS_LABEL[j.kind][j.status] ?? j.status}</span>
+                  </LoadingLink>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+      ) : null}
+
       {quick.length ? (
         <div className="mb-6">
           <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ejo-text-muted)]"><Icon name="bolt" size={13} />Quick actions</h2>
@@ -122,7 +174,7 @@ export default async function DashboardPage() {
           icon="bolt"
           tone={notifications.length ? 'warning' : 'success'}
           title={<>Needs your attention {notifications.length ? <span className="ml-1 rounded-full bg-[var(--ejo-warning)]/15 px-2 py-0.5 text-xs text-[var(--ejo-warning-text)]">{notifications.length} {notifications.length === 1 ? 'thing' : 'things'}</span> : null}</>}
-          description="Each one stays here until it is done — open it to take care of it."
+          description="Each item stays here until it has been dealt with."
           actions={<LoadingLink href="/notifications" className="font-medium text-[var(--ejo-primary)] hover:underline">Open the Notification Center →</LoadingLink>}
         >
           {notifications.length > 0 ? (

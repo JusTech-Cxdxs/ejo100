@@ -1,3 +1,4 @@
+import { portalConfig } from '@/lib/site-config';
 import { notFound } from 'next/navigation';
 import { getContractorPass } from '@/lib/actions/security';
 import { getOrganisation } from '@/lib/actions/organisation';
@@ -18,7 +19,7 @@ export default async function ContractorPassPrint({ params, searchParams }: { pa
   return (
     <>
       <PrintOnLoad />
-      <PassSheet copyLabel={isOrg ? 'Organisation copy' : 'Contractor copy'} orgName={org?.name ?? 'Kewalram Chanrai Group'} subName={p.branch.name} title="CONTRACTOR PASS" note={isOrg ? undefined : 'Show this pass at the gate on each working day. The team signs in and out with Security every day.'}>
+      <PassSheet copyLabel={isOrg ? 'Organisation copy' : 'Contractor copy'} orgName={org?.name ?? portalConfig.organisationName} subName={p.branch.name} title="CONTRACTOR PASS" note={isOrg ? undefined : 'Show this pass at the gate on each working day. The team signs in and out with Security every day.'}>
         <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '1.2em', marginBottom: '4px' }}>{p.passNumber}{valid ? '' : ` — NOT VALID (${CONTRACTOR_STATUS_LABEL[p.state]})`}</div>
         <PassLine label="Company" value={p.company} />
         <PassLine label="Work" value={p.work} />

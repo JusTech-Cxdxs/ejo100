@@ -9,22 +9,9 @@ import {
 } from '@/lib/data/vehicle-catalog';
 
 /**
- * Vehicle Type → Make → Model → Engine, with Kewalram's real
- * brand/model/engine suggestions cascading at each step — built on
- * native HTML <datalist> rather than a custom dropdown: it's the
- * standard, zero-dependency way to get exactly "suggestions, but freely
- * editable text" in one input, which is precisely what was asked for
- * (suggestions to make entry fast, but anything outside the list can
- * always be typed manually).
- *
- * Engine is the real addition here — confirmed via real research as the
- * genuine parts-fitment compatibility key, not the model name itself
- * (two different models can share an engine and be fully
- * interchangeable, while the same model name can hide a different
- * engine across a fuel/trim variant). Make, Model, and Engine all stay
- * plain, real, named <input> fields — the catalog only decides which
- * <datalist> options are offered, never what's actually allowed to be
- * submitted.
+ * Vehicle Type → Make → Model → Engine, with suggestions at each step through
+ * <datalist> (any text is accepted). Engine matters because parts fitment
+ * follows the engine, not the model name.
  */
 export function VehicleMakeModelPicker({
   defaultCategory,
@@ -33,12 +20,7 @@ export function VehicleMakeModelPicker({
   defaultEngineType,
 }: {
   defaultCategory?: VehicleCategory;
-  /** Pre-fills an existing vehicle's Make/Model/Engine for editing — a
-   * Server Component parent can't set a client component's internal
-   * state directly, so these seed useState's own initial value instead.
-   * Without these, reusing this picker for editing would always open
-   * to blank fields, forcing a full retype of values that already
-   * exist. */
+  /** Initial Make/Model/Engine when editing an existing vehicle. */
   defaultMake?: string;
   defaultModel?: string;
   defaultEngineType?: string;
@@ -138,12 +120,12 @@ export function VehicleMakeModelPicker({
           ))}
         </datalist>
         <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
-          The real engine spec, not the engine&apos;s own serial number — this is what parts fitment actually matches against.
+          The engine type (not its serial number). Parts are matched to the vehicle by engine.
         </p>
       </div>
 
       <p className="text-[11px] text-[var(--ejo-text-muted)]">
-        Suggestions are based on brands Kewalram commonly services — any make, model, or engine can still be typed manually.
+        Suggestions are brands the workshop commonly services. You can type any make, model or engine.
       </p>
     </>
   );

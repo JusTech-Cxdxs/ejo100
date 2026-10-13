@@ -1,33 +1,24 @@
+import { signedInSession } from '@/lib/assist/server';
 import type { ReactNode } from 'react';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { prisma } from '@ejo/database';
 import { auth } from '@/lib/auth';
-import { getPrincipal } from '@/lib/authz/server';
+import { currentAssist, getPrincipal } from '@/lib/authz/server';
+import { AssistBanner } from '@/components/AssistBanner';
 import { navigationFor } from '@/lib/authz/navigation';
 import { AppShell } from '@/components/AppShell';
 import { NotificationProvider } from '@/components/NotificationProvider';
+import { OfflineNotice } from '@/components/OfflineNotice';
 import { portalConfig } from '@/lib/site-config';
 
 /**
- * Fetches the logged-in user's real name/role server-side (via Prisma
- * directly, not Better Auth's session.user) and passes it to Topbar,
- * which previously showed a hardcoded "John Doe / Administrator".
- *
- * Deliberately queries Prisma for `fullName` rather than trusting Better
- * Auth's session.user.name: this project's User model has `fullName`,
- * not `name` — the same field-naming gap already found once this project
- * (Account.password) — so relying on Better Auth's own session shape
- * here would risk showing blank/wrong data. Querying Prisma directly
- * sidesteps that question entirely rather than assuming an answer to it.
- *
- * Notifications and the marquee's own real items are both fetched here,
- * once, at the real top of the authenticated layout — every page
- * underneath genuinely shares the same real header, not a per-page
- * re-fetch of the same data.
+ * Signed-in shell. The user's name and role come from Prisma (`fullName`),
+ * not Better Auth's session.user, whose `name` field our User model doesn't
+ * have. Notifications and the marquee are fetched once here for every page.
  */
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await signedInSession();
   if (!session?.user?.id) {
     // A cookie the server no longer accepts (session ended): clear it, then sign in —
     // never a /login ↔ /dashboard loop with the middleware.
@@ -35,7 +26,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   // The person and their permissions are read in parallel (one round trip, not two).
-  const [userResult, principalResult] = await Promise.allSettled([prisma.user.findUnique({
+  const [userResult, principalResult, assistResult] = await Promise.allSettled([prisma.user.findUnique({
     where: { id: session.user.id },
     select: {
       fullName: true,
@@ -44,7 +35,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       organisation: { select: { name: true } },
       roles: { select: { role: { select: { name: true } } }, take: 1 },
     },
-  }), getPrincipal()]);
+  }), getPrincipal(), currentAssist()]);
   // Deactivated (or removed) while signed in: out, immediately.
   if (userResult.status === 'rejected') throw userResult.reason;
   const user = userResult.value;
@@ -52,22 +43,26 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // (A switched-off person never reaches this: their permissions are not loaded.)
   if (principalResult.status === 'rejected') throw principalResult.reason;
   const principal = principalResult.value;
+  // Working on a colleague's behalf: the menu is theirs, and a banner says so on every page.
+  const assist = assistResult.status === 'fulfilled' ? assistResult.value : null;
 
 
   // The menu folded to icons (desktop), remembered on this browser — read here so it never flickers.
   const collapsed = (await cookies()).get('ejo-sidebar')?.value === 'collapsed';
 
   return (
-    <NotificationProvider userId={session?.user?.id ?? null}>
+    <NotificationProvider userId={session?.user?.id ? (assist ? `${session.user.id}.assist.${assist.subject.id}` : session.user.id) : null}>
       <AppShell
         items={navigationFor(principal)}
         organisationName={user.organisation?.name ?? portalConfig.companyName}
         userName={user?.fullName ?? 'Unknown user'}
         roleName={user?.roles[0]?.role.name ?? 'No role assigned'}
         initialCollapsed={collapsed}
+        banner={assist ? <AssistBanner colleague={assist.subject.name} role={assist.subject.roleLabel} expiresAt={assist.expiresAt.toISOString()} /> : null}
       >
         {children}
       </AppShell>
+      <OfflineNotice />
     </NotificationProvider>
   );
 }

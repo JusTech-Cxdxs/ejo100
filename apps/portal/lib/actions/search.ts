@@ -1,136 +1,253 @@
 'use server';
 
-import { prisma } from '@ejo/database';
+import { prisma, type Prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { navigationFor } from '@/lib/authz/navigation';
-import { getPrincipal, orgOwned, orgWhere, reachWhere } from '@/lib/authz/server';
-import { decide } from '@/lib/authz/catalogue';
+import { firstReach, getPrincipal, jobOrServiceReach, orgOwned, orgWhere, partsOfMyOrganisation, reachWhere } from '@/lib/authz/server';
+import { decide, STORE_COST_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
 import { getSchedulingAccess } from './scheduling';
+import { groupRank, numberFilters, planSearch, referenceUrl, type RefPrefix, type SearchPlan } from '@/lib/search-plan';
 
 export type SearchHit = { label: string; sub?: string; href: string };
-export type SearchGroup = { group: string; hits: SearchHit[] };
+/** prefix: the reference prefix of this kind of record (shown next to the group name). */
+export type SearchGroup = { group: string; prefix?: string; hits: SearchHit[] };
 
-const MORE_PAGES: SearchHit[] = [
-  { label: 'Job Cards', href: '/workshop/job-cards' }, { label: 'Vehicle Services', href: '/workshop/vehicle-service' }, { label: 'Vehicles', href: '/workshop/vehicles' },
-  { label: 'Customers', href: '/workshop/customers' }, { label: 'In custody', href: '/workshop/custody' }, { label: 'Parts', href: '/inventory/parts' },
-  { label: 'Goods receipts', href: '/inventory/goods-receipts' }, { label: 'Inventory analytics', href: '/inventory/analytics' }, { label: 'Parts requests (PRS)', href: '/workshop/parts-requests' },
-  { label: 'External procurement (EPR)', href: '/workshop/external-procurement' }, { label: 'Warranty claims', href: '/warranty/claims' }, { label: 'Visitors', href: '/security/visitors' },
-  { label: 'Exit passes', href: '/security/exit-passes' }, { label: 'Road tests', href: '/security/road-tests' }, { label: 'Incidents', href: '/security/incidents' },
-  { label: 'Deliveries', href: '/security/deliveries' }, { label: 'Contractors', href: '/security/contractors' }, { label: 'Calendar', href: '/schedule/calendar' },
-  { label: 'Appointments', href: '/schedule/appointments' }, { label: 'Notification Center', href: '/notifications' }, { label: 'Broadcasts', href: '/notifications/broadcasts' },
+/** List pages, found by name. The reference prefix is part of the name, so "VX" also finds the Vehicle exits page. */
+const MORE_PAGES: (SearchHit & { needs?: PermissionKey[] })[] = [
+  { label: 'Job Cards (JC)', href: '/workshop/job-cards', needs: ['workshop.view'] },
+  { label: 'Vehicle Services (SV)', href: '/workshop/vehicle-service', needs: ['workshop.view'] },
+  { label: 'Vehicles', href: '/workshop/vehicles', needs: ['workshop.view'] },
+  { label: 'Customers', href: '/workshop/customers', needs: ['workshop.view'] },
+  { label: 'In custody', href: '/workshop/custody', needs: ['workshop.view'] },
+  { label: 'Parts', href: '/inventory/parts', needs: ['store.view'] },
+  { label: 'Goods receipts (GRN)', href: '/inventory/goods-receipts', needs: STORE_COST_PERMISSIONS },
+  { label: 'Inventory analytics', href: '/inventory/analytics', needs: ['analytics.inventory.view'] },
+  { label: 'Parts requests (PRS)', href: '/workshop/parts-requests', needs: ['workshop.view'] },
+  { label: 'External procurement (EPR)', href: '/workshop/external-procurement', needs: ['workshop.view'] },
+  { label: 'Warranties (WR)', href: '/warranty', needs: ['warranty.view'] },
+  { label: 'Warranty claims (WC)', href: '/warranty/claims', needs: ['warranty.view'] },
+  { label: 'Visitors (VIS)', href: '/security/visitors', needs: ['security.view'] },
+  { label: 'Exit passes (EP)', href: '/security/exit-passes' },
+  { label: 'Vehicle exits (VX)', href: '/security/vehicles', needs: ['security.view'] },
+  { label: 'Road tests (RT)', href: '/security/road-tests', needs: ['security.view', 'workshop.job_card.view'] },
+  { label: 'Incidents (INC)', href: '/security/incidents', needs: ['security.view'] },
+  { label: 'Deliveries (DLV)', href: '/security/deliveries', needs: ['security.view', 'store.grn.record'] },
+  { label: 'Contractors (CTR)', href: '/security/contractors', needs: ['security.view', 'security.pass.approve'] },
+  { label: 'Calendar', href: '/schedule/calendar', needs: ['schedule.view'] },
+  { label: 'Appointments (APT)', href: '/schedule/appointments', needs: ['schedule.view'] },
+  { label: 'Notification Center', href: '/notifications' },
+  { label: 'Broadcasts (BC)', href: '/notifications/broadcasts', needs: ['notifications.broadcast.send'] },
 ];
+
+type Text = { startsWith?: string; contains?: string; mode?: 'insensitive' };
+type Where = Record<string, unknown>;
+/** "customer.fullName" + filter → { customer: { fullName: filter } }; "people.some.name" works the same way. */
+const at = (path: string, f: Text): Where => path.split('.').reduceRight<unknown>((inner, key) => ({ [key]: inner }), f) as Where;
+
+/** What one table can be searched by. */
+type Fields = {
+  /** Reference-number columns, by prefix. */
+  numbers?: [RefPrefix, string][];
+  /** Names and descriptions. */
+  text?: string[];
+  /** Plates, part numbers, chassis, staff numbers: also matched without dashes or spaces. */
+  codes?: string[];
+  /** Phone numbers: matched only when a number is typed. */
+  phones?: string[];
+};
+
+/** The OR list for one table under this plan; empty = the table cannot match, so it is not asked. */
+function conditions(plan: SearchPlan, f: Fields): Where[] {
+  const out: Where[] = [];
+  for (const [prefix, column] of f.numbers ?? []) for (const nf of numberFilters(plan, prefix)) out.push({ [column]: nf });
+  const m = (field: string, value = plan.q) => at(field, plan.short ? { startsWith: value, mode: 'insensitive' } : { contains: value, mode: 'insensitive' });
+  if (plan.textScope === 'all') for (const field of f.text ?? []) out.push(m(field));
+  if (plan.textScope !== 'none') {
+    for (const field of f.codes ?? []) for (const form of plan.codeForms) out.push(m(field, form));
+    for (const field of f.phones ?? []) for (const p of plan.phones) out.push(at(field, { contains: p }));
+  }
+  return out;
+}
 
 /**
  * The header's master search: every module at once, grouped, each hit a
- * direct link. One parallel round of small indexed queries (5 per group).
- * Every result obeys the SAME reach rules as the pages it links to (the
- * Authorization Catalogue): a branch-scoped person only finds their branch's
- * records, admin pages appear only to people allowed to open them, the
- * platform team is never listed to organisations, and each page still checks
- * again when opened — search can never reveal more than the record pages.
+ * direct link to the record. The query is planned first (lib/search-plan.ts)
+ * so only the tables that could hold an answer are asked: "VX" asks the
+ * vehicle exits (and names), "000012" asks every reference number, "Ada"
+ * asks names. Each is a small query of at most 5 rows, all in parallel.
+ *
+ * A record type is searched only for people who may open its page, with the
+ * same branch and organisation reach as that page; each page still checks
+ * again when opened. Search never shows more than the pages would.
  */
 export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const user = await requireUser();
-  const q = raw.trim().slice(0, 60);
-  if (!q) return [];
+  const plan = planSearch(typeof raw === 'string' ? raw : '');
+  if (plan.kind === 'empty') return [];
+  const { take } = plan;
   const principal = await getPrincipal();
-  const allowed = (key: Parameters<typeof decide>[1]) => decide(principal, key).allowed;
-  const canStaff = allowed('admin.users.manage');
-  const canStructure = allowed('admin.structure.manage');
-  // Customer, vehicle and warranty records only for the people whose pages show them.
-  const canCustomers = allowed('workshop.view') || allowed('workshop.customer.manage');
-  const canCrm = allowed('crm.view');
-  const canWarranty = allowed('warranty.view');
-  const canBroadcasts = allowed('notifications.broadcast.send');
-  // One letter: match beginnings only (cheap, relevant); two or more: anywhere.
-  const m = (field: string) => (q.length < 2 ? { [field]: { startsWith: q, mode: 'insensitive' as const } } : { [field]: { contains: q, mode: 'insensitive' as const } });
-  const take = 5;
-  // Reference numbers (PRS-…, WT-…, EX-…) always contain digits: tables
-  // searched only by their number are skipped for plain-word searches, which
-  // nearly halves the queries a name search makes (LOAD-02).
-  const refLike = /\d/.test(q);
-  const lower = q.toLowerCase();
-  const PAGE_NEEDS: Record<string, Parameters<typeof decide>[1]> = {
-    '/workshop/job-cards': 'workshop.view', '/workshop/vehicle-service': 'workshop.view', '/workshop/vehicles': 'workshop.view', '/workshop/customers': 'workshop.view', '/workshop/custody': 'workshop.view',
-    '/inventory/parts': 'store.view', '/inventory/goods-receipts': 'store.view', '/inventory/analytics': 'analytics.inventory.view', '/workshop/parts-requests': 'store.view', '/workshop/external-procurement': 'store.view',
-    '/warranty/claims': 'warranty.view', '/security/visitors': 'security.view', '/security/road-tests': 'security.view', '/security/incidents': 'security.view', '/security/deliveries': 'security.view', '/security/contractors': 'security.view',
-    '/schedule/calendar': 'schedule.view', '/schedule/appointments': 'schedule.view', '/notifications/broadcasts': 'notifications.broadcast.send',
-  };
+  const allowed = (key: PermissionKey) => decide(principal, key).allowed;
+  const any = (keys: PermissionKey[]) => keys.some(allowed);
+  const lower = plan.q.toLowerCase();
   const pages: SearchHit[] = [
     ...navigationFor(principal).filter((x) => x.status === 'LIVE' && x.name.toLowerCase().includes(lower)).map((x) => ({ label: x.name, sub: 'Module', href: x.href })),
-    ...MORE_PAGES.filter((x) => x.label.toLowerCase().includes(lower) && (!PAGE_NEEDS[x.href] || allowed(PAGE_NEEDS[x.href]!))),
-  ].slice(0, 6);
-  const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
-  // Reach rules, per module — the same filters the lists use.
-  const [branchOnly, storeReach, securityReach] = await Promise.all([reachWhere('workshop.job_card.view'), reachWhere('store.view'), reachWhere('security.view')]);
-  const refundReach = branchOnly.branchId ? { OR: [{ jobCard: { branchId: branchOnly.branchId } }, { vehicleService: { branchId: branchOnly.branchId } }] } : {};
-  // Appointments: only calendars this person may use, or meetings they are in.
-  const sched = await getSchedulingAccess().catch(() => null);
-  const apptReach = sched?.isAdmin ? {} : { OR: [{ ownerId: { in: (sched?.owners ?? []).map((o) => o.id) } }, { createdById: user.id }, { participants: { some: { userId: user.id } } }] };
-  // Organisation-owned records: this organisation only (the platform team: all).
-  const [mineOrg, owned] = await Promise.all([orgWhere(), orgOwned()]);
-  // Staff: same organisation; the platform team is never listed to organisations.
-  const me = await prisma.user.findUnique({ where: { id: user.id }, select: { organisationId: true } });
-  const staffReach = { ...(me?.organisationId ? { organisationId: me.organisationId } : {}), ...(principal.isSuperAdmin ? {} : { roles: { none: { role: { isSuperAdmin: true } } } }) };
-  const [jcs, svs, vehicles, customers, parts, prs, eprs, grns, warranties, claims, visits, passes, tests, incidents, deliveries, contractors, appts, broadcasts, exits, refunds, policies, providers, rooms, branches, departments, staff] = await Promise.all([
-    safe(prisma.jobCard.findMany({ where: { ...branchOnly, OR: [m('jobNumber'), { customer: m('fullName') }, { vehicle: m('plateNumber') }] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, jobNumber: true, status: true, customer: { select: { fullName: true } } } })),
-    safe(prisma.vehicleService.findMany({ where: { ...branchOnly, OR: [m('serviceNumber'), { customer: m('fullName') }, { vehicle: m('plateNumber') }] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, serviceNumber: true, status: true, customer: { select: { fullName: true } } } })),
-    canCustomers ? safe(prisma.customerVehicle.findMany({ where: { customer: mineOrg, OR: [m('make'), m('model'), m('plateNumber'), m('chassisNumber')] }, take, select: { id: true, make: true, model: true, plateNumber: true, customer: { select: { fullName: true } } } })) : Promise.resolve([]),
-    canCustomers ? safe(prisma.customer.findMany({ where: { ...mineOrg, OR: [m('fullName'), m('phone')] }, take, select: { id: true, fullName: true, phone: true } })) : Promise.resolve([]),
-    safe(prisma.part.findMany({ where: { ...storeReach, OR: [m('partNumber'), m('name')] }, take, select: { id: true, partNumber: true, name: true } })),
-    !refLike ? Promise.resolve([]) : safe(prisma.partRequestSlip.findMany({ where: { ...storeReach, ...m('referenceNumber') }, take, orderBy: { createdAt: 'desc' }, select: { id: true, referenceNumber: true, status: true } })),
-    !refLike ? Promise.resolve([]) : safe(prisma.externalProcurementRequest.findMany({ where: { ...storeReach, ...m('referenceNumber') }, take, orderBy: { createdAt: 'desc' }, select: { id: true, referenceNumber: true, status: true } })),
-    safe(prisma.goodsReceipt.findMany({ where: { ...storeReach, OR: [m('referenceNumber'), m('supplierName')] }, take, orderBy: { receivedAt: 'desc' }, select: { id: true, referenceNumber: true, supplierName: true } })),
-    canWarranty && refLike ? safe(prisma.warranty.findMany({ where: { customer: mineOrg, ...m('warrantyNumber') }, take, select: { id: true, warrantyNumber: true } })) : Promise.resolve([]),
-    canWarranty && refLike ? safe(prisma.warrantyClaim.findMany({ where: { customer: mineOrg, ...m('claimNumber') }, take, select: { id: true, claimNumber: true, status: true } })) : Promise.resolve([]),
-    safe(prisma.visit.findMany({ where: { ...securityReach, OR: [m('visitNumber'), m('visitorName'), m('company')] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, visitNumber: true, visitorName: true } })),
-    !refLike ? Promise.resolve([]) : safe(prisma.exitPass.findMany({ where: { ...securityReach, ...m('passNumber') }, take, orderBy: { createdAt: 'desc' }, select: { id: true, passNumber: true } })),
-    !refLike ? Promise.resolve([]) : safe(prisma.roadTestPermit.findMany({ where: { ...securityReach, ...m('permitNumber') }, take, orderBy: { createdAt: 'desc' }, select: { id: true, permitNumber: true } })),
-    safe(prisma.securityIncident.findMany({ where: { ...securityReach, OR: [m('incidentNumber'), m('type')] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, incidentNumber: true, type: true } })),
-    safe(prisma.gateDelivery.findMany({ where: { ...securityReach, OR: [m('deliveryNumber'), m('supplierName')] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, deliveryNumber: true, supplierName: true } })),
-    safe(prisma.contractorPass.findMany({ where: { ...securityReach, OR: [m('passNumber'), m('company')] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, passNumber: true, company: true } })),
-    safe(prisma.appointment.findMany({ where: { AND: [apptReach, { OR: [m('appointmentNumber'), m('title')] }] }, take, orderBy: { startsAt: 'desc' }, select: { id: true, appointmentNumber: true, title: true } })),
-    canBroadcasts ? safe(prisma.broadcast.findMany({ where: { organisationId: me?.organisationId ?? '__none__', OR: [m('broadcastNumber'), m('title')] }, take, orderBy: { createdAt: 'desc' }, select: { id: true, broadcastNumber: true, title: true } })) : Promise.resolve([]),
-    !refLike ? Promise.resolve([]) : safe(prisma.vehicleGateExit.findMany({ where: { ...securityReach, ...m('exitNumber') }, take, orderBy: { createdAt: 'desc' }, select: { id: true, exitNumber: true } })),
-    !refLike ? Promise.resolve([]) : safe(prisma.refund.findMany({ where: { ...refundReach, ...m('referenceNumber') }, take, orderBy: { recordedAt: 'desc' }, select: { referenceNumber: true, jobCardId: true, vehicleServiceId: true } })),
-    canWarranty ? safe(prisma.warrantyPolicy.findMany({ where: { ...owned, ...m('name') }, take, select: { id: true, name: true } })) : Promise.resolve([]),
-    canWarranty ? safe(prisma.warrantyProvider.findMany({ where: { ...owned, ...m('name') }, take, select: { id: true, name: true } })) : Promise.resolve([]),
-    safe(prisma.meetingRoom.findMany({ where: { ...(principal.orgBranchIds ? { branchId: { in: principal.orgBranchIds } } : {}), ...m('name') }, take, select: { id: true, name: true } })),
-    canStructure ? safe(prisma.branch.findMany({ where: { ...(mineOrg.organisationId ? { businessUnit: mineOrg } : {}), ...m('name') }, take, select: { id: true, name: true } })) : Promise.resolve([]),
-    canStructure ? safe(prisma.department.findMany({ where: { ...(mineOrg.organisationId ? { branch: { businessUnit: mineOrg } } : {}), ...m('name') }, take, select: { id: true, name: true, branchId: true, branch: { select: { name: true } } } })) : Promise.resolve([]),
-    canStaff ? safe(prisma.user.findMany({ where: { ...staffReach, OR: [m('fullName'), m('email'), m('employeeId')] }, take, select: { id: true, fullName: true, email: true } })) : Promise.resolve([]),
+    ...MORE_PAGES.filter((x) => x.label.toLowerCase().includes(lower) && (!x.needs || any(x.needs))).map(({ label, href }) => ({ label, sub: 'Page', href })),
+  ].filter((x, i, all) => all.findIndex((y) => y.href === x.href) === i).slice(0, 6);
+
+  // Reach, per module: the same filters the lists and record pages use. null = may not open this type.
+  const reachAny = async (keys: PermissionKey[]): Promise<Where | null> => {
+    const open = keys.filter(allowed);
+    if (!open.length) return null;
+    const reaches = await Promise.all(open.map((k) => reachWhere(k)));
+    return reaches.some((r) => r.branchId === undefined) ? {} : { OR: reaches };
+  };
+  const canWorkshop = allowed('workshop.view');
+  const [jobReach, storeReach, securityReach, roadTestReach, deliveryReach, contractorReach, prsReach, eprReach, grnReach, refundReach] = await Promise.all([
+    canWorkshop ? reachAny(['workshop.job_card.view']) : null,
+    reachAny(['store.view']),
+    reachAny(['security.view']),
+    reachAny(['security.view', 'workshop.job_card.view']),
+    reachAny(['security.view', 'store.grn.record']),
+    reachAny(['security.view', 'security.pass.approve']),
+    canWorkshop ? reachAny(['workshop.job_card.view', 'store.view']) : null,
+    canWorkshop ? reachAny(['workshop.job_card.view', 'store.view', 'procurement.epr.review']) : null,
+    any(STORE_COST_PERMISSIONS) ? firstReach(STORE_COST_PERMISSIONS) : null,
+    canWorkshop && allowed('workshop.job_card.view') ? jobOrServiceReach() : null,
   ]);
+  // The people a security record is about (requester, host, people on a pass) see it, inside their organisation.
+  const ownOrg: Where = principal.orgBranchIds ? { branchId: { in: principal.orgBranchIds } } : {};
+  const mine = (...people: Where[]): Where => ({ AND: [ownOrg, { OR: people }] });
+  const either = (reach: Where | null, own: Where): Where => (reach ? { OR: [reach, own] } : own);
+  const passReach = either(securityReach, mine({ requestedById: user.id }, { people: { some: { userId: user.id } } }));
+  const visitReach = either(securityReach, mine({ hostUserId: user.id }));
+  const ctrReach = either(contractorReach, mine({ hostUserId: user.id }, { requestedById: user.id }));
+  // Appointments: this organisation's, on calendars this person may use or meetings they are in.
+  const sched = await getSchedulingAccess().catch(() => null);
+  const apptReach: Where | null = sched
+    ? { AND: [await partsOfMyOrganisation(), sched.isAdmin ? {} : { OR: [{ ownerId: { in: sched.owners.map((o) => o.id) } }, { createdById: user.id }, { participants: { some: { userId: user.id } } }] }] }
+    : null;
+  const [mineOrg, owned] = await Promise.all([orgWhere(), orgOwned()]);
+  const me = await prisma.user.findUnique({ where: { id: user.id }, select: { organisationId: true } });
+  // Staff: same organisation; the platform team is never listed to organisations.
+  const staffReach = { ...(me?.organisationId ? { organisationId: me.organisationId } : {}), ...(principal.isSuperAdmin ? {} : { roles: { none: { role: { isSuperAdmin: true } } } }) };
+  const sameOrg = { organisationId: me?.organisationId ?? '__none__' };
+  const canCustomers = canWorkshop || allowed('crm.view');
+  const canWarranty = allowed('warranty.view');
+  const canStructure = allowed('admin.structure.manage');
+
+  /** Runs one table's search when the person may open it and the query can match it. */
+  function find<T>(reach: Where | null | false, fields: Fields, run: (where: Where) => Promise<T[]>): Promise<T[]> {
+    if (!reach) return Promise.resolve([]);
+    const or = conditions(plan, fields);
+    if (!or.length) return Promise.resolve([]);
+    return run({ AND: [reach, { OR: or }] }).catch(() => [] as T[]);
+  }
+  const W = <T,>(w: Where) => w as T;
+  const newest = { createdAt: 'desc' } as const;
+
+  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
+    find(jobReach, { numbers: [['JC', 'jobNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
+      (w) => prisma.jobCard.findMany({ where: W<Prisma.JobCardWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, jobNumber: true, status: true, customer: { select: { fullName: true } }, vehicle: { select: { plateNumber: true } } } })),
+    find(jobReach, { numbers: [['SV', 'serviceNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
+      (w) => prisma.vehicleService.findMany({ where: W<Prisma.VehicleServiceWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, serviceNumber: true, status: true, customer: { select: { fullName: true } }, vehicle: { select: { plateNumber: true } } } })),
+    find(prsReach, { numbers: [['PRS', 'referenceNumber']] },
+      (w) => prisma.partRequestSlip.findMany({ where: W<Prisma.PartRequestSlipWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, referenceNumber: true, status: true, jobCard: { select: { jobNumber: true } }, vehicleService: { select: { serviceNumber: true } } } })),
+    find(eprReach, { numbers: [['EPR', 'referenceNumber']], text: ['description'] },
+      (w) => prisma.externalProcurementRequest.findMany({ where: W<Prisma.ExternalProcurementRequestWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, referenceNumber: true, status: true, description: true } })),
+    find(grnReach, { numbers: [['GRN', 'referenceNumber']], text: ['supplierName'] },
+      (w) => prisma.goodsReceipt.findMany({ where: W<Prisma.GoodsReceiptWhereInput>(w), take, orderBy: { receivedAt: 'desc' }, select: { id: true, referenceNumber: true, supplierName: true } })),
+    find(refundReach, { numbers: [['RF', 'referenceNumber']], text: ['paidToName'] },
+      (w) => prisma.refund.findMany({ where: W<Prisma.RefundWhereInput>(w), take, orderBy: { recordedAt: 'desc' }, select: { referenceNumber: true, paidToName: true, jobCard: { select: { id: true, jobNumber: true, branchId: true } }, vehicleService: { select: { id: true, serviceNumber: true, branchId: true } } } })),
+    find(canWarranty && { customer: mineOrg }, { numbers: [['WR', 'warrantyNumber']], text: ['subjectDescription', 'customer.fullName'], codes: ['vehicle.plateNumber'] },
+      (w) => prisma.warranty.findMany({ where: W<Prisma.WarrantyWhereInput>(w), take, orderBy: newest, select: { id: true, warrantyNumber: true, subjectDescription: true } })),
+    find(canWarranty && { customer: mineOrg }, { numbers: [['WC', 'claimNumber']], text: ['customer.fullName', 'causalPart'], codes: ['causalPartNumber', 'providerReference'] },
+      (w) => prisma.warrantyClaim.findMany({ where: W<Prisma.WarrantyClaimWhereInput>(w), take, orderBy: newest, select: { id: true, claimNumber: true, status: true, customer: { select: { fullName: true } } } })),
+    find(visitReach, { numbers: [['VIS', 'visitNumber'], ['VP', 'passNumber']], text: ['visitorName', 'company'], codes: ['vehiclePlate'], phones: ['phone'] },
+      (w) => prisma.visit.findMany({ where: W<Prisma.VisitWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, hostUserId: true, visitNumber: true, passNumber: true, visitorName: true, company: true } })),
+    find(passReach, { numbers: [['EP', 'passNumber']], text: ['reason', 'people.some.name'] },
+      (w) => prisma.exitPass.findMany({ where: W<Prisma.ExitPassWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, requestedById: true, people: { select: { userId: true } }, passNumber: true, status: true, requestedBy: { select: { fullName: true } } } })),
+    find(securityReach, { numbers: [['VX', 'exitNumber']], text: ['driverName'], codes: ['vehicle.plateNumber'] },
+      (w) => prisma.vehicleGateExit.findMany({ where: W<Prisma.VehicleGateExitWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, exitNumber: true, vehicle: { select: { make: true, model: true, plateNumber: true } } } })),
+    find(roadTestReach, { numbers: [['RT', 'permitNumber']], text: ['purpose'], codes: ['vehicle.plateNumber'] },
+      (w) => prisma.roadTestPermit.findMany({ where: W<Prisma.RoadTestPermitWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, permitNumber: true, status: true, vehicle: { select: { plateNumber: true } } } })),
+    find(securityReach, { numbers: [['INC', 'incidentNumber']], text: ['type', 'location'], codes: ['vehiclePlate'] },
+      (w) => prisma.securityIncident.findMany({ where: W<Prisma.SecurityIncidentWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, incidentNumber: true, type: true } })),
+    find(deliveryReach, { numbers: [['DLV', 'deliveryNumber']], text: ['supplierName', 'driverName'], codes: ['reference', 'vehiclePlate'], phones: ['driverPhone'] },
+      (w) => prisma.gateDelivery.findMany({ where: W<Prisma.GateDeliveryWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, deliveryNumber: true, supplierName: true } })),
+    find(ctrReach, { numbers: [['CTR', 'passNumber']], text: ['company', 'leadName'], phones: ['phone'] },
+      (w) => prisma.contractorPass.findMany({ where: W<Prisma.ContractorPassWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, hostUserId: true, requestedById: true, passNumber: true, company: true } })),
+    find(apptReach, { numbers: [['APT', 'appointmentNumber']], text: ['title'] },
+      (w) => prisma.appointment.findMany({ where: W<Prisma.AppointmentWhereInput>(w), take, orderBy: { startsAt: 'desc' }, select: { id: true, appointmentNumber: true, title: true } })),
+    find(allowed('notifications.broadcast.send') && sameOrg, { numbers: [['BC', 'broadcastNumber']], text: ['title'] },
+      (w) => prisma.broadcast.findMany({ where: W<Prisma.BroadcastWhereInput>(w), take, orderBy: newest, select: { id: true, broadcastNumber: true, title: true } })),
+    find(canWorkshop && { customer: mineOrg }, { text: ['make', 'model'], codes: ['plateNumber', 'chassisNumber', 'engineNumber'] },
+      (w) => prisma.customerVehicle.findMany({ where: W<Prisma.CustomerVehicleWhereInput>(w), take, select: { id: true, make: true, model: true, plateNumber: true, customer: { select: { fullName: true } } } })),
+    find(canCustomers && mineOrg, { text: ['fullName', 'email'], phones: ['phone', 'altPhone'] },
+      (w) => prisma.customer.findMany({ where: W<Prisma.CustomerWhereInput>(w), take, select: { id: true, fullName: true, phone: true } })),
+    find(storeReach, { text: ['name'], codes: ['partNumber', 'barcode'] },
+      (w) => prisma.part.findMany({ where: W<Prisma.PartWhereInput>(w), take, select: { id: true, branchId: true, partNumber: true, name: true } })),
+    find(canWarranty && owned, { text: ['name'], codes: ['code'] },
+      (w) => prisma.warrantyPolicy.findMany({ where: W<Prisma.WarrantyPolicyWhereInput>(w), take, select: { id: true, name: true, code: true } })),
+    find(canWarranty && owned, { text: ['name'] },
+      (w) => prisma.warrantyProvider.findMany({ where: W<Prisma.WarrantyProviderWhereInput>(w), take, select: { id: true, name: true } })),
+    find(any(['schedule.view', 'schedule.manage']) && ownOrg, { text: ['name'] },
+      (w) => prisma.meetingRoom.findMany({ where: W<Prisma.MeetingRoomWhereInput>(w), take, select: { id: true, name: true } })),
+    find(canStructure && (mineOrg.organisationId ? { businessUnit: mineOrg } : {}), { text: ['name'] },
+      (w) => prisma.branch.findMany({ where: W<Prisma.BranchWhereInput>(w), take, select: { id: true, name: true } })),
+    find(canStructure && (mineOrg.organisationId ? { branch: { businessUnit: mineOrg } } : {}), { text: ['name'] },
+      (w) => prisma.department.findMany({ where: W<Prisma.DepartmentWhereInput>(w), take, select: { id: true, name: true, branchId: true, branch: { select: { name: true } } } })),
+    find(allowed('admin.users.manage') && staffReach, { text: ['fullName', 'email'], codes: ['employeeId'], phones: ['phone'] },
+      (w) => prisma.user.findMany({ where: W<Prisma.UserWhereInput>(w), take, select: { id: true, fullName: true, email: true } })),
+  ]);
+
+  // A second check per record, with its branch: the same decision its page makes (a
+  // department-scoped approver reaches their own branch only, though the query fence is wider).
+  const opens = (keys: PermissionKey[], branchId: string | null | undefined) => keys.some((k) => decide(principal, k, { branchId: branchId ?? null }).allowed);
+  const JOB: PermissionKey[] = ['workshop.job_card.view'];
+  const SEC: PermissionKey[] = ['security.view'];
   const words = (s: string) => s.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  const dot = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(' · ') || undefined;
+  const canCrm = allowed('crm.view');
+  const ref = (prefix: RefPrefix, group: string, hits: SearchHit[]): SearchGroup => ({ group, prefix, hits });
   const groups: SearchGroup[] = [
     { group: 'Pages', hits: pages },
-    { group: 'Job Cards', hits: jcs.map((r) => ({ label: r.jobNumber, sub: `${r.customer.fullName} · ${words(r.status)}`, href: `/workshop/job-cards/${r.id}` })) },
-    { group: 'Vehicle Services', hits: svs.map((r) => ({ label: r.serviceNumber, sub: `${r.customer.fullName} · ${words(r.status)}`, href: `/workshop/vehicle-service/${r.id}` })) },
-    { group: 'Vehicles', hits: (vehicles as { id: string; make: string | null; model: string | null; plateNumber: string | null; customer: { fullName: string } | null }[]).map((r) => ({ label: [r.make, r.model].filter(Boolean).join(' ') || 'Vehicle', sub: [r.plateNumber, r.customer?.fullName].filter(Boolean).join(' · ') || undefined, href: `/workshop/vehicles/${r.id}/edit` })) },
-    // The customer's 360° page (CRM).
-    { group: 'Customers', hits: (customers as { id: string; fullName: string; phone: string | null }[]).map((r) => ({ label: r.fullName, sub: r.phone ?? undefined, href: canCrm ? `/crm/customers/${r.id}` : `/workshop/customers?q=${encodeURIComponent(r.fullName)}` })) },
-    { group: 'Parts', hits: parts.map((r) => ({ label: r.partNumber ?? '—', sub: r.name, href: `/inventory/parts/${r.id}` })) },
-    { group: 'Parts requests', hits: prs.map((r) => ({ label: r.referenceNumber, sub: words(r.status), href: `/workshop/parts-requests/${r.id}` })) },
-    { group: 'External procurement', hits: eprs.map((r) => ({ label: r.referenceNumber, sub: words(r.status), href: `/workshop/external-procurement/${r.id}` })) },
-    { group: 'Goods receipts', hits: grns.map((r) => ({ label: r.referenceNumber, sub: r.supplierName, href: `/inventory/goods-receipts/${r.id}` })) },
-    { group: 'Warranties', hits: warranties.map((r) => ({ label: r.warrantyNumber, href: `/warranty/${r.id}` })) },
-    { group: 'Warranty claims', hits: claims.map((r) => ({ label: r.claimNumber, sub: words(r.status), href: `/warranty/claims/${r.id}` })) },
-    { group: 'Visitors', hits: visits.map((r) => ({ label: r.visitNumber, sub: r.visitorName, href: `/security/visitors/${r.id}` })) },
-    { group: 'Exit passes', hits: passes.map((r) => ({ label: r.passNumber, href: `/security/exit-passes/${r.id}` })) },
-    { group: 'Road tests', hits: tests.map((r) => ({ label: r.permitNumber, href: `/security/road-tests/${r.id}` })) },
-    { group: 'Incidents', hits: incidents.map((r) => ({ label: r.incidentNumber, sub: r.type, href: `/security/incidents/${r.id}` })) },
-    { group: 'Deliveries', hits: deliveries.map((r) => ({ label: r.deliveryNumber, sub: r.supplierName, href: `/security/deliveries/${r.id}` })) },
-    { group: 'Contractors', hits: contractors.map((r) => ({ label: r.passNumber, sub: r.company, href: `/security/contractors/${r.id}` })) },
-    { group: 'Appointments', hits: appts.map((r) => ({ label: r.appointmentNumber, sub: r.title, href: `/schedule/${r.id}` })) },
-    { group: 'Broadcasts', hits: broadcasts.map((r) => ({ label: r.broadcastNumber, sub: r.title, href: `/notifications/broadcasts/${r.id}` })) },
-    { group: 'Vehicles leaving (VX)', hits: exits.map((r) => ({ label: r.exitNumber, href: `/security/vehicles/exits/${r.id}` })) },
-    { group: 'Refunds', hits: refunds.filter((r) => r.jobCardId || r.vehicleServiceId).map((r) => ({ label: r.referenceNumber, href: r.jobCardId ? `/workshop/job-cards/${r.jobCardId}` : `/workshop/vehicle-service/${r.vehicleServiceId}` })) },
-    { group: 'Warranty policies', hits: policies.map((r) => ({ label: r.name, href: `/warranty/policies/${r.id}` })) },
+    ref('JC', 'Job Cards', jcs.filter((r) => opens(JOB, r.branchId)).map((r) => ({ label: r.jobNumber, sub: dot(r.customer.fullName, r.vehicle?.plateNumber, words(r.status)), href: referenceUrl('JC', r.id) }))),
+    ref('SV', 'Vehicle Services', svs.filter((r) => opens(JOB, r.branchId)).map((r) => ({ label: r.serviceNumber, sub: dot(r.customer.fullName, r.vehicle?.plateNumber, words(r.status)), href: referenceUrl('SV', r.id) }))),
+    ref('PRS', 'Parts requests', prs.filter((r) => opens(['workshop.job_card.view', 'store.view'], r.branchId)).map((r) => ({ label: r.referenceNumber, sub: dot(r.jobCard?.jobNumber ?? r.vehicleService?.serviceNumber, words(r.status)), href: referenceUrl('PRS', r.id) }))),
+    ref('EPR', 'External procurement', eprs.filter((r) => opens(['workshop.job_card.view', 'store.view', 'procurement.epr.review'], r.branchId)).map((r) => ({ label: r.referenceNumber, sub: dot(r.description, words(r.status)), href: referenceUrl('EPR', r.id) }))),
+    ref('GRN', 'Goods receipts', grns.map((r) => ({ label: r.referenceNumber, sub: r.supplierName, href: referenceUrl('GRN', r.id) }))),
+    // A refund opens on its Job Card or Vehicle Service.
+    ref('RF', 'Refunds', refunds.flatMap((r) => {
+      if (!opens(JOB, r.jobCard?.branchId ?? r.vehicleService?.branchId)) return [];
+      const parent = r.jobCard ? { n: r.jobCard.jobNumber, url: referenceUrl('JC', r.jobCard.id) } : r.vehicleService ? { n: r.vehicleService.serviceNumber, url: referenceUrl('SV', r.vehicleService.id) } : null;
+      return parent ? [{ label: r.referenceNumber, sub: dot(`On ${parent.n}`, r.paidToName), href: parent.url }] : [];
+    })),
+    ref('WR', 'Warranties', warranties.map((r) => ({ label: r.warrantyNumber, sub: r.subjectDescription, href: referenceUrl('WR', r.id) }))),
+    ref('WC', 'Warranty claims', claims.map((r) => ({ label: r.claimNumber, sub: dot(r.customer.fullName, words(r.status)), href: referenceUrl('WC', r.id) }))),
+    ref('VIS', 'Visitors', visits.filter((r) => opens(SEC, r.branchId) || r.hostUserId === user.id).map((r) => ({ label: r.visitNumber, sub: dot(r.visitorName, r.company, r.passNumber ? `Pass ${r.passNumber}` : null), href: referenceUrl('VIS', r.id) }))),
+    ref('EP', 'Exit passes', passes.filter((r) => opens(SEC, r.branchId) || r.requestedById === user.id || r.people.some((x) => x.userId === user.id)).map((r) => ({ label: r.passNumber, sub: dot(r.requestedBy?.fullName, words(r.status)), href: referenceUrl('EP', r.id) }))),
+    ref('VX', 'Vehicle exits', exits.filter((r) => opens(SEC, r.branchId)).map((r) => ({ label: r.exitNumber, sub: dot([r.vehicle?.make, r.vehicle?.model].filter(Boolean).join(' '), r.vehicle?.plateNumber), href: referenceUrl('VX', r.id) }))),
+    ref('RT', 'Road tests', tests.filter((r) => opens(['security.view', 'workshop.job_card.view'], r.branchId)).map((r) => ({ label: r.permitNumber, sub: dot(r.vehicle?.plateNumber, words(r.status)), href: referenceUrl('RT', r.id) }))),
+    ref('INC', 'Incidents', incidents.filter((r) => opens(SEC, r.branchId)).map((r) => ({ label: r.incidentNumber, sub: r.type, href: referenceUrl('INC', r.id) }))),
+    ref('DLV', 'Deliveries', deliveries.filter((r) => opens(['security.view', 'store.grn.record'], r.branchId)).map((r) => ({ label: r.deliveryNumber, sub: r.supplierName, href: referenceUrl('DLV', r.id) }))),
+    ref('CTR', 'Contractors', contractors.filter((r) => opens(['security.view', 'security.pass.approve'], r.branchId) || r.hostUserId === user.id || r.requestedById === user.id).map((r) => ({ label: r.passNumber, sub: r.company, href: referenceUrl('CTR', r.id) }))),
+    ref('APT', 'Appointments', appts.map((r) => ({ label: r.appointmentNumber, sub: r.title, href: referenceUrl('APT', r.id) }))),
+    ref('BC', 'Broadcasts', broadcasts.map((r) => ({ label: r.broadcastNumber, sub: r.title, href: referenceUrl('BC', r.id) }))),
+    { group: 'Vehicles', hits: vehicles.map((r) => ({ label: [r.make, r.model].filter(Boolean).join(' ') || 'Vehicle', sub: dot(r.plateNumber, r.customer?.fullName), href: `/workshop/vehicles/${r.id}/edit` })) },
+    // The customer's 360° page (CRM), or the Workshop customer list for people without the CRM.
+    { group: 'Customers', hits: customers.map((r) => ({ label: r.fullName, sub: r.phone ?? undefined, href: canCrm ? `/crm/customers/${r.id}` : `/workshop/customers?q=${encodeURIComponent(r.fullName)}` })) },
+    { group: 'Parts', hits: parts.filter((r) => opens(['store.view'], r.branchId)).map((r) => ({ label: r.partNumber ?? r.name, sub: r.partNumber ? r.name : undefined, href: `/inventory/parts/${r.id}` })) },
+    { group: 'Warranty policies', hits: policies.map((r) => ({ label: r.name, sub: r.code, href: `/warranty/policies/${r.id}` })) },
     { group: 'Warranty providers', hits: providers.map((r) => ({ label: r.name, href: `/warranty/providers/${r.id}` })) },
     { group: 'Meeting rooms', hits: rooms.map((r) => ({ label: r.name, href: '/schedule/rooms' })) },
-    { group: 'Branches', hits: (branches as { id: string; name: string }[]).map((r) => ({ label: r.name, href: `/branches/${r.id}` })) },
-    // Departments are shown on their branch (the separate Departments editor is next version).
-    { group: 'Departments', hits: (departments as { id: string; name: string; branchId: string; branch: { name: string } | null }[]).map((r) => ({ label: r.name, sub: r.branch?.name, href: `/branches/${r.branchId}` })) },
-    { group: 'Staff', hits: (staff as { id: string; fullName: string; email: string }[]).map((r) => ({ label: r.fullName, sub: r.email, href: `/users?q=${encodeURIComponent(r.email)}` })) },
+    { group: 'Branches', hits: branches.map((r) => ({ label: r.name, href: `/branches/${r.id}` })) },
+    // Departments are edited on their branch's page.
+    { group: 'Departments', hits: departments.map((r) => ({ label: r.name, sub: r.branch?.name, href: `/branches/${r.branchId}` })) },
+    { group: 'Staff', hits: staff.map((r) => ({ label: r.fullName, sub: r.email, href: `/users?q=${encodeURIComponent(r.email)}` })) },
   ];
-  return groups.filter((g) => g.hits.length > 0);
+  return groups
+    .map((g, i) => ({ g, i, rank: groupRank(plan, g.group) }))
+    .filter(({ g }) => g.hits.length > 0)
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map(({ g }) => g);
 }

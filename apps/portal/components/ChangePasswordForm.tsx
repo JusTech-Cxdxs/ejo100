@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { isPlainMessage } from '@/lib/errors';
 import { authClient } from '@/lib/auth-client';
 
 const field = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
@@ -22,7 +23,7 @@ export function ChangePasswordForm() {
     setBusy(true);
     try {
       const { error } = await authClient.changePassword({ currentPassword: current, newPassword: next, revokeOtherSessions: true });
-      if (error) setMsg({ ok: false, text: error.status === 400 || error.status === 401 ? 'The current password is not right.' : (error.message ?? 'Could not change the password.') });
+      if (error) setMsg({ ok: false, text: error.status === 400 || error.status === 401 ? 'The current password is not right.' : error.status === 429 ? 'Too many attempts. Wait a minute, then try again.' : (error.message && isPlainMessage(error.message) ? error.message : 'Could not change the password. Please try again.') });
       else { setMsg({ ok: true, text: 'Password changed. Any other device you were signed in on has been signed out.' }); setCurrent(''); setNext(''); setConfirm(''); }
     } catch {
       setMsg({ ok: false, text: 'Could not reach the server. Check your connection and try again.' });

@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { OrgTrail } from '@/components/OrgTrail';
 import { allows, guardAnyPage } from '@/lib/authz/server';
 import { getWorkshopCustodySummary, type WorkshopCustodyEntry, currentUserIsMasterAdmin, listEligibleManagersForBranch, currentUserId } from '@/lib/actions/workshop';
@@ -39,10 +40,7 @@ type CustodyEntry = {
   pendingCancellationRequest?: { id: string; reason: string; requestedByName: string };
 };
 
-/** The shared "real data" line for an action-required entry — grace
- * allowed, used, remaining, and how many reminders have actually gone
- * out, all through pluralize() so a single day never reads as
- * "1 days". */
+/** Grace allowed, used and remaining, and reminders sent, for an action-required entry. */
 function AnalysisLine({ entry }: { entry: CustodyEntry }) {
   return (
     <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
@@ -53,11 +51,8 @@ function AnalysisLine({ entry }: { entry: CustodyEntry }) {
   );
 }
 
-/** The exact same pending-cancellation-request state the Job Card
- * detail page already shows — a Manager sees Approve/Decline right
- * here, so they can act from either place; anyone without that
- * authority just sees that a decision is pending, with no reminder or
- * new cancellation option shown at all while one already is. */
+/** A pending cancellation request, as on the Job Card page. Managers can
+ * approve or decline here; others only see that a decision is pending. */
 function PendingCancellationBlock({ entry, isEligibleManager }: { entry: CustodyEntry; isEligibleManager: boolean }) {
   if (!entry.pendingCancellationRequest) return null;
   const request = entry.pendingCancellationRequest;
@@ -117,16 +112,10 @@ function PendingCancellationBlock({ entry, isEligibleManager }: { entry: Custody
 }
 
 /**
- * "Vehicles In Custody" — every vehicle physically in the workshop and
- * not yet checked out, categorized the way staff actually need to act
- * on them. The three genuinely time-sensitive, action-required
- * categories (Awaiting Customer Approval, Cancelled — Pending
- * Collection, Ready for Collection) each get real deadline tracking,
- * a real days-remaining figure, and a repeatable reminder action whose
- * count is pulled from the audit trail itself — never a separate
- * counter that could drift out of sync with what was actually sent.
- * In Service is the simpler catch-all for everything still moving
- * through the workshop's own process.
+ * Vehicles in the workshop that have not been checked out. Awaiting Customer
+ * Approval, Cancelled (pending collection) and Ready for Collection have
+ * deadlines and reminders; the reminder count comes from the audit trail.
+ * In Service covers everything else still being worked on.
  */
 /** Staged reminder status for one custody entry — who sent the last one
  * (by name) and, when the next isn't due yet, exactly when it will be. */
@@ -173,15 +162,9 @@ export default async function WorkshopCustodyPage({
     allows('workshop.customer.notify'),
   ]);
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
-  // The combined overdue count spans two categories deliberately —
-  // Cancelled-pending-collection and Ready-for-Collection each have a
-  // real grace period that can be exceeded, and a business genuinely
-  // needs one place that says "here's everything overdue right now,"
-  // not two separate numbers to add up by hand. Awaiting Approval
-  // doesn't belong here: since auto-cancellation was removed, a Job
-  // Card past that particular deadline isn't "overdue" in the same
-  // sense — it's a normal, ongoing situation waiting on a human
-  // decision, already flagged clearly within its own section.
+  // Overdue = past the grace period for collection (cancelled or ready).
+  // Awaiting Approval is excluded: it waits on a customer decision and is
+  // flagged in its own section.
   const overdueCancelled = summary.cancelledPendingCollection.filter((e) => e.isOverdue);
   const overdueReadyForCollection = summary.readyForCollection.filter((e) => e.isOverdue);
   const totalOverdue = overdueCancelled.length + overdueReadyForCollection.length;
@@ -315,12 +298,11 @@ export default async function WorkshopCustodyPage({
       ) : null}
 
       <div className="mb-8 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 text-xs text-[var(--ejo-text-muted)]">
-        <span className="font-medium text-[var(--ejo-text)]">How reminders work here:</span> the system works out when each
-        reminder is due — approval reminders from 3 working days after the estimate is sent, collection reminders from 2 working
-        days after the vehicle is ready, cancelled-vehicle notices once the 7-working-day grace has passed, then every 2 working
-        days — and shows a Send button only then. Nothing is ever emailed automatically, and every email is numbered for the
-        customer and signed with the sender&apos;s name. Nothing is ever cancelled automatically either: an overdue approval still
-        goes through the normal, Manager-approved cancellation request.
+        <span className="font-medium text-[var(--ejo-text)]">Reminders:</span> a Send button appears when a reminder is due.
+        Approval reminders start 3 working days after the estimate is sent, collection reminders 2 working days after the
+        vehicle is ready, and cancelled-vehicle notices after the 7-working-day grace period; after that, every 2 working days.
+        Reminders are never sent automatically, and each email is numbered and signed with the sender&apos;s name. Overdue
+        approvals are not cancelled automatically; use a cancellation request.
       </div>
 
       {showAwaiting ? (
@@ -361,7 +343,7 @@ export default async function WorkshopCustodyPage({
                     </span>
                     {entry.dueDate ? (
                       <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                        Due {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        Due {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' })}
                       </p>
                     ) : null}
                   </div>
@@ -457,7 +439,7 @@ export default async function WorkshopCustodyPage({
                     </span>
                     {entry.dueDate ? (
                       <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                        Expected collection by {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        Expected collection by {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' })}
                       </p>
                     ) : null}
                   </div>
@@ -533,7 +515,7 @@ export default async function WorkshopCustodyPage({
                     </span>
                     {entry.dueDate ? (
                       <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                        Expected collection by {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        Expected collection by {new Date(entry.dueDate).toLocaleDateString('en-NG', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' })}
                       </p>
                     ) : null}
                   </div>
@@ -564,7 +546,7 @@ export default async function WorkshopCustodyPage({
         {summary.inService.length === 0 ? (
           <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="garage" title="No vehicles currently in service." /></div>
         ) : (
-          <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+          <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -582,18 +564,18 @@ export default async function WorkshopCustodyPage({
                         {entry.jobNumber}
                       </LoadingLink>
                     </td>
-                    <td className="px-4 py-2 text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></td>
-                    <td className="px-4 py-2">
+                    <td data-label="Customer" className="px-4 py-2 text-[var(--ejo-text)]"><CustomerLink id={entry.customerId} name={entry.customerName} canView={canSeeCustomers} /></td>
+                    <td data-label="Vehicle" className="px-4 py-2">
                       <LoadingLink href={`/workshop/vehicles/${entry.vehicleId}/edit`} className="text-[var(--ejo-text)] hover:underline">
                         {entry.vehicleDescription}
                       </LoadingLink>
                     </td>
-                    <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{STATUS_LABEL[entry.status] ?? entry.status}</td>
+                    <td data-label="Status" className="px-4 py-2 text-[var(--ejo-text-muted)]">{STATUS_LABEL[entry.status] ?? entry.status}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTable>
         )}
       </section>
       ) : null}

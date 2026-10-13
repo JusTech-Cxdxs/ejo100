@@ -4,6 +4,7 @@
 import { friendlyError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { allows } from '@/lib/authz/server';
 import {
   preRegisterVisit, updateBooking, recordArrival, checkInVisit, receiveVisit, extendVisit, checkOutVisit, cancelVisit,
   createExitPass, decideExitPass, cancelExitPass, exitPassGateOut, exitPassGateIn, confirmVehicleExit,
@@ -78,7 +79,10 @@ export async function visitActionFormAction(f: FormData) {
     back(path, err, 'Could not update the visit.');
   }
   // A cancelled booking is removed — go back to the list.
-  if (action === 'cancel') ok('/security/visitors', 'booking_cancelled');
+  if (action === 'cancel') {
+    if (await allows('security.view')) ok('/security/visitors', 'booking_cancelled');
+    ok('/security/my-visitors', 'booking_cancelled');
+  }
   ok(path, action);
 }
 

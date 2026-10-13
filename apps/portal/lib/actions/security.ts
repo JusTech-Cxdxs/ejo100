@@ -1,4 +1,7 @@
 'use server';
+import { cleanForLog } from '@/lib/errors';
+import { actorLabel } from '@/lib/assist/rules';
+import { portalBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
@@ -6,7 +9,7 @@ import { cache } from 'react';
 
 import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
-import { actingOrgWhere, allows, authorize, branchOwnedByMyOrganisation, canSeeRecord, firstReach, getPrincipal, orgWhere, reachWhere, refuse, seeBranchAnyOf, NOT_AVAILABLE } from '@/lib/authz/server';
+import { actingOrgWhere, allows, authorize, branchOwnedByMyOrganisation, canSeeRecord, firstReach, getPrincipal, orgWhere, reachWhere, refuse, seeBranchAnyOf, NOT_AVAILABLE, refuseDuringAssist, currentAssist } from '@/lib/authz/server';
 import { decide, type PermissionKey } from '@/lib/authz/catalogue';
 import { jobCardInside, serviceInside } from '@/lib/custody';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
@@ -15,6 +18,7 @@ import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { visitOverdueMinutes, exitPassOverdueMinutes, roadTestOverdueMinutes, durationText, INCIDENT_TYPES, contractorState, contractorAfterHoursMinutes, lagosDay } from '@/lib/security-rules';
 import { customerTotal } from '@/lib/estimate-billing';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class SecurityError extends Error {}
 
@@ -41,7 +45,7 @@ export type SecurityRoles = { userId: string; isMaster: boolean; isCso: boolean;
 async function getSecurityRolesUncached(): Promise<SecurityRoles> {
   const user = await requireUser();
   const [{ slugs, isMaster }, principal] = await Promise.all([slugsOf(user.id), getPrincipal()]);
-  // Gate roles are role-based (as before) — whichever branch the officer is on.
+  // Gate roles apply on whichever branch the officer is on.
   const here = undefined;
   const isCso = decide(principal, 'security.incident.manage', here).allowed;
   const isOfficer = slugs.includes('security-officer');
@@ -136,7 +140,7 @@ async function visibleOrNull<T extends { branchId?: string | null }>(rec: T | nu
 // ── Numbering & logged emails ─────────────────────────────────────────
 
 async function nextNumber(prefix: 'VIS' | 'VP' | 'EP' | 'VX' | 'RT' | 'INC' | 'DLV' | 'CTR'): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = lagosYear();
   const start = `${prefix}-${year}-`;
   const latest =
     prefix === 'VIS'
@@ -164,15 +168,15 @@ async function sendLogged(entityType: string, entityId: string, recipients: Pers
   const unique = recipients.filter((r, i, a) => r.email && a.findIndex((x) => x.email === r.email) === i);
   if (unique.length === 0) return;
   const org = await getWorkshopOrgContext().catch(() => ({ companyName: 'EJO 100', branchName: '', departmentName: '' }));
-  const portal = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const portal = portalBaseUrl();
   for (const r of unique) {
     let sent = true;
     let error: string | null = null;
     try {
-      await sendEmail(r.email, subject, renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portal}${path}`, logoUrl: `${portal}/images/logo/logo.png`, companyName: org.companyName, branchName: org.branchName }));
+      await sendEmail(r.email, subject, renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portal}${path}`, logoUrl: `${portal}/images/logo/email-logo.png`, companyName: org.companyName, branchName: org.branchName }));
     } catch (err) {
       sent = false;
-      error = err instanceof Error ? err.message.slice(0, 300) : 'Unknown error';
+      error = err instanceof Error ? cleanForLog(err.message).slice(0, 300) : 'Unknown error';
     }
     await prisma.securityEmailLog.create({ data: { entityType, entityId, recipient: `${r.fullName} <${r.email}>`, subject, sent, error } });
     await writeAuditLog({ userId: actorId, action: sent ? 'security.email_sent' : 'security.email_failed', entityType, entityId, metadata: { to: r.fullName, subject, ...(error ? { error } : {}) } });
@@ -232,7 +236,8 @@ function cleanArrival(i: { vehicleType?: string; plates?: string[]; idType?: str
 }
 
 async function activeHost(id: string) {
-  const host = await prisma.user.findUnique({ where: { id }, select: { id: true, fullName: true, email: true, isActive: true } });
+  // The host must be in the desk's own organisation.
+  const host = await prisma.user.findFirst({ where: { id, ...(await orgWhere()) }, select: { id: true, fullName: true, email: true, isActive: true } });
   if (!host?.isActive) throw new SecurityError('That host is not an active member of staff.');
   return host;
 }
@@ -264,11 +269,10 @@ export async function updateBooking(visitId: string, input: VisitInput): Promise
   const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true, hostUserId: true, registeredById: true } });
   if (!v) throw new SecurityError('Visit not found.');
   if (v.status !== 'EXPECTED') throw new SecurityError('Only a booking that has not arrived can be changed.');
-  if (!roles.isFrontDesk && v.hostUserId !== user.id && v.registeredById !== user.id) throw new SecurityError('Only the host, whoever booked it, Reception or Security can change it.');
-  // Acting as the desk (not as the host or booker): the desk's own branch only.
-  if (v.hostUserId !== user.id && v.registeredById !== user.id) await onMyDesk('visit', visitId, 'updateBooking');
+  // Bookings are made and changed at the desk only, the same as preRegisterVisit.
+  if (!roles.isFrontDesk) return refuse('security.reception.operate', 'updateBooking', 'Bookings are changed by Security or Reception. Ask them to update it.');
+  await onMyDesk('visit', visitId, 'updateBooking');
   const data = cleanParty(input);
-  if (data.hostUserId !== user.id && !roles.isFrontDesk && data.hostUserId !== v.hostUserId) throw new SecurityError('You can only book your own visitors.');
   if (!input.expectedAt || Number.isNaN(new Date(input.expectedAt).getTime())) throw new SecurityError('Enter when the visitor is expected.');
   await activeHost(data.hostUserId);
   claimed(await prisma.visit.updateMany({ where: { id: visitId, status: 'EXPECTED' }, data: { ...data, expectedAt: input.expectedAt } }));
@@ -313,7 +317,7 @@ async function emailGateAboutBooking(kind: 'new' | 'changed' | 'cancelled', visi
   const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { visitNumber: true, visitorName: true, memberNames: true, partySize: true, company: true, purpose: true, expectedAt: true, host: { select: { fullName: true } } } });
   if (!v) return;
   const who = `${[v.visitorName, ...v.memberNames].join(', ')}${v.company ? ` (${v.company})` : ''}`;
-  const when = v.expectedAt ? new Date(v.expectedAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+  const when = v.expectedAt ? new Date(v.expectedAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' }) : '';
   const staff = await usersWithSlugs(['security-officer', 'chief-security-officer', 'receptionist']);
   await sendLogged('Visit', visitId, staff, kind === 'cancelled' ? `Visit cancelled — ${who}` : `${kind === 'new' ? 'Visitor booked' : 'Visit rescheduled'} — ${who}, ${when}`, kind === 'cancelled' ? 'A booked visit was cancelled — do not expect them' : kind === 'new' ? 'Expect a visitor' : 'A booked visit has moved', [who, ...(v.partySize > 1 ? [`${v.partySize} people`] : []), `Visiting: ${v.host.fullName}`, `Purpose: ${v.purpose}`, kind === 'cancelled' ? `Reason: ${reason ?? ''}` : `Expected: ${when}`, v.visitNumber], kind === 'cancelled' ? '/security/visitors' : `/security/visitors/${visitId}`, actorId);
 }
@@ -429,11 +433,9 @@ async function headApproversFor(requesterId: string): Promise<Person[]> {
   const any = (await usersWithSlugs(['department-head'])).filter((h) => h.id !== requesterId);
   return any.length ? any : (await masterAdmins()).filter((h) => h.id !== requesterId);
 }
-/** The Manager step — the branch's managers (the same people Warranty
- * uses as Branch Manager); a quiet fallback so a pass is never stuck. */
-/** The Managers who decide for a branch — the RECORD's branch when one is
- * given (a pass or permit is decided by its own branch's Manager, never by
- * a Manager of another branch). */
+/** The branch's Managers (the same people Warranty uses as Branch Manager).
+ * Uses the record's branch when given: a pass or permit is decided by its
+ * own branch's Manager. Falls back quietly so a pass is never stuck. */
 async function managerApprovers(excludeId: string | null, branchId?: string | null): Promise<Person[]> {
   const m = await listEligibleManagersForBranch(branchId ?? (await getWorkshopBranchId()));
   const list = (m.usingFallback ? await masterAdmins() : (m.supervisors as Person[])).filter((x) => x.id !== excludeId);
@@ -456,7 +458,7 @@ export async function createExitPass(input: ExitPassInput): Promise<{ id: string
   // Provisional return time; reset from the actual time out at the gate.
   const back = input.returning ? new Date((out ?? new Date()).getTime() + minutes! * 60000) : null;
   const employees = ids.length
-    ? await prisma.user.findMany({ where: { id: { in: ids }, isActive: true }, select: { id: true, fullName: true, employeeId: true, department: { select: { name: true } }, employeeProfile: { select: { jobTitle: true } } } })
+    ? await prisma.user.findMany({ where: { id: { in: ids }, isActive: true, ...(await orgWhere()) }, select: { id: true, fullName: true, employeeId: true, department: { select: { name: true } }, employeeProfile: { select: { jobTitle: true } } } })
     : [];
   if (employees.length !== ids.length) throw new SecurityError('One of the employees chosen is not an active member of staff.');
   const passNumber = await nextNumber('EP');
@@ -486,6 +488,8 @@ export async function createExitPass(input: ExitPassInput): Promise<{ id: string
 }
 
 export async function decideExitPass(passId: string, approve: boolean, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('decideExitPass');
   const user = await requireUser();
   await inMyOrganisation('exitPass', passId);
   const roles = await getSecurityRoles();
@@ -706,6 +710,37 @@ export async function getVisit(id: string) {
   return visibleOrNull(v, `Visit:${id}`, { people: [v?.host?.id] });
 }
 
+/** The signed-in person's own visitors: booked for today or later, on site
+ * now, and the last 90 days. Filtered by the session's user id (never an id
+ * from the page) and fenced to their organisation's branches. */
+export async function listMyVisits() {
+  const user = await requireUser();
+  const reach = await reachWhere('security.exit_pass.request');
+  const startOfToday = new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T00:00:00+01:00`);
+  const since = new Date(Date.now() - 90 * 86400000);
+  const rows = await prisma.visit.findMany({
+    where: {
+      ...reach,
+      hostUserId: user.id,
+      OR: [
+        { status: 'EXPECTED', expectedAt: { gte: startOfToday } },
+        { status: 'CHECKED_IN' },
+        { status: 'CHECKED_OUT', createdAt: { gte: since } },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+    select: { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, company: true, purpose: true, expectedAt: true, expectedDurationMinutes: true, extendedMinutes: true, checkedInAt: true, checkedOutAt: true, receivedAt: true, isWalkIn: true },
+  });
+  type Row = (typeof rows)[number];
+  const at = (d: Date | null) => (d ? new Date(d).getTime() : 0);
+  return {
+    expected: rows.filter((v: Row) => v.status === 'EXPECTED').sort((a: Row, b: Row) => at(a.expectedAt) - at(b.expectedAt)),
+    onSite: rows.filter((v: Row) => v.status === 'CHECKED_IN').sort((a: Row, b: Row) => at(a.checkedInAt) - at(b.checkedInAt)),
+    recent: rows.filter((v: Row) => v.status === 'CHECKED_OUT'),
+  };
+}
+
 export async function listExitPasses(scope: 'mine' | 'to_decide' | 'all', q?: string) {
   const user = await requireUser();
   // Own passes and the ones waiting on me: anywhere in my organisation; the whole list: the Security desk.
@@ -757,6 +792,7 @@ export async function getExitPass(id: string) {
 
 /** Can this viewer decide this pass right now? (for the pass page) */
 export async function canDecideExitPass(passId: string): Promise<boolean> {
+  if (await currentAssist()) return false;
   const user = await requireUser();
   const roles = await getSecurityRoles();
   const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, requestedById: true } });
@@ -798,7 +834,7 @@ export async function getSecurityHistory(entityType: 'Visit' | 'ExitPass' | 'Veh
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return { entries: entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null })), emails };
+  return { entries: entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null })), emails };
 }
 
 /** Staff for pickers (hosts, people on a pass). */
@@ -828,7 +864,7 @@ export async function getSecurityDashboardItems(): Promise<{ id: string; title: 
     roles.isCso || roles.isMaster ? prisma.securityIncident.findMany({ where: { ...reach, status: 'OPEN' }, select: { id: true, incidentNumber: true, type: true, severity: true, createdAt: true } }) : Promise.resolve([]),
     prisma.gateDelivery.findMany({ where: { ...storeReach, status: 'AT_GATE' }, select: { id: true, deliveryNumber: true, supplierName: true, arrivedAt: true } }),
     roles.isGate ? prisma.gateDelivery.findMany({ where: { ...reach, status: 'EXPECTED', expectedAt: { gte: dayStart, lt: new Date(dayStart.getTime() + 86400000) } }, select: { id: true, deliveryNumber: true, supplierName: true, expectedAt: true } }) : Promise.resolve([]),
-    prisma.visit.findMany({ where: { ...mine, status: 'CHECKED_IN', hostUserId: user.id, receivedAt: { not: null } }, select: { id: true, visitorName: true, purpose: true, receivedAt: true } }),
+    prisma.visit.findMany({ where: { ...mine, status: 'CHECKED_IN', hostUserId: user.id }, select: { id: true, visitorName: true, purpose: true, receivedAt: true, checkedInAt: true } }),
     listExitPasses('to_decide'),
     listRoadTests('to_decide'),
   ]);
@@ -840,7 +876,7 @@ export async function getSecurityDashboardItems(): Promise<{ id: string; title: 
     ...ctr.rows.filter((c) => roles.isGate && c.afterHours > 0).map((c) => ({ id: `ctr-l-${c.id}`, title: `Contractors still on site after 5 pm — ${c.company}`, detail: `${c.passNumber} · ${durationText(c.afterHours)} past closing`, url: `/security/contractors/${c.id}`, createdAt: new Date() })),
   ];
   return [
-    ...atReception.map((v: (typeof atReception)[number]) => ({ id: `visit-${v.id}`, title: `Your visitor is at reception — ${v.visitorName}`, detail: v.purpose, url: `/security/visitors/${v.id}`, createdAt: v.receivedAt as Date })),
+    ...atReception.map((v: (typeof atReception)[number]) => ({ id: `visit-${v.id}`, title: v.receivedAt ? `Your visitor is at reception — ${v.visitorName}` : `Your visitor has arrived — ${v.visitorName}`, detail: v.purpose, url: `/security/visitors/${v.id}`, createdAt: (v.receivedAt ?? v.checkedInAt ?? new Date()) as Date })),
     ...contractorItems,
     ...newIncidents.map((i: { id: string; incidentNumber: string; type: string; severity: string; createdAt: Date }) => ({ id: `inc-${i.id}`, title: `Incident ${i.incidentNumber}: ${i.type}`, detail: `${i.severity.toLowerCase()} — needs review`, url: `/security/incidents/${i.id}`, createdAt: i.createdAt })),
     ...atGateForStore.map((d: { id: string; deliveryNumber: string; supplierName: string; arrivedAt: Date | null }) => ({ id: `dlv-${d.id}`, title: `Delivery at the gate — ${d.supplierName}`, detail: `${d.deliveryNumber} — please receive it`, url: `/security/deliveries/${d.id}`, createdAt: d.arrivedAt ?? new Date() })),
@@ -973,12 +1009,13 @@ export async function listVehiclesInside(): Promise<InsideVehicle[]> {
   ].sort((a, b) => (b.since?.getTime() ?? 0) - (a.since?.getTime() ?? 0));
 }
 
-/** One released vehicle, for its own release (confirm exit) page. */
+/** Payments minus refunds. */
 function netPaid(payments: { amount: unknown }[], refunds: { amount: unknown }[]): number {
   const sum = (xs: { amount: unknown }[]) => xs.reduce((n, x) => n + Number(x.amount), 0);
   return Math.round((sum(payments) - sum(refunds)) * 100) / 100;
 }
 
+/** One released vehicle, for its release (confirm exit) page. */
 export async function getClearedVehicle(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', id: string) {
   await requireUser();
   const reach = await reachWhere('security.view');
@@ -1156,6 +1193,8 @@ async function roadTestRecordAudit(p: { jobCardId: string | null; vehicleService
 }
 
 export async function decideRoadTest(id: string, approve: boolean, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('decideRoadTest');
   const user = await requireUser();
   await inMyOrganisation('roadTestPermit', id);
   const roles = await getSecurityRoles();
@@ -1291,6 +1330,7 @@ export async function getRoadTest(id: string) {
 }
 
 export async function canDecideRoadTest(id: string): Promise<boolean> {
+  if (await currentAssist()) return false;
   const user = await requireUser();
   const roles = await getSecurityRoles();
   const p = await prisma.roadTestPermit.findUnique({ where: { id }, select: { status: true, requestedById: true, branchId: true } });
@@ -1328,7 +1368,7 @@ export async function getVehicleExitHistory(exitId: string) {
   const ids = [...new Set(unique.map((e: { userId: string | null }) => e.userId).filter((v: string | null): v is string => Boolean(v)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return { entries: unique.map((e: (typeof unique)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null })), emails };
+  return { entries: unique.map((e: (typeof unique)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null })), emails };
 }
 
 // ── Security incidents ────────────────────────────────────────────────
@@ -1632,6 +1672,8 @@ async function contractorPeople(passId: string) {
 }
 
 export async function decideContractorPass(id: string, approve: boolean, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('decideContractorPass');
   const user = await requireUser();
   await inMyOrganisation('contractorPass', id);
   const roles = await getSecurityRoles();
@@ -1723,9 +1765,13 @@ export async function listContractorPasses(q?: string, tab?: string) {
   const user = await requireUser();
   const reach = await firstReach(['security.view', 'security.pass.approve']);
   const roles = await getSecurityRoles();
+  // Heads who approve only for their department are not the branch's contractor
+  // desk: they see the passes they asked for or are responsible for.
+  const desk = roles.isMaster || roles.isManager || (await allows('security.view'));
+  const own = desk ? {} : { AND: [{ OR: [{ requestedById: user.id }, { hostUserId: user.id }] }] };
   const t2 = q?.trim();
   const raw = await prisma.contractorPass.findMany({
-    where: { ...reach, ...(t2 ? { OR: [{ passNumber: { contains: t2, mode: 'insensitive' } }, { company: { contains: t2, mode: 'insensitive' } }, { work: { contains: t2, mode: 'insensitive' } }, { workArea: { contains: t2, mode: 'insensitive' } }, { leadName: { contains: t2, mode: 'insensitive' } }, { memberNames: { has: t2 } }] } : {}) },
+    where: { ...reach, ...own, ...(t2 ? { OR: [{ passNumber: { contains: t2, mode: 'insensitive' } }, { company: { contains: t2, mode: 'insensitive' } }, { work: { contains: t2, mode: 'insensitive' } }, { workArea: { contains: t2, mode: 'insensitive' } }, { leadName: { contains: t2, mode: 'insensitive' } }, { memberNames: { has: t2 } }] } : {}) },
     orderBy: { createdAt: 'desc' },
     take: 500,
     select: CTR_ROW,
@@ -1763,6 +1809,7 @@ export async function getContractorPass(id: string) {
 }
 
 export async function canDecideContractorPass(id: string): Promise<boolean> {
+  if (await currentAssist()) return false;
   const user = await requireUser();
   const roles = await getSecurityRoles();
   const p = await prisma.contractorPass.findUnique({ where: { id }, select: { status: true, requestedById: true, branchId: true } });
@@ -1772,7 +1819,7 @@ export async function canDecideContractorPass(id: string): Promise<boolean> {
 }
 
 
-// Once per request: repeated calls during one page load reuse the answer.
+// Cached per request.
 const getSecurityRolesCached = cache(getSecurityRolesUncached);
 export async function getSecurityRoles(): Promise<SecurityRoles> {
   return getSecurityRolesCached();
@@ -1798,7 +1845,7 @@ async function followUpEmail(kind: FollowUp, id: string, actorId: string | null)
         const deciding = p.managerApprovedAt ? await gateStaff() : p.headApprovedAt ? await managerApprovers(p.requestedById, p.branchId) : await headApproversFor(p.requestedById);
         await sendLogged('ExitPass', id, uniq(deciding), `Exit pass ${p.passNumber} was cancelled`, 'An exit pass was cancelled', [p.passNumber, p.managerApprovedAt ? 'Do not let anyone out on this pass.' : 'No decision is needed any more.'], `/security/exit-passes/${id}`, actorId);
       } else {
-        const back = p.expectedReturnAt ? new Date(p.expectedReturnAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }) : null;
+        const back = p.expectedReturnAt ? new Date(p.expectedReturnAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit', day: 'numeric', month: 'short' }) : null;
         const text = kind === 'exit_pass.gate_out' ? ['Security recorded you going out.', ...(back ? [`Expected back by ${back}.`] : [])] : kind === 'exit_pass.gate_in' ? ['Security recorded you back in. Welcome back.'] : [`More time was given${back ? ` — now expected back by ${back}` : ''}.`];
         await sendLogged('ExitPass', id, uniq([p.requestedBy]), `Exit pass ${p.passNumber} — ${kind === 'exit_pass.gate_out' ? 'out through the gate' : kind === 'exit_pass.gate_in' ? 'back through the gate' : 'more time given'}`, 'Your exit pass', [p.passNumber, ...text], `/security/exit-passes/${id}`, actorId);
       }

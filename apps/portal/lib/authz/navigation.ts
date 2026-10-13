@@ -1,5 +1,5 @@
 import { platformModules } from '../modules';
-import { decide, PAGE_PERMISSIONS, type PermissionKey, type Principal } from './catalogue';
+import { APPROVAL_PERMISSIONS, decide, PAGE_PERMISSIONS, type PermissionKey, type Principal } from './catalogue';
 
 export type NavItem = { key: string; name: string; href: string; status: string };
 
@@ -17,7 +17,7 @@ const EVERYONE = new Set(['dashboard', 'notifications', 'security']);
 /**
  * The menu for one person — the same rule the pages enforce, so nobody is
  * shown a door they cannot open. Security: the desk for security staff and
- * reception; for everyone else it opens their own exit passes. Modules not
+ * reception; for everyone else, their own exit passes and visitors. Modules not
  * yet live are not shown at all (version 1 scope).
  */
 export function navigationFor(p: Principal): NavItem[] {
@@ -26,11 +26,18 @@ export function navigationFor(p: Principal): NavItem[] {
   for (const m of platformModules) {
     // Version 1: modules not yet live are not shown to anyone (next version).
     if (m.status !== 'LIVE') continue;
+    if (m.key === 'dashboard') {
+      out.push({ key: m.key, name: m.name, href: m.href, status: m.status });
+      // People who decide things get one list of everything waiting for them.
+      if (p.isSuperAdmin || APPROVAL_PERMISSIONS.some(can)) out.push({ key: 'approvals', name: 'Approvals', href: '/approvals', status: m.status });
+      continue;
+    }
     if (m.key === 'security') {
       if (can('security.view')) out.push({ key: m.key, name: m.name, href: m.href, status: m.status });
       else {
-        // Not on the Security desk: their own exit passes, and (Store) the deliveries they receive.
-        out.push({ key: 'exit-passes', name: 'Exit Passes', href: '/security/exit-passes', status: m.status });
+        // Not on the Security desk: their own exit passes and visitors, and (Store) the deliveries they receive.
+        out.push({ key: 'exit-passes', name: 'My exit passes', href: '/security/exit-passes', status: m.status });
+        out.push({ key: 'my-visitors', name: 'My visitors', href: '/security/my-visitors', status: m.status });
         if (can('store.grn.record')) out.push({ key: 'deliveries', name: 'Deliveries', href: '/security/deliveries', status: m.status });
       }
       continue;
@@ -39,5 +46,8 @@ export function navigationFor(p: Principal): NavItem[] {
     const needs = MODULE_NEEDS[m.key];
     if (!needs || needs.some(can)) out.push({ key: m.key, name: m.name, href: m.href, status: m.status });
   }
+  // Assisted sessions: the Branch Assistant starts them; user administrators review them.
+  if (!p.isSuperAdmin && can('support.assist')) out.push({ key: 'assist', name: 'Assist a colleague', href: '/support/assist', status: 'LIVE' });
+  else if (can('admin.users.manage')) out.push({ key: 'assist', name: 'Assisted sessions', href: '/support/assist', status: 'LIVE' });
   return out;
 }

@@ -29,7 +29,7 @@ export default async function VehicleServicePage({ params }: { params: Promise<{
       serviceEstimate: {
         select: {
           customerNotifiedAt: true,
-          lineItems: { orderBy: { createdAt: 'asc' }, select: { id: true, type: true, description: true, quantity: true, amount: true, unitOfMeasure: true } },
+          lineItems: { orderBy: { createdAt: 'asc' }, select: { id: true, type: true, description: true, quantity: true, unitPrice: true, amount: true, unitOfMeasure: true } },
         },
       },
       warranties: { where: { customerId: me.id }, select: { id: true, warrantyNumber: true, subjectDescription: true, endsAt: true, status: true } },
@@ -42,7 +42,7 @@ export default async function VehicleServicePage({ params }: { params: Promise<{
     <ServiceDetail
       item={item}
       complaints={vs.complaints.length ? vs.complaints.map((c) => c.description) : vs.customerComplaint ? [vs.customerComplaint] : []}
-      lines={notified && vs.serviceEstimate ? vs.serviceEstimate.lineItems.map((l) => ({ id: l.id, type: String(l.type), description: l.description, quantity: num(l.quantity), amount: l.amount === null ? null : num(l.amount), unit: l.unitOfMeasure })) : null}
+      lines={notified && vs.serviceEstimate ? vs.serviceEstimate.lineItems.map((l) => ({ id: l.id, type: String(l.type), description: l.description, quantity: num(l.quantity), unitPrice: l.unitPrice === null ? null : num(l.unitPrice), amount: l.amount === null ? null : num(l.amount), unit: l.unitOfMeasure })) : null}
       branch={vs.branch ? { name: vs.branch.name, address: vs.branch.address, hotlines: vs.branch.hotlines, email: vs.branch.email, bank: { bankName: vs.branch.bankName, accountName: vs.branch.bankAccountName, accountNumber: vs.branch.bankAccountNumber } } : null}
       mileage={vs.odometerAtService}
       warranties={vs.warranties.map((w) => ({ id: w.id, number: w.warrantyNumber, subject: w.subjectDescription, endsAt: w.endsAt, status: String(w.status) }))}

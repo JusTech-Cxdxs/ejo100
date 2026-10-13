@@ -1,3 +1,6 @@
+import { FormJumpLink } from '@/components/ui/FormJumpLink';
+import { BinnedNotice } from '@/components/RecycleBinPanel';
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { allows, guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { listParts, getStoreBranchId, listAllPartTypesForSelect, searchPartTypesForSelect } from '@/lib/actions/store';
@@ -23,20 +26,17 @@ const TRACKING_TYPE_LABEL: Record<string, string> = {
 };
 
 /**
- * The part catalog — every item the store stocks, with its tracking
- * type (Quantity/Batch/Serialized — the real distinction behind how
- * each part's stock is actually represented) and current stock on
- * hand. Create form covers the base unit of measure and one optional
- * alternative unit with its conversion factor — the drum-of-oil
- * scenario this was designed around.
+ * Parts catalogue: every stocked item with its tracking type (Quantity,
+ * Batch, Serialized) and stock on hand. A part can have one alternative unit
+ * with a conversion factor (e.g. a drum of oil in litres).
  */
 export default async function InventoryPartsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; status?: string; q?: string }>;
+  searchParams: Promise<{ error?: string; status?: string; q?: string; binned?: string }>;
 }) {
   await guardAnyPage(['store.view'], '/inventory');
-  const { error, status, q } = await searchParams;
+  const { error, status, q, binned } = await searchParams;
   const branchId = await getStoreBranchId();
   const [parts, partPolicies, canManage] = await Promise.all([listParts(branchId, q), listWarrantyPolicies('PART', { state: 'active' }), allows('store.parts.manage', { branchId })]);
 
@@ -54,6 +54,7 @@ export default async function InventoryPartsPage({
           <FormFeedbackBanner kind="error" message={error} />
         </div>
       ) : null}
+      <BinnedNotice reference={binned} />
       {status === 'part_created' ? (
         <div className="mb-6">
           <FormFeedbackBanner kind="success" message="Part added to the catalog." />
@@ -83,12 +84,13 @@ export default async function InventoryPartsPage({
         ) : null}
       </form>
 
-      <div className={canManage ? 'grid gap-6 lg:grid-cols-[1fr_360px]' : 'grid gap-6'}>
+      {canManage ? <FormJumpLink target="add-part">New Part</FormJumpLink> : null}
+      <div className={canManage ? 'grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]' : 'grid gap-6'}>
         <div>
           {parts.length === 0 ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="package" title="No parts in the catalog yet." /></div>
           ) : (
-            <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+            <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -115,9 +117,9 @@ export default async function InventoryPartsPage({
                         </LoadingLink>
                         {part.category ? <p className="text-xs text-[var(--ejo-text-muted)]">{part.category}</p> : null}
                       </td>
-                      <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{part.partNumber ?? '—'}</td>
-                      <td className="px-4 py-2 text-[var(--ejo-text)]">{TRACKING_TYPE_LABEL[part.trackingType] ?? part.trackingType}</td>
-                      <td className="px-4 py-2 text-xs">
+                      <td data-label="Part No." className="px-4 py-2 text-[var(--ejo-text-muted)]">{part.partNumber ?? '—'}</td>
+                      <td data-label="Tracking" className="px-4 py-2 text-[var(--ejo-text)]">{TRACKING_TYPE_LABEL[part.trackingType] ?? part.trackingType}</td>
+                      <td data-label="Warranty" className="px-4 py-2 text-xs">
                         {part.warrantyPolicyId ? (
                           <LoadingLink href={`/warranty/policies/${part.warrantyPolicyId}`} className="rounded-full bg-[var(--ejo-success)]/15 px-2 py-0.5 font-medium text-[var(--ejo-success)] hover:underline">
                             {(() => {
@@ -129,8 +131,8 @@ export default async function InventoryPartsPage({
                           <span className="text-[var(--ejo-text-muted)]">None</span>
                         )}
                       </td>
-                      <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{part.baseUnitOfMeasure}</td>
-                      <td className="px-4 py-2 font-medium text-[var(--ejo-text)]">
+                      <td data-label="Unit" className="px-4 py-2 text-[var(--ejo-text-muted)]">{part.baseUnitOfMeasure}</td>
+                      <td data-label="On hand" className="px-4 py-2 font-medium text-[var(--ejo-text)]">
                         {part.stock ? Number(part.stock.quantityOnHand).toLocaleString('en-NG', { maximumFractionDigits: 3 }) : '0'}
                         <StockLevelDot
                           level={stockLevel(
@@ -144,12 +146,12 @@ export default async function InventoryPartsPage({
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ResponsiveTable>
           )}
         </div>
 
         {canManage ? (
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6">
+        <div id="add-part" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 xl:sticky xl:top-6 scroll-mt-20">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Add a Part</h2>
           <form action={createPartFormAction} className="mt-4 space-y-3">
             <FormPendingOverlay />
@@ -174,7 +176,7 @@ export default async function InventoryPartsPage({
                 emptyMessage="No Part Type matches — add one under Part Categories & Types first."
               />
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Category and Part Number are both derived from this — nothing else to fill in for either.
+                The category and part number are set from this.
               </p>
             </div>
             <div>

@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { getExternalProcurementRequest } from '@/lib/actions/sourcing';
 import { getOrganisation } from '@/lib/actions/organisation';
@@ -10,8 +11,7 @@ function formatNaira(amount: number): string {
   return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/** One label-above-value pair — same tight spacing already proven on
- * every other real print document in this system. */
+/** A label above its value. */
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -22,21 +22,9 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * A real, standalone printable document for a disbursed External
- * Procurement Request — the second of the two document types still
- * missing from the receipt system's original roadmap. Same real
- * structure already proven on the Parts Request print: standalone
- * (no app chrome), organisation+branch letterhead, a field grid, a
- * real line-items table, an organisation-copy-only document trail,
- * and a signature block — adapted here for disbursement (not
- * release) and for this request's own real shape: a legacy
- * single-line request (description/estimatedAmount only) or a
- * genuinely multi-line one (real `lines`), plus whatever real
- * supplementary lines Finance added along the way.
- *
- * Only ever reachable once the request is genuinely DISBURSED — the
- * real final stage, the point where there's a complete, real story
- * to hand over, not a work-in-progress snapshot.
+ * Printed external procurement request, laid out like the parts request
+ * print. Handles older single-line requests and multi-line ones, plus
+ * Finance's supplementary lines. Only available once DISBURSED.
  */
 export default async function PrintExternalProcurementRequestPage({
   params,
@@ -53,17 +41,12 @@ export default async function PrintExternalProcurementRequestPage({
   if (!request || !organisation) notFound();
   if (request.status !== 'DISBURSED') notFound();
 
-  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const portalUrl = portalBaseUrl();
   const logoUrl = `${portalUrl}/images/logo/logo.png`;
   const vehicleSummary = [request.jobCard.vehicle.year, request.jobCard.vehicle.make, request.jobCard.vehicle.model].filter(Boolean).join(' ') || '—';
 
-  // A genuinely multi-line request has real rows in `lines`, each
-  // with its own real quantity and unit — a legacy, single-line one
-  // has none of that at all, just its own top-level
-  // description/estimatedAmount, so quantity/unit stay unset for
-  // that one line rather than showing a fabricated "1". Supplementary
-  // lines (Finance's own real additions, like transport) never carry
-  // a quantity either — they're a cost, not a countable item.
+  // Older single-line requests have no quantity or unit, so none is shown.
+  // Supplementary lines (e.g. transport) are costs without a quantity.
   const baseLines = request.lines.length > 0
     ? request.lines.map((l: (typeof request.lines)[number]) => ({
         description: l.description,

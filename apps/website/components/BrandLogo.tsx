@@ -1,5 +1,6 @@
 'use client';
 
+import { siteConfig } from '@/lib/site-config';
 import { useState } from 'react';
 
 interface BrandLogoProps {
@@ -7,12 +8,7 @@ interface BrandLogoProps {
   size?: number;
 }
 
-/**
- * Single shared logo component used by both Header and Footer — PNG is
- * the primary, production organisation logo (public/images/logo/logo.png).
- * directly, with exactly one fallback state (the "K" monogram) if the
- * PNG genuinely isn't there yet.
- */
+/** Organisation logo (public/images/logo/logo.png) for the header and footer, or a one-letter monogram if it is missing. */
 export function BrandLogo({ transparent = false, size = 44 }: BrandLogoProps) {
   const [failed, setFailed] = useState(false);
 
@@ -24,7 +20,7 @@ export function BrandLogo({ transparent = false, size = 44 }: BrandLogoProps) {
         }`}
         style={{ height: size, width: size }}
       >
-        K
+        {siteConfig.organisationName.charAt(0)}
       </span>
     );
   }
@@ -33,7 +29,7 @@ export function BrandLogo({ transparent = false, size = 44 }: BrandLogoProps) {
     // eslint-disable-next-line @next/next/no-img-element -- needs a plain onError fallback to the monogram
     <img
       src="/images/logo/logo.png"
-      alt="Kewalram Chanrai Group"
+      alt={siteConfig.organisationName}
       style={{ height: size, width: 'auto' }}
       onError={() => setFailed(true)}
     />

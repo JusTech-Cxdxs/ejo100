@@ -1,3 +1,4 @@
+import { portalBaseUrl } from '@/lib/portal-url';
 import { notFound } from 'next/navigation';
 import { serviceVisible } from '@/lib/authz/server';
 import { getVehicleService, getVehicleServiceAuditTrail } from '@/lib/actions/vehicle-service';
@@ -17,10 +18,8 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 /**
- * Printable estimate for a Vehicle Service — the exact same document
- * Job Card prints (shared EstimatePrintDocument). Organisation Copy by
- * default, Customer Copy with ?variant=client. Only exists once the
- * Manager has given final approval.
+ * Printable Vehicle Service estimate (shared EstimatePrintDocument).
+ * Customer copy with ?variant=client. Available after Manager approval.
  */
 export default async function PrintVehicleServiceEstimatePage({
   params,
@@ -31,7 +30,7 @@ export default async function PrintVehicleServiceEstimatePage({
 }) {
   const { id } = await params;
   const { variant } = await searchParams;
-  // A stale, mistyped or out-of-reach id is simply "not found".
+  // An id the viewer can't see is a 404.
   if (!(await serviceVisible(id, 'estimate'))) notFound();
   const [service, estimate, payments, auditTrail, organisation] = await Promise.all([
     getVehicleService(id),
@@ -44,7 +43,7 @@ export default async function PrintVehicleServiceEstimatePage({
   if (estimate.status !== 'MANAGER_APPROVED') notFound();
 
   const vehicleDescription = [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
-  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+  const portalUrl = portalBaseUrl();
 
   return (
     <EstimatePrintDocument

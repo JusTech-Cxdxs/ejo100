@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getVehicleService } from '@/lib/actions/vehicle-service';
@@ -15,11 +16,8 @@ function formatNaira(value: number): string {
 }
 
 /**
- * The real Vehicle Service equivalent of Job Card's own request-parts
- * page — same read-only "review, then raise" preview, same header
- * context, same columns and total. Nothing here is re-entered: every
- * Store Part line was already matched, priced and approved before this
- * page can be reached at all.
+ * Vehicle Service version of the Job Card request-parts page: a read-only
+ * review of lines that are already matched, priced and approved.
  */
 export default async function VehicleServiceRequestPartsPage({
   params,
@@ -47,8 +45,7 @@ export default async function VehicleServiceRequestPartsPage({
       <BackLink href={`/workshop/vehicle-service/${id}`} label={<>Back to Vehicle Service {service.serviceNumber}</>} className="mb-4" />
       <PageTitle icon="package" className="mb-2">Request Store Parts</PageTitle>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
-        Every Part below was already matched and priced by Store. Nothing here needs editing; raising the request
-        simply sends this exact list forward for approval.
+        These parts have been matched and priced by the Store. Check the list, then raise the request for approval.
       </p>
 
       {error ? (
@@ -96,7 +93,7 @@ export default async function VehicleServiceRequestPartsPage({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <ResponsiveTable>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -113,12 +110,12 @@ export default async function VehicleServiceRequestPartsPage({
                   return (
                     <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
                       <td className="px-4 py-2 font-medium text-[var(--ejo-text)]">{line.matchedPart?.name ?? line.description}</td>
-                      <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{line.partType?.name ?? '—'}</td>
-                      <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{line.matchedPart?.partNumber ?? '—'}</td>
-                      <td className="px-4 py-2 text-right text-[var(--ejo-text)]">
+                      <td data-label="Part Type" className="px-4 py-2 text-[var(--ejo-text-muted)]">{line.partType?.name ?? '—'}</td>
+                      <td data-label="Part No." className="px-4 py-2 text-[var(--ejo-text-muted)]">{line.matchedPart?.partNumber ?? '—'}</td>
+                      <td data-label="Quantity" className="px-4 py-2 text-right text-[var(--ejo-text)]">
                         {quantity} {line.unitOfMeasure ? pluralizeWord(quantity, line.unitOfMeasure) : ''}
                       </td>
-                      <td className="px-4 py-2 text-right text-[var(--ejo-text)]">{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
+                      <td data-label="Amount" className="px-4 py-2 text-right text-[var(--ejo-text)]">{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
                     </tr>
                   );
                 })}
@@ -133,7 +130,7 @@ export default async function VehicleServiceRequestPartsPage({
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </ResponsiveTable>
           <form action={requestServiceEstimatePartRequestSlipFormAction} className="border-t border-[var(--ejo-border)] p-4">
             <FormPendingOverlay />
             <input type="hidden" name="serviceEstimateId" value={sourcingNeeds.serviceEstimateId ?? ''} />

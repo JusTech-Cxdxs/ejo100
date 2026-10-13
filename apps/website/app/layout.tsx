@@ -1,4 +1,5 @@
-import type { Metadata } from 'next';
+import { websiteBaseUrl } from '@/lib/site-urls';
+import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -6,58 +7,45 @@ import { SiteChrome } from '@/components/SiteChrome';
 import { ThemeProvider } from '@/lib/theme';
 import { I18nProvider } from '@/lib/i18n';
 import { siteConfig } from '@/lib/site-config';
+import { themeInitScript } from '@/lib/theme-init-script';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: {
-    default: `${siteConfig.companyShortName} | ${siteConfig.tagline}`,
+    default: siteConfig.tagline ? `${siteConfig.organisationName} | ${siteConfig.tagline}` : siteConfig.organisationName,
     template: `%s | ${siteConfig.companyShortName}`,
   },
-  description:
-    'Kewalram Chanrai Group is a diversified group with interests in agriculture, automotive, manufacturing, real estate and more — creating lasting value across Africa and beyond.',
-  metadataBase: process.env.NEXT_PUBLIC_WEBSITE_URL
-    ? new URL(process.env.NEXT_PUBLIC_WEBSITE_URL)
-    : undefined,
+  description: siteConfig.description || undefined,
+  metadataBase: websiteBaseUrl() ? new URL(websiteBaseUrl()) : undefined,
   openGraph: {
     title: siteConfig.companyShortName,
-    description: siteConfig.tagline,
+    description: siteConfig.description || siteConfig.tagline || undefined,
     siteName: siteConfig.companyShortName,
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
     title: siteConfig.companyShortName,
-    description: siteConfig.tagline,
+    description: siteConfig.description || siteConfig.tagline || undefined,
   },
+  // Made from public/images/logo/logo.png (public/icons).
   icons: {
-    icon: [
-      { url: '/favicon.ico' },
-      { url: '/favicon.svg', type: 'image/svg+xml' },
-    ],
-    apple: '/apple-touch-icon.png',
+    icon: [{ url: '/icons/favicon-32.png', sizes: '32x32', type: 'image/png' }, { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
+    shortcut: '/icons/favicon-32.png',
+    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180' }],
   },
+  // Added to an iPhone's home screen, the customer portal opens full screen.
+  appleWebApp: { capable: true, title: siteConfig.organisationName, statusBarStyle: 'default' },
 };
 
-// Sets the .dark class on <html> before hydration/paint so toggling
-// between light/dark never causes a visible flash of the wrong theme.
-// Also restores the saved language + text direction the same way, so a
-// returning visitor's language choice doesn't flash back to English/LTR.
-const themeInitScript = `
-(function() {
-  try {
-    var stored = localStorage.getItem('ejo-theme');
-    var preferred = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    var theme = stored || preferred;
-    if (theme === 'dark') document.documentElement.classList.add('dark');
-
-    var lang = localStorage.getItem('ejo-language');
-    if (lang) {
-      document.documentElement.lang = lang;
-      document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-    }
-  } catch (e) {}
-})();
-`;
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#16a34a' },
+    { media: '(prefers-color-scheme: dark)', color: '#06120a' },
+  ],
+};
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

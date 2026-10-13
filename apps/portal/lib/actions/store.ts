@@ -1,18 +1,14 @@
 'use server';
+import { actorLabel } from '@/lib/assist/rules';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 /**
- * Store Server Actions — Phase 1: the part catalog, unit-of-measure
- * conversion, and goods receipt (stock coming in). Deliberately does NOT
- * yet include the Issue Slip workflow (requesting/releasing stock to a
- * Job Card) or External Procurement — those are their own later phases.
+ * Store server actions: part catalogue, units of measure, goods receipts,
+ * Store matching and pricing alerts.
  *
- * Same architecture as apps/portal/lib/actions/workshop.ts: Server Actions
- * calling @ejo/database directly, not the Render API, for the same
- * cross-origin-cookie reason documented there. requireUser()/
- * writeAuditLog() are imported from workshop.ts rather than duplicated —
- * both are auth/audit-sensitive shared logic that shouldn't exist as two
- * copies a future fix could miss one of.
+ * Like workshop.ts, these call @ejo/database directly. Auth and audit
+ * helpers are imported from workshop.ts so there is one copy of each.
  */
 
 import { claimed } from '@/lib/integrity';
@@ -25,7 +21,8 @@ import { markupToMargin, marginToMarkup, actualMargin, actualMarkup, MARGIN_TOLE
 import { requireUser, currentUserIsMasterAdmin } from './workshop';
 import { branchInMyOrganisationOrSystem, getStoreBranchIdForMe } from '@/lib/workshop-core';
 import { writeAuditLog } from '@/lib/workshop-core';
-import { authorize, branchWithinReach, canSeeRecord, orgOwned, refuse, seeBranch, seeJobCard, seePart } from '@/lib/authz/server';
+import { allows, authorize, branchWithinReach, canSeeRecord, orgOwned, refuse, seeBranch, seeJobCard, seePart } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
 import { sendEmail } from '@/lib/email';
 import { renderStaffGoodsReceiptRecordedEmail } from '@/lib/email-templates/staff-goods-receipt-recorded';
 import { renderPricingAlertRaisedEmail } from '@/lib/email-templates/pricing-alert-raised';
@@ -33,6 +30,7 @@ import { renderPartTargetMarginSetEmail } from '@/lib/email-templates/part-targe
 import { renderStoreMatchingRequestedEmail, renderStoreMatchingStatusEmail } from '@/lib/email-templates/store-matching-status';
 import { renderGoodsReceiptEditedEmail } from '@/lib/email-templates/goods-receipt-edited';
 import { renderPartSellingPriceSetEmail } from '@/lib/email-templates/part-selling-price-set';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class StoreActionError extends Error {}
 
@@ -44,11 +42,7 @@ const STORE_DENIED: Record<StorePermission, string> = {
   'store.prs.release': 'Only Store staff can approve, reserve or release a parts request.',
 };
 
-/** Mirrors getWorkshopOrgContext() in workshop.ts exactly, scoped to
- * the 'store' department slug instead — kept as its own small
- * function rather than importing a workshop-specific one, since Store
- * is genuinely its own department with its own name/context to show
- * in its own emails. */
+/** Same as getWorkshopOrgContext() in workshop.ts, for the 'store' department. */
 async function getStoreOrgContext(): Promise<{ companyName: string; branchName: string; departmentName: string }> {
   const department = await prisma.department.findFirstOrThrow({
     where: { slug: 'store' },
@@ -69,9 +63,7 @@ async function getStoreOrgContext(): Promise<{ companyName: string; branchName: 
   };
 }
 
-/** Resolves the Store department's branch — mirrors getWorkshopBranchId()
- * exactly, same reasoning: a single lookup point so nothing hardcodes a
- * branch elsewhere. */
+/** The Store department's branch for the signed-in person. */
 export async function getStoreBranchId(): Promise<string> {
   await requireUser();
   // This person's Store — never another organisation's (lib/workshop-core).
@@ -85,11 +77,8 @@ export async function getStoreBranchId(): Promise<string> {
 
 export type EligibleStoreStaffResult = { staff: { id: string; fullName: string; email: string }[]; usingFallback: boolean };
 
-/** Any user holding the given role slug for the branch, or a Master Admin
- * if none exist yet — the exact same fallback pattern as
- * listEligibleManagersForBranch() in workshop.ts, for the same reason:
- * the Users/Roles admin pages are still placeholder stubs, so eligibility
- * must never silently come back empty. */
+/** Users holding `roleSlug` at the branch, falling back to Master Admins
+ * so the list is never empty. Same pattern as listEligibleManagersForBranch(). */
 async function listEligibleStoreStaffForBranch(branchId: string, roleSlug: string): Promise<EligibleStoreStaffResult> {
   await requireUser();
   const staff = await prisma.user.findMany({
@@ -120,23 +109,20 @@ export async function listEligibleStoreOfficersForBranch(branchId: string): Prom
   return listEligibleStoreStaffForBranch(branchId, 'store-officer');
 }
 
-/** Store work is gated by the Authorization Catalogue — Store Manager and
- * Store Officer by default (plus any grant added on the Roles page; Master
- * Admin always) — checked against the branch that owns the record, so one
- * branch's Store cannot change another's stock, prices or receipts. Each
- * caller names the exact permission its step needs. */
+/** Gates Store work on the given permission (Store Manager/Officer by
+ * default, plus Roles-page grants; Master Admin always), checked against the
+ * branch that owns the record so one branch cannot change another's stock,
+ * prices or receipts. */
 export async function requireStoreStaff(branchId: string, key: StorePermission = 'store.grn.record'): Promise<{ id: string }> {
   const user = await requireUser();
   await authorize(key, { branchId, homeBranch: true }, `store:${key}`, STORE_DENIED[key]);
   return user;
 }
 
-/** GRN-2026-000001 — mirrors generateJobNumber() in workshop.ts exactly:
- * same year-prefixed, zero-padded sequence, same reasoning (string-
- * descending sort on a fixed-width zero-padded sequence correctly
- * matches numeric order). */
+/** GRN-2026-000001. Fixed-width, zero-padded, so a descending string sort
+ * matches numeric order (same as generateJobNumber()). */
 async function generateGoodsReceiptNumber(): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = lagosYear();
   const prefix = `GRN-${year}-`;
   const latest = await prisma.goodsReceipt.findFirst({
     where: { referenceNumber: { startsWith: prefix } },
@@ -151,28 +137,19 @@ export type CreatePartInput = {
   branchId: string;
   name: string;
   description?: string;
-  /** Every new Part now belongs to a real PartType — category (the
-   * free-text field Store's own catalog search already uses) and
-   * partNumber are both derived from it below, never typed in
-   * directly, so a Part can no longer exist with a category that
-   * doesn't correspond to anything real in the PartType hierarchy. */
+  /** Category and partNumber are derived from the PartType, never typed in,
+   * so every Part maps to a real PartType. */
   partTypeId: string;
   trackingType: 'QUANTITY' | 'BATCH' | 'SERIALIZED';
   baseUnitOfMeasure: string;
   reorderPoint?: number;
   safetyStock?: number;
   alternativeUnits?: { unitName: string; conversionFactor: number }[];
-  /** Required choice on creation: null = no warranty; an id = the part
-   * warranty policy every released unit is issued under. */
+  /** null = no warranty; otherwise the policy each released unit is issued under. */
   warrantyPolicyId: string | null;
 };
 
-/** FLU-001, FIL-001, BRK-001 — mirrors generateGoodsReceiptNumber()'s
- * own pattern (same string-descending-sort-matches-numeric-order
- * reasoning), but without a year prefix: a Part Number is a permanent
- * identity for the life of the part, never scoped to when it was
- * added, matching exactly how Kewalram's own real catalog already
- * numbers things today. */
+/** FLU-001, FIL-001. No year prefix: a part number is permanent. */
 async function generatePartNumber(branchId: string, categoryCode: string): Promise<string> {
   const prefix = `${categoryCode}-`;
   const latest = await prisma.part.findFirst({
@@ -181,18 +158,14 @@ async function generatePartNumber(branchId: string, categoryCode: string): Promi
     select: { partNumber: true },
   });
   const parsedSequence = latest?.partNumber ? parseInt(latest.partNumber.slice(prefix.length), 10) : NaN;
-  // A part numbered outside this pattern (possible from before this
-  // was auto-generated, when partNumber was free text) shouldn't
-  // silently produce "NaN" here — treat it the same as no prior
-  // sequence existing at all, and start fresh from 1.
+  // Older free-text part numbers don't match the pattern; start from 1
+  // rather than producing NaN.
   const nextSequence = Number.isFinite(parsedSequence) ? parsedSequence + 1 : 1;
   return `${prefix}${String(nextSequence).padStart(3, '0')}`;
 }
 
-/** Creates a new part in the catalog, with its stock row initialized to
- * zero — a part always has exactly one PartStock row from the moment it
- * exists, so goods-receipt logic never has to branch on whether one is
- * there yet. */
+/** Creates a catalogue part with a zeroed PartStock row, so receipt logic
+ * can assume the row exists. */
 export async function createPart(input: CreatePartInput): Promise<{ id: string }> {
   const user = await requireStoreStaff(input.branchId, 'store.parts.manage');
   const name = input.name.trim();
@@ -287,13 +260,9 @@ export type UpdatePartInput = {
   safetyStock?: number;
 };
 
-/** Edits an existing part's own descriptive fields — deliberately never
- * trackingType or baseUnitOfMeasure, since changing either on a part
- * that already has real stock recorded in its original base unit would
- * be genuinely dangerous, not just inconvenient: existing PartStock/
- * PartBatch/GoodsReceiptLine rows would silently disagree with a
- * changed unit. Those two are fixed for the life of the part; everything
- * else here is safe to correct at any time. */
+/** Edits descriptive fields only. trackingType and baseUnitOfMeasure are
+ * fixed for the life of the part: existing stock, batch and receipt rows are
+ * recorded in the original unit. */
 export async function updatePart(input: UpdatePartInput): Promise<void> {
   const part = await prisma.part.findUnique({ where: { id: input.id }, select: { branchId: true } });
   if (!part) {
@@ -318,13 +287,9 @@ export async function updatePart(input: UpdatePartInput): Promise<void> {
   await writeAuditLog({ userId: user.id, action: 'part.updated', entityType: 'Part', entityId: input.id, metadata: { name } });
 }
 
-/** Setting the real, deliberate price a customer is actually charged
- * — genuinely separate from cost (what Store paid a supplier), and
- * the only thing Store matching a Store Part line is ever allowed to
- * use for pricing. Never auto-derived from the last Goods Receipt
- * cost, even as a convenience default — that's exactly the
- * conflation this field exists to end, and a suggested figure has a
- * way of becoming the actual figure nobody ever deliberately chose. */
+/** Sets the price charged to customers. Kept separate from cost and never
+ * defaulted from the last receipt cost; Store matching prices lines from
+ * this field only. */
 export async function setPartSellingPrice(partId: string, sellingPrice: number): Promise<void> {
   const part = await prisma.part.findUnique({
     where: { id: partId },
@@ -334,9 +299,7 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
       sellingPrice: true,
       baseUnitOfMeasure: true,
       targetMarginPercent: true,
-      // The most recent real delivery — same source the Selling Price
-      // Calculator's own margin insight already uses, so the email
-      // and the screen never tell two different stories.
+      // Latest delivery, the same source the Selling Price Calculator uses.
       goodsReceiptLines: {
         orderBy: { goodsReceipt: { receivedAt: 'desc' } },
         take: 1,
@@ -388,8 +351,8 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
       recipients.set(staffMember.id, staffMember);
     }
     const orgContext = await getStoreOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const portalUrl = portalBaseUrl();
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const recipient of recipients.values()) {
       await sendEmail(
         recipient.email,
@@ -412,26 +375,15 @@ export async function setPartSellingPrice(partId: string, sellingPrice: number):
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send selling price notification emails', partId, err);
   }
 }
 
-/** The real margin Store wants to hold on this Part going forward —
- * what the Pricing Command Center actually compares every new real
- * delivery cost against. Deliberately its own separate action from
- * setPartSellingPrice above, not folded into the same form: the two
- * are genuinely different decisions (what to charge, versus how much
- * margin is acceptable to hold), made at different times for
- * different reasons. */
-/** Accepts the target in whichever real unit the business actually
- * thinks in — Margin or Markup — and always converts to the real
- * Margin that gets stored, using the one shared, canonical formula in
- * pricing-math.ts. This is the one real place that conversion has to
- * happen correctly: get it wrong here and every Pricing Alert this
- * Part ever raises compares against the wrong real number, silently,
- * for as long as it goes unnoticed — confirmed directly this is
- * exactly the real mistake a user can otherwise make by hand. */
+/** The margin Store wants to hold on this part; new delivery costs are
+ * compared against it to raise pricing alerts. */
+/** Accepts the target as margin or markup and stores it as margin, using
+ * the shared formula in pricing-math.ts. Every later pricing alert depends
+ * on this conversion. */
 export async function setPartTargetMargin(partId: string, targetValue: number, pricingMethod: 'MARGIN' | 'MARKUP'): Promise<void> {
   const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, name: true, targetMarginPercent: true } });
   if (!part) {
@@ -441,8 +393,8 @@ export async function setPartTargetMargin(partId: string, targetValue: number, p
   if (!(targetValue > 0) || targetValue > (pricingMethod === 'MARGIN' ? 100 : 100000)) {
     throw new StoreActionError(
       pricingMethod === 'MARGIN'
-        ? 'Target Margin must be a real percentage greater than 0 and no more than 100.'
-        : 'Target Markup must be a real percentage greater than 0.',
+        ? 'Target Margin must be a percentage greater than 0 and no more than 100.'
+        : 'Target Markup must be a percentage greater than 0.',
     );
   }
   const targetMarginPercent = pricingMethod === 'MARGIN' ? targetValue : markupToMargin(targetValue);
@@ -462,11 +414,7 @@ export async function setPartTargetMargin(partId: string, targetValue: number, p
     },
   });
 
-  // Every genuine pricing decision on a Part notifies Store — a
-  // Target change is just as real a decision as the selling price
-  // itself, since it's the exact number every future Pricing Alert
-  // on this Part gets compared against. Never blocks the save if
-  // sending fails.
+  // Notify Store of the new target. Email failures never block the save.
   try {
     const [officers, managers, setByUser] = await Promise.all([
       listEligibleStoreOfficersForBranch(part.branchId),
@@ -478,8 +426,8 @@ export async function setPartTargetMargin(partId: string, targetValue: number, p
       recipients.set(staffMember.id, staffMember);
     }
     const orgContext = await getStoreOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const portalUrl = portalBaseUrl();
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     const equivalentMarkup = marginToMarkup(targetMarginPercent);
     for (const recipient of recipients.values()) {
       await sendEmail(
@@ -502,18 +450,12 @@ export async function setPartTargetMargin(partId: string, targetValue: number, p
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send target-margin-set notification emails', partId, err);
   }
 }
 
-/** Replaces a part's full set of alternative units in one call — the
- * real correction this was built for: fixing a wrong conversion factor
- * (e.g. a drum genuinely being 205L, not 208L, confirmed against a real
- * carton photo) or adding a newly-discovered one (e.g. Brake Fluid
- * arriving by the Carton as well as loose Bottles) both just mean
- * submitting the corrected full list — never a partial patch that could
- * leave a stale, wrong unit sitting alongside the fix. */
+/** Replaces the part's full set of alternative units, so a correction
+ * (e.g. a drum that is 205 L, not 208 L) never leaves the old unit behind. */
 export async function setPartAlternativeUnits(
   partId: string,
   units: { unitName: string; conversionFactor: number }[],
@@ -528,7 +470,7 @@ export async function setPartAlternativeUnits(
     .filter((u) => u.unitName && u.conversionFactor > 0);
   for (const u of cleaned) {
     if (u.unitName === part.baseUnitOfMeasure) {
-      throw new StoreActionError(`"${u.unitName}" is already this part's base unit — an alternative unit must be genuinely different.`);
+      throw new StoreActionError(`"${u.unitName}" is already this part's base unit — an alternative unit must be different.`);
     }
   }
   const names = cleaned.map((u) => u.unitName);
@@ -554,11 +496,9 @@ export type CreatePartFitmentInput = {
   yearTo?: number;
 };
 
-/** Records one real vehicle configuration a part fits. A part with no
- * fitment rows at all is treated as fitting everything (see
- * getFittingPartsForVehicle below) — so this is only ever needed for
- * parts that genuinely vary by vehicle, never as a formality for the
- * universal ones (engine oil, coolant, brake fluid, penetrating oil). */
+/** Records a vehicle configuration the part fits. A part with no fitment
+ * rows fits every vehicle (see getFittingPartsForVehicle), so only
+ * vehicle-specific parts need rows. */
 export async function createPartFitment(input: CreatePartFitmentInput): Promise<{ id: string }> {
   const part = await prisma.part.findUnique({ where: { id: input.partId }, select: { branchId: true } });
   if (!part) {
@@ -571,17 +511,12 @@ export async function createPartFitment(input: CreatePartFitmentInput): Promise<
   if (!make) {
     throw new StoreActionError('Make is required.');
   }
-  // The real, standing hierarchy: each narrower field is only ever
-  // meaningful once every broader one is genuinely set too — an
-  // Engine or a Year range without a real Model doesn't describe
-  // anything real (which model's engine? which model's year range?).
-  // Model itself has no such requirement beyond Make, which is
-  // already always required above.
+  // Engine and year range only make sense once a model is set.
   if (!model && engineType) {
-    throw new StoreActionError('Set a Model before adding a specific Engine — an engine type on its own, without a model, isn\'t a real vehicle configuration.');
+    throw new StoreActionError('Set a Model before adding an Engine.');
   }
   if (!model && (input.yearFrom || input.yearTo)) {
-    throw new StoreActionError('Set a Model before adding a Year range — a year range on its own, without a model, isn\'t a real vehicle configuration.');
+    throw new StoreActionError('Set a Model before adding a Year range.');
   }
   const fitment = await prisma.partFitment.create({
     data: {
@@ -597,11 +532,7 @@ export async function createPartFitment(input: CreatePartFitmentInput): Promise<
   return { id: fitment.id };
 }
 
-/** Editing an existing fitment row in place — e.g. adding an Engine or
- * Year range that was left blank the first time — rather than forcing
- * a delete-and-recreate, which would needlessly lose the row's own
- * history (createdAt, and the audit trail entry for when it was first
- * added) for what's really just a correction. */
+/** Edits a fitment row in place, keeping its createdAt and audit history. */
 export type UpdatePartFitmentInput = {
   make: string;
   model?: string;
@@ -622,15 +553,13 @@ export async function updatePartFitment(fitmentId: string, input: UpdatePartFitm
   if (!make) {
     throw new StoreActionError('Make is required.');
   }
-  // The exact same real hierarchy as createPartFitment above — a
-  // genuine edit that clears Model back out (the real bug this
-  // fixes) is only refused if it would leave a real Engine or Year
-  // range behind with nothing real left for them to describe.
+  // Same rule as createPartFitment: clearing the model is refused only if an
+  // engine or year range would be left behind.
   if (!model && engineType) {
-    throw new StoreActionError('Set a Model before adding a specific Engine — an engine type on its own, without a model, isn\'t a real vehicle configuration.');
+    throw new StoreActionError('Set a Model before adding an Engine.');
   }
   if (!model && (input.yearFrom || input.yearTo)) {
-    throw new StoreActionError('Set a Model before adding a Year range — a year range on its own, without a model, isn\'t a real vehicle configuration.');
+    throw new StoreActionError('Set a Model before adding a Year range.');
   }
   await prisma.partFitment.update({
     where: { id: fitmentId },
@@ -661,15 +590,9 @@ export async function listPartFitments(partId: string) {
   return prisma.partFitment.findMany({ where: { partId }, orderBy: { createdAt: 'asc' } });
 }
 
-/** The real matching logic: a part with zero fitment rows fits every
- * vehicle (the correct default for the universal parts — nothing extra
- * to configure for them). A part WITH fitment rows fits a given vehicle
- * only if at least one row matches its make+model, and (when that row
- * specifies an engine) the vehicle's own engine too, and (when that row
- * specifies a year range) the vehicle's own year falls inside it. A row
- * that leaves engine/year unset is intentionally permissive on that
- * dimension — "fits every engine of this make/model" or "fits every
- * year of this make/model," not a row that silently never matches. */
+/** A part with no fitment rows fits every vehicle. Otherwise at least one
+ * row must match make and model, plus engine and year range when the row
+ * sets them. An unset engine or year on a row means "any". */
 export async function getFittingPartsForVehicle(
   branchId: string,
   vehicle: { make?: string | null; model?: string | null; engineType?: string | null; year?: number | null },
@@ -721,10 +644,7 @@ export async function createPartCategory(branchId: string, name: string, code: s
   if (!trimmedName) {
     throw new StoreActionError('Part Category name is required.');
   }
-  // Uppercased and stripped to letters/digits — this becomes a literal
-  // Part Number prefix (e.g. "FIL-001"), so it needs to be exactly
-  // what it looks like, not whatever casing or stray punctuation was
-  // typed.
+  // Becomes a part number prefix (e.g. "FIL-001"): uppercase letters and digits only.
   const trimmedCode = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (!trimmedCode) {
     throw new StoreActionError('A short code is required — this becomes every Part Number\'s prefix under this category (e.g. "FIL" → FIL-001).');
@@ -742,11 +662,8 @@ export async function listPartCategories(branchId: string) {
   return prisma.partCategory.findMany({ where: { branchId }, orderBy: { name: 'asc' } });
 }
 
-/** The specific, customer-facing kind of part a technician actually
- * picks (e.g. "Fuel Filter") — always under exactly one parent
- * PartCategory (e.g. "Filter"), confirmed as a genuine two-level tree,
- * not a single flat list: "Filter" containing "Oil Filter"/"Fuel
- * Filter", "Fluid" containing "Coolant"/"Engine Oil"/"Brake Fluid". */
+/** The kind of part a technician picks (e.g. "Fuel Filter"), always under
+ * one PartCategory (e.g. "Filter"). */
 export async function createPartType(branchId: string, categoryId: string, name: string, description?: string): Promise<{ id: string }> {
   const user = await requireStoreStaff(branchId, 'store.parts.manage');
   const category = await prisma.partCategory.findUnique({ where: { id: categoryId }, select: { branchId: true } });
@@ -767,14 +684,9 @@ export async function createPartType(branchId: string, categoryId: string, name:
   return { id: partType.id };
 }
 
-/** The generic, technician-facing catalog — what a technician actually
- * searches when adding a STORE_PART line to an estimate. Deliberately
- * a completely separate list from listParts()'s own real, vehicle-
- * specific Parts: a technician should never see "Fuel Filter — Foton
- * Tunland" as an option, only the generic "Fuel Filter" itself. Each
- * result carries its own parent category's name, so the real two-
- * level tree (Filter → Oil Filter/Fuel Filter, Fluid → Coolant/Engine
- * Oil/Brake Fluid) is genuinely browsable, not flattened away. */
+/** The generic catalogue technicians search when adding a STORE_PART line.
+ * Separate from listParts(): technicians see "Fuel Filter", never a
+ * vehicle-specific variant. Each result carries its category name. */
 export async function listPartTypes(branchId: string, search?: string) {
   await requireUser();
   branchId = await branchWithinReach('store.view', branchId);
@@ -794,11 +706,7 @@ export async function listPartTypes(branchId: string, search?: string) {
     orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
     include: {
       category: { select: { id: true, name: true } },
-      // Only ever used to compute typicalUnit below — every real Part
-      // under a given Part Type almost always shares the same base
-      // unit (they're the same kind of thing, just different vehicle
-      // variants), which is what makes this a genuinely honest
-      // preview rather than a guess.
+      // Only used for typicalUnit below.
       parts: { where: { isActive: true }, select: { baseUnitOfMeasure: true } },
     },
   });
@@ -806,33 +714,21 @@ export async function listPartTypes(branchId: string, search?: string) {
     const distinctUnits = new Set(t.parts.map((p: (typeof t.parts)[number]) => p.baseUnitOfMeasure));
     return {
       ...t,
-      // A confident preview only when every real Part under this type
-      // genuinely agrees — null (shown as "varies" or "not yet known"
-      // by callers) when there are zero Parts yet, or when they
-      // disagree, rather than ever guessing wrong.
+      // Shown only when every part under the type agrees; null when there are
+      // none or they differ.
       typicalUnit: distinctUnits.size === 1 ? ([...distinctUnits][0] ?? null) : null,
     };
   });
 }
 
-/** SearchableOption-shaped wrapper around listPartTypes — the real
- * search a technician's Store Part picker and a new Part's own
- * registration form both actually use. Kept separate from
- * listPartTypes itself (which stays exactly as it is for the
- * management page's own full-tree view) since this is a genuinely
- * different shape for a genuinely different purpose: a flat,
- * searchable list of {value, label, sublabel} for SearchableSelect,
- * not the nested category→type tree the management page renders. */
+/** listPartTypes() flattened to {value, label, sublabel} for SearchableSelect. */
 export async function searchPartTypesForSelect(branchId: string, query: string): Promise<{ value: string; label: string; sublabel?: string }[]> {
   branchId = await branchWithinReach('store.view', branchId);
   const types = await listPartTypes(branchId, query);
   return types.map((t: (typeof types)[number]) => ({ value: t.id, label: t.name, sublabel: t.category.name }));
 }
 
-/** Shown before the person has typed anything — every Part Type at
- * this branch, so browsing the full (usually short) list needs zero
- * typing, same reasoning as loadDefaultOptions everywhere else this
- * component is used. */
+/** Every Part Type at the branch, shown before the person types. */
 export async function listAllPartTypesForSelect(branchId: string): Promise<{ value: string; label: string; sublabel?: string }[]> {
   branchId = await branchWithinReach('store.view', branchId);
   return searchPartTypesForSelect(branchId, '');
@@ -851,14 +747,8 @@ export async function listAllPartCategoriesForSelect(branchId: string): Promise<
   return searchPartCategoriesForSelect(branchId, '');
 }
 
-/** The real "price registered with the last goods receipt" — the exact
- * source of truth this was built around: never a price Store retypes,
- * always the most recent actual cost this Part was genuinely received
- * at. Skips any receipt line that was recorded with no cost at all
- * (unitCost is optional on a Goods Receipt), rather than treating a
- * missing cost as if it were genuinely zero. Returns null when the
- * Part has no cost on record at all — a real, honest "we don't know
- * yet" rather than a silent, misleading zero. */
+/** Unit cost from the most recent goods receipt that recorded one, or null
+ * if the part has no cost on record (never zero). */
 export async function getLastKnownUnitCostForPart(partId: string): Promise<number | null> {
   await requireUser();
   await seePart(partId, 'getLastKnownUnitCostForPart');
@@ -870,23 +760,13 @@ export async function getLastKnownUnitCostForPart(partId: string): Promise<numbe
   return line ? Number(line.unitCost) : null;
 }
 
-/** Store's own real action on an estimate — matching a technician's
- * generic request (a PartType, e.g. "Fuel Filter") to the one real,
- * vehicle-fitting catalog Part that actually satisfies it, with the
- * price pulled from that Part's own last real Goods Receipt cost.
- * Never a price Store types in themselves — matches the same
- * "auto-fill, never retype" principle already established for Goods
- * Receipt's own price recording. Lives here in store.ts rather than
- * workshop.ts specifically to avoid a circular import: store.ts
- * already imports auth/audit helpers from workshop.ts, so the
- * dependency only ever needs to run one direction. */
-/** Every Store Part line, across every Job Card at this branch, that's
- * genuinely ready for Store to act on — its estimate has been
- * submitted, but this specific line hasn't been matched to a real
- * catalog Part yet. Includes exactly the vehicle context
- * getFittingPartsForVehicle needs (Make/Model/Engine/Year), so this
- * list can go straight into a matching action without a second
- * lookup. */
+/** Store matching: links a technician's generic request (a PartType) to a
+ * catalogue Part that fits the vehicle, priced from the part's selling
+ * price. Lives here rather than in workshop.ts because store.ts already
+ * imports from workshop.ts; this avoids a circular import. */
+/** Store Part lines at the branch whose estimate has been sent for matching
+ * and that are not matched yet, with the vehicle details the fitment check
+ * needs. */
 export async function listUnmatchedStorePartLines(branchId: string) {
   await requireUser();
   branchId = await branchWithinReach('store.view', branchId);
@@ -894,12 +774,8 @@ export async function listUnmatchedStorePartLines(branchId: string) {
     where: {
       type: 'STORE_PART',
       matchedPartId: null,
-      // DRAFT is included alongside SUBMITTED for the same reason
-      // matching itself now allows it — but matchingRequestedAt not
-      // being null is what actually keeps this queue honest: only
-      // estimates a technician has deliberately asked Store to act
-      // on show up here, not every in-progress draft someone's still
-      // mid-way through building.
+      // DRAFT is allowed (matching must happen before submission), but only
+      // estimates a technician has sent for matching appear here.
       estimate: { status: { in: ['DRAFT', 'SUBMITTED'] }, matchingRequestedAt: { not: null }, jobCard: { branchId } },
     },
     orderBy: { createdAt: 'asc' },
@@ -920,10 +796,7 @@ export async function listUnmatchedStorePartLines(branchId: string) {
   });
 }
 
-/** The same real queue, scoped to exactly one Job Card — what the
- * dedicated per-Job-Card matching page actually uses, so opening one
- * Job Card's own matching doesn't need to fetch (or discard) every
- * other Job Card's own unmatched lines just to show this one. */
+/** listUnmatchedStorePartLines() for a single Job Card. */
 export async function listUnmatchedStorePartLinesForJobCard(jobCardId: string) {
   await requireUser();
   await seeJobCard(jobCardId, 'listUnmatchedStorePartLinesForJobCard');
@@ -940,17 +813,11 @@ export async function listUnmatchedStorePartLinesForJobCard(jobCardId: string) {
   });
 }
 
-/** The real fix for a genuine deadlock: a Store Part line only ever
- * gets a price once Store matches it, but an estimate can't be
- * submitted until every line already has one — so without this,
- * submitting any estimate containing a Store Part was never actually
- * possible. This is the explicit request that opens the door: notifies
- * Store (with only this Job Card's own unmatched lines, never the
- * whole estimate) and lets Supervisor/Technician know submission is on
- * hold until Store is done. Repeatable — a newly-added Store Part line
- * later, or a nudge Store missed, is a legitimate reason to call this
- * again; matchingRequestedAt just gets refreshed, not re-validated
- * against being already set. */
+/** Asks Store to match this Job Card's unmatched Store Part lines.
+ * An estimate cannot be submitted until every line is priced, and Store
+ * Part lines are priced by matching, so this is how a draft gets unblocked.
+ * Notifies Store with this Job Card's lines only. Can be called again;
+ * matchingRequestedAt is refreshed. */
 export async function requestStoreMatching(jobCardId: string, note?: string): Promise<void> {
   const jobCard = await prisma.jobCard.findUnique({
     where: { id: jobCardId },
@@ -968,11 +835,7 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
             select: {
               description: true,
               quantity: true,
-              // Same real preview-only unit already used on the
-              // estimate table itself — the first real active Part
-              // under this Part Type, never a guess, and never
-              // trusted for anything beyond showing Store roughly
-              // what unit to expect before they've actually matched.
+              // Preview only: the unit of the first active part under this type.
               partType: { select: { parts: { where: { isActive: true }, take: 1, select: { baseUnitOfMeasure: true } } } },
             },
           },
@@ -1019,13 +882,13 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
       storeRecipients.set(staffMember.id, staffMember);
     }
     const orgContext = await getStoreOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const portalUrl = portalBaseUrl();
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
 
     for (const recipient of storeRecipients.values()) {
       await sendEmail(
         recipient.email,
-        `Store matching requested — Job Card ${jobCard.jobNumber}`,
+        `Please match parts — Job Card ${jobCard.jobNumber}`,
         renderStoreMatchingRequestedEmail({
           recipientName: recipient.fullName,
           requestedByName: requestedByUser?.fullName ?? 'A team member',
@@ -1051,7 +914,7 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
     for (const recipient of statusRecipients) {
       await sendEmail(
         recipient.email,
-        `Awaiting Store match — Job Card ${jobCard.jobNumber}`,
+        `Waiting for Store to match parts — Job Card ${jobCard.jobNumber}`,
         renderStoreMatchingStatusEmail({
           recipientName: recipient.fullName,
           kind: 'awaiting',
@@ -1067,27 +930,15 @@ export async function requestStoreMatching(jobCardId: string, note?: string): Pr
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Store matching request emails', jobCardId, err);
   }
 }
 
-/** Store's own signal that they're done — the counterpart to
- * requestStoreMatching above. Deliberately requires zero unmatched
- * lines to remain (never a partial "some done" signal, which would
- * just recreate the same ambiguity this whole feature exists to
- * remove) and is itself repeatable, same reasoning as the request
- * side. */
-/** The real notification itself, factored out so it can fire two
- * genuinely different ways: automatically, the instant the last real
- * unmatched Store Part line for a Job Card gets matched (the same
- * "the system notices and acts, nobody has to remember to click
- * anything" pattern already proven for the 70%-payment auto-
- * transition), or — kept for now as a fallback — through the
- * existing manual action. Takes an already-verified actor rather than
- * re-checking Store staff itself, since the automatic path is always
- * called from inside an action that already did that check for its
- * own reason (matching the line itself). */
+/** Store's "matching done" signal. Requires no unmatched lines left.
+ * Repeatable. */
+/** Sends the "matching complete" notification. Called automatically when the
+ * last line is matched, and from the manual action. The caller has already
+ * checked Store permissions. */
 async function sendStoreMatchingCompleteNotification(
   jobCard: {
     id: string;
@@ -1109,8 +960,8 @@ async function sendStoreMatchingCompleteNotification(
 
   try {
     const orgContext = await getStoreOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const portalUrl = portalBaseUrl();
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     const statusRecipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
     const statusRecipients = await prisma.user.findMany({ where: { id: { in: statusRecipientIds } }, select: { fullName: true, email: true } });
     for (const recipient of statusRecipients) {
@@ -1132,20 +983,12 @@ async function sendStoreMatchingCompleteNotification(
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Store matching complete emails', jobCard.id, err);
   }
 }
 
-/**
- * A real, honest check of whether this specific Job Card still has
- * any real Store Part line waiting — the one thing that decides
- * whether Store should stay right here matching the next line, or
- * genuinely be done and sent back out to the general queue. Never
- * trusted from before the match that was just made; always checked
- * fresh, right after, since that match itself might be what just
- * made it false.
- */
+/** Whether the Job Card still has unmatched Store Part lines. Checked fresh
+ * after each match, since that match may have been the last one. */
 export async function jobCardHasUnmatchedStoreParts(jobCardId: string): Promise<boolean> {
   await requireUser();
   await seeJobCard(jobCardId, 'jobCardHasUnmatchedStoreParts');
@@ -1187,13 +1030,8 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
   if (lineItem.type !== 'STORE_PART') {
     throw new StoreActionError('Only a Store Part line can be matched to a catalog Part.');
   }
-  // DRAFT is included deliberately, not just SUBMITTED — a Store Part
-  // line only ever gets a real price once matched, but submission
-  // itself requires every line already priced. Restricting matching
-  // to SUBMITTED-only would make submitting an estimate with any
-  // Store Part in it genuinely impossible: a real deadlock, not just
-  // an inconvenience. Matching has to be allowed to happen first,
-  // before submission, whenever Store Parts are involved.
+  // DRAFT is allowed as well as SUBMITTED: submission requires every line to
+  // be priced, so matching has to be possible before it.
   if (lineItem.estimate.status !== 'DRAFT' && lineItem.estimate.status !== 'SUBMITTED') {
     throw new StoreActionError('This estimate is not currently awaiting Store matching.');
   }
@@ -1212,29 +1050,17 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
   if (part.branchId !== lineItem.estimate.jobCard.branchId) {
     throw new StoreActionError('This Part does not belong to the same branch as this Job Card.');
   }
-  // The one real, deliberate safeguard fitment exists for: a Part
-  // with no fitment rows at all is genuinely treated as universal
-  // (fluids, cleaners, generic consumables — real parts that fit
-  // every vehicle, not an oversight) and always allowed through
-  // untouched, exactly as already documented and displayed on the
-  // Part's own page. A Part that DOES have real fitment rows on
-  // record, though, is a real, discrete component this workshop has
-  // deliberately said only fits specific vehicles — matching it onto
-  // a Job Card whose own vehicle isn't on that list is the exact
-  // real mistake this was built to prevent, so it's a genuine block
-  // here, not just a warning that's easy to click past.
+  // A part with no fitment rows is universal and always allowed. A part with
+  // fitment rows can only be matched to a vehicle on that list; this is a
+  // hard block, not a warning.
   if (part.fitments.length > 0) {
     const vehicle = lineItem.estimate.jobCard.vehicle;
-    // A Job Card whose own vehicle record is missing make/model
-    // entirely can't be checked either way — blocking here would
-    // punish an incomplete vehicle record that was never the Store
-    // operator's own mistake, so this one real case is let through.
+    // Without make/model on the vehicle the check cannot run; let it through
+    // rather than blocking Store for an incomplete vehicle record.
     const canCheck = vehicle?.make && vehicle?.model;
     const fits = !canCheck || part.fitments.some((f: { make: string; model: string | null; engineType: string | null; yearFrom: number | null; yearTo: number | null }) => {
       if (f.make.toLowerCase() !== vehicle!.make!.toLowerCase()) return false;
-      // Null model means "fits every model of this make" — the exact
-      // real fix for a genuine bug where a fitment row could never be
-      // widened back out to this once it had a real model set.
+      // Null model means "fits every model of this make".
       if (f.model && f.model.toLowerCase() !== vehicle!.model!.toLowerCase()) return false;
       if (f.engineType && vehicle!.engineType && f.engineType.toLowerCase() !== vehicle!.engineType.toLowerCase()) return false;
       if (f.engineType && !vehicle!.engineType) return false;
@@ -1247,7 +1073,7 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
     if (!fits) {
       const vehicleLabel = [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(' ') || 'this Job Card\'s own vehicle';
       throw new StoreActionError(
-        `${part.name} is only recorded to fit specific vehicles, and ${vehicleLabel} isn't one of them — this would be the exact real mistake Vehicle Fitment exists to prevent. If this Part genuinely does fit, add ${vehicleLabel} to its Vehicle Fitment list first.`,
+        `${part.name} is only recorded to fit specific vehicles, and ${vehicleLabel} isn't one of them. If it does fit, add ${vehicleLabel} to the part's Vehicle Fitment list first.`,
       );
     }
   }
@@ -1255,43 +1081,31 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
     throw new StoreActionError(`${part.name} is not the requested Part Type for this line.`);
   }
 
-  // The real, deliberately-set customer-facing price — never the raw
-  // Goods Receipt cost. Those are genuinely different numbers for a
-  // genuine reason: cost is what Store paid a supplier, selling price
-  // is what a customer is actually charged, and the gap between them
-  // is the whole business's real margin. No silent fallback to cost
-  // if this isn't set — that would just recreate the exact bug this
-  // was built to fix.
+  // Priced from sellingPrice only, never from receipt cost. No fallback.
   if (part.sellingPrice === null) {
     throw new StoreActionError(`${part.name} has no selling price set yet — set one on the Part's own page before matching.`);
   }
-  // The one real hard-stop the Pricing Command Center enforces, not
-  // just a dashboard warning: a Part currently priced below its own
-  // real cost can never be matched onto a customer's estimate — every
-  // such match would be a genuine, real loss on this specific job,
-  // not a hypothetical one. Resolved (someone actually fixed the
-  // price) or dismissed (a real, deliberate decision to sell at this
-  // price anyway) alerts don't block anything — only a still-open one.
+  // Hard stop: a part with an open CRITICAL_LOSS alert (priced below cost)
+  // cannot be matched onto an estimate. Resolved or dismissed alerts don't block.
   const openCriticalLoss = await prisma.pricingAlert.findFirst({
     where: { partId, severity: 'CRITICAL_LOSS', status: 'OPEN' },
     select: { id: true },
   });
   if (openCriticalLoss) {
-    throw new StoreActionError(`${part.name} is currently priced below its own real cost — resolve the open Pricing Alert on this Part before matching it to an estimate.`);
+    throw new StoreActionError(`${part.name} is priced below cost. Resolve the open Pricing Alert on this part before matching it to an estimate.`);
   }
   const unitPrice = Number(part.sellingPrice);
   const amount = Math.round(unitPrice * lineItem.quantity * 100) / 100;
 
   await prisma.$transaction(async (tx) => {
     // Only while the estimate is still in the status checked above (row
-    // lock + compare-and-set): an approval at the same moment wins and this
-    // match stops, so an approved price can never change underneath.
+    // lock + compare-and-set): a concurrent approval wins and this match stops,
+    // so an approved price never changes underneath.
     claimed(await tx.estimate.updateMany({ where: { id: lineItem.estimate.id, status: lineItem.estimate.status }, data: { status: lineItem.estimate.status } }),
       'This estimate was just approved or changed by someone else — refresh the page.');
     await tx.estimateLineItem.update({
       where: { id: lineItemId },
-      // The real unit, auto-synced from the matched Part's own
-      // baseUnitOfMeasure — the technician never enters it.
+      // Unit always comes from the matched part's base unit.
       data: { matchedPartId: partId, unitPrice, amount, unitOfMeasure: part.baseUnitOfMeasure },
     });
   });
@@ -1303,11 +1117,7 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
     entityId: lineItemId,
     metadata: { partId, partName: part.name, unitPrice, amount },
   });
-  // The real gap this closes: without this second entry, Store's own
-  // matching work never showed up on the Job Card's own timeline at
-  // all — only on the line item's own, effectively invisible record.
-  // Same "one entry against the real entity, one against the Job
-  // Card" pattern already proven throughout the Sourcing module.
+  // Also log against the Job Card so matching shows on its timeline.
   await writeAuditLog({
     userId: user.id,
     action: 'estimate_line.store_matched',
@@ -1316,14 +1126,8 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
     metadata: { partName: part.name, unitPrice, amount },
   });
 
-  // The automatic replacement for what used to be a manual "Notify —
-  // Matching Complete" button — genuinely the same pattern already
-  // proven for the 70%-payment auto-transition: the system notices
-  // the real condition (nothing left unmatched for this estimate) the
-  // instant it becomes true, and acts on it right then, rather than
-  // waiting for someone to remember to click something. Checked fresh
-  // here rather than trusted from before this match, since this
-  // match itself is what might have just made it true.
+  // When nothing is left unmatched, notify automatically. Counted after this
+  // match because this match may have been the last one.
   const remainingUnmatched = await prisma.estimateLineItem.count({
     where: { estimateId: lineItem.estimate.id, type: 'STORE_PART', matchedPartId: null },
   });
@@ -1362,19 +1166,12 @@ export async function getPart(id: string) {
     include: {
       stock: true,
       alternativeUnits: true,
-      // Every batch, not just ones with stock left — a fully sold-out
-      // batch is exactly what the real sales/profit tracking below
-      // needs to show ("how much sold, how much remaining" genuinely
-      // means remaining can be zero), so filtering those out here
-      // would hide the very history this view exists to surface.
+      // Include sold-out batches: the view shows sold vs remaining per delivery.
       batches: {
         orderBy: { receivedAt: 'asc' },
         include: {
           goodsReceiptLine: { select: { unitCost: true, goodsReceipt: { select: { id: true, referenceNumber: true } } } },
-          // Every real draw against this batch — who it actually went
-          // to, via which real request — the direct answer to "which
-          // customer got stock from this delivery" for a warranty or
-          // quality-defect trace.
+          // Who each draw went to and via which request, for warranty/defect traces.
           consumptions: {
             orderBy: { consumedAt: 'desc' },
             include: {
@@ -1394,17 +1191,12 @@ export async function getPart(id: string) {
           },
         },
       },
-      // Every serial, not just the ones still in stock — the same
-      // real reasoning as batches above: a fully issued-out serial is
-      // exactly the kind of real history this tracking view exists to
-      // surface, not something to quietly hide.
+      // Include issued serials, for the same reason as batches.
       serials: {
         orderBy: { receivedAt: 'asc' },
         include: {
           goodsReceiptLine: { select: { unitCost: true, goodsReceipt: { select: { id: true, referenceNumber: true } } } },
-          // Exactly which real request this specific physical unit
-          // was issued out against — the direct answer to "who has
-          // this serial" for a warranty trace.
+          // The request this unit was issued against.
           issuedToSlipLine: {
             select: {
               slip: {
@@ -1421,20 +1213,11 @@ export async function getPart(id: string) {
       },
       fitments: { orderBy: { createdAt: 'asc' } },
       createdBy: { select: { fullName: true } },
-      // Every real delivery, not just the most recent — a
-      // quantity-tracked Part keeps no batch or serial records of its
-      // own, so this is the only real source for "how much has this
-      // Part ever received in total," used alongside the Part's own
-      // current on-hand total to show real sold-to-date/profit
-      // figures even for a tracking type with no per-delivery split.
-      // The most recent one (index 0, since this is already sorted
-      // newest-first) is still what the Selling Price Calculator's
-      // own "Purchase Details" uses, exactly as before.
+      // All deliveries: QUANTITY parts have no batch/serial rows, so this is the
+      // only source for total received. Index 0 (newest) feeds the Selling Price
+      // Calculator's purchase details.
       goodsReceiptLines: { orderBy: { goodsReceipt: { receivedAt: 'desc' } }, include: { goodsReceipt: { select: { id: true, referenceNumber: true, receivedAt: true } } } },
-      // A QUANTITY-tracked Part's own real "who took what" trail —
-      // the same real answer batches/serials give above, for the one
-      // tracking type that otherwise has no per-delivery structure at
-      // all to hang it on.
+      // "Who took what" for QUANTITY parts.
       quantityConsumptions: {
         orderBy: { consumedAt: 'desc' },
         include: {
@@ -1457,9 +1240,8 @@ export async function getPart(id: string) {
   if (!part) return null;
   // A part outside the person's reach is shown exactly like one that does not exist.
   if (!(await canSeeRecord('store.view', { branchId: part.branchId }, `Part:${id}`))) return null;
-  // QUANTITY parts: every delivery as a FIFO layer — what each still
-  // holds, which one is being sold from now, and which delivery every
-  // release drew from. The same engine the release itself uses.
+  // QUANTITY parts: each delivery as a FIFO layer (remaining, currently
+  // selling, and which delivery each release drew from). Same engine as releases.
   const quantityTrace = part.trackingType === 'QUANTITY' ? ((await loadQuantityTraces([part.id])).get(part.id) ?? null) : null;
   return { ...part, quantityTrace };
 }
@@ -1468,21 +1250,14 @@ export type GoodsReceiptLineInput = {
   partId: string;
   quantityReceivedInUnit: number;
   unitUsed: string;
-  // The real, primary figure Store actually knows and enters — what
-  // the whole delivery cost, in whatever unit it was received in
-  // (e.g. "₦650,000 for the 1 Drum received"), not a per-unit price
-  // nobody has to hand-calculate first. Required now, not optional —
-  // a Goods Receipt with no cost on record was never genuinely
-  // useful for anything downstream (pricing, valuation), so making
-  // it optional just meant catching the gap later instead of now.
+  // Total cost of the delivery in the unit received (e.g. ₦650,000 for one
+  // drum). Required: pricing and valuation depend on it.
   totalCost: number;
   /** Required, and only meaningful, for a BATCH-tracked part. */
   batchNumber?: string;
-  /** Required, and only meaningful, for a SERIALIZED part — one entry per
-   * physical unit received; its length is the real received quantity for
-   * that case, not quantityReceivedInUnit (which still carries whatever
-   * the storekeeper typed, for the record, but the serials are the
-   * source of truth for how many units this line actually represents). */
+  /** Required, and only meaningful, for a SERIALIZED part: one entry per unit.
+   * The serial count is the received quantity; quantityReceivedInUnit is kept
+   * as typed. */
   serialNumbers?: string[];
 };
 
@@ -1494,12 +1269,8 @@ export type RecordGoodsReceiptInput = {
   lines: GoodsReceiptLineInput[];
 };
 
-/** The real-time counterpart to recordGoodsReceipt's own server-side
- * duplicate check — a serial number is meant to be a genuine,
- * permanent, one-of-a-kind identity for a single physical unit,
- * checked against every serial ever recorded for any Part, so an
- * operator sees the real problem the moment they type it, not only
- * after submitting the whole form and getting a rejection back. */
+/** Live duplicate check for the receipt form. Serial numbers are unique
+ * across all parts; recordGoodsReceipt enforces the same rule. */
 export async function checkSerialNumberExists(serialNumber: string): Promise<boolean> {
   await requireUser();
   // Only for the people who receive goods (serials are unique platform-wide).
@@ -1510,14 +1281,9 @@ export async function checkSerialNumberExists(serialNumber: string): Promise<boo
   return existing !== null;
 }
 
-/** Records a delivery of stock arriving into the store. Converts each
- * line's entered quantity into the part's own base unit before touching
- * stock — the same drum-to-liters conversion this was designed around —
- * and updates the tracking-type-appropriate stock representation (a
- * batch row, individual serial rows, or just the running total) plus the
- * always-current PartStock aggregate, all inside one transaction so a
- * partial failure can never leave stock and the receipt record
- * disagreeing with each other. */
+/** Records a delivery. Converts each line to the part's base unit, then
+ * updates the batch, serial or quantity records plus PartStock in one
+ * transaction, so stock and the receipt never disagree. */
 export async function recordGoodsReceipt(input: RecordGoodsReceiptInput): Promise<{ id: string; referenceNumber: string }> {
   const user = await requireStoreStaff(input.branchId, 'store.grn.record');
   try {
@@ -1564,17 +1330,10 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
   if (parts.length !== partIds.length) {
     throw new StoreActionError('One of the parts on this delivery is not in this branch\'s catalogue — refresh the page and choose it again.');
   }
-  // Derived from `parts`'s own real, Prisma-inferred type — not a
-  // hand-written approximation. That distinction matters concretely:
-  // an earlier version of this exact line declared conversionFactor as
-  // `number`, which is how it's actually *used* (via Number(...)), but
-  // its real type here is Prisma's own Decimal — a mismatch the real
-  // compiler correctly rejected even though it looked reasonable.
+  // Typed from `parts`: conversionFactor is a Prisma Decimal, not a number.
   const partById = new Map<string, (typeof parts)[number]>(parts.map((p) => [p.id, p]));
 
-  // Validated up front, before any writes — every line must resolve to a
-  // real conversion and satisfy its tracking type's own requirement,
-  // or nothing in this receipt is recorded at all.
+  // Validate every line before writing anything; one bad line rejects the receipt.
   const resolvedLines = input.lines.map((line) => {
     const part = partById.get(line.partId);
     if (!part) {
@@ -1586,12 +1345,8 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
     if (!(line.totalCost > 0)) {
       throw new StoreActionError(`Total Cost must be greater than zero for ${part.name}.`);
     }
-    // The one, real cost figure that's never subject to a round-trip
-    // precision loss — it's exactly what was typed, the total for the
-    // whole delivery. Everything else (a per-unit cost in whatever
-    // unit was actually used, and the per-base-unit cost used for
-    // pricing math) is derived FROM this, once, and never the other
-    // way around.
+    // The total as typed is the source of truth. Per-unit and per-base-unit
+    // costs are derived from it once, never the other way round.
     const unitCostAsEntered = line.totalCost / line.quantityReceivedInUnit;
     let quantityInBaseUnit: number;
     let unitCostInBaseUnit: number;
@@ -1605,22 +1360,12 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
       }
       const conversionFactor = Number(altUnit.conversionFactor);
       quantityInBaseUnit = line.quantityReceivedInUnit * conversionFactor;
-      // The real fix for a genuine bug: cost is always entered for
-      // the unit actually picked (e.g. "₦650,000 for the Drum
-      // received"), but stock — and every later price computed from
-      // it — is always tracked in the base unit (Liters). Storing the
-      // Drum price as if it were already a per-Liter price meant
-      // Store matching would later multiply a customer's real Liter
-      // quantity by a cost meant for a whole 205L Drum, producing
-      // wildly wrong estimate totals. Converting here, once, at the
-      // moment of entry, is what keeps unitCost and quantityInBaseUnit
-      // in the same real unit from here on.
+      // Stock and prices are tracked per base unit (e.g. litres), so convert the
+      // per-entered-unit cost (e.g. per drum) here. Storing a drum price as a
+      // per-litre price would inflate every estimate priced from it.
       unitCostInBaseUnit = Math.round((unitCostAsEntered / conversionFactor) * 1_000_000) / 1_000_000;
     }
-    // Rounded once, at the very end, purely for storage/display — the
-    // real value used throughout this function is still the exact
-    // line.totalCost the user actually typed, never recomputed from
-    // anything derived above.
+    // Rounded for storage only; the calculations above use the typed value.
     const totalCost = Math.round(line.totalCost * 100) / 100;
 
     if (part.trackingType === 'BATCH' && !line.batchNumber?.trim()) {
@@ -1635,9 +1380,8 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
       if (uniqueSerials.size !== serials.length) {
         throw new StoreActionError(`Duplicate serial numbers entered for ${part.name}.`);
       }
-      // The real guarantee, not just the client-side hint — a
-      // serialized part's real quantity IS its serial count, so these
-      // two numbers disagreeing is never a valid receipt to record.
+      // A serialized part's quantity is its serial count; reject a mismatch
+      // server-side, not just in the form.
       if (serials.length !== line.quantityReceivedInUnit) {
         throw new StoreActionError(
           `${part.name}: ${pluralize(serials.length, 'serial number')} entered, but quantity received was ${line.quantityReceivedInUnit}. These must match exactly.`,
@@ -1648,13 +1392,7 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
     return { ...line, part, quantityInBaseUnit, unitCostInBaseUnit, totalCost };
   });
 
-  // Global, not just within this one receipt — a serial number is
-  // meant to be a real, permanent, one-of-a-kind identity for a
-  // single physical unit across the entire catalog, not just unique
-  // within whatever happened to be typed on this one form. Checked
-  // against every serial ever recorded for any Part, not just this
-  // one — the same real mistake (re-using a serial by accident) is
-  // just as wrong whether it collides with a Tyre or a Rim.
+  // Serials are unique across every part, not just within this receipt.
   const allNewSerials = resolvedLines.flatMap((line) => (line.serialNumbers ?? []).map((s) => s.trim()).filter(Boolean));
   if (allNewSerials.length > 0) {
     const existingMatches = await prisma.partSerial.findMany({
@@ -1669,13 +1407,8 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
 
   let referenceNumber = '';
 
-  // The real, most recent prior cost on record for each real Part in
-  // this receipt — fetched once, up front, purely for the Pricing
-  // Command Center's own historical context on whatever alert gets
-  // raised below (what cost was this actually compared against
-  // before). A Part with no earlier delivery at all genuinely has no
-  // real prior cost — stays unset rather than a fabricated "0" or a
-  // copy of the new cost.
+  // Previous cost per part, for the context shown on any pricing alert raised
+  // below. A part with no earlier delivery has no prior cost (left unset).
   const priorLines = await prisma.goodsReceiptLine.findMany({
     where: { partId: { in: partIds } },
     orderBy: { goodsReceipt: { createdAt: 'desc' } },
@@ -1688,10 +1421,8 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
     }
   }
 
-  // Collected here, sent only after the transaction genuinely
-  // commits — a real, immediate email about a Pricing Alert that
-  // then rolled back would be a real, honest lie. Never sent from
-  // inside the transaction itself for exactly that reason.
+  // Emails are sent after the transaction commits, never inside it, so an
+  // alert that rolls back is never announced.
   const newAlertsForEmail: {
     partId: string;
     partName: string;
@@ -1759,11 +1490,8 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
         create: { partId: line.partId, quantityOnHand: line.quantityInBaseUnit, quantityReserved: 0 },
       });
 
-      // Pricing Command Center — auto-compared right here, the exact
-      // real moment a genuinely new cost is recorded, on every real
-      // Goods Receipt line. Silently skipped whenever the Part hasn't
-      // had a real sellingPrice AND a real targetMarginPercent set
-      // yet — nothing to genuinely compare against, not a problem.
+      // Pricing Command Center: compare the new cost against the part's target
+      // margin. Skipped when the part has no selling price or target margin yet.
       if (line.part.sellingPrice !== null && line.part.targetMarginPercent !== null) {
         const sellingPrice = Number(line.part.sellingPrice);
         const targetMarginPercent = Number(line.part.targetMarginPercent);
@@ -1817,15 +1545,8 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
     metadata: { referenceNumber, supplierName, lineCount: resolvedLines.length },
   });
 
-  // Confirms what was recorded to the person who recorded it (a real
-  // written record, same reasoning every other "recorded" email in
-  // this project already follows) and their Store Manager, so stock
-  // arriving is never something a Manager only discovers by checking
-  // the catalog themselves. One email per line — matches the current
-  // single-line-per-receipt form exactly; if a future multi-line form
-  // ever submits several lines in one call, this sends one email per
-  // line rather than a combined summary, a known, honest limitation
-  // of the current single-part-focused template.
+  // Confirm the receipt to the person who recorded it and the Store Manager.
+  // One email per line (the form currently submits one line per receipt).
   try {
     const [recordedByUser, orgContext, storeManagers] = await Promise.all([
       prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true, email: true } }),
@@ -1833,8 +1554,8 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
       listEligibleStoreManagersForBranch(input.branchId),
     ]);
     if (recordedByUser) {
-      const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+      const websiteUrl = websiteBaseUrl();
+      const portalUrl = portalBaseUrl();
       const recipients = [...new Set([recordedByUser.email, ...storeManagers.staff.map((m) => m.email)])];
       for (const line of resolvedLines) {
         const html = renderStaffGoodsReceiptRecordedEmail({
@@ -1848,26 +1569,20 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
           serialNumbers: line.part.trackingType === 'SERIALIZED' ? (line.serialNumbers ?? []).map((s) => s.trim()).filter(Boolean) : undefined,
           notes: input.notes?.trim() || undefined,
           dashboardUrl: `${portalUrl}/inventory/parts/${line.partId}`,
-          logoUrl: `${websiteUrl}/images/logo/logo.png`,
+          logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
         });
         for (const to of recipients) {
-          await sendEmail(to, `Goods receipt recorded — ${referenceNumber}`, html);
+          await sendEmail(to, `Goods receipt ${referenceNumber} recorded — ${line.part.name}`, html);
         }
       }
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send goods-receipt notification email', receipt.id, err);
   }
 
-  // The real, immediate first notice for any genuinely new Pricing
-  // Alert this delivery just raised — a real, separate email from the
-  // one above (that one confirms a delivery happened; this one flags
-  // a real pricing situation that needs a human decision), sent to
-  // the same real Store audience. Never blocks the receipt itself if
-  // sending fails.
+  // Separate email for any new pricing alerts. Failures never block the receipt.
   if (newAlertsForEmail.length > 0) {
     try {
       const [orgContext, officers, managers] = await Promise.all([
@@ -1879,8 +1594,8 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
       for (const staffMember of [...officers.staff, ...managers.staff]) {
         recipients.set(staffMember.id, staffMember);
       }
-      const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-      const logoUrl = `${portalUrl}/images/logo/logo.png`;
+      const portalUrl = portalBaseUrl();
+      const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
       const formatNairaForAlert = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       for (const alert of newAlertsForEmail) {
         const recommendedPrice = roundedPriceForTargetMargin(alert.newUnitCost, alert.targetMarginPercent);
@@ -1904,11 +1619,10 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
             companyName: orgContext.companyName,
             branchName: orgContext.branchName,
           });
-          await sendEmail(recipient.email, `${alert.severity === 'CRITICAL_LOSS' ? 'Critical Loss' : alert.severity === 'DEFICIT' ? 'Margin Deficit' : 'Margin Boost'} — ${alert.partName}`, html);
+          await sendEmail(recipient.email, `Pricing alert: ${alert.severity === 'CRITICAL_LOSS' ? 'selling below cost' : alert.severity === 'DEFICIT' ? 'below target margin' : 'above target margin'} — ${alert.partName}`, html);
         }
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
       logFailure('Failed to send pricing-alert-raised emails', receipt.id, err);
     }
   }
@@ -1917,36 +1631,34 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
 }
 
 // ----------------------------------------------------------------------------
-// PRICING COMMAND CENTER — real alerts auto-raised on every Goods Receipt
-// (see recordGoodsReceipt), listed, resolved, dismissed, or acted on here.
+// Pricing Command Center: alerts raised by recordGoodsReceipt, listed,
+// resolved, dismissed or acted on here.
 // ----------------------------------------------------------------------------
 
 export type PricingAlertSummary = {
   openBySeverity: { CRITICAL_LOSS: number; DEFICIT: number; BOOST: number };
-  // The real, honest sum of what a genuine loss actually costs — every
-  // open CRITICAL_LOSS alert's own real per-unit shortfall, multiplied
-  // by however much of that Part is genuinely sitting in stock right
-  // now. Not a projection of future sales, since no one can honestly
-  // know those — just the real, current exposure if today's stock
-  // sold at today's price.
+  // Sum over open CRITICAL_LOSS alerts of (per-unit shortfall × stock on hand):
+  // the loss if today's stock sold at today's price.
   criticalLossExposure: number;
-  // The real, honest average of how far every open DEFICIT alert's
-  // own actual margin sits below its own real target — never a
-  // single global number pretending every Part has the same target,
-  // since they genuinely don't.
+  // Average gap between actual and target margin across open DEFICIT alerts
+  // (each part has its own target).
   averageDeficitGapPercent: number | null;
-  // Real Parts with more than one open alert right now — the ones
-  // worth a genuine, deliberate look rather than a one-off delivery
-  // price swing.
+  // Parts with more than one open alert: a pattern, not a one-off price swing.
   partsWithMultipleOpenAlerts: { partId: string; partName: string; openCount: number }[];
 };
 
-/** The real, honest analysis behind the Pricing Command Center's own
- * dashboard — computed fresh from whatever's genuinely open right
- * now, never a stored, potentially-stale snapshot. */
+/** The permission that lets this person see delivery costs and margins
+ * (goods receipts, pricing alerts) — the first they hold, or one they do not
+ * hold, so the check refuses. */
+async function costKey(): Promise<PermissionKey> {
+  for (const k of STORE_COST_PERMISSIONS) if (await allows(k)) return k;
+  return STORE_COST_PERMISSIONS[0]!;
+}
+
+/** Pricing Command Center summary, computed from currently open alerts. */
 export async function getPricingAlertSummary(branchId: string): Promise<PricingAlertSummary> {
   await requireUser();
-  branchId = await branchWithinReach('store.view', branchId);
+  branchId = await branchWithinReach(await costKey(), branchId);
   const openAlerts = await prisma.pricingAlert.findMany({
     where: { status: 'OPEN', part: { branchId } },
     select: {
@@ -1998,7 +1710,7 @@ export async function getPricingAlertSummary(branchId: string): Promise<PricingA
 
 export async function listPricingAlerts(branchId: string, filter?: { severity?: string; status?: string }) {
   await requireUser();
-  branchId = await branchWithinReach('store.view', branchId);
+  branchId = await branchWithinReach(await costKey(), branchId);
   return prisma.pricingAlert.findMany({
     where: {
       part: { branchId },
@@ -2014,11 +1726,8 @@ export async function listPricingAlerts(branchId: string, filter?: { severity?: 
   });
 }
 
-/** A real, deliberate decision that the current price is fine as it
- * stands — genuinely different from RESOLVED below, which means the
- * price actually changed in response. Requires a real reason, the
- * same "never a silent decision" standard already used for a
- * cancellation or a rework. */
+/** Keeps the current price. Different from RESOLVED, which means the price
+ * changed. A reason is required. */
 export async function dismissPricingAlert(alertId: string, notes: string): Promise<void> {
   const alert = await prisma.pricingAlert.findUnique({ where: { id: alertId }, select: { status: true, part: { select: { branchId: true, name: true } } } });
   if (!alert) {
@@ -2029,7 +1738,7 @@ export async function dismissPricingAlert(alertId: string, notes: string): Promi
   }
   const trimmedNotes = notes.trim();
   if (!trimmedNotes) {
-    throw new StoreActionError('A real reason is required to dismiss a pricing alert.');
+    throw new StoreActionError('A reason is required to dismiss a pricing alert.');
   }
   const user = await requireStoreStaff(alert.part.branchId, 'store.parts.manage');
   claimed(await prisma.pricingAlert.updateMany({ where: { id: alertId, status: 'OPEN' },
@@ -2038,12 +1747,8 @@ export async function dismissPricingAlert(alertId: string, notes: string): Promi
   await writeAuditLog({ userId: user.id, action: 'pricing_alert.dismissed', entityType: 'PricingAlert', entityId: alertId, metadata: { partName: alert.part.name, notes: trimmedNotes } });
 }
 
-/** The real "Pricing Action Advisor" one-click move — sets
- * sellingPrice to exactly what's needed to hold the same real target
- * margin against the new cost this alert was raised over, using the
- * standard real formula (price = cost ÷ (1 − target÷100)), then marks
- * the alert genuinely resolved, not just dismissed, since the price
- * itself actually changed. */
+/** Sets the selling price to hold the target margin against the alert's new
+ * cost (price = cost ÷ (1 − target/100)) and marks the alert resolved. */
 export async function syncPartPriceToTargetMargin(alertId: string): Promise<void> {
   const alert = await prisma.pricingAlert.findUnique({
     where: { id: alertId },
@@ -2084,13 +1789,7 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
     metadata: { name: alert.part.name, from: previousSellingPrice, to: newSellingPrice, viaPricingAlert: alertId },
   });
 
-  // Real notification that price genuinely changed — the same
-  // real email setPartSellingPrice's own manual-edit path already
-  // sends, since this is genuinely the same kind of event (a Part's
-  // selling price actually changed), just reached through a
-  // different real path (a Pricing Alert's own "Sync Price" action,
-  // not a manual edit). Never blocks the price change itself if it
-  // fails.
+  // Same email as a manual price change. Failures never block the change.
   try {
     const part = await prisma.part.findUnique({ where: { id: alert.part.id }, select: { baseUnitOfMeasure: true } });
     const [officers, managers, syncedByUser] = await Promise.all([
@@ -2103,8 +1802,8 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
       recipients.set(staffMember.id, staffMember);
     }
     const orgContext = await getStoreOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
-    const logoUrl = `${portalUrl}/images/logo/logo.png`;
+    const portalUrl = portalBaseUrl();
+    const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
     for (const recipient of recipients.values()) {
       await sendEmail(
         recipient.email,
@@ -2116,13 +1815,8 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
           baseUnitOfMeasure: part?.baseUnitOfMeasure ?? '',
           previousSellingPrice,
           newSellingPrice,
-          // Genuinely null here, not a fabricated insight — this
-          // function only ever has the alert's own stored snapshot
-          // (cost, price, margin), not the full quantity/revenue
-          // context setPartSellingPrice's own manual-edit path has
-          // available. The template already handles a null margin
-          // insight gracefully; passing the bare target margin number
-          // here instead would have been the wrong shape entirely.
+          // The alert only stores cost, price and margin, not the quantity/revenue
+          // context of a manual edit; the template handles a null insight.
           margin: null,
           targetMarginPercent: targetMargin,
           partUrl: `${portalUrl}/inventory/parts/${alert.part.id}`,
@@ -2134,14 +1828,13 @@ export async function syncPartPriceToTargetMargin(alertId: string): Promise<void
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send price-sync notification emails', alert.part.id, err);
   }
 }
 
 export async function listGoodsReceipts(branchId: string) {
   await requireUser();
-  branchId = await branchWithinReach('store.view', branchId);
+  branchId = await branchWithinReach(await costKey(), branchId);
   return prisma.goodsReceipt.findMany({
     take: 500, // newest 500; search reaches older records
     where: { branchId },
@@ -2172,9 +1865,7 @@ export async function getGoodsReceipt(id: string) {
               partNumber: true,
               baseUnitOfMeasure: true,
               trackingType: true,
-              // The Part's own FIFO "selling now" batch — the oldest one
-              // still holding stock — so a line can say whether it's the
-              // delivery currently being sold from.
+              // The part's FIFO "selling now" batch (oldest with stock left).
               batches: { where: { remainingQuantity: { gt: 0 } }, orderBy: { receivedAt: 'asc' }, take: 1, select: { id: true } },
             },
           },
@@ -2198,7 +1889,7 @@ export async function getGoodsReceipt(id: string) {
     },
   });
   if (!receipt) return null;
-  if (!(await canSeeRecord('store.view', { branchId: receipt.branchId }, `GoodsReceipt:${id}`))) return null;
+  if (!(await canSeeRecord(await costKey(), { branchId: receipt.branchId }, `GoodsReceipt:${id}`))) return null;
   // Forward trace, QUANTITY parts — the same FIFO engine as releases.
   const quantityTraces = await loadQuantityTraces(
     receipt.lines.filter((l: (typeof receipt.lines)[number]) => l.part.trackingType === 'QUANTITY').map((l: (typeof receipt.lines)[number]) => l.partId),
@@ -2210,42 +1901,35 @@ export async function getGoodsReceiptAuditTrail(goodsReceiptId: string) {
   await requireUser();
   const owner = await prisma.goodsReceipt.findUnique({ where: { id: goodsReceiptId }, select: { branchId: true } });
   if (!owner) return [];
-  await seeBranch('store.view', owner.branchId, 'getGoodsReceiptAuditTrail');
+  await seeBranch(await costKey(), owner.branchId, 'getGoodsReceiptAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'GoodsReceipt', entityId: goodsReceiptId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: 50,
   });
   const userIds = [...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id)))];
   const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } });
   const userById = new Map(users.map((u: (typeof users)[number]) => [u.id, u.fullName]));
-  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? (userById.get(e.userId) ?? 'Unknown') : 'System' }));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(userById.get(e.userId) ?? 'Unknown', e.metadata) : 'System' }));
 }
 
-/** Mirrors getGoodsReceiptAuditTrail() exactly — the same real gap it
- * closed applies here too: without this, every selling-price decision
- * (and any future Part edit) would have a real audit_log row sitting
- * in the database with nobody ever able to actually see it on the
- * Part's own page. */
+/** Audit entries for a part (same shape as getGoodsReceiptAuditTrail()). */
 export async function getPartAuditTrail(partId: string) {
   await requireUser();
   await seePart(partId, 'getPartAuditTrail');
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'Part', entityId: partId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: 50,
   });
   const userIds = [...new Set(entries.map((e: (typeof entries)[number]) => e.userId).filter((id: string | null): id is string => Boolean(id)))];
   const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } });
   const userById = new Map(users.map((u: (typeof users)[number]) => [u.id, u.fullName]));
-  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? (userById.get(e.userId) ?? 'Unknown') : 'System' }));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(userById.get(e.userId) ?? 'Unknown', e.metadata) : 'System' }));
 }
 
-/** Notifies every real Store Officer/Manager at the branch whenever a
- * recorded Goods Receipt is edited — deliberately more visible than a
- * quiet audit-log-only trail, since this is genuinely delicate: it's
- * a real historical financial record, and anyone editing it should
- * know Store itself is watching, not just a log nobody reads. */
+/** Tells the branch's Store staff when a recorded goods receipt is edited.
+ * Receipts are financial records, so edits are announced, not just logged. */
 async function notifyStoreOfGoodsReceiptEdit(branchId: string, editedByName: string, referenceNumber: string, changeSummary: string): Promise<void> {
   try {
     const [officers, managers] = await Promise.all([listEligibleStoreOfficersForBranch(branchId), listEligibleStoreManagersForBranch(branchId)]);
@@ -2254,18 +1938,18 @@ async function notifyStoreOfGoodsReceiptEdit(branchId: string, editedByName: str
       recipients.set(staffMember.id, staffMember);
     }
     const orgContext = await getStoreOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     for (const recipient of recipients.values()) {
       await sendEmail(
         recipient.email,
-        `Goods Receipt edited — ${referenceNumber}`,
+        `Goods receipt edited — ${referenceNumber}`,
         renderGoodsReceiptEditedEmail({
           recipientName: recipient.fullName,
           editedByName,
           referenceNumber,
           changeSummary,
           goodsReceiptUrl: `${portalUrl}/inventory/goods-receipts`,
-          logoUrl: `${portalUrl}/images/logo/logo.png`,
+          logoUrl: `${portalUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,
           departmentName: orgContext.departmentName,
@@ -2273,16 +1957,12 @@ async function notifyStoreOfGoodsReceiptEdit(branchId: string, editedByName: str
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send Goods Receipt edit notification emails', referenceNumber, err);
   }
 }
 
-/** Editing only the header — Supplier and Notes — deliberately never
- * quantity, unit, or which Part: those are real physical facts about
- * what arrived, and correcting them safely would need real stock
- * reconciliation this doesn't attempt. Supplier and Notes are safe:
- * pure record-keeping, no effect on stock or price. */
+/** Edits supplier and notes only. Quantity, unit and part are physical facts
+ * and changing them would need stock reconciliation. */
 export async function updateGoodsReceipt(id: string, input: { supplierName: string; notes?: string }): Promise<void> {
   const receipt = await prisma.goodsReceipt.findUnique({ where: { id }, select: { branchId: true, referenceNumber: true, supplierName: true, notes: true } });
   if (!receipt) {
@@ -2301,19 +1981,13 @@ export async function updateGoodsReceipt(id: string, input: { supplierName: stri
     entityId: id,
     metadata: { from: { supplierName: receipt.supplierName, notes: receipt.notes }, to: { supplierName, notes: input.notes } },
   });
-  // requireStoreStaff() only guarantees `{ id }` in its own declared
-  // type — the real name for the email has to be looked up
-  // separately, not assumed to already be on hand.
+  // requireStoreStaff() returns only the id; look up the name for the email.
   const editedByUser = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
   await notifyStoreOfGoodsReceiptEdit(receipt.branchId, editedByUser?.fullName ?? 'A team member', receipt.referenceNumber, `Supplier/notes updated (was "${receipt.supplierName}")`);
 }
 
-/** The one field this whole page really exists for — correcting a
- * mistyped cost, entered in the exact same unit the line was
- * originally recorded in (e.g. "per Drum"), then re-converted to the
- * Part's own base-unit cost the same way recordGoodsReceipt() already
- * does it — never re-introducing the raw-unit-mismatch bug this
- * whole delivery started with. */
+/** Corrects a mistyped cost, entered per the line's original unit, and
+ * converts it to the base-unit cost the same way recordGoodsReceipt() does. */
 export async function updateGoodsReceiptLineCost(lineId: string, newUnitCostAsEntered: number): Promise<void> {
   const line = await prisma.goodsReceiptLine.findUnique({
     where: { id: lineId },
@@ -2342,11 +2016,8 @@ export async function updateGoodsReceiptLineCost(lineId: string, newUnitCostAsEn
     }
     unitCostInBaseUnit = Math.round((newUnitCostAsEntered / Number(altUnit.conversionFactor)) * 1_000_000) / 1_000_000;
   }
-  // The real, exact total — computed directly from what was actually
-  // entered here (newUnitCostAsEntered × the quantity in that same
-  // unit), never re-derived from the imprecise per-base-unit figure
-  // above. The same fix as recordGoodsReceipt's own totalCost, kept
-  // consistent through every later correction too.
+  // Total from the entered cost × entered quantity, not from the rounded
+  // base-unit cost.
   const totalCost = Math.round(newUnitCostAsEntered * Number(line.quantityReceivedInUnit) * 100) / 100;
   const previousCost = line.unitCost;
   const previousTotalCost = line.totalCost;
@@ -2370,15 +2041,12 @@ export async function updateGoodsReceiptLineCost(lineId: string, newUnitCostAsEn
     line.part.branchId,
     editedByUser?.fullName ?? 'A team member',
     line.goodsReceipt.referenceNumber,
-    `${line.part.name}'s cost corrected to ${newUnitCostAsEntered} per ${line.unitUsed} — real total now ₦${totalCost.toLocaleString('en-NG')}`,
+    `${line.part.name}'s cost corrected to ${newUnitCostAsEntered} per ${line.unitUsed} — total now ₦${totalCost.toLocaleString('en-NG')}`,
   );
 }
 
-/**
- * Set (or clear) a part's reorder point and safety stock — typically by
- * applying the analytics suggestion. Safety stock can't exceed the reorder
- * point. Audited with before → after.
- */
+/** Sets or clears a part's reorder point and safety stock. Safety stock
+ * cannot exceed the reorder point. Audited with before and after. */
 export async function setPartStockLevels(partId: string, reorderPoint: number | null, safetyStock: number | null): Promise<void> {
   const part = await prisma.part.findUnique({ where: { id: partId }, select: { branchId: true, name: true, reorderPoint: true, safetyStock: true } });
   if (!part) throw new StoreActionError('Part not found.');

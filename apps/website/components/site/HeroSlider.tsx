@@ -1,5 +1,6 @@
 'use client';
 
+import { siteConfig } from '@/lib/site-config';
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -24,7 +25,7 @@ interface Slide {
   secondaryCtaKey?: TranslationKey;
   primaryHref: string;
   secondaryHref: string;
-  // Slide 3 only — left hardcoded per "leave slide three exactly as it is".
+  // Slide 3 uses fixed (untranslated) copy instead of translation keys.
   hardcoded?: { eyebrow: string; headline: string; subheading: string; primaryCta: string; secondaryCta: string };
 }
 
@@ -106,7 +107,7 @@ export function HeroSlider() {
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
       aria-roledescription="carousel"
-      aria-label="Kewalram Chanrai Group highlights"
+      aria-label={`${siteConfig.organisationName} highlights`}
     >
       <AnimatePresence mode="wait">
         <motion.div

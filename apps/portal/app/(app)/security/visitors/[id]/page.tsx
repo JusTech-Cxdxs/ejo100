@@ -12,6 +12,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { VISIT_STATUS_LABEL, VEHICLE_TYPE_LABEL, durationText, minutesBetween, visitOverdueMinutes } from '@/lib/security-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { allows } from '@/lib/authz/server';
 
 const DONE: Record<string, string> = {
   registered: 'Visit booked — Security will see it under Expected today. ID and vehicle are taken when they arrive.',
@@ -29,7 +30,7 @@ const EXTRA = [15, 30, 60, 90, 120, 180, 240];
 export default async function VisitPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
   const { id } = await params;
   const { status, error } = await searchParams;
-  const [v, roles, history] = await Promise.all([getVisit(id), getSecurityRoles(), getSecurityHistory('Visit', id)]);
+  const [v, roles, history, desk] = await Promise.all([getVisit(id), getSecurityRoles(), getSecurityHistory('Visit', id), allows('security.view')]);
   if (!v) notFound();
   const isHost = v.host.id === roles.userId;
   const stayed = minutesBetween(v.checkedInAt, v.checkedOutAt);
@@ -42,7 +43,7 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
 
   return (
     <div className="p-4 sm:p-8">
-      <BackLink href="/security/visitors" label="Back to Visitors" className="mb-4" />
+      {desk ? <BackLink href="/security/visitors" label="Back to Visitors" className="mb-4" /> : <BackLink href="/security/my-visitors" label="Back to My visitors" className="mb-4" />}
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <PageTitle icon="badge">{v.visitorName}</PageTitle>
@@ -50,7 +51,7 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
         </div>
         <StatusChip status={v.status} label={VISIT_STATUS_LABEL[v.status]} className="px-3 py-1 text-sm" />
       </div>
-      <SecurityNav active="/security/visitors" />
+      <SecurityNav active={desk ? '/security/visitors' : '/security/my-visitors'} />
       {status && DONE[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={DONE[status]!} /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       {overdue > 0 ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={`Over the expected stay by ${durationText(overdue)} — the Chief Security Officer has been told.`} /></div> : null}
@@ -83,7 +84,7 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
               <SubmitButton label="Check in and issue pass" pendingLabel="Checking in…" className={btn} />
             </form>
           ) : null}
-          {v.status === 'EXPECTED' && (roles.isFrontDesk || isHost || v.registeredById === roles.userId) ? (
+          {v.status === 'EXPECTED' && roles.isFrontDesk && desk ? (
             <LoadingLink href={`/security/visitors/${v.id}/edit`} className={`inline-block ${line}`}>Edit booking</LoadingLink>
           ) : null}
           {v.status === 'EXPECTED' && !roles.isGate ? <p className="text-sm text-[var(--ejo-text-muted)]">Security checks the visitor in at the gate.</p> : null}

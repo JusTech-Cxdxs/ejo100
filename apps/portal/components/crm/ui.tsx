@@ -27,10 +27,10 @@ export function Kpi({ icon, label, value, format = 'number', hint, tone, href, d
         <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">{label}</p>
         <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--ejo-bg)] ${colour}`}><CrmIcon name={icon} size={16} /></span>
       </div>
-      <p className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">
+      <div className="@container mt-1"><p className="break-words text-[clamp(0.875rem,12.5cqi,1.5rem)] font-bold text-[var(--ejo-text)]">
         {value === null ? '—' : format === 'days' ? <><CountUp value={value} /> <span className="text-sm font-medium text-[var(--ejo-text-muted)]">{value === 1 ? 'day' : 'days'}</span></> : <CountUp value={value} format={format === 'naira' ? 'naira' : 'number'} />}
-      </p>
-      {hint ? <p className="mt-0.5 truncate text-xs text-[var(--ejo-text-muted)]">{hint}</p> : null}
+      </p></div>
+      {hint ? <p className="mt-0.5 break-words text-xs text-[var(--ejo-text-muted)]">{hint}</p> : null}
     </>
   );
   const cls = 'ejo-rise block min-w-0 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-4 py-3 transition duration-200 hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none';

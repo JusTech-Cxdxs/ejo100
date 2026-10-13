@@ -1,19 +1,15 @@
 import type { BrandingTokens } from '@ejo/types';
 
 /**
- * Phase 1 stub for the dynamic branding engine.
- *
- * In later phases this fetches the active organisation's Branding row (see
- * packages/database schema) via the API using NEXT_PUBLIC_ACTIVE_ORGANISATION_SLUG
- * and returns it. Every page reads colours through this function (and the
- * CSS variables it powers in app/layout.tsx) instead of hardcoding hex
- * values, so swapping this stub for a real fetch is the ONLY change needed
- * to make the whole site re-theme for a different client.
+ * Branding tokens for the website. Returns fixed defaults for now; when the
+ * active organisation's Branding row (packages/database) is fetched here,
+ * every page re-themes, since pages read colours through this function and
+ * the CSS variables it sets in app/layout.tsx.
  */
 export function getActiveBranding(): BrandingTokens {
   return {
-    organisationSlug: process.env.NEXT_PUBLIC_ACTIVE_ORGANISATION_SLUG ?? 'kewalram-nigeria',
-    primaryColor: '#16A34A', // Kewalram green
+    organisationSlug: process.env.NEXT_PUBLIC_ACTIVE_ORGANISATION_SLUG ?? '',
+    primaryColor: '#16A34A', // brand green
     secondaryColor: '#0F172A',
     accentColor: '#22C55E',
     successColor: '#16A34A',

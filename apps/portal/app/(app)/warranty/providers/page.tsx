@@ -48,7 +48,7 @@ export default async function WarrantyProvidersPage({ searchParams }: { searchPa
       />
       {status && BANNER[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={BANNER[status]} /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div>
           <form className="mb-3 flex gap-2" action="/warranty/providers">
             {state ? <input type="hidden" name="state" value={state} /> : null}

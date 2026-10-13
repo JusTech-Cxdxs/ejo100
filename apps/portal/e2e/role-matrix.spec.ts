@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { decide, type PermissionKey, type Principal } from '../lib/authz/catalogue';
+import { decide, STORE_COST_PERMISSIONS, type PermissionKey, type Principal } from '../lib/authz/catalogue';
 import { E2E_PASSWORD, MASTER, PEOPLE, SUPERMANAGER, SWITCHABLE } from './people';
 import { expectHealthy, gotoSettled, menuLinks, signIn, watchServerErrors } from './helpers';
 
@@ -20,6 +20,7 @@ const AREAS: { url: string; needs: PermissionKey[] }[] = [
   { url: '/structure', needs: ['admin.structure.manage'] },
   { url: '/branches', needs: ['admin.structure.manage'] },
   { url: '/audit-logs', needs: ['audit.view'] },
+  { url: '/recycle-bin', needs: ['admin.recycle_bin.manage'] },
   { url: '/analytics', needs: ['analytics.business.view'] },
   { url: '/workshop', needs: ['workshop.view'] },
   { url: '/workshop/job-cards', needs: ['workshop.view'] },
@@ -31,8 +32,9 @@ const AREAS: { url: string; needs: PermissionKey[] }[] = [
   { url: '/workshop/external-procurement', needs: ['workshop.view'] },
   { url: '/inventory', needs: ['store.view'] },
   { url: '/inventory/parts', needs: ['store.view'] },
-  { url: '/inventory/goods-receipts', needs: ['store.view'] },
-  { url: '/inventory/pricing', needs: ['store.view'] },
+  // Delivery costs and margins: the Store, Finance, management and Warranty — not the workshop floor.
+  { url: '/inventory/goods-receipts', needs: STORE_COST_PERMISSIONS },
+  { url: '/inventory/pricing', needs: STORE_COST_PERMISSIONS },
   { url: '/inventory/estimate-matching', needs: ['store.view'] },
   { url: '/inventory/analytics', needs: ['analytics.inventory.view'] },
   { url: '/warranty', needs: ['warranty.view'] },
@@ -49,7 +51,7 @@ const AREAS: { url: string; needs: PermissionKey[] }[] = [
   { url: '/notifications/broadcasts/analytics', needs: ['notifications.broadcast.send'] },
 ];
 /** Everyone signed in may open these. */
-const EVERYONE = ['/dashboard', '/profile', '/notifications', '/security/exit-passes', '/roadmap'];
+const EVERYONE = ['/dashboard', '/approvals', '/profile', '/notifications', '/security/exit-passes', '/roadmap'];
 
 const principalFor = (roles: string[]): Principal => ({ userId: 'x', isSuperAdmin: false, roleSlugs: roles, branchId: 'b', departmentId: null });
 const mayOpen = (roles: string[], needs: PermissionKey[]) => needs.some((k) => decide(principalFor(roles), k).allowed);

@@ -52,7 +52,7 @@ test('a visitor arrives at the gate, is received, appears on the boards and is c
     await expectHealthy(page, board);
     await expect(page.getByText(name).first(), `${board} lists the visitor`).toBeVisible();
   }
-  await page.goto(visitUrl);
+  await open(page, visitUrl);
   await page.getByRole('button', { name: 'Check out', exact: true }).click();
   await waitOutcome(page, /status=check_out/);
   await expect(page.getByText('Checked out.', { exact: true })).toBeVisible();

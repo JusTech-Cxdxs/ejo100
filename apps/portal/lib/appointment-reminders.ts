@@ -8,7 +8,7 @@ import { lagosYmd } from '@/lib/nigeria-calendar';
  * Scheduling pages are opened. Each reminder goes out ONCE (reminderSentAt)
  * and every email is logged.
  */
-const time = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' });
+const time = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' });
 
 export async function sendDueAppointmentReminders(now: Date = new Date()): Promise<number> {
   const due = await prisma.appointment.findMany({

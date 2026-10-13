@@ -5,7 +5,7 @@ import { useId, useState, type KeyboardEvent } from 'react';
 const base = 'w-full rounded-[var(--ejo-radius-md)] border bg-[var(--ejo-bg)] py-3 pl-4 pr-12 text-sm text-[var(--ejo-text)] outline-none transition-colors placeholder:text-[var(--ejo-text-muted)]/70 focus:border-[var(--ejo-primary)] focus:ring-2 focus:ring-[var(--ejo-primary)]/20';
 
 /**
- * A password input people can actually use: show / hide toggle (the eye),
+ * Password input with a show / hide toggle (the eye),
  * a Caps Lock warning, the right autocomplete hint for password managers,
  * and an error state that screen readers announce.
  */
@@ -13,7 +13,7 @@ export function PasswordField({
   id, label, value, onChange, autoComplete, placeholder = '••••••••', invalid, describedBy, minLength, required = true, autoFocus,
 }: {
   id: string; label: string; value: string; onChange: (v: string) => void;
-  autoComplete: 'current-password' | 'new-password'; placeholder?: string; invalid?: boolean; describedBy?: string; minLength?: number; required?: boolean; autoFocus?: boolean;
+  autoComplete: 'current-password' | 'new-password' | 'off'; placeholder?: string; invalid?: boolean; describedBy?: string; minLength?: number; required?: boolean; autoFocus?: boolean;
 }) {
   const [shown, setShown] = useState(false);
   const [caps, setCaps] = useState(false);

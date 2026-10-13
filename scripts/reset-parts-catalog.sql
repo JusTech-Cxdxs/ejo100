@@ -1,37 +1,26 @@
--- Wipes the entire Part catalog — every Part, and everything that only
--- exists because of a Part (stock, batches, serials, alternative units,
--- fitment rows, Goods Receipts, Parts Requests) — so parts can be
--- re-registered from scratch under the new PartCategory/PartType model.
--- Run this once in Supabase's SQL Editor.
+-- Wipes the whole part catalogue: every Part and everything that exists only
+-- because of one (stock, batches, serials, alternative units, fitment rows,
+-- goods receipts, parts requests), so parts can be registered again under
+-- the PartCategory/PartType model. Run once in the Supabase SQL Editor.
 --
--- Deliberately does NOT touch Job Cards, Estimates, or Estimate line
--- items themselves — those are Job Card data, not Part data, and stay
--- exactly as they are. Any estimate line that had already been matched
--- to a Part being deleted here has that match cleared (matchedPartId
--- set back to null) rather than left dangling — it goes back to
--- "awaiting Store match," the same honest state it would show if Store
--- simply hadn't matched it yet.
+-- Job Cards, estimates and estimate lines are kept. Lines matched to a
+-- deleted part have matchedPartId cleared, so they show as awaiting Store
+-- matching.
 --
--- Run inside one transaction: either all of this happens, or none of
--- it does — no risk of a partial wipe left half-done.
+-- One transaction: all of it happens, or none of it.
 
 BEGIN;
 
 -- 1. Clear any existing match before the Parts they point to are gone.
 UPDATE estimate_line_items SET "matchedPartId" = NULL WHERE "matchedPartId" IS NOT NULL;
 
--- 2. PartRequestSlipLine and GoodsReceiptLine don't cascade-delete with
---    their Part (deliberately — a request or receipt is a real
---    historical record, not something that should vanish silently just
---    because the catalog changed later). Since a full reset is what's
---    being asked for here, clear these explicitly rather than let the
---    delete below fail on a foreign key violation.
+-- 2. PartRequestSlipLine and GoodsReceiptLine don't cascade with their Part
+--    (they are historical records). A full reset clears them explicitly so
+--    the delete below doesn't fail on a foreign key.
 DELETE FROM part_request_slip_lines;
 DELETE FROM goods_receipt_lines;
 
--- 3. Goods Receipts and Parts Requests themselves are now empty shells
---    with nothing left to receipt or request — remove them too, rather
---    than leave orphaned header rows with zero real lines under them.
+-- 3. Goods receipts and parts requests are now empty headers; remove them.
 DELETE FROM goods_receipts;
 DELETE FROM part_request_slips;
 

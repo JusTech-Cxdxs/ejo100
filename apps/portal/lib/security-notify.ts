@@ -1,3 +1,5 @@
+import { cleanForLog } from '@/lib/errors';
+import { portalBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 import { prisma } from '@ejo/database';
 import { sendEmail } from '@/lib/email';
@@ -23,7 +25,7 @@ export async function notifyGateOfRelease(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', 
     const gate = await prisma.user.findMany({ where: { isActive: true, organisationId: rec.branch.businessUnit.organisationId, roles: { some: { role: { slug: { in: ['security-officer', 'chief-security-officer'] } } } } }, select: { fullName: true, email: true } });
     if (gate.length === 0) return;
     const car = [rec.vehicle.make, rec.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
-    const portal = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portal = portalBaseUrl();
     const subject = `Vehicle released — ${rec.vehicle.plateNumber ?? car} may leave (${rec.number})`;
     const lines = [
       `${car}${rec.vehicle.plateNumber ? ` — ${rec.vehicle.plateNumber}` : ''}`,
@@ -42,19 +44,18 @@ export async function notifyGateOfRelease(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', 
           heading: 'A vehicle has been released to leave',
           lines,
           actionUrl: `${portal}/security/vehicles/release/${kind === 'JOB_CARD' ? 'job-card' : 'vehicle-service'}/${recordId}`,
-          logoUrl: `${portal}/images/logo/logo.png`,
+          logoUrl: `${portal}/images/logo/email-logo.png`,
           companyName: rec.branch.businessUnit?.organisation?.name ?? 'EJO 100',
           branchName: rec.branch.name,
         }));
       } catch (err) {
         sent = false;
-        error = err instanceof Error ? err.message.slice(0, 300) : 'Unknown error';
+        error = err instanceof Error ? cleanForLog(err.message).slice(0, 300) : 'Unknown error';
       }
       await prisma.securityEmailLog.create({ data: { entityType, entityId: recordId, recipient: `${g.fullName} <${g.email}>`, subject, sent, error } });
       await prisma.auditLog.create({ data: { userId: actorId, action: sent ? 'security.email_sent' : 'security.email_failed', entityType, entityId: recordId, metadata: { to: g.fullName, subject, ...(error ? { error } : {}) } } });
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to notify Security of a released vehicle', kind, recordId, err);
   }
 }

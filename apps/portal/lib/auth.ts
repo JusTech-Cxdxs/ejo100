@@ -4,27 +4,30 @@ import { prisma } from '@ejo/database';
 import { after } from 'next/server';
 import { sendEmail } from './email';
 import { renderPasswordResetEmail } from './email-templates/password-reset';
+import { renderEmailLayout, html, greeting, para } from './email-templates/layout';
 import { portalConfig } from './site-config';
 import { portalBaseUrl } from './portal-url';
 
 /**
- * Employee/Admin authentication (Better Auth). Deliberately scoped to
- * User/Session/Account/Verification only — Customer auth is a separate
- * instance (apps/website/lib/auth-customer.ts) writing into
- * CustomerSession/CustomerAccount, so an employee session can never
- * resolve against the Customer table and vice versa (Phase 2 isolation
- * requirement), even though both share this exact database.
+ * Staff authentication (Better Auth), on User/Session/Account/Verification
+ * only. Customers use a separate instance (apps/website/lib/auth-customer.ts)
+ * on CustomerSession/CustomerAccount, so a staff session can never resolve
+ * against the Customer table, or the reverse, although both share one
+ * database.
  *
- * Employee accounts are created only by an administrator (Users →
- * "Add a staff member", lib/actions/users-admin.ts) — public self-sign-up
- * is closed. A deactivated account can never start a session (hook
- * below), and every request re-checks it (requireUser, the app layout).
+ * Staff accounts are created only by an administrator (Users → "Add a staff
+ * member", lib/actions/users-admin.ts); public sign-up is closed. A
+ * deactivated account cannot start a session (hook below), and every
+ * request re-checks it (requireUser, the app layout).
  */
+/** Staff "forgot password" links: one hour. */
+export const RESET_LINK_SECONDS = 60 * 60;
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
 
   secret: process.env.BETTER_AUTH_SECRET,
-  baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:3001',
+  baseURL: process.env.BETTER_AUTH_URL || portalBaseUrl() || undefined,
 
   // Endpoints this platform never uses are switched off entirely (defence in
   // depth): people never edit their own account record, email or deletion
@@ -36,23 +39,45 @@ export const auth = betterAuth({
     // Nobody can create a staff account from the internet.
     disableSignUp: true,
     requireEmailVerification: false, // set true once verification is confirmed working end-to-end
-    sendResetPassword: async ({ user, url }) => {
-      // The branded "set a new password" email (lib/email-templates/password-reset.ts).
+    // Password rules: 8 to 128 characters (NIST SP 800-63B lengths).
+    minPasswordLength: 8,
+    maxPasswordLength: 128,
+    // "Forgot password" links work for one hour; welcome links (72 hours) are issued by lib/staff-onboarding.ts.
+    resetPasswordTokenExpiresIn: RESET_LINK_SECONDS,
+    // A reset signs the person out on every device.
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url, token }) => {
+      // Only the newest link works: earlier reset or set-password links for this person are withdrawn.
+      await prisma.verification.deleteMany({ where: { value: user.id, identifier: { startsWith: 'reset-password:', not: `reset-password:${token}` } } }).catch(() => undefined);
+      // The branded email, in the name of the person's own organisation.
       const name = (user as { fullName?: string; name?: string }).fullName ?? user.name ?? '';
       const base = portalBaseUrl();
-      const { subject, html } = renderPasswordResetEmail({ fullName: name, url, companyName: portalConfig.organisationName, logoUrl: `${base}/images/logo/logo.png` });
-      await sendEmail(user.email, subject, html);
+      const org = await prisma.user.findUnique({ where: { id: user.id }, select: { organisation: { select: { name: true } } } }).catch(() => null);
+      const companyName = org?.organisation?.name ?? portalConfig.organisationName;
+      const message = renderPasswordResetEmail({ fullName: name, email: user.email, url, companyName, logoUrl: `${base}/images/logo/email-logo.png` });
+      await sendEmail(user.email, message.subject, message.html);
     },
   },
 
   emailVerification: {
     sendVerificationEmail: async ({ user, url }) => {
+      const base = portalBaseUrl();
+      const name = (user as { fullName?: string; name?: string }).fullName ?? user.name ?? '';
       await sendEmail(
         user.email,
-        'Verify your EJO 100 email address',
-        `<p>Hello ${escapeHtml(user.name ?? '')},</p>
-         <p>Please verify your email address to finish setting up your EJO 100 account.</p>
-         <p><a href="${url}">Verify email</a></p>`,
+        'Confirm your EJO 100 email address',
+        renderEmailLayout({
+          previewText: 'Confirm this address to finish setting up your EJO 100 account.',
+          companyName: portalConfig.organisationName,
+          logoUrl: `${base}/images/logo/email-logo.png`,
+          status: { label: 'Security', tone: 'info' },
+          heading: 'Confirm your email address',
+          bodyHtml: html`${greeting(name)}${para('Please confirm this email address to finish setting up your EJO 100 account. If you did not expect this, you can ignore the email.')}`,
+          ctaLabel: 'Confirm email address',
+          ctaUrl: url,
+          showLinkFallback: true,
+          reason: 'You are receiving this because this address was used for an EJO 100 account.',
+        }),
       );
     },
     sendOnSignUp: true,
@@ -62,7 +87,11 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days when "remember me" is checked
     updateAge: 60 * 60 * 24, // refresh once per day of activity
-    cookieCache: { enabled: true, maxAge: 5 * 60 },
+    // No cookie cache: every request checks the session row, so signing out
+    // other devices, a password reset or switching an account off takes effect
+    // on the next click instead of up to five minutes later. The cost is one
+    // indexed lookup by token per request.
+    cookieCache: { enabled: false },
   },
 
   // A deactivated person cannot sign in (their open sessions are removed on
@@ -127,8 +156,3 @@ export const auth = betterAuth({
 });
 
 export type Session = typeof auth.$Infer.Session;
-
-/** Text placed into an HTML email is always escaped (no markup injection). */
-function escapeHtml(v: string): string {
-  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}

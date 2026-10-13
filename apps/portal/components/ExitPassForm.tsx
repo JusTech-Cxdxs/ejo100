@@ -66,12 +66,12 @@ export function ExitPassForm({ me, action, search, loadDefaultOptions }: { me: {
                   <input name="otherName" required placeholder="Full name (not on the staff list)" className={input} />
                 )}
               </div>
-              <button type="button" onClick={() => setRows((r) => r.filter((x) => x.key !== row.key))} className="mt-2.5 shrink-0 text-xs font-medium text-[var(--ejo-error)]">Remove</button>
+              <button type="button" onClick={() => setRows((r) => r.filter((x) => x.key !== row.key))} className="inline-flex min-h-10 shrink-0 items-center px-1 text-xs font-medium text-[var(--ejo-error)]">Remove</button>
             </div>
           ))}
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => add('EMPLOYEE')} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)]">+ Add a staff member</button>
-            <button type="button" onClick={() => add('OTHER')} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)]">+ Add someone not on staff</button>
+            <button type="button" onClick={() => add('EMPLOYEE')} className="min-h-10 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)]">+ Add a staff member</button>
+            <button type="button" onClick={() => add('OTHER')} className="min-h-10 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)]">+ Add someone not on staff</button>
           </div>
         </div>
       ) : null}

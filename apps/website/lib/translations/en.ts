@@ -31,7 +31,7 @@ const en = {
 'hero.slide1.subheading':
   'A diversified group creating lasting value across Africa and beyond.',
 'hero.slide1.primaryCta': 'Explore Our Businesses',
-'hero.slide1.secondaryCta': 'About Kewalram Chanrai',
+'hero.slide1.secondaryCta': 'About {organisation}',
 'hero.slide2.eyebrow': 'ENGINEERED FOR EXCELLENCE',
 'hero.slide2.headline': 'Automotive Solutions You Can Trust.',
 'hero.slide2.subheading':
@@ -41,7 +41,7 @@ const en = {
 'hero.slide3.eyebrow': 'ROOTED IN AGRICULTURE',
 'hero.slide3.headline': 'Growing Nigeria From the Ground Up.',
 'hero.slide3.subheading':
-  'Our agricultural operations strengthen food security and support sustainable supply chains by producing high-quality agricultural products that help feed, clothe, and improve the lives of communities across Nigeria and beyond.',
+  'Our agricultural businesses support food security and sustainable supply chains across Nigeria and beyond.',
 'hero.slide3.primaryCta': 'See Our Impact',
 'hero.slide3.secondaryCta': 'Careers',
 
@@ -52,13 +52,13 @@ const en = {
   'stats.countries': 'Countries of Operation',
 
   // About section
-  'about.eyebrow': 'ABOUT KEWALRAM CHANRAI GROUP',
+  'about.eyebrow': 'ABOUT {ORGANISATION}',
   'about.title': 'A Legacy of Trust. A Future of Excellence.',
   'about.body':
-    'For over 150 years, Kewalram Chanrai Group has been at the forefront of innovation and entrepreneurship. From our humble beginnings to our global footprint today, our commitment to quality, integrity and sustainable growth remains unwavering.',
+    'For over 150 years, {organisation} has built and run businesses across Africa and beyond, guided by quality, integrity and steady growth.',
   'about.cta': 'Discover Our Story',
-  'about.badgeYears': '150+',
-  'about.badgeCaption': 'Years of Excellence, Since 1870',
+  'about.badgeYears': '{years}+',
+  'about.badgeCaption': 'Years of Excellence, Since {founded}',
 
   // Business units
   'business.eyebrow': 'OUR BUSINESSES',
@@ -75,40 +75,38 @@ const en = {
   'partners.title': 'Trusted by Leading Brands',
 
   // CTA section
-  'cta.title': "Let's Build Something Lasting Together.",
-  'cta.body': "Whether you're a customer, partner, or future employee — we'd love to hear from you.",
+  'cta.title': 'Work With Us',
+  'cta.body': "Customers, partners and future colleagues: we'd like to hear from you.",
   'cta.contact': 'Contact Us',
   'cta.careers': 'Explore Careers',
 
   // News section
   'news.eyebrow': 'LATEST NEWS & HIGHLIGHTS',
-  'news.title': 'What\u2019s Happening at Kewalram',
+  'news.title': 'What\u2019s Happening at {organisation}',
   'news.readMore': 'Read More',
   'news.sustainabilityEyebrow': 'SUSTAINABILITY',
   'news.sustainabilityTitle': 'Building a Better Tomorrow',
   'news.sustainabilityBody':
-    'We are committed to sustainable practices that protect our planet and empower communities.',
+    'We work to reduce our impact on the environment and to support the communities we work in.',
   'news.sustainabilityCta': 'Learn More',
 
   // Footer
   'footer.quickLinks': 'Quick Links',
   'footer.ourBusinesses': 'Our Businesses',
   'footer.contactUs': 'Contact Us',
-  'footer.companyName': 'Kewalram Chanrai Group',
   'footer.companyDescription':
     'A spirit of entrepreneurship that has driven the success of our businesses for over 150 years.',
-  'footer.headOffice': 'Kewalram Chanrai Group Head Office',
-  'footer.location': 'Lagos, Nigeria',
+  'footer.headOffice': '{organisation} Head Office',
   'footer.newsletter': 'Newsletter',
-  'footer.newsletterText': 'Stay updated with our latest news and insights.',
+  'footer.newsletterText': 'News and updates from the group, by email.',
   'footer.newsletterPlaceholder': 'Enter your email',
-  'footer.newsletterSuccess': "Thanks — you're subscribed!",
+  'footer.newsletterSuccess': "Thanks, you're subscribed.",
   'footer.privacy': 'Privacy Policy',
   'footer.terms': 'Terms of Use',
   'footer.rights': 'All rights reserved.',
 
   // Generic / shared
-  'common.comingSoonDefault': 'This section is currently under development and will be activated after project approval.',
+  'common.comingSoonDefault': 'This page is being prepared and will be available soon.',
   'common.loading': 'Loading…',
 } as const;
 

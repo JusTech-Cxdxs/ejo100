@@ -23,13 +23,7 @@ const WRENCH_ICON = (
   </svg>
 );
 
-/**
- * The real Vehicle Service equivalent of Job Card's own
- * /inventory/estimate-matching/[jobCardId]/page.tsx — one Vehicle
- * Service's own dedicated matching page, same real fitment-filtered
- * Part picker with real stock on hand, same real "everything's
- * matched" completion state.
- */
+/** Store matching for one Vehicle Service (same as the Job Card matching page). */
 export default async function VehicleServiceMatchingPage({
   params,
   searchParams,
@@ -39,7 +33,7 @@ export default async function VehicleServiceMatchingPage({
 }) {
   await guardAnyPage(['store.view'], '/inventory');
   const { vehicleServiceId } = await params;
-  // A stale, mistyped or out-of-reach id is simply "not found".
+  // An id the viewer can't see is a 404.
   if (!(await serviceVisible(vehicleServiceId, 'page'))) notFound();
   const { error, status } = await searchParams;
   const [branchId, service, lines] = await Promise.all([
@@ -92,8 +86,7 @@ export default async function VehicleServiceMatchingPage({
         <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/5 p-6">
           <p className="text-sm font-medium text-[var(--ejo-text)]">Every requested line for this Vehicle Service is matched.</p>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-            The supervisor and technician were notified automatically the moment the last line was matched — this
-            estimate is ready for submission.
+            The supervisor and technician have been notified. The estimate is ready to submit.
           </p>
         </div>
       ) : (

@@ -10,17 +10,9 @@ import { EditIcon, BuildingIcon } from '@/components/icons';
 import { EmptyState, PageTitle } from '@/components/ui';
 
 /**
- * The organisation's own real, printed identity — name, legal name,
- * hotlines, HQ address, PO Box, RC number, email. This is deliberately
- * the one real source every printable document in the system pulls
- * its header from, so a real letterhead detail only ever needs to be
- * entered once, in one place, to be correct everywhere it's printed.
- *
- * Standard view/edit toggle: plain read-only detail view by default,
- * an explicit Edit action reveals the form (`?edit=true`), and saving
- * or cancelling returns to the read-only view — the same real pattern
- * already proven on the Job Card status form, so a field is never
- * sitting open and editable by accident.
+ * The organisation's printed identity (name, legal name, hotlines, address,
+ * RC number, email). Every printed document takes its header from here.
+ * Read-only by default; `?edit=true` shows the form.
  */
 export default async function OrganisationPage({ searchParams }: { searchParams: Promise<{ error?: string; status?: string; edit?: string }> }) {
   await guardPage('admin.organisation.manage', '/organisation');
@@ -35,8 +27,8 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
         <PageTitle icon="building">Organisation</PageTitle>
       </div>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
-        Organisation profile, legal name, and the real contact and registration details every printed document — Job
-        Cards, Store Parts Requests, External Procurement, Payment receipts — carries in its own header.
+        The organisation&apos;s name, legal name, contact and registration details. These appear in the header of
+        every printed document (Job Cards, parts requests, external procurement, receipts).
       </p>
 
       {error ? (
@@ -71,7 +63,7 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
             <input
               name="legalName"
               defaultValue={organisation.legalName ?? ''}
-              placeholder="e.g. Kewalram Nigeria Limited"
+              placeholder="e.g. Example Holdings Limited"
               className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
             />
           </div>
@@ -81,7 +73,7 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
               <input
                 name="website"
                 defaultValue={organisation.website ?? ''}
-                placeholder="e.g. www.kewalram.com"
+                placeholder="e.g. www.example.com"
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
             </div>
@@ -91,7 +83,7 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
                 name="email"
                 type="email"
                 defaultValue={organisation.email ?? ''}
-                placeholder="e.g. info@kewalramnigeria.com"
+                placeholder="e.g. info@example.com"
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
             </div>
@@ -105,7 +97,7 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
             <input
               name="hqAddress"
               defaultValue={organisation.hqAddress ?? ''}
-              placeholder="e.g. 1 Kewalram Way, Isolo, Lagos"
+              placeholder="e.g. 12 Example Road, Ikeja, Lagos"
               className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
             />
           </div>

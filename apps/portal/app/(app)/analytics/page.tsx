@@ -184,7 +184,7 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className={card}>
-          <T as="h2" icon="sparkles">Forecast <span className="font-normal text-[var(--ejo-text-muted)]">· predictive</span></T>
+          <T as="h2" icon="trend-up">Forecast <span className="font-normal text-[var(--ejo-text-muted)]">· predictive</span></T>
           <p className="text-sm text-[var(--ejo-text)]">This month so far <span className="font-semibold">{naira(a.predictive.monthToDate)}</span> in {pluralize(a.predictive.workingDaysDone, 'working day')} — on course for about <span className="font-semibold">{naira(a.predictive.monthProjection)}</span> over {pluralize(a.predictive.workingDaysInMonth, 'working day')}.</p>
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Weekly trend {a.predictive.trendPerWeek >= 0 ? 'rising' : 'falling'} by about {naira(Math.abs(a.predictive.trendPerWeek))} a week.</p>
           <div className="mt-3 overflow-x-auto">

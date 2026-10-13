@@ -1,4 +1,5 @@
 import { guardAnyPage, allows } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
 import { notFound } from 'next/navigation';
 import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
@@ -21,18 +22,9 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
 
 
 /**
- * One Goods Receipt's own real, permanent record — click through from
- * the list's own reference number, same as a Job Card or a Part gets
- * its own dedicated page. Editing is deliberately narrow: Supplier
- * and Notes (pure record-keeping, no effect on stock or price), and
- * each line's own Unit Cost (the one field a real mistake — like the
- * user's own Coolant example — actually needs correcting). Never
- * quantity, unit, or which Part: those are physical facts about what
- * arrived, and editing them safely would need real stock
- * reconciliation this page doesn't attempt. Every edit here is
- * deliberately loud, not just logged quietly — this is a real
- * financial record, and Store gets notified by email every time,
- * alongside the audit trail below.
+ * One goods receipt. Only supplier, notes and each line's unit cost can be
+ * edited; quantity, unit and part would need stock reconciliation. Every
+ * edit is audited and the Store is emailed.
  */
 type ReceiptWithTrace = NonNullable<Awaited<ReturnType<typeof getGoodsReceipt>>>;
 type ReceiptLine = ReceiptWithTrace['lines'][number];
@@ -51,10 +43,8 @@ function destination(slip: SlipDestination, quantity: number, detail: string | n
 }
 
 /**
- * Where this one delivery's stock went — the forward trace (GRN → Part
- * Requests → job → customer), built from the real records for each
- * tracking type: the batch this line created, the serials it brought in,
- * or — for a QUANTITY part — its FIFO layer from the shared engine.
+ * Where this delivery's stock went (GRN → parts request → job → customer):
+ * via the batch, the serials, or the FIFO layer for a Quantity part.
  */
 function buildStockTrace(line: ReceiptLine, quantityTraces: ReceiptWithTrace['quantityTraces']): GoodsReceiptLineStockTrace {
   const received = Number(line.quantityInBaseUnit);
@@ -119,7 +109,7 @@ export default async function GoodsReceiptDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string; status?: string }>;
 }) {
-  await guardAnyPage(['store.view'], '/inventory');
+  await guardAnyPage(STORE_COST_PERMISSIONS, '/inventory/goods-receipts');
   const { id } = await params;
   const { error, status } = await searchParams;
   const [receipt, auditTrail, grnWarranties] = await Promise.all([getGoodsReceipt(id), getGoodsReceiptAuditTrail(id), listWarrantiesFor({ goodsReceiptId: id })]);
@@ -151,7 +141,7 @@ export default async function GoodsReceiptDetailPage({
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Details</h2>
@@ -214,8 +204,8 @@ export default async function GoodsReceiptDetailPage({
           />
         </div>
 
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
-          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit Trail</h2>
+        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto">
+          <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit trail</h2>
           {auditTrail.length === 0 ? (
             <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No edits recorded — this is exactly as it was first entered.</p>
           ) : (

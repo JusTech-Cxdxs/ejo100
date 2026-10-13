@@ -94,7 +94,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
         {w.policy.isSample ? <p className="mt-1 text-xs font-medium text-[var(--ejo-warning)]">Sample terms — replace with the provider&apos;s real warranty terms before relying on this.</p> : null}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
             <h2 className="mb-3 text-sm font-semibold text-[var(--ejo-text)]">Coverage</h2>
@@ -275,7 +275,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Verify this warranty</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                The Warranty HOD or Branch Manager — not the person who registered it — checks the evidence, then verifies it. Until then it covers nothing.
+                The Warranty HOD or Branch Manager (not the person who registered it) checks the evidence and verifies it. Until then it covers nothing.
               </p>
               {canVerify ? (
                 <form action={verifyWarrantyFormAction} className="mt-3">

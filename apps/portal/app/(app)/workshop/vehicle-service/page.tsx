@@ -1,3 +1,6 @@
+import { FormJumpLink } from '@/components/ui/FormJumpLink';
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
+import { signedInSession } from '@/lib/assist/server';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { headers } from 'next/headers';
 import { getVehicleServiceOutcomes } from '@/lib/actions/visit-outcomes';
@@ -15,6 +18,7 @@ import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { SubmitButton } from '@/components/SubmitButton';
 import { ServiceComplaintListInput } from '@/components/ServiceComplaintListInput';
 import { formatDateOnly } from '@/lib/utils/format-date';
@@ -35,28 +39,24 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
- * Reception opens the visit; a supervisor decides what work it
- * actually needs after inspecting the vehicle, from the service's own
- * detail page. This screen only ever records who came in, which
- * vehicle, the mileage, and why — the same real shape as Open Job
- * Card, on purpose. CustomerVehiclePicker already includes the real
- * supervisor picker, tied to the vehicle's own Passenger/Commercial
- * type — the exact same component Job Card creation uses.
+ * Reception opens the visit (customer, vehicle, mileage, reason); the
+ * supervisor decides the work after inspection. CustomerVehiclePicker
+ * includes the supervisor picker, filtered by vehicle type, as on Job Cards.
  */
 export default async function VehicleServicePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; error?: string; status?: string; editInterval?: string; outcome?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; error?: string; status?: string; editInterval?: string; outcome?: string; binned?: string }>;
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
-  const { q, type, error, status, editInterval, outcome: rawOutcome } = await searchParams;
+  const { q, type, error, status, editInterval, outcome: rawOutcome, binned } = await searchParams;
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
   const outcomeFilter = parseOutcomeFilter(rawOutcome);
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   const [branchId, session] = await Promise.all([
     getWorkshopBranchId().catch(() => null),
-    auth.api.getSession({ headers: await headers() }),
+    signedInSession(),
   ]);
   const [isMasterAdmin, organisation] = await Promise.all([
     currentUserIsMasterAdmin(),
@@ -133,16 +133,12 @@ export default async function VehicleServicePage({
         ) : null}
       </div>
       <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">
-        Routine maintenance and minor customer requests — oil, filters, brake adjustment, AC top-up. If a
-        technician finds a repair job along the way, send it to Job Card from the service page instead of
+        Routine maintenance and minor customer requests: oil, filters, brake adjustment, AC top-up. If a
+        technician finds a repair job, escalate it to a Job Card from the service page instead of
         handling it here.
       </p>
 
-      {status === 'vehicle_service_deleted' ? (
-        <div className="mb-6 max-w-xl">
-          <FormFeedbackBanner kind="success" message="Vehicle Service deleted." />
-        </div>
-      ) : null}
+      <div className="max-w-xl"><BinnedNotice reference={binned} /></div>
       {status === 'interval_updated' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Primary Service interval updated." />
@@ -157,7 +153,7 @@ export default async function VehicleServicePage({
       {dueVehicles.length > 0 ? (
         <div className="mb-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicles Due for Service</h2>
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicles due for service</h2>
             <LoadingLink href="/workshop/service-tracker" className="text-xs text-[var(--ejo-primary)] hover:underline">
               Open Service Tracker
             </LoadingLink>
@@ -170,7 +166,7 @@ export default async function VehicleServicePage({
                 className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2.5 text-sm hover:opacity-80"
               >
                 <div className="flex items-center gap-1.5">
-                  <span>{v.status === 'OVERDUE' ? '🔴' : '🟡'}</span>
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${v.status === 'OVERDUE' ? 'bg-[var(--ejo-error)]' : 'bg-[var(--ejo-warning)]'}`} aria-hidden="true" />
                   <span className="font-medium text-[var(--ejo-text)]">{v.vehicleDescription}</span>
                   {v.plateNumber ? <span className="text-xs text-[var(--ejo-text-muted)]">— {v.plateNumber}</span> : null}
                 </div>
@@ -203,8 +199,9 @@ export default async function VehicleServicePage({
         </button>
       </form>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] overflow-x-auto">
+      <FormJumpLink target="open-vehicle-service">New Vehicle Service</FormJumpLink>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           {shown.length === 0 ? (
             <div className="p-8 text-center text-sm text-[var(--ejo-text-muted)]">
               {q || vehicleType || outcomeFilter ? 'No Vehicle Service matches this search or filter.' : 'No Vehicle Service records yet.'}
@@ -238,32 +235,32 @@ export default async function VehicleServicePage({
                         </LoadingLink>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3 text-[var(--ejo-text)]"><CustomerLink id={s.customerId} name={s.customer.fullName} canView={canSeeCustomers} /></td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">
+                    <td data-label="Customer" className="px-4 py-3 text-[var(--ejo-text)]"><CustomerLink id={s.customerId} name={s.customer.fullName} canView={canSeeCustomers} /></td>
+                    <td data-label="Vehicle" className="px-4 py-3 text-[var(--ejo-text-muted)]">
                       <LoadingLink href={`/workshop/vehicles/${s.vehicle.id}/edit`} className="hover:underline hover:text-[var(--ejo-text)]">
                         {[s.vehicle.make, s.vehicle.model].filter(Boolean).join(' ') || '—'}
                         {s.vehicle.plateNumber ? ` — ${s.vehicle.plateNumber}` : ''}
                       </LoadingLink>
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-label="Status" className="px-4 py-3">
                       {s.escalatedToJobCard ? <StatusChip tone="warning">Escalated</StatusChip> : <StatusChip status={s.status} label={STATUS_LABEL[s.status]} />}
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-label="Outcome" className="px-4 py-3">
                       {(() => {
                         const o = outcomes[s.id];
                         const badge = o ? outcomeBadge(o.outcome, o.refund) : null;
                         return badge ? <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span> : <span className="text-xs text-[var(--ejo-text-muted)]">In progress</span>;
                       })()}
                     </td>
-                    <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{formatDateOnly(s.createdAt)}</td>
+                    <td data-label="Opened" className="px-4 py-3 text-[var(--ejo-text-muted)]">{formatDateOnly(s.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-        </div>
+        </ResponsiveTable>
 
-        <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 lg:sticky lg:top-6">
+        <div id="open-vehicle-service" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 xl:sticky xl:top-6 scroll-mt-20">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Open a Vehicle Service</h2>
           <form action={createVehicleServiceFormAction} className="mt-4 space-y-3">
             <FormPendingOverlay />

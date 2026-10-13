@@ -4,10 +4,12 @@ import { logFailure } from '@/lib/log';
 import { prisma } from '@ejo/database';
 import { jobCardActive, serviceInside } from '@/lib/custody';
 import { allows, getPrincipal, myOrganisationId, orgWhere, reachWhere } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
 import { reaches } from '@/lib/notification-rules';
 import { getWarrantyDashboardItems } from './warranty';
 import { getSecurityDashboardItems } from './security';
 import { getWorkflowActionItems } from './workflow-actions';
+import { getMyWorkItems } from './my-work';
 import { getSchedulingDashboardItems } from './scheduling';
 import { getWarrantyClaimDashboardItems } from './warranty-claims';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
@@ -23,24 +25,16 @@ export type DashboardNotification = {
 };
 
 /**
- * Every real, genuinely pending item across the system that needs
- * THIS viewer's own attention — never a generic company-wide list.
- * A Manager sees the real approvals and requests waiting on them; a
- * Technician sees their own real pending assignments. Master Admin
- * sees everything real and pending, branch-wide, matching how that
- * role already works everywhere else in this system.
+ * Pending items that need this viewer's attention: a Manager sees approvals
+ * and requests waiting on them, a technician their pending assignments,
+ * Master Admin everything pending in the branch.
  */
 export async function getDashboardNotifications(): Promise<DashboardNotification[]> {
   try {
     return await getDashboardNotificationsInner();
   } catch (err) {
-    // A genuinely broken notification fetch must never take the
-    // entire app's layout down with it — every single page depends
-    // on this same function succeeding, so a real failure here (a
-    // migration not yet applied, a transient database hiccup) now
-    // degrades to "no notifications shown" instead of a real "server
-    // issue" error blocking navigation everywhere.
-    // eslint-disable-next-line no-console
+    // Every page's layout loads this, so a failure (a pending migration, a
+    // database hiccup) shows no notifications instead of breaking navigation.
     logFailure('Failed to load dashboard notifications', err);
     return [];
   }
@@ -48,23 +42,22 @@ export async function getDashboardNotifications(): Promise<DashboardNotification
 
 async function getDashboardNotificationsInner(): Promise<DashboardNotification[]> {
   const user = await requireUser();
-  // Each module's items start NOW and run alongside the Workshop checks
-  // below — the total wait is the slowest module, not all of them added up
-  // (every database trip crosses from the server to the database region).
+  // Each module's items start now and run alongside the Workshop checks
+  // below, so the wait is the slowest module, not the sum.
   const warrantyP = getWarrantyDashboardItems().catch(() => []);
   const claimsP = getWarrantyClaimDashboardItems().catch(() => []);
   const securityP = getSecurityDashboardItems().catch(() => []);
   const schedulingP = getSchedulingDashboardItems().catch(() => []);
   const workflowP = getWorkflowActionItems().catch(() => []);
+  const myWorkP = getMyWorkItems().catch(() => []);
   const isMasterAdmin = await currentUserIsMasterAdmin();
   const notifications: DashboardNotification[] = [];
 
   const fullUser = await prisma.user.findUnique({ where: { id: user.id }, select: { branchId: true } });
   const branchId = fullUser?.branchId ?? null;
 
-  // Real management-level items — Master Admin, or a real eligible
-  // Manager at their own branch. Never shown to ordinary staff, the
-  // same real scoping already used for these same items elsewhere.
+  // Management items: Master Admin, or an eligible Manager at their own
+  // branch. Never shown to other staff.
   let isEligibleManagerAnywhere = isMasterAdmin;
   if (!isMasterAdmin && branchId) {
     const managers = await listEligibleManagersForBranch(branchId).catch(() => ({ supervisors: [] as { id: string }[], usingFallback: true }));
@@ -112,7 +105,7 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
         id: `pricing-${alert.id}`,
         kind: 'PRICING_ALERT',
         title: `${severityLabel} — ${alert.part.name}`,
-        detail: 'Open Pricing Alert needs a real pricing decision.',
+        detail: 'Open Pricing Alert needs a pricing decision.',
         url: `/inventory/pricing?branchId=${alert.part.branchId}`,
         createdAt: alert.createdAt,
       });
@@ -159,11 +152,9 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
     }
   }
 
-  // Real, individual items — a Job Card genuinely waiting on THIS
-  // viewer's own review as its Supervisor, or genuinely waiting on
-  // THIS viewer's own accept/reject as its assigned Technician. Shown
-  // regardless of management status, since these are personal, not
-  // management-level, responsibilities.
+  // Personal items: Job Cards waiting on this viewer's review as supervisor,
+  // or on their accept/reject as assigned technician. Shown regardless of
+  // management status.
   const [pendingReviews, pendingAssignments, pendingServiceReviews, pendingServiceAssignments] = await Promise.all([
     prisma.jobCard.findMany({
       where: { supervisorId: user.id, approvalStatus: 'PENDING' },
@@ -172,7 +163,7 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
       select: { id: true, jobNumber: true, createdAt: true },
     }),
     prisma.jobCard.findMany({
-      // Not once the work is already done — nothing left to accept.
+      // Not once the work is done; nothing left to accept.
       where: { assignedTechnicianId: user.id, technicianAcceptanceStatus: 'PENDING', status: { notIn: ['COMPLETED', 'READY_FOR_COLLECTION', 'CLOSED', 'CHECKED_OUT', 'CANCELLED'] } },
       orderBy: { createdAt: 'desc' },
       take: 10,
@@ -248,6 +239,7 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
 
   // Scheduling: today's appointments (host or participant) still to come.
   for (const w of await workflowP) notifications.push({ ...w, kind: 'WORKFLOW' });
+  for (const w of await myWorkP) notifications.push({ ...w, kind: 'WORKFLOW' });
   for (const item of schedulingItems) {
     notifications.push({ id: item.id, kind: 'SCHEDULING', title: item.title, detail: item.detail, url: item.url, createdAt: item.createdAt });
   }
@@ -270,7 +262,7 @@ export async function createAnnouncement(message: string, expiresAt: Date | null
   }
   const trimmed = message.trim();
   if (!trimmed) {
-    throw new Error('An announcement needs real text.');
+    throw new Error('Write the announcement text.');
   }
   const announcement = await prisma.announcement.create({
     data: { organisationId: fullUser.organisationId, message: trimmed, expiresAt, createdById: user.id },
@@ -311,10 +303,9 @@ export async function listActiveAnnouncements(organisationId: string) {
 
 export type DashboardTrendPoint = { label: string; jobCardsOpened: number; servicesOpened: number; collected: number; refunded: number; net: number };
 
-/** Real, day-by-day figures for the last 14 WORKING days ending today
- * (weekends and Nigerian public holidays skipped) — never a projection.
- * Money is shown as what was collected and what was refunded, separately,
- * so a refund day never shows as "negative revenue". */
+/** Day-by-day figures for the last 14 working days ending today (weekends
+ * and Nigerian public holidays skipped). Money collected and refunded are
+ * shown separately, so a refund day never shows as negative revenue. */
 export async function getDashboardTrend(): Promise<DashboardTrendPoint[]> {
   await requireUser();
   const { dayKind, lagosYmd } = await import('@/lib/nigeria-calendar');
@@ -326,9 +317,9 @@ export async function getDashboardTrend(): Promise<DashboardTrendPoint[]> {
     d.setUTCDate(d.getUTCDate() - 1);
   }
   const start = new Date(`${days[0]}T00:00:00+01:00`);
-  // Same reach as the lists (a branch-scoped person sees their branch), and
-  // money only for people allowed to see the business figures — the amounts
-  // are never even sent to anyone else's browser.
+  // Same reach as the lists (a branch-scoped person sees their branch).
+  // Amounts only for people allowed to see business figures; they are never
+  // sent to anyone else's browser.
   const [reach, money] = await Promise.all([reachWhere('workshop.job_card.view'), allows('analytics.business.view')]);
   const viaJob = reach.branchId ? { OR: [{ jobCard: reach }, { vehicleService: reach }] } : {};
   const none = Promise.resolve([] as { recordedAt: Date; amount: unknown }[]);
@@ -359,10 +350,8 @@ export type NeedsAttentionSummary = {
   pendingAssignments: number;
 };
 
-/** The real, honest "start your day" summary — counts derived from
- * the exact same real notification list the bell itself shows, so
- * the dashboard's own summary card and the bell can never quietly
- * disagree about what's genuinely still pending. */
+/** "Start your day" counts, derived from the same list the bell shows so
+ * the two always agree. */
 export async function getNeedsAttentionSummary(): Promise<NeedsAttentionSummary> {
   const notifications = await getDashboardNotifications();
   return {
@@ -374,8 +363,8 @@ export async function getNeedsAttentionSummary(): Promise<NeedsAttentionSummary>
 
 export type GlanceTile = { label: string; value: number; hint: string; href: string; tone: 'primary' | 'info' | 'warning' | 'error' | 'success' | 'muted' };
 
-/** The whole business at a glance — one tile per area, each a link to its
- * list. All counts in ONE parallel round (cheap indexed counts). */
+/** One tile per area, each linking to its list. All counts in one parallel
+ * round (cheap indexed counts). */
 export async function getPlatformGlance(): Promise<GlanceTile[]> {
   await requireUser();
   const dayStart = new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T00:00:00+01:00`);
@@ -386,7 +375,7 @@ export async function getPlatformGlance(): Promise<GlanceTile[]> {
     reachWhere('workshop.job_card.view'),
     reachWhere('store.view'),
     reachWhere('security.view'),
-    requireUser().then((u) => prisma.user.findUnique({ where: { id: u.id }, select: { organisationId: true, branchId: true, departmentId: true, roles: { select: { role: { select: { slug: true } } } } } })),
+    requireUser().then((u) => prisma.user.findUnique({ where: { id: u.id }, select: { id: true, organisationId: true, branchId: true, departmentId: true, roles: { select: { role: { select: { slug: true } } } } } })),
   ]);
   const claimReach = typeof work.branchId === 'string' ? { OR: [{ jobCard: work }, { vehicleService: work }] } : { customer: await orgWhere() };
   const [jcActive, svActive, prsOpen, eprOpen, claimsOpen, visitors, incidents, apptsToday, broadcasts, grnsToday] = await Promise.all([
@@ -397,7 +386,8 @@ export async function getPlatformGlance(): Promise<GlanceTile[]> {
     n(prisma.warrantyClaim.count({ where: { ...claimReach, status: { in: ['DRAFT', 'PENDING_HOD', 'PENDING_MANAGER', 'APPROVED_TO_SUBMIT', 'SUBMITTED'] } } })),
     n(prisma.visit.count({ where: { ...gate, status: 'CHECKED_IN' } })),
     n(prisma.securityIncident.count({ where: { ...gate, status: { in: ['OPEN', 'UNDER_REVIEW'] } } })),
-    n(prisma.appointment.count({ where: { ...gate, status: 'SCHEDULED', startsAt: { gte: dayStart, lt: dayEnd } } })),
+    // The scheduling admin: every calendar in reach; everyone else: their own calendar.
+    n(allows('schedule.manage').then(async (all) => prisma.appointment.count({ where: { ...(all ? await reachWhere('schedule.manage') : { ownerId: me?.id ?? '__none__' }), status: 'SCHEDULED', startsAt: { gte: dayStart, lt: dayEnd } } }))),
     // Only the broadcasts addressed to this person (never customers' ones),
     // matching what their bell shows.
     n(prisma.broadcast.findMany({ where: { organisationId: me?.organisationId ?? '__none__', isActive: true, startsAt: { lte: new Date() }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] }, select: { audience: true, audienceIds: true }, take: 500 })
@@ -406,8 +396,8 @@ export async function getPlatformGlance(): Promise<GlanceTile[]> {
   ]);
   const p = (v: number, one: string, many: string) => `${v} ${v === 1 ? one : many}`;
   // Each tile only for the people whose work it is (same rule as its page).
-  const [cw, cs, cwa, csec, csch] = await Promise.all([allows('workshop.view'), allows('store.view'), allows('warranty.view'), allows('security.view'), allows('schedule.view')]);
-  const NEED: Record<string, boolean> = { '/workshop/custody': cw, '/workshop/vehicle-service-custody': cw, '/workshop/parts-requests': cs, '/workshop/external-procurement': cs, '/inventory/goods-receipts': cs, '/warranty/claims': cwa, '/security/on-premises': csec, '/security/incidents?tab=open': csec, '/schedule/appointments?show=today': csch, '/notifications?tab=broadcasts': true };
+  const [cw, cs, cwa, csec, csch, ccost] = await Promise.all([allows('workshop.view'), allows('store.view'), allows('warranty.view'), allows('security.view'), allows('schedule.view'), Promise.all(STORE_COST_PERMISSIONS.map((k) => allows(k))).then((xs) => xs.some(Boolean))]);
+  const NEED: Record<string, boolean> = { '/workshop/custody': cw, '/workshop/vehicle-service-custody': cw, '/workshop/parts-requests': cs, '/workshop/external-procurement': cs, '/inventory/goods-receipts': ccost, '/warranty/claims': cwa, '/security/on-premises': csec, '/security/incidents?tab=open': csec, '/schedule/appointments?show=today': csch, '/notifications?tab=broadcasts': true };
   const tiles: GlanceTile[] = [
     { label: 'Job Cards in progress', value: jcActive, hint: 'Open, not yet checked out', href: '/workshop/custody', tone: 'primary' },
     { label: 'Vehicle Services in custody', value: svActive, hint: 'Still in the workshop (cancelled ones awaiting hand-back included)', href: '/workshop/vehicle-service-custody', tone: 'info' },

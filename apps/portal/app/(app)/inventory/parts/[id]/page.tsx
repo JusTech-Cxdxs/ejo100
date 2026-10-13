@@ -1,4 +1,8 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
+import { getRecycleBinOffer } from '@/lib/actions/recycle-bin';
+import { RecycleBinPanel } from '@/components/RecycleBinPanel';
 import { guardAnyPage, allows } from '@/lib/authz/server';
+import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
 import { notFound } from 'next/navigation';
 import { durationLabel } from '@/lib/warranty-state';
 import { isPolicyId, policyAuditLabel } from '@/lib/audit-policy-label';
@@ -71,7 +75,9 @@ export default async function PartDetailPage({
   if (!part) notFound();
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
-  const [lastEdit, auditTrail] = await Promise.all([getLastEditInfo('Part', id, 'part.updated'), getPartAuditTrail(id)]);
+  // Delivery costs and margins are for the Store, Finance, management and Warranty — not the workshop floor.
+  const [canSeeCosts, canManage] = await Promise.all([Promise.all(STORE_COST_PERMISSIONS.map((k) => allows(k, { branchId: part.branchId }))).then((xs) => xs.some(Boolean)), allows('store.parts.manage', { branchId: part.branchId })]);
+  const [lastEdit, auditTrail, binOffer] = await Promise.all([getLastEditInfo('Part', id, 'part.updated'), getPartAuditTrail(id), getRecycleBinOffer('Part', id)]);
   // Older warranty-change entries stored a policy id — show its name.
   const policyIdsInTrail = auditTrail
     .filter((e: (typeof auditTrail)[number]) => e.action === 'part.warranty_policy_set' && e.metadata && typeof e.metadata === 'object')
@@ -88,12 +94,14 @@ export default async function PartDetailPage({
         <span className="rounded-full bg-[var(--ejo-info)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--ejo-info)]">
           {TRACKING_TYPE_LABEL[part.trackingType] ?? part.trackingType}
         </span>
-        <LoadingLink
-          href={`/inventory/parts/${id}/edit`}
-          className="ml-auto text-xs font-medium text-[var(--ejo-primary)] hover:underline"
-        >
-          Edit
-        </LoadingLink>
+        {canManage ? (
+          <LoadingLink
+            href={`/inventory/parts/${id}/edit`}
+            className="ml-auto text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+          >
+            Edit
+          </LoadingLink>
+        ) : null}
       </div>
       {part.category ? <p className="mb-6 text-sm text-[var(--ejo-text-muted)]">{part.category}</p> : null}
 
@@ -134,19 +142,24 @@ export default async function PartDetailPage({
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
-          {part.trackingType === 'BATCH' ? (
+          {!canSeeCosts ? (
+            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Stock</h2>
+              <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">Stock on hand is shown alongside. Delivery costs, batches and profit are kept to the Store, Finance and management.</p>
+            </div>
+          ) : part.trackingType === 'BATCH' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Batches</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Revenue and Profit are estimates using the Part&apos;s current Selling Price — the real amount actually
-                charged for stock sold in the past may have differed if the price has changed since.
+                Revenue and profit are estimated from the part&apos;s current selling price; earlier sales may have
+                been at a different price.
               </p>
               {part.batches.length === 0 ? (
                 <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No batches recorded yet.</p>
               ) : (
-                <div className="mt-4 overflow-x-auto">
+                <ResponsiveTable flush className="mt-4">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -162,14 +175,8 @@ export default async function PartDetailPage({
                     </thead>
                     <tbody>
                       {(() => {
-                        // The first real batch, in real FIFO order,
-                        // that still has stock left — the one
-                        // warehouse should genuinely be drawing from
-                        // right now, matching the exact same real
-                        // order actual issuance already draws from
-                        // (see requestStoreMatching's own FIFO logic).
-                        // Found once, outside the render loop itself,
-                        // so only ever one real batch gets the tag.
+                        // The oldest batch with stock left, which FIFO
+                        // issues next (see requestStoreMatching).
                         const activeBatchId = part.batches.find((b: (typeof part.batches)[number]) => Number(b.remainingQuantity) > 0)?.id ?? null;
                         return part.batches.map((batch: (typeof part.batches)[number]) => {
                         const received = Number(batch.receivedQuantity);
@@ -190,7 +197,7 @@ export default async function PartDetailPage({
                                 </span>
                               ) : null}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                            <td data-label="Source GRN" className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {batch.goodsReceiptLine?.goodsReceipt ? (
                                 <LoadingLink href={`/inventory/goods-receipts/${batch.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
                                   {batch.goodsReceiptLine.goodsReceipt.referenceNumber}
@@ -199,20 +206,20 @@ export default async function PartDetailPage({
                                 '—'
                               )}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                            <td data-label="Received" className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {formatQty(received)} {pluralizeWord(received, part.baseUnitOfMeasure)}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text)]">
+                            <td data-label="Sold So Far" className="px-3 py-2 text-[var(--ejo-text)]">
                               {formatQty(soldSoFar)} {pluralizeWord(soldSoFar, part.baseUnitOfMeasure)}
                             </td>
-                            <td className={`px-3 py-2 ${remaining === 0 ? 'text-[var(--ejo-text-muted)]' : 'text-[var(--ejo-text)]'}`}>
+                            <td data-label="Remaining" className={`px-3 py-2 ${remaining === 0 ? 'text-[var(--ejo-text-muted)]' : 'text-[var(--ejo-text)]'}`}>
                               {formatQty(remaining)} {pluralizeWord(remaining, part.baseUnitOfMeasure)}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text)]">{revenue !== null ? formatNaira(revenue) : '—'}</td>
-                            <td className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
+                            <td data-label="Revenue (Est.)" className="px-3 py-2 text-[var(--ejo-text)]">{revenue !== null ? formatNaira(revenue) : '—'}</td>
+                            <td data-label="Profit (Est.)" className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
                               {profit !== null ? formatNaira(profit) : '—'}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(batch.receivedAt))}</td>
+                            <td data-label="Received At" className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(batch.receivedAt))}</td>
                           </tr>
                         );
                         });
@@ -263,7 +270,7 @@ export default async function PartDetailPage({
                   {part.batches.some((b: (typeof part.batches)[number]) => b.consumptions.length > 0) ? (
                     <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
                       <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">
-                        Sold To — real trace of every real draw against a batch, for warranty or quality-defect reference
+                        Sold to: every issue from this batch, for warranty or defect tracing
                       </p>
                       <div className="space-y-1.5">
                         {part.batches
@@ -283,21 +290,20 @@ export default async function PartDetailPage({
                       </div>
                     </div>
                   ) : null}
-                </div>
+                </ResponsiveTable>
               )}
             </div>
           ) : part.trackingType === 'SERIALIZED' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Serial Numbers</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Serial numbers</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Every real unit ever received, individually tracked — Profit is an estimate using the Part&apos;s current
-                Selling Price for each unit already issued out; a unit still In Stock has no profit yet since it
-                hasn&apos;t sold.
+                Every unit received, tracked individually. Profit is estimated from the part&apos;s current selling
+                price; units still in stock have no profit yet.
               </p>
               {part.serials.length === 0 ? (
                 <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No serial numbers recorded yet.</p>
               ) : (
-                <div className="mt-4 overflow-x-auto">
+                <ResponsiveTable flush className="mt-4">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -330,7 +336,7 @@ export default async function PartDetailPage({
                                 </span>
                               ) : null}
                             </td>
-                            <td className="px-3 py-2">
+                            <td data-label="Status" className="px-3 py-2">
                               <span
                                 className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                                   isIssued ? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]' : 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'
@@ -339,14 +345,14 @@ export default async function PartDetailPage({
                                 {isIssued ? 'Issued' : 'In Stock'}
                               </span>
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                            <td data-label="Destination PRS" className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {serial.issuedToSlipLine ? (
                                 <IssuedToLinks slip={serial.issuedToSlipLine.slip} showCustomer canSeeCustomers={canSeeCustomers} />
                               ) : (
                                 '—'
                               )}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                            <td data-label="Source GRN" className="px-3 py-2 text-[var(--ejo-text-muted)]">
                               {serial.goodsReceiptLine?.goodsReceipt ? (
                                 <LoadingLink href={`/inventory/goods-receipts/${serial.goodsReceiptLine.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">
                                   {serial.goodsReceiptLine.goodsReceipt.referenceNumber}
@@ -355,10 +361,10 @@ export default async function PartDetailPage({
                                 '—'
                               )}
                             </td>
-                            <td className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
+                            <td data-label="Profit (Est.)" className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
                               {profit !== null ? formatNaira(profit) : '—'}
                             </td>
-                            <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(serial.receivedAt))}</td>
+                            <td data-label="Received At" className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(serial.receivedAt))}</td>
                           </tr>
                         );
                         });
@@ -381,11 +387,11 @@ export default async function PartDetailPage({
                             <td className="px-3 py-2">
                               {pluralizeWord(totalUnits, 'Unit')} total ({inStockCount} in stock, {issuedCount} issued)
                             </td>
-                            <td />
-                            <td />
-                            <td />
-                            <td className={totalProfit < 0 ? 'px-3 py-2 text-[var(--ejo-error)]' : 'px-3 py-2 text-[var(--ejo-success)]'}>{formatNaira(totalProfit)}</td>
-                            <td />
+                            <td data-label="Status" />
+                            <td data-label="Destination PRS" />
+                            <td data-label="Source GRN" />
+                            <td data-label="Profit (Est.)" className={totalProfit < 0 ? 'px-3 py-2 text-[var(--ejo-error)]' : 'px-3 py-2 text-[var(--ejo-success)]'}>{formatNaira(totalProfit)}</td>
+                            <td data-label="Received At" />
                           </tr>
                         );
                       })()}
@@ -394,16 +400,13 @@ export default async function PartDetailPage({
                   {part.serials.some((x: (typeof part.serials)[number]) => x.issuedToSlipLine) ? (
                     <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
                       <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">
-                        Sold To — real trace of every real draw against this Part, for warranty or quality-defect reference
+                        Sold to: every issue of this part, for warranty or defect tracing
                       </p>
                       <div className="space-y-1.5">
                         {part.serials
                           .filter((x: (typeof part.serials)[number]) => x.issuedToSlipLine)
                           .map((x: (typeof part.serials)[number]) => {
-                            // Same format as Batch and Quantity "Sold To":
-                            // what went out, from which delivery, to which
-                            // customer — plus the one thing only a serial
-                            // has: the exact physical unit.
+                            // Same as Batch "Sold To", plus the serial number.
                             const slip = x.issuedToSlipLine!.slip;
                             const owner = slip.jobCard?.customer ?? slip.vehicleService?.customer ?? null;
                             return (
@@ -426,22 +429,22 @@ export default async function PartDetailPage({
                       </div>
                     </div>
                   ) : null}
-                </div>
+                </ResponsiveTable>
               )}
             </div>
           ) : (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Stock Summary</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Stock summary</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Tracked by quantity, with every delivery (GRN) kept as its own FIFO layer — stock is always issued
-                from the oldest delivery first, and every release records which delivery it came from. Revenue and
-                Profit are estimates using the Part&apos;s current Selling Price against each delivery&apos;s real cost.
+                Tracked by quantity. Each delivery (GRN) is a FIFO layer: stock is issued from the oldest delivery
+                first, and each release records the delivery it came from. Revenue and profit are estimated from the
+                current selling price against each delivery&apos;s cost.
               </p>
 
               {part.goodsReceiptLines.length > 0 ? (
                 <div className="mt-4">
-                  <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Deliveries — every real GRN this running total is built from</p>
-                  <div className="overflow-x-auto">
+                  <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">Deliveries (GRNs) that make up this total</p>
+                  <ResponsiveTable flush>
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -456,11 +459,9 @@ export default async function PartDetailPage({
                       </thead>
                       <tbody>
                         {(() => {
-                          // Each delivery (Goods Receipt line) is a FIFO
-                          // layer, exactly like a batch — sold / remaining
-                          // come from the same engine the release itself
-                          // uses (lib/inventory/quantity-fifo.ts), so this
-                          // table and every Parts Request always agree.
+                          // Each delivery is a FIFO layer. Sold/remaining
+                          // come from lib/inventory/quantity-fifo.ts, the
+                          // same code the release uses.
                           const trace = part.quantityTrace;
                           const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
                           const fifoLines = [...part.goodsReceiptLines].sort(
@@ -488,20 +489,20 @@ export default async function PartDetailPage({
                                     </span>
                                   ) : null}
                                 </td>
-                                <td className="px-3 py-2 text-[var(--ejo-text-muted)]">
+                                <td data-label="Received" className="px-3 py-2 text-[var(--ejo-text-muted)]">
                                   {formatQty(received)} {pluralizeWord(received, part.baseUnitOfMeasure)}
                                 </td>
-                                <td className="px-3 py-2 text-[var(--ejo-text)]">
+                                <td data-label="Sold So Far" className="px-3 py-2 text-[var(--ejo-text)]">
                                   {formatQty(soldSoFar)} {pluralizeWord(soldSoFar, part.baseUnitOfMeasure)}
                                 </td>
-                                <td className={`px-3 py-2 ${remaining === 0 ? 'text-[var(--ejo-text-muted)]' : 'text-[var(--ejo-text)]'}`}>
+                                <td data-label="Remaining" className={`px-3 py-2 ${remaining === 0 ? 'text-[var(--ejo-text-muted)]' : 'text-[var(--ejo-text)]'}`}>
                                   {formatQty(remaining)} {pluralizeWord(remaining, part.baseUnitOfMeasure)}
                                 </td>
-                                <td className="px-3 py-2 text-[var(--ejo-text)]">{revenue !== null ? formatNaira(revenue) : '—'}</td>
-                                <td className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
+                                <td data-label="Revenue (Est.)" className="px-3 py-2 text-[var(--ejo-text)]">{revenue !== null ? formatNaira(revenue) : '—'}</td>
+                                <td data-label="Profit (Est.)" className={`px-3 py-2 font-medium ${profit !== null && profit < 0 ? 'text-[var(--ejo-error)]' : 'text-[var(--ejo-success)]'}`}>
                                   {profit !== null ? formatNaira(profit) : '—'}
                                 </td>
-                                <td className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(line.goodsReceipt.receivedAt))}</td>
+                                <td data-label="Received At" className="px-3 py-2 text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(line.goodsReceipt.receivedAt))}</td>
                               </tr>
                             );
                           });
@@ -509,8 +510,7 @@ export default async function PartDetailPage({
                       </tbody>
                       <tfoot>
                         {(() => {
-                          // Summed per delivery — each layer's own real cost,
-                          // exactly how the Batches totals are built.
+                          // Summed per delivery, like the batch totals.
                           const trace = part.quantityTrace;
                           const sellingPrice = part.sellingPrice !== null ? Number(part.sellingPrice) : null;
                           let totalReceived = 0;
@@ -535,33 +535,33 @@ export default async function PartDetailPage({
                           return (
                             <tr className="border-t border-[var(--ejo-border)] font-medium text-[var(--ejo-text)]">
                               <td className="px-3 py-2">Total</td>
-                              <td className="px-3 py-2">
+                              <td data-label="Received" className="px-3 py-2">
                                 {formatQty(totalReceived)} {pluralizeWord(totalReceived, part.baseUnitOfMeasure)}
                               </td>
-                              <td className="px-3 py-2">
+                              <td data-label="Sold So Far" className="px-3 py-2">
                                 {formatQty(totalSold)} {pluralizeWord(totalSold, part.baseUnitOfMeasure)}
                               </td>
-                              <td className="px-3 py-2">
+                              <td data-label="Remaining" className="px-3 py-2">
                                 {formatQty(totalRemaining)} {pluralizeWord(totalRemaining, part.baseUnitOfMeasure)}
                               </td>
-                              <td className="px-3 py-2">{totalRevenue !== null ? formatNaira(totalRevenue) : '—'}</td>
-                              <td className={totalProfit !== null && totalProfit < 0 ? 'px-3 py-2 text-[var(--ejo-error)]' : 'px-3 py-2 text-[var(--ejo-success)]'}>
+                              <td data-label="Revenue (Est.)" className="px-3 py-2">{totalRevenue !== null ? formatNaira(totalRevenue) : '—'}</td>
+                              <td data-label="Profit (Est.)" className={totalProfit !== null && totalProfit < 0 ? 'px-3 py-2 text-[var(--ejo-error)]' : 'px-3 py-2 text-[var(--ejo-success)]'}>
                                 {totalProfit !== null ? formatNaira(totalProfit) : '—'}
                               </td>
-                              <td />
+                              <td data-label="Received At" />
                             </tr>
                           );
                         })()}
                       </tfoot>
                     </table>
-                  </div>
+                  </ResponsiveTable>
                 </div>
               ) : null}
 
               {part.quantityConsumptions.length > 0 ? (
                 <div className="mt-6 border-t border-[var(--ejo-border)] pt-4">
                   <p className="mb-2 text-xs font-medium text-[var(--ejo-text-muted)]">
-                    Sold To — real trace of every real draw against this Part, for warranty or quality-defect reference
+                    Sold to: every issue of this part, for warranty or defect tracing
                   </p>
                   <div className="space-y-1.5">
                     {part.quantityConsumptions.map((c: (typeof part.quantityConsumptions)[number]) => {
@@ -602,16 +602,10 @@ export default async function PartDetailPage({
 
           {part.trackingType === 'SERIALIZED' ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Units In Stock</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Units in stock</h2>
               {(() => {
-                // A real bug fixed here: getPart()'s own serials query
-                // was widened to fetch every unit ever received (for
-                // the fuller Serial Numbers history table below), not
-                // just the ones still in stock — this section still
-                // needs its own explicit filter now that the upstream
-                // query no longer does it, or an already-issued unit
-                // would keep showing here as if it were still
-                // available to hand out again.
+                // getPart() returns every serial ever received (for the
+                // history table), so filter to units still in stock.
                 const inStockSerials = part.serials.filter((s: (typeof part.serials)[number]) => s.status === 'IN_STOCK');
                 return inStockSerials.length === 0 ? (
                   <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No units currently in stock.</p>
@@ -633,7 +627,7 @@ export default async function PartDetailPage({
 
           {part.alternativeUnits.length > 0 ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Alternative Units</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Alternative units</h2>
               <ul className="mt-3 space-y-1 text-sm text-[var(--ejo-text)]">
                 {part.alternativeUnits.map((unit: (typeof part.alternativeUnits)[number]) => (
                   <li key={unit.id}>
@@ -644,6 +638,7 @@ export default async function PartDetailPage({
             </div>
           ) : null}
 
+          {canSeeCosts ? (<>
           <SellingPriceCalculator
             key={part.sellingPrice?.toString() ?? 'unset'}
             partId={part.id}
@@ -671,16 +666,17 @@ export default async function PartDetailPage({
             currentTargetMarginPercent={part.targetMarginPercent !== null ? Number(part.targetMarginPercent) : null}
             currentPricingMethod={part.pricingMethod}
           />
+          </>) : null}
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Fitment</h2>
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle fitment</h2>
             <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
               {part.fitments.length === 0
-                ? "No fitment recorded — this part is treated as fitting every vehicle, which is correct for universal parts like fluids. Add a fitment only if this part genuinely varies by vehicle."
+                ? "No fitment recorded, so this part fits every vehicle (right for universal parts such as fluids). Add a fitment only if it depends on the vehicle."
                 : 'Only fits the vehicle configurations listed below.'}
             </p>
             {part.fitments.length > 0 ? (
-              <div className="mt-3 overflow-x-auto">
+              <ResponsiveTable flush className="mt-3">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -750,12 +746,12 @@ export default async function PartDetailPage({
                       ) : (
                         <tr key={fitment.id} className="border-b border-[var(--ejo-border)] last:border-0">
                           <td className="px-2 py-1.5 font-medium text-[var(--ejo-text)]">{fitment.make}</td>
-                          <td className="px-2 py-1.5 text-[var(--ejo-text)]">{fitment.model ?? 'Any'}</td>
-                          <td className="px-2 py-1.5 text-[var(--ejo-text-muted)]">{fitment.engineType ?? 'Any'}</td>
-                          <td className="px-2 py-1.5 text-[var(--ejo-text-muted)]">
+                          <td data-label="Model" className="px-2 py-1.5 text-[var(--ejo-text)]">{fitment.model ?? 'Any'}</td>
+                          <td data-label="Engine" className="px-2 py-1.5 text-[var(--ejo-text-muted)]">{fitment.engineType ?? 'Any'}</td>
+                          <td data-label="Years" className="px-2 py-1.5 text-[var(--ejo-text-muted)]">
                             {fitment.yearFrom || fitment.yearTo ? `${fitment.yearFrom ?? '…'}–${fitment.yearTo ?? '…'}` : 'Any'}
                           </td>
-                          <td className="px-2 py-1.5 text-right">
+                          <td data-actions className="px-2 py-1.5 text-right">
                             <div className="flex items-center justify-end gap-3">
                               <LoadingLink
                                 href={`/inventory/parts/${part.id}?editFitmentId=${fitment.id}`}
@@ -777,7 +773,7 @@ export default async function PartDetailPage({
                     )}
                   </tbody>
                 </table>
-              </div>
+              </ResponsiveTable>
             ) : null}
 
             <details className="mt-4 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-3">
@@ -868,7 +864,7 @@ export default async function PartDetailPage({
           {part.warrantyPolicyId || partWarrantyTrace.length > 0 ? <PartWarrantyTraceTable rows={partWarrantyTrace} canSeeCustomers={canSeeCustomers} /> : null}
         </div>
 
-        <div className="h-fit space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6">
+        <div className="h-fit space-y-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:pb-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <p className="text-xs text-[var(--ejo-text-muted)]">On Hand</p>
             <p className="mt-1 text-2xl font-bold text-[var(--ejo-text)]">
@@ -921,7 +917,7 @@ export default async function PartDetailPage({
           </div>
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit Trail</h2>
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit trail</h2>
             {auditTrail.length === 0 ? (
               <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No edits recorded yet.</p>
             ) : (
@@ -950,6 +946,7 @@ export default async function PartDetailPage({
               </ul>
             )}
           </div>
+          <RecycleBinPanel offer={binOffer} entity="Part" id={id} />
         </div>
       </div>
     </div>

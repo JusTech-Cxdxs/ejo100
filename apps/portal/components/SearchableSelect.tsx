@@ -12,26 +12,9 @@ export type SearchableOption = {
 type SearchState = 'idle' | 'loading' | 'success' | 'error';
 
 /**
- * A real server-backed searchable dropdown — the permanent replacement
- * for a plain <select> anywhere the option list is too large to load in
- * full (customers, vehicles, and later technicians/parts/estimates).
- * Deliberately built as the ONLY foundation for this pattern going
- * forward: every keystroke (after a debounce) queries the real database
- * through a passed-in Server Action, so results are always complete and
- * current — never a filtered slice of some earlier, capped snapshot.
- *
- * No new dependency added — plain React state + the project's existing
- * Server Action → Prisma pattern. The selected value is carried by a
- * real hidden <input>, so any <form action={someServerAction}> this
- * sits inside submits exactly the same FormData shape a native <select>
- * would.
- *
- * Reusable by design: `search` (and the optional `loadDefaultOptions`)
- * are the only things that change between uses (searchCustomers, a
- * future searchTechnicians, searchParts, etc.) — everything else
- * (debouncing, loading/empty/error states, keyboard navigation,
- * accessibility, race-condition handling) is common and shouldn't need
- * to be rebuilt per entity type.
+ * Searchable dropdown for lists too large to load in full. Each (debounced)
+ * query calls the `search` server action. The chosen value is submitted
+ * through a hidden <input>, like a native <select>.
  */
 export function SearchableSelect({
   name,
@@ -46,14 +29,12 @@ export function SearchableSelect({
   emptyMessage = 'No matches.',
   minQueryLength = 1,
   debounceMs = 300,
+  id,
 }: {
   name: string;
   search: (query: string) => Promise<SearchableOption[]>;
-  /** Optional: shown before the person has typed anything — e.g. the
-   * most recently registered customers, so the common case ("the same
-   * customer as earlier today") needs zero typing. If omitted, the
-   * dropdown simply stays closed until there's a real query, same as
-   * before this existed. */
+  /** Optional options shown before anything is typed (e.g. recent
+   * customers). Without it the dropdown stays closed until a query. */
   loadDefaultOptions?: () => Promise<SearchableOption[]>;
   defaultOptionsLabel?: string;
   placeholder?: string;
@@ -64,6 +45,8 @@ export function SearchableSelect({
   emptyMessage?: string;
   minQueryLength?: number;
   debounceMs?: number;
+  /** The text field's id, for a <label htmlFor>. */
+  id?: string;
 }) {
   const [selectedValue, setSelectedValue] = useState(defaultValue ?? '');
   const [query, setQuery] = useState(defaultLabel ?? '');
@@ -78,13 +61,8 @@ export function SearchableSelect({
   const listboxId = useId();
   const debouncedQuery = useDebouncedValue(query, debounceMs);
 
-  // Run the actual search whenever the debounced query changes. A
-  // request-generation counter means that if the user types quickly
-  // enough to fire two searches, and the FIRST one's network response
-  // happens to arrive after the SECOND's, the stale first response is
-  // discarded instead of overwriting the correct, newer results. Below
-  // minQueryLength, either show loadDefaultOptions() (if provided) or
-  // fall back to the original "nothing until you type" behavior.
+  // Search when the debounced query changes. The request counter discards
+  // a slower, older response so it can't overwrite newer results.
   useEffect(() => {
     const trimmed = debouncedQuery.trim();
     const requestId = ++requestIdRef.current;
@@ -173,6 +151,7 @@ export function SearchableSelect({
     <div ref={containerRef} className="relative">
       <input type="hidden" name={name} value={selectedValue} required={required} />
       <input
+        id={id}
         type="text"
         role="combobox"
         aria-expanded={showDropdown}
@@ -195,7 +174,7 @@ export function SearchableSelect({
         <div
           id={listboxId}
           role="listbox"
-          className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-lg"
+          className="absolute z-10 mt-1 max-h-[min(16rem,45dvh)] w-full overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-lg"
         >
           {state === 'loading' ? (
             <p className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
@@ -226,13 +205,13 @@ export function SearchableSelect({
                   type="button"
                   onClick={() => selectOption(option)}
                   onMouseEnter={() => setHighlightIndex(i)}
-                  className={`block w-full px-3 py-2 text-left text-sm ${
+                  className={`block min-h-10 w-full px-3 py-2 text-left text-sm ${
                     i === highlightIndex ? 'bg-[var(--ejo-primary)]/10' : ''
                   }`}
                 >
                   <span className="text-[var(--ejo-text)]">{option.label}</span>
                   {option.sublabel ? (
-                    <span className="ml-2 text-xs text-[var(--ejo-text-muted)]">{option.sublabel}</span>
+                    <span className="block break-words text-xs text-[var(--ejo-text-muted)] [overflow-wrap:anywhere] sm:ml-2 sm:inline">{option.sublabel}</span>
                   ) : null}
                 </button>
               ))}

@@ -16,14 +16,13 @@ export const prisma =
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   });
 
-// Every create / update / delete through this one shared client is
-// written to audit_logs (see audit-journal.ts) — installed once, here,
-// so no feature anywhere can bypass it.
+// Every create / update / delete through this shared client is written to
+// audit_logs (audit-journal.ts). Installed once, here, so nothing bypasses it.
 installAuditJournal(prisma);
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 
-export { setAuditActor, getAuditActor, setAuditActorResolver, redactForJournal } from './audit-journal';
+export { setAuditActor, getAuditActor, currentAuditActor, setAuditActorResolver, redactForJournal } from './audit-journal';
 export * from '@prisma/client';

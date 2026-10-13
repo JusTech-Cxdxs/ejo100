@@ -3,21 +3,11 @@
 import { friendlyError } from '@/lib/errors';
 
 /**
- * Thin <form action={...}> wrappers around lib/actions/workshop.ts.
- * Deliberately using native React 19 form actions (FormData in, redirect
- * or revalidatePath out) rather than react-hook-form + Zod — neither is
- * an installed dependency yet, and every new dependency added to this
- * monorepo this project has needed a full, careful deploy-verification
- * cycle. Adding real client-side validation is a good, deliberate next
- * step, not something to fold silently into this pass.
+ * <form action={...}> wrappers around lib/actions/workshop.ts: FormData in,
+ * redirect or revalidatePath out.
  *
- * Every create-action now redirects back to its list page carrying a
- * `?status=` (success) or `?error=` (failure) query param, which the
- * page reads server-side to render a FormFeedbackBanner. This is the
- * fix for "nothing visibly happens after clicking Add/Register" — the
- * SubmitButton component handles the *during* (spinner, disabled), this
- * handles the *after* (a real confirmation or a real error message,
- * instead of silence either way).
+ * Create actions redirect back to their list page with `?status=` (success)
+ * or `?error=` (failure), which the page renders as a FormFeedbackBanner.
  */
 
 import { revalidatePath } from 'next/cache';
@@ -30,8 +20,6 @@ import {
   createJobCard,
   updateJobCardStatus,
   assignTechnician,
-  deleteVehicle,
-  deleteJobCard,
   approveJobCard,
   rejectJobCard,
   acceptTechnicianAssignment,
@@ -179,11 +167,8 @@ export async function updateJobCardStatusFormAction(formData: FormData) {
   }
   revalidatePath(`/workshop/job-cards/${id}`);
   revalidatePath('/workshop/job-cards');
-  // Explicit success redirect back to the plain URL, clearing
-  // ?editStatus= — same fix as the estimate line-item edit form:
-  // without this, the page re-renders with the same URL still present,
-  // so the dropdown stays in edit mode even though the save genuinely
-  // succeeded.
+  // Redirect to the plain URL to clear ?editStatus=; revalidatePath alone
+  // would keep the dropdown in edit mode after a successful save.
   redirect(`/workshop/job-cards/${id}`);
 }
 
@@ -249,10 +234,8 @@ export async function addEstimateLineItemFormAction(formData: FormData) {
       type: str(formData, 'type') as EstimateLineItemType,
       description: str(formData, 'description'),
       quantity: num(formData, 'quantity') ?? NaN,
-      // Deliberately no `?? NaN` fallback here, unlike quantity above —
-      // a blank price field must stay `undefined` (a real, allowed
-      // DRAFT-stage state), not become `NaN`, which addEstimateLineItem
-      // would correctly reject as an invalid number.
+      // No `?? NaN` fallback (unlike quantity): a blank price stays undefined,
+      // which is allowed on a draft.
       unitPrice: num(formData, 'unitPrice'),
       partTypeId: str(formData, 'partTypeId') || undefined,
       unitOfMeasure: str(formData, 'unitOfMeasure') || undefined,
@@ -278,13 +261,8 @@ export async function updateEstimateLineItemFormAction(formData: FormData) {
     redirect(`/workshop/job-cards/${jobCardId}?error=${encodeURIComponent(message)}`);
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
-  // Explicit success redirect back to the plain URL, clearing
-  // ?editLineId= — without this, revalidatePath() alone re-renders the
-  // page with the SAME url still present, so the row stays in edit
-  // mode even though the save genuinely succeeded. This is the actual
-  // fix for that; redirect() out of a Server Action is not itself an
-  // error, so this line is expected to "throw" internally — that's how
-  // Next.js performs the redirect, not a bug.
+  // Redirect to the plain URL to clear ?editLineId=; revalidatePath alone
+  // would keep the row in edit mode. redirect() works by throwing internally.
   redirect(`/workshop/job-cards/${jobCardId}`);
 }
 
@@ -406,35 +384,6 @@ export async function assignTechnicianFormAction(formData: FormData) {
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
   revalidatePath('/workshop/job-cards');
-}
-
-export async function deleteVehicleFormAction(formData: FormData) {
-  const vehicleId = str(formData, 'vehicleId');
-  try {
-    await deleteVehicle(vehicleId);
-  } catch (err) {
-    const message = friendlyError(err, 'Could not delete vehicle.', 'workshop-form-handlers');
-    redirect(`/workshop/vehicles?error=${encodeURIComponent(message)}`);
-  }
-  revalidatePath('/workshop/vehicles');
-  revalidatePath('/workshop/job-cards');
-  redirect('/workshop/vehicles?status=vehicle_deleted');
-}
-
-/** `redirectTo` distinguishes the two places this can be triggered from:
- * the Job Cards list (stay on the list after deleting) vs. a specific
- * Job Card's own detail page (that page no longer exists afterward, so
- * it must redirect back to the list instead of trying to re-render). */
-export async function deleteJobCardFormAction(formData: FormData) {
-  const jobCardId = str(formData, 'jobCardId');
-  try {
-    await deleteJobCard(jobCardId);
-  } catch (err) {
-    const message = friendlyError(err, 'Could not delete Job Card.', 'workshop-form-handlers');
-    redirect(`/workshop/job-cards?error=${encodeURIComponent(message)}`);
-  }
-  revalidatePath('/workshop/job-cards');
-  redirect('/workshop/job-cards?status=job_card_deleted');
 }
 
 export async function requestJobCardCancellationFormAction(formData: FormData) {

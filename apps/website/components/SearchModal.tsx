@@ -8,11 +8,8 @@ import { searchSite } from '@/lib/search-index';
 import { SearchIcon } from './icons';
 
 /**
- * Real client-side search over the site's static index (see
- * lib/search-index.ts) — filters as you type and navigates on selection.
- * No backend search service exists yet; this is a genuine, working search
- * over everything currently indexable (pages, businesses, products, news,
- * careers), not a placeholder.
+ * Client-side search over the site's static index (lib/search-index.ts):
+ * pages, businesses, products, news and careers. Filters as you type.
  */
 export function SearchModal({ dark = false }: { dark?: boolean }) {
   const { t } = useI18n();

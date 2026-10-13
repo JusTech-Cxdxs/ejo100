@@ -1,5 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
-import { as, expectHealthy } from './helpers';
+import { test, expect } from '@playwright/test';
+import { as, expectHealthy, noSidewaysScroll } from './helpers';
 
 /**
  * Phone (375 × 812) smoke of the pages people use on the move: they render,
@@ -14,11 +14,6 @@ const PAGES: { role: string; urls: string[] }[] = [
   { role: 'security-officer', urls: ['/security', '/security/on-premises', '/security/deliveries/new'] },
   { role: 'store-manager', urls: ['/inventory', '/inventory/parts'] },
 ];
-
-async function noSidewaysScroll(page: Page, url: string) {
-  const { scroll, inner } = await page.evaluate(() => ({ scroll: document.scrollingElement!.scrollWidth, inner: window.innerWidth }));
-  expect(scroll, `${url}: page scrolls sideways (${scroll} > ${inner})`).toBeLessThanOrEqual(inner + 1);
-}
 
 for (const { role, urls } of PAGES) {
   test(`phone: ${role} — pages render without sideways scroll`, async ({ page }) => {

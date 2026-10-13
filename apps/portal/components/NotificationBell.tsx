@@ -6,19 +6,10 @@ import { useNotifications } from '@/components/NotificationProvider';
 import { BROADCAST_CATEGORY, AREA_LABEL } from '@/lib/notification-rules';
 import { Icon } from '@/components/ui/Icon';
 import { ACTION_ICON, AREA_ICON, CATEGORY_ICON, CATEGORY_TILE } from '@/components/ui/notify-icons';
+import { formatRelative, isSameLagosDay } from '@/lib/utils/format-date';
 
-function timeAgo(date: Date): string {
-  const sec = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
-  if (sec < 60) return 'just now';
-  const m = Math.floor(sec / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} ${h === 1 ? 'hour' : 'hours'} ago`;
-  const d = Math.floor(h / 24);
-  return `${d} ${d === 1 ? 'day' : 'days'} ago`;
-}
-
-const isToday = (d: Date) => new Date(d).toDateString() === new Date().toDateString();
+const timeAgo = (date: Date) => formatRelative(date);
+const isToday = (d: Date) => isSameLagosDay(new Date(d), new Date());
 
 /** The bell — reads the shared live source (no requests of its own). */
 export function NotificationBell() {
@@ -76,7 +67,7 @@ export function NotificationBell() {
       </button>
       <style>{`.ejo-bell-ring{animation:ejo-ring 2.5s ease-in-out infinite;transform-origin:50% 0}@keyframes ejo-ring{0%,80%,100%{transform:rotate(0)}84%{transform:rotate(14deg)}88%{transform:rotate(-12deg)}92%{transform:rotate(8deg)}96%{transform:rotate(-4deg)}}@media (prefers-reduced-motion: reduce){.ejo-bell-ring{animation:none}}`}</style>
       {open ? (
-        <div className="ejo-pop fixed inset-x-2 top-16 z-50 flex max-h-[80vh] flex-col overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-2xl shadow-black/10 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[25rem]">
+        <div className="ejo-pop fixed inset-x-2 top-[calc(4rem+env(safe-area-inset-top))] z-50 flex max-h-[80vh] flex-col overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-2xl shadow-black/10 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[25rem]">
           <div className="flex items-start justify-between gap-3 border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-4 py-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[var(--ejo-text)]">Notifications</p>

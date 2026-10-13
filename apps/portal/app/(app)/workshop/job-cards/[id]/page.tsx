@@ -1,3 +1,4 @@
+import { actorLabel } from '@/lib/assist/rules';
 import { canRequestRoadTestOn } from '@/lib/actions/security';
 import { jobCardVisible, guardAnyPage, can, allows } from '@/lib/authz/server';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
@@ -22,14 +23,15 @@ import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayment
 import { getJobCardSourcingNeeds } from '@/lib/actions/sourcing';
 import { listPartCategories, listPartTypes } from '@/lib/actions/store';
 import { EstimateLineItemForm } from '@/components/EstimateLineItemForm';
-import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
+import { EstimateLinesTable, EstimateLineEditLink, EstimateLineRemoveButton, EstimateLineEditor, type EstimateLineView } from '@/components/EstimateLinesTable';
 import { requestStoreMatchingFormAction } from '@/lib/actions/store-form-handlers';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
-import { assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, returnEstimateForChangesFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction, requestJobCardCloseFormAction, approveCloseRequestFormAction, declineCloseRequestFormAction, updateJobCardStatusFormAction } from '@/lib/actions/workshop-form-handlers';
+import { assignTechnicianFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, returnEstimateForChangesFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction, requestJobCardCloseFormAction, approveCloseRequestFormAction, declineCloseRequestFormAction, updateJobCardStatusFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
-import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
+import { RecycleBinPanel } from '@/components/RecycleBinPanel';
+import { getRecycleBinOffer } from '@/lib/actions/recycle-bin';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
@@ -51,15 +53,11 @@ const STATUS_LABEL: Record<string, string> = {
   CANCELLED: 'Cancelled',
 };
 
-// This page never had its own color map before — the top-level status
-// badge was hardcoded to the primary (green) color for every single
-// status, Cancelled included. Matches the list page's own map exactly,
-// so the same status reads the same color everywhere in the app.
-
-// Falls back to the raw action string for anything not listed — future
-// phases add more audit actions (assignment.*, estimate.*, etc.); this
-// map only needs updating for a nicer label, never to avoid breaking.
+// Unlisted actions fall back to humanizeAction(), so a new audit action
+// only needs an entry here for a nicer label.
 const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'job_card.moved_to_recycle_bin': 'Moved to the Recycle bin',
+  'job_card.restored_from_recycle_bin': 'Restored from the Recycle bin',
   'road_test.requested': 'Road test requested',
   'road_test.approved': 'Road test approved by the Manager',
   'road_test.declined': 'Road test declined',
@@ -147,11 +145,8 @@ const EXTERNAL_PROCUREMENT_STATUS_BADGE_CLASS: Record<string, string> = {
   REJECTED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
-/** Turns the stored audit metadata into a real, field-level detail
- * line — "who entered price X for Y", not just a generic action label
- * — reading exactly what writeAuditLog() already captures at the point
- * each action happens, not reconstructed after the fact. Returns null
- * when there's genuinely nothing more specific to show. */
+/** Builds a one-line detail ("priced at X", "Reason: …") from the metadata
+ * writeAuditLog() stored. Returns null when there is nothing to add. */
 function formatAuditDetail(entry: { action: string; metadata: unknown }): string | null {
   const meta = entry.metadata as Record<string, unknown> | null;
   if (!meta) return null;
@@ -299,10 +294,8 @@ const ESTIMATE_STATUS_LABEL: Record<string, string> = {
   MANAGER_APPROVED: 'Approved',
 };
 
-// Prisma returns Decimal fields as Decimal objects (from decimal.js),
-// not plain numbers — Number(...) here is a deliberate, safe
-// conversion, not a shortcut around it, since these amounts have
-// already been rounded to 2dp at write time (see addEstimateLineItem).
+// Prisma returns Decimal objects. Number() is safe here because amounts
+// are rounded to 2dp when written (see addEstimateLineItem).
 function formatNaira(value: unknown): string {
   if (value === null || value === undefined) return '—';
   return `₦${Number(value).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -322,7 +315,7 @@ const STAGE_HINT: Record<string, string> = {
   CANCELLED: 'Cancelled — the vehicle just needs handing back.',
 };
 
-/** The button wording for each real forward step. */
+/** Button wording for each forward step. */
 const NEXT_STEP_LABEL: Record<string, string> = {
   'IN_PROGRESS>AWAITING_PARTS': 'Pause — waiting on parts',
   'IN_PROGRESS>QUALITY_CHECK': 'Work done — send to quality check',
@@ -350,11 +343,10 @@ export default async function JobCardDetailPage({
   await guardAnyPage(['workshop.view'], '/workshop');
   const { id } = await params;
   const { status, error, editLineId, editStatus } = await searchParams;
-  // Round 1 — everything that needs only the Job Card's id, all at once
-  // (each database trip crosses regions, so fewer rounds = a faster page).
-  // A stale, mistyped or out-of-reach id is simply "not found".
+  // Round 1: everything that needs only the id, in parallel (each database
+  // round trip crosses regions). An id the viewer can't see is a 404.
   if (!(await jobCardVisible(id, 'page'))) notFound();
-  const [jobCard, technicians, isMasterAdmin, viewerId, auditTrail, eligibleSupervisors, estimate, payments, cancellationRequests, closeRequests, sourcingNeeds, refunds, warranties, roadTests, billing] = await Promise.all([
+  const [jobCard, technicians, isMasterAdmin, viewerId, auditTrail, eligibleSupervisors, estimate, payments, cancellationRequests, closeRequests, sourcingNeeds, refunds, warranties, roadTests, billing, binOffer] = await Promise.all([
     getJobCard(id),
     listTechnicianCandidates(),
     currentUserIsMasterAdmin(),
@@ -370,11 +362,12 @@ export default async function JobCardDetailPage({
     listWarrantiesFor({ jobCardId: id }),
     listRoadTestsFor({ jobCardId: id }),
     getJobCardBilling(id),
+    getRecycleBinOffer('JobCard', id),
   ]);
   if (!jobCard) notFound();
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
-  // Round 2 — what needs the Job Card's branch or its estimate, all at once.
+  // Round 2: what needs the branch or the estimate.
   const [eligibleManagers, eligibleFinance, partCategories, partTypes, partWarrantyBadges] = await Promise.all([
     listEligibleManagersForBranch(jobCard.branchId),
     listEligibleFinanceOfficersForBranch(jobCard.branchId),
@@ -397,18 +390,13 @@ export default async function JobCardDetailPage({
   const canRequestClose = isCreator || isApprover;
   const pendingCancellationRequest = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'PENDING');
   const approvedCancellation = cancellationRequests.find((r: (typeof cancellationRequests)[number]) => r.status === 'APPROVED') ?? null;
-  // Estimate lines whose part carries a warranty — shown before fitting.
   const refundedTotal = refunds.reduce((sum: number, r: (typeof refunds)[number]) => sum + Number(r.amount), 0);
   const pendingCloseRequest = closeRequests.find((r: (typeof closeRequests)[number]) => r.status === 'PENDING');
   const paymentsTotal = payments.reduce((sum: number, p: (typeof payments)[number]) => sum + Number(p.amount ?? 0), 0);
   const estimateLineItems = estimate?.lineItems ?? [];
-  // The one real source of truth for what a line is actually worth
-  // right now — a matched Store Part line tracks Store's own current
-  // selling price live, for as long as the estimate is still Draft,
-  // rather than a number frozen the instant it was first matched.
-  // Used both for each line's own display and for every subtotal/
-  // total below, so the two can never quietly disagree with each
-  // other.
+  // A matched Store Part line follows the part's current selling price
+  // while the estimate is Draft. Used for every line, subtotal and total
+  // so they always agree.
   function getLiveLineAmount(item: (typeof estimateLineItems)[number]): number {
     if (item.type === 'STORE_PART' && item.matchedPart && estimate?.status === 'DRAFT' && item.matchedPart.sellingPrice !== null) {
       return Math.round(item.quantity * Number(item.matchedPart.sellingPrice) * 100) / 100;
@@ -419,8 +407,7 @@ export default async function JobCardDetailPage({
   // What the customer pays — covered lines (warranty / goodwill / internal) excluded.
   const estimateTotal = customerTotal(estimateLineItems);
   const minimumDeposit = Math.round(estimateTotal * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
-  // A cancelled job that took money is about the refund, not payment
-  // progress — never "Payment Completed" on money being given back.
+  // A cancelled job that took money shows refund progress, not payment progress.
   const paymentStatus: 'AWAITING_PAYMENT' | 'PARTIAL' | 'DEPOSIT_MET' | 'PAID_IN_FULL' | 'REFUND_DUE' | 'REFUNDED' =
     jobCard.status === 'CANCELLED' && paymentsTotal > 0
       ? refundedTotal >= paymentsTotal - 0.004
@@ -433,34 +420,19 @@ export default async function JobCardDetailPage({
         : estimateTotal > 0 && paymentsTotal >= minimumDeposit
           ? 'DEPOSIT_MET'
           : 'PARTIAL';
-  // Cancelled is terminal — dead. The only status change still
-  // legitimately available is the vehicle's eventual physical exit.
+  // Cancelled is terminal; the only step left is handing the vehicle back.
   const isCancelled = jobCard.status === 'CANCELLED';
-  // Once checked out, the vehicle has genuinely, physically left —
-  // per the schema's own comments, this is the true end of the line
-  // for a Job Card. Nothing about it is still actionable from here:
-  // no more status edits, no more assignment/approval workflow, no
-  // more cancellation. Only its own real status display, the receipt
-  // it can still print, and — for a Master Admin only — the ability
-  // to delete it outright remain.
+  // Checked out is the end of a Job Card: nothing is actionable except
+  // printing and (Master Admin only) deletion.
   const isCheckedOut = jobCard.status === 'CHECKED_OUT';
-  // A non-cancelled Job Card can't genuinely be checked out — the
-  // vehicle physically leaving — while real money is still owed on
-  // it. READY_FOR_COLLECTION is the honest ceiling until payment
-  // actually clears; CHECKED_OUT simply isn't a real option yet, so
-  // it doesn't appear as a choice at all rather than being offered
-  // and then rejected. CLOSED no longer appears here at all — it's
-  // requested and approved through its own real flow now, never a
-  // direct dropdown selection.
-  // Paid in full = recorded payments cover the estimate's total — the
-  // exact rule the server enforces. A Job Card with nothing owed (no
-  // priced estimate) is paid in full; reading the "Awaiting Payment"
-  // badge here instead once hid Check Out on such a card entirely.
+  // Check-out is only offered once payments cover the total (the same rule
+  // the server enforces). A Job Card with nothing owed counts as paid.
+  // CLOSED is never offered here; it goes through the close request flow.
   const isPaidInFull = paymentsTotal >= estimateTotal;
   const outstanding = Math.max(0, estimateTotal - paymentsTotal);
-  // The real next steps for THIS viewer's role (Master Admin sees the
-  // same normal steps; the raw override dropdown is separate).
-  // Handing a cancelled vehicle back is a front-desk step (the server checks the same).
+  // Next steps for this viewer's role. Master Admin sees the normal steps;
+  // the override dropdown is separate. Handing a cancelled vehicle back is
+  // a front-desk step (the server checks the same).
   const canFrontDesk = isCancelled ? (await can('workshop.job_card.create', { branchId: jobCard.branchId })).allowed : false;
   const nextSteps = isCancelled
     ? (canFrontDesk ? ['CHECKED_OUT'] : [])
@@ -499,7 +471,7 @@ export default async function JobCardDetailPage({
       ) : null}
       {status === 'bill_to_set' ? (
         <div className="mb-6 max-w-xl">
-          <FormFeedbackBanner kind="success" message="Who pays for that line is updated — the customer's total, deposit and balance follow it." />
+          <FormFeedbackBanner kind="success" message="Who pays for that line is updated. The customer's total, deposit and balance have been recalculated." />
         </div>
       ) : null}
       {status === 'refund_recorded' ? (
@@ -533,17 +505,9 @@ export default async function JobCardDetailPage({
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
         {(() => {
-          // "Days in workshop" — working days specifically, matching
-          // how this workshop actually operates: no work happens on
-          // Saturday or Sunday. Ends at checkedOutAt specifically —
-          // the true physical-exit moment — not closedAt, which is
-          // only an administrative sign-off; the vehicle can be
-          // CLOSED and still genuinely sitting in the yard for a
-          // while before it's actually checked out. Once that's
-          // happened, the badge switches to plain past tense — the
-          // count is final, not still running.
-          // One shared rule (lib/visit-durations) — identical to every
-          // print. In Service ends at whatever genuinely ended the work.
+          // Working days (Mon–Fri), from check-in to check-out rather than
+          // closedAt: a closed vehicle can still be in the yard. Uses the
+          // same rule as the prints (lib/visit-durations).
           const durations = visitDurations({
             checkedInAt: jobCard.createdAt,
             workStartedAt: jobCard.workStartedAt,
@@ -560,14 +524,8 @@ export default async function JobCardDetailPage({
                 : `${pluralize(daysInWorkshop, 'working day')} in workshop since check-in`}
             </span>,
           ];
-          // "In Service" — matches the same category name used on the
-          // Vehicles In Custody dashboard for this exact stretch of a
-          // Job Card's life. Ends at completedAt specifically, not
-          // Ready for Collection: that's a separate, later step a
-          // Manager or QC department takes once everything is ready,
-          // and its own timing (which can depend on their
-          // availability, not the technician's) shouldn't be folded
-          // into a technician's own turnaround figure.
+          // "In Service" ends at completedAt, not Ready for Collection, so
+          // the technician's turnaround excludes the sign-off wait.
           if (durations.inService) {
             const inServiceDuration = durations.inService.days;
             badges.push(
@@ -586,10 +544,10 @@ export default async function JobCardDetailPage({
         })()}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Customer & Vehicle</h2>
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Customer & vehicle</h2>
             <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Customer</dt>
@@ -641,7 +599,7 @@ export default async function JobCardDetailPage({
               <div>
                 <dt className="text-[var(--ejo-text-muted)]">Mileage at check-in</dt>
                 <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">
-                  {jobCard.mileageAtCheckIn != null ? `${jobCard.mileageAtCheckIn.toLocaleString()} km` : '—'}
+                  {jobCard.mileageAtCheckIn != null ? `${jobCard.mileageAtCheckIn.toLocaleString('en-NG')} km` : '—'}
                 </dd>
               </div>
               <div>
@@ -712,18 +670,17 @@ export default async function JobCardDetailPage({
                       ))}
                     </ol>
                   ) : jobCard.complaints.length === 0 ? (
-                    // Legacy fallback — a Job Card created before per-item complaints existed
-                    // only has the old single `complaint` field populated, not any related rows.
+                    // Job Cards created before per-item complaints only have the old `complaint` field.
                     <p className="mt-2 text-sm text-[var(--ejo-text)]">{jobCard.complaint}</p>
                   ) : (
-                    <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No complaints reported directly — see inspection findings below.</p>
+                    <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">No complaints recorded. See the inspection findings below.</p>
                   )}
                   {inspectionFindings.length > 0 ? (
                     <>
                       <h2 className="mt-5 text-sm font-semibold text-[var(--ejo-text)]">
                         {pluralize(inspectionFindings.length, 'Inspection Finding')}
                       </h2>
-                      <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Carried over automatically from the Vehicle Service inspection at escalation.</p>
+                      <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Carried over from the Vehicle Service inspection when it was escalated.</p>
                       <ol className="mt-2 space-y-1.5">
                         {inspectionFindings.map((c: (typeof jobCard.complaints)[number]) => (
                           <li key={c.id} className="flex gap-2 text-sm text-[var(--ejo-text)]">
@@ -782,189 +739,89 @@ export default async function JobCardDetailPage({
               <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No estimate lines yet.</p>
             ) : (
               <>
-                <div className="mt-3">
-                  <table className="w-full table-fixed text-xs">
-                    <colgroup>
-                      <col className="w-[9%]" />
-                      <col className="w-[27%]" />
-                      <col className="w-[6%]" />
-                      <col className="w-[9%]" />
-                      <col className="w-[13%]" />
-                      <col className="w-[13%]" />
-                      <col className="w-[13%]" />
-                      {isEstimateContributor ? <col className="w-[10%]" /> : null}
-                    </colgroup>
-                    <thead>
-                      <tr className="border-b border-[var(--ejo-border)] text-left text-[11px] text-[var(--ejo-text-muted)]">
-                        <th className="py-2 pr-2 font-medium">Type</th>
-                        <th className="py-2 pr-2 font-medium">Description</th>
-                        <th className="py-2 pr-2 text-right font-medium">Qty</th>
-                        <th className="py-2 pr-2 font-medium">Unit</th>
-                        <th className="py-2 pr-2 text-right font-medium">Unit Price</th>
-                        <th className="py-2 pr-2 text-right font-medium">Amount</th>
-                        <th className="py-2 pr-2 font-medium">Entered By</th>
-                        {isEstimateContributor ? <th className="py-2 font-medium">&nbsp;</th> : null}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {estimate.lineItems.map((item: (typeof estimate.lineItems)[number]) => {
-                        const canModifyThis =
-                          estimate.status !== 'MANAGER_APPROVED' && isEstimateContributor && (viewerId === item.enteredById || isApprover);
-                        const isEditingThis = editLineId === item.id && canModifyThis;
-                        // The real unit once Store's matched this line, or a
-                        // genuine preview (from what's already in the real
-                        // catalog for this Part Type) before that — computed
-                        // once here so the read-only row and the edit-row
-                        // both show exactly the same thing, never a blank
-                        // that only fills in once you happen to click Edit.
-                        const storePartPreviewUnit =
-                          item.type === 'STORE_PART'
-                            ? (item.unitOfMeasure ?? partTypes.find((t: (typeof partTypes)[number]) => t.id === item.partTypeId)?.typicalUnit ?? null)
-                            : null;
-                        // The real, honest word for this line's own
-                        // quantity — "Set" for a single unit, "Sets"
-                        // for anything else — never a bare unit name
-                        // sitting next to a count as if English didn't
-                        // have plurals.
-                        const rawUnit = item.type === 'STORE_PART' ? storePartPreviewUnit : item.unitOfMeasure;
-                        const displayUnit = rawUnit ? pluralizeWord(item.quantity, rawUnit) : '—';
-                        // A matched Store Part line is a live link to
-                        // Store's real catalog, not a one-time snapshot —
-                        // for as long as the estimate is still open
-                        // (Draft), the price shown always tracks the
-                        // Part's own current selling price, even if
-                        // nobody has touched this line's own quantity
-                        // since Store changed it. Once the estimate
-                        // leaves Draft, the real stored figures are
-                        // shown as-is — the genuinely locked, historical
-                        // record from that point on.
-                        const liveUnitPrice =
-                          item.type === 'STORE_PART' && item.matchedPart && estimate?.status === 'DRAFT' && item.matchedPart.sellingPrice !== null
-                            ? Number(item.matchedPart.sellingPrice)
-                            : item.unitPrice !== null
-                              ? Number(item.unitPrice)
-                              : null;
-                        const liveAmount = liveUnitPrice !== null ? getLiveLineAmount(item) : null;
-
-                        if (isEditingThis) {
-                          return (
-                            <tr key={item.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                              <td colSpan={isEstimateContributor ? 8 : 7} className="py-2">
-                                <form action={updateEstimateLineItemFormAction} className="flex flex-wrap items-center gap-2">
-                                  <FormPendingOverlay />
-                                  <input type="hidden" name="jobCardId" value={jobCard.id} />
-                                  <input type="hidden" name="lineItemId" value={item.id} />
-                                  <span className="w-24 shrink-0 text-xs text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</span>
-                                  <input
-                                    name="description"
-                                    defaultValue={item.description}
-                                    required
-                                    list="internal-job-suggestions"
-                                    className="min-w-[120px] flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
-                                  />
-                                  <input
-                                    name="quantity"
-                                    type="number"
-                                    step="1"
-                                    min="1"
-                                    required
-                                    defaultValue={item.quantity}
-                                    className="w-16 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
-                                  />
-                                  {item.type === 'STORE_PART' ? (
-                                    <span className="w-24 shrink-0 text-xs text-[var(--ejo-text)]">
-                                      {storePartPreviewUnit ?? <span className="text-[11px] text-[var(--ejo-text-muted)]">Awaiting Store match</span>}
-                                    </span>
-                                  ) : (
-                                    <div className="w-24 shrink-0">
-                                      <UnitOfMeasureInput name="unitOfMeasure" defaultValue={item.unitOfMeasure ?? undefined} placeholder="Unit" />
-                                    </div>
-                                  )}
-                                  {item.type !== 'STORE_PART' ? (
-                                    <input
-                                      name="unitPrice"
-                                      type="number"
-                                      step="0.01"
-                                      min="0"
-                                      placeholder="Unit Price"
-                                      defaultValue={item.unitPrice != null ? Number(item.unitPrice) : ''}
-                                      className="w-24 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
-                                    />
-                                  ) : null}
-                                  <SubmitButton
-                                    label="Save"
-                                    pendingLabel="Saving…"
-                                    className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-                                  />
-                                  <LoadingLink
-                                    href={`/workshop/job-cards/${jobCard.id}`}
-                                    className="text-xs text-[var(--ejo-text-muted)] hover:underline"
-                                  >
-                                    Cancel
-                                  </LoadingLink>
-                                </form>
-                              </td>
-                            </tr>
-                          );
-                        }
-
-                        return (
-                          <tr key={item.id} className="border-b border-[var(--ejo-border)] last:border-0">
-                            <td className="py-2 pr-2 text-[var(--ejo-text-muted)]">{ESTIMATE_TYPE_LABEL[item.type]}</td>
-                            <td className="py-2 pr-2 break-words text-[var(--ejo-text)]">
-                              {item.description}
-                              { item.type === 'STORE_PART' && item.matchedPartId && partWarrantyBadges[item.matchedPartId] ? (
-                                  <div className="mt-0.5 text-[10px] font-medium text-[var(--ejo-success)]">Warranty: {partWarrantyBadges[item.matchedPartId]} — issued automatically when released</div>
-                                ) : null}
-                              {item.type === 'STORE_PART' ? (
-                                item.matchedPart ? (
-                                  <div className="mt-0.5 text-[10px] text-[var(--ejo-success)]">Matched: {item.matchedPart.name}</div>
-                                ) : (
-                                  <div className="mt-0.5 text-[10px] text-[var(--ejo-warning)]">Awaiting Store match</div>
-                                )
-                              ) : null}
-                            </td>
-                            <td className="py-2 pr-2 text-right text-[var(--ejo-text)]">{item.quantity}</td>
-                            <td className="py-2 pr-2 text-[var(--ejo-text-muted)]">{displayUnit}</td>
-                            <td className="py-2 pr-2 text-right text-[var(--ejo-text)]">
-                              {formatNaira(liveUnitPrice)}
-                              {item.type === 'STORE_PART' && item.matchedPart && estimate?.status === 'DRAFT' ? (
-                                <span className="ml-1 text-[9px] font-medium uppercase text-[var(--ejo-success)]">live</span>
-                              ) : null}
-                            </td>
-                            <td className="py-2 pr-2 text-right font-medium text-[var(--ejo-text)]">{formatNaira(liveAmount)}</td>
-                            <td className="py-2 pr-2 truncate text-[11px] text-[var(--ejo-text-muted)]">{item.enteredBy.fullName}</td>
-                            {isEstimateContributor ? (
-                              <td className="py-2">
-                                {canModifyThis ? (
-                                  <div className="flex items-center gap-3">
-                                    <LoadingLink
-                                      href={`/workshop/job-cards/${jobCard.id}?editLineId=${item.id}`}
-                                      className="inline-flex items-center text-xs font-medium leading-none text-[var(--ejo-primary)] hover:underline"
-                                    >
-                                      Edit
-                                    </LoadingLink>
-                                    <form action={deleteEstimateLineItemFormAction} className="inline-flex items-center">
-                                      <FormPendingOverlay />
-                                      <input type="hidden" name="jobCardId" value={jobCard.id} />
-                                      <input type="hidden" name="lineItemId" value={item.id} />
-                                      <button
-                                        type="submit"
-                                        className="inline-flex items-center text-xs font-medium leading-none text-[var(--ejo-error)] hover:underline"
-                                      >
-                                        Remove
-                                      </button>
-                                    </form>
-                                  </div>
-                                ) : null}
-                              </td>
-                            ) : null}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <EstimateLinesTable
+                  withActions={isEstimateContributor}
+                  lines={estimate.lineItems.map((item: (typeof estimate.lineItems)[number]): EstimateLineView => {
+                    const canModifyThis =
+                      estimate.status !== 'MANAGER_APPROVED' && isEstimateContributor && (viewerId === item.enteredById || isApprover);
+                    const isEditingThis = editLineId === item.id && canModifyThis;
+                    // The matched part's unit, or the Part Type's typical
+                    // unit until the Store matches it.
+                    const storePartPreviewUnit =
+                      item.type === 'STORE_PART'
+                        ? (item.unitOfMeasure ?? partTypes.find((t: (typeof partTypes)[number]) => t.id === item.partTypeId)?.typicalUnit ?? null)
+                        : null;
+                    // "1 Set", "2 Sets".
+                    const rawUnit = item.type === 'STORE_PART' ? storePartPreviewUnit : item.unitOfMeasure;
+                    const displayUnit = rawUnit ? pluralizeWord(item.quantity, rawUnit) : '—';
+                    // While Draft, a matched Store Part line shows the
+                    // part's current selling price. After Draft, the
+                    // stored figures are shown as recorded.
+                    const liveUnitPrice =
+                      item.type === 'STORE_PART' && item.matchedPart && estimate?.status === 'DRAFT' && item.matchedPart.sellingPrice !== null
+                        ? Number(item.matchedPart.sellingPrice)
+                        : item.unitPrice !== null
+                          ? Number(item.unitPrice)
+                          : null;
+                    const liveAmount = liveUnitPrice !== null ? getLiveLineAmount(item) : null;
+                    return {
+                      id: item.id,
+                      typeLabel: ESTIMATE_TYPE_LABEL[item.type] ?? item.type,
+                      description: item.description,
+                      notes: (
+                        <>
+                          {item.type === 'STORE_PART' && item.matchedPartId && partWarrantyBadges[item.matchedPartId] ? (
+                            <div className="mt-0.5 text-[11px] font-medium text-[var(--ejo-success)]">Warranty: {partWarrantyBadges[item.matchedPartId]} — issued automatically when released</div>
+                          ) : null}
+                          {item.type === 'STORE_PART' ? (
+                            item.matchedPart ? (
+                              <div className="mt-0.5 text-[11px] text-[var(--ejo-success)]">Matched: {item.matchedPart.name}</div>
+                            ) : (
+                              <div className="mt-0.5 text-[11px] font-medium text-[var(--ejo-warning-text)]">Awaiting Store match</div>
+                            )
+                          ) : null}
+                        </>
+                      ),
+                      quantity: item.quantity,
+                      unit: displayUnit,
+                      unitPrice: formatNaira(liveUnitPrice),
+                      liveTag: item.type === 'STORE_PART' && Boolean(item.matchedPart) && estimate?.status === 'DRAFT',
+                      amount: formatNaira(liveAmount),
+                      enteredBy: item.enteredBy.fullName,
+                      actions: canModifyThis ? (
+                        <>
+                          <EstimateLineEditLink href={`/workshop/job-cards/${jobCard.id}?editLineId=${item.id}`} />
+                          <form action={deleteEstimateLineItemFormAction} className="inline-flex items-center">
+                            <FormPendingOverlay />
+                            <input type="hidden" name="jobCardId" value={jobCard.id} />
+                            <input type="hidden" name="lineItemId" value={item.id} />
+                            <EstimateLineRemoveButton />
+                          </form>
+                        </>
+                      ) : null,
+                      editor: isEditingThis ? (
+                        <EstimateLineEditor
+                          action={updateEstimateLineItemFormAction}
+                          hidden={
+                            <>
+                              <input type="hidden" name="jobCardId" value={jobCard.id} />
+                              <input type="hidden" name="lineItemId" value={item.id} />
+                            </>
+                          }
+                          typeLabel={ESTIMATE_TYPE_LABEL[item.type] ?? item.type}
+                          description={item.description}
+                          quantity={item.quantity}
+                          unitOfMeasure={item.unitOfMeasure}
+                          storePartUnit={storePartPreviewUnit}
+                          isStorePart={item.type === 'STORE_PART'}
+                          unitPrice={item.unitPrice != null ? Number(item.unitPrice) : null}
+                          datalistId="internal-job-suggestions"
+                          cancelHref={`/workshop/job-cards/${jobCard.id}`}
+                        />
+                      ) : undefined,
+                    };
+                  })}
+                />
                 <div className="mt-3 space-y-1 border-t border-[var(--ejo-border)] pt-3 text-sm">
                   {(['STORE_PART', 'EXTERNAL_PART', 'EXTERNAL_JOB', 'INTERNAL_JOB', 'LABOUR', 'SUNDRY'] as const).map((type) => {
                     const subtotal = estimate.lineItems
@@ -1074,8 +931,8 @@ export default async function JobCardDetailPage({
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
                   {estimate.matchingRequestedAt
-                    ? `Store matching already requested — awaiting Store. Submission stays on hold until every Store Part line is matched.`
-                    : 'This estimate has Store Part lines with no price yet — those only get priced once Store matches them. Request Store matching to move forward.'}
+                    ? 'Store matching requested. You can submit once the Store has matched every Store Part line.'
+                    : 'Store Part lines are priced when the Store matches them. Request Store matching to continue.'}
                 </p>
                 <SubmitButton
                   label={estimate.matchingRequestedAt ? 'Request Store Matching Again' : 'Request Store Matching'}
@@ -1090,7 +947,7 @@ export default async function JobCardDetailPage({
                 <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
-                  Every line needs a price before this can be submitted — a supervisor will validate it next.
+                  Every line needs a price. The supervisor validates the estimate next.
                 </p>
                 <SubmitButton
                   label="Submit for validation"
@@ -1117,8 +974,8 @@ export default async function JobCardDetailPage({
                 <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
-                  Approved by the supervisor — approving here notifies {jobCard.createdBy.fullName}, who created
-                  this Job Card, to review and decide when to tell the customer.
+                  Approved by the supervisor. When you approve, {jobCard.createdBy.fullName} (who opened this Job
+                  Card) is asked to review it and tell the customer.
                 </p>
                 <SubmitButton
                   label="Approve as Manager"
@@ -1143,8 +1000,7 @@ export default async function JobCardDetailPage({
                 <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">
-                  Approved by the manager. Once you&apos;re satisfied everything is in order, notify the customer
-                  so they can review the estimate and proceed.
+                  Approved by the manager. Check the estimate, then notify the customer.
                 </p>
                 <SubmitButton
                   label="Notify customer"
@@ -1205,12 +1061,12 @@ export default async function JobCardDetailPage({
                     </div>
                   ))}
                   <div className="flex justify-between pt-1 text-sm font-semibold text-[var(--ejo-text)]">
-                    <span>Total Recorded</span>
+                    <span>Total recorded</span>
                     <span>{formatNaira(paymentsTotal)}</span>
                   </div>
                   {estimateTotal > 0 && paymentsTotal < estimateTotal ? (
                     <div className="flex justify-between text-sm text-[var(--ejo-warning)]">
-                      <span>Balance Remaining</span>
+                      <span>Balance remaining</span>
                       <span>{formatNaira(estimateTotal - paymentsTotal)}</span>
                     </div>
                   ) : null}
@@ -1224,12 +1080,10 @@ export default async function JobCardDetailPage({
               ) : ['AWAITING_CUSTOMER_APPROVAL', 'IN_PROGRESS', 'AWAITING_PARTS', 'QUALITY_CHECK', 'COMPLETED', 'READY_FOR_COLLECTION'].includes(jobCard.status) && isEligibleFinance ? (
                 <>
                   <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
-                    Recording is fully automatic — approval and the move to In Progress happen the moment the total
-                    recorded first reaches the 70% minimum deposit, with no separate approval step. Pick a suggested
-                    amount below, or choose &quot;Other&quot; to enter one manually — either way, whatever the field
-                    shows is exactly what gets recorded.
+                    Once payments reach the 70% minimum deposit, the Job Card moves to In Progress automatically.
+                    Pick a suggested amount or choose &quot;Other&quot; to enter a different one.
                   </p>
-                  <form key={payments.length} action={recordPaymentFormAction} className="mt-3 grid grid-cols-2 gap-2">
+                  <form key={payments.length} action={recordPaymentFormAction} className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <IdempotencyKey />
                     <input type="hidden" name="jobCardId" value={jobCard.id} />
                     <FormPendingOverlay />
@@ -1260,7 +1114,7 @@ export default async function JobCardDetailPage({
                     <SubmitButton
                       label="Record payment"
                       pendingLabel="Recording…"
-                      className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+                      className="col-span-full min-h-11 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
                     />
                   </form>
                 </>
@@ -1272,8 +1126,7 @@ export default async function JobCardDetailPage({
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Sourcing</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Auto-detected from this Job Card&apos;s own estimate — Store parts and external procurement are tracked
-                as separate requests, each fully independent.
+                Based on this Job Card&apos;s estimate. Store parts and external procurement are requested separately.
               </p>
 
               {sourcingNeeds.needsStoreParts ? (
@@ -1408,7 +1261,7 @@ export default async function JobCardDetailPage({
           </div>
         </div>
 
-        <div className="space-y-6 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-6">
+        <div className="space-y-6 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:pb-6">
           {isCreator && !jobCard.supervisor && !isCheckedOut ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Reassign supervisor</h2>
@@ -1445,8 +1298,7 @@ export default async function JobCardDetailPage({
               )}
               {eligibleSupervisors.usingFallback ? (
                 <p className="mt-1 text-[11px] text-[var(--ejo-warning)]">
-                  No one is placed in this department as a Supervisor yet — an administrator is shown as a
-                  stand-in.
+                  No supervisor is set up for this department yet, so an administrator is listed instead.
                 </p>
               ) : null}
             </div>
@@ -1456,9 +1308,8 @@ export default async function JobCardDetailPage({
             <div id="review-approval" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Review this Job Card</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Approve to confirm this Job Card can proceed, or reject it back to {jobCard.createdBy.fullName} with
-                a reason — a rejection doesn&apos;t have to mean something was wrong; availability or workload are
-                valid reasons too.
+                Approve to let the work go ahead, or reject it back to {jobCard.createdBy.fullName} with a reason
+                (availability or workload are fine reasons).
               </p>
               <form action={approveJobCardFormAction} className="mt-4 space-y-2">
                 <FormPendingOverlay />
@@ -1674,8 +1525,8 @@ export default async function JobCardDetailPage({
             <div id="technician-response" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Respond to this assignment</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                {jobCard.assignedTechnician?.fullName}, you&apos;ve been assigned to this Job Card. Accept to begin,
-                or reject with a reason if you can&apos;t take it on.
+                You&apos;ve been assigned to this Job Card. Accept to start, or reject with a reason if you can&apos;t
+                take it on.
               </p>
               <form action={acceptTechnicianAssignmentFormAction} className="mt-4">
                 <FormPendingOverlay />
@@ -1752,8 +1603,7 @@ export default async function JobCardDetailPage({
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Request cancellation</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                For a customer who called, emailed, or came in — requires Manager approval before this Job Card
-                is actually cancelled.
+                Use this when the customer asks to cancel. A Manager must approve it.
               </p>
               <form action={requestJobCardCancellationFormAction} className="mt-3 space-y-2">
                 <FormPendingOverlay />
@@ -1817,8 +1667,7 @@ export default async function JobCardDetailPage({
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-5">
               <h2 className="text-sm font-semibold text-[var(--ejo-primary)]">Request close</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Requires Manager approval before this Job Card is actually closed — the same real approval this
-                Job Card&apos;s own cancellation already needs.
+                A Manager must approve before this Job Card is closed.
               </p>
               <form action={requestJobCardCloseFormAction} className="mt-3">
                 <FormPendingOverlay />
@@ -1836,7 +1685,7 @@ export default async function JobCardDetailPage({
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 print:hidden">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Vehicle Collection Receipt</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                The vehicle has been checked out — the final record for this Job Card is ready to print.
+                The vehicle has been checked out. The final record is ready to print.
               </p>
               <div className="mt-3">
                 <PrintMenu orgHref={`/print/job-cards/${jobCard.id}`} clientHref={`/print/job-cards/${jobCard.id}?variant=client`} clientLabel="Customer Copy" />
@@ -1846,10 +1695,9 @@ export default async function JobCardDetailPage({
 
           {sourcingNeeds.existingPartRequestSlips.length > 0 || sourcingNeeds.existingExternalProcurementRequests.length > 0 ? (
             <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 print:hidden">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Attached Records</h2>
+              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Attached records</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Every Store Parts Request and External Procurement Request ever raised against this Job Card —
-                kept here for real record-keeping regardless of the Job Card&apos;s own current status.
+                Parts requests and external procurement requests raised against this Job Card.
               </p>
               {sourcingNeeds.existingPartRequestSlips.length > 0 ? (
                 <div className="mt-3 space-y-1.5">
@@ -1886,23 +1734,7 @@ export default async function JobCardDetailPage({
             </div>
           ) : null}
 
-          {isMasterAdmin ? (
-            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
-              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Danger zone</h2>
-              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Permanently deletes this Job Card and its complaints. This cannot be undone.
-              </p>
-              <form action={deleteJobCardFormAction} className="mt-4">
-                <FormPendingOverlay />
-                <input type="hidden" name="jobCardId" value={jobCard.id} />
-                <ConfirmDeleteButton
-                  confirmMessage={`Delete Job Card ${jobCard.jobNumber}? This permanently removes it and its complaints. This cannot be undone.`}
-                  label="Delete this Job Card"
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
-                />
-              </form>
-            </div>
-          ) : null}
+          <RecycleBinPanel offer={binOffer} entity="JobCard" id={jobCard.id} />
         </div>
       </div>
 
@@ -1915,7 +1747,7 @@ export default async function JobCardDetailPage({
             entries={auditTrail.map((entry) => ({
               id: entry.id,
               actionLabel: AUDIT_ACTION_LABEL[entry.action] ?? humanizeAction(entry.action),
-              userName: entry.user?.fullName ?? null,
+              userName: actorLabel(entry.user?.fullName ?? null, entry.metadata),
               detail: formatAuditDetail(entry),
               dateLabel: formatDateTime(entry.createdAt),
             }))}

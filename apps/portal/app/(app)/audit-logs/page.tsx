@@ -7,10 +7,11 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { PageHeader, PageTitle } from '@/components/ui';
+import { Icon } from '@/components/ui/Icon';
 
 const KINDS: [string, string][] = [['all', 'Everything'], ['business', 'Business events'], ['data', 'Data changes'], ['api', 'API requests'], ['system', 'Scheduled jobs']];
-const AREA_DOT: Record<string, string> = { Workshop: 'bg-[var(--ejo-primary)]', Store: 'bg-[var(--ejo-info)]', Warranty: 'bg-[var(--ejo-warning)]', Security: 'bg-[var(--ejo-error)]', Scheduling: 'bg-purple-500', System: 'bg-[var(--ejo-text-muted)]' };
-const timeOf = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' });
+const AREA_DOT: Record<string, string> = { Workshop: 'bg-[var(--ejo-primary)]', Store: 'bg-[var(--ejo-info)]', Warranty: 'bg-[var(--ejo-warning)]', Security: 'bg-[var(--ejo-error)]', Scheduling: 'bg-teal-500', System: 'bg-[var(--ejo-text-muted)]' };
+const timeOf = (d: Date) => new Date(d).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' });
 function groupByDay<T extends { at: Date }>(rows: T[]): [string, T[]][] {
   const ymd = (d: Date) => new Date(new Date(d).getTime() + 3600000).toISOString().slice(0, 10);
   const today = ymd(new Date());
@@ -52,8 +53,11 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Pr
   const input = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-1.5 text-sm text-[var(--ejo-text)]';
   return (
     <div className="w-full p-4 sm:p-8">
-      <PageTitle icon="history">Audit Logs</PageTitle>
-      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Everything that happened, newest first — business events in plain words, every data change with its before and after, and every API request. Nothing here can be edited or deleted.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <PageTitle icon="history">Audit Logs</PageTitle>
+        <LoadingLink href="/audit-logs/errors" className="inline-flex items-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-sm font-medium text-[var(--ejo-text)] transition hover:-translate-y-0.5 hover:bg-[var(--ejo-surface)] motion-reduce:transform-none"><Icon name="alert" size={15} className="text-[var(--ejo-warning)]" />Error log</LoadingLink>
+      </div>
+      <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Everything that happened, newest first — business events in plain words, every data change with its before and after, and every API request. Nothing here can be edited or deleted. A reference someone quotes from an error screen is on the Error log.</p>
       <div className="mb-3 flex flex-wrap gap-2">
         {KINDS.map(([k, l]) => <LoadingLink key={k} href={keep({ kind: k === 'all' ? undefined : k, cursor: undefined })} className={`rounded-full px-3 py-1 text-xs font-medium ${kind === k ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{l}</LoadingLink>)}
       </div>

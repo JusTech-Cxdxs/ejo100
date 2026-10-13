@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { LoadingLink } from '@/components/LoadingLink';
 import type { SchedulingAnalytics } from '@/lib/scheduling-analytics';
 
@@ -7,8 +8,9 @@ export function RoomGrid({ grid }: { grid: SchedulingAnalytics['grid'] }) {
   if (grid.rows.length === 0) return <p className="text-sm text-[var(--ejo-text-muted)]">No meeting rooms set up yet.</p>;
   const h12 = (h: number) => `${h > 12 ? h - 12 : h}${h >= 12 ? 'pm' : 'am'}`;
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] border-separate border-spacing-1 text-xs">
+    <>
+    <ResponsiveTable layout="scroll" minWidth="40rem" label="Rooms by hour">
+      <table className="w-full border-separate border-spacing-1 text-xs">
         <thead>
           <tr>
             <th className="w-32 text-left font-semibold text-[var(--ejo-text-muted)]">Room</th>
@@ -34,7 +36,8 @@ export function RoomGrid({ grid }: { grid: SchedulingAnalytics['grid'] }) {
           ))}
         </tbody>
       </table>
-      <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">Green = free · Blue = booked (tap to open)</p>
-    </div>
+    </ResponsiveTable>
+    <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">Green = free · Blue = booked (tap to open)</p>
+    </>
   );
 }

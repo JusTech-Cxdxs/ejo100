@@ -7,14 +7,9 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { marginToMarkup, markupToMargin } from '@/lib/pricing-math';
 
 /**
- * The real margin (or, if the business prefers, markup) Store wants
- * to hold on this Part — what the Pricing Command Center actually
- * compares every new Goods Receipt cost against, the moment it's
- * recorded. Kept as its own real, separate component from
- * SellingPriceCalculator, matching how the two are genuinely
- * different decisions: what to charge a customer, versus how much
- * profitability is acceptable to hold before it's worth a real
- * second look.
+ * The part's target margin (or markup). Each new goods receipt cost is
+ * checked against it by the Pricing Command Center. Separate from
+ * SellingPriceCalculator: the target is a threshold, not the price.
  */
 export function TargetMarginEditor({
   partId,
@@ -39,10 +34,7 @@ export function TargetMarginEditor({
 
   const parsedValue = Number(valueInput);
   const hasValidInput = Number.isFinite(parsedValue) && parsedValue > 0;
-  // Live, as-you-type — the exact real reassurance that was missing
-  // before: seeing both real numbers together, right where the
-  // decision is actually being made, not after the fact on a
-  // different screen.
+  // Margin and markup equivalents, updated as you type.
   const equivalentValue = !hasValidInput
     ? null
     : pricingMethod === 'MARGIN'
@@ -51,17 +43,15 @@ export function TargetMarginEditor({
 
   return (
     <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-      <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Target Pricing</h2>
+      <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Target pricing</h2>
       <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-        The profitability Store wants to hold on this Part. Every new delivery cost is checked against this
-        automatically — a real Pricing Alert is raised the moment a delivery pushes it below this, above it, or
-        into an outright loss.
+        The profit the Store aims to make on this part. Each new delivery cost is checked against it, and a
+        pricing alert is raised if a delivery takes the part below or above the target, or into a loss.
       </p>
       <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">
         <span className="font-medium text-[var(--ejo-text)]">Margin</span> is profit as a share of the selling
         price; <span className="font-medium text-[var(--ejo-text)]">Markup</span> is profit as a share of cost.
-        Same real profit, two real ways to measure it — pick whichever this Part&apos;s own pricing decisions are
-        usually made in.
+        Use whichever you normally price this part by.
       </p>
 
       {!isEditing && currentTargetMarginPercent !== null ? (
@@ -102,13 +92,8 @@ export function TargetMarginEditor({
                 key={m}
                 type="button"
                 onClick={() => {
-                  // The real fix: switching units has to convert
-                  // whatever's actually sitting in the box right now,
-                  // not just relabel it. Typing 7.1 as Margin and
-                  // then clicking Markup must show the real Markup
-                  // equivalent (~7.7), never leave "7.1" sitting
-                  // there silently reinterpreted as a different real
-                  // number — that was the exact real bug.
+                  // Switching basis converts the value in the box
+                  // (7.1% margin → ~7.7% markup) rather than relabelling it.
                   if (m !== pricingMethod && hasValidInput) {
                     const converted = pricingMethod === 'MARGIN' ? marginToMarkup(parsedValue) : markupToMargin(parsedValue);
                     if (converted !== null) {
@@ -166,8 +151,7 @@ export function TargetMarginEditor({
           {hasValidInput && equivalentValue !== null ? (
             <p className="text-xs text-[var(--ejo-text-muted)]">
               Equivalent {pricingMethod === 'MARGIN' ? 'Markup' : 'Margin'}:{' '}
-              <span className="font-medium text-[var(--ejo-text)]">{equivalentValue.toFixed(1)}%</span> — this is
-              the real number that actually gets stored and compared, regardless of which one is typed here.
+              <span className="font-medium text-[var(--ejo-text)]">{equivalentValue.toFixed(1)}%</span>
             </p>
           ) : null}
         </form>

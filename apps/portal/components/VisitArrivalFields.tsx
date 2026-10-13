@@ -66,7 +66,7 @@ export function VisitArrivalFields({ fromOrganisation, group }: { fromOrganisati
               {i > 0 ? <button type="button" onClick={() => setPlates((n) => n - 1)} className="shrink-0 px-2 text-xs font-medium text-[var(--ejo-error)]">Remove</button> : null}
             </div>
           ))}
-          {group && plates < 10 ? <button type="button" onClick={() => setPlates((n) => n + 1)} className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">+ Another vehicle</button> : null}
+          {group && plates < 10 ? <button type="button" onClick={() => setPlates((n) => n + 1)} className="inline-flex min-h-10 items-center text-xs font-medium text-[var(--ejo-primary)] hover:underline">+ Another vehicle</button> : null}
         </div>
       ) : null}
     </div>

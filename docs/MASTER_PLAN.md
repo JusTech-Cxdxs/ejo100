@@ -6,30 +6,45 @@ Rule: one phase = one pull request (or a short series), each with tests, an inde
 CI green and a Vercel preview, merged by the owner. No AI / ML / X / external integrations until
 Phase 12 is green; today's design must not prevent them.
 
-Status keys: ✅ done and merged · 🔄 in progress · ⏳ next · ⬜ planned
+Status words: **Done** (merged) · **Partly done** · **In progress** · **Next** · **Planned**
 
 ---
 
-## Where we are (7 Oct 2026)
+## Where we are (12 Oct 2026)
 
 | # | Phase | Status | PR |
 |---|---|---|---|
-| 1 | Roles realistic (segregation of duties), organisation + branch administrators, organisation isolation | ✅ | #3 |
-| 2 | Architecture & Security Baseline; scheduled jobs out of activity; data inventory | ✅ | #4 |
-| 3 | Integrity & concurrency ("two users at once"): money, stock, workflow, bookings | ✅ | #5 |
-| 4 | Authorization & cross-organisation attack audit (refunds first) | ✅ | #6 |
-| 4b | **Version-1 polish**: live-update load fix, Render deploy fix, light/dark/system theme, sidebar wordmark + "Powered by", next-version modules hidden, staff profile cards + Profile page, automatic employee IDs, welcome / access-changed emails | 🔄 | #7 |
-| 5 | Finish unfinished surfaces: Settings, Customer Portal (controlled invitation flow) | ⏳ | |
-| 6 | Analytics correctness & actionability (descriptive → diagnostic → trend → prescriptive-ready) | ⬜ | |
-| 7 | Notifications, email, realtime & scheduler end-to-end (who gets what, every link exact) | ⬜ | |
-| 8 | Data lifecycle: Recycle Bin, documents, exports, history views (no long scattered pages) | ⬜ | |
-| 9 | Look & feel: remaining pages checked in dark mode, mobile menu | ⬜ | (theme, branding, "Powered by" done in #7) |
-| 10 | End-to-end business journeys + unpredictable-user scenarios | ⬜ | |
-| 11 | Production reliability, load / pressure tests, performance, observability | ⬜ | |
-| 12 | Final enterprise readiness audit (the full loop, below) | ⬜ | |
-| — | Future layer (only after 12): Python / ML intelligence, automation, SMS / WhatsApp, X, Microsoft / Google | ⬜ | |
+| 1 | Roles realistic (segregation of duties), organisation + branch administrators, organisation isolation | Done | #3 |
+| 2 | Architecture & Security Baseline; scheduled jobs out of activity; data inventory | Done | #4 |
+| 3 | Integrity & concurrency ("two users at once"): money, stock, workflow, bookings | Done | #5 |
+| 4 | Authorization & cross-organisation attack audit (refunds first) | Done | #6 |
+| 4b | Version-1 polish: live-update load fix, Render deploy fix, theme, wordmark, profile, employee IDs, welcome and access-changed emails | Done | #7 |
+| 5 | Unfinished surfaces: customer portal (controlled invitations, forgot / reset, services, payments, warranties) | Done | #11 |
+| 6 | Analytics correctness: metric register and reconciliation tests against hand-worked answers | Partly done (prescriptive inventory analytics still open) | #8 |
+| 7 | Notifications, email, realtime and scheduler checked end to end | Partly done (emails followed in E2E; private realtime channels planned with Messages) | #8, #11 |
+| 8 | Data lifecycle: Recycle Bin, history views | Recycle Bin done (V1); history views partly done | |
+| 9 | Look & feel: shell redesign, light and dark on every page, mobile drawer | Done | #11 |
+| 10 | End-to-end journeys and unpredictable users (Playwright, 135 tests) | Done | #11 |
+| 11 | Production reliability: k6 stages, failover, error references (v29) | Partly done (staging load test open) | #8, #11 |
+| 12 | Final enterprise readiness audit | In progress (V1 final phase) | |
+| — | AI phase: AI support centre, Intelligence (Python service); see `docs/AI_READINESS.md` | Next | |
+
+The sections below keep each phase's original scope and findings for the record.
 
 ---
+
+## Roadmap additions — 12 Oct 2026 (V1 final phase)
+Requested by the owner and recorded on `/roadmap` (`apps/portal/lib/roadmap.ts`), each with a design section:
+- **Targets & performance**: targets per organisation, branch, department and person (jobs, revenue, parts sales, turnaround, CSAT), approved one level up, progress computed from records and shown on dashboards.
+- **Messages**: in-portal chat; official messages are permanent, can be emailed and appear in the record's history; informal chat has a retention period.
+- From a review of SAP S/4HANA, Dynamics 365, Odoo and dealer-management systems: Approvals & workflow designer, Quality & checklists, Technician app (offline, job clocking), Vehicle sales, Service plans & contracts, Customer feedback, Price lists / promotions / loyalty, Fleet & business accounts, Tax & e-invoicing (NRS MBS), Data warehouse & BI. Existing entries extended: Finance (budgets), Documents (e-signature), Fixed assets & tools (tool crib), Customer app (online booking), Integrations (manufacturers, open API).
+- The AI phase is marked **Next**: AI support centre (customer and staff tickets with a drafting assistant) and Intelligence, both behind a separate Python service (`docs/AI_READINESS.md`).
+
+## V1 final closure — 13 Oct 2026 (PR #19)
+Roles and approvals, Branch Assistant with assisted sessions, error references with an IT lookup, rewritten emails, dependency and
+configuration hardening, plain-language copy, extended roadmap and AI-readiness. Status and owner actions:
+[V1_FINAL_RELEASE_REPORT.md](V1_FINAL_RELEASE_REPORT.md). Closure waits for CI on the release candidate (GitHub billing) and the
+owner prerequisites listed there.
 
 ## Customer portal + CRM + redesign + full test programme — 12 Oct 2026 (PR #11)
 Customer portal rebuilt (mobile-first, forgot/reset, services, payments, warranties, notifications, profile), staff CRM (hub, customer 360,
@@ -37,7 +52,7 @@ portal access, customer broadcasts), portal shell and module redesign, and a fre
 Semgrep, ZAP, k6, RLS and concurrency checks). Recommendation: **READY WITH DOCUMENTED LIMITATIONS** — see
 [CUSTOMER_PORTAL_CRM_RELEASE.md](CUSTOMER_PORTAL_CRM_RELEASE.md).
 
-## V1 closure — 12 Oct 2026 (PR #8) ✅
+## V1 closure — 12 Oct 2026 (PR #8), done
 Final audit, hardening and E2E/load testing done. Recommendation: **READY WITH DOCUMENTED LIMITATIONS** — see [V1_CLOSURE_REPORT.md](V1_CLOSURE_REPORT.md) for the findings register, load baseline, metric register and the list of what is left.
 
 ## Version 1 scope (decided 7 Oct 2026)
@@ -55,7 +70,7 @@ presentation → later modules.
 - Analytics must follow the **Action Contract**: every insight links to the exact record or the
   exact filtered list behind it.
 
-## Phase 4b — Version-1 polish 🔄 (PR #7)
+## Phase 4b — Version-1 polish (PR #7), done
 - [x] Live updates no longer load the server: the change check is a tiny organisation-scoped
       `GET /api/live/pulse` (was a page-posting server action every 3 s), every 10 s while the
       page is in use, once a minute when idle or when instant push is on, never in a hidden tab;
@@ -80,7 +95,7 @@ presentation → later modules.
 
 ---
 
-## Phase 4 — Authorization & cross-organisation attack audit ✅
+## Phase 4 — Authorization & cross-organisation attack audit (done)
 Principle: **what you are supposed to see is what you see** — and nothing else, by any route.
 For every role: login → menu → page → record → action → server action → database → audit →
 notification → realtime.
@@ -132,7 +147,7 @@ Deliverable: fixes + a source test that fails CI if a read by id is not fenced.
 Still to do in this phase family (next PRs): notification "needs your action" caps of 10 per
 kind (Phase 7), customer-portal direct-id tests once its pages exist (Phase 5).
 
-## Phase 5 — Finish unfinished surfaces ⏳
+## Phase 5 — Finish unfinished surfaces (customer portal done in #11)
 Found by inventory on 7 Oct 2026 (pages that are placeholders today):
 - ~~Staff Profile~~ — done in #7 (details, access, change password, theme). Still to add:
   sessions list, notification preferences.
@@ -150,7 +165,7 @@ Found by inventory on 7 Oct 2026 (pages that are placeholders today):
 - Stock reservation lifecycle: reserved → issued, or **automatically released** when the job is
   cancelled (with safeguards for stock already issued).
 
-## Phase 6 — Analytics correctness & actionability ⬜ (the heart of the platform)
+## Phase 6 — Analytics correctness & actionability (the heart of the platform)
 Every card, chart, table, alert and widget gets an **Action Contract**:
 `Metric → Source → Formula → Scope → Freshness → Permission → Insight → Action → exact record`.
 If it says something needs attention it must answer *what exactly to do and where exactly to do it*
@@ -173,7 +188,7 @@ If it says something needs attention it must answer *what exactly to do and wher
 - Every figure reconciles against its records (tests that recompute it from raw rows).
 - Everything live: figures update as work happens (no stale screens).
 
-## Phase 7 — Notifications, email, realtime & scheduler ⬜
+## Phase 7 — Notifications, email, realtime & scheduler
 - A **matrix of every event × every role**: who gets an in-app notification, who gets an email,
   what the success / rejection / update feedback says, and the exact link. Covers Job Cards
   (created, supervisor assigned, approved / rejected, technician assigned / accepted / rejected,
@@ -188,17 +203,19 @@ If it says something needs attention it must answer *what exactly to do and wher
 - Scheduler: timing and timezone (Africa/Lagos), no duplicates, missed-run recovery,
   failures visible on Settings, never creates duplicate business records.
 
-## Phase 8 — Data lifecycle ⬜
-- **Recycle Bin**: delete = soft delete with a required reason; organisation restores; purge is
-  separate, platform-team only, in monthly maintenance; records that took money are cancelled,
-  never deleted; everything audited.
+## Phase 8 — Data lifecycle
+- **Recycle Bin (done in V1)**: delete needs a reason and moves a full copy to the bin; the
+  organisation restores within the restore period (30 days by default, `RECYCLE_BIN_DAYS`, 7–90);
+  after that the daily clean-up removes it for good and keeps a tombstone with the audit trail.
+  Only records created by mistake qualify: anything with payments, approvals, parts, warranties
+  or gate movements is cancelled or closed instead, never deleted. Everything is audited.
 - History views that never lose anything but never become one long page: recent items first,
   "view more", paged full history (Job Card trail pattern) — applied to batches (a finished
   batch moves to history while the next continues), stock movements, vehicle pages, customer
   pages, part pages, audit trails.
 - Documents and exports: fenced like their pages, consistent headers.
 
-## Phase 9 — Look & feel ⬜
+## Phase 9 — Look & feel
 - **Light and dark mode** on every screen and component, strictly from the shared colour tokens
   (status colours included) — nothing mixed, nothing invisible in either mode; prints stay light.
 - **Header branding**: organisation logo and name in the top bar sized like the document /
@@ -208,7 +225,7 @@ If it says something needs attention it must answer *what exactly to do and wher
 - Vehicle, customer, part and other record pages made easy to read: summary first, sections,
   view more / view less.
 
-## Phase 10 — End-to-end journeys & unpredictable users ⬜
+## Phase 10 — End-to-end journeys & unpredictable users
 Full journeys, not single modules:
 - Customer service: customer → vehicle → appointment → Job Card → technician → inspection →
   estimate → approval → parts → payment → work → completion → notifications → customer portal
@@ -219,13 +236,13 @@ Full journeys, not single modules:
 - Unpredictable users: double clicks, back button, two tabs, stale pages, dropped connections,
   wrong order of steps, cancelled half-way, role changed mid-task, deactivated mid-session.
 
-## Phase 11 — Production reliability ⬜
+## Phase 11 — Production reliability
 Load and pressure tests on the critical paths, slow-query review, indexes, error reporting,
 uptime checks, backup restore drill, runbooks. Application-level concurrency tests through the
 real server actions (Phase 3 tested the SQL patterns). Journal "before" values inside
 transactions. Move the schema push off Render (Vercel or a GitHub Action).
 
-## Phase 12 — Final enterprise readiness audit ⬜
+## Phase 12 — Final enterprise readiness audit
 The complete loop, proven per module:
 `Identity → Authorization → Organisation → Branch → Workflow → Transaction → Database → Audit →
 Event → Notification → Realtime → Analytics → Action link → user completes the action`.

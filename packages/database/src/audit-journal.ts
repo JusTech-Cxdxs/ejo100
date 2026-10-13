@@ -2,43 +2,39 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Prisma, PrismaClient } from '@prisma/client';
 
 /**
- * The data journal — the platform's "nothing is ever missed" audit layer.
+ * The data journal: the low-level audit layer.
  *
- * Every create / update / delete that goes through the shared Prisma
- * client — from the portal, the API, a scheduled job, or any future
- * code — is written to audit_logs automatically: WHO (the signed-in
- * user carried through the request), WHAT (the model, the record, the
- * values written, and for updates/deletes the values before), and WHEN.
- * It can't be skipped by forgetting a log call, because it sits below
- * every feature.
+ * Every create / update / delete through the shared Prisma client (portal,
+ * API, scheduled jobs) is written to audit_logs automatically: who (the
+ * actor carried through the request), what (model, record, values written,
+ * and for updates/deletes the values before) and when. It sits below every
+ * feature, so a missing log call can't skip it.
  *
- * It complements, never replaces, the business audit entries written by
- * each action ("Estimate line added — priced at ₦…"): those are the
- * human-readable story on each record's page; this is the complete,
- * low-level record for the audit dashboard. Journal entries use the
- * entityType "db:<Model>" and actions "data.<operation>", so they never
- * clutter a record page's own trail.
+ * It complements the business audit entries each action writes ("Estimate
+ * line added — priced at ₦…"), which are the readable history on record
+ * pages. Journal entries use entityType "db:<Model>" and actions
+ * "data.<operation>", so they stay out of those pages.
  *
  * Safety:
  * - Auth internals (sessions, accounts, verification tokens) are not
- *   journaled, and any password / token / secret / hash field anywhere
- *   is redacted.
- * - Inside a database transaction no extra query is ever made (a
- *   single-connection pool would otherwise wait on itself forever): the
- *   entry is held and written right after the transaction COMMITS. If it
- *   rolls back (a lost race, a check refused inside it), its entries are
- *   dropped — the journal records what happened, never what was tried.
- * - Compare-and-set writes (updateMany / deleteMany on one id) keep their
- *   before / after values like update / delete — the "before" is read only
- *   outside a transaction (inside one, the entry has the values written and
- *   the where it matched, which names the expected state). A write that
- *   changed nothing (count 0) is not journaled.
- * - A journal failure never breaks the real operation.
+ *   journaled, and any password / token / secret / hash field is redacted.
+ * - No extra query is made inside a transaction (a single-connection pool
+ *   would wait on itself). Entries are held and written after COMMIT; on
+ *   rollback they are dropped, so the journal records what happened, not
+ *   what was attempted.
+ * - Compare-and-set writes (updateMany / deleteMany on one id) keep before /
+ *   after values like update / delete. "Before" is read only outside a
+ *   transaction; inside one, the entry has the values written and the where
+ *   it matched. A write that changed nothing (count 0) is not journaled.
+ * - A journal failure never breaks the operation itself.
  */
 
 /** organisationId: the actor's organisation — every audit row is stamped
  * with it, so each organisation only ever sees its own history. */
-type AuditActor = { userId: string | null; source: string; organisationId?: string | null };
+/** assistedBy / assistSessionId: set while a branch assistant works on the
+ * user's behalf (an assisted session); every entry then names both people. */
+type AssistedBy = { id: string; name: string };
+type AuditActor = { userId: string | null; source: string; organisationId?: string | null; assistedBy?: AssistedBy | null; assistSessionId?: string | null };
 type PendingEntry = Prisma.AuditLogCreateManyInput;
 /** An entry written inside a transaction carries that transaction's token
  * until it commits; a rolled-back transaction's entries are dropped, so the
@@ -53,20 +49,19 @@ const context = new AsyncLocalStorage<AuditContext>();
  * user is authenticated (portal requireUser, API session guard) or by a
  * scheduled job with a null user and its own source name.
  */
-export function setAuditActor(userId: string | null, source: string, organisationId: string | null = null): void {
+export function setAuditActor(userId: string | null, source: string, organisationId: string | null = null, assist: { assistedBy: AssistedBy; assistSessionId: string } | null = null): void {
   const existing = context.getStore();
-  if (existing && existing.userId === userId && existing.source === source && (existing.organisationId ?? null) === organisationId) return;
-  context.enterWith({ userId, source, organisationId, pending: existing?.pending ?? [], tx: existing?.tx ?? null });
+  if (existing && existing.userId === userId && existing.source === source && (existing.organisationId ?? null) === organisationId && (existing.assistSessionId ?? null) === (assist?.assistSessionId ?? null)) return;
+  context.enterWith({ userId, source, organisationId, assistedBy: assist?.assistedBy ?? null, assistSessionId: assist?.assistSessionId ?? null, pending: existing?.pending ?? [], tx: existing?.tx ?? null });
 }
 
 /**
- * How the app finds "who is acting" when no actor was recorded in this async
- * context. `setAuditActor` uses AsyncLocalStorage.enterWith, which does NOT
- * flow back out of an awaited async function — so an actor set inside
- * requireUser() was lost to its caller and every journal row came out
- * unattributed (E2E-09). The app registers a resolver that reads its
- * per-request (cached) session instead; it is only ever called OUTSIDE a
- * database transaction, so it can never wait on its own connection.
+ * Finds the acting user when none was recorded in this async context.
+ * `setAuditActor` uses AsyncLocalStorage.enterWith, which does not flow back
+ * out of an awaited function, so an actor set inside requireUser() is not
+ * seen by its caller (E2E-09). The app registers a resolver that reads its
+ * cached per-request session. Only called outside a transaction, so it never
+ * waits on its own connection.
  */
 let actorResolver: (() => Promise<AuditActor | null>) | null = null;
 export function setAuditActorResolver(fn: () => Promise<AuditActor | null>): void {
@@ -85,7 +80,14 @@ async function resolveActor(store: AuditContext | undefined): Promise<AuditActor
 /** The actor recorded for the current request, if any. */
 export function getAuditActor(): AuditActor | null {
   const store = context.getStore();
-  return store ? { userId: store.userId, source: store.source, organisationId: store.organisationId ?? null } : null;
+  return store ? { userId: store.userId, source: store.source, organisationId: store.organisationId ?? null, assistedBy: store.assistedBy ?? null, assistSessionId: store.assistSessionId ?? null } : null;
+}
+
+/** Who is acting in this request, asking the app's resolver when nothing was
+ * recorded in this async context. Never call inside a transaction. */
+export async function currentAuditActor(): Promise<AuditActor | null> {
+  const actor = await resolveActor(context.getStore());
+  return actor ? { userId: actor.userId, source: actor.source, organisationId: actor.organisationId ?? null, assistedBy: actor.assistedBy ?? null, assistSessionId: actor.assistSessionId ?? null } : null;
 }
 
 /** userId → organisationId, remembered for five minutes (people rarely move). */
@@ -119,10 +121,9 @@ async function stampOrganisation(client: PrismaClient, row: Record<string, unkno
   const userId = typeof row.userId === 'string' ? row.userId : null;
   try {
     if (userId) row.organisationId = await organisationOf(client, userId);
-    // The platform team, scheduled jobs and unattributed writes: while the
-    // platform has exactly ONE organisation, every row is that
-    // organisation's history. With several, such rows stay with the
-    // platform team (null) unless the writer names the organisation.
+    // Platform team, scheduled jobs and unattributed writes: while there is
+    // exactly one organisation, the row is that organisation's. With several,
+    // it stays with the platform team (null) unless the writer names one.
     if (!row.organisationId) row.organisationId = await soleOrganisation(client);
   } catch {
     /* unstamped rows are visible to the platform team only */
@@ -146,6 +147,11 @@ const WRITE_ACTIONS = new Set(['create', 'createMany', 'update', 'updateMany', '
 const SKIP_MODELS = new Set([
   'AuditLog', 'Session', 'Account', 'Verification', 'NotificationRead', 'NotificationPreference',
   'CustomerSession', 'CustomerAccount', 'CustomerVerification', 'CustomerNotificationRead',
+  // Error references are written by the error handler itself — never journaled.
+  'ErrorEvent',
+  // A recycle-bin snapshot is a full copy of the deleted rows. The move,
+  // restore and purge each write their own business audit entry instead.
+  'RecycleBinItem',
 ]);
 const SENSITIVE_KEY = /password|token|secret|hash/i;
 const MAX_JSON = 6000;
@@ -156,10 +162,9 @@ function redact(value: unknown, depth = 0): unknown {
   if (typeof value === 'bigint') return value.toString();
   if (Array.isArray(value)) return value.slice(0, 50).map((v) => redact(v, depth + 1));
   if (typeof value === 'object') {
-    // Prisma Decimal (and anything else that knows how to serialise itself):
-    // use its own toJSON. Never test constructor.name — production builds
-    // minify class names, and a Decimal walked as a plain object produced
-    // values Postgres refused, losing the whole batch (E2E-04).
+    // Prisma Decimal (and anything with toJSON): use toJSON. Don't test
+    // constructor.name, which production builds minify; a Decimal walked as a
+    // plain object produced values Postgres refused, losing the batch (E2E-04).
     const maybe = value as { toJSON?: () => unknown };
     if (typeof maybe.toJSON === 'function') return redact(maybe.toJSON(), depth + 1);
     const out: Record<string, unknown> = {};
@@ -203,17 +208,16 @@ export function installAuditJournal(client: PrismaClient): void {
   if (flag.__auditJournalInstalled) return;
   flag.__auditJournalInstalled = true;
 
-  // Every transaction runs with its own token: its journal entries are kept
-  // only if it commits, and dropped if it rolls back (a lost race, a refused
-  // check inside it) — the journal records what happened, never what was tried.
+  // Each transaction gets its own token: its journal entries are kept only if
+  // it commits and dropped if it rolls back.
   const original = client.$transaction.bind(client) as (arg: unknown, options?: unknown) => Promise<unknown>;
   (client as unknown as { $transaction: (arg: unknown, options?: unknown) => Promise<unknown> }).$transaction = (arg: unknown, options?: unknown) => {
     const outer = context.getStore();
     const token = Symbol('tx');
     const begin = (actor: AuditActor | null) => {
       const inner: AuditContext = outer
-        ? { ...outer, ...(actor && !outer.userId && !outer.organisationId ? { userId: actor.userId, source: actor.source, organisationId: actor.organisationId ?? null } : {}), tx: token }
-        : { userId: actor?.userId ?? null, source: actor?.source ?? 'unattributed', organisationId: actor?.organisationId ?? null, pending: [], tx: token };
+        ? { ...outer, ...(actor && !outer.userId && !outer.organisationId ? { userId: actor.userId, source: actor.source, organisationId: actor.organisationId ?? null, assistedBy: actor.assistedBy ?? null, assistSessionId: actor.assistSessionId ?? null } : {}), tx: token }
+        : { userId: actor?.userId ?? null, source: actor?.source ?? 'unattributed', organisationId: actor?.organisationId ?? null, assistedBy: actor?.assistedBy ?? null, assistSessionId: actor?.assistSessionId ?? null, pending: [], tx: token };
       return inner;
     };
     const settle = async (committed: boolean) => {
@@ -225,8 +229,7 @@ export function installAuditJournal(client: PrismaClient): void {
         else if (outer?.tx) list[i]!.tx = outer.tx; // nested: belongs to the outer transaction now
         else done.unshift(list.splice(i, 1)[0]!.entry);
       }
-      // Committed and no longer inside any transaction: write them now (an
-      // ordinary query — the transaction and its connection are finished).
+      // Committed and outside any transaction: write them now.
       if (done.length > 0) {
         try {
           await client.auditLog.createMany({ data: done });
@@ -250,8 +253,7 @@ export function installAuditJournal(client: PrismaClient): void {
   client.$use(async (params, next) => {
     const store = context.getStore();
 
-    // Write any entries held from an earlier transaction, now that we're
-    // outside one (never adds a query inside a transaction).
+    // Write entries held from an earlier transaction now that we're outside one.
     if (store && store.pending.length > 0 && !params.runInTransaction) {
       // Only entries whose transaction has committed (tx === null).
       const batch: PendingEntry[] = [];
@@ -336,7 +338,7 @@ export function installAuditJournal(client: PrismaClient): void {
         action: `data.${params.action}`,
         entityType: `db:${params.model}`,
         entityId: resultId ?? whereId,
-        metadata: capped({ ...metadata, source: actor?.source ?? 'unknown', ...(params.runInTransaction ? { inTransaction: true } : {}) }),
+        metadata: capped({ ...metadata, source: actor?.source ?? 'unknown', ...(actor?.assistedBy ? { assistedBy: actor.assistedBy, assistSessionId: actor.assistSessionId ?? null } : {}), ...(params.runInTransaction ? { inTransaction: true } : {}) }),
       };
       if (params.runInTransaction) {
         // Held for this request; written by its next ordinary query. With

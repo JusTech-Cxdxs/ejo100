@@ -3,21 +3,17 @@
 import { useFormStatus } from 'react-dom';
 import { EjoSpinner } from './EjoSpinner';
 
-/**
- * A destructive-action submit button — like SubmitButton (same pending/
- * spinner behavior, same useFormStatus mechanism), but gated behind a
- * native browser confirm() before the form is allowed to actually
- * submit. Kept as its own small component rather than adding a confirm
- * option onto SubmitButton itself, since SubmitButton is used in many
- * non-destructive places and shouldn't need to carry that concern.
- */
+/** Submit button for destructive actions: like SubmitButton, but asks confirm() first.
+ * A form that is not filled in yet shows the browser's own hints instead of the question. */
 export function ConfirmDeleteButton({
   confirmMessage,
   label = 'Delete',
+  pendingLabel = 'Deleting…',
   className,
 }: {
   confirmMessage: string;
   label?: string;
+  pendingLabel?: string;
   className?: string;
 }) {
   const { pending } = useFormStatus();
@@ -26,6 +22,8 @@ export function ConfirmDeleteButton({
       type="submit"
       disabled={pending}
       onClick={(e) => {
+        const form = e.currentTarget.form;
+        if (form && !form.checkValidity()) return;
         if (!window.confirm(confirmMessage)) {
           e.preventDefault();
         }
@@ -33,7 +31,7 @@ export function ConfirmDeleteButton({
       className={`${className ?? ''} inline-flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-70`}
     >
       {pending ? <EjoSpinner size={13} /> : null}
-      {pending ? 'Deleting…' : label}
+      {pending ? pendingLabel : label}
     </button>
   );
 }

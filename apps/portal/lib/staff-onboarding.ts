@@ -43,7 +43,7 @@ export async function issueSetPasswordLink(userId: string, hours = SET_PASSWORD_
   const ctx = await auth.$context;
   // Only the newest link works: any earlier, unused set-password link for this person is withdrawn.
   await prisma.verification.deleteMany({ where: { value: userId, identifier: { startsWith: 'reset-password:' } } });
-  const token = randomBytes(18).toString('base64url');
+  const token = randomBytes(32).toString('base64url');
   await ctx.internalAdapter.createVerificationValue({ value: userId, identifier: `reset-password:${token}`, expiresAt: new Date(Date.now() + hours * 3600_000) });
   return `${ctx.baseURL}/reset-password/${token}?callbackURL=${encodeURIComponent('/reset-password')}`;
 }
@@ -93,7 +93,7 @@ export async function sendStaffAccessEmail(userId: string, kind: 'welcome' | 'up
       setPasswordUrl,
       setPasswordHours: SET_PASSWORD_HOURS,
       signInUrl: `${base}/login`,
-      logoUrl: `${base}/images/logo/logo.png`,
+      logoUrl: `${base}/images/logo/email-logo.png`,
       changeNote,
     });
     let error: string | null = null;
@@ -107,7 +107,6 @@ export async function sendStaffAccessEmail(userId: string, kind: 'welcome' | 'up
     if (error) throw new Error(error);
     return true;
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Staff access email failed', userId, kind, redact(String((err as Error)?.message ?? err)));
     return false;
   }

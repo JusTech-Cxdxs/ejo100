@@ -4,17 +4,9 @@ import type { AnchorHTMLAttributes, MouseEvent, ReactNode } from 'react';
 import { useNavigationLoading } from './NavigationLoadingProvider';
 
 /**
- * Drop-in replacement for `next/link`'s `<Link>` — this should be used
- * for every internal navigation link going forward, not plain `<Link>`,
- * so "every click shows the loader" stays true automatically rather
- * than needing to be remembered per new page. See
- * NavigationLoadingProvider for why this exists instead of relying on
- * `loading.tsx` alone.
- *
- * Renders a real `<a href>` (so middle-click/open-in-new-tab, right-
- * click "copy link", and search-engine crawling all still work exactly
- * like a normal link) but intercepts a plain left-click to route
- * through the shared loading state instead of a full browser navigation.
+ * Use instead of next/link for internal links so every navigation shows the
+ * loader (see NavigationLoadingProvider). Renders a normal <a href>, so new
+ * tab and copy link still work; only a plain left-click is intercepted.
  */
 export function LoadingLink({
   href,

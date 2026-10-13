@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage } from '@/lib/authz/server';
 import { listExternalProcurementRequests } from '@/lib/actions/sourcing';
 import { getStoreBranchId } from '@/lib/actions/store';
@@ -21,11 +22,7 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
   REJECTED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
-/**
- * Every External Procurement (cash advance) request raised across this
- * branch's Job Cards — Workshop Manager and Finance both work from this
- * same list. Searchable by reference number or Job Card number.
- */
+/** External procurement (cash advance) requests across the branch, for the Workshop Manager and Finance. */
 export default async function ExternalProcurementPage({
   searchParams,
 }: {
@@ -71,7 +68,7 @@ export default async function ExternalProcurementPage({
       {requests.length === 0 ? (
         <p className="text-sm text-[var(--ejo-text-muted)]">{q ? 'No procurement requests match your search.' : 'No procurement requests raised yet.'}</p>
       ) : (
-        <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -90,14 +87,14 @@ export default async function ExternalProcurementPage({
                       {request.referenceNumber}
                     </LoadingLink>
                   </td>
-                  <td className="px-4 py-2">
+                  <td data-label="Job Card" className="px-4 py-2">
                     <LoadingLink href={`/workshop/job-cards/${request.jobCard.id}`} className="text-[var(--ejo-primary)] hover:underline">
                       {request.jobCard.jobNumber}
                     </LoadingLink>
                   </td>
-                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{request.requestedBy.fullName}</td>
-                  <td className="px-4 py-2 text-[var(--ejo-text)]">₦{Number(request.estimatedAmount).toLocaleString('en-NG')}</td>
-                  <td className="px-4 py-2">
+                  <td data-label="Requested By" className="px-4 py-2 text-[var(--ejo-text-muted)]">{request.requestedBy.fullName}</td>
+                  <td data-label="Estimated Amount" className="px-4 py-2 text-[var(--ejo-text)]">₦{Number(request.estimatedAmount).toLocaleString('en-NG')}</td>
+                  <td data-label="Status" className="px-4 py-2">
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASS[request.status] ?? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'}`}>
                       {STATUS_LABEL[request.status] ?? request.status}
                     </span>
@@ -106,7 +103,7 @@ export default async function ExternalProcurementPage({
               ))}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
     </div>
   );

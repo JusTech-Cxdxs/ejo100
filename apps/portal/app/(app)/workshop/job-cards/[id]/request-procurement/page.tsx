@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getJobCard } from '@/lib/actions/workshop';
@@ -20,12 +21,9 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 /**
- * One real document for the whole Job Card, not a separate one-off
- * click for every single line — a Lathe job and a Bushing both
- * needed for the same repair are one real trip to Finance for cash,
- * never two unconnected ones. Same shape as the Store Parts request:
- * a real header carrying the Job Card's own facts, a real table,
- * and exactly one action at the bottom.
+ * One procurement request covers every external line on the Job Card, so
+ * Finance handles a single cash advance per repair. Same layout as the
+ * Store parts request.
  */
 export default async function RequestProcurementPage({
   params,
@@ -52,8 +50,7 @@ export default async function RequestProcurementPage({
       <BackLink href={`/workshop/job-cards/${id}`} label={<>Back to Job Card {jobCard.jobNumber}</>} className="mb-4" />
       <PageTitle icon="cart" className="mb-2">Request External Procurement</PageTitle>
       <p className="mb-6 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
-        Every line below is already priced on the approved estimate. Nothing here needs editing; raising the request
-        sends this exact list forward as a cash advance request.
+        These lines are priced on the approved estimate. Check the list, then raise the cash advance request.
       </p>
 
       {error ? (
@@ -100,7 +97,7 @@ export default async function RequestProcurementPage({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <ResponsiveTable>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -114,11 +111,11 @@ export default async function RequestProcurementPage({
                 {requestableLines.map((line: (typeof requestableLines)[number]) => (
                   <tr key={line.id} className="border-b border-[var(--ejo-border)] last:border-0">
                     <td className="px-4 py-2 font-medium text-[var(--ejo-text)]">{line.description}</td>
-                    <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{TYPE_LABEL[line.type] ?? line.type}</td>
-                    <td className="px-4 py-2 text-right text-[var(--ejo-text)]">
+                    <td data-label="Type" className="px-4 py-2 text-[var(--ejo-text-muted)]">{TYPE_LABEL[line.type] ?? line.type}</td>
+                    <td data-label="Quantity" className="px-4 py-2 text-right text-[var(--ejo-text)]">
                       {line.quantity} {line.unitOfMeasure ? pluralizeWord(line.quantity, line.unitOfMeasure) : ''}
                     </td>
-                    <td className="px-4 py-2 text-right text-[var(--ejo-text)]">{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
+                    <td data-label="Amount" className="px-4 py-2 text-right text-[var(--ejo-text)]">{line.amount !== null ? formatNaira(Number(line.amount)) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -132,7 +129,7 @@ export default async function RequestProcurementPage({
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </ResponsiveTable>
           <form action={requestExternalProcurementFormAction} className="border-t border-[var(--ejo-border)] p-4">
             <FormPendingOverlay />
             <input type="hidden" name="jobCardId" value={id} />

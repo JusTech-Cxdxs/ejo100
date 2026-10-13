@@ -1,4 +1,6 @@
 node_modules/
+# also the node_modules symlinks used by local worktrees
+node_modules
 .next/
 dist/
 build/
@@ -17,3 +19,4 @@ next-env.d.ts
 
 # TypeScript incremental build caches
 *.tsbuildinfo
+.email-previews/

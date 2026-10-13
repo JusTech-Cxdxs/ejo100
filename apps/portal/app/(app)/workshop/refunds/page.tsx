@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { listAllRefunds } from '@/lib/actions/refunds';
 import { LoadingLink } from '@/components/LoadingLink';
@@ -12,12 +13,7 @@ function naira(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/**
- * Refunds register — every refund paid back to a customer, like the
- * Parts Requests list: the RF receipt, the Job Card or Vehicle Service it
- * belongs to, the customer, amount and method, who received the money,
- * who in Finance refunded it and when, and its printable receipt.
- */
+/** Refunds register: every refund paid to a customer, with its printable receipt. */
 export default async function RefundsRegisterPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   await guardAnyPage(['workshop.view'], '/workshop');
   const { q } = await searchParams;
@@ -33,8 +29,8 @@ export default async function RefundsRegisterPage({ searchParams }: { searchPara
         icon="refund"
         back={{ href: "/workshop", label: "Back to Workshop" }}
         title="Refunds"
-        description={<>Every refund paid back to a customer after a cancelled Job Card or Vehicle Service — authorised by a Manager&apos;s approval,
-        paid and recorded by Finance, each with its own RF receipt.</>}
+        description={<>Refunds paid to customers after a cancelled Job Card or Vehicle Service. A Manager authorises each refund;
+        Finance pays and records it, with an RF receipt.</>}
       />
 
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -69,7 +65,7 @@ export default async function RefundsRegisterPage({ searchParams }: { searchPara
       {refunds.length === 0 ? (
         <p className="text-sm text-[var(--ejo-text-muted)]">{q ? 'No refunds match this search.' : 'No refunds have been recorded yet.'}</p>
       ) : (
-        <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -92,7 +88,7 @@ export default async function RefundsRegisterPage({ searchParams }: { searchPara
                 return (
                   <tr key={r.id} className="border-b border-[var(--ejo-border)] align-top last:border-0">
                     <td className="px-3 py-2 font-medium text-[var(--ejo-text)]">{r.referenceNumber}</td>
-                    <td className="px-3 py-2">
+                    <td data-label="For" className="px-3 py-2">
                       {record ? (
                         <LoadingLink href={record.href} className="text-[var(--ejo-primary)] hover:underline">
                           {record.label}
@@ -102,17 +98,17 @@ export default async function RefundsRegisterPage({ searchParams }: { searchPara
                       )}
                       <div className="text-xs text-[var(--ejo-text-muted)]">{r.reason}</div>
                     </td>
-                    <td className="px-3 py-2 text-[var(--ejo-text)]">{record ? <CustomerLink id={record.customerId} name={record.customer} canView={canSeeCustomers} /> : '—'}</td>
-                    <td className="px-3 py-2 text-right font-medium text-[var(--ejo-text)]">{naira(Number(r.amount))}</td>
-                    <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
+                    <td data-label="Customer" className="px-3 py-2 text-[var(--ejo-text)]">{record ? <CustomerLink id={record.customerId} name={record.customer} canView={canSeeCustomers} /> : '—'}</td>
+                    <td data-label="Amount" className="px-3 py-2 text-right font-medium text-[var(--ejo-text)]">{naira(Number(r.amount))}</td>
+                    <td data-label="Paid by / Received by" className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
                       {r.method === 'CASH' ? 'Cash' : 'Bank Transfer'} → {r.paidToName}
                       {r.notes ? <div>Ref: {r.notes}</div> : null}
                     </td>
-                    <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
+                    <td data-label="Refunded by (Finance)" className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
                       {r.recordedBy.fullName}
                       <div>{formatDateTime(r.recordedAt)}</div>
                     </td>
-                    <td className="px-3 py-2 text-right">
+                    <td data-actions className="px-3 py-2 text-right">
                       <PrintMenu orgHref={`/print/refunds/${r.id}`} clientHref={`/print/refunds/${r.id}?variant=client`} clientLabel="Customer Copy" size="compact" align="right" />
                     </td>
                   </tr>
@@ -120,7 +116,7 @@ export default async function RefundsRegisterPage({ searchParams }: { searchPara
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
       {refunds.length >= 200 ? <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Showing the latest {pluralize(200, 'refund')} — search to narrow down.</p> : null}
     </div>

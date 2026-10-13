@@ -9,15 +9,8 @@ const TABS = [
 ] as const;
 
 /**
- * The All / Passenger / Commercial filter, shared by the Vehicles and
- * Job Cards pages rather than built twice.
- *
- * Uses the same shared NavigationLoadingProvider every LoadingLink uses
- * — this used to run its own separate useTransition + small inline
- * spinner, which worked but meant two different loading mechanisms
- * coexisting in the app. Consolidated onto the one shared system so
- * there's a single, consistent "every navigation shows the branded
- * loader" story, not two.
+ * The All / Passenger / Commercial filter used on list pages. Navigates
+ * through NavigationLoadingProvider so it shows the same loader as links.
  */
 export function CategoryFilterTabs({
   basePath,

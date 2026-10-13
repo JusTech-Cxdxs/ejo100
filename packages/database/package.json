@@ -16,13 +16,13 @@
     "test": "tsc -p tsconfig.test.json && node --test .test-out/tests/*.test.js"
   },
   "dependencies": {
-    "@prisma/client": "^5.20.0",
-    "better-auth": "^1.2.0"
+    "@prisma/client": "5.22.0",
+    "better-auth": "~1.6.33"
   },
   "devDependencies": {
-    "prisma": "^5.20.0",
-    "typescript": "5.6.3",
-    "tsx": "^4.19.0"
+    "prisma": "5.22.0",
+    "typescript": "5.9.3",
+    "tsx": "^4.23.15"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

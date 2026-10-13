@@ -1,4 +1,5 @@
 'use server';
+import { actorLabel } from '@/lib/assist/rules';
 import { logFailure } from '@/lib/log';
 
 import { claimed, lockRows } from '@/lib/integrity';
@@ -14,10 +15,11 @@ import { decide, ROLE_GRANTS } from '@/lib/authz/catalogue';
 import { sendLoggedEmail, type Recipient } from '@/lib/logged-email';
 import { sendDueAppointmentReminders } from '@/lib/appointment-reminders';
 import { computeSchedulingAnalytics } from '@/lib/scheduling-analytics';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class SchedulingError extends Error {}
 
-const fmt = (d: Date) => new Date(d).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+const fmt = (d: Date) => new Date(d).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' });
 const mins = (a: Date, b: Date) => Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000);
 
 // ── Access ────────────────────────────────────────────────────────────
@@ -73,7 +75,7 @@ async function requireBookFor(ownerId: string): Promise<SchedulingAccess> {
 // ── Numbering ─────────────────────────────────────────────────────────
 
 async function nextNumber(prefix: 'APT' | 'VIS'): Promise<string> {
-  const start = `${prefix}-${new Date().getFullYear()}-`;
+  const start = `${prefix}-${lagosYear()}-`;
   const latest =
     prefix === 'APT'
       ? (await prisma.appointment.findFirst({ where: { appointmentNumber: { startsWith: start } }, orderBy: { appointmentNumber: 'desc' }, select: { appointmentNumber: true } }))?.appointmentNumber
@@ -125,7 +127,7 @@ async function assertNoClash(ownerId: string, roomId: string | null, s: Date, e:
     const room = await db.meetingRoom.findUnique({ where: { id: roomId }, select: { name: true, isActive: true } });
     if (!room?.isActive) throw new SchedulingError('That meeting room is not available.');
     const clash = await db.appointment.findFirst({ where: { ...overlap, roomId }, select: { appointmentNumber: true, startsAt: true, endsAt: true, title: true } });
-    if (clash) throw new SchedulingError(`${room.name} is already booked ${fmt(clash.startsAt)} – ${new Date(clash.endsAt).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' })} (${clash.appointmentNumber}: ${clash.title}).`);
+    if (clash) throw new SchedulingError(`${room.name} is already booked ${fmt(clash.startsAt)} – ${new Date(clash.endsAt).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' })} (${clash.appointmentNumber}: ${clash.title}).`);
   }
   const busy = await db.appointment.findFirst({ where: { ...overlap, ownerId }, select: { appointmentNumber: true, startsAt: true, title: true } });
   if (busy) throw new SchedulingError(`The host already has ${busy.appointmentNumber} (${busy.title}) at ${fmt(busy.startsAt)}.`);
@@ -207,7 +209,7 @@ async function recipientsFor(apptId: string, excludeId: string): Promise<Recipie
 function describe(d: { title: string; startsAt: Date; endsAt: Date; location: string | null }, room: string | null, ownerName: string, visitors: string[] | null) {
   return [
     `${d.title}`,
-    `${fmt(d.startsAt)} – ${new Date(d.endsAt).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' })}`,
+    `${fmt(d.startsAt)} – ${new Date(d.endsAt).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' })}`,
     `Where: ${room ?? d.location ?? '—'}`,
     `Host: ${ownerName}`,
     ...(visitors?.length ? [`Visitors: ${visitors.join(', ')}`] : []),
@@ -345,7 +347,7 @@ export async function getAppointmentHistory(id: string) {
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((v: string | null): v is string => Boolean(v)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return { entries: entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null })), emails };
+  return { entries: entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null })), emails };
 }
 
 // ── Rooms ─────────────────────────────────────────────────────────────
@@ -429,9 +431,8 @@ function reminderSafetyNet() {
  * participant), still to happen. */
 export async function getSchedulingDashboardItems(): Promise<{ id: string; title: string; detail: string; url: string; createdAt: Date }[]> {
   const user = await requireUser();
-  // The reminder safety net runs AFTER the response is sent — nobody waits
-  // for it — and at most once every 5 minutes per server (the scheduled job
-  // is the real sender; this only covers a missed run).
+  // Runs after the response is sent, at most once every 5 minutes per server.
+  // The scheduled job sends reminders; this only covers a missed run.
   reminderSafetyNet();
   const now = new Date();
   const end = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }) + 'T23:59:59+01:00');
@@ -445,7 +446,7 @@ export async function getSchedulingDashboardItems(): Promise<{ id: string; title
     select: { id: true, title: true, startsAt: true, location: true, room: { select: { name: true } } },
   });
   return [
-    ...rows.map((r: (typeof rows)[number]) => ({ id: `appt-${r.id}`, title: `Today ${new Date(r.startsAt).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', minute: '2-digit' })} — ${r.title}`, detail: r.room?.name ?? r.location ?? '', url: `/schedule/${r.id}`, createdAt: r.startsAt })),
+    ...rows.map((r: (typeof rows)[number]) => ({ id: `appt-${r.id}`, title: `Today ${new Date(r.startsAt).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' })} — ${r.title}`, detail: r.room?.name ?? r.location ?? '', url: `/schedule/${r.id}`, createdAt: r.startsAt })),
     ...cancelled.map((c: (typeof cancelled)[number]) => ({ id: `appt-x-${c.id}`, title: `Cancelled: ${c.title} (${fmt(c.startsAt)})`, detail: c.cancelReason ?? '', url: `/schedule/${c.id}`, createdAt: c.cancelledAt as Date })),
   ];
 }
@@ -566,7 +567,7 @@ export async function removeVisitorGroup(visitId: string, reason: string): Promi
 }
 
 
-// Once per request: repeated calls during one page load reuse the answer.
+// Cached per request.
 const getSchedulingAccessCached = cache(getSchedulingAccessUncached);
 export async function getSchedulingAccess(): Promise<SchedulingAccess> {
   return getSchedulingAccessCached();

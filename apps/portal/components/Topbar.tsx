@@ -4,19 +4,21 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
+import { endAssistSession } from '@/lib/actions/assist';
 import { LiveStatus } from '@/components/LiveStatus';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { NotificationBell } from '@/components/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Avatar } from '@/components/Avatar';
 import { Icon } from '@/components/ui/Icon';
+import { Wordmark } from '@/components/Wordmark';
 
 /**
  * The sticky header: menu button and logo (phones/tablets), the master
  * search front and centre, live status, theme, notifications and the
  * person's own menu (profile, theme, sign out).
  */
-export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen = false }: { userName: string; roleName: string; organisationName?: string; onMenu?: () => void; menuOpen?: boolean }) {
+export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen = false, assisting = false }: { userName: string; roleName: string; organisationName?: string; onMenu?: () => void; menuOpen?: boolean; assisting?: boolean }) {
   const router = useRouter();
   const [account, setAccount] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -24,6 +26,8 @@ export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen 
 
   async function handleSignOut() {
     setLeaving(true);
+    // An assisted session never outlives the assistant's sign-in.
+    if (assisting) await endAssistSession().catch(() => undefined);
     await authClient.signOut();
     router.push('/login');
     router.refresh();
@@ -41,7 +45,7 @@ export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen 
   // (No backdrop-filter on the header: it would make the header the containing
   // block of the phone search sheet and menus, which are position: fixed.)
   return (
-    <header className="relative z-40 flex h-16 shrink-0 items-center gap-2 border-b border-[var(--ejo-border)] bg-[color-mix(in_srgb,var(--ejo-bg)_92%,var(--ejo-primary))] px-3 shadow-[0_1px_0_0_rgba(0,0,0,0.02)] sm:gap-3 sm:px-5">
+    <header className="relative z-40 box-content flex h-16 shrink-0 pt-[env(safe-area-inset-top)] items-center gap-2 border-b border-[var(--ejo-border)] bg-[color-mix(in_srgb,var(--ejo-bg)_92%,var(--ejo-primary))] px-3 shadow-[0_1px_0_0_rgba(0,0,0,0.02)] sm:gap-3 sm:px-5">
       {/* Phones and tablets: the menu button and the logo. */}
       <button
         type="button"
@@ -52,10 +56,9 @@ export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen 
       >
         <Icon name="menu" size={20} />
       </button>
-      <Link href="/dashboard" className="flex shrink-0 items-center gap-2 lg:hidden" aria-label={`${organisationName ?? 'Home'} — dashboard`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/images/logo/logo.png" alt="" width={26} height={32} className="h-8 w-auto object-contain" />
-        <span className="hidden text-base font-extrabold tracking-tight text-[var(--ejo-text)] min-[420px]:inline">{(organisationName ?? '').split(/\s+/)[0]}</span>
+      {/* Phones and tablets: the full wordmark (logo, name, green rule), scaled to fit. */}
+      <Link href="/dashboard" className="flex min-w-0 shrink items-center lg:hidden" aria-label={`${organisationName ?? 'Home'}: dashboard`}>
+        <Wordmark name={organisationName ?? ''} size="sm" />
       </Link>
 
       <div className="flex min-w-0 flex-1 justify-end md:justify-center">
@@ -84,7 +87,7 @@ export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen 
             <span className={`hidden text-[var(--ejo-text-muted)] transition-transform md:inline ${account ? 'rotate-180' : ''}`} aria-hidden="true"><Icon name="chevron-down" size={14} /></span>
           </button>
           {account ? (
-            <div className="ejo-pop fixed inset-x-2 top-16 z-50 overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-2xl shadow-black/10 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-72">
+            <div className="ejo-pop fixed inset-x-2 top-[calc(4rem+env(safe-area-inset-top))] z-50 overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-2xl shadow-black/10 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-72">
               <div className="flex items-center gap-3 border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4">
                 <Avatar name={userName} size={40} />
                 <div className="min-w-0">

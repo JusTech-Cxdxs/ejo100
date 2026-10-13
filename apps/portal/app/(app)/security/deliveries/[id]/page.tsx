@@ -54,7 +54,7 @@ export default async function DeliveryPage({ params, searchParams }: { params: P
           <Row k="On site for" val={onSite !== null ? durationText(onSite) : null} />
           <Row k="Notes" val={d.notes} />
           <Row k="Cancelled because" val={d.cancelReason} />
-          {d.goodsReceipt ? <p className="mt-2 text-xs"><LoadingLink href={`/inventory/goods-receipts/${d.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">Goods receipt {d.goodsReceipt.referenceNumber} ({d.goodsReceipt.supplierName}, {formatDateOnly(d.goodsReceipt.receivedAt)}) →</LoadingLink></p> : null}
+          {d.goodsReceipt ? <p className="mt-2 text-xs">{store ? <LoadingLink href={`/inventory/goods-receipts/${d.goodsReceipt.id}`} className="text-[var(--ejo-primary)] hover:underline">Goods receipt {d.goodsReceipt.referenceNumber} ({d.goodsReceipt.supplierName}, {formatDateOnly(d.goodsReceipt.receivedAt)}) →</LoadingLink> : <>Goods receipt {d.goodsReceipt.referenceNumber} ({d.goodsReceipt.supplierName}, {formatDateOnly(d.goodsReceipt.receivedAt)})</>}</p> : null}
         </dl>
         <div className="h-fit space-y-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Actions</h2>

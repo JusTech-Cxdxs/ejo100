@@ -143,7 +143,7 @@ test.describe('Vehicle Service — the full visit', () => {
     await open(page, S.url);
     await page.getByRole('button', { name: 'Notify customer' }).click();
     await waitOutcome(page, /status=customer_notified/);
-    await latestMail(request, CUSTOMER.email, new RegExp(`Your estimate for Vehicle Service ${S.number} has been approved`));
+    await latestMail(request, CUSTOMER.email, new RegExp(`Estimate ready for ${S.number}`));
 
     await as(page, 'finance-officer');
     await open(page, S.url);

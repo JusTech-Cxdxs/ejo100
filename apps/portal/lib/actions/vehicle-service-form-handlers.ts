@@ -16,7 +16,6 @@ import {
   assignTechnicianToVehicleService,
   acceptVehicleServiceTechnicianAssignment,
   rejectVehicleServiceTechnicianAssignment,
-  deleteVehicleService,
   updatePrimaryServiceInterval,
   attendToOverdueVehicle,
   sendVehicleServiceCollectionReminder,
@@ -121,18 +120,6 @@ export async function rejectVehicleServiceTechnicianAssignmentFormAction(formDat
   }
   revalidatePath(`/workshop/vehicle-service/${serviceId}`);
   redirect(`/workshop/vehicle-service/${serviceId}?status=assignment_rejected`);
-}
-
-export async function deleteVehicleServiceFormAction(formData: FormData) {
-  const serviceId = str(formData, 'serviceId');
-  try {
-    await deleteVehicleService(serviceId);
-  } catch (err) {
-    const message = friendlyError(err, 'Could not delete this Vehicle Service.', 'vehicle-service-form-handlers');
-    redirect(`/workshop/vehicle-service?error=${encodeURIComponent(message)}`);
-  }
-  revalidatePath('/workshop/vehicle-service');
-  redirect('/workshop/vehicle-service?status=vehicle_service_deleted');
 }
 
 export async function updateVehicleServiceStatusFormAction(formData: FormData) {

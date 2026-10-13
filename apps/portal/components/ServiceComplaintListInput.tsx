@@ -5,14 +5,8 @@ import { useRef, useState } from 'react';
 type ComplaintRow = { key: string; value: string };
 
 /**
- * The same real, proven pattern as Job Card's own ComplaintListInput
- * — each row a real, separately-submitted <input name="customerComplaints">,
- * read server-side via formData.getAll('customerComplaints'), no
- * hidden JSON-encoding needed. Deliberately its own component rather
- * than reused directly: every row here is genuinely optional (Job
- * Card's own version requires its first row; a Vehicle Service
- * visit that's purely the primary periodic service, with nothing
- * else requested, is a real, valid case this module has to support).
+ * Like ComplaintListInput (each row is an <input name="customerComplaints">),
+ * but every row is optional: a visit can be just the periodic service.
  */
 export function ServiceComplaintListInput() {
   const [rows, setRows] = useState<ComplaintRow[]>([{ key: 'c0', value: '' }]);
@@ -40,14 +34,14 @@ export function ServiceComplaintListInput() {
             value={row.value}
             onChange={(e) => updateRow(row.key, e.target.value)}
             placeholder={i === 0 ? 'e.g. AC not cooling well' : 'e.g. Brake pedal feels soft'}
-            className="flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+            className="min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
           {rows.length > 1 || row.value ? (
             <button
               type="button"
               onClick={() => removeRow(row.key)}
               aria-label={`Remove request ${i + 1}`}
-              className="shrink-0 rounded-[var(--ejo-radius-md)] px-2 py-1 text-sm text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-error)]"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--ejo-radius-md)] text-lg text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-error)]"
             >
               &times;
             </button>
@@ -57,13 +51,12 @@ export function ServiceComplaintListInput() {
       <button
         type="button"
         onClick={addRow}
-        className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+        className="inline-flex min-h-10 items-center text-xs font-medium text-[var(--ejo-primary)] hover:underline"
       >
         + Add another request
       </button>
       <p className="text-[11px] text-[var(--ejo-text-muted)]">
-        Genuinely optional — leave empty if this visit is purely the primary service, with nothing else
-        requested.
+        Optional. Leave empty if the visit is only for the periodic service.
       </p>
     </div>
   );

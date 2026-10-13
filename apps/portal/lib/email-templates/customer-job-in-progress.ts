@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details } from './layout';
 
 export type CustomerJobInProgressEmailOptions = {
   customerName: string;
@@ -10,33 +10,27 @@ export type CustomerJobInProgressEmailOptions = {
   branchName: string;
 };
 
-/**
- * Fires once, the moment a Job Card's status genuinely transitions to
- * IN_PROGRESS — a plain, reassuring update, not a technical one. What
- * a customer actually wants to hear at this stage is "it's happening,
- * it's in good hands, and we'll keep you posted" — not a status code.
- */
-export function renderCustomerJobInProgressEmail(opts: CustomerJobInProgressEmailOptions): string {
-  const { customerName, jobNumber, vehicleDescription, dashboardUrl, logoUrl, companyName, branchName } = opts;
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(customerName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      Work has begun on your ${escapeHtml(vehicleDescription)} — Job Card ${escapeHtml(jobNumber)}. Our team is on
-      it, and we're committed to delivering a job well done, on time. We'll keep you updated as things progress.
-    </p>
-  `;
-
+/** Sent once, when work on a Job Card starts. */
+export function renderCustomerJobInProgressEmail(o: CustomerJobInProgressEmailOptions): string {
+  const bodyHtml = html`
+    ${greeting(o.customerName)}
+    ${para(`Our technicians have started work on your ${o.vehicleDescription}. We will email you again when the work has passed our quality checks and when the vehicle is ready for collection.`)}
+    ${details([
+      ['Job Card', o.jobNumber],
+      ['Vehicle', o.vehicleDescription],
+      ['Status', 'Work in progress'],
+    ])}
+    ${para('There is nothing you need to do for now. You can follow each step in your customer portal.', 'small')}`;
   return renderEmailLayout({
-    previewText: `Work has begun on your vehicle — Job Card ${jobNumber}.`,
-    companyName,
-    orgContext: [companyName, branchName],
-    iconGlyph: '!',
-    iconTone: 'neutral',
-    heading: 'Your vehicle is now in progress',
+    previewText: `Our technicians have started work on your ${o.vehicleDescription}.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName],
+    status: { label: 'In progress', tone: 'info' },
+    heading: 'Work on your vehicle has started',
     bodyHtml,
-    ctaLabel: 'Track progress',
-    ctaUrl: dashboardUrl,
-    logoUrl,
+    ctaLabel: 'Follow progress',
+    ctaUrl: o.dashboardUrl,
+    audience: 'customer',
   });
 }

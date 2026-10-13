@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { getCrmHub, type CrmHubParams } from '@/lib/actions/crm';
 import { allows, guardPage } from '@/lib/authz/server';
 import { profileGaps, naira, nairaShort } from '@/lib/crm';
@@ -15,7 +16,7 @@ export const metadata = { title: 'Customers' };
 const field = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
 const labelCls = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
 
-type SP = CrmHubParams & { status?: string; error?: string; register?: string };
+type SP = CrmHubParams & { status?: string; error?: string; register?: string; binned?: string };
 
 const NOTICES: Record<string, Notice> = {
   customer_existing: { kind: 'success', title: 'That email already had a customer record', text: 'It was reused — no duplicate was created.' },
@@ -50,7 +51,7 @@ export default async function CrmHubPage({ searchParams }: { searchParams: Promi
             <div className="min-w-0">
               <h1 className="text-2xl font-bold text-[var(--ejo-text)] sm:text-3xl">Customers</h1>
               <p className="mt-1 max-w-2xl text-sm text-[var(--ejo-text-muted)]">
-                Every customer and their 360° picture — vehicles, visits, spend, warranties, contacts and a full history of every change.
+                Every customer with their vehicles, visits, spend, warranties, contacts and change history.
                 {hub.scope.branchOnly ? <> Visits and money show <span className="font-medium text-[var(--ejo-text)]">{hub.scope.branchName}</span> only.</> : null}
               </p>
             </div>
@@ -71,6 +72,7 @@ export default async function CrmHubPage({ searchParams }: { searchParams: Promi
       </section>
 
       {notice ? <NoticeBox n={notice} /> : null}
+      {sp.binned ? <div className="mt-4"><BinnedNotice reference={sp.binned} /></div> : null}
 
       {/* KPIs */}
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
@@ -82,7 +84,7 @@ export default async function CrmHubPage({ searchParams }: { searchParams: Promi
         <Kpi icon="wallet" label="Spend this year" value={k.spendThisYear} format="naira" hint="Paid, net of refunds" href={qs({ sort: 'spend', page: undefined })} delay={200} />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           {hub.canRegister ? (
             <details id="register" open={sp.register === '1' || undefined} className="group ejo-rise scroll-mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">

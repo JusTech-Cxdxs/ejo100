@@ -3,17 +3,9 @@
 import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 
 /**
- * Real-world-format segmented code entry — used for VIN/chassis (17
- * characters, no grouping) and Nigerian plate numbers (8 characters,
- * grouped 3-3-2 per the 2011 format: AAA 000 AA). One reusable component
- * for both rather than two near-duplicate ones, matching this project's
- * "reusable, not one-off" pattern (same principle already applied to the
- * email templates).
- *
- * Individual boxes are NOT form fields themselves — typing across boxes
- * is a UI convenience, but only the joined value is submitted, via a
- * single hidden input carrying the field's real `name`. This avoids the
- * server action needing to know anything about the segmented UI at all.
+ * Segmented entry for VIN/chassis (17 characters) and Nigerian plates
+ * (AAA 000 AA). Only the joined value is submitted, through one hidden input
+ * named `name`.
  */
 export function SegmentedCodeInput({
   name,

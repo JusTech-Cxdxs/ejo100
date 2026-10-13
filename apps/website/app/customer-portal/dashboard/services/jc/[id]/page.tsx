@@ -11,7 +11,7 @@ const branchSelect = { name: true, address: true, hotlines: true, email: true, b
 
 /**
  * One Job Card. Found by id AND the signed-in customer's id — someone
- * else's Job Card is simply "not found". The estimate shows only once the
+ * else's Job Card is "not found". The estimate shows only once the
  * customer has been notified of it, and only the lines billed to the
  * customer. No internal notes, diagnosis, costs or staff names.
  */
@@ -30,7 +30,7 @@ export default async function JobCardPage({ params }: { params: Promise<{ id: st
       estimate: {
         select: {
           customerNotifiedAt: true,
-          lineItems: { where: { billTo: 'CUSTOMER' }, orderBy: { createdAt: 'asc' }, select: { id: true, type: true, description: true, quantity: true, amount: true, unitOfMeasure: true } },
+          lineItems: { where: { billTo: 'CUSTOMER' }, orderBy: { createdAt: 'asc' }, select: { id: true, type: true, description: true, quantity: true, unitPrice: true, amount: true, unitOfMeasure: true } },
         },
       },
       warranties: { where: { customerId: me.id }, select: { id: true, warrantyNumber: true, subjectDescription: true, endsAt: true, status: true } },
@@ -43,7 +43,7 @@ export default async function JobCardPage({ params }: { params: Promise<{ id: st
     <ServiceDetail
       item={item}
       complaints={jc.complaints.length ? jc.complaints.map((c) => c.description) : jc.complaint ? [jc.complaint] : []}
-      lines={notified && jc.estimate ? jc.estimate.lineItems.map((l) => ({ id: l.id, type: String(l.type), description: l.description, quantity: l.quantity, amount: l.amount === null ? null : num(l.amount), unit: l.unitOfMeasure })) : null}
+      lines={notified && jc.estimate ? jc.estimate.lineItems.map((l) => ({ id: l.id, type: String(l.type), description: l.description, quantity: l.quantity, unitPrice: l.unitPrice === null ? null : num(l.unitPrice), amount: l.amount === null ? null : num(l.amount), unit: l.unitOfMeasure })) : null}
       branch={jc.branch ? { name: jc.branch.name, address: jc.branch.address, hotlines: jc.branch.hotlines, email: jc.branch.email, bank: { bankName: jc.branch.bankName, accountName: jc.branch.bankAccountName, accountNumber: jc.branch.bankAccountNumber } } : null}
       mileage={jc.mileageAtCheckIn}
       warranties={jc.warranties.map((w) => ({ id: w.id, number: w.warrantyNumber, subject: w.subjectDescription, endsAt: w.endsAt, status: String(w.status) }))}

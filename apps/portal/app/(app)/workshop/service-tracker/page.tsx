@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { getServiceTracker } from '@/lib/actions/vehicle-service';
 import { getWorkshopBranchId } from '@/lib/workshop-core';
@@ -18,12 +19,9 @@ const STAGE_LABEL: Record<number, string> = { 1: '1st — Friendly', 2: '2nd —
 type Filter = 'all' | 'overdue' | 'due_soon' | 'on_track' | 'in_workshop' | 'attended' | 'lapsed';
 
 /**
- * Service Tracker — aftercare for every vehicle once it has left the
- * workshop. Where Vehicles In Custody covers vehicles physically with
- * us, this covers what happens next: when each vehicle is next due,
- * whether it's on track, due soon or overdue, whether it's already back
- * in, and every reminder sent for its current cycle — with the actions
- * to follow up right here.
+ * Service Tracker: aftercare once a vehicle has left. When each vehicle is
+ * next due, whether it is due soon, overdue or already back in, and the
+ * reminders sent for the current cycle.
  */
 export default async function ServiceTrackerPage({
   searchParams,
@@ -95,8 +93,8 @@ export default async function ServiceTrackerPage({
         <div>
           <PageTitle icon="gauge">Service Tracker</PageTitle>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">
-            Aftercare for every vehicle once it has left the workshop — when it&apos;s next due (by mileage or date,
-            whichever comes first), where it stands now, and every reminder sent. Vehicles still with us are on{' '}
+            Vehicles that have left the workshop: when each is next due (mileage or date, whichever comes first),
+            where it stands now, and the reminders sent. Vehicles still with us are on{' '}
             <LoadingLink href="/workshop/vehicle-service-custody" className="text-[var(--ejo-primary)] hover:underline">
               Vehicles In Custody
             </LoadingLink>
@@ -115,9 +113,9 @@ export default async function ServiceTrackerPage({
         ) : null}
       </div>
       <p className="mb-6 text-xs text-[var(--ejo-text-muted)]">
-        Reminders are sent by you, never automatically. The system works out when each one is due — a friendly note once a
-        vehicle is due soon (within 1,000 km or 30 days), follow-ups 7 working days apart, then an overdue reminder — and
-        shows a Send button only then. Nothing is due while a vehicle is back in the workshop or once it&apos;s attended to.
+        Reminders are never sent automatically. A Send button appears when one is due: a first note when the vehicle is due
+        soon (within 1,000 km or 30 days), follow-ups 7 working days apart, then an overdue reminder. Nothing is due while
+        the vehicle is back in the workshop or once it has been attended to.
       </p>
 
       {error ? (
@@ -186,7 +184,7 @@ export default async function ServiceTrackerPage({
           {vehicles.length === 0 ? 'No vehicles are being tracked yet — tracking starts the moment a Vehicle Service is completed.' : 'Nothing matches this view.'}
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -226,7 +224,7 @@ export default async function ServiceTrackerPage({
                         {v.plateNumber ?? '—'} · <CustomerLink id={v.customerId} name={v.customerName} canView={canSeeCustomers} />
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-xs">
+                    <td data-label="Last Service" className="px-3 py-2 text-xs">
                       <LoadingLink href={`/workshop/vehicle-service/${v.lastService.id}`} className="text-[var(--ejo-primary)] hover:underline">
                         {v.lastService.serviceNumber}
                       </LoadingLink>
@@ -243,7 +241,7 @@ export default async function ServiceTrackerPage({
                         {v.lastService.mileage != null ? ` · ${v.lastService.mileage.toLocaleString('en-NG')} km` : ''}
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-xs">
+                    <td data-label="Next Due" className="px-3 py-2 text-xs">
                       <div className="text-[var(--ejo-text)]">
                         {v.nextServiceDueOdometer != null ? `${v.nextServiceDueOdometer.toLocaleString('en-NG')} km` : ''}
                         {v.nextServiceDueOdometer != null && v.nextServiceDueDate ? ' or ' : ''}
@@ -251,7 +249,7 @@ export default async function ServiceTrackerPage({
                       </div>
                       {left ? <div className="text-[var(--ejo-text-muted)]">{left}</div> : null}
                     </td>
-                    <td className="px-3 py-2">
+                    <td data-label="Status" className="px-3 py-2">
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.text}</span>
                       {v.inWorkshop ? (
                         <div className="mt-1 text-xs">
@@ -264,7 +262,7 @@ export default async function ServiceTrackerPage({
                         </div>
                       ) : null}
                     </td>
-                    <td className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
+                    <td data-label="Reminders (this cycle)" className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
                       {v.reminderDue ? (
                         <div className="mb-1 font-medium text-[var(--ejo-warning)]">Due now: {STAGE_LABEL[v.reminderDue.stage]}</div>
                       ) : v.nextReminderFrom ? (
@@ -289,7 +287,7 @@ export default async function ServiceTrackerPage({
                         </>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td data-actions className="px-3 py-2">
                       <div className="flex flex-wrap justify-end gap-2">
                         {v.reminderDue ? (
                           <form action={sendManualServiceReminderFormAction}>
@@ -333,7 +331,7 @@ export default async function ServiceTrackerPage({
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
     </div>
   );

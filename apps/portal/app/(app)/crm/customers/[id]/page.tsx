@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { guardPage } from '@/lib/authz/server';
 import { getCustomer360, getCustomerActivity } from '@/lib/actions/crm';
+import { getRecycleBinOffer } from '@/lib/actions/recycle-bin';
+import { RecycleBinPanel } from '@/components/RecycleBinPanel';
 import {
   setCustomerPortalAccessFormAction, sendCustomerSetPasswordLinkFormAction, customerAddressFormAction, customerContactFormAction, customerNoteFormAction,
 } from '@/lib/actions/crm-form-handlers';
@@ -67,7 +69,7 @@ export default async function Customer360Page({ params, searchParams }: { params
   const data = await getCustomer360(id);
   if (!data) notFound();
   const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : 'overview';
-  const activity = tab === 'activity' ? await getCustomerActivity(id, 300) : [];
+  const [activity, binOffer] = await Promise.all([tab === 'activity' ? getCustomerActivity(id, 300) : Promise.resolve([]), getRecycleBinOffer('Customer', id)]);
   const { customer: c, portal, money, can } = data;
   const base = `/crm/customers/${c.id}`;
   const notice: Notice | null = sp.error ? { kind: 'error', title: 'That didn’t work', text: sp.error } : sp.status ? STATUS[sp.status] ?? null : null;
@@ -146,7 +148,7 @@ export default async function Customer360Page({ params, searchParams }: { params
         <ul className="flex flex-wrap gap-1 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-1">
           {TABS.map((t) => (
             <li key={t.key}>
-              <Link href={t.key === 'overview' ? base : `${base}?tab=${t.key}`} scroll={false} aria-current={tab === t.key ? 'page' : undefined} className={`flex items-center gap-1.5 whitespace-nowrap rounded-[var(--ejo-radius-md)] px-3 py-1.5 text-sm font-medium transition ${tab === t.key ? 'bg-[var(--ejo-primary)] text-white shadow-sm' : 'text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-text)]'}`}>
+              <Link href={t.key === 'overview' ? base : `${base}?tab=${t.key}`} scroll={false} aria-current={tab === t.key ? 'page' : undefined} className={`flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-[var(--ejo-radius-md)] px-3 py-1.5 text-sm font-medium transition sm:min-h-0 ${tab === t.key ? 'bg-[var(--ejo-primary)] text-white shadow-sm' : 'text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-text)]'}`}>
                 <CrmIcon name={t.icon} size={14} />{t.label}
                 {t.key === 'notes' && data.notes.length ? <span className={`rounded-full px-1.5 text-[10px] ${tab === t.key ? 'bg-white/25' : 'bg-[var(--ejo-bg)]'}`}>{data.notes.length}</span> : null}
               </Link>
@@ -157,7 +159,7 @@ export default async function Customer360Page({ params, searchParams }: { params
 
       <div className="mt-4">
         {tab === 'overview' ? (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="min-w-0 space-y-6">
               <Section icon="chart" title="Spend over the last 12 months" subtitle="Paid in each month (net of refunds), and work billed to them when it was finished · Lagos calendar months">
                 {data.months.some((m) => m.net || m.billed) ? <SpendChart data={data.months} /> : <Empty icon="chart" title="No money in or out in the last 12 months." />}
@@ -347,6 +349,7 @@ export default async function Customer360Page({ params, searchParams }: { params
           </Section>
         ) : null}
       </div>
+      <RecycleBinPanel offer={binOffer} entity="Customer" id={c.id} className="mt-6 max-w-xl" />
     </div>
   );
 }

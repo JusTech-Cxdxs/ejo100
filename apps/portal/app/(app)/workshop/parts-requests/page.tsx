@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage } from '@/lib/authz/server';
 import { listPartRequestSlips } from '@/lib/actions/sourcing';
 import { getStoreBranchId } from '@/lib/actions/store';
@@ -23,13 +24,9 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
 };
 
 /**
- * Every Parts Request Slip raised across this branch's Job Cards —
- * Workshop HOD, Store, and Storekeeper all work from this same list,
- * each seeing the action relevant to whichever stage a given slip is
- * actually at once they open it. Searchable by reference number or
- * Job Card number, matching the standing rule that every list in this
- * project gets a real search — this one wasn't originally built with
- * it, since the very first version had nothing yet to search through.
+ * Parts requests across the branch. Workshop HOD, Store and Storekeeper all
+ * work from this list; each slip shows the action for its current stage.
+ * Searchable by reference or Job Card number.
  */
 export default async function PartsRequestsPage({
   searchParams,
@@ -40,9 +37,8 @@ export default async function PartsRequestsPage({
   const { q, type } = await searchParams;
   const branchId = await getStoreBranchId();
   const allSlips = await listPartRequestSlips(branchId, q);
-  // Same real type filter as the Estimate Matching page — counts always
-  // reflect the current search, across both kinds, so switching tabs
-  // never hides how many are waiting on the other side.
+  // Same type filter as Estimate Matching. Counts follow the search for
+  // both tabs, so the other tab's count stays visible.
   const jcCount = allSlips.filter((sl: (typeof allSlips)[number]) => Boolean(sl.jobCard)).length;
   const svCount = allSlips.filter((sl: (typeof allSlips)[number]) => Boolean(sl.vehicleService)).length;
   const slips =
@@ -110,7 +106,7 @@ export default async function PartsRequestsPage({
       {slips.length === 0 ? (
         <p className="text-sm text-[var(--ejo-text-muted)]">{q || type ? 'No parts requests match your search.' : 'No parts requests raised yet.'}</p>
       ) : (
-        <div className="overflow-x-auto rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+        <ResponsiveTable className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--ejo-border)] text-left text-xs text-[var(--ejo-text-muted)]">
@@ -129,7 +125,7 @@ export default async function PartsRequestsPage({
                       {slip.referenceNumber}
                     </LoadingLink>
                   </td>
-                  <td className="px-4 py-2">
+                  <td data-label="Job Card / Service" className="px-4 py-2">
                     {slip.jobCard ? (
                       <LoadingLink href={`/workshop/job-cards/${slip.jobCard.id}`} className="text-[var(--ejo-primary)] hover:underline">
                         {slip.jobCard.jobNumber}
@@ -142,9 +138,9 @@ export default async function PartsRequestsPage({
                       <span className="text-[var(--ejo-text-muted)]">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{slip.requestedBy.fullName}</td>
-                  <td className="px-4 py-2 text-[var(--ejo-text-muted)]">{pluralize(slip.lines.length, 'line')}</td>
-                  <td className="px-4 py-2">
+                  <td data-label="Requested By" className="px-4 py-2 text-[var(--ejo-text-muted)]">{slip.requestedBy.fullName}</td>
+                  <td data-label="Lines" className="px-4 py-2 text-[var(--ejo-text-muted)]">{pluralize(slip.lines.length, 'line')}</td>
+                  <td data-label="Status" className="px-4 py-2">
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASS[slip.status] ?? 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'}`}>
                       {STATUS_LABEL[slip.status] ?? slip.status}
                     </span>
@@ -153,7 +149,7 @@ export default async function PartsRequestsPage({
               ))}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
     </div>
   );

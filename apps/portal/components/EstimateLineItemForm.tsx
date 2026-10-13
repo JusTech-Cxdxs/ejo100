@@ -1,28 +1,22 @@
 'use client';
 
-import { useState } from 'react';
 import { addEstimateLineItemFormAction } from '@/lib/actions/workshop-form-handlers';
-import { SubmitButton } from '@/components/SubmitButton';
-import { FormPendingOverlay } from '@/components/FormPendingOverlay';
-import { SearchableSelect, type SearchableOption } from '@/components/SearchableSelect';
-import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
+import { EstimateLineAddForm, type PartCategoryWithTypes } from '@/components/EstimateLineAddForm';
 
-type PartCategoryWithTypes = {
-  id: string;
-  name: string;
-  types: { id: string; name: string; typicalUnit: string | null }[];
-};
+const TYPES = [
+  { value: 'STORE_PART', label: 'Store Part' },
+  { value: 'EXTERNAL_PART', label: 'External Part' },
+  { value: 'EXTERNAL_JOB', label: 'External Job' },
+  { value: 'INTERNAL_JOB', label: 'Internal Job' },
+  { value: 'LABOUR', label: 'Labour' },
+  { value: 'SUNDRY', label: 'Sundry' },
+];
 
 /**
- * Store Part lines and every other line type genuinely need different
- * fields, not just different validation — a Store Part line picks a
- * PartType (grouped by its real parent PartCategory) and never sees a
- * price field at all, since that price can only ever come from
- * Store's own later match. Every other type keeps the existing
- * free-text description, with a price field shown only when the
- * current viewer actually has pricing authority for that type
- * (mirrors requirePricingAuthority server-side — this is just the
- * matching, honest UI for it, not a substitute for that real check).
+ * A Store Part line picks a Part Type and has no price (the Store prices it
+ * when matching). Other types take a description, and a price only when the
+ * viewer may price that type. requirePricingAuthority enforces this on the
+ * server; hiding the field here is only for clarity.
  */
 export function EstimateLineItemForm({
   jobCardId,
@@ -37,136 +31,17 @@ export function EstimateLineItemForm({
   hasSundry: boolean;
   isTechnicianOnly: boolean;
 }) {
-  const [type, setType] = useState('STORE_PART');
-  const isStorePart = type === 'STORE_PART';
-  // A real preview of the unit a technician's about to be working
-  // with — genuinely looked up from what's already in the catalog for
-  // this Part Type, never guessed, and never the value that actually
-  // gets submitted (that's still set only by Store's own match on
-  // matching, exactly as before). This exists purely so a technician
-  // never has to type a quantity blind — "1" meaning one whole Set is
-  // a very different thing from "1" meaning one loose piece, and
-  // they should be able to see which one they're dealing with.
-  const [selectedPartTypeId, setSelectedPartTypeId] = useState('');
-  const selectedPartType = categories.flatMap((c) => c.types).find((t) => t.id === selectedPartTypeId);
-  // A technician only ever has pricing authority for what they
-  // personally sourced outside the workshop — everything else is
-  // priced by the supervisor. Store Part never gets a price field at
-  // all, regardless of viewer, since that's Store's own job now.
-  const canShowPriceField = !isStorePart && (!isTechnicianOnly || type === 'EXTERNAL_PART' || type === 'EXTERNAL_JOB');
-
-  // Every Part Type is already loaded via the `categories` prop — no
-  // server round-trip needed to search it, just a plain client-side
-  // filter wrapped as a Promise to match SearchableSelect's own
-  // (query) => Promise<SearchableOption[]> shape.
-  const allPartTypeOptions: SearchableOption[] = categories.flatMap((category) =>
-    category.types.map((t) => ({ value: t.id, label: t.name, sublabel: category.name })),
-  );
-  async function searchPartTypesLocal(query: string): Promise<SearchableOption[]> {
-    const q = query.trim().toLowerCase();
-    if (!q) return allPartTypeOptions;
-    return allPartTypeOptions.filter((o) => o.label.toLowerCase().includes(q) || o.sublabel?.toLowerCase().includes(q));
-  }
-  async function loadAllPartTypesLocal(): Promise<SearchableOption[]> {
-    return allPartTypeOptions;
-  }
-
   return (
-    <form action={addEstimateLineItemFormAction} className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--ejo-border)] pt-4 sm:grid-cols-6">
-      <FormPendingOverlay />
-      <input type="hidden" name="jobCardId" value={jobCardId} />
-      <select
-        name="type"
-        required
-        value={type}
-        onChange={(e) => setType(e.target.value)}
-        className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)] sm:col-span-1"
-      >
-        <option value="STORE_PART">Store Part</option>
-        <option value="EXTERNAL_PART">External Part</option>
-        <option value="EXTERNAL_JOB">External Job</option>
-        <option value="INTERNAL_JOB">Internal Job</option>
-        <option value="LABOUR">Labour</option>
-        {!hasSundry ? <option value="SUNDRY">Sundry</option> : null}
-      </select>
-
-      {isStorePart ? (
-        <div className="col-span-2 sm:col-span-2">
-          <SearchableSelect
-            name="partTypeId"
-            required
-            search={searchPartTypesLocal}
-            loadDefaultOptions={loadAllPartTypesLocal}
-            defaultOptionsLabel="All Part Types"
-            placeholder="Search Part Types…"
-            emptyMessage="No Part Type matches."
-            onChange={setSelectedPartTypeId}
-          />
-        </div>
-      ) : (
-        <input
-          name="description"
-          required
-          list="internal-job-suggestions"
-          placeholder="Description"
-          className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)] sm:col-span-2"
-        />
-      )}
-
-      <input
-        name="quantity"
-        type="number"
-        step="1"
-        min="1"
-        required
-        defaultValue="1"
-        placeholder="Qty"
-        className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-      />
-
-      {isStorePart ? (
-        <input
-          type="text"
-          readOnly
-          value={selectedPartType?.typicalUnit ?? ''}
-          placeholder={selectedPartType ? 'Varies' : 'Unit'}
-          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-        />
-      ) : (
-        <UnitOfMeasureInput name="unitOfMeasure" placeholder="Unit" />
-      )}
-
-      {canShowPriceField ? (
-        <input
-          name="unitPrice"
-          type="number"
-          step="0.01"
-          min="0"
-          placeholder="Unit Price (optional)"
-          className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
-        />
-      ) : (
-        <div className="flex items-center rounded-[var(--ejo-radius-md)] border border-dashed border-[var(--ejo-border)] px-2 py-2 text-[11px] text-[var(--ejo-text-muted)]">
-          {isStorePart ? 'Priced by Store' : 'Priced by supervisor'}
-        </div>
-      )}
-
-      <SubmitButton
-        label="Add"
-        pendingLabel="Adding…"
-        className="col-span-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-2 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)] sm:col-span-6"
-      />
-      <p className="col-span-2 text-[11px] text-[var(--ejo-text-muted)] sm:col-span-6">
-        {isStorePart
-          ? 'Pick the kind of part needed — the Unit shown is a preview from what\u2019s already in stock; Store still confirms the exact part and price.'
-          : 'Pricing: the technician prices External Part/Job lines (they sourced them); the supervisor prices Labour and Sundry.'}
-      </p>
-
-      <datalist id="internal-job-suggestions">
-        {descriptionSuggestions.map((d) => (
-          <option key={d} value={d} />
-        ))}
-      </datalist>
-    </form>
+    <EstimateLineAddForm
+      action={addEstimateLineItemFormAction}
+      hidden={<input type="hidden" name="jobCardId" value={jobCardId} />}
+      typeOptions={TYPES.filter((t) => t.value !== 'SUNDRY' || !hasSundry)}
+      categories={categories}
+      descriptionSuggestions={descriptionSuggestions}
+      datalistId="internal-job-suggestions"
+      // Technicians price only what they sourced outside; the supervisor prices the rest.
+      canPrice={(type) => !isTechnicianOnly || type === 'EXTERNAL_PART' || type === 'EXTERNAL_JOB'}
+      pricingHint="Pricing: the technician prices External Part/Job lines (they sourced them); the supervisor prices Labour and Sundry."
+    />
   );
 }

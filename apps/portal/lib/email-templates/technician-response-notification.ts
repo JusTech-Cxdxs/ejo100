@@ -1,4 +1,4 @@
-import { renderEmailLayout, escapeHtml } from './layout';
+import { renderEmailLayout, html, greeting, para, details, callout } from './layout';
 
 export type TechnicianResponseEmailOptions = {
   response: 'ACCEPTED' | 'REJECTED';
@@ -14,63 +14,31 @@ export type TechnicianResponseEmailOptions = {
   departmentName: string;
 };
 
-/**
- * Sent to the supervisor the moment an assigned technician accepts or
- * rejects the work — same "one function, two branches" pattern as
- * job-card-decision.ts, for the same reason: the shell is identical,
- * only the heading/icon/body content genuinely differ.
- */
-export function renderTechnicianResponseEmail(opts: TechnicianResponseEmailOptions): string {
-  const {
-    response,
-    supervisorName,
-    jobNumber,
-    customerName,
-    technicianName,
-    rejectionReason,
-    jobCardUrl,
-    logoUrl,
-    companyName,
-    branchName,
-    departmentName,
-  } = opts;
-
-  const isAccepted = response === 'ACCEPTED';
-
-  const bodyHtml = `
-    <p style="margin: 0 0 16px 0;">Hello ${escapeHtml(supervisorName)},</p>
-    <p style="margin: 0 0 16px 0;">
-      ${isAccepted
-        ? `${escapeHtml(technicianName)} has accepted the assignment on Job Card ${escapeHtml(jobNumber)} for ${escapeHtml(customerName)} and can begin work.`
-        : `${escapeHtml(technicianName)} has rejected the assignment on Job Card ${escapeHtml(jobNumber)} for ${escapeHtml(customerName)} — it will need to be reassigned.`}
-    </p>
-
-    ${!isAccepted && rejectionReason?.trim()
-      ? `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;">
-      <tr>
-        <td style="padding: 20px 24px;">
-          <p style="margin: 0 0 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748B;">Reason</p>
-          <p style="margin: 0; font-size: 15px; color: #0F172A;">${escapeHtml(rejectionReason.trim())}</p>
-        </td>
-      </tr>
-    </table>
-    `
-      : ''}
-  `;
-
+/** To the supervisor: the technician accepted or declined the Job Card assignment. */
+export function renderTechnicianResponseEmail(o: TechnicianResponseEmailOptions): string {
+  const accepted = o.response === 'ACCEPTED';
+  const reason = o.rejectionReason?.trim();
+  const bodyHtml = html`
+    ${greeting(o.supervisorName)}
+    ${accepted
+      ? para(`${o.technicianName} accepted the assignment on Job Card ${o.jobNumber} for ${o.customerName} and can start work.`)
+      : para(`${o.technicianName} declined the assignment on Job Card ${o.jobNumber} for ${o.customerName}. Please assign another technician.`)}
+    ${details([
+      ['Job Card', o.jobNumber],
+      ['Customer', o.customerName],
+      ['Technician', o.technicianName],
+    ])}
+    ${!accepted && reason ? callout(reason, 'danger', 'Reason given') : ''}`;
   return renderEmailLayout({
-    previewText: isAccepted
-      ? `${technicianName} accepted the assignment on Job Card ${jobNumber}.`
-      : `${technicianName} rejected the assignment on Job Card ${jobNumber}.`,
-    companyName,
-    orgContext: [companyName, branchName, departmentName],
-    iconGlyph: isAccepted ? '✓' : '!',
-    iconTone: isAccepted ? 'positive' : 'negative',
-    heading: isAccepted ? 'Assignment accepted' : 'Assignment rejected',
+    previewText: accepted ? `${o.technicianName} accepted Job Card ${o.jobNumber}.` : `${o.technicianName} declined Job Card ${o.jobNumber}. It needs a new technician.`,
+    companyName: o.companyName,
+    logoUrl: o.logoUrl,
+    orgContext: [o.branchName, o.departmentName],
+    status: accepted ? { label: 'Accepted', tone: 'success' } : { label: 'Needs reassigning', tone: 'danger' },
+    heading: accepted ? `${o.technicianName} accepted ${o.jobNumber}` : `${o.technicianName} declined ${o.jobNumber}`,
     bodyHtml,
-    ctaLabel: 'Open Job Card',
-    ctaUrl: jobCardUrl,
-    logoUrl,
+    ctaLabel: accepted ? 'Open Job Card' : 'Reassign technician',
+    ctaUrl: o.jobCardUrl,
+    audience: 'staff',
   });
 }

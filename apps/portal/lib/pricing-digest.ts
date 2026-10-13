@@ -23,16 +23,10 @@ export type PricingAlertDigestGroup = {
   }[];
 };
 
-/** Does not call requireUser() — the one real, honest
- * exception to this file's own standard pattern, and a deliberate
- * one: this is only ever meant to be called from inside the real
- * cron route handler itself (see app/api/cron/pricing-alerts), which
- * has no logged-in user at all to require — its own real security is
- * the cron secret the route handler checks before ever calling this,
- * not a user session. Grouped by branch, with the real eligible
- * recipients (Store Manager + Store Officer, or the same Master Admin
- * fallback used everywhere else in this system) resolved per branch,
- * so the real cron route never needs its own copy of that logic. */
+/** Open pricing alerts grouped by branch, with each branch's Store Manager
+ * and Store Officer recipients (or the Master Admin fallback).
+ * No requireUser(): only called from the pricing-alerts cron route, which
+ * has no user session and checks the cron secret first. */
 export async function getOpenPricingAlertsForDigest(): Promise<PricingAlertDigestGroup[]> {
   type OpenAlertRow = {
     severity: string;
@@ -73,14 +67,8 @@ export async function getOpenPricingAlertsForDigest(): Promise<PricingAlertDiges
   const groups: PricingAlertDigestGroup[] = [];
   for (const branchId of branchIds) {
     const branchAlerts = openAlerts.filter((a: { part: { branchId: string } }) => a.part.branchId === branchId);
-    // The exact same real eligibility + Master Admin fallback logic
-    // as listEligibleStoreManagersForBranch/listEligibleStoreOfficersForBranch
-    // — deliberately re-implemented here inline rather than calling
-    // those directly, since both call requireUser() internally and
-    // this function is the one real, honest place in this file that
-    // genuinely has no user session to give them (see this
-    // function's own comment above for why that's correct here, not
-    // a mistake).
+    // Same eligibility and fallback as listEligibleStoreManagersForBranch(),
+    // inlined because those functions call requireUser().
     const staff: { id: string; fullName: string; email: string }[] = await prisma.user.findMany({
       where: {
         branchId,

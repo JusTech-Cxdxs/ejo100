@@ -4,26 +4,36 @@ import { Fragment, useCallback, useEffect, useId, useRef, useState } from 'react
 import { useRouter } from 'next/navigation';
 import { globalSearch, type SearchGroup } from '@/lib/actions/search';
 import { Icon, type IconName } from '@/components/ui/Icon';
+import { matchRanges, REFERENCE_PREFIXES } from '@/lib/search-plan';
+import { pluralize } from '@/lib/utils/pluralize';
 
 /** Each result group's icon (the same icons the menu and pages use). */
 const GROUP_ICON: Record<string, IconName> = {
   Pages: 'grid', 'Job Cards': 'clipboard', 'Vehicle Services': 'droplet', Vehicles: 'car', Customers: 'users', Parts: 'package',
   'Parts requests': 'package', 'External procurement': 'cart', 'Goods receipts': 'receipt', Warranties: 'shield-check', 'Warranty claims': 'file',
   Visitors: 'badge', 'Exit passes': 'exit', 'Road tests': 'road', Incidents: 'alert', Deliveries: 'truck', Contractors: 'hardhat',
-  Appointments: 'calendar', Broadcasts: 'megaphone', 'Vehicles leaving (VX)': 'car', Refunds: 'refund', 'Warranty policies': 'file',
+  Appointments: 'calendar', Broadcasts: 'megaphone', 'Vehicle exits': 'car', Refunds: 'refund', 'Warranty policies': 'file',
   'Warranty providers': 'building', 'Meeting rooms': 'room', Branches: 'branch', Departments: 'sitemap', Staff: 'user',
 };
 
-/** The typed words, highlighted inside a result. */
+/** The typed words, highlighted inside a result ("vx 12" marks VX and 000012 in VX-2026-000012). */
 function Highlight({ text, q }: { text: string; q: string }) {
-  const term = q.trim();
-  if (!term) return <>{text}</>;
-  const i = text.toLowerCase().indexOf(term.toLowerCase());
-  if (i === -1) return <>{text}</>;
-  return <>{text.slice(0, i)}<mark className="ejo-hit">{text.slice(i, i + term.length)}</mark>{text.slice(i + term.length)}</>;
+  const ranges = matchRanges(text, q);
+  if (!ranges.length) return <>{text}</>;
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  for (const [s, e] of ranges) {
+    if (s > last) parts.push(text.slice(last, s));
+    parts.push(<mark key={s} className="ejo-hit">{text.slice(s, e)}</mark>);
+    last = e;
+  }
+  parts.push(text.slice(last));
+  return <>{parts}</>;
 }
 
 type Status = 'idle' | 'busy' | 'done' | 'error';
+
+const SEARCH_PREFIXES = REFERENCE_PREFIXES.filter((p) => p !== 'VP').join(', ');
 
 /**
  * The header's master search — results appear as you type (after a short
@@ -117,7 +127,7 @@ export function GlobalSearch() {
         onChange={(e) => { setQ(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKey}
-        placeholder={big ? 'Job cards, plates, customers, parts…' : 'Search anything — JC, SV, plate, customer, part, page…'}
+        placeholder={big ? 'Numbers, plates, names, phones…' : 'Search anything: JC-2026-000012, VX, a plate, a name, a phone…'}
         aria-label="Search everything"
         role="combobox"
         aria-expanded={(open || big) && !!q.trim()}
@@ -153,7 +163,7 @@ export function GlobalSearch() {
         <Icon name="search" size={19} />
       </button>
       {sheet ? (
-        <div className="ejo-fade fixed inset-0 z-[60] flex flex-col bg-[var(--ejo-bg)] md:hidden" role="dialog" aria-modal="true" aria-label="Search">
+        <div className="ejo-fade fixed inset-0 z-[60] flex flex-col overscroll-contain bg-[var(--ejo-bg)] pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] md:hidden" role="dialog" aria-modal="true" aria-label="Search">
           <div className="flex items-center gap-2 border-b border-[var(--ejo-border)] p-3">
             <div className="min-w-0 flex-1">{field(sheetInput, true)}</div>
             <button type="button" onClick={() => { setSheet(false); setQ(''); }} className="shrink-0 rounded-full px-3 py-2 text-sm font-medium text-[var(--ejo-primary)]">Cancel</button>
@@ -162,7 +172,7 @@ export function GlobalSearch() {
             {q.trim() ? results : (
               <div className="px-6 py-10 text-center text-sm text-[var(--ejo-text-muted)]">
                 <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]"><Icon name="search" size={22} /></span>
-                Type a job number, plate, customer, part, visitor or page name.
+                Type a reference such as JC-2026-000012 or just VX, a plate, a name, a phone number or a page.
               </div>
             )}
           </div>
@@ -200,17 +210,22 @@ function Results({ q, groups, status, active, setActive, go, listId }: { q: stri
       <div className="px-6 py-8 text-center" role="status">
         <span className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]"><Icon name="search" size={18} /></span>
         <p className="text-sm font-medium text-[var(--ejo-text)]">Nothing found for “{term}”</p>
-        <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Try a job number (JC-…), a plate, a part number or a customer’s name.</p>
+        <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Try a reference like JC-2026-000012, a plate, a name or a phone number.</p>
+        <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">A prefix on its own lists the newest: {SEARCH_PREFIXES}.</p>
       </div>
     );
   }
   let i = -1;
   return (
+    <>
+    <p className="sr-only" aria-live="polite">{pluralize(groups.reduce((n, g) => n + g.hits.length, 0), 'result')}</p>
     <div id={listId} role="listbox" aria-label="Search results" className="py-1">
       {groups.map((g) => (
         <Fragment key={g.group}>
           <p role="presentation" className="flex items-center gap-2 px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--ejo-text-muted)]">
-            {g.group}<span className="h-px flex-1 bg-[var(--ejo-border)]" />
+            {g.group}
+            {g.prefix ? <span className="rounded border border-[var(--ejo-border)] px-1 py-px font-mono text-[9px] tracking-normal text-[var(--ejo-primary)]">{g.prefix}</span> : null}
+            <span className="h-px flex-1 bg-[var(--ejo-border)]" />
           </p>
           {g.hits.map((h) => {
             i += 1;
@@ -241,5 +256,6 @@ function Results({ q, groups, status, active, setActive, go, listId }: { q: stri
         </Fragment>
       ))}
     </div>
+    </>
   );
 }

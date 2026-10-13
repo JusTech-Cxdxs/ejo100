@@ -5,18 +5,9 @@ import { useRef, useState } from 'react';
 type ComplaintRow = { key: string; value: string };
 
 /**
- * A dynamic, numbered list of complaints for Job Card creation —
- * "Fan not working" and "AC not working" as two separate, clearly
- * numbered entries rather than mixed together in one paragraph.
- *
- * Every row is a real, separately-submitted <input name="complaints">
- * — the server action reads them all via `formData.getAll('complaints')`,
- * so this needs no hidden JSON-encoding or index-based field names.
- *
- * Uses a stable generated key per row (not the array index) — removing
- * a row from the middle of an index-keyed list can cause React to mix
- * up which DOM input holds which value/focus state, a well-known React
- * list pitfall worth avoiding here since rows are genuinely removable.
+ * Numbered complaint list for a new Job Card. Each row is its own
+ * <input name="complaints">, read with formData.getAll('complaints').
+ * Rows use stable keys, not the index, because rows can be removed.
  */
 export function ComplaintListInput() {
   const [rows, setRows] = useState<ComplaintRow[]>([{ key: 'c0', value: '' }]);
@@ -45,14 +36,14 @@ export function ComplaintListInput() {
             value={row.value}
             onChange={(e) => updateRow(row.key, e.target.value)}
             placeholder={i === 0 ? 'e.g. Fan not working' : 'e.g. AC not working'}
-            className="flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+            className="min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
           {rows.length > 1 ? (
             <button
               type="button"
               onClick={() => removeRow(row.key)}
               aria-label={`Remove complaint ${i + 1}`}
-              className="shrink-0 rounded-[var(--ejo-radius-md)] px-2 py-1 text-sm text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-error)]"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--ejo-radius-md)] text-lg text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-error)]"
             >
               &times;
             </button>
@@ -62,7 +53,7 @@ export function ComplaintListInput() {
       <button
         type="button"
         onClick={addRow}
-        className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+        className="inline-flex min-h-10 items-center text-xs font-medium text-[var(--ejo-primary)] hover:underline"
       >
         + Add another complaint
       </button>

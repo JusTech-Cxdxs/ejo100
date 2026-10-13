@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Icon, type IconName } from './Icon';
 import { TONE_BADGE, type Tone } from '@/lib/customer-portal/status';
-import { fmtDate } from '@/lib/customer-portal/format';
+import { fmtDateTime } from '@/lib/customer-portal/format';
 
 /** Shared building blocks for the customer portal pages (server-safe). */
 
@@ -124,7 +124,7 @@ export function Timeline({ entries }: { entries: TimelineEntry[] }) {
             <span className={`absolute -left-[37px] top-0 flex h-6 w-6 items-center justify-center rounded-full border-2 ${dot}`} aria-hidden="true"><Icon name={e.icon} size={12} strokeWidth={2.4} /></span>
             <div className="flex flex-wrap items-baseline justify-between gap-x-3">
               <p className={`text-sm font-semibold ${tone === 'upcoming' ? 'text-[var(--ejo-text-muted)]' : 'text-[var(--ejo-text)]'}`}>{e.label}</p>
-              <p className="text-xs text-[var(--ejo-text-muted)]">{e.at ? fmtDate(e.at) : tone === 'current' ? 'Now' : 'Coming up'}</p>
+              <p className="text-xs text-[var(--ejo-text-muted)]">{e.at ? fmtDateTime(e.at) : tone === 'current' ? 'Now' : 'Coming up'}</p>
             </div>
             {e.text ? <p className="mt-0.5 text-sm text-[var(--ejo-text-muted)]">{e.text}</p> : null}
           </li>
@@ -134,9 +134,9 @@ export function Timeline({ entries }: { entries: TimelineEntry[] }) {
   );
 }
 
-export function KeyValue({ label, children }: { label: string; children: ReactNode }) {
+export function KeyValue({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${className}`}>
       <dt className="text-xs text-[var(--ejo-text-muted)]">{label}</dt>
       <dd className="mt-0.5 break-words text-sm font-medium text-[var(--ejo-text)]">{children}</dd>
     </div>
@@ -187,4 +187,14 @@ export function Notice({ tone, icon, children }: { tone: 'info' | 'attention' | 
       <div className="min-w-0 flex-1 leading-relaxed">{children}</div>
     </div>
   );
+}
+
+/**
+ * Keeps hyphenated codes (plates like LND-482-KJ, JC-APP-2026-000184) on one
+ * line. Browsers break after a hyphen, which splits a plate across two lines
+ * on a phone. The text itself is unchanged, so copying and searching still work.
+ */
+export function KeepCodes({ text }: { text: string }) {
+  const parts = text.split(/([A-Z0-9]+(?:-[A-Z0-9]+)+)/);
+  return <>{parts.map((p, i) => (i % 2 ? <span key={i} className="whitespace-nowrap">{p}</span> : p))}</>;
 }

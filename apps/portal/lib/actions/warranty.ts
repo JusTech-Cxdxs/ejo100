@@ -1,4 +1,6 @@
 'use server';
+import { actorLabel } from '@/lib/assist/rules';
+import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
@@ -6,7 +8,7 @@ import { retryOnNumberClash } from '@/lib/integrity-core';
 import { prisma } from '@ejo/database';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
-import { authorize, getPrincipal, inMyOrganisation, myOrganisationId, orgOwned, orgWhere, partsOfMyOrganisation, seePart } from '@/lib/authz/server';
+import { authorize, getPrincipal, inMyOrganisation, myOrganisationId, orgOwned, orgWhere, partsOfMyOrganisation, seePart, refuseDuringAssist } from '@/lib/authz/server';
 import { decide } from '@/lib/authz/catalogue';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
@@ -15,6 +17,7 @@ import { expiryReminderState } from '@/lib/warranty-reminders';
 import { notifyWarrantyDepartmentOfPartWarranty } from '@/lib/warranty-department-notify';
 import { renderCustomerWarrantyCertificateEmail } from '@/lib/email-templates/customer-warranty-certificate';
 import { renderCustomerWarrantyExpiryEmail } from '@/lib/email-templates/customer-warranty-expiry';
+import { lagosYear } from '@/lib/utils/format-date';
 
 class WarrantyActionError extends Error {}
 
@@ -92,23 +95,22 @@ async function warrantyApproverRecipients(): Promise<{ id: string; fullName: str
 async function notifyStaff(recipients: { fullName: string; email: string }[], subject: string, heading: string, lines: string[], path: string) {
   try {
     const orgContext = await getWorkshopOrgContext();
-    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://ejo100-portal.vercel.app';
+    const portalUrl = portalBaseUrl();
     for (const r of recipients) {
       await sendEmail(
         r.email,
         subject,
-        renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portalUrl}${path}`, logoUrl: `${portalUrl}/images/logo/logo.png`, companyName: orgContext.companyName, branchName: orgContext.branchName }),
+        renderWarrantyStaffNoticeEmail({ recipientName: r.fullName, heading, lines, actionUrl: `${portalUrl}${path}`, logoUrl: `${portalUrl}/images/logo/email-logo.png`, companyName: orgContext.companyName, branchName: orgContext.branchName }),
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     logFailure('Failed to send warranty staff notice', subject, err);
   }
 }
 
 /** WR-2026-000001 */
 async function nextWarrantyNumber(): Promise<string> {
-  const prefix = `WR-${new Date().getFullYear()}-`;
+  const prefix = `WR-${lagosYear()}-`;
   const latest = await prisma.warranty.findFirst({
     where: { warrantyNumber: { startsWith: prefix } },
     orderBy: { warrantyNumber: 'desc' },
@@ -308,7 +310,7 @@ export async function loadSampleWarrantyPolicies(): Promise<{ created: number }>
   const user = await requireWarrantyApprover();
   const providers: { name: string; type: WarrantyProviderInput['type']; claimSubmissionDays: number; partRetentionDays: number; notes: string }[] = [
     { name: 'Foton (Sample)', type: 'MANUFACTURER', claimSubmissionDays: 30, partRetentionDays: 60, notes: 'SAMPLE provider — replace with the real Foton / Foton International terms.' },
-    { name: 'Kewalram Workshop (Sample)', type: 'INTERNAL', claimSubmissionDays: 30, partRetentionDays: 30, notes: 'SAMPLE — the workshop’s own parts-and-workmanship warranty.' },
+    { name: 'In-house workshop (Sample)', type: 'INTERNAL', claimSubmissionDays: 30, partRetentionDays: 30, notes: 'SAMPLE — the workshop’s own parts-and-workmanship warranty.' },
   ];
   let created = 0;
   const ids: Record<string, string> = {};
@@ -332,14 +334,14 @@ export async function loadSampleWarrantyPolicies(): Promise<{ created: number }>
       conditions: 'Scheduled servicing at an authorised workshop at the recommended intervals\nFailure reported promptly\nFailed parts kept for inspection',
     },
     {
-      provider: 'Kewalram Workshop (Sample)', code: 'SAMPLE-PART-12', name: 'Replacement part warranty — 12 months (sample)', kind: 'PART', coversParts: true, coversLabour: true, defaultRemedy: 'REPLACEMENT',
+      provider: 'In-house workshop (Sample)', code: 'SAMPLE-PART-12', name: 'Replacement part warranty — 12 months (sample)', kind: 'PART', coversParts: true, coversLabour: true, defaultRemedy: 'REPLACEMENT',
       durationMonths: 12, distanceLimit: 20000,
       coverageSummary: 'Manufacturing defects in the replacement part\nWorkmanship of fitting it',
       exclusions: 'Accident or misuse damage\nIncorrect fluids\nUnrelated failures\nNormal wear',
       conditions: 'Part fitted by the workshop\nFailure reported before the warranty ends',
     },
     {
-      provider: 'Kewalram Workshop (Sample)', code: 'SAMPLE-PART-6', name: 'Replacement part warranty — 6 months (sample)', kind: 'PART', coversParts: true, coversLabour: false, defaultRemedy: 'REPLACEMENT',
+      provider: 'In-house workshop (Sample)', code: 'SAMPLE-PART-6', name: 'Replacement part warranty — 6 months (sample)', kind: 'PART', coversParts: true, coversLabour: false, defaultRemedy: 'REPLACEMENT',
       durationMonths: 6, distanceLimit: 10000,
       coverageSummary: 'Manufacturing defects in the replacement part (defect-only cover)',
       exclusions: 'Normal wear\nContamination\nIncorrect fitting by others',
@@ -457,6 +459,8 @@ export async function registerAssetWarranty(input: RegisterAssetWarrantyInput): 
 /** The second pair of eyes: a Manager (not the person who registered it,
  * unless Master Admin) confirms the evidence → ACTIVE. */
 export async function verifyWarranty(warrantyId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('verifyWarranty');
   const user = await requireWarrantyApprover();
   const w = await prisma.warranty.findFirst({ where: { customer: await orgWhere(), id: warrantyId }, select: { status: true, issuedById: true, warrantyNumber: true, vehicleId: true } });
   if (!w) throw new WarrantyActionError('Warranty not found.');
@@ -482,7 +486,7 @@ export async function setWarrantyStatus(warrantyId: string, status: 'ACTIVE' | '
   await writeAuditLog({ userId: user.id, action: `warranty.${status === 'ACTIVE' ? 'reinstated' : status.toLowerCase()}`, entityType: 'Warranty', entityId: warrantyId, metadata: { warrantyNumber: w.warrantyNumber, from: w.status, to: status, reason: why } });
 }
 
-// ── Automatic part warranties (issued with every real release) ────────
+// ── Automatic part warranties (issued on release) ─────────────────────
 
 /**
  * Called right after a Parts Request Slip is released: every released
@@ -664,13 +668,13 @@ export async function getWarrantyAuditTrail(warrantyId: string) {
   const visibleId = (await prisma.warranty.findFirst({ where: { ...({ customer: await orgWhere() }), id: warrantyId }, select: { id: true } }))?.id ?? '__no_access__';
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'Warranty', entityId: visibleId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     select: { id: true, action: true, createdAt: true, metadata: true, userId: true },
   });
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null }));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null }));
 }
 
 // ── Policy detail, edit and the deletion approval chain ──────────────
@@ -698,13 +702,13 @@ export async function getWarrantyPolicyAuditTrail(policyId: string) {
   const visibleId = (await prisma.warrantyPolicy.findFirst({ where: { ...(await orgOwned()), id: policyId }, select: { id: true } }))?.id ?? '__no_access__';
   const entries = await prisma.auditLog.findMany({
     where: { entityType: 'WarrantyPolicy', entityId: visibleId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     select: { id: true, action: true, createdAt: true, metadata: true, userId: true },
   });
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null }));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null }));
 }
 
 export type UpdateWarrantyPolicyInput = Omit<WarrantyPolicyInput, 'code' | 'isSample'>;
@@ -823,6 +827,8 @@ export async function requestWarrantyPolicyDeletion(policyId: string, reason: st
 /** Approve at the current level: HOD step, then Manager step. Nobody
  * approves their own request (Master Administrators excepted). */
 export async function approveWarrantyPolicyDeletion(requestId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveWarrantyPolicyDeletion');
   const user = await requireWarrantyApprover();
   const req = await prisma.warrantyPolicyDeletionRequest.findFirst({ where: { id: requestId, policy: await orgOwned() }, select: { status: true, requestedById: true, policyId: true, policyCode: true, policyName: true, reason: true, managerDecidedAt: true } });
   if (!req) throw new WarrantyActionError('Deletion request not found.');
@@ -865,9 +871,9 @@ async function completePolicyDeletion(requestId: string, actorId: string): Promi
   const issued = await prisma.warranty.count({ where: { policyId: req.policyId } });
   const outcome = issued > 0 ? 'ARCHIVED' : 'DELETED';
   const policyId = req.policyId;
-  // All-or-nothing, exactly once: the request is marked decided in the same
-  // transaction that archives or deletes the policy. If a warranty is issued
-  // under it at that very moment, the delete fails and nothing is marked done.
+  // All-or-nothing: the request is marked decided in the same transaction
+  // that archives or deletes the policy. If a warranty is issued under it at
+  // that moment, the delete fails and nothing is marked done.
   await prisma.$transaction(async (tx) => {
     claimed(await tx.warrantyPolicyDeletionRequest.updateMany({ where: { id: requestId, status: 'PENDING_MANAGER' }, data: { status: 'APPROVED', outcome } }), 'This deletion request was just decided by someone else — refresh the page.');
     if (outcome === 'ARCHIVED') {
@@ -895,6 +901,8 @@ async function completePolicyDeletion(requestId: string, actorId: string): Promi
 }
 
 export async function declineWarrantyPolicyDeletion(requestId: string, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('declineWarrantyPolicyDeletion');
   const user = await requireWarrantyApprover();
   const why = reason.trim();
   if (!why) throw new WarrantyActionError('A reason is required to decline.');
@@ -978,11 +986,11 @@ export async function getWarrantyProviderAuditTrail(providerId: string) {
   await requireUser();
   // Only as visible as the record itself (its organisation).
   const visibleId = (await prisma.warrantyProvider.findFirst({ where: { ...(await orgOwned()), id: providerId }, select: { id: true } }))?.id ?? '__no_access__';
-  const entries = await prisma.auditLog.findMany({ where: { entityType: 'WarrantyProvider', entityId: visibleId }, orderBy: { createdAt: 'asc' }, select: { id: true, action: true, createdAt: true, metadata: true, userId: true } });
+  const entries = await prisma.auditLog.findMany({ where: { entityType: 'WarrantyProvider', entityId: visibleId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, action: true, createdAt: true, metadata: true, userId: true } });
   const ids = [...new Set(entries.map((e: { userId: string | null }) => e.userId).filter((x: string | null): x is string => Boolean(x)))];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : [];
   const name = new Map(users.map((u: { id: string; fullName: string }) => [u.id, u.fullName]));
-  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? name.get(e.userId) ?? null : null }));
+  return entries.map((e: (typeof entries)[number]) => ({ ...e, userName: e.userId ? actorLabel(name.get(e.userId) ?? null, e.metadata) : null }));
 }
 
 const PROVIDER_FIELD_LABEL: Record<string, string> = {
@@ -1080,6 +1088,8 @@ export async function requestWarrantyProviderDeletion(providerId: string, reason
 }
 
 export async function approveWarrantyProviderDeletion(requestId: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('approveWarrantyProviderDeletion');
   const user = await requireWarrantyApprover();
   const req = await prisma.warrantyProviderDeletionRequest.findFirst({ where: { id: requestId, provider: await orgOwned() }, select: { status: true, requestedById: true, providerId: true, providerName: true, reason: true, managerDecidedAt: true } });
   if (!req) throw new WarrantyActionError('Deletion request not found.');
@@ -1153,6 +1163,8 @@ async function completeProviderDeletion(requestId: string, actorId: string): Pro
 }
 
 export async function declineWarrantyProviderDeletion(requestId: string, reason: string): Promise<void> {
+  // Decisions are never taken during an assisted session (the assistant approves nothing).
+  await refuseDuringAssist('declineWarrantyProviderDeletion');
   const user = await requireWarrantyApprover();
   const why = reason.trim();
   if (!why) throw new WarrantyActionError('A reason is required to decline.');
@@ -1249,7 +1261,7 @@ export async function sendWarrantyCertificateEmail(warrantyId: string): Promise<
   if (!w.customer.email) throw new WarrantyActionError('The customer has no email address on file.');
   const previous = await prisma.auditLog.count({ where: { entityType: 'Warranty', entityId: warrantyId, action: 'warranty.certificate_emailed' } });
   const orgContext = await getWorkshopOrgContext();
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const distanceEnd = w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null;
   await sendEmail(
     w.customer.email,
@@ -1265,7 +1277,7 @@ export async function sendWarrantyCertificateEmail(warrantyId: string): Promise<
       notCovered: splitLines(w.exclusionsSnapshot),
       conditions: splitLines(w.conditionsSnapshot),
       isSample: w.policy.isSample,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),
@@ -1294,7 +1306,7 @@ export async function sendWarrantyExpiryReminder(warrantyId: string): Promise<vo
     );
   }
   const orgContext = await getWorkshopOrgContext();
-  const websiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL ?? 'https://ejo100-website.vercel.app';
+  const websiteUrl = websiteBaseUrl();
   const distanceEnd = w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null;
   const daysLeft = Math.max(0, Math.ceil((new Date(w.endsAt).getTime() - Date.now()) / 86400000));
   const number = sentStages.length + 1;
@@ -1310,7 +1322,7 @@ export async function sendWarrantyExpiryReminder(warrantyId: string): Promise<vo
       daysLeft,
       reminderNumber: number,
       isFinal: state.dueStage === 3,
-      logoUrl: `${websiteUrl}/images/logo/logo.png`,
+      logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
     }),

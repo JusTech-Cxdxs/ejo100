@@ -19,7 +19,7 @@ const FAQS: { q: string; a: string }[] = [
 ];
 
 const AI_FEATURES: { icon: IconName; title: string; text: string }[] = [
-  { icon: 'chat', title: 'Ask anything, any time', text: '“When will my car be ready?” — instant answers from your own records, day or night.' },
+  { icon: 'chat', title: 'Ask anything, any time', text: 'Ask “When will my car be ready?” and get an answer from your own records, at any hour.' },
   { icon: 'receipt', title: 'Explain my estimate', text: 'Every line in plain words, and why it’s needed.' },
   { icon: 'calendar', title: 'Book and reschedule', text: 'Pick a time for your next service in a few taps.' },
   { icon: 'phone', title: 'A person when you need one', text: 'Hand over to our team, with the whole conversation attached.' },
@@ -35,7 +35,7 @@ export default async function SupportPage() {
     <div className="space-y-6">
       <PageHero eyebrow="Help & support" icon="help" title="We’re here to help" subtitle="Talk to your branch about anything — your vehicle, an estimate, a payment or a warranty. Most answers are also below." />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-6">
           {/* AI support centre — coming soon (roadmap style) */}
           <section className="ejo-roadmap-hero ejo-rise relative overflow-hidden rounded-[var(--ejo-radius-xl)] border border-[var(--ejo-border)] p-6 sm:p-8" aria-labelledby="ai-title" data-testid="ai-support-coming-soon">
@@ -45,12 +45,12 @@ export default async function SupportPage() {
               <div className="relative flex h-20 w-20 shrink-0 items-center justify-center">
                 <span className="ejo-spin absolute inset-0 rounded-full border-2 border-dashed border-[var(--ejo-primary)]/40" aria-hidden="true" />
                 <span className="ejo-glow absolute inset-2 rounded-full bg-[var(--ejo-primary)]/30 blur-md" aria-hidden="true" />
-                <span className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ejo-surface)] text-[var(--ejo-primary)] shadow-sm"><Icon name="sparkles" size={28} /></span>
+                <span className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ejo-surface)] text-[var(--ejo-primary)] shadow-sm"><Icon name="chat" size={28} /></span>
               </div>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ejo-warning)]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--ejo-warning)]" />Coming soon</p>
                 <h2 id="ai-title" className="mt-2 text-2xl font-bold text-[var(--ejo-text)]">AI support centre</h2>
-                <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--ejo-text-muted)]">A friendly assistant that knows your vehicles and visits — ready to help in seconds, with our team one tap away.</p>
+                <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--ejo-text-muted)]">An assistant that knows your vehicles and visits and can answer common questions straight away. Our team is still a tap away.</p>
               </div>
             </div>
             <ul className="relative mt-6 grid gap-3 sm:grid-cols-2">
