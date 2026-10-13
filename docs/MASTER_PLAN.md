@@ -22,7 +22,7 @@ Status words: **Done** (merged) · **Partly done** · **In progress** · **Next*
 | 5 | Unfinished surfaces: customer portal (controlled invitations, forgot / reset, services, payments, warranties) | Done | #11 |
 | 6 | Analytics correctness: metric register and reconciliation tests against hand-worked answers | Partly done (prescriptive inventory analytics still open) | #8 |
 | 7 | Notifications, email, realtime and scheduler checked end to end | Partly done (emails followed in E2E; private realtime channels planned with Messages) | #8, #11 |
-| 8 | Data lifecycle: Recycle Bin, history views | Planned | |
+| 8 | Data lifecycle: Recycle Bin, history views | Recycle Bin done (V1); history views partly done | |
 | 9 | Look & feel: shell redesign, light and dark on every page, mobile drawer | Done | #11 |
 | 10 | End-to-end journeys and unpredictable users (Playwright, 135 tests) | Done | #11 |
 | 11 | Production reliability: k6 stages, failover, error references (v29) | Partly done (staging load test open) | #8, #11 |
@@ -204,9 +204,11 @@ If it says something needs attention it must answer *what exactly to do and wher
   failures visible on Settings, never creates duplicate business records.
 
 ## Phase 8 — Data lifecycle
-- **Recycle Bin**: delete = soft delete with a required reason; organisation restores; purge is
-  separate, platform-team only, in monthly maintenance; records that took money are cancelled,
-  never deleted; everything audited.
+- **Recycle Bin (done in V1)**: delete needs a reason and moves a full copy to the bin; the
+  organisation restores within the restore period (30 days by default, `RECYCLE_BIN_DAYS`, 7–90);
+  after that the daily clean-up removes it for good and keeps a tombstone with the audit trail.
+  Only records created by mistake qualify: anything with payments, approvals, parts, warranties
+  or gate movements is cancelled or closed instead, never deleted. Everything is audited.
 - History views that never lose anything but never become one long page: recent items first,
   "view more", paged full history (Job Card trail pattern) — applied to batches (a finished
   batch moves to history while the next continues), stock movements, vehicle pages, customer

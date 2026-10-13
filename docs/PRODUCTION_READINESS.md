@@ -93,7 +93,8 @@ exports, documents, notifications, realtime and analytics — with allowed AND d
 | Deploys | Only production changes the database, and never with `--accept-data-loss` |
 | Roles (realistic, v24) | Segregation of duties per department (Front Desk · Supervisor · Technician · Manager · Finance · Store · Warranty · Security · Scheduling); two administration levels — Organisation Administrator (headquarters, all branches) and Branch Administrator (one branch, cannot create administrators); everyone else may only request their own exit pass; menu, dashboard and search follow the same rules |
 | Scheduled jobs (v25) | Vercel (daily): morning digest 7:00, pricing alerts 8:00; Supabase pg_cron (every 10 min): appointment reminders + scheduled broadcast emails; every run recorded and shown on Settings with email delivery health |
-| Next | Recycle Bin (deletion flag, restore, platform purge after retention); per-organisation uniqueness (customer e-mail, plates, provider names) and per-organisation API routes — before a second organisation joins |
+| Recycle Bin (V1) | Job Cards, Vehicle Services, customers, vehicles and parts created by mistake go to the bin with a reason; restore within 30 days (`RECYCLE_BIN_DAYS`); daily clean-up removes expired items for good; records with money, approvals, parts, warranties or gate movements are refused and must be cancelled |
+| Next | Per-organisation uniqueness (customer e-mail, plates, provider names) and per-organisation API routes — before a second organisation joins |
 
 ## 7. Permanent architectural principles (binding on every change)
 1. **No subsystem on another's critical path without a compelling reason.** Prefer independent

@@ -1,6 +1,6 @@
 # EJO100 V1 — Final Release Report
 
-**Date:** 13 October 2026 · **Release candidate:** branch `platform/v1-final` at `3a16cdc` or later, PR #19 → `main`
+**Date:** 13 October 2026 · **Release candidate:** branch `platform/v1-final` (the exact commit is in section B), PR #19 → `main`
 **Production today:** `main` at `0696ab0` (PR #11)
 
 ## Recommendation
@@ -9,7 +9,7 @@
 1. CI passes on the release-candidate commit.
 2. The owner completes the release prerequisites in section D.
 
-I found no unresolved critical or high defect in the code. CI could not run on the candidate because GitHub Actions is blocked by a billing or spending-limit problem on the owner's account. The definition of done requires every check to pass on the exact candidate, so V1 is **not formally closed yet**.
+I found no unresolved critical or high defect in the code. GitHub billing was fixed by the owner on 13 Oct, so CI can now run on the candidate. The definition of done requires every check to pass on the exact candidate; section B records the result.
 
 This report does not claim the system is free of vulnerabilities or can scale without limit. It states what was checked and how.
 
@@ -74,6 +74,42 @@ Every change narrows access; nothing was widened.
 
 **New Playwright checks:** `mobile-layout.spec.ts` and `customer-mobile.spec.ts` (360×780). They check that the brand isn't clipped, that estimate cells don't overlap, and that about 30 busy pages have no sideways scroll.
 
+### Added after the owner's review (13 Oct, afternoon)
+**Menu, header and ticker never disappear.** The "loading" and "saving" covers now sit over the working area only. The sidebar (brand to "Powered by"), sticky header and ticker stay visible and usable while a page loads or a form saves.
+
+**Search finds every numbered record.** Typing `VX`, `RT`, `PRS` or any of the 18 prefixes (JC, SV, PRS, EPR, GRN, RF, WR, WC, VIS, VP, EP, VX, RT, INC, DLV, CTR, APT, BC) lists the newest records of that type. A full or partial number finds the record, and each result opens the record itself.
+- *Cause of the bug:* a speed change skipped number-only tables when the query had no digits.
+- *Access:* each type is searched only for people who may open it, and every hit is re-checked against its branch.
+- *Tests:* `tests/search.test.ts` (16 unit tests) and `e2e/search-everything.spec.ts`.
+
+**Recycle bin (Administration → Recycle bin).** This follows the common pattern in business systems (Microsoft 365, Google Workspace, Salesforce): a delete moves the record to a bin, where it can be restored for a fixed period before it is removed for good.
+
+*What can be deleted*
+- Only Job Cards, Vehicle Services, customers, vehicles and parts created by mistake, with a reason.
+- Anything with a payment, refund, submitted estimate, parts, warranty, gate exit, road test or hand-over is refused, and the page points to Cancel or Close instead.
+
+*Restore*
+- The organisation's administrators restore within 30 days (`RECYCLE_BIN_DAYS`, 7–90). The record comes back with its original id.
+- A number reused meanwhile gets the next one.
+
+*Removal for good*
+- A daily clean-up removes expired items for good. It is recorded on Settings as `recycle-bin-purge`.
+- The platform team can also remove items early.
+- A tombstone without personal details stays with the audit trail.
+
+*Other*
+- It replaces the old hard deletes. One of them removed every Job Card of a deleted vehicle.
+- Every move, restore and purge is audited.
+
+**Realistic Security view for staff.** Staff who are not on the Security desk see only *My exit passes* (request for themselves or others) and the new *My visitors* (visits they host, with an "Your visitor has arrived" alert).
+- Visitor bookings are made and changed by the front desk or security only.
+- Road tests and Contractors are off the menu for staff who don't approve them.
+- Department heads see only the contractor passes they asked for or are responsible for.
+
+**App feel.** Both apps can be installed on a phone's home screen: app icon from the logo, brand theme colour, full-screen. Pages respect iPhone notches and home bars, and drawers don't drag the page behind them.
+- Further phone fixes: complaint rows, thumb-sized add and remove buttons, wrapped picker labels, request-parts cards.
+- New Playwright checks open a Job Card and record a payment at 360px.
+
 ### Seed safeguard (SEC-01c, approved by the owner)
 `seed.ts` sets the Master Admin password only when it creates the account. An existing password is replaced only when `RESET_MASTER_ADMIN_PASSWORD=yes` is set for that run, and that run also signs out the account's sessions. `MASTER_ADMIN_PASSWORD` can now be removed from hosting.
 
@@ -127,8 +163,8 @@ Every change narrows access; nothing was widened.
 - New: `README.md` (rewritten), `docs/AI_READINESS.md`, `docs/OPERATIONS_CHECKLIST.md` and `docs/ROLES_AND_ACCESS.md`.
 - Updated: `docs/ARCHITECTURE_BASELINE.md`.
 
-### Schema (v29, additive only)
-- New tables: `assist_sessions` and `error_events`. Both are declared in the data inventory, and post-deploy SQL switches RLS on for them.
+### Schema (v29 + v30, additive only)
+- New tables: `assist_sessions`, `error_events` and `recycle_bin_items`. All three are declared in the data inventory, and the post-deploy SQL switches RLS on for every table, including new ones.
 - New re-runnable post-deploy file `0003-branch-assistant-role.sql`, tested twice on Postgres.
 
 ---
@@ -155,8 +191,8 @@ Every change narrows access; nothing was widened.
 ## D. Owner-only actions
 
 **Release prerequisites:**
-1. **GitHub billing.** Settings → Billing and plans: fix the payment method or raise the Actions spending limit, then re-run CI on PR #19.
-2. **SEC-01c.** The create-only seed change is done. Delete `MASTER_ADMIN_PASSWORD` from Render and Vercel; the seed no longer needs it for an existing account.
+1. **GitHub billing.** Done by the owner on 13 Oct. Actions minutes beyond the free 2,000 are now billed; keep a spending limit set.
+2. **SEC-01c.** The create-only seed change is done. Delete `MASTER_ADMIN_PASSWORD` from Render and Vercel; the seed no longer needs it for an existing account. Optional: `RECYCLE_BIN_DAYS` (default 30).
 3. **Environment variables.** See `docs/OPERATIONS_CHECKLIST.md` §1.
    - Set `NEXT_PUBLIC_ORGANISATION_NAME`, `NEXT_PUBLIC_PORTAL_URL` and `NEXT_PUBLIC_WEBSITE_URL` on both Vercel projects.
    - Set `NEXT_PUBLIC_PORTAL_URL` on Render.
@@ -177,7 +213,7 @@ Every change narrows access; nothing was widened.
 |---|---|
 | P2 | Upgrades: Next 16 (soon, see C), then Prisma 6 or 7, NestJS 12 and ESLint 9. |
 | P2 | Rate limits are per instance. Add Vercel WAF rules (D6) for a global limit. |
-| P3 | Narrow the front desk's Security view to visitors (needs a reception-only permission). Make department heads' contractor list branch-scoped. |
+| P3 | Narrow the front desk's Security view to visitors only (needs a reception-only permission). |
 | P3 | On non-Vercel production, missing site addresses only log an error; a hard failure is possible. Website translations still carry the older marketing lines. |
 | P3 | The goods-receipt email goes out once per line. The customer portal shows 24-hour times while the staff portal uses 12-hour. |
 | P3 | Remove the unused `generateSecurePassword`. Close the "Coming next" sidebar section by default now that it has 28 entries. |
