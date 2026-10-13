@@ -34,18 +34,20 @@ export default async function VehiclePage({ params }: { params: Promise<{ id: st
       <BackLink href="/customer-portal/dashboard/vehicles">My vehicles</BackLink>
       <section className="ejo-roadmap-hero ejo-rise relative overflow-hidden rounded-[var(--ejo-radius-xl)] border border-[var(--ejo-border)] p-5 sm:p-8">
         <div className="ejo-orb pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-[var(--ejo-primary)]/15 blur-3xl" aria-hidden="true" />
-        <div className="relative flex flex-wrap items-center gap-4">
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ejo-bg)] text-[var(--ejo-primary)] shadow-sm ring-1 ring-[var(--ejo-border)]"><Icon name="car" size={28} /></span>
+        <div className="relative flex items-start gap-4">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[var(--ejo-bg)] text-[var(--ejo-primary)] shadow-sm ring-1 ring-[var(--ejo-border)] sm:h-14 sm:w-14"><Icon name="car" size={26} /></span>
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-bold tracking-tight text-[var(--ejo-text)] sm:text-3xl">{vehicleLabel(v)}</h1>
-            {v.plateNumber ? <p className="mt-1 inline-flex rounded-md border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-0.5 font-mono text-sm font-semibold tracking-wider text-[var(--ejo-text)]">{v.plateNumber}</p> : null}
+            <h1 className="break-words text-2xl font-bold tracking-tight text-[var(--ejo-text)] sm:text-3xl">{vehicleLabel(v)}</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {v.plateNumber ? <p className="inline-flex whitespace-nowrap rounded-md border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-0.5 font-mono text-sm font-semibold tracking-wider text-[var(--ejo-text)]">{v.plateNumber}</p> : null}
+              {custody ? <Badge tone="progress">With us now</Badge> : <Badge tone="neutral">With you</Badge>}
+            </div>
           </div>
-          {custody ? <Badge tone="progress">With us now</Badge> : <Badge tone="neutral">With you</Badge>}
         </div>
         <dl className="relative mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <KeyValue label="Mileage">{v.mileage ? `${v.mileage.toLocaleString('en-NG')} km` : '—'}</KeyValue>
           <KeyValue label="Type">{v.vehicleType === 'COMMERCIAL' ? 'Commercial' : v.vehicleType === 'PASSENGER' ? 'Passenger' : '—'}</KeyValue>
-          <KeyValue label="VIN / chassis">{v.chassisNumber ?? '—'}</KeyValue>
+          <KeyValue label="VIN / chassis" className="col-span-2 sm:col-span-1"><span className="font-mono tracking-wide [overflow-wrap:anywhere]">{v.chassisNumber ?? '—'}</span></KeyValue>
           <KeyValue label="With us since">{fmtDate(v.createdAt)}</KeyValue>
         </dl>
       </section>
@@ -75,7 +77,7 @@ export default async function VehiclePage({ params }: { params: Promise<{ id: st
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {mine.map((w) => (
               <Link key={w.id} href={`/customer-portal/dashboard/warranties/${w.id}`} className="ejo-lift flex items-start justify-between gap-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4">
-                <span className="min-w-0"><span className="block truncate text-sm font-semibold text-[var(--ejo-text)]">{w.subject}</span><span className="text-xs text-[var(--ejo-text-muted)]">{w.number} · until {fmtDate(w.endsAt)}</span></span>
+                <span className="min-w-0"><span className="line-clamp-2 block break-words text-sm font-semibold text-[var(--ejo-text)]">{w.subject}</span><span className="text-xs text-[var(--ejo-text-muted)]"><span className="whitespace-nowrap">{w.number}</span> · <span className="whitespace-nowrap">until {fmtDate(w.endsAt)}</span></span></span>
                 <Badge tone={WARRANTY_STATE_INFO[w.state].tone}>{WARRANTY_STATE_INFO[w.state].label}</Badge>
               </Link>
             ))}

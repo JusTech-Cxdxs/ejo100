@@ -145,7 +145,7 @@ export function PortalShell({ who, initialUnread, children }: { who: Who; initia
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
         <header className="sticky top-0 z-40 border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)]/85 backdrop-blur supports-[backdrop-filter]:bg-[var(--ejo-bg)]/75">
-          <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center gap-2 px-3 sm:gap-3 sm:px-6 lg:px-8">
             <button
               ref={menuButton}
               type="button"
@@ -153,13 +153,20 @@ export function PortalShell({ who, initialUnread, children }: { who: Who; initia
               aria-label="Open menu"
               aria-expanded={drawer}
               aria-controls="portal-drawer"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--ejo-border)] text-[var(--ejo-text)] lg:hidden"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--ejo-border)] text-[var(--ejo-text)] lg:hidden"
             >
               <Icon name="menu" size={20} />
             </button>
+            {/* Phones and tablets have no sidebar, so the header carries the full wordmark. */}
+            <Link href={BASE} aria-label={`${siteConfig.companyShortName} customer portal home`} className="min-w-0 shrink lg:hidden" data-testid="portal-wordmark">
+              <span className="block sm:hidden"><Wordmark name={siteConfig.companyShortName} size="sm" /></span>
+              <span className="hidden sm:block"><Wordmark name={siteConfig.companyShortName} /></span>
+            </Link>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-[var(--ejo-text)] sm:text-base">{who.greeting}, {who.firstName}</p>
-              <p className="hidden truncate text-xs text-[var(--ejo-text-muted)] sm:block">{siteConfig.companyShortName} · Customer portal</p>
+              <div className="hidden min-w-0 md:block md:border-l md:border-[var(--ejo-border)] md:pl-4 lg:border-l-0 lg:pl-0">
+                <p className="truncate text-sm font-semibold text-[var(--ejo-text)] lg:text-base">{who.greeting}, {who.firstName}</p>
+                <p className="truncate text-xs text-[var(--ejo-text-muted)]">{siteConfig.companyShortName} · Customer portal</p>
+              </div>
             </div>
             <NotificationBell initialUnread={initialUnread} onUnreadChange={setUnread} />
             <div className="hidden sm:block"><ThemeSwitch /></div>
@@ -205,7 +212,7 @@ export function PortalShell({ who, initialUnread, children }: { who: Who; initia
           <button type="button" className="ejo-fade absolute inset-0 h-full w-full cursor-default bg-slate-950/50 backdrop-blur-[2px]" aria-label="Close menu" tabIndex={-1} onClick={() => setDrawer(false)} />
           <div ref={drawerRef} role="dialog" aria-modal="true" aria-label="Menu" className="ejo-slide-in absolute inset-y-0 left-0 flex w-[86%] max-w-[320px] flex-col bg-[var(--ejo-bg)] shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-[var(--ejo-border)] px-4 py-4">
-              <Wordmark name={siteConfig.companyShortName} />
+              <div className="min-w-0"><Wordmark name={siteConfig.companyShortName} /></div>
               <button type="button" onClick={() => setDrawer(false)} aria-label="Close menu" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--ejo-border)] text-[var(--ejo-text)]">
                 <Icon name="close" size={18} />
               </button>
@@ -258,20 +265,20 @@ function AccountMenu({ who, onSignOut, signingOut }: { who: Who; onSignOut: () =
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Your account"
-        className="flex items-center gap-2 rounded-full p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ejo-primary)]/40 sm:pr-2"
+        className="flex shrink-0 items-center gap-2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ejo-primary)]/40 sm:pr-2"
       >
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[var(--ejo-accent)] to-[var(--ejo-primary-dark)] text-xs font-bold text-white shadow-sm">{who.initials}</span>
+        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-[var(--ejo-accent)] to-[var(--ejo-primary-dark)] text-xs font-bold text-white shadow-sm">{who.initials}</span>
         <span className="hidden text-[var(--ejo-text-muted)] sm:inline-flex"><Icon name="chevronDown" size={16} /></span>
       </button>
       {open ? (
-        <div role="menu" className="ejo-pop absolute right-0 top-12 z-50 w-64 overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] shadow-2xl">
+        <div role="menu" className="ejo-pop absolute right-0 top-12 z-50 w-[min(16rem,calc(100vw-1.5rem))] overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] shadow-2xl">
           <div className="border-b border-[var(--ejo-border)] px-4 py-3">
             <p className="truncate text-sm font-semibold text-[var(--ejo-text)]">{who.fullName}</p>
             <p className="truncate text-xs text-[var(--ejo-text-muted)]">{who.email}</p>
           </div>
-          <Link role="menuitem" href={`${BASE}/profile`} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><Icon name="user" size={16} /> Profile & settings</Link>
-          <Link role="menuitem" href={`${BASE}/support`} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><Icon name="help" size={16} /> Help & support</Link>
-          <button role="menuitem" type="button" onClick={onSignOut} className="flex w-full items-center gap-2.5 border-t border-[var(--ejo-border)] px-4 py-2.5 text-left text-sm text-[var(--ejo-error)] hover:bg-[var(--ejo-surface)]">
+          <Link role="menuitem" href={`${BASE}/profile`} className="flex items-center gap-2.5 px-4 py-3 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><Icon name="user" size={16} /> Profile & settings</Link>
+          <Link role="menuitem" href={`${BASE}/support`} className="flex items-center gap-2.5 px-4 py-3 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><Icon name="help" size={16} /> Help & support</Link>
+          <button role="menuitem" type="button" onClick={onSignOut} className="flex w-full items-center gap-2.5 border-t border-[var(--ejo-border)] px-4 py-3 text-left text-sm text-[var(--ejo-error)] hover:bg-[var(--ejo-surface)]">
             <Icon name="logout" size={16} /> {signingOut ? 'Signing out…' : 'Sign out'}
           </button>
         </div>

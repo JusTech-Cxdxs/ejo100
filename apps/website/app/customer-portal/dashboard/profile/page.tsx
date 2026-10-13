@@ -21,14 +21,14 @@ export default async function ProfilePage() {
     <div className="space-y-6">
       <PageHero eyebrow="Profile & settings" icon="user" title="Your details" subtitle="Keep your phone numbers and addresses up to date so we can reach you about your vehicle. Every change is recorded for your security." />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="min-w-0 space-y-6">
           <Card className="p-5">
             <div className="flex items-center gap-3">
               <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--ejo-accent)] to-[var(--ejo-primary-dark)] text-lg font-bold text-white shadow-sm">{initials(me.fullName)}</span>
               <div className="min-w-0">
-                <p className="truncate text-base font-semibold text-[var(--ejo-text)]">{me.fullName}</p>
-                <p className="truncate text-sm text-[var(--ejo-text-muted)]">{me.email}</p>
+                <p className="break-words text-base font-semibold leading-snug text-[var(--ejo-text)]">{me.fullName}</p>
+                <p className="text-sm text-[var(--ejo-text-muted)] [overflow-wrap:anywhere]">{me.email}</p>
               </div>
             </div>
             <dl className="mt-5 grid grid-cols-2 gap-4">

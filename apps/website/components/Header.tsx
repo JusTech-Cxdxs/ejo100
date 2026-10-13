@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { siteNav, getPortalLoginUrl, wordmarkParts } from '@/lib/site-config';
+import { siteNav, siteConfig, getPortalLoginUrl } from '@/lib/site-config';
 import { useI18n } from '@/lib/i18n';
-import { BrandLogo } from './BrandLogo';
+import { SiteWordmark } from './SiteWordmark';
 import { ThemeToggle } from './ThemeToggle';
 import { LanguageSelector } from './LanguageSelector';
 import { SearchModal } from './SearchModal';
@@ -18,7 +18,6 @@ export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const portalLogin = getPortalLoginUrl();
-  const mark = wordmarkParts();
 
   useEffect(() => {
     function onScroll() {
@@ -28,6 +27,18 @@ export function Header() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // The phone menu closes on navigation and on Esc, and the page behind it
+  // does not scroll while it is open.
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMobileOpen(false); };
+    document.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+  }, [mobileOpen]);
 
   // Transparent-on-hero only makes sense on the homepage, over the hero
   // image — every other page has a plain background, so it gets the solid
@@ -64,39 +75,12 @@ export function Header() {
               : { background: 'var(--ejo-bg)', borderBottom: '1px solid var(--ejo-border)', boxShadow: '0 4px 20px rgba(0,0,0,0.06)' }
           }
         >
-          <div className="mx-auto flex max-w-7xl flex-nowrap items-center justify-between px-6 py-4">
-            <Link href="/" className="flex shrink-0 items-center">
-              {/* Wordmark: first word of the organisation name over a rule that
-                  grows to the width of the line beneath, as on printed
-                  documents. A two-column table keeps the rule growing
-                  reliably; no scale transform, so the logo never overlaps. */}
-              <table role="presentation" style={{ borderCollapse: 'collapse' }}>
-                <tbody>
-                  <tr>
-                    <td style={{ verticalAlign: 'middle', padding: 0 }}>
-                      <BrandLogo transparent={transparent} size={31} />
-                    </td>
-                    <td style={{ verticalAlign: 'middle', paddingLeft: '2px' }}>
-                      <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch', whiteSpace: 'nowrap' }}>
-                        <span className={`block text-base font-bold leading-tight ${transparent ? 'text-white' : 'text-[var(--ejo-text)]'}`}>
-                          {mark.top}
-                        </span>
-                        {mark.bottom ? (
-                          <span style={{ display: 'flex', alignItems: 'center', marginTop: '2px' }}>
-                            <span style={{ flex: 1, marginRight: '6px', borderBottom: '1px solid var(--ejo-primary)' }} />
-                            <span className={`block text-[11px] leading-tight ${transparent ? 'text-white/70' : 'text-[var(--ejo-text-muted)]'}`}>
-                              {mark.bottom}
-                            </span>
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+          <div className="mx-auto flex max-w-7xl flex-nowrap items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
+            <Link href="/" className="flex min-w-0 shrink-0 items-center" aria-label={siteConfig.organisationName}>
+              <SiteWordmark tone={transparent ? 'light' : 'default'} />
             </Link>
 
-            <nav className="hidden shrink-0 items-center gap-5 whitespace-nowrap lg:ml-6 lg:flex xl:gap-7">
+            <nav className="hidden shrink-0 items-center gap-4 whitespace-nowrap xl:ml-3 xl:flex 2xl:gap-6">
               {siteNav.map((item) => {
                 const active = pathname === item.href;
                 return (
@@ -135,7 +119,7 @@ export function Header() {
               })}
             </nav>
 
-            <div className="hidden shrink-0 items-center gap-3 whitespace-nowrap lg:ml-4 lg:flex">
+            <div className="hidden shrink-0 items-center gap-3 whitespace-nowrap xl:flex">
               <Link
                 href="/customer-portal"
                 className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
@@ -157,9 +141,11 @@ export function Header() {
             </div>
 
             <button
-              className={`p-2 lg:hidden ${transparent ? 'text-white' : 'text-[var(--ejo-text)]'}`}
+              type="button"
+              className={`-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full xl:hidden ${transparent ? 'text-white' : 'text-[var(--ejo-text)]'}`}
               onClick={() => setMobileOpen(true)}
               aria-label="Open menu"
+              aria-expanded={mobileOpen}
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M4 6h16M4 12h16M4 18h16" />
@@ -177,7 +163,7 @@ export function Header() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[110] bg-black/60 lg:hidden"
+              className="fixed inset-0 z-[110] bg-black/60 xl:hidden"
               onClick={() => setMobileOpen(false)}
             />
             <motion.div
@@ -185,17 +171,22 @@ export function Header() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'tween', duration: 0.3, ease: 'easeInOut' }}
-              className="fixed inset-y-0 right-0 z-[120] flex w-80 max-w-[85vw] flex-col bg-[var(--ejo-bg)] p-6 shadow-2xl lg:hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menu"
+              className="fixed inset-y-0 right-0 z-[120] flex w-80 max-w-[88vw] flex-col bg-[var(--ejo-bg)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-2xl xl:hidden"
             >
-              <div className="mb-6 flex items-center justify-between">
-                <span className="text-lg font-bold text-[var(--ejo-text)]">Menu</span>
-                <button onClick={() => setMobileOpen(false)} aria-label="Close menu" className="p-2 text-[var(--ejo-text)]">
-                  ✕
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <Link href="/" onClick={() => setMobileOpen(false)} className="min-w-0" aria-label={siteConfig.organisationName}>
+                  <SiteWordmark />
+                </Link>
+                <button type="button" onClick={() => setMobileOpen(false)} aria-label="Close menu" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--ejo-border)] text-[var(--ejo-text)]">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
                 </button>
               </div>
 
-              <div className="mb-4 flex items-center gap-2 border-b border-[var(--ejo-border)] pb-4">
-                <LanguageSelector />
+              <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-[var(--ejo-border)] pb-4">
+                <LanguageSelector align="left" />
                 <SearchModal />
                 <ThemeToggle />
               </div>
@@ -212,18 +203,18 @@ export function Header() {
                   </Link>
                 ))}
               </nav>
-              <div className="mt-6 space-y-3 border-t border-[var(--ejo-border)] pt-6">
+              <div className="mt-4 space-y-3 border-t border-[var(--ejo-border)] pt-4">
                 <Link
                   href="/customer-portal"
                   onClick={() => setMobileOpen(false)}
-                  className="block rounded-full border border-[var(--ejo-border)] px-4 py-2.5 text-center text-sm font-medium text-[var(--ejo-text)]"
+                  className="flex min-h-11 items-center justify-center rounded-full border border-[var(--ejo-border)] px-4 py-2.5 text-center text-sm font-medium text-[var(--ejo-text)]"
                 >
                   {t('header.customerLogin')}
                 </Link>
                 {portalLogin ? (
                   <a
                     href={portalLogin}
-                    className="block rounded-full bg-[var(--ejo-primary)] px-4 py-2.5 text-center text-sm font-semibold text-white"
+                    className="flex min-h-11 items-center justify-center rounded-full bg-[var(--ejo-primary)] px-4 py-2.5 text-center text-sm font-semibold text-white"
                   >
                     {t('header.employeeLogin')}
                   </a>
@@ -236,3 +227,4 @@ export function Header() {
     </>
   );
 }
+

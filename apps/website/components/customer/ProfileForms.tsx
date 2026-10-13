@@ -11,9 +11,9 @@ import { playChime, setSoundEnabled, soundEnabled } from '@/lib/customer-portal/
 
 const initial: ActionState = { ok: false };
 
-const input = 'w-full rounded-[var(--ejo-radius-md)] border bg-[var(--ejo-bg)] px-3.5 py-2.5 text-sm text-[var(--ejo-text)] outline-none transition-colors placeholder:text-[var(--ejo-text-muted)]/70 focus:border-[var(--ejo-primary)] focus:ring-2 focus:ring-[var(--ejo-primary)]/20';
-const primaryBtn = 'inline-flex items-center justify-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60';
-const ghostBtn = 'inline-flex items-center justify-center gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-4 py-2.5 text-sm font-medium text-[var(--ejo-text)] hover:border-[var(--ejo-primary)]/40';
+const input = 'w-full rounded-[var(--ejo-radius-md)] border bg-[var(--ejo-bg)] min-h-11 px-3.5 py-2.5 text-base text-[var(--ejo-text)] outline-none sm:text-sm transition-colors placeholder:text-[var(--ejo-text-muted)]/70 focus:border-[var(--ejo-primary)] focus:ring-2 focus:ring-[var(--ejo-primary)]/20';
+const primaryBtn = 'inline-flex items-center justify-center gap-2 rounded-[var(--ejo-radius-md)] min-h-11 bg-[var(--ejo-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60';
+const ghostBtn = 'inline-flex items-center justify-center gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] min-h-11 bg-[var(--ejo-bg)] px-4 py-2.5 text-sm font-medium text-[var(--ejo-text)] hover:border-[var(--ejo-primary)]/40';
 
 function Field({ id, label, error, hint, children }: { id: string; label: string; error?: string; hint?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -103,24 +103,27 @@ function AddressRow({ a }: { a: AddressView }) {
     );
   }
   return (
-    <li className="flex flex-wrap items-start gap-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4">
-      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]"><Icon name="pin" size={16} /></span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-[var(--ejo-text)]">{a.label || 'Address'}</p>
-        <p className="break-words text-sm text-[var(--ejo-text-muted)]">{text}</p>
-        {rmState.error ? <p className="mt-1 text-xs text-[var(--ejo-error)]" role="alert">{rmState.error}</p> : null}
+    <li className="flex flex-col gap-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4 sm:flex-row sm:items-start">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]"><Icon name="pin" size={16} /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-[var(--ejo-text)]">{a.label || 'Address'}</p>
+          <p className="break-words text-sm text-[var(--ejo-text-muted)]">{text}</p>
+          {rmState.error ? <p className="mt-1 text-xs text-[var(--ejo-error)]" role="alert">{rmState.error}</p> : null}
+        </div>
       </div>
-      <div className="flex shrink-0 gap-1.5">
+      <div className="flex shrink-0 justify-end gap-2">
         {confirming ? (
-          <form action={rmAction} className="flex gap-1.5">
+          <form action={rmAction} className="flex gap-2">
             <input type="hidden" name="id" value={a.id} />
-            <button type="submit" disabled={removing} className="rounded-full bg-[var(--ejo-error)] px-3 py-1.5 text-xs font-semibold text-white">{removing ? 'Removing…' : 'Yes, remove'}</button>
-            <button type="button" onClick={() => setConfirming(false)} className="rounded-full border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)]">Keep</button>
+            <button type="submit" disabled={removing} className="inline-flex h-10 items-center rounded-full bg-[var(--ejo-error)] px-4 text-sm font-semibold text-white sm:h-9 sm:text-xs">{removing ? 'Removing…' : 'Yes, remove'}</button>
+            <button type="button" onClick={() => setConfirming(false)} className="inline-flex h-10 items-center rounded-full border border-[var(--ejo-border)] px-4 text-sm font-medium text-[var(--ejo-text)] sm:h-9 sm:text-xs">Keep</button>
           </form>
         ) : (
           <>
-            <button type="button" onClick={() => setEditing(true)} aria-label={`Edit ${a.label || 'address'}`} className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--ejo-border)] text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)]"><Icon name="edit" size={14} /></button>
-            <button type="button" onClick={() => setConfirming(true)} aria-label={`Remove ${a.label || 'address'}`} className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--ejo-border)] text-[var(--ejo-text-muted)] hover:text-[var(--ejo-error)]"><Icon name="trash" size={14} /></button>
+            {/* Words as well as icons on phones; icon buttons from tablet up. The accessible names stay the same. */}
+            <button type="button" onClick={() => setEditing(true)} aria-label={`Edit ${a.label || 'address'}`} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-[var(--ejo-border)] px-3.5 text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)] sm:h-9 sm:w-9 sm:px-0"><Icon name="edit" size={14} /><span className="sm:hidden">Edit</span></button>
+            <button type="button" onClick={() => setConfirming(true)} aria-label={`Remove ${a.label || 'address'}`} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-[var(--ejo-border)] px-3.5 text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-error)] sm:h-9 sm:w-9 sm:px-0"><Icon name="trash" size={14} /><span className="sm:hidden">Remove</span></button>
           </>
         )}
       </div>
@@ -173,7 +176,7 @@ function Toggle({ id, checked, onChange, label, description, disabled }: { id: s
         aria-describedby={`${id}-desc`}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative mt-0.5 inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ejo-primary)]/40 disabled:opacity-60 ${checked ? 'bg-[var(--ejo-primary)]' : 'bg-[var(--ejo-border)]'}`}
+        className={`relative mt-0.5 inline-flex h-7 w-12 shrink-0 before:absolute before:-inset-2 before:content-[''] items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ejo-primary)]/40 disabled:opacity-60 ${checked ? 'bg-[var(--ejo-primary)]' : 'bg-[var(--ejo-border)]'}`}
       >
         <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
       </button>
@@ -207,7 +210,7 @@ export function PreferencesForm({ notifyByEmail }: { notifyByEmail: boolean }) {
         label="Notification sound"
         description="A soft chime when something new arrives while the portal is open. Saved on this device."
       />
-      <button type="button" onClick={() => playChime(true)} className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--ejo-primary)] hover:underline"><Icon name="volume" size={14} /> Play the sound</button>
+      <button type="button" onClick={() => playChime(true)} className="-my-2 inline-flex min-h-11 items-center gap-1.5 text-xs font-medium text-[var(--ejo-primary)] hover:underline"><Icon name="volume" size={14} /> Play the sound</button>
       <Banner key={state.at ?? state.error} state={state} />
     </div>
   );

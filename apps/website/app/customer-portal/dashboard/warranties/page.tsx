@@ -25,8 +25,8 @@ function WarrantyCard({ w, delay }: { w: WarrantyItem; delay: number }) {
       <div className="flex items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]"><Icon name="shield" size={19} /></span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-[var(--ejo-text)]">{w.subject}</p>
-          <p className="text-xs text-[var(--ejo-text-muted)]">{w.number} · {w.kind === 'PART' ? 'Part warranty' : 'Vehicle warranty'}{w.vehicle?.plate ? ` · ${w.vehicle.plate}` : ''}</p>
+          <p className="line-clamp-2 break-words text-sm font-semibold text-[var(--ejo-text)]">{w.subject}</p>
+          <p className="text-xs text-[var(--ejo-text-muted)]">{w.number} · {w.kind === 'PART' ? 'Part warranty' : 'Vehicle warranty'}{w.vehicle?.plate ? <> · <span className="whitespace-nowrap">{w.vehicle.plate}</span></> : null}</p>
         </div>
         <Badge tone={info.tone}>{info.label}</Badge>
       </div>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Icon } from './Icon';
+import { KeepCodes } from './ui';
 import { playChime, primeSound } from '@/lib/customer-portal/sound';
 import { markAllNoticesRead, markNoticeRead } from '@/lib/customer-portal/actions';
 import { timeAgo } from '@/lib/customer-portal/format';
@@ -107,7 +108,7 @@ export function NotificationBell({ initialUnread, onUnreadChange }: { initialUnr
         aria-haspopup="true"
         aria-expanded={open}
         data-testid="notification-bell"
-        className="relative flex h-10 w-10 items-center justify-center rounded-full border border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-[var(--ejo-text-muted)] transition-colors hover:text-[var(--ejo-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ejo-primary)]/40"
+        className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-[var(--ejo-text-muted)] transition-colors hover:text-[var(--ejo-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ejo-primary)]/40"
       >
         <span className={ring ? 'ejo-ring inline-flex' : 'inline-flex'}><Icon name="bell" size={18} /></span>
         {unread > 0 ? (
@@ -121,9 +122,9 @@ export function NotificationBell({ initialUnread, onUnreadChange }: { initialUnr
         <div className="ejo-pop fixed inset-x-3 top-[68px] z-50 overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:w-[380px]" role="region" aria-label="Latest notifications">
           <div className="flex items-center justify-between border-b border-[var(--ejo-border)] px-4 py-3">
             <p className="text-sm font-semibold text-[var(--ejo-text)]">Notifications</p>
-            {unread > 0 ? <button type="button" onClick={() => void markAll()} className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">Mark all as read</button> : null}
+            {unread > 0 ? <button type="button" onClick={() => void markAll()} className="-my-2 inline-flex min-h-10 items-center px-1 text-xs font-medium text-[var(--ejo-primary)] hover:underline">Mark all as read</button> : null}
           </div>
-          <ul className="max-h-[60vh] overflow-y-auto">
+          <ul className="max-h-[60vh] max-h-[60dvh] overflow-y-auto">
             {items === null ? (
               <li className="px-4 py-6 text-center text-sm text-[var(--ejo-text-muted)]">Loading…</li>
             ) : items.length === 0 ? (
@@ -134,8 +135,8 @@ export function NotificationBell({ initialUnread, onUnreadChange }: { initialUnr
                   <Link href={it.href} onClick={() => void openItem(it)} className={`flex gap-3 px-4 py-3 transition-colors hover:bg-[var(--ejo-surface)] ${it.read ? '' : 'bg-[var(--ejo-primary)]/[0.04]'}`}>
                     <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${TONE_DOT[it.tone] ?? TONE_DOT.info}`}><Icon name={it.icon} size={15} /></span>
                     <span className="min-w-0 flex-1">
-                      <span className={`block truncate text-sm ${it.read ? 'text-[var(--ejo-text)]' : 'font-semibold text-[var(--ejo-text)]'}`}>{it.title}</span>
-                      <span className="mt-0.5 line-clamp-2 block text-xs text-[var(--ejo-text-muted)]">{it.body}</span>
+                      <span className={`line-clamp-2 block text-sm ${it.read ? 'text-[var(--ejo-text)]' : 'font-semibold text-[var(--ejo-text)]'}`}><KeepCodes text={it.title} /></span>
+                      <span className="mt-0.5 line-clamp-2 block text-xs text-[var(--ejo-text-muted)]"><KeepCodes text={it.body} /></span>
                       <span className="mt-1 block text-[11px] text-[var(--ejo-text-muted)]">{ago(it.at)}</span>
                     </span>
                     {!it.read ? <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[var(--ejo-primary)]" aria-label="Unread" /> : null}

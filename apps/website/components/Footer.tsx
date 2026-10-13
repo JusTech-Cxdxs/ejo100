@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { useI18n, type TranslationKey } from '@/lib/i18n';
-import { siteConfig, wordmarkParts } from '@/lib/site-config';
-import { BrandLogo } from './BrandLogo';
+import { siteConfig } from '@/lib/site-config';
+import { SiteWordmark } from './SiteWordmark';
 import { FooterBadge } from './FooterBadge';
 import { PoweredByBadge } from './PoweredByBadge';
 import { FacebookIcon, LinkedInIcon, XIcon, YouTubeIcon, InstagramIcon } from './icons';
@@ -47,7 +47,6 @@ const BUSINESS_LINKS: [TranslationKey, string][] = [
 
 export function Footer() {
   const { t } = useI18n();
-  const mark = wordmarkParts();
   const contact = siteConfig.contact;
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
@@ -61,33 +60,13 @@ export function Footer() {
 
   return (
     <footer className="relative bg-[var(--ejo-secondary)] text-white">
-      <div className="mx-auto grid max-w-7xl gap-10 px-6 py-16 md:grid-cols-6">
+      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-x-6 gap-y-10 px-4 py-14 sm:px-6 md:grid-cols-6 md:py-16">
         {/* Column 1 — logo, name, description, badge row, social icons */}
-        <div className="md:col-span-2">
-          {/* Same wordmark as the header: first word over a growing rule. */}
-          <table role="presentation" style={{ borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr>
-                <td style={{ verticalAlign: 'middle', padding: 0 }}>
-                  <BrandLogo size={36} />
-                </td>
-                <td style={{ verticalAlign: 'middle', paddingLeft: '2px' }}>
-                  <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch', whiteSpace: 'nowrap' }}>
-                    <span className="block text-lg font-bold leading-tight">{mark.top}</span>
-                    {mark.bottom ? (
-                      <span style={{ display: 'flex', alignItems: 'center', marginTop: '2px' }}>
-                        <span style={{ flex: 1, marginRight: '6px', borderBottom: '1px solid var(--ejo-primary)' }} />
-                        <span className="block text-xs leading-tight text-white/70">{mark.bottom}</span>
-                      </span>
-                    ) : null}
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="col-span-2">
+          <SiteWordmark tone="light" size="footer" />
           <p className="mt-3 max-w-xs text-sm text-white/60">{t('footer.companyDescription')}</p>
 
-          <div className="mt-5 flex items-center justify-start gap-4">
+          <div className="mt-5 flex flex-wrap items-center justify-start gap-3 sm:gap-4">
             {BADGES.map((badge) => (
               <FooterBadge key={badge.src} src={badge.src} alt={badge.alt} />
             ))}
@@ -102,7 +81,7 @@ export function Footer() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={label}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-[var(--ejo-primary)]"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-[var(--ejo-primary)]"
               >
                 <Icon />
               </a>
@@ -114,7 +93,7 @@ export function Footer() {
         <FooterColumn title={t('footer.quickLinks')} links={QUICK_LINKS} />
         <FooterColumn title={t('footer.ourBusinesses')} links={BUSINESS_LINKS} />
 
-        <div>
+        <div className="col-span-2 sm:col-span-1">
           <p className="text-sm font-semibold text-white">{t('footer.contactUs')}</p>
           <address className="mt-3 space-y-2 text-sm not-italic text-white/60">
             <p>{t('footer.headOffice')}</p>
@@ -124,7 +103,7 @@ export function Footer() {
           </address>
         </div>
 
-        <div>
+        <div className="col-span-2 sm:col-span-1">
           <p className="text-sm font-semibold text-white">{t('footer.newsletter')}</p>
           <p className="mt-3 text-sm text-white/60">{t('footer.newsletterText')}</p>
           {subscribed ? (
@@ -137,12 +116,12 @@ export function Footer() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder={t('footer.newsletterPlaceholder')}
-                className="w-full rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm text-white placeholder-white/40 outline-none focus:border-[var(--ejo-primary)]"
+                className="min-h-11 w-full min-w-0 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm text-white placeholder-white/40 outline-none focus:border-[var(--ejo-primary)]"
               />
               <button
                 type="submit"
                 aria-label="Subscribe"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ejo-primary)] hover:opacity-90"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ejo-primary)] hover:opacity-90"
               >
                 →
               </button>
@@ -151,7 +130,7 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="border-t border-white/10 px-6 py-6">
+      <div className="border-t border-white/10 px-4 py-6 sm:px-6">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
           <p className="text-xs text-white/50">
             © {new Date().getFullYear()} {siteConfig.legalName}. {t('footer.rights')}
@@ -174,10 +153,10 @@ function FooterColumn({ title, links }: { title: string; links: [TranslationKey,
   return (
     <div>
       <p className="text-sm font-semibold text-white">{title}</p>
-      <ul className="mt-3 space-y-2">
+      <ul className="mt-3 space-y-1">
         {links.map(([key, href]) => (
           <li key={href}>
-            <Link href={href} className="text-sm text-white/60 hover:text-[var(--ejo-accent)]">
+            <Link href={href} className="inline-block py-1 text-sm text-white/60 hover:text-[var(--ejo-accent)]">
               {t(key)}
             </Link>
           </li>
