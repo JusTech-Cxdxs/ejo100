@@ -12,6 +12,7 @@
  */
 import { prisma, Prisma } from '@ejo/database';
 import { lockExisting } from '@/lib/integrity';
+import { highestSequence } from '@/lib/recycle-bin/numbers';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { StaleStateError, isUniqueClashOn, numberClashPause } from '@/lib/integrity-core';
 import { lagosYear } from '@/lib/utils/format-date';
@@ -75,6 +76,9 @@ async function jobCardFacts(db: Db, id: string) {
     where: { id },
     select: {
       status: true,
+      approvalStatus: true,
+      approvedById: true,
+      assignedTechnicianId: true,
       estimate: { select: { status: true, lineItems: { select: { id: true } } } },
       escalatedFromVehicleService: { select: { id: true } },
       gateExit: { select: { id: true } },
@@ -104,6 +108,8 @@ async function jobCardFacts(db: Db, id: string) {
     roadTests: j._count.roadTestPermits,
     escalatedFromService: Boolean(j.escalatedFromVehicleService),
     closeRequests: j._count.closeRequests,
+    approvalDecided: j.approvalStatus !== 'PENDING' || Boolean(j.approvedById),
+    technicianAssigned: Boolean(j.assignedTechnicianId),
   });
 }
 
@@ -112,6 +118,9 @@ async function serviceFacts(db: Db, id: string) {
     where: { id },
     select: {
       status: true,
+      approvalStatus: true,
+      approvedById: true,
+      assignedTechnicianId: true,
       escalatedToJobCardId: true,
       primaryServiceDate: true,
       primaryServiceMileage: true,
@@ -139,6 +148,8 @@ async function serviceFacts(db: Db, id: string) {
     gateExit: Boolean(s.gateExit),
     roadTests: s._count.roadTestPermits,
     closeRequests: s._count.closeRequests,
+    approvalDecided: s.approvalStatus !== 'PENDING' || Boolean(s.approvedById),
+    technicianAssigned: Boolean(s.assignedTechnicianId),
   });
 }
 
@@ -154,7 +165,7 @@ async function vehicleFacts(db: Db, id: string) {
 async function customerFacts(db: Db, id: string) {
   const c = await db.customer.findUnique({
     where: { id },
-    select: { lastLoginAt: true, _count: { select: { jobCards: true, vehicleServices: true, warranties: true, warrantyClaims: true } }, vehicles: { select: { _count: { select: VEHICLE_COUNTS } } } },
+    select: { lastLoginAt: true, _count: { select: { sessions: true, jobCards: true, vehicleServices: true, warranties: true, warrantyClaims: true } }, vehicles: { select: { _count: { select: VEHICLE_COUNTS } } } },
   });
   if (!c) return null;
   const sum = (k: keyof typeof VEHICLE_COUNTS) => c.vehicles.reduce((n, v) => n + v._count[k], 0);
@@ -166,7 +177,8 @@ async function customerFacts(db: Db, id: string) {
     warrantyClaims: Math.max(c._count.warrantyClaims, sum('warrantyClaims')),
     gateExits: sum('gateExits'),
     roadTests: sum('roadTestPermits'),
-    signedIn: Boolean(c.lastLoginAt),
+    // lastLoginAt is only stamped on the sign-in page; any session also counts.
+    signedIn: Boolean(c.lastLoginAt) || c._count.sessions > 0,
   });
 }
 
@@ -359,8 +371,10 @@ async function prepareRestore(tx: Tx, entity: BinEntity, organisationId: string,
       fail(binned ? `The customer this ${what} belongs to is in the Recycle bin too. Restore the customer first, then this ${what}.` : `The customer this ${what} belonged to no longer exists, so it can't be restored.`);
     }
   };
-  const needVehicle = async (vehicleId: unknown, what: string) => {
-    const v = typeof vehicleId === 'string' ? await tx.customerVehicle.findUnique({ where: { id: vehicleId }, select: { id: true } }) : null;
+  const needVehicle = async (vehicleId: unknown, what: string, customerId?: unknown) => {
+    const v = typeof vehicleId === 'string' ? await tx.customerVehicle.findUnique({ where: { id: vehicleId }, select: { id: true, customerId: true } }) : null;
+    // The vehicle may have changed hands since: never re-attach a job to someone else's vehicle.
+    if (v && customerId !== undefined && v.customerId !== customerId) fail(`The vehicle on this ${what} now belongs to another customer, so it can't be restored.`);
     if (!v) {
       const binned = typeof vehicleId === 'string' ? await tx.recycleBinItem.findFirst({ where: { entityType: 'CustomerVehicle', entityId: vehicleId, restoredAt: null, purgedAt: null }, select: { id: true } }) : null;
       fail(binned ? `The vehicle on this ${what} is in the Recycle bin too. Restore the vehicle first, then this ${what}.` : `The vehicle on this ${what} no longer exists, so it can't be restored.`);
@@ -383,7 +397,7 @@ async function prepareRestore(tx: Tx, entity: BinEntity, organisationId: string,
     const what = BIN_KIND[entity].noun;
     await needBranch(root.branchId);
     await needCustomer(root.customerId, what);
-    await needVehicle(root.vehicleId, what);
+    await needVehicle(root.vehicleId, what, root.customerId);
     const field = entity === 'JobCard' ? 'jobNumber' : 'serviceNumber';
     const original = String(root[field]);
     const prefix = `${entity === 'JobCard' ? 'JC' : 'SV'}-${lagosYear()}-`;
@@ -393,7 +407,10 @@ async function prepareRestore(tx: Tx, entity: BinEntity, organisationId: string,
     const latest = !taken ? null : entity === 'JobCard'
       ? (await tx.jobCard.findFirst({ where: { jobNumber: { startsWith: prefix } }, orderBy: { jobNumber: 'desc' }, select: { jobNumber: true } }))?.jobNumber ?? null
       : (await tx.vehicleService.findFirst({ where: { serviceNumber: { startsWith: prefix } }, orderBy: { serviceNumber: 'desc' }, select: { serviceNumber: true } }))?.serviceNumber ?? null;
-    const next = restoredReference(original, taken, prefix, latest);
+    // Numbers held by other binned records stay reserved too.
+    const binnedTop = !taken ? null : (await tx.recycleBinItem.findFirst({ where: { entityType: entity, reference: { startsWith: prefix }, NOT: { reference: original } }, orderBy: { reference: 'desc' }, select: { reference: true } }))?.reference ?? null;
+    const top = highestSequence(prefix, [latest, binnedTop]);
+    const next = restoredReference(original, taken, prefix, top > 0 ? `${prefix}${String(top).padStart(6, '0')}` : null);
     root[field] = next.reference;
     reference = next.reference;
     if (next.changed) notes.push(`Its old number ${original} had been given to another ${what}, so it is back as ${next.reference}.`);

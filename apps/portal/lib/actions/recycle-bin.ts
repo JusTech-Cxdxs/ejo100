@@ -98,7 +98,8 @@ export async function moveToRecycleBin(entity: BinEntity, id: string, reasonRaw:
     entityType: entity,
     entityId: id,
     organisationId: rec.organisationId,
-    metadata: { reference: rec.reference, label: rec.label, reason: reason.reason, recycleBinItemId: moved.itemId, restorableUntil: moved.purgeAfter.toISOString(), ...(entity === 'Customer' ? { actor: 'staff' } : {}) },
+    // Names, emails and plates stay out of the audit trail: it outlives the purge.
+    metadata: { ...(entity === 'Customer' || entity === 'CustomerVehicle' ? {} : { reference: rec.reference }), reason: reason.reason, recycleBinItemId: moved.itemId, restorableUntil: moved.purgeAfter.toISOString(), ...(entity === 'Customer' ? { actor: 'staff' } : {}) },
   });
   return { reference: rec.reference, days: RETENTION_DAYS() };
 }

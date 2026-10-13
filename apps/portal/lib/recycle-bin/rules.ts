@@ -111,6 +111,9 @@ export type JobCardFacts = {
   roadTests: number;
   escalatedFromService: boolean;
   closeRequests: number;
+  /** A supervisor approved or rejected it. */
+  approvalDecided: boolean;
+  technicianAssigned: boolean;
 };
 
 export function jobCardEligibility(f: JobCardFacts): Eligibility {
@@ -128,6 +131,8 @@ export function jobCardEligibility(f: JobCardFacts): Eligibility {
   if (f.roadTests > 0) b.push(`has ${some(f.roadTests, 'road test')}`);
   if (f.escalatedFromService) b.push('was handed over from a Vehicle Service');
   if (f.closeRequests > 0) b.push('has a close request');
+  if (f.approvalDecided) b.push('has been approved or rejected by a supervisor');
+  if (f.technicianAssigned) b.push('has a technician assigned');
   return { ...verdict('Job Card', b, 'Ask for it to be cancelled instead.'), finished: ['CLOSED', 'CHECKED_OUT', 'CANCELLED'].includes(f.status) };
 }
 
@@ -148,6 +153,8 @@ export type VehicleServiceFacts = {
   gateExit: boolean;
   roadTests: number;
   closeRequests: number;
+  approvalDecided: boolean;
+  technicianAssigned: boolean;
 };
 
 export function vehicleServiceEligibility(f: VehicleServiceFacts): Eligibility {
@@ -166,6 +173,8 @@ export function vehicleServiceEligibility(f: VehicleServiceFacts): Eligibility {
   if (f.gateExit) b.push('has a gate exit recorded');
   if (f.roadTests > 0) b.push(`has ${some(f.roadTests, 'road test')}`);
   if (f.closeRequests > 0) b.push('has a close request');
+  if (f.approvalDecided) b.push('has been approved or rejected by a supervisor');
+  if (f.technicianAssigned) b.push('has a technician assigned');
   return { ...verdict('Vehicle Service', b, 'Ask for it to be cancelled instead.'), finished: f.escalatedToJobCard || ['CLOSED', 'COLLECTED', 'CANCELLED', 'ESCALATED'].includes(f.status) };
 }
 

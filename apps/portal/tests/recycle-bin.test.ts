@@ -20,11 +20,11 @@ const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
 
 const freshJob: JobCardFacts = {
   status: 'CHECKED_IN', payments: 0, refunds: 0, estimateStatus: null, partRequests: 0, outsidePurchases: 0, estimateLinesInUse: 0,
-  warranties: 0, warrantyClaims: 0, gateExit: false, roadTests: 0, escalatedFromService: false, closeRequests: 0,
+  warranties: 0, warrantyClaims: 0, gateExit: false, roadTests: 0, escalatedFromService: false, closeRequests: 0, approvalDecided: false, technicianAssigned: false,
 };
 const freshService: VehicleServiceFacts = {
   status: 'SCHEDULED', payments: 0, refunds: 0, estimateStatus: null, partRequests: 0, estimateLinesInUse: 0, inspectionStatus: null,
-  primaryServiceRecorded: false, escalatedToJobCard: false, warranties: 0, warrantyClaims: 0, gateExit: false, roadTests: 0, closeRequests: 0,
+  primaryServiceRecorded: false, escalatedToJobCard: false, warranties: 0, warrantyClaims: 0, gateExit: false, roadTests: 0, closeRequests: 0, approvalDecided: false, technicianAssigned: false,
 };
 
 test('a Job Card opened by mistake is eligible; a draft estimate does not stop it', () => {
@@ -39,7 +39,7 @@ test('anything of consequence makes a Job Card ineligible, with the cancel route
   const cases: Partial<JobCardFacts>[] = [
     { refunds: 1 }, { status: 'IN_PROGRESS' }, { status: 'CANCELLED' }, { estimateStatus: 'SUBMITTED' }, { estimateStatus: 'MANAGER_APPROVED' },
     { partRequests: 1 }, { outsidePurchases: 2 }, { estimateLinesInUse: 1 }, { warranties: 1 }, { warrantyClaims: 1 }, { gateExit: true },
-    { roadTests: 1 }, { escalatedFromService: true }, { closeRequests: 1 },
+    { roadTests: 1 }, { escalatedFromService: true }, { closeRequests: 1 }, { approvalDecided: true }, { technicianAssigned: true },
   ];
   for (const c of cases) assert.equal(jobCardEligibility({ ...freshJob, ...c }).eligible, false, JSON.stringify(c));
   // Several reasons read as one sentence, with plurals right.
@@ -54,7 +54,7 @@ test('anything of consequence makes a Job Card ineligible, with the cancel route
 test('Vehicle Services: scheduled or checked in, nothing paid, not handed over', () => {
   assert.equal(vehicleServiceEligibility(freshService).eligible, true);
   assert.equal(vehicleServiceEligibility({ ...freshService, status: 'CHECKED_IN', inspectionStatus: 'IN_PROGRESS' }).eligible, true);
-  for (const c of [{ status: 'IN_SERVICE' }, { payments: 1 }, { escalatedToJobCard: true, status: 'ESCALATED' }, { estimateStatus: 'APPROVED' }, { inspectionStatus: 'COMPLETED' }, { primaryServiceRecorded: true }, { gateExit: true }] as Partial<VehicleServiceFacts>[]) {
+  for (const c of [{ status: 'IN_SERVICE' }, { payments: 1 }, { escalatedToJobCard: true, status: 'ESCALATED' }, { estimateStatus: 'APPROVED' }, { inspectionStatus: 'COMPLETED' }, { primaryServiceRecorded: true }, { gateExit: true }, { approvalDecided: true }, { technicianAssigned: true }] as Partial<VehicleServiceFacts>[]) {
     assert.equal(vehicleServiceEligibility({ ...freshService, ...c }).eligible, false, JSON.stringify(c));
   }
   assert.match(vehicleServiceEligibility({ ...freshService, escalatedToJobCard: true, status: 'ESCALATED' }).message, /handed over to a Job Card/);
@@ -196,4 +196,11 @@ test('actions: refused during an assisted session; restore needs the bin permiss
   for (const fn of ['purgeRecycleBinItems', 'purgeExpiredRecycleBinItems']) assert.match(src, new RegExp(`export async function ${fn}[\\s\\S]{0,300}if \\(!p\\.isSuperAdmin\\) return refuse\\(`), fn);
   // The old platform-only hard deletes are gone.
   for (const f of ['lib/actions/workshop.ts', 'lib/actions/vehicle-service.ts']) assert.doesNotMatch(read(f), /export async function delete(JobCard|Vehicle|VehicleService)\(/, f);
+});
+
+test('Binned Job Card and Vehicle Service numbers stay reserved', () => {
+  const { highestSequence } = require('../lib/recycle-bin/numbers') as typeof import('../lib/recycle-bin/numbers');
+  assert.equal(highestSequence('JC-2026-', ['JC-2026-000041', 'JC-2026-000043']), 43, 'a binned 43 beats a live 41');
+  assert.equal(highestSequence('JC-2026-', [null, undefined]), 0);
+  assert.equal(highestSequence('JC-2026-', ['JC-2025-000900', 'SV-2026-000050']), 0, 'other years and kinds are ignored');
 });

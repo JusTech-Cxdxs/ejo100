@@ -1,4 +1,5 @@
 'use server';
+import { highestBinnedReference, highestSequence } from '@/lib/recycle-bin/numbers';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
@@ -48,7 +49,9 @@ async function generateServiceNumber(): Promise<string> {
     orderBy: { serviceNumber: 'desc' },
     select: { serviceNumber: true },
   });
-  const nextSequence = latest ? parseInt(latest.serviceNumber.slice(prefix.length), 10) + 1 : 1;
+  // A binned number stays reserved (lib/recycle-bin/numbers.ts).
+  const binned = await highestBinnedReference('VehicleService', prefix);
+  const nextSequence = highestSequence(prefix, [latest?.serviceNumber, binned]) + 1;
   return `${prefix}${String(nextSequence).padStart(6, '0')}`;
 }
 
