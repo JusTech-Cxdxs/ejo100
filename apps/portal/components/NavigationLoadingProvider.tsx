@@ -1,8 +1,10 @@
 'use client';
 
-import { createContext, useContext, useTransition, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useTransition, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { PageLoading } from './PageLoading';
+import { contentArea } from './content-area';
 
 type NavigationLoadingContextValue = {
   isPending: boolean;
@@ -20,22 +22,24 @@ const NavigationLoadingContext = createContext<NavigationLoadingContextValue | n
 export function NavigationLoadingProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [area, setArea] = useState<HTMLElement | null>(null);
+  useEffect(() => { setArea(contentArea()); }, []);
 
   function navigate(href: string) {
     startTransition(() => router.push(href));
   }
 
+  // Covers only the working area: the menu, header and ticker stay in place.
+  const overlay = (
+    <div className="ejo-fade absolute inset-0 z-10 bg-[var(--ejo-bg)]/85 backdrop-blur-[1px]" role="status" aria-live="polite">
+      <PageLoading />
+    </div>
+  );
+
   return (
     <NavigationLoadingContext.Provider value={{ isPending, navigate }}>
       <div className="ejo-page relative min-w-0 flex-1">
-        {isPending ? (
-          // `fixed` so the loader stays centred in the viewport on long
-          // pages. It covers the whole screen rather than guessing the
-          // sidebar and top bar sizes.
-          <div className="fixed inset-0 z-10 bg-[var(--ejo-bg)]">
-            <PageLoading />
-          </div>
-        ) : null}
+        {isPending ? (area ? createPortal(overlay, area) : overlay) : null}
         {children}
       </div>
     </NavigationLoadingContext.Provider>
