@@ -134,9 +134,9 @@ export function Timeline({ entries }: { entries: TimelineEntry[] }) {
   );
 }
 
-export function KeyValue({ label, children }: { label: string; children: ReactNode }) {
+export function KeyValue({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${className}`}>
       <dt className="text-xs text-[var(--ejo-text-muted)]">{label}</dt>
       <dd className="mt-0.5 break-words text-sm font-medium text-[var(--ejo-text)]">{children}</dd>
     </div>
@@ -187,4 +187,14 @@ export function Notice({ tone, icon, children }: { tone: 'info' | 'attention' | 
       <div className="min-w-0 flex-1 leading-relaxed">{children}</div>
     </div>
   );
+}
+
+/**
+ * Keeps hyphenated codes (plates like LND-482-KJ, JC-APP-2026-000184) on one
+ * line. Browsers break after a hyphen, which splits a plate across two lines
+ * on a phone. The text itself is unchanged, so copying and searching still work.
+ */
+export function KeepCodes({ text }: { text: string }) {
+  const parts = text.split(/([A-Z0-9]+(?:-[A-Z0-9]+)+)/);
+  return <>{parts.map((p, i) => (i % 2 ? <span key={i} className="whitespace-nowrap">{p}</span> : p))}</>;
 }

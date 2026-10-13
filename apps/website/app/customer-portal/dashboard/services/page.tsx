@@ -32,8 +32,9 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
     <div className="space-y-6">
       <PageHero eyebrow="My services" icon="wrench" title="Every visit, every step" subtitle="Your Job Cards (repairs) and vehicle services in one place. Open any of them to see its full timeline, estimate and payments." />
 
-      <nav aria-label="Filter services" className="ejo-no-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-        <ul className="flex w-max gap-2">
+      <nav aria-label="Filter services">
+        {/* Two by two on a phone so every filter is in view; one row from tablet up. */}
+        <ul className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           {FILTERS.map((f) => {
             const on = f.key === show;
             return (
@@ -41,7 +42,7 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
                 <Link
                   href={f.key === 'all' ? '/customer-portal/dashboard/services' : `/customer-portal/dashboard/services?show=${f.key}`}
                   aria-current={on ? 'page' : undefined}
-                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${on ? 'border-[var(--ejo-primary)] bg-[var(--ejo-primary)] text-white shadow-sm' : 'border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]'}`}
+                  className={`flex min-h-11 items-center justify-between gap-2 rounded-full border px-4 py-2 text-sm sm:inline-flex sm:justify-start font-medium transition-colors ${on ? 'border-[var(--ejo-primary)] bg-[var(--ejo-primary)] text-white shadow-sm' : 'border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]'}`}
                 >
                   {f.label}
                   <span className={`rounded-full px-1.5 text-xs ${on ? 'bg-white/20' : 'bg-[var(--ejo-surface)]'}`}>{counts[f.key]}</span>

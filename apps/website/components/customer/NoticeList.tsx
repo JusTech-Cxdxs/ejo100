@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Icon } from './Icon';
+import { KeepCodes } from './ui';
 import { markAllNoticesRead, markNoticeRead } from '@/lib/customer-portal/actions';
 
 export type NoticeView = { key: string; title: string; body: string; at: string; when: string; href: string; icon: string; tone: string; read: boolean; broadcast: boolean };
@@ -66,14 +67,14 @@ export function NoticeList({ initial }: { initial: NoticeView[] }) {
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3">
                   <Link href={n.href} onClick={() => { if (!n.read) markOne(n.key); }} className={`text-sm hover:text-[var(--ejo-primary)] ${n.read ? 'text-[var(--ejo-text)]' : 'font-semibold text-[var(--ejo-text)]'}`}>
                     {n.broadcast ? <span className="mr-1.5 rounded bg-[var(--ejo-primary)]/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--ejo-primary)]">Announcement</span> : null}
-                    {n.title}
+                    <KeepCodes text={n.title} />
                   </Link>
                   <time dateTime={n.at} className="text-xs text-[var(--ejo-text-muted)]">{n.when}</time>
                 </div>
-                <p className={`mt-0.5 text-sm text-[var(--ejo-text-muted)] ${n.broadcast ? 'whitespace-pre-line' : ''}`}>{n.body}</p>
+                <p className={`mt-0.5 text-sm text-[var(--ejo-text-muted)] ${n.broadcast ? 'whitespace-pre-line' : ''}`}><KeepCodes text={n.body} /></p>
               </div>
               {!n.read ? (
-                <button type="button" onClick={() => markOne(n.key)} className="mt-1 flex h-7 shrink-0 items-center gap-1 self-start rounded-full px-2 text-xs font-medium text-[var(--ejo-primary)] hover:bg-[var(--ejo-primary)]/10" aria-label={`Mark “${n.title}” as read`}>
+                <button type="button" onClick={() => markOne(n.key)} className="-mr-2 -mt-1.5 flex h-10 min-w-10 shrink-0 items-center justify-center gap-1 self-start rounded-full px-2 text-xs sm:mr-0 sm:mt-1 sm:h-7 sm:min-w-0 font-medium text-[var(--ejo-primary)] hover:bg-[var(--ejo-primary)]/10" aria-label={`Mark “${n.title}” as read`}>
                   <span className="h-2 w-2 rounded-full bg-[var(--ejo-primary)]" aria-hidden="true" /> <span className="hidden sm:inline">Mark read</span>
                 </button>
               ) : null}

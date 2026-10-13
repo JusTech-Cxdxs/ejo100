@@ -3,7 +3,7 @@
 
 import { useId, useState, type KeyboardEvent } from 'react';
 
-const base = 'w-full rounded-[var(--ejo-radius-md)] border bg-[var(--ejo-bg)] py-3 pl-4 pr-12 text-sm text-[var(--ejo-text)] outline-none transition-colors placeholder:text-[var(--ejo-text-muted)]/70 focus:border-[var(--ejo-primary)] focus:ring-2 focus:ring-[var(--ejo-primary)]/20';
+const base = 'w-full rounded-[var(--ejo-radius-md)] border bg-[var(--ejo-bg)] min-h-11 py-3 pl-4 pr-12 text-base text-[var(--ejo-text)] sm:text-sm outline-none transition-colors placeholder:text-[var(--ejo-text-muted)]/70 focus:border-[var(--ejo-primary)] focus:ring-2 focus:ring-[var(--ejo-primary)]/20';
 
 /**
  * Password input with a show / hide toggle (the eye),

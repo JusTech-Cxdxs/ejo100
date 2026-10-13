@@ -7,7 +7,7 @@ import { PayHow, type BankDetails } from './PayHow';
 import { Meter } from './Charts';
 import { Icon } from './Icon';
 
-export type EstimateLine = { id: string; type: string; description: string; quantity: number; amount: number | null; unit: string | null };
+export type EstimateLine = { id: string; type: string; description: string; quantity: number; unitPrice: number | null; amount: number | null; unit: string | null };
 export type BranchInfo = { name: string; address: string | null; hotlines: string[]; email: string | null; bank: BankDetails };
 export type LinkedWarranty = { id: string; number: string; subject: string; endsAt: Date; status: string };
 
@@ -83,8 +83,8 @@ export function ServiceDetail({ item, complaints, lines, branch, mileage, warran
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ejo-primary)]">{item.kind === 'jc' ? 'Job Card' : 'Vehicle service'}</p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-[var(--ejo-text)] sm:text-3xl">{item.number}</h1>
-            <p className="mt-1 flex items-center gap-1.5 text-sm text-[var(--ejo-text-muted)]"><Icon name="car" size={15} />{item.vehicle.label}{item.vehicle.plate ? ` · ${item.vehicle.plate}` : ''}</p>
+            <h1 className="mt-1 break-words text-xl font-bold tracking-tight text-[var(--ejo-text)] min-[360px]:text-2xl sm:text-3xl">{item.number}</h1>
+            <p className="mt-1 flex items-center gap-1.5 text-sm text-[var(--ejo-text-muted)]"><span className="shrink-0"><Icon name="car" size={15} /></span><span>{item.vehicle.label}{item.vehicle.plate ? <> · <span className="whitespace-nowrap">{item.vehicle.plate}</span></> : null}</span></p>
           </div>
           <Badge tone={item.info.tone}>{item.info.label}</Badge>
         </div>
@@ -121,7 +121,7 @@ export function ServiceDetail({ item, complaints, lines, branch, mileage, warran
         </Notice>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-6">
           {/* Timeline */}
           <Card className="p-5 sm:p-6">
@@ -148,23 +148,38 @@ export function ServiceDetail({ item, complaints, lines, branch, mileage, warran
           <Card className="p-5 sm:p-6" delay={120}>
             <SectionTitle icon="receipt" title="Estimate" />
             {lines && m.estimateTotal !== null ? (
-              <div data-testid="customer-estimate">
-                <ul className="divide-y divide-[var(--ejo-border)] rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)]">
-                  {lines.map((l) => (
-                    <li key={l.id} className="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
-                      <span className="min-w-0">
-                        <span className="block text-[var(--ejo-text)]">{l.description}</span>
-                        <span className="text-xs text-[var(--ejo-text-muted)]">{LINE_GROUP[l.type] ?? 'Other'} · Qty {l.quantity}{l.unit ? ` ${l.unit}` : ''}</span>
-                      </span>
-                      <span className="shrink-0 font-medium text-[var(--ejo-text)]">{l.amount !== null ? naira(l.amount) : '—'}</span>
-                    </li>
-                  ))}
-                </ul>
-                <dl className="mt-3 space-y-1 text-sm">
+              <div data-testid="customer-estimate" className="@container">
+                {/* Cards on a phone or a narrow column; a four-column table once the card is wide enough. */}
+                <div className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)]">
+                  <div className="hidden border-b border-[var(--ejo-border)] px-4 py-2 text-xs font-medium text-[var(--ejo-text-muted)] @lg:grid @lg:grid-cols-[minmax(0,1fr)_5.5rem_7.5rem_8.5rem] @lg:gap-3" aria-hidden="true">
+                    <span>Item</span><span className="text-right">Qty</span><span className="text-right">Unit price</span><span className="text-right">Amount</span>
+                  </div>
+                  <ul className="divide-y divide-[var(--ejo-border)]">
+                    {lines.map((l) => {
+                      const qty = `${l.quantity.toLocaleString('en-NG')}${l.unit ? ` ${l.unit}` : ''}`;
+                      const unitPrice = l.unitPrice ?? (l.amount !== null && l.quantity ? l.amount / l.quantity : null);
+                      return (
+                        <li key={l.id} data-testid="estimate-line" className="px-4 py-3 text-sm @lg:grid @lg:grid-cols-[minmax(0,1fr)_5.5rem_7.5rem_8.5rem] @lg:items-baseline @lg:gap-3">
+                          <div className="min-w-0">
+                            <p className="break-words font-medium leading-snug text-[var(--ejo-text)]">{l.description}</p>
+                            <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">{LINE_GROUP[l.type] ?? 'Other'}</p>
+                          </div>
+                          <div className="mt-2 flex items-baseline justify-between gap-3 @lg:contents">
+                            <span className="min-w-0 text-xs text-[var(--ejo-text-muted)] @lg:hidden">Qty {qty}{unitPrice !== null ? ` × ${naira(unitPrice)}` : ''}</span>
+                            <span className="hidden text-right tabular-nums text-[var(--ejo-text)] @lg:block">{qty}</span>
+                            <span className="hidden text-right tabular-nums text-[var(--ejo-text-muted)] @lg:block">{unitPrice !== null ? naira(unitPrice) : '—'}</span>
+                            <span className="shrink-0 text-right font-semibold tabular-nums text-[var(--ejo-text)]">{l.amount !== null ? naira(l.amount) : '—'}</span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+                <dl className="mt-4 space-y-1.5 text-sm">
                   {[...groups.entries()].map(([g, v]) => (
-                    <div key={g} className="flex justify-between text-[var(--ejo-text-muted)]"><dt>{g}</dt><dd>{naira(v)}</dd></div>
+                    <div key={g} className="flex justify-between gap-3 text-[var(--ejo-text-muted)]"><dt>{g}</dt><dd className="shrink-0 tabular-nums">{naira(v)}</dd></div>
                   ))}
-                  <div className="flex justify-between border-t border-[var(--ejo-border)] pt-2 text-base font-bold text-[var(--ejo-text)]"><dt>Total estimate</dt><dd>{naira(m.estimateTotal)}</dd></div>
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 border-t border-[var(--ejo-border)] pt-2.5 text-base font-bold text-[var(--ejo-text)]"><dt>Total estimate</dt><dd className="tabular-nums">{naira(m.estimateTotal)}</dd></div>
                 </dl>
                 {item.kind === 'jc' ? <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Only the items you pay for are shown. Anything covered by a warranty or by us is not included.</p> : null}
               </div>
@@ -174,7 +189,7 @@ export function ServiceDetail({ item, complaints, lines, branch, mileage, warran
           </Card>
         </div>
 
-        <aside className="min-w-0 space-y-6">
+        <aside className="grid min-w-0 grid-cols-1 content-start gap-6 md:grid-cols-2 xl:grid-cols-1">
           {/* Money */}
           <Card className="p-5" delay={80}>
             <SectionTitle icon="wallet" title="Payments" />
@@ -186,10 +201,10 @@ export function ServiceDetail({ item, complaints, lines, branch, mileage, warran
                 </div>
                 <div className="mt-2"><Meter value={m.netPaid} max={m.estimateTotal} label="Share of the estimate paid" /></div>
                 <dl className="mt-3 space-y-1.5 text-sm">
-                  <div className="flex justify-between"><dt className="text-[var(--ejo-text-muted)]">Estimate</dt><dd className="text-[var(--ejo-text)]">{naira(m.estimateTotal)}</dd></div>
-                  {item.phase === 'active' && (m.depositDue ?? 0) > 0 ? <div className="flex justify-between"><dt className="text-[var(--ejo-text-muted)]">Minimum deposit ({Math.round(MINIMUM_DEPOSIT_FRACTION * 100)}%)</dt><dd className="text-[var(--ejo-text)]">{naira(m.minDeposit ?? 0)}</dd></div> : null}
-                  {m.refunded > 0 ? <div className="flex justify-between"><dt className="text-[var(--ejo-text-muted)]">Refunded</dt><dd className="text-[var(--ejo-text)]">{naira(m.refunded)}</dd></div> : null}
-                  <div className="flex justify-between border-t border-[var(--ejo-border)] pt-1.5 font-semibold"><dt className="text-[var(--ejo-text)]">Balance</dt><dd className={owe > 0 ? 'text-[#b45309] dark:text-[var(--ejo-warning)]' : 'text-[var(--ejo-success)]'}>{owe > 0 ? naira(owe) : 'Nothing to pay'}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-[var(--ejo-text-muted)]">Estimate</dt><dd className="shrink-0 text-right tabular-nums text-[var(--ejo-text)]">{naira(m.estimateTotal)}</dd></div>
+                  {item.phase === 'active' && (m.depositDue ?? 0) > 0 ? <div className="flex justify-between gap-3"><dt className="text-[var(--ejo-text-muted)]">Minimum deposit ({Math.round(MINIMUM_DEPOSIT_FRACTION * 100)}%)</dt><dd className="shrink-0 text-right tabular-nums text-[var(--ejo-text)]">{naira(m.minDeposit ?? 0)}</dd></div> : null}
+                  {m.refunded > 0 ? <div className="flex justify-between gap-3"><dt className="text-[var(--ejo-text-muted)]">Refunded</dt><dd className="shrink-0 text-right tabular-nums text-[var(--ejo-text)]">{naira(m.refunded)}</dd></div> : null}
+                  <div className="flex justify-between gap-3 border-t border-[var(--ejo-border)] pt-1.5 font-semibold"><dt className="text-[var(--ejo-text)]">Balance</dt><dd className={owe > 0 ? 'text-[#b45309] dark:text-[var(--ejo-warning)]' : 'text-[var(--ejo-success)]'}>{owe > 0 ? naira(owe) : 'Nothing to pay'}</dd></div>
                 </dl>
               </>
             ) : (
@@ -231,7 +246,7 @@ export function ServiceDetail({ item, complaints, lines, branch, mileage, warran
                 <p className="text-xs font-medium text-[var(--ejo-text-muted)]">Warranties from this visit</p>
                 <ul className="mt-2 space-y-1.5">
                   {warranties.map((w) => (
-                    <li key={w.id}><Link href={`/customer-portal/dashboard/warranties/${w.id}`} className="flex items-center justify-between gap-2 text-sm text-[var(--ejo-text)] hover:text-[var(--ejo-primary)]"><span className="flex min-w-0 items-center gap-2"><span className="text-[var(--ejo-primary)]"><Icon name="shield" size={14} /></span><span className="truncate">{w.subject}</span></span><span className="shrink-0 text-xs text-[var(--ejo-text-muted)]">to {fmtDate(w.endsAt)}</span></Link></li>
+                    <li key={w.id}><Link href={`/customer-portal/dashboard/warranties/${w.id}`} className="flex items-start justify-between gap-2 text-sm text-[var(--ejo-text)] hover:text-[var(--ejo-primary)]"><span className="flex min-w-0 items-start gap-2"><span className="mt-0.5 shrink-0 text-[var(--ejo-primary)]"><Icon name="shield" size={14} /></span><span className="line-clamp-2 break-words">{w.subject}</span></span><span className="mt-0.5 shrink-0 whitespace-nowrap text-xs text-[var(--ejo-text-muted)]">to {fmtDate(w.endsAt)}</span></Link></li>
                   ))}
                 </ul>
               </div>

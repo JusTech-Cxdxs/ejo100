@@ -35,7 +35,7 @@ export default async function SupportPage() {
     <div className="space-y-6">
       <PageHero eyebrow="Help & support" icon="help" title="We’re here to help" subtitle="Talk to your branch about anything — your vehicle, an estimate, a payment or a warranty. Most answers are also below." />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-6">
           {/* AI support centre — coming soon (roadmap style) */}
           <section className="ejo-roadmap-hero ejo-rise relative overflow-hidden rounded-[var(--ejo-radius-xl)] border border-[var(--ejo-border)] p-6 sm:p-8" aria-labelledby="ai-title" data-testid="ai-support-coming-soon">

@@ -27,8 +27,8 @@ export default async function WarrantyPage({ params }: { params: Promise<{ id: s
         <div className="ejo-orb pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-[var(--ejo-primary)]/15 blur-3xl" aria-hidden="true" />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ejo-primary)]">{w.kind === 'PART' ? 'Part warranty' : 'Vehicle warranty'} · {w.number}</p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-[var(--ejo-text)] sm:text-3xl">{w.subject}</h1>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ejo-primary)]">{w.kind === 'PART' ? 'Part warranty' : 'Vehicle warranty'} · <span className="whitespace-nowrap">{w.number}</span></p>
+            <h1 className="mt-1 break-words text-2xl font-bold tracking-tight text-[var(--ejo-text)] sm:text-3xl">{w.subject}</h1>
             <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{w.policyName} · provided by {w.providerName}</p>
           </div>
           <Badge tone={info.tone}>{info.label}</Badge>
@@ -45,7 +45,7 @@ export default async function WarrantyPage({ params }: { params: Promise<{ id: s
       {w.state === 'void' ? <Notice tone="danger" icon="ban">This warranty is no longer valid. Your branch can explain why and what your options are.</Notice> : null}
       {w.state === 'pending' ? <Notice tone="info" icon="info">We’re verifying this warranty with the provider. It will show as active once confirmed.</Notice> : null}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           <Card className="p-5 sm:p-6">
             <SectionTitle icon="shield" title="What’s covered" />
@@ -90,7 +90,7 @@ export default async function WarrantyPage({ params }: { params: Promise<{ id: s
               <KeyValue label="Ends">{fmtDate(w.endsAt)}</KeyValue>
               {w.distanceLimit ? <KeyValue label="Distance limit">{w.distanceLimit.toLocaleString('en-NG')} km{w.startReading ? ` (from ${w.startReading.toLocaleString('en-NG')} km)` : ''}</KeyValue> : null}
               <KeyValue label="Issued">{fmtDate(w.issuedAt)}</KeyValue>
-              {w.vehicle ? <KeyValue label="Vehicle"><Link className="text-[var(--ejo-primary)] hover:underline" href={`/customer-portal/dashboard/vehicles/${w.vehicle.id}`}>{w.vehicle.label}{w.vehicle.plate ? ` · ${w.vehicle.plate}` : ''}</Link></KeyValue> : null}
+              {w.vehicle ? <KeyValue label="Vehicle"><Link className="text-[var(--ejo-primary)] hover:underline" href={`/customer-portal/dashboard/vehicles/${w.vehicle.id}`}>{w.vehicle.label}{w.vehicle.plate ? <> · <span className="whitespace-nowrap">{w.vehicle.plate}</span></> : null}</Link></KeyValue> : null}
               {w.source ? <KeyValue label="From visit"><Link className="text-[var(--ejo-primary)] hover:underline" href={`/customer-portal/dashboard/services/${w.source.kind}/${w.source.id}`}>{w.source.number}</Link></KeyValue> : null}
             </dl>
           </Card>

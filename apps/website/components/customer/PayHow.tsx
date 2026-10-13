@@ -34,7 +34,7 @@ export function PayHow({ branchBank, reference, compact = false }: { branchBank?
             <div key={r.label} className="flex items-center justify-between gap-3 px-3 py-2.5">
               <div className="min-w-0">
                 <dt className="text-xs text-[var(--ejo-text-muted)]">{r.label}</dt>
-                <dd className="truncate text-sm font-semibold tracking-wide text-[var(--ejo-text)]">{r.value}</dd>
+                <dd className="break-words text-sm font-semibold tracking-wide text-[var(--ejo-text)] [overflow-wrap:anywhere]">{r.value}</dd>
               </div>
               {r.copy ? <CopyButton value={r.value} label={r.label.toLowerCase()} /> : null}
             </div>
