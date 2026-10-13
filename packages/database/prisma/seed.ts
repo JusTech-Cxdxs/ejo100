@@ -35,7 +35,6 @@ function requireEnv(name: string): string {
 const MASTER_ADMIN = {
   name: process.env.MASTER_ADMIN_NAME ?? 'Master Administrator', // not a secret — harmless default
   email: requireEnv('MASTER_ADMIN_EMAIL'),
-  password: requireEnv('MASTER_ADMIN_PASSWORD'),
 };
 
 async function main() {
@@ -198,26 +197,35 @@ async function main() {
   });
 
   // Better Auth credential row, hashed with Better Auth's hashPassword() so the
-  // normal /login page verifies it. Update-or-create, so re-running the seed
-  // after rotating MASTER_ADMIN_PASSWORD updates the stored hash.
+  // normal /login page verifies it. Set only when the account is created: once
+  // the Master Admin has changed their password in the portal, re-running the
+  // seed must never put an older one back (SEC-01c). An existing password is
+  // replaced only when RESET_MASTER_ADMIN_PASSWORD=yes is set for that run,
+  // and then every open session of that account is signed out.
   const existingAccount = await prisma.account.findFirst({
     where: { userId: masterAdminUser.id, providerId: 'credential' },
+    select: { id: true },
   });
-  const passwordHash = await hashPassword(MASTER_ADMIN.password);
-  if (existingAccount) {
-    await prisma.account.update({
-      where: { id: existingAccount.id },
-      data: { password: passwordHash },
-    });
-  } else {
+  const resetRequested = process.env.RESET_MASTER_ADMIN_PASSWORD === 'yes';
+  if (!existingAccount) {
+    const password = requireEnv('MASTER_ADMIN_PASSWORD');
     await prisma.account.create({
       data: {
         userId: masterAdminUser.id,
         accountId: masterAdminUser.id,
         providerId: 'credential',
-        password: passwordHash,
+        password: await hashPassword(password),
       },
     });
+  } else if (resetRequested) {
+    const password = requireEnv('MASTER_ADMIN_PASSWORD');
+    await prisma.account.update({ where: { id: existingAccount.id }, data: { password: await hashPassword(password) } });
+    await prisma.session.deleteMany({ where: { userId: masterAdminUser.id } });
+    // eslint-disable-next-line no-console
+    console.log('Master Administrator password reset (RESET_MASTER_ADMIN_PASSWORD=yes); open sessions signed out.');
+  } else {
+    // eslint-disable-next-line no-console
+    console.log('Master Administrator already has a password; left unchanged.');
   }
 
   // eslint-disable-next-line no-console
