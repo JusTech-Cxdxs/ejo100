@@ -1,6 +1,6 @@
 # EJO100 V1 — Final Release Report
 
-**Date:** 13 October 2026 · **Release candidate:** branch `platform/v1-final`, PR #19 → `main`
+**Date:** 13 October 2026 · **Release candidate:** branch `platform/v1-final` at `3a16cdc` or later, PR #19 → `main`
 **Production today:** `main` at `0696ab0` (PR #11)
 
 ## Recommendation
@@ -50,6 +50,32 @@ Every change narrows access; nothing was widened.
 - **Password attempts can't be raced:** attempts are counted and recorded under a lock (5 per colleague, 15 in all, per 15 minutes).
 - **The session cookie is protected:** it is signed (HMAC), tied to the assistant's own sign-in, and checked again on every request.
 - **The colleague's account is untouched:** their profile, password and notification settings are closed during a session.
+
+### Phones and tablets (after the owner's phone review, 13 Oct)
+**Staff portal**
+- **Header:** the full brand (logo, "Kewalram", green rule, "Chanrai Group") now shows on every phone width from 320px up and on tablets, clear of search, bell and avatar.
+- **Ticker:** the scrolling ticker no longer jumps when it loops.
+- **Estimate:** each line is a card on phones. Adding, editing and removing lines uses one field per row with 44px buttons.
+- **Tables:** list and detail tables become labelled cards where space is narrow, so pages never scroll sideways.
+- **Tablets:** two-column pages only sit side by side from 1280px, so content isn't squeezed at 1024px.
+- **List pages with a form:** they get a "New …" button that jumps to the form.
+- **Tiles:** money and KPI figures fit their tiles.
+- **Activity feed:** customer sign-ins and password activity no longer appear in the staff feed or ticker; they stay in Audit Logs and on the customer's CRM page.
+
+**Customer portal and website**
+- **Brand:** complete at every width, with the same wordmark as the staff portal.
+- **Estimate:** cards on phones.
+- **Reference numbers:** plates and references never break across lines.
+- **Forms:** fields and buttons are at least 44px, with 16px text on phones so iPhones don't zoom in.
+- **Website header:** it was cut off at 1024 and 1280px; the full navigation now starts at 1280px.
+- **Home page:** it no longer scrolls sideways on phones.
+
+**Widths checked:** 320, 360, 375, 390, 412, 430, 768, 1024 and 1280px, light and dark. Pages that need the database were rendered with sample data, because the database engine can't run in this environment.
+
+**New Playwright checks:** `mobile-layout.spec.ts` and `customer-mobile.spec.ts` (360×780). They check that the brand isn't clipped, that estimate cells don't overlap, and that about 30 busy pages have no sideways scroll.
+
+### Seed safeguard (SEC-01c, approved by the owner)
+`seed.ts` sets the Master Admin password only when it creates the account. An existing password is replaced only when `RESET_MASTER_ADMIN_PASSWORD=yes` is set for that run, and that run also signs out the account's sessions. `MASTER_ADMIN_PASSWORD` can now be removed from hosting.
 
 ### Error handling and references
 **How a reference is handled**
@@ -112,7 +138,7 @@ Every change narrows access; nothing was widened.
 | Check | Result |
 |---|---|
 | Production = `main` | Vercel shows `0696ab0` deployed for the portal and website. Live `/api/health` on both returns `{"status":"ok","database":"connected"}` (12 Oct 2026, 21:50 UTC). That endpoint only exists from `0696ab0` on, which confirms production runs it. |
-| Release candidate, local | Typechecks pass for portal, website and api. Portal unit tests: 144 pass, 0 fail (database tests are skipped locally). Portal and website `next build` and `nest build` pass. `npm audit --omit=dev` finds 0. Lockfile is consistent. |
+| Release candidate, local (`3a16cdc`) | Typechecks pass for portal, website and api. Portal unit tests: 145 pass, 0 fail (database tests are skipped locally). Portal and website `next build` and `nest build` pass. `npm audit --omit=dev` finds 0. Lockfile is consistent. |
 | Release candidate, Vercel previews | Portal and website preview deployments succeeded on Node 24. |
 | CI by workstream (before GitHub stopped running jobs) | **Roles (PR #14):** all jobs green, including E2E of 152 tests across 2 shards, the dynamic security scan and load. **Docs (PR #13):** all jobs green. **Quality (PR #17):** E2E shard 2 passed 71/71; shard 1 had one failure, a selector in the new spec, since fixed. Link-expiry, dynamic, load, SAST, secrets and dependencies passed. **Assist (PR #15):** E2E shard 1 passed 75/75, including `assisted-session.spec.ts`. One workshop test failed on shard 2 and one dynamic-scan item was flagged; both were fixed but not re-run. **Deps (PR #18) and Emails (PR #16):** CI was not run. |
 | CI on the merged candidate | **Not run.** Every job was refused with "recent account payments have failed or your spending limit needs to be increased". |
@@ -130,7 +156,7 @@ Every change narrows access; nothing was widened.
 
 **Release prerequisites:**
 1. **GitHub billing.** Settings → Billing and plans: fix the payment method or raise the Actions spending limit, then re-run CI on PR #19.
-2. **SEC-01c.** Delete `MASTER_ADMIN_PASSWORD` from Render and Vercel, or set it to an unused random value. Then approve or decline the proposed create-only seed change.
+2. **SEC-01c.** The create-only seed change is done. Delete `MASTER_ADMIN_PASSWORD` from Render and Vercel; the seed no longer needs it for an existing account.
 3. **Environment variables.** See `docs/OPERATIONS_CHECKLIST.md` §1.
    - Set `NEXT_PUBLIC_ORGANISATION_NAME`, `NEXT_PUBLIC_PORTAL_URL` and `NEXT_PUBLIC_WEBSITE_URL` on both Vercel projects.
    - Set `NEXT_PUBLIC_PORTAL_URL` on Render.
