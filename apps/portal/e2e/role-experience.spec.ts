@@ -16,7 +16,7 @@ test('a technician sees only their own exit passes under Security — never the 
   await as(page, 'technician');
   await expect(main(page).getByRole('link', { name: 'My exit passes', exact: true })).toBeVisible();
   await expect(main(page).getByRole('link', { name: 'Security', exact: true })).toHaveCount(0);
-  await expect(main(page).getByRole('link', { name: /^Approvals/ })).toHaveCount(0);
+  await expect(main(page).getByRole('link', { name: /^Approvals(\s*\d+)?$/ })).toHaveCount(0);
 
   await open(page, '/security');
   await expect(page).toHaveURL(/\/security\/exit-passes/);
@@ -45,7 +45,7 @@ test('a Security Officer has the whole desk', async ({ page }) => {
 
 test('a Workshop Manager approves passes but is not given the gate registers', async ({ page }) => {
   await as(page, 'workshop-manager');
-  await expect(main(page).getByRole('link', { name: /^Approvals/ })).toBeVisible();
+  await expect(main(page).getByRole('link', { name: /^Approvals(\s*\d+)?$/ })).toBeVisible();
   await expect(main(page).getByRole('link', { name: 'My exit passes', exact: true })).toBeVisible();
   await page.goto('/security/register');
   await expect(page).toHaveURL(/\/access-denied/);

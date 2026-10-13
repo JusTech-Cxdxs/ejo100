@@ -136,6 +136,9 @@ test('the platform team removes an expired item for good', async ({ page }) => {
   const item = await db().recycleBinItem.findFirstOrThrow({ where: { reference: S.purgeNumber, restoredAt: null }, orderBy: { deletedAt: 'desc' } });
   await db().recycleBinItem.update({ where: { id: item.id }, data: { purgeAfter: new Date(Date.now() - 60_000) } });
 
+  // Switch accounts: a signed-in visit to /login goes straight to the dashboard.
+  await page.goto('about:blank');
+  await page.context().clearCookies();
   await signIn(page, MASTER.email, MASTER.password);
   await open(page, `/recycle-bin?state=expired&q=${encodeURIComponent(S.purgeNumber)}`);
   const row = binRow(page, S.purgeNumber);

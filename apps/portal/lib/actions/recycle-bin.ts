@@ -55,8 +55,9 @@ export type BinOffer =
  * the form when allowed and eligible, a short note for managers when the
  * record has history and must go through its own workflow, else nothing. */
 export async function getRecycleBinOffer(entity: BinEntity, id: string): Promise<BinOffer> {
+  // Outside the try: someone who isn't signed in is refused, not told "nothing to offer".
+  await requireUser();
   try {
-    await requireUser();
     if (!isBinEntity(entity) || (await currentAssist())) return { mode: 'none' };
     const rec = await binRecord(entity, id);
     if (!rec || !(await inMyOrganisation(rec.organisationId))) return { mode: 'none' };

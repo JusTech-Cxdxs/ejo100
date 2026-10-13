@@ -95,7 +95,8 @@ export async function startAssistSession(input: { colleagueId: string; password:
   let attempt: Attempt;
   try {
     attempt = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`assist-consent:${p.userId}`}))`;
+      // The lock function returns void, which Prisma can't read back: select a plain 1 instead.
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`assist-consent:${p.userId}`}))`;
       const [failures, allFailures] = await Promise.all([
         tx.auditLog.count({ where: { userId: p.userId, action: 'assist.consent_failed', entityType: 'User', entityId: colleague.id, createdAt: { gte: since } } }),
         tx.auditLog.count({ where: { userId: p.userId, action: 'assist.consent_failed', createdAt: { gte: since } } }),

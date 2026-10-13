@@ -41,7 +41,7 @@ test('staff: an expired "forgot password" link is refused, with a way forward', 
   await page.getByLabel('Work email').fill(person.email);
   await page.getByRole('button', { name: 'Send reset link' }).click();
   await expect(page.getByText('If an account exists')).toBeVisible();
-  const link = linkIn(await mailAfter(request, person.email, /new EJO 100 password/, since), /reset-password/);
+  const link = linkIn(await mailAfter(request, person.email, /Reset your EJO 100 password/, since), /reset-password/);
   const token = /reset-password\/([^/?#]+)/.exec(link)?.[1];
   expect(token, `a token in ${link}`).toBeTruthy();
 
@@ -66,7 +66,7 @@ test('customer: an expired "forgot password" link is refused, with a way forward
   await page.getByLabel('Email').fill(OTHER_PORTAL_CUSTOMER.email);
   await page.getByRole('button', { name: 'Send reset link' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Check your email' })).toBeVisible();
-  const link = linkIn(await mailAfter(request, OTHER_PORTAL_CUSTOMER.email, /Set a new password for your customer portal/, since), /\/customer-portal\/reset-password\?token=/);
+  const link = linkIn(await mailAfter(request, OTHER_PORTAL_CUSTOMER.email, /Reset your customer portal password/, since), /\/customer-portal\/reset-password\?token=/);
   const token = new URL(link).searchParams.get('token');
   expect(token).toBeTruthy();
 

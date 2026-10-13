@@ -7,7 +7,6 @@ import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { Marquee } from './Marquee';
 import { NavigationLoadingProvider } from './NavigationLoadingProvider';
-import { CONTENT_AREA_ID } from './content-area';
 
 export const SIDEBAR_COOKIE = 'ejo-sidebar';
 
@@ -114,8 +113,8 @@ export function AppShell({
         {banner}
         <Marquee />
         {/* The working area. Loading and saving overlays cover only this box
-            (see CONTENT_AREA_ID), so the menu, header and ticker never disappear. */}
-        <div id={CONTENT_AREA_ID} className="relative flex min-h-0 min-w-0 flex-1">
+            (see CONTENT_AREA_ATTR), so the menu, header and ticker never disappear. */}
+        <div data-ejo-content="" className="relative flex min-h-0 min-w-0 flex-1">
           <main id="main" tabIndex={-1} className="ejo-scroll flex min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--ejo-bg)] pb-[env(safe-area-inset-bottom)] focus:outline-none">
             <NavigationLoadingProvider>{children}</NavigationLoadingProvider>
           </main>
