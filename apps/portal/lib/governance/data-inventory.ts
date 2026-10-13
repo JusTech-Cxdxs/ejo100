@@ -35,7 +35,7 @@ export type Lifecycle =
   | 'ARCHIVE' //        deactivated / archived, kept for history
   | 'CASCADE' //        lives and dies with its parent
   | 'EXPIRES' //        removed when it expires (sessions, tokens)
-  | 'PLATFORM_DELETE' //permanent delete by the platform team only (Recycle Bin replaces this — next phase)
+  | 'RECYCLE_BIN' //    only removed through the Recycle bin (restorable, then purged after the retention period)
   | 'EDITABLE'; //      configuration that is simply edited
 
 /** May AI ever read it? Always through the same authorization as a person — AI is never an authority. */
@@ -49,6 +49,9 @@ export type DataEntry = {
   lifecycle: Lifecycle;
   retention: string;
   ai: AiAccess;
+  /** A record created by mistake may be moved to the Recycle bin while nothing
+   * of consequence has happened to it (lib/recycle-bin/rules.ts decides). */
+  recycleBin?: true;
 };
 
 const FIN_RETENTION = 'At least 6 years after the financial year (Nigerian accounting-record retention)';
@@ -89,7 +92,7 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   CalendarDelegate: { tenancy: 'USER', owner: 'ownerId', classification: ['INTERNAL'], lifecycle: 'EDITABLE', retention: 'While the delegation stands', ai: 'AUTHORISED_USER' },
 
   // ── Customers and vehicles ─────────────────────────────────────────
-  Customer: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['PERSONAL'], lifecycle: 'PLATFORM_DELETE', retention: PERSONAL_RETENTION, ai: 'AUTHORISED_USER' },
+  Customer: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['PERSONAL'], lifecycle: 'RECYCLE_BIN', retention: PERSONAL_RETENTION, ai: 'AUTHORISED_USER', recycleBin: true },
   CustomerCompany: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: PERSONAL_RETENTION, ai: 'AUTHORISED_USER' },
   CustomerAddress: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: PERSONAL_RETENTION, ai: 'AUTHORISED_USER' },
   CustomerContact: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: PERSONAL_RETENTION, ai: 'AUTHORISED_USER' },
@@ -101,11 +104,11 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   CustomerNotificationRead: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'Life of the customer account', ai: 'NEVER' },
   AssistSession: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['SECURITY', 'AUDIT'], lifecycle: 'IMMUTABLE', retention: 'Kept with the audit trail', ai: 'NEVER' },
   ErrorEvent: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EXPIRES', retention: '90 days, then removed by the clean-up job', ai: 'NEVER' },
-  CustomerVehicle: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['PERSONAL'], lifecycle: 'PLATFORM_DELETE', retention: OPS_RETENTION, ai: 'AUTHORISED_USER' },
+  CustomerVehicle: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['PERSONAL'], lifecycle: 'RECYCLE_BIN', retention: OPS_RETENTION, ai: 'AUTHORISED_USER', recycleBin: true },
   ServiceReminderLog: { tenancy: 'VIA_PARENT', owner: 'vehicleId', classification: ['INTERNAL'], lifecycle: 'IMMUTABLE', retention: OPS_RETENTION, ai: 'AUTHORISED_USER' },
 
   // ── Workshop: Job Cards ────────────────────────────────────────────
-  JobCard: { tenancy: 'BRANCH', owner: 'branchId', classification: ['INTERNAL', 'FINANCIAL'], lifecycle: 'STATE_MACHINE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
+  JobCard: { tenancy: 'BRANCH', owner: 'branchId', classification: ['INTERNAL', 'FINANCIAL'], lifecycle: 'STATE_MACHINE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER', recycleBin: true },
   JobCardComplaint: { tenancy: 'VIA_PARENT', owner: 'jobCardId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
   Estimate: { tenancy: 'VIA_PARENT', owner: 'jobCardId', classification: ['FINANCIAL'], lifecycle: 'CASCADE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
   EstimateLineItem: { tenancy: 'VIA_PARENT', owner: 'estimateId', classification: ['FINANCIAL'], lifecycle: 'CASCADE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
@@ -115,7 +118,7 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   CloseRequest: { tenancy: 'VIA_PARENT', owner: 'jobCardId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
 
   // ── Workshop: Vehicle Services ─────────────────────────────────────
-  VehicleService: { tenancy: 'BRANCH', owner: 'branchId', classification: ['INTERNAL', 'FINANCIAL'], lifecycle: 'STATE_MACHINE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
+  VehicleService: { tenancy: 'BRANCH', owner: 'branchId', classification: ['INTERNAL', 'FINANCIAL'], lifecycle: 'STATE_MACHINE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER', recycleBin: true },
   VehicleServiceComplaint: { tenancy: 'VIA_PARENT', owner: 'vehicleServiceId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
   VehicleServiceCloseRequest: { tenancy: 'VIA_PARENT', owner: 'vehicleServiceId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
   VehicleServiceCancellationRequest: { tenancy: 'VIA_PARENT', owner: 'vehicleServiceId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
@@ -125,7 +128,7 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   ServiceEstimateLineItem: { tenancy: 'VIA_PARENT', owner: 'estimateId', classification: ['FINANCIAL'], lifecycle: 'CASCADE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
 
   // ── Store & procurement ────────────────────────────────────────────
-  Part: { tenancy: 'BRANCH', owner: 'branchId', classification: ['INTERNAL', 'FINANCIAL'], lifecycle: 'ARCHIVE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
+  Part: { tenancy: 'BRANCH', owner: 'branchId', classification: ['INTERNAL', 'FINANCIAL'], lifecycle: 'ARCHIVE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER', recycleBin: true },
   PartUnitOfMeasure: { tenancy: 'VIA_PARENT', owner: 'partId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'With its part', ai: 'AUTHORISED_USER' },
   PartStock: { tenancy: 'VIA_PARENT', owner: 'partId', classification: ['FINANCIAL'], lifecycle: 'EDITABLE', retention: 'Current state; movements are kept separately', ai: 'AUTHORISED_USER' },
   PartBatch: { tenancy: 'VIA_PARENT', owner: 'partId', classification: ['FINANCIAL'], lifecycle: 'IMMUTABLE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
@@ -173,5 +176,10 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   Announcement: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: '2 years', ai: 'AUTHORISED_USER' },
 
   // ── Audit ──────────────────────────────────────────────────────────
+  // v30 — what was deleted by mistake: a full copy of the deleted rows until it
+  // is restored or the retention period (RECYCLE_BIN_DAYS, 7–90, default 30)
+  // ends; then only a tombstone without personal details stays. Not journaled
+  // (the move, restore and purge write their own audit entries).
+  RecycleBinItem: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['PERSONAL', 'FINANCIAL'], lifecycle: 'EXPIRES', retention: 'Copy kept for the restore period (30 days by default), then removed by the daily clean-up; the tombstone is kept with the audit trail', ai: 'NEVER' },
   AuditLog: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['AUDIT'], lifecycle: 'IMMUTABLE', retention: 'At least 6 years; never edited or deleted by anyone', ai: 'AGGREGATE_ONLY' },
 };

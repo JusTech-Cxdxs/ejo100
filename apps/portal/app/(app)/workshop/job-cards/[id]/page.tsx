@@ -26,11 +26,12 @@ import { EstimateLineItemForm } from '@/components/EstimateLineItemForm';
 import { EstimateLinesTable, EstimateLineEditLink, EstimateLineRemoveButton, EstimateLineEditor, type EstimateLineView } from '@/components/EstimateLinesTable';
 import { requestStoreMatchingFormAction } from '@/lib/actions/store-form-handlers';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
-import { assignTechnicianFormAction, deleteJobCardFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, returnEstimateForChangesFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction, requestJobCardCloseFormAction, approveCloseRequestFormAction, declineCloseRequestFormAction, updateJobCardStatusFormAction } from '@/lib/actions/workshop-form-handlers';
+import { assignTechnicianFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, returnEstimateForChangesFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction, requestJobCardCloseFormAction, approveCloseRequestFormAction, declineCloseRequestFormAction, updateJobCardStatusFormAction } from '@/lib/actions/workshop-form-handlers';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
-import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
+import { RecycleBinPanel } from '@/components/RecycleBinPanel';
+import { getRecycleBinOffer } from '@/lib/actions/recycle-bin';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
@@ -55,6 +56,8 @@ const STATUS_LABEL: Record<string, string> = {
 // Unlisted actions fall back to humanizeAction(), so a new audit action
 // only needs an entry here for a nicer label.
 const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'job_card.moved_to_recycle_bin': 'Moved to the Recycle bin',
+  'job_card.restored_from_recycle_bin': 'Restored from the Recycle bin',
   'road_test.requested': 'Road test requested',
   'road_test.approved': 'Road test approved by the Manager',
   'road_test.declined': 'Road test declined',
@@ -343,7 +346,7 @@ export default async function JobCardDetailPage({
   // Round 1: everything that needs only the id, in parallel (each database
   // round trip crosses regions). An id the viewer can't see is a 404.
   if (!(await jobCardVisible(id, 'page'))) notFound();
-  const [jobCard, technicians, isMasterAdmin, viewerId, auditTrail, eligibleSupervisors, estimate, payments, cancellationRequests, closeRequests, sourcingNeeds, refunds, warranties, roadTests, billing] = await Promise.all([
+  const [jobCard, technicians, isMasterAdmin, viewerId, auditTrail, eligibleSupervisors, estimate, payments, cancellationRequests, closeRequests, sourcingNeeds, refunds, warranties, roadTests, billing, binOffer] = await Promise.all([
     getJobCard(id),
     listTechnicianCandidates(),
     currentUserIsMasterAdmin(),
@@ -359,6 +362,7 @@ export default async function JobCardDetailPage({
     listWarrantiesFor({ jobCardId: id }),
     listRoadTestsFor({ jobCardId: id }),
     getJobCardBilling(id),
+    getRecycleBinOffer('JobCard', id),
   ]);
   if (!jobCard) notFound();
   // Customer names link to their Customers (CRM) page for those who may open it.
@@ -1730,23 +1734,7 @@ export default async function JobCardDetailPage({
             </div>
           ) : null}
 
-          {isMasterAdmin ? (
-            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
-              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Danger zone</h2>
-              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Permanently deletes this Job Card and its complaints. This cannot be undone.
-              </p>
-              <form action={deleteJobCardFormAction} className="mt-4">
-                <FormPendingOverlay />
-                <input type="hidden" name="jobCardId" value={jobCard.id} />
-                <ConfirmDeleteButton
-                  confirmMessage={`Delete Job Card ${jobCard.jobNumber}? This permanently removes it and its complaints. This cannot be undone.`}
-                  label="Delete this Job Card"
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
-                />
-              </form>
-            </div>
-          ) : null}
+          <RecycleBinPanel offer={binOffer} entity="JobCard" id={jobCard.id} />
         </div>
       </div>
 

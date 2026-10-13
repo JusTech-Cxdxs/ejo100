@@ -139,18 +139,6 @@ async function currentUserIsMasterAdminUncached(): Promise<boolean> {
   return Boolean(match);
 }
 
-/** Deleting a vehicle or Job Card is permanent, so only a Master Administrator may do it. */
-async function requireMasterAdmin(): Promise<{ id: string }> {
-  const user = await requireUser();
-  const match = await prisma.userRole.findFirst({
-    where: { userId: user.id, role: { isSuperAdmin: true } },
-  });
-  if (!match) {
-    throw new WorkshopActionError('You do not have permission to delete records.');
-  }
-  return user;
-}
-
 
 /** Only the Job Card's assigned supervisor, or a Master Administrator, may approve or reject it. */
 export async function requireJobCardApprover(jobCard: { supervisorId: string | null }): Promise<{ id: string }> {
@@ -719,16 +707,6 @@ export async function getVehicleAuditTrail(vehicleId: string): Promise<VehicleAu
     metadata: e.metadata,
     user: e.userId ? (userById.get(e.userId) ?? null) : null,
   }));
-}
-
-/** Permanently deletes a vehicle; schema cascades remove its Job Cards and
- * their complaints. Irreversible; the UI confirms first. */
-export async function deleteVehicle(vehicleId: string): Promise<void> {
-  const user = await requireMasterAdmin();
-  const snapshot = await prisma.customerVehicle.findUnique({ where: { id: vehicleId }, select: { plateNumber: true, chassisNumber: true, make: true, model: true, year: true, customerId: true } });
-  await prisma.customerVehicle.delete({ where: { id: vehicleId } });
-  // The audit entry outlives the vehicle.
-  await writeAuditLog({ userId: user.id, action: 'vehicle.deleted', entityType: 'CustomerVehicle', entityId: vehicleId, metadata: { ...snapshot } });
 }
 
 // ---------------------------------------------------------------------------
@@ -1552,21 +1530,6 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
   } catch (err) {
     logFailure('Failed to send supervisor reassignment email for Job Card', jobCard.jobNumber, err);
   }
-}
-
-/** Permanently deletes a Job Card and (via cascades) its complaints. The
- * customer and vehicle are kept. Irreversible; the UI confirms first. */
-export async function deleteJobCard(jobCardId: string): Promise<void> {
-  const user = await requireMasterAdmin();
-  const snapshot = await prisma.jobCard.findUnique({ where: { id: jobCardId }, select: { jobNumber: true, status: true, customerId: true, vehicleId: true } });
-  // A Vehicle Service escalated into this Job Card would otherwise stay
-  // "Escalated" to nothing and read-only forever, so it is cancelled.
-  await prisma.vehicleService.updateMany({
-    where: { escalatedToJobCardId: jobCardId },
-    data: { status: 'CANCELLED', cancelledAt: new Date(), escalatedToJobCardId: null },
-  });
-  await prisma.jobCard.delete({ where: { id: jobCardId } });
-  await writeAuditLog({ userId: user.id, action: 'job_card.deleted', entityType: 'JobCard', entityId: jobCardId, metadata: { ...snapshot } });
 }
 
 /** Assigns a technician and resets acceptance to PENDING; a previous

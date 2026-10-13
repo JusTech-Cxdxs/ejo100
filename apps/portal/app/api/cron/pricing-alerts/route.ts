@@ -5,6 +5,7 @@ import { isCronRequest } from '@/lib/cron-auth';
 import { setAuditActor } from '@ejo/database';
 import { recordJobRun } from '@/lib/job-runs';
 import { purgeOldErrorEvents } from '@/lib/error-events';
+import { purgeExpiredOnSchedule } from '@/lib/recycle-bin/server';
 import { getOpenPricingAlertsForDigest } from '@/lib/pricing-digest';
 import { sendEmail } from '@/lib/email';
 import { renderPricingAlertsDigestEmail } from '@/lib/email-templates/pricing-alerts-digest';
@@ -72,6 +73,9 @@ export async function GET(request: NextRequest) {
   // Error references are kept for 90 days (data inventory: ErrorEvent).
   const purged = await purgeOldErrorEvents(90).catch((err) => { logFailure('Error log clean-up failed', err); return null; });
   if (purged !== null) await recordJobRun('error-log-cleanup', { errorReferencesRemoved: purged });
+  // Recycle bin items past their restore period (data inventory: RecycleBinItem).
+  const binned = await purgeExpiredOnSchedule().catch((err) => { logFailure('Recycle bin clean-up failed', err); return null; });
+  if (binned !== null) await recordJobRun('recycle-bin-purge', { itemsRemoved: binned });
   return NextResponse.json({
     branchesWithOpenAlerts: groups.length,
     emailsSent,

@@ -29,6 +29,8 @@ export const LOCKABLE = {
   role: { table: 'roles', column: 'id' },
   partRequestSlip: { table: 'part_request_slips', column: 'id' },
   customerVehicle: { table: 'customer_vehicles', column: 'id' },
+  customer: { table: 'customers', column: 'id' },
+  part: { table: 'parts', column: 'id' },
 } as const;
 export type LockTarget = keyof typeof LOCKABLE;
 

@@ -89,6 +89,8 @@ const P = {
   room: <><rect x="3" y="4" width="18" height="14" rx="2" /><path d="M7 18v3M17 18v3M7 9h10M7 13h6" /></>,
   handshake: <><path d="M2 11l4-4 4 2 3-2 4 1 5 3" /><path d="M6 7v6l5 5a1.5 1.5 0 0 0 2-2l1 1a1.5 1.5 0 0 0 2-2l1 0a1.5 1.5 0 0 0 1-2.5L14 9" /></>,
   roadmap: <><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>,
+  trash: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" /><path d="M10 11v6M14 11v6" /></>,
+  restore: <><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7" /><path d="M4 4v4.7h4.7" /><path d="M12 8v4l2.5 1.5" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof P;
@@ -107,5 +109,5 @@ export function Icon({ name, size = 18, className, strokeWidth = 1.7, title }: {
 export const MODULE_ICON: Record<string, IconName> = {
   dashboard: 'dashboard', organisation: 'building', structure: 'sitemap', branches: 'branch', users: 'users', roles: 'shield', permissions: 'key',
   crm: 'handshake', workshop: 'wrench', inventory: 'boxes', warranty: 'shield-check', security: 'lock', scheduling: 'calendar', analytics: 'chart',
-  notifications: 'bell', 'audit-logs': 'history', settings: 'settings', 'exit-passes': 'exit', deliveries: 'truck', approvals: 'check-circle', profile: 'user', assist: 'user-plus',
+  notifications: 'bell', 'audit-logs': 'history', 'recycle-bin': 'trash', settings: 'settings', 'exit-passes': 'exit', deliveries: 'truck', approvals: 'check-circle', profile: 'user', assist: 'user-plus',
 };

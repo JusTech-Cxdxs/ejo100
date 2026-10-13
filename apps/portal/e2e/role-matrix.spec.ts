@@ -20,6 +20,7 @@ const AREAS: { url: string; needs: PermissionKey[] }[] = [
   { url: '/structure', needs: ['admin.structure.manage'] },
   { url: '/branches', needs: ['admin.structure.manage'] },
   { url: '/audit-logs', needs: ['audit.view'] },
+  { url: '/recycle-bin', needs: ['admin.recycle_bin.manage'] },
   { url: '/analytics', needs: ['analytics.business.view'] },
   { url: '/workshop', needs: ['workshop.view'] },
   { url: '/workshop/job-cards', needs: ['workshop.view'] },

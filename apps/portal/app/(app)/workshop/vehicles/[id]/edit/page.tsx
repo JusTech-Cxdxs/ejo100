@@ -10,10 +10,12 @@ import { VehiclePartsFitted } from '@/components/VehiclePartsFitted';
 import { humanizeAction } from '@/lib/humanize-action';
 import { listWarrantiesFor } from '@/lib/actions/warranty';
 import { WarrantyList } from '@/components/WarrantyList';
-import { getVehicle, getLastEditInfo, getVehicleAuditTrail, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
+import { getVehicle, getLastEditInfo, getVehicleAuditTrail } from '@/lib/actions/workshop';
+import { getRecycleBinOffer } from '@/lib/actions/recycle-bin';
+import { RecycleBinPanel } from '@/components/RecycleBinPanel';
 import { getVehicleServiceHealth, getVehicleAnalytics } from '@/lib/actions/vehicle-service';
 import { getVehicleReminderHistory } from '@/lib/actions/vehicle-service-reminders';
-import { updateVehicleFormAction, deleteVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
+import { updateVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { sendManualServiceReminderFormAction } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -21,7 +23,6 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
-import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
 import { AuditTrail } from '@/components/AuditTrail';
 import { VehicleMileageTrendChart } from '@/components/LazyCharts';
 import { VehicleVisitHistoryChart } from '@/components/LazyCharts';
@@ -36,6 +37,8 @@ const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle.created': 'Vehicle registered',
   'vehicle.updated': 'Vehicle details updated',
   'vehicle.deleted': 'Vehicle deleted',
+  'vehicle.moved_to_recycle_bin': 'Moved to the Recycle bin',
+  'vehicle.restored_from_recycle_bin': 'Restored from the Recycle bin',
   'vehicle.service_reminder_sent': 'Service reminder emailed to the customer',
 };
 
@@ -83,13 +86,13 @@ export default async function VehiclePage({
   const { id } = await params;
   const { error, edit, status } = await searchParams;
   // Everything on this page needs only the vehicle's id — one round, all at once.
-  const [vehicle, vehicleWarranties, partsFitted, lastEdit, auditTrail, isMasterAdmin, serviceHealth, analytics, reminderHistory, coveredValue] = await Promise.all([
+  const [vehicle, vehicleWarranties, partsFitted, lastEdit, auditTrail, binOffer, serviceHealth, analytics, reminderHistory, coveredValue] = await Promise.all([
     getVehicle(id),
     listWarrantiesFor({ vehicleId: id }),
     listPartsFittedToVehicle(id),
     getLastEditInfo('CustomerVehicle', id, 'vehicle.updated'),
     getVehicleAuditTrail(id),
-    currentUserIsMasterAdmin(),
+    getRecycleBinOffer('CustomerVehicle', id),
     getVehicleServiceHealth(id),
     getVehicleAnalytics(id),
     getVehicleReminderHistory(id),
@@ -505,23 +508,7 @@ export default async function VehiclePage({
           </dl>
           </div>
 
-          {isMasterAdmin ? (
-            <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
-              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Danger zone</h2>
-              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Permanently deletes this vehicle and every Job Card for it. This cannot be undone.
-              </p>
-              <form action={deleteVehicleFormAction} className="mt-4">
-                <FormPendingOverlay />
-                <input type="hidden" name="vehicleId" value={vehicle.id} />
-                <ConfirmDeleteButton
-                  confirmMessage={`Delete ${vehicle.plateNumber || vehicle.chassisNumber || 'this vehicle'}? This permanently removes it and every Job Card for it. This cannot be undone.`}
-                  label="Delete this vehicle"
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
-                />
-              </form>
-            </div>
-          ) : null}
+          <RecycleBinPanel offer={binOffer} entity="CustomerVehicle" id={vehicle.id} />
         </div>
       </div>
 

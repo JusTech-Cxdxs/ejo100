@@ -8,6 +8,7 @@ import { createVehicleFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { SegmentedCodeInput } from '@/components/SegmentedCodeInput';
 import { CustomerSearchField } from '@/components/CustomerSearchField';
 import { VehicleMakeModelPicker } from '@/components/VehicleMakeModelPicker';
@@ -20,10 +21,10 @@ import { CustomerLink } from '@/components/CustomerLink';
 export default async function WorkshopVehiclesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string; binned?: string }>;
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
-  const { q, type, status, error } = await searchParams;
+  const { q, type, status, error, binned } = await searchParams;
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
@@ -45,9 +46,7 @@ export default async function WorkshopVehiclesPage({
       {status === 'vehicle_updated' ? (
         <FormFeedbackBanner kind="success" message="Vehicle updated." />
       ) : null}
-      {status === 'vehicle_deleted' ? (
-        <FormFeedbackBanner kind="success" message="Vehicle deleted." />
-      ) : null}
+      <BinnedNotice reference={binned} />
       {error ? <FormFeedbackBanner kind="error" message={error} /> : null}
 
       <CategoryFilterTabs basePath="/workshop/vehicles" currentType={vehicleType} preserveParams={{ q }} />

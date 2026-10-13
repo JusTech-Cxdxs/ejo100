@@ -1,4 +1,5 @@
 import { FormJumpLink } from '@/components/ui/FormJumpLink';
+import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { allows, guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
@@ -32,10 +33,10 @@ const TRACKING_TYPE_LABEL: Record<string, string> = {
 export default async function InventoryPartsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; status?: string; q?: string }>;
+  searchParams: Promise<{ error?: string; status?: string; q?: string; binned?: string }>;
 }) {
   await guardAnyPage(['store.view'], '/inventory');
-  const { error, status, q } = await searchParams;
+  const { error, status, q, binned } = await searchParams;
   const branchId = await getStoreBranchId();
   const [parts, partPolicies, canManage] = await Promise.all([listParts(branchId, q), listWarrantyPolicies('PART', { state: 'active' }), allows('store.parts.manage', { branchId })]);
 
@@ -53,6 +54,7 @@ export default async function InventoryPartsPage({
           <FormFeedbackBanner kind="error" message={error} />
         </div>
       ) : null}
+      <BinnedNotice reference={binned} />
       {status === 'part_created' ? (
         <div className="mb-6">
           <FormFeedbackBanner kind="success" message="Part added to the catalog." />

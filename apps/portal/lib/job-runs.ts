@@ -19,6 +19,7 @@ export const JOBS: { key: string; name: string; when: string; does: string }[] =
   { key: 'access-notices', name: 'Access-changed emails', when: 'Every 10 minutes, with the reminders', does: 'When permissions are added to or removed from a role, emails everyone who holds it their full, current access — one email per batch of changes.' },
   { key: 'pricing-alerts', name: 'Pricing alerts digest', when: '8:00 am daily (Vercel)', does: 'Emails Store staff one summary of open pricing alerts — only when there are open alerts.' },
   { key: 'error-log-cleanup', name: 'Error log clean-up', when: '8:00 am daily, with the pricing digest (Vercel)', does: 'Removes error references older than 90 days from the Error log.' },
+  { key: 'recycle-bin-purge', name: 'Recycle bin clean-up', when: '8:00 am daily, with the pricing digest (Vercel)', does: 'Permanently removes Recycle bin items whose restore period has ended (30 days unless RECYCLE_BIN_DAYS says otherwise). A short record of what was removed, by whom and why stays.' },
 ];
 
 export type JobStatus = { key: string; name: string; when: string; does: string; lastRun: Date | null; lastResult: Record<string, unknown> | null; runs7d: number };

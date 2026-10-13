@@ -20,8 +20,6 @@ import {
   createJobCard,
   updateJobCardStatus,
   assignTechnician,
-  deleteVehicle,
-  deleteJobCard,
   approveJobCard,
   rejectJobCard,
   acceptTechnicianAssignment,
@@ -386,33 +384,6 @@ export async function assignTechnicianFormAction(formData: FormData) {
   }
   revalidatePath(`/workshop/job-cards/${jobCardId}`);
   revalidatePath('/workshop/job-cards');
-}
-
-export async function deleteVehicleFormAction(formData: FormData) {
-  const vehicleId = str(formData, 'vehicleId');
-  try {
-    await deleteVehicle(vehicleId);
-  } catch (err) {
-    const message = friendlyError(err, 'Could not delete vehicle.', 'workshop-form-handlers');
-    redirect(`/workshop/vehicles?error=${encodeURIComponent(message)}`);
-  }
-  revalidatePath('/workshop/vehicles');
-  revalidatePath('/workshop/job-cards');
-  redirect('/workshop/vehicles?status=vehicle_deleted');
-}
-
-/** `redirectTo` says where the delete was triggered: the list stays on the
- * list; the Job Card's own page no longer exists, so it goes back to the list. */
-export async function deleteJobCardFormAction(formData: FormData) {
-  const jobCardId = str(formData, 'jobCardId');
-  try {
-    await deleteJobCard(jobCardId);
-  } catch (err) {
-    const message = friendlyError(err, 'Could not delete Job Card.', 'workshop-form-handlers');
-    redirect(`/workshop/job-cards?error=${encodeURIComponent(message)}`);
-  }
-  revalidatePath('/workshop/job-cards');
-  redirect('/workshop/job-cards?status=job_card_deleted');
 }
 
 export async function requestJobCardCancellationFormAction(formData: FormData) {

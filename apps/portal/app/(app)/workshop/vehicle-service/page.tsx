@@ -18,6 +18,7 @@ import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { LoadingLink } from '@/components/LoadingLink';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { SubmitButton } from '@/components/SubmitButton';
 import { ServiceComplaintListInput } from '@/components/ServiceComplaintListInput';
 import { formatDateOnly } from '@/lib/utils/format-date';
@@ -45,10 +46,10 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function VehicleServicePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; error?: string; status?: string; editInterval?: string; outcome?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; error?: string; status?: string; editInterval?: string; outcome?: string; binned?: string }>;
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
-  const { q, type, error, status, editInterval, outcome: rawOutcome } = await searchParams;
+  const { q, type, error, status, editInterval, outcome: rawOutcome, binned } = await searchParams;
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
   const outcomeFilter = parseOutcomeFilter(rawOutcome);
@@ -137,11 +138,7 @@ export default async function VehicleServicePage({
         handling it here.
       </p>
 
-      {status === 'vehicle_service_deleted' ? (
-        <div className="mb-6 max-w-xl">
-          <FormFeedbackBanner kind="success" message="Vehicle Service deleted." />
-        </div>
-      ) : null}
+      <div className="max-w-xl"><BinnedNotice reference={binned} /></div>
       {status === 'interval_updated' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Primary Service interval updated." />
