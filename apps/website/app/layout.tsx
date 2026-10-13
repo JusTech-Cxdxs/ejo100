@@ -1,5 +1,5 @@
 import { websiteBaseUrl } from '@/lib/site-urls';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -28,13 +28,23 @@ export const metadata: Metadata = {
     title: siteConfig.companyShortName,
     description: siteConfig.description || siteConfig.tagline || undefined,
   },
+  // Made from public/images/logo/logo.png (public/icons).
   icons: {
-    icon: [
-      { url: '/favicon.ico' },
-      { url: '/favicon.svg', type: 'image/svg+xml' },
-    ],
-    apple: '/apple-touch-icon.png',
+    icon: [{ url: '/icons/favicon-32.png', sizes: '32x32', type: 'image/png' }, { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
+    shortcut: '/icons/favicon-32.png',
+    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180' }],
   },
+  // Added to an iPhone's home screen, the customer portal opens full screen.
+  appleWebApp: { capable: true, title: siteConfig.organisationName, statusBarStyle: 'default' },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#16a34a' },
+    { media: '(prefers-color-scheme: dark)', color: '#06120a' },
+  ],
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

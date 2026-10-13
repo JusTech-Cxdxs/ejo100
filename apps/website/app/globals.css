@@ -192,3 +192,12 @@ html {
     font-size: 16px;
   }
 }
+
+/* Phones and the installed customer portal: no grey flash on tap, no font
+   inflation when the phone is turned, no sideways rubber-band. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+html, body { overscroll-behavior-x: none; }

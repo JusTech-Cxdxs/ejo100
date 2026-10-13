@@ -236,7 +236,8 @@ function cleanArrival(i: { vehicleType?: string; plates?: string[]; idType?: str
 }
 
 async function activeHost(id: string) {
-  const host = await prisma.user.findUnique({ where: { id }, select: { id: true, fullName: true, email: true, isActive: true } });
+  // The host must be in the desk's own organisation.
+  const host = await prisma.user.findFirst({ where: { id, ...(await orgWhere()) }, select: { id: true, fullName: true, email: true, isActive: true } });
   if (!host?.isActive) throw new SecurityError('That host is not an active member of staff.');
   return host;
 }
@@ -268,11 +269,10 @@ export async function updateBooking(visitId: string, input: VisitInput): Promise
   const v = await prisma.visit.findUnique({ where: { id: visitId }, select: { status: true, visitNumber: true, hostUserId: true, registeredById: true } });
   if (!v) throw new SecurityError('Visit not found.');
   if (v.status !== 'EXPECTED') throw new SecurityError('Only a booking that has not arrived can be changed.');
-  if (!roles.isFrontDesk && v.hostUserId !== user.id && v.registeredById !== user.id) throw new SecurityError('Only the host, whoever booked it, Reception or Security can change it.');
-  // Acting as the desk (not as the host or booker): the desk's own branch only.
-  if (v.hostUserId !== user.id && v.registeredById !== user.id) await onMyDesk('visit', visitId, 'updateBooking');
+  // Bookings are made and changed at the desk only, the same as preRegisterVisit.
+  if (!roles.isFrontDesk) return refuse('security.reception.operate', 'updateBooking', 'Bookings are changed by Security or Reception. Ask them to update it.');
+  await onMyDesk('visit', visitId, 'updateBooking');
   const data = cleanParty(input);
-  if (data.hostUserId !== user.id && !roles.isFrontDesk && data.hostUserId !== v.hostUserId) throw new SecurityError('You can only book your own visitors.');
   if (!input.expectedAt || Number.isNaN(new Date(input.expectedAt).getTime())) throw new SecurityError('Enter when the visitor is expected.');
   await activeHost(data.hostUserId);
   claimed(await prisma.visit.updateMany({ where: { id: visitId, status: 'EXPECTED' }, data: { ...data, expectedAt: input.expectedAt } }));
@@ -458,7 +458,7 @@ export async function createExitPass(input: ExitPassInput): Promise<{ id: string
   // Provisional return time; reset from the actual time out at the gate.
   const back = input.returning ? new Date((out ?? new Date()).getTime() + minutes! * 60000) : null;
   const employees = ids.length
-    ? await prisma.user.findMany({ where: { id: { in: ids }, isActive: true }, select: { id: true, fullName: true, employeeId: true, department: { select: { name: true } }, employeeProfile: { select: { jobTitle: true } } } })
+    ? await prisma.user.findMany({ where: { id: { in: ids }, isActive: true, ...(await orgWhere()) }, select: { id: true, fullName: true, employeeId: true, department: { select: { name: true } }, employeeProfile: { select: { jobTitle: true } } } })
     : [];
   if (employees.length !== ids.length) throw new SecurityError('One of the employees chosen is not an active member of staff.');
   const passNumber = await nextNumber('EP');
@@ -710,6 +710,37 @@ export async function getVisit(id: string) {
   return visibleOrNull(v, `Visit:${id}`, { people: [v?.host?.id] });
 }
 
+/** The signed-in person's own visitors: booked for today or later, on site
+ * now, and the last 90 days. Filtered by the session's user id (never an id
+ * from the page) and fenced to their organisation's branches. */
+export async function listMyVisits() {
+  const user = await requireUser();
+  const reach = await reachWhere('security.exit_pass.request');
+  const startOfToday = new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T00:00:00+01:00`);
+  const since = new Date(Date.now() - 90 * 86400000);
+  const rows = await prisma.visit.findMany({
+    where: {
+      ...reach,
+      hostUserId: user.id,
+      OR: [
+        { status: 'EXPECTED', expectedAt: { gte: startOfToday } },
+        { status: 'CHECKED_IN' },
+        { status: 'CHECKED_OUT', createdAt: { gte: since } },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+    select: { id: true, visitNumber: true, passNumber: true, status: true, visitorName: true, partySize: true, company: true, purpose: true, expectedAt: true, expectedDurationMinutes: true, extendedMinutes: true, checkedInAt: true, checkedOutAt: true, receivedAt: true, isWalkIn: true },
+  });
+  type Row = (typeof rows)[number];
+  const at = (d: Date | null) => (d ? new Date(d).getTime() : 0);
+  return {
+    expected: rows.filter((v: Row) => v.status === 'EXPECTED').sort((a: Row, b: Row) => at(a.expectedAt) - at(b.expectedAt)),
+    onSite: rows.filter((v: Row) => v.status === 'CHECKED_IN').sort((a: Row, b: Row) => at(a.checkedInAt) - at(b.checkedInAt)),
+    recent: rows.filter((v: Row) => v.status === 'CHECKED_OUT'),
+  };
+}
+
 export async function listExitPasses(scope: 'mine' | 'to_decide' | 'all', q?: string) {
   const user = await requireUser();
   // Own passes and the ones waiting on me: anywhere in my organisation; the whole list: the Security desk.
@@ -833,7 +864,7 @@ export async function getSecurityDashboardItems(): Promise<{ id: string; title: 
     roles.isCso || roles.isMaster ? prisma.securityIncident.findMany({ where: { ...reach, status: 'OPEN' }, select: { id: true, incidentNumber: true, type: true, severity: true, createdAt: true } }) : Promise.resolve([]),
     prisma.gateDelivery.findMany({ where: { ...storeReach, status: 'AT_GATE' }, select: { id: true, deliveryNumber: true, supplierName: true, arrivedAt: true } }),
     roles.isGate ? prisma.gateDelivery.findMany({ where: { ...reach, status: 'EXPECTED', expectedAt: { gte: dayStart, lt: new Date(dayStart.getTime() + 86400000) } }, select: { id: true, deliveryNumber: true, supplierName: true, expectedAt: true } }) : Promise.resolve([]),
-    prisma.visit.findMany({ where: { ...mine, status: 'CHECKED_IN', hostUserId: user.id, receivedAt: { not: null } }, select: { id: true, visitorName: true, purpose: true, receivedAt: true } }),
+    prisma.visit.findMany({ where: { ...mine, status: 'CHECKED_IN', hostUserId: user.id }, select: { id: true, visitorName: true, purpose: true, receivedAt: true, checkedInAt: true } }),
     listExitPasses('to_decide'),
     listRoadTests('to_decide'),
   ]);
@@ -845,7 +876,7 @@ export async function getSecurityDashboardItems(): Promise<{ id: string; title: 
     ...ctr.rows.filter((c) => roles.isGate && c.afterHours > 0).map((c) => ({ id: `ctr-l-${c.id}`, title: `Contractors still on site after 5 pm — ${c.company}`, detail: `${c.passNumber} · ${durationText(c.afterHours)} past closing`, url: `/security/contractors/${c.id}`, createdAt: new Date() })),
   ];
   return [
-    ...atReception.map((v: (typeof atReception)[number]) => ({ id: `visit-${v.id}`, title: `Your visitor is at reception — ${v.visitorName}`, detail: v.purpose, url: `/security/visitors/${v.id}`, createdAt: v.receivedAt as Date })),
+    ...atReception.map((v: (typeof atReception)[number]) => ({ id: `visit-${v.id}`, title: v.receivedAt ? `Your visitor is at reception — ${v.visitorName}` : `Your visitor has arrived — ${v.visitorName}`, detail: v.purpose, url: `/security/visitors/${v.id}`, createdAt: (v.receivedAt ?? v.checkedInAt ?? new Date()) as Date })),
     ...contractorItems,
     ...newIncidents.map((i: { id: string; incidentNumber: string; type: string; severity: string; createdAt: Date }) => ({ id: `inc-${i.id}`, title: `Incident ${i.incidentNumber}: ${i.type}`, detail: `${i.severity.toLowerCase()} — needs review`, url: `/security/incidents/${i.id}`, createdAt: i.createdAt })),
     ...atGateForStore.map((d: { id: string; deliveryNumber: string; supplierName: string; arrivedAt: Date | null }) => ({ id: `dlv-${d.id}`, title: `Delivery at the gate — ${d.supplierName}`, detail: `${d.deliveryNumber} — please receive it`, url: `/security/deliveries/${d.id}`, createdAt: d.arrivedAt ?? new Date() })),
@@ -1734,9 +1765,13 @@ export async function listContractorPasses(q?: string, tab?: string) {
   const user = await requireUser();
   const reach = await firstReach(['security.view', 'security.pass.approve']);
   const roles = await getSecurityRoles();
+  // Heads who approve only for their department are not the branch's contractor
+  // desk: they see the passes they asked for or are responsible for.
+  const desk = roles.isMaster || roles.isManager || (await allows('security.view'));
+  const own = desk ? {} : { AND: [{ OR: [{ requestedById: user.id }, { hostUserId: user.id }] }] };
   const t2 = q?.trim();
   const raw = await prisma.contractorPass.findMany({
-    where: { ...reach, ...(t2 ? { OR: [{ passNumber: { contains: t2, mode: 'insensitive' } }, { company: { contains: t2, mode: 'insensitive' } }, { work: { contains: t2, mode: 'insensitive' } }, { workArea: { contains: t2, mode: 'insensitive' } }, { leadName: { contains: t2, mode: 'insensitive' } }, { memberNames: { has: t2 } }] } : {}) },
+    where: { ...reach, ...own, ...(t2 ? { OR: [{ passNumber: { contains: t2, mode: 'insensitive' } }, { company: { contains: t2, mode: 'insensitive' } }, { work: { contains: t2, mode: 'insensitive' } }, { workArea: { contains: t2, mode: 'insensitive' } }, { leadName: { contains: t2, mode: 'insensitive' } }, { memberNames: { has: t2 } }] } : {}) },
     orderBy: { createdAt: 'desc' },
     take: 500,
     select: CTR_ROW,

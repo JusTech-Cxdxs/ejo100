@@ -34,14 +34,14 @@ export function ServiceComplaintListInput() {
             value={row.value}
             onChange={(e) => updateRow(row.key, e.target.value)}
             placeholder={i === 0 ? 'e.g. AC not cooling well' : 'e.g. Brake pedal feels soft'}
-            className="flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+            className="min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
           {rows.length > 1 || row.value ? (
             <button
               type="button"
               onClick={() => removeRow(row.key)}
               aria-label={`Remove request ${i + 1}`}
-              className="shrink-0 rounded-[var(--ejo-radius-md)] px-2 py-1 text-sm text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-error)]"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--ejo-radius-md)] text-lg text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-error)]"
             >
               &times;
             </button>
@@ -51,7 +51,7 @@ export function ServiceComplaintListInput() {
       <button
         type="button"
         onClick={addRow}
-        className="text-xs font-medium text-[var(--ejo-primary)] hover:underline"
+        className="inline-flex min-h-10 items-center text-xs font-medium text-[var(--ejo-primary)] hover:underline"
       >
         + Add another request
       </button>

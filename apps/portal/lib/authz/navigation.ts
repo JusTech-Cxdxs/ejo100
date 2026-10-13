@@ -17,7 +17,7 @@ const EVERYONE = new Set(['dashboard', 'notifications', 'security']);
 /**
  * The menu for one person — the same rule the pages enforce, so nobody is
  * shown a door they cannot open. Security: the desk for security staff and
- * reception; for everyone else it opens their own exit passes. Modules not
+ * reception; for everyone else, their own exit passes and visitors. Modules not
  * yet live are not shown at all (version 1 scope).
  */
 export function navigationFor(p: Principal): NavItem[] {
@@ -35,8 +35,9 @@ export function navigationFor(p: Principal): NavItem[] {
     if (m.key === 'security') {
       if (can('security.view')) out.push({ key: m.key, name: m.name, href: m.href, status: m.status });
       else {
-        // Not on the Security desk: their own exit passes, and (Store) the deliveries they receive.
+        // Not on the Security desk: their own exit passes and visitors, and (Store) the deliveries they receive.
         out.push({ key: 'exit-passes', name: 'My exit passes', href: '/security/exit-passes', status: m.status });
+        out.push({ key: 'my-visitors', name: 'My visitors', href: '/security/my-visitors', status: m.status });
         if (can('store.grn.record')) out.push({ key: 'deliveries', name: 'Deliveries', href: '/security/deliveries', status: m.status });
       }
       continue;
