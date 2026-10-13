@@ -3331,3 +3331,45 @@ model ErrorEvent {
   @@map("error_events")
 }
 
+
+/// v30 — Recycle bin. A record created by mistake (a Job Card opened on the
+/// wrong vehicle, a duplicate customer) is moved here while nothing of
+/// consequence has happened to it: no payment, no approved estimate, no parts,
+/// no warranty, no gate exit. The live rows are deleted in the same
+/// transaction, and `snapshot` keeps every deleted row (parent first) so the
+/// organisation's administrators can restore it exactly within the retention
+/// period. After `purgeAfter` the platform's clean-up removes the snapshot;
+/// this row stays as a short tombstone (reference, who, when, why).
+/// Records with business consequences are never deleted: they are cancelled
+/// or closed through their own workflow.
+model RecycleBinItem {
+  id                String    @id @default(cuid())
+  organisationId    String
+  // The branch of a branch-owned record (Job Card, Vehicle Service, part);
+  // null for customers and vehicles, which belong to the organisation.
+  branchId          String?
+  // JobCard | VehicleService | Customer | CustomerVehicle | Part
+  entityType        String
+  entityId          String
+  // The human reference without personal details ("JC-2026-000123").
+  reference         String
+  // What people see in the bin ("JC-2026-000123 · Toyota Hilux KJA-219-XY · Ada Okafor").
+  label             String
+  reason            String
+  // { v: 1, rows: [{ model, data }] } in insert order. Null once purged or restored.
+  snapshot          Json?
+  deletedById       String
+  deletedAt         DateTime  @default(now())
+  purgeAfter        DateTime
+  restoredAt        DateTime?
+  restoredById      String?
+  // The reference it came back under, when the old one had been reused.
+  restoredReference String?
+  purgedAt          DateTime?
+  purgedById        String?
+
+  @@index([organisationId, deletedAt])
+  @@index([entityType, entityId])
+  @@index([purgeAfter])
+  @@map("recycle_bin_items")
+}

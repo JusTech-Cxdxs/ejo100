@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { getCrmHub, type CrmHubParams } from '@/lib/actions/crm';
 import { allows, guardPage } from '@/lib/authz/server';
 import { profileGaps, naira, nairaShort } from '@/lib/crm';
@@ -15,7 +16,7 @@ export const metadata = { title: 'Customers' };
 const field = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
 const labelCls = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
 
-type SP = CrmHubParams & { status?: string; error?: string; register?: string };
+type SP = CrmHubParams & { status?: string; error?: string; register?: string; binned?: string };
 
 const NOTICES: Record<string, Notice> = {
   customer_existing: { kind: 'success', title: 'That email already had a customer record', text: 'It was reused — no duplicate was created.' },
@@ -71,6 +72,7 @@ export default async function CrmHubPage({ searchParams }: { searchParams: Promi
       </section>
 
       {notice ? <NoticeBox n={notice} /> : null}
+      {sp.binned ? <div className="mt-4"><BinnedNotice reference={sp.binned} /></div> : null}
 
       {/* KPIs */}
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">

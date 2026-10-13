@@ -16,7 +16,7 @@ import { isApproval } from '@/lib/approvals';
 const GROUPS: { title: string; keys: string[] }[] = [
   { title: 'Overview', keys: ['dashboard', 'approvals', 'notifications', 'analytics'] },
   { title: 'Operations', keys: [] },
-  { title: 'Administration', keys: ['organisation', 'structure', 'branches', 'users', 'roles', 'permissions', 'audit-logs', 'settings'] },
+  { title: 'Administration', keys: ['organisation', 'structure', 'branches', 'users', 'roles', 'permissions', 'audit-logs', 'recycle-bin', 'settings'] },
 ];
 
 function grouped(items: NavItem[]) {

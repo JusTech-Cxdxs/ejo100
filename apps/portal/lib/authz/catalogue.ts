@@ -25,6 +25,7 @@ export const PERMISSIONS = {
   'admin.roles.manage': { module: 'Administration', label: 'Manage roles and permissions' },
   'admin.settings.manage': { module: 'Administration', label: 'Manage settings, branding and modules' },
   'audit.view': { module: 'Administration', label: 'View the full audit trail' },
+  'admin.recycle_bin.manage': { module: 'Administration', label: 'Open the Recycle bin, restore records deleted by mistake, and delete such records' },
   // Analytics
   'analytics.business.view': { module: 'Analytics', label: 'View Business Analytics (sales, cost, profit, cash)' },
   'analytics.inventory.view': { module: 'Analytics', label: 'View Inventory Analytics' },
@@ -112,13 +113,13 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'admin.organisation.manage': A, 'admin.structure.manage': A, 'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A,
     'audit.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A, 'notifications.broadcast.send': A,
     'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'schedule.view': 'OWN',
-    'crm.view': A, 'crm.manage': A,
+    'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A,
   },
   // One branch: its people and their roles, and oversight of that branch.
   'branch-administrator': {
     'admin.users.manage': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
-    'crm.view': B, 'crm.manage': B,
+    'crm.view': B, 'crm.manage': B, 'admin.recycle_bin.manage': B,
   },
   // ── Workshop ─────────────────────────────────────────────────────
   // Front desk: the customer relationship — customers, vehicles, opening
@@ -183,7 +184,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
 
 /** Steps only the platform team may take — never grantable to organisation roles. */
 export const PLATFORM_ONLY: string[] = [
-  'Permanently delete Job Cards, Vehicle Services and vehicles',
+  'Permanently remove items from the Recycle bin before their time runs out',
   "Change a job's supervisor after it has been set",
   'Override a Job Card status directly',
   'Change the organisation-wide service interval',
@@ -235,7 +236,7 @@ export const PAGE_PERMISSIONS: Record<string, PermissionKey> = {
   organisation: 'admin.organisation.manage', structure: 'admin.structure.manage', 'business-units': 'admin.structure.manage', countries: 'admin.structure.manage', states: 'admin.structure.manage',
   cities: 'admin.structure.manage', branches: 'admin.structure.manage', departments: 'admin.structure.manage', teams: 'admin.structure.manage',
   users: 'admin.users.manage', roles: 'admin.roles.manage', permissions: 'admin.roles.manage', settings: 'admin.settings.manage', branding: 'admin.settings.manage',
-  'module-registry': 'admin.settings.manage', 'audit-logs': 'audit.view', analytics: 'analytics.business.view', crm: 'crm.view',
+  'module-registry': 'admin.settings.manage', 'audit-logs': 'audit.view', 'recycle-bin': 'admin.recycle_bin.manage', analytics: 'analytics.business.view', crm: 'crm.view',
 };
 
 /** How each role is named to people. */

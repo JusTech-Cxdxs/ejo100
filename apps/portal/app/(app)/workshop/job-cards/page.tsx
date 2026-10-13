@@ -6,15 +6,15 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { getJobCardOutcomes } from '@/lib/actions/visit-outcomes';
 import { OutcomeFilterTabs } from '@/components/OutcomeFilterTabs';
 import { matchesOutcomeFilter, outcomeBadge, parseOutcomeFilter, OUTCOME_FILTERS } from '@/lib/visit-outcome';
-import { listJobCards, currentUserIsMasterAdmin } from '@/lib/actions/workshop';
-import { createJobCardFormAction, deleteJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
+import { listJobCards } from '@/lib/actions/workshop';
+import { createJobCardFormAction } from '@/lib/actions/workshop-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { CustomerVehiclePicker } from '@/components/CustomerVehiclePicker';
 import { CategoryFilterTabs } from '@/components/CategoryFilterTabs';
 import { ComplaintListInput } from '@/components/ComplaintListInput';
-import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
+import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { BackLink, PageHeader, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
@@ -36,18 +36,15 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function WorkshopJobCardsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string; outcome?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string; outcome?: string; binned?: string }>;
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
-  const { q, type, status, error, outcome: rawOutcome } = await searchParams;
+  const { q, type, error, outcome: rawOutcome, binned } = await searchParams;
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
   const outcomeFilter = parseOutcomeFilter(rawOutcome);
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
-  const [jobCards, isMasterAdmin] = await Promise.all([
-    listJobCards(undefined, q, vehicleType),
-    currentUserIsMasterAdmin(),
-  ]);
+  const jobCards = await listJobCards(undefined, q, vehicleType);
   // How each Job Card ended — completed normally, or cancelled (refunded or
   // not). Works alongside the Passenger / Commercial filter above.
   const outcomes = await getJobCardOutcomes(jobCards.map((jc: (typeof jobCards)[number]) => jc.id));
@@ -59,9 +56,7 @@ export default async function WorkshopJobCardsPage({
   return (
     <div className="p-8">
       <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
-      {status === 'job_card_deleted' ? (
-        <FormFeedbackBanner kind="success" message="Job Card deleted." />
-      ) : null}
+      <BinnedNotice reference={binned} />
       {error ? <FormFeedbackBanner kind="error" message={error} /> : null}
       <PageHeader
         icon="clipboard"
@@ -109,7 +104,6 @@ export default async function WorkshopJobCardsPage({
                   <th className="px-4 py-3 font-medium">Technician</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Outcome</th>
-                  {isMasterAdmin ? <th className="px-4 py-3 font-medium">&nbsp;</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -148,18 +142,6 @@ export default async function WorkshopJobCardsPage({
                         return badge ? <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span> : <span className="text-xs text-[var(--ejo-text-muted)]">In progress</span>;
                       })()}
                     </td>
-                    {isMasterAdmin ? (
-                      <td data-actions className="px-4 py-3">
-                        <form action={deleteJobCardFormAction}>
-                          <FormPendingOverlay />
-                          <input type="hidden" name="jobCardId" value={jc.id} />
-                          <ConfirmDeleteButton
-                            confirmMessage={`Delete Job Card ${jc.jobNumber}? This permanently removes it and its complaints. This cannot be undone.`}
-                            className="text-xs font-medium text-[var(--ejo-error)] hover:underline"
-                          />
-                        </form>
-                      </td>
-                    ) : null}
                   </tr>
                 ))}
               </tbody>

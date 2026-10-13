@@ -143,7 +143,7 @@ request → requireUser → getPrincipal (roles, grants, branch, organisation br
 The data inventory (`apps/portal/lib/governance/data-inventory.ts`, enforced by
 `tests/data-inventory.test.ts`) declares, for every table: **tenancy, owner column,
 classification** (INTERNAL · PERSONAL · FINANCIAL · SECURITY · SECRET · AUDIT), **lifecycle**
-(state machine · immutable · archive · cascade · expires · platform delete · editable),
+(state machine · immutable · archive · cascade · expires · recycle bin · editable),
 **retention**, and **AI access** (NEVER · AGGREGATE_ONLY · AUTHORISED_USER).
 
 State on 12 October 2026 (v29, 95 tables):
@@ -156,10 +156,37 @@ State on 12 October 2026 (v29, 95 tables):
 v29 additions: `AssistSession` (ORGANISATION, SECURITY + AUDIT, IMMUTABLE, kept with the audit
 trail) and `ErrorEvent` (ORGANISATION, INTERNAL, EXPIRES after 90 days). How the AI phase uses
 these levels is in `docs/AI_READINESS.md`.
+v30 adds `RecycleBinItem` (ORGANISATION, PERSONAL + FINANCIAL, EXPIRES after the restore period,
+AI access NEVER), so NEVER covers 14 of 96 tables.
 - Financial records (payments, refunds, goods receipts) and the audit trail are **immutable**.
 - Business records end through their **workflow** (cancel / close with approval), not deletion.
-- **Planned: Recycle Bin.** a deletion flag with a reason; hidden everywhere; restorable by
-  headquarters; permanently purged only by the platform team after the retention period.
+- **Recycle bin (v30, `RecycleBinItem`).** Only for records created by mistake: Job Cards,
+  Vehicle Services, customers, vehicles and parts (marked `recycleBin: true` in the inventory).
+  - *Eligibility* (`lib/recycle-bin/rules.ts`): nothing of consequence has happened. A Job Card
+    is still at check-in with no payment, refund, submitted estimate, parts request, outside
+    purchase, warranty, claim, road test, gate exit or Vehicle Service hand-over; a Vehicle
+    Service is scheduled or checked in on the same terms; a customer or vehicle has no jobs,
+    services, warranties, claims, gate exits or road tests (and the customer has never signed in
+    to the portal); a part has never been received, issued, requested, matched or warranted.
+    Anything else is cancelled or closed through its workflow, and the screen says so.
+  - *Who*: the person who opened a Job Card or Vehicle Service, within 24 hours; a Workshop
+    Manager; whoever manages customers, vehicles or parts; administrators
+    (`admin.recycle_bin.manage`). Never during an assisted session.
+  - *How*: one transaction locks the record (`SELECT … FOR UPDATE`, so a payment or parts request
+    saved at the same moment either is seen or fails on the missing record), checks eligibility
+    again under the lock, copies every row the delete removes into the item's snapshot (parent
+    first), then deletes for real. Lists, search and analytics need no "deleted" filter, and
+    foreign keys stay honest. The snapshot never holds passwords, sessions or set-password links.
+  - *Restore*: administrators of the organisation (branch administrators for their branch),
+    within `RECYCLE_BIN_DAYS` (default 30, kept between 7 and 90). Rows go back in one
+    transaction under their original ids, so the audit trail joins up. A reused Job Card or
+    Vehicle Service number gets the next number (and the screen says so); a missing customer,
+    vehicle or branch, or a plate / email now used by another record, refuses with a clear message.
+  - *Purge*: the daily clean-up (`/api/cron/pricing-alerts`, job `recycle-bin-purge`) removes the
+    snapshot of every expired item; the platform team can also remove items early from the
+    Recycle bin page. A tombstone (reference, who, when, why — no personal details) stays.
+  - *Audit*: each move, restore and purge writes a business audit entry; the item table itself is
+    not journaled (it would copy the snapshot a second time).
   Records that took money are cancelled and refunded, never deleted.
 
 ## 9. Audit rules

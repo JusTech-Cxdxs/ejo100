@@ -149,6 +149,9 @@ const SKIP_MODELS = new Set([
   'CustomerSession', 'CustomerAccount', 'CustomerVerification', 'CustomerNotificationRead',
   // Error references are written by the error handler itself — never journaled.
   'ErrorEvent',
+  // A recycle-bin snapshot is a full copy of the deleted rows. The move,
+  // restore and purge each write their own business audit entry instead.
+  'RecycleBinItem',
 ]);
 const SENSITIVE_KEY = /password|token|secret|hash/i;
 const MAX_JSON = 6000;

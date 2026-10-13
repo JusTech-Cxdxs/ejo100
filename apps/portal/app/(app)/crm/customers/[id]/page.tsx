@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { guardPage } from '@/lib/authz/server';
 import { getCustomer360, getCustomerActivity } from '@/lib/actions/crm';
+import { getRecycleBinOffer } from '@/lib/actions/recycle-bin';
+import { RecycleBinPanel } from '@/components/RecycleBinPanel';
 import {
   setCustomerPortalAccessFormAction, sendCustomerSetPasswordLinkFormAction, customerAddressFormAction, customerContactFormAction, customerNoteFormAction,
 } from '@/lib/actions/crm-form-handlers';
@@ -67,7 +69,7 @@ export default async function Customer360Page({ params, searchParams }: { params
   const data = await getCustomer360(id);
   if (!data) notFound();
   const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : 'overview';
-  const activity = tab === 'activity' ? await getCustomerActivity(id, 300) : [];
+  const [activity, binOffer] = await Promise.all([tab === 'activity' ? getCustomerActivity(id, 300) : Promise.resolve([]), getRecycleBinOffer('Customer', id)]);
   const { customer: c, portal, money, can } = data;
   const base = `/crm/customers/${c.id}`;
   const notice: Notice | null = sp.error ? { kind: 'error', title: 'That didn’t work', text: sp.error } : sp.status ? STATUS[sp.status] ?? null : null;
@@ -347,6 +349,7 @@ export default async function Customer360Page({ params, searchParams }: { params
           </Section>
         ) : null}
       </div>
+      <RecycleBinPanel offer={binOffer} entity="Customer" id={c.id} className="mt-6 max-w-xl" />
     </div>
   );
 }

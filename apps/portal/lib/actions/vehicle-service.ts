@@ -506,18 +506,6 @@ export async function rejectVehicleServiceTechnicianAssignment(serviceId: string
   });
 }
 
-export async function deleteVehicleService(serviceId: string): Promise<void> {
-  const isMasterAdmin = await currentUserIsMasterAdmin();
-  if (!isMasterAdmin) {
-    throw new VehicleServiceActionError('You do not have permission to delete a Vehicle Service.');
-  }
-  const user = await requireUser();
-  const snapshot = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { serviceNumber: true, status: true, customerId: true, vehicleId: true } });
-  await prisma.vehicleService.delete({ where: { id: serviceId } });
-  // The audit entry outlives the record.
-  await writeAuditLog({ userId: user.id, action: 'vehicle_service.deleted', entityType: 'VehicleService', entityId: serviceId, metadata: { ...snapshot } });
-}
-
 export type VehicleServiceHealth = {
   status: 'UP_TO_DATE' | 'DUE_SOON' | 'OVERDUE' | 'NO_DATA';
   nextServiceDueOdometer: number | null;

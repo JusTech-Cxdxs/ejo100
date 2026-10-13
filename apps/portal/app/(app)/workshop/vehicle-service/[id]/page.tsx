@@ -40,7 +40,6 @@ import {
   assignTechnicianToVehicleServiceFormAction,
   acceptVehicleServiceTechnicianAssignmentFormAction,
   rejectVehicleServiceTechnicianAssignmentFormAction,
-  deleteVehicleServiceFormAction,
   requestVehicleServiceCloseFormAction,
   approveVehicleServiceCloseRequestFormAction,
   declineVehicleServiceCloseRequestFormAction,
@@ -59,7 +58,8 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { SupervisorPicker } from '@/components/SupervisorPicker';
 import { AuditTrail } from '@/components/AuditTrail';
 import { PrintMenu } from '@/components/print/PrintMenu';
-import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
+import { RecycleBinPanel } from '@/components/RecycleBinPanel';
+import { getRecycleBinOffer } from '@/lib/actions/recycle-bin';
 import { formatDateTime, formatDateOnly } from '@/lib/utils/format-date';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { EstimateLinesTable, EstimateLineEditLink, EstimateLineRemoveButton, EstimateLineEditor, type EstimateLineView } from '@/components/EstimateLinesTable';
@@ -144,6 +144,8 @@ const NEXT_ACTION: Record<string, { status: string; label: string } | null> = {
 };
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'vehicle_service.moved_to_recycle_bin': 'Moved to the Recycle bin',
+  'vehicle_service.restored_from_recycle_bin': 'Restored from the Recycle bin',
   'road_test.requested': 'Road test requested',
   'road_test.approved': 'Road test approved by the Manager',
   'road_test.declined': 'Road test declined',
@@ -301,7 +303,7 @@ export default async function VehicleServiceDetailPage({
   // Round 1: everything that needs only the id, in parallel (each database
   // round trip crosses regions). An id the viewer can't see is a 404.
   if (!(await serviceVisible(id, 'page'))) notFound();
-  const [service, isMasterAdmin, viewerId, technicians, auditTrail, inspection, serviceEstimate, payments, sourcingNeeds, closeRequests, refunds, warranties, roadTests, cancellationRequests] = await Promise.all([
+  const [service, isMasterAdmin, viewerId, technicians, auditTrail, inspection, serviceEstimate, payments, sourcingNeeds, closeRequests, refunds, warranties, roadTests, cancellationRequests, binOffer] = await Promise.all([
     getVehicleService(id),
     currentUserIsMasterAdmin(),
     currentUserId(),
@@ -316,6 +318,7 @@ export default async function VehicleServiceDetailPage({
     listWarrantiesFor({ vehicleServiceId: id }),
     listRoadTestsFor({ vehicleServiceId: id }),
     getVehicleServiceCancellationRequests(id),
+    getRecycleBinOffer('VehicleService', id),
   ]);
   if (!service) notFound();
   // Customer names link to their Customers (CRM) page for those who may open it.
@@ -1678,23 +1681,7 @@ export default async function VehicleServiceDetailPage({
             </div>
           ) : null}
 
-          {isMasterAdmin ? (
-            <div className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-5">
-              <h2 className="text-sm font-semibold text-[var(--ejo-error)]">Danger zone</h2>
-              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
-                Permanently deletes this Vehicle Service and its requests. This cannot be undone.
-              </p>
-              <form action={deleteVehicleServiceFormAction} className="mt-4">
-                <FormPendingOverlay />
-                <input type="hidden" name="serviceId" value={service.id} />
-                <ConfirmDeleteButton
-                  confirmMessage={`Delete Vehicle Service ${service.serviceNumber}? This permanently removes it and its requests. This cannot be undone.`}
-                  label="Delete this Vehicle Service"
-                  className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10"
-                />
-              </form>
-            </div>
-          ) : null}
+          <RecycleBinPanel offer={binOffer} entity="VehicleService" id={service.id} />
 
           <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Details</h2>

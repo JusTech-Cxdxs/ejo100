@@ -1,0 +1,199 @@
+/**
+ * Recycle bin: who may delete what, what makes a record ineligible, the
+ * snapshot order a restore relies on, retention, and restore-number clashes.
+ * Pure rules (lib/recycle-bin/rules.ts) plus source checks on the server half.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  BIN_ENTITIES, SNAPSHOT_ORDER, binLabel, binState, cleanReason, customerEligibility, daysLeft, jobCardEligibility, mayDeleteJob, mayDeleteOther,
+  nextReference, orderedSnapshot, parseSnapshot, partEligibility, plainRow, purgeAfterFrom, restoredReference, retentionDays, vehicleEligibility,
+  vehicleServiceEligibility, type JobCardFacts, type VehicleServiceFacts,
+} from '../lib/recycle-bin/rules';
+import { DATA_INVENTORY } from '../lib/governance/data-inventory';
+import { decide, ROLE_GRANTS, type Principal } from '../lib/authz/catalogue';
+
+const ROOT = join(__dirname, '..', '..');
+const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
+
+const freshJob: JobCardFacts = {
+  status: 'CHECKED_IN', payments: 0, refunds: 0, estimateStatus: null, partRequests: 0, outsidePurchases: 0, estimateLinesInUse: 0,
+  warranties: 0, warrantyClaims: 0, gateExit: false, roadTests: 0, escalatedFromService: false, closeRequests: 0,
+};
+const freshService: VehicleServiceFacts = {
+  status: 'SCHEDULED', payments: 0, refunds: 0, estimateStatus: null, partRequests: 0, estimateLinesInUse: 0, inspectionStatus: null,
+  primaryServiceRecorded: false, escalatedToJobCard: false, warranties: 0, warrantyClaims: 0, gateExit: false, roadTests: 0, closeRequests: 0,
+};
+
+test('a Job Card opened by mistake is eligible; a draft estimate does not stop it', () => {
+  assert.equal(jobCardEligibility(freshJob).eligible, true);
+  assert.equal(jobCardEligibility({ ...freshJob, estimateStatus: 'DRAFT' }).eligible, true);
+});
+
+test('anything of consequence makes a Job Card ineligible, with the cancel route named', () => {
+  const paid = jobCardEligibility({ ...freshJob, payments: 1 });
+  assert.equal(paid.eligible, false);
+  assert.equal(paid.message, "This Job Card has a payment recorded, so it can't be deleted. Ask for it to be cancelled instead.");
+  const cases: Partial<JobCardFacts>[] = [
+    { refunds: 1 }, { status: 'IN_PROGRESS' }, { status: 'CANCELLED' }, { estimateStatus: 'SUBMITTED' }, { estimateStatus: 'MANAGER_APPROVED' },
+    { partRequests: 1 }, { outsidePurchases: 2 }, { estimateLinesInUse: 1 }, { warranties: 1 }, { warrantyClaims: 1 }, { gateExit: true },
+    { roadTests: 1 }, { escalatedFromService: true }, { closeRequests: 1 },
+  ];
+  for (const c of cases) assert.equal(jobCardEligibility({ ...freshJob, ...c }).eligible, false, JSON.stringify(c));
+  // Several reasons read as one sentence, with plurals right.
+  assert.match(jobCardEligibility({ ...freshJob, payments: 2, partRequests: 1 }).message, /has 2 payments recorded and has a parts request, so it can't be deleted/);
+  // However much happened, the message stays short enough to be shown as it is (friendlyError's limit).
+  const everything = jobCardEligibility({ ...freshJob, payments: 3, refunds: 1, status: 'CLOSED', estimateStatus: 'MANAGER_APPROVED', partRequests: 2, outsidePurchases: 1, warranties: 2, warrantyClaims: 1, gateExit: true, roadTests: 1, escalatedFromService: true, closeRequests: 1 });
+  assert.ok(everything.message.length <= 300, everything.message);
+  assert.match(everything.message, /other things recorded/);
+  assert.equal(everything.finished, true);
+});
+
+test('Vehicle Services: scheduled or checked in, nothing paid, not handed over', () => {
+  assert.equal(vehicleServiceEligibility(freshService).eligible, true);
+  assert.equal(vehicleServiceEligibility({ ...freshService, status: 'CHECKED_IN', inspectionStatus: 'IN_PROGRESS' }).eligible, true);
+  for (const c of [{ status: 'IN_SERVICE' }, { payments: 1 }, { escalatedToJobCard: true, status: 'ESCALATED' }, { estimateStatus: 'APPROVED' }, { inspectionStatus: 'COMPLETED' }, { primaryServiceRecorded: true }, { gateExit: true }] as Partial<VehicleServiceFacts>[]) {
+    assert.equal(vehicleServiceEligibility({ ...freshService, ...c }).eligible, false, JSON.stringify(c));
+  }
+  assert.match(vehicleServiceEligibility({ ...freshService, escalatedToJobCard: true, status: 'ESCALATED' }).message, /handed over to a Job Card/);
+});
+
+test('customers, vehicles and parts: only when nothing hangs off them', () => {
+  const none = { jobCards: 0, vehicleServices: 0, warranties: 0, warrantyClaims: 0, gateExits: 0, roadTests: 0 };
+  assert.equal(vehicleEligibility(none).eligible, true);
+  assert.match(vehicleEligibility({ ...none, jobCards: 1 }).message, /This vehicle has a Job Card, so it can't be deleted/);
+  assert.equal(customerEligibility({ ...none, signedIn: false }).eligible, true);
+  assert.equal(customerEligibility({ ...none, signedIn: true }).eligible, false);
+  assert.equal(customerEligibility({ ...none, vehicleServices: 3, signedIn: false }).eligible, false);
+  const part = { goodsReceiptLines: 0, batches: 0, serials: 0, consumptions: 0, requestLines: 0, estimateMatches: 0, warranties: 0, pricingAlerts: 0, stockOnHand: 0, stockReserved: 0 };
+  assert.equal(partEligibility(part).eligible, true);
+  for (const k of Object.keys(part) as (keyof typeof part)[]) assert.equal(partEligibility({ ...part, [k]: 1 }).eligible, false, k);
+});
+
+test('who may delete a Job Card: the opener within 24 hours, a Manager or an administrator any time', () => {
+  const now = new Date('2026-10-13T12:00:00Z');
+  const rec = { createdById: 'fd', createdAt: new Date('2026-10-13T08:00:00Z') };
+  const frontDesk = { userId: 'fd', isSuperAdmin: false, manageBin: false, ownerRight: false, openJobs: true };
+  assert.equal(mayDeleteJob(frontDesk, rec, now), true);
+  assert.equal(mayDeleteJob(frontDesk, { ...rec, createdAt: new Date('2026-10-12T11:59:00Z') }, now), false, 'after 24 hours');
+  assert.equal(mayDeleteJob({ ...frontDesk, userId: 'someone-else' }, rec, now), false, 'another front desk');
+  assert.equal(mayDeleteJob({ ...frontDesk, openJobs: false }, rec, now), false, 'opened it but may no longer open jobs');
+  assert.equal(mayDeleteJob({ ...frontDesk, userId: 'mgr', openJobs: false, ownerRight: true }, { ...rec, createdAt: new Date('2026-01-01') }, now), true);
+  assert.equal(mayDeleteJob({ ...frontDesk, userId: 'adm', openJobs: false, manageBin: true }, rec, now), true);
+  assert.equal(mayDeleteOther({ userId: 'x', isSuperAdmin: false, manageBin: false, ownerRight: false }), false);
+  assert.equal(mayDeleteOther({ userId: 'x', isSuperAdmin: false, manageBin: false, ownerRight: true }), true);
+});
+
+test('the Recycle bin permission: administrators (and their branch), never the departments', () => {
+  const who = (roles: string[], branchId = 'b1'): Principal => ({ userId: 'u', isSuperAdmin: false, roleSlugs: roles, branchId, departmentId: null, organisationId: 'o1', orgBranchIds: ['b1', 'b2'] });
+  assert.equal(ROLE_GRANTS.administrator!['admin.recycle_bin.manage'], 'ALL');
+  assert.equal(ROLE_GRANTS['branch-administrator']!['admin.recycle_bin.manage'], 'BRANCH');
+  assert.equal(decide(who(['branch-administrator']), 'admin.recycle_bin.manage', { branchId: 'b2' }).allowed, false, 'another branch');
+  assert.equal(decide(who(['administrator']), 'admin.recycle_bin.manage', { branchId: 'b-other-org' }).allowed, false, 'another organisation');
+  for (const [slug, grants] of Object.entries(ROLE_GRANTS)) {
+    if (slug === 'administrator' || slug === 'branch-administrator') continue;
+    assert.equal(grants['admin.recycle_bin.manage'], undefined, slug);
+  }
+});
+
+test('snapshot: parents first, stable within a table, nothing foreign, exactly one root', () => {
+  const rows = [
+    { model: 'estimateLineItem', data: { id: 'l2' } },
+    { model: 'jobCardComplaint', data: { id: 'c1' } },
+    { model: 'estimateLineItem', data: { id: 'l1' } },
+    { model: 'estimate', data: { id: 'e' } },
+    { model: 'jobCard', data: { id: 'jc' } },
+    { model: 'cancellationRequest', data: { id: 'cr' } },
+  ];
+  const s = orderedSnapshot('JobCard', rows);
+  assert.deepEqual(s.rows.map((r) => r.data.id), ['jc', 'c1', 'e', 'l2', 'l1', 'cr']);
+  assert.throws(() => orderedSnapshot('JobCard', [...rows, { model: 'payment', data: { id: 'p' } }]), /cannot hold payment/);
+  assert.throws(() => orderedSnapshot('JobCard', rows.filter((r) => r.model !== 'jobCard')), /exactly one jobCard/);
+  // Every kind starts with its own table, and no money table is ever snapshotted (money is never deletable).
+  for (const e of BIN_ENTITIES) {
+    assert.ok(SNAPSHOT_ORDER[e].length >= 1);
+    for (const m of SNAPSHOT_ORDER[e]) assert.doesNotMatch(m, /^(payment|refund|goodsReceipt|auditLog|warranty)/i, `${e}: ${m}`);
+  }
+  // Round trip through storage.
+  assert.deepEqual(parseSnapshot(JSON.parse(JSON.stringify(s))), s);
+  assert.equal(parseSnapshot({ v: 2, entity: 'JobCard', rows: [] }), null);
+  assert.equal(parseSnapshot({ v: 1, entity: 'Payment', rows: [] }), null);
+  assert.equal(parseSnapshot(null), null);
+});
+
+test('stored rows are plain JSON that Prisma accepts back (dates and decimals as text, no relations)', () => {
+  const when = new Date('2026-10-13T09:30:00.000Z');
+  const decimal = { toJSON: () => '1500.00' };
+  const row = plainRow({ id: 'x', createdAt: when, amount: decimal, tags: ['Fleet'], note: null, customer: { id: 'c' } });
+  assert.deepEqual(row, { id: 'x', createdAt: '2026-10-13T09:30:00.000Z', amount: '1500.00', tags: ['Fleet'], note: null });
+});
+
+test('restore: the original number when free; the next number when it was reused', () => {
+  assert.equal(nextReference('JC-2026-', 'JC-2026-000130'), 'JC-2026-000131');
+  assert.equal(nextReference('JC-2026-', null), 'JC-2026-000001');
+  assert.equal(nextReference('SV-2026-', 'JC-2026-000009'), 'SV-2026-000001');
+  assert.deepEqual(restoredReference('JC-2026-000123', false, 'JC-2026-', 'JC-2026-000130'), { reference: 'JC-2026-000123', changed: false });
+  assert.deepEqual(restoredReference('JC-2026-000123', true, 'JC-2026-', 'JC-2026-000130'), { reference: 'JC-2026-000131', changed: true });
+});
+
+test('retention: 30 days by default, kept between 7 and 90; days left never negative', () => {
+  assert.equal(retentionDays(undefined), 30);
+  assert.equal(retentionDays(''), 30);
+  assert.equal(retentionDays('abc'), 30);
+  assert.equal(retentionDays('1'), 7);
+  assert.equal(retentionDays('365'), 90);
+  assert.equal(retentionDays('45'), 45);
+  const at = new Date('2026-10-01T10:00:00Z');
+  const until = purgeAfterFrom(at, 30);
+  assert.equal(until.toISOString(), '2026-10-31T10:00:00.000Z');
+  assert.equal(daysLeft(until, new Date('2026-10-30T11:00:00Z')), 1);
+  assert.equal(daysLeft(until, new Date('2026-11-05T00:00:00Z')), 0);
+  assert.equal(binState({ purgeAfter: until, restoredAt: null, purgedAt: null }, new Date('2026-10-05')), 'IN_BIN');
+  assert.equal(binState({ purgeAfter: until, restoredAt: null, purgedAt: null }, new Date('2026-11-05')), 'EXPIRED');
+  assert.equal(binState({ purgeAfter: until, restoredAt: at, purgedAt: null }), 'RESTORED');
+});
+
+test('a reason is required, trimmed and bounded; labels skip blanks', () => {
+  assert.equal(cleanReason('   ').ok, false);
+  assert.equal(cleanReason('oops').ok, false);
+  assert.deepEqual(cleanReason('  Opened on the   wrong vehicle '), { ok: true, reason: 'Opened on the wrong vehicle' });
+  assert.equal(cleanReason('x'.repeat(301)).ok, false);
+  assert.equal(binLabel(['JC-2026-000123', 'Toyota Hilux KJA-219-XY', null, ' Ada Okafor ']), 'JC-2026-000123 · Toyota Hilux KJA-219-XY · Ada Okafor');
+});
+
+test('data inventory: exactly the bin kinds are marked, money and audit never are', () => {
+  const marked = Object.entries(DATA_INVENTORY).filter(([, e]) => e.recycleBin).map(([k]) => k).sort();
+  assert.deepEqual(marked, [...BIN_ENTITIES].sort());
+  assert.equal(DATA_INVENTORY.RecycleBinItem?.ai, 'NEVER');
+  assert.equal(DATA_INVENTORY.RecycleBinItem?.lifecycle, 'EXPIRES');
+  for (const m of ['Payment', 'Refund', 'AuditLog', 'GoodsReceipt', 'Warranty', 'WarrantyClaim']) assert.equal(DATA_INVENTORY[m]?.recycleBin, undefined, m);
+});
+
+test('server half: locks, checks again under the lock, snapshots and deletes in ONE transaction', () => {
+  const src = read('lib/recycle-bin/server.ts');
+  const move = src.slice(src.indexOf('export async function moveToBin('), src.indexOf('// ── Restore'));
+  assert.match(move, /prisma\.\$transaction\(async \(tx\) => \{[\s\S]*lockExisting\(tx, LOCK\[entity\][\s\S]*eligibilityOf\(entity, id, tx\)[\s\S]*if \(!check\.eligible\) throw[\s\S]*snapshotRows\(tx, entity, id\)[\s\S]*recycleBinItem\.create[\s\S]*deleteRoot\(tx, entity, id\)/);
+  const restore = src.slice(src.indexOf('export async function restoreFromBin('), src.indexOf('// ── Purge'));
+  assert.match(restore, /updateMany\(\{ where: \{ id: itemId, restoredAt: null, purgedAt: null \}/, 'claims the item before restoring (no double restore)');
+  assert.match(restore, /purgeAfter\.getTime\(\) <= now\.getTime\(\)/, 'only within the retention period');
+  // Restored and purged items do not keep a copy of the data.
+  assert.match(restore, /snapshot: Prisma\.DbNull/);
+  assert.match(src, /export async function purgeItems[\s\S]*snapshot: Prisma\.DbNull/);
+  // The snapshot never holds sign-in secrets.
+  assert.doesNotMatch(src, /customerAccount\.findMany|customerSession\.findMany|customerVerification\.findMany/);
+  assert.ok(read('../../packages/database/src/audit-journal.ts').includes("'RecycleBinItem',"), 'the snapshot is not copied again into the journal');
+});
+
+test('actions: refused during an assisted session; restore needs the bin permission; purge is platform-only', () => {
+  const src = read('lib/actions/recycle-bin.ts');
+  for (const fn of ['moveToRecycleBin', 'restoreFromRecycleBin', 'purgeRecycleBinItems', 'purgeExpiredRecycleBinItems']) {
+    const body = src.slice(src.indexOf(`export async function ${fn}(`), src.indexOf('\nexport ', src.indexOf(`export async function ${fn}(`) + 10));
+    assert.match(body, new RegExp(`refuseDuringAssist\\('${fn}'\\)`), fn);
+  }
+  assert.match(src, /export async function restoreFromRecycleBin[\s\S]{0,700}inMyOrganisation\(item\.organisationId\)[\s\S]{0,300}authorize\('admin\.recycle_bin\.manage', \{ branchId: item\.branchId \}/);
+  for (const fn of ['purgeRecycleBinItems', 'purgeExpiredRecycleBinItems']) assert.match(src, new RegExp(`export async function ${fn}[\\s\\S]{0,300}if \\(!p\\.isSuperAdmin\\) return refuse\\(`), fn);
+  // The old platform-only hard deletes are gone.
+  for (const f of ['lib/actions/workshop.ts', 'lib/actions/vehicle-service.ts']) assert.doesNotMatch(read(f), /export async function delete(JobCard|Vehicle|VehicleService)\(/, f);
+});

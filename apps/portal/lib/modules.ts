@@ -28,5 +28,6 @@ export const platformModules: PlatformModuleDescriptor[] = [
   { key: 'analytics', name: 'Business Analytics', status: 'LIVE', href: '/analytics', icon: 'bar-chart' },
   { key: 'notifications', name: 'Notifications', status: 'LIVE', href: '/notifications', icon: 'bell' },
   { key: 'audit-logs', name: 'Audit Logs', status: 'LIVE', href: '/audit-logs', icon: 'history' },
+  { key: 'recycle-bin', name: 'Recycle bin', status: 'LIVE', href: '/recycle-bin', icon: 'trash' },
   { key: 'settings', name: 'Settings', status: 'LIVE', href: '/settings', icon: 'settings' },
 ];
