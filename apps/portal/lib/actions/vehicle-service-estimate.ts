@@ -24,6 +24,7 @@ import { InspectionPdf } from '@/lib/pdf/inspection-pdf';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
+import { scheduleResolution } from '@/lib/enyo/predict/lines';
 
 class ServiceEstimateActionError extends Error {}
 
@@ -704,6 +705,8 @@ export async function approveServiceEstimateAsManager(estimateId: string): Promi
     entityId: estimate.vehicleService.id,
     metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
   });
+  // Enyo: score its prediction against the approved lines (once; errors only logged).
+  scheduleResolution({ kind: 'SERVICE', id: estimate.vehicleService.id });
 
   // Tell the Vehicle Service's creator; they decide when the customer is
   // notified. Fail-soft.

@@ -272,3 +272,75 @@ record; the engine's tool kinds are `read` and `draft` only.
 Chat transcripts are kept 12 months after the last message (public website
 chats 90 days) and removed by the daily clean-up (`enyo-cleanup` job run).
 
+---
+
+## 10. Training data
+
+Enyo's first learning loop (`apps/portal/lib/enyo/predict`) predicts the
+likely estimate lines of a new Job Card or Vehicle Service from the
+organisation's own finished jobs, and measures itself. Its measured history is
+the training set for the Python ML phase.
+
+### 9.1 The current model: `knn-tfidf-1`
+
+| Step | How |
+|---|---|
+| Text | Complaint text is lower-cased, punctuation stripped, common English and Nigerian-English workshop phrases mapped to one word each ("AC", "a/c", "aircon", "air condition" → `aircon`; "won't start", "refusing to start" → `nostart`; "shaking", "vibrating" → `vibration`; "pads" → `brakepad` …), filler words dropped and words lightly stemmed (`text.ts`). |
+| Candidates | A bounded query, no database extensions: finished jobs (estimate Manager-approved, not cancelled) of the same organisation, last 3 years — same make and model family first, then same make, then any — at most 500 (`similar.ts`). |
+| Similarity | TF-IDF cosine (smoothed idf, sublinear tf) × 0.8 plus a vehicle bonus of at most 0.2 (same make, same model family, year within 2, mileage within 25%) and 0.02 for the same kind of record; jobs below 0.15 text similarity are not "similar" (`similar-core.ts`). The top 9 are the neighbours. |
+| Lines | A line is identified by its Part Type (Store parts), as one line (Sundry), or by type + the meaningful words of its description. A line is predicted when at least 2 neighbours and 40% of them had it; quantity is the median; labour/jobs/sundry carry the median and p25–p75 of what neighbours charged. Store parts are priced only from today's Store selling price and stock when shown. Fewer than 3 neighbours → no prediction, with the reason (`lines-core.ts`). |
+| Measuring | When the Manager gives the estimate its final approval, the stored prediction is compared with the approved lines: precision (predicted lines that were approved), recall (approved lines that were predicted), labour error in naira. Exactly once (conditional update on `resolvedAt IS NULL`). |
+| Modes | `OFF` → nothing. `SHADOW` → predicted and measured, never shown. `SUGGEST` → shown to the estimate's supervisor and technician as "Likely lines from similar jobs"; Add only fills in the normal form. Promotion rule shown on the Learning page: 200+ resolved predictions with average precision ≥ 70%; an administrator decides. |
+
+### 9.2 The export
+
+`GET /enyo/learning/export?format=csv|jsonl` (Manage Enyo only, never during an
+assisted session, audited as `enyo.training_data_exported`) builds one row per
+finished job of the last 3 years (at most 20,000), from `dataset.ts`:
+
+| Column | Meaning |
+|---|---|
+| `row_id` | Opaque id, salted per export — cannot be traced to a record and differs between exports. |
+| `kind` | `JOB_CARD` or `SERVICE`. |
+| `opened_on` | Lagos day the job was opened (the time-ordered split uses it). |
+| `branch_code` | The branch's short code. |
+| `complaint_text` | The complaints, with emails, phone numbers, plates, VINs, links and the names of the customer, their contacts and the staff on the job replaced by `[email]`, `[phone]`, `[plate]`, `[vin]`, `[link]`, `[name]`. |
+| `make`, `model`, `year`, `vehicle_type` | Vehicle features. |
+| `mileage_band_km` | Odometer rounded down to 5,000 km. |
+| `lines` | Final approved lines: `type`, `key` (the line identity above — the multi-label target), `label`, `quantity`, and `unit_price` / `amount` for priced-by-people lines (never for Store parts). |
+| `labour_total` | Sum of approved labour, naira (the regression target). |
+| `predicted_keys`, `precision`, `recall`, `model_version` | When Enyo predicted the job. |
+
+Never exported: customer, contact or staff names; phone numbers and emails;
+plates, VINs and engine numbers; customer, vehicle, user and record ids; job
+numbers. The reader does not select those columns at all, and the unit tests
+(`apps/portal/tests/enyo-predict.test.ts`) fail if a column or a value of that
+kind appears.
+
+### 9.3 Planned models
+
+| Target | Model | Features |
+|---|---|---|
+| Which lines (multi-label over line keys seen ≥ 20 times) | One-vs-rest logistic regression on TF-IDF (word 1–2-grams over the same normalised text) + one-hot make/model family + year and mileage bands; then LightGBM multi-label (one binary model per key) on the same features plus the knn neighbours' line frequencies. | `complaint_text`, vehicle columns, `kind`, branch. |
+| Quantity per predicted line | Median of neighbours (as now) unless a per-key Poisson GBM beats it. | As above. |
+| Labour amount | Quantile GBM (LightGBM, quantiles 0.25 / 0.5 / 0.75) on the same features + predicted labour keys. | As above, target `labour_total`. |
+
+### 9.4 Evaluation protocol
+
+1. **Time-ordered split.** Train on jobs opened before a cut-off, validate on
+   the next month, test on the month after; never a random split (complaint
+   wording and prices drift).
+2. **Metrics.** Micro and macro precision / recall / F1 over line keys at the
+   decision threshold; precision@k for the top suggestions; labour MAE and
+   pinball loss in naira; coverage (share of jobs with any suggestion).
+3. **Champion / challenger.** The current model (`knn-tfidf-1`) is the
+   champion. A challenger replaces it only if, on the same test months, it has
+   higher precision at equal or better recall and lower labour MAE — and it
+   then runs in SHADOW alongside the champion (its own `modelVersion`) for at
+   least four weeks before it is shown to anyone.
+4. **Per organisation and branch.** Results are reported per organisation
+   (and per branch where there are 200+ jobs); a model that is worse for any
+   organisation is not promoted for it.
+5. **No leakage.** Features use only what is known when the job is opened
+   (complaints, vehicle); nothing from the estimate or later.
+

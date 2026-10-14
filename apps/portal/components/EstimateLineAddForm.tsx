@@ -1,6 +1,7 @@
 'use client';
 
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { cleanPrefill, ESTIMATE_PREFILL_EVENT, type EstimateLinePrefill } from '@/lib/enyo/predict/prefill';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SearchableSelect, type SearchableOption } from '@/components/SearchableSelect';
@@ -51,6 +52,38 @@ export function EstimateLineAddForm({
   const selectedPartType = categories.flatMap((c) => c.types).find((t) => t.id === selectedPartTypeId);
   const canShowPriceField = !isStorePart && canPrice(type);
 
+  // Enyo's "Likely lines" card can fill this form in (never submit it): the
+  // fields re-mount with the suggested values, and the person reviews them
+  // and presses Add as usual.
+  const formRef = useRef<HTMLFormElement>(null);
+  const [prefill, setPrefill] = useState<EstimateLinePrefill | null>(null);
+  const [prefillRound, setPrefillRound] = useState(0);
+  const [announcement, setAnnouncement] = useState('');
+  const allowedTypes = useRef(typeOptions.map((o) => o.value));
+  allowedTypes.current = typeOptions.map((o) => o.value);
+  useEffect(() => {
+    function onPrefill(e: Event) {
+      const p = cleanPrefill((e as CustomEvent<unknown>).detail, { wholeQuantity: true });
+      if (!p) return;
+      if (!allowedTypes.current.includes(p.type)) {
+        setAnnouncement('That line cannot be added to this estimate (there may already be one).');
+        return;
+      }
+      setType(p.type);
+      setSelectedPartTypeId(p.partTypeId ?? '');
+      setPrefill(p);
+      setPrefillRound((n) => n + 1);
+      setAnnouncement(`The form below is filled in with ${p.partTypeLabel ?? p.description ?? 'the suggested line'}. Check it, then press Add.`);
+      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      window.requestAnimationFrame(() => {
+        formRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+        formRef.current?.querySelector<HTMLInputElement>('input[name="quantity"]')?.focus({ preventScroll: true });
+      });
+    }
+    window.addEventListener(ESTIMATE_PREFILL_EVENT, onPrefill);
+    return () => window.removeEventListener(ESTIMATE_PREFILL_EVENT, onPrefill);
+  }, []);
+
   // Part Types are already loaded, so search filters on the client.
   const allPartTypeOptions: SearchableOption[] = categories.flatMap((category) =>
     category.types.map((t) => ({ value: t.id, label: t.name, sublabel: category.name })),
@@ -65,9 +98,10 @@ export function EstimateLineAddForm({
   }
 
   return (
-    <form action={action} className="@container mt-4 border-t border-[var(--ejo-border)] pt-4">
+    <form ref={formRef} action={action} data-estimate-add-form="" className="@container mt-4 border-t border-[var(--ejo-border)] pt-4">
       <FormPendingOverlay />
       {hidden}
+      <p className="sr-only" aria-live="polite">{announcement}</p>
       <p className="mb-3 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--ejo-text-muted)]">Add a line</p>
       <div className="grid grid-cols-1 gap-3 @md:grid-cols-6">
         <div className="@md:col-span-2">
@@ -83,6 +117,9 @@ export function EstimateLineAddForm({
           <div className="@md:col-span-4">
             <label htmlFor={`${ids}-part`} className={LABEL}>Part Type</label>
             <SearchableSelect
+              key={`part-${prefillRound}`}
+              defaultValue={prefill?.partTypeId ?? undefined}
+              defaultLabel={prefill?.partTypeLabel ?? undefined}
               id={`${ids}-part`}
               name="partTypeId"
               required
@@ -97,7 +134,7 @@ export function EstimateLineAddForm({
         ) : (
           <div className="@md:col-span-4">
             <label htmlFor={`${ids}-desc`} className={LABEL}>Description</label>
-            <input id={`${ids}-desc`} name="description" required list={datalistId} placeholder="Description" className={FIELD} />
+            <input key={`desc-${prefillRound}`} defaultValue={prefill?.description ?? undefined} id={`${ids}-desc`} name="description" required list={datalistId} placeholder="Description" className={FIELD} />
           </div>
         )}
 
@@ -105,6 +142,7 @@ export function EstimateLineAddForm({
           <div>
             <label htmlFor={`${ids}-qty`} className={LABEL}>Quantity</label>
             <input
+              key={`qty-${prefillRound}`}
               id={`${ids}-qty`}
               name="quantity"
               type="number"
@@ -112,7 +150,7 @@ export function EstimateLineAddForm({
               step="1"
               min="1"
               required
-              defaultValue="1"
+              defaultValue={prefill?.quantity ? String(prefill.quantity) : '1'}
               placeholder="Qty"
               className={FIELD}
             />
@@ -142,6 +180,8 @@ export function EstimateLineAddForm({
               <>
                 <label htmlFor={`${ids}-price`} className={LABEL}>Unit price (₦, optional)</label>
                 <input
+                  key={`price-${prefillRound}`}
+                  defaultValue={prefill?.unitPrice ?? undefined}
                   id={`${ids}-price`}
                   name="unitPrice"
                   type="number"
