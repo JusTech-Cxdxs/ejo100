@@ -1,5 +1,6 @@
 import { jobStatuses } from '@/lib/job-runs';
-import { getPrincipal, guardPage } from '@/lib/authz/server';
+import { allows, getPrincipal, guardPage } from '@/lib/authz/server';
+import { LoadingLink } from '@/components/LoadingLink';
 import { formatDateTime, formatRelative } from '@/lib/utils/format-date';
 import { PageHeader } from '@/components/ui';
 
@@ -12,7 +13,7 @@ const LABEL: Record<string, string> = { remindersSent: 'reminders sent', broadca
 /** Settings — the health of everything that runs on its own. */
 export default async function SettingsPage() {
   await guardPage('admin.settings.manage', '/settings');
-  const [{ jobs, emails7d }, p] = await Promise.all([jobStatuses(), getPrincipal()]);
+  const [{ jobs, emails7d }, p, canManageEnyo] = await Promise.all([jobStatuses(), getPrincipal(), allows('enyo.manage')]);
   return (
     <div className="p-8">
       <PageHeader
@@ -49,6 +50,14 @@ export default async function SettingsPage() {
           })}
         </div>
       </section>
+
+      {canManageEnyo ? (
+        <section className={`${card} mt-6`} aria-labelledby="settings-enyo-learning">
+          <h2 id="settings-enyo-learning" className="text-sm font-semibold text-[var(--ejo-text)]">Enyo — learning</h2>
+          <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">How well Enyo predicts estimate lines from similar past jobs, whether it is ready to suggest them, and the training data export.</p>
+          <LoadingLink href="/enyo/learning" className="mt-3 inline-flex min-h-11 items-center rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 text-sm font-medium text-[var(--ejo-primary)] hover:bg-[var(--ejo-bg)] sm:min-h-9">Open Enyo learning</LoadingLink>
+        </section>
+      ) : null}
 
       {p.isSuperAdmin ? (
         <section className={`${card} mt-6`}>

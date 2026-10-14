@@ -1,7 +1,7 @@
 import { guardPage, allows } from '@/lib/authz/server';
 import { canSeeMasterAnalytics, getMasterAnalytics } from '@/lib/actions/master-analytics';
 import { pluralize } from '@/lib/utils/pluralize';
-import { PageHeader, StatTile, PriorityActions, BarRow, PeriodPills, Icon, CHART, type IconName } from '@/components/ui';
+import { PageHeader, HeaderAction, StatTile, PriorityActions, BarRow, PeriodPills, Icon, CHART, type IconName } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
 
 const card = 'min-w-0 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5';
@@ -49,6 +49,7 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
         eyebrow="Analytics"
         title="Business analytics"
         description={<>{a.periodLabel} · Job Cards and Vehicle Services together · sales counted when a job is completed; parts at their actual goods-receipt cost.</>}
+        actions={<HeaderAction href="/enyo/learning" icon="sparkles" variant="secondary">Enyo learning</HeaderAction>}
       />
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--ejo-text-muted)]"><Icon name="calendar" size={14} />Period</span>

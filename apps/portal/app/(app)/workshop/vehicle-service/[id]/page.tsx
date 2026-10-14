@@ -52,6 +52,8 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
 import { MINIMUM_DEPOSIT_FRACTION, COMMON_ESTIMATE_LINE_DESCRIPTIONS } from '@/lib/workshop-constants';
 import { ServiceEstimateLineItemForm } from '@/components/ServiceEstimateLineItemForm';
+import { LikelyLinesCard } from '@/components/enyo/LikelyLinesCard';
+import { Suspense } from 'react';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -1000,6 +1002,13 @@ export default async function VehicleServiceDetailPage({
                         </span>
                       </div>
                     </div>
+                  ) : null}
+
+                  {serviceEstimate.status === 'DRAFT' && isEstimateContributor ? (
+                    // Enyo (Suggest mode only): lines similar jobs had; "Add" fills in the form below.
+                    <Suspense fallback={null}>
+                      <LikelyLinesCard kind="SERVICE" id={service.id} existing={serviceEstimate.lineItems} />
+                    </Suspense>
                   ) : null}
 
                   {serviceEstimate.status === 'DRAFT' ? (

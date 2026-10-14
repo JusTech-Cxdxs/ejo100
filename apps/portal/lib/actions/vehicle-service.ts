@@ -38,6 +38,7 @@ import { renderVehicleServiceDecisionEmail } from '@/lib/email-templates/vehicle
 import { renderTechnicianVehicleServiceAssignedEmail } from '@/lib/email-templates/technician-vehicle-service-assigned';
 import { renderTechnicianVehicleServiceResponseEmail } from '@/lib/email-templates/technician-vehicle-service-response';
 import { lagosDayKey, lagosYear } from '@/lib/utils/format-date';
+import { schedulePrediction } from '@/lib/enyo/predict/lines';
 
 class VehicleServiceActionError extends Error {}
 
@@ -117,6 +118,9 @@ export async function createVehicleService(input: CreateVehicleServiceInput): Pr
   }); });
   const serviceNumber = service.serviceNumber;
   await writeAuditLog({ userId: user.id, action: 'vehicle_service.created', entityType: 'VehicleService', entityId: service.id, metadata: { serviceNumber } });
+  // Enyo: what similar past jobs needed, stored after the booking has
+  // committed (Shadow / Suggest mode). Never in the way: errors are only logged.
+  schedulePrediction({ kind: 'SERVICE', id: service.id });
 
   // Notify the assigned supervisor. Fail-soft: an email failure never undoes
   // the booking.

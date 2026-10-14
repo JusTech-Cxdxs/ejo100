@@ -23,6 +23,8 @@ import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayment
 import { getJobCardSourcingNeeds } from '@/lib/actions/sourcing';
 import { listPartCategories, listPartTypes } from '@/lib/actions/store';
 import { EstimateLineItemForm } from '@/components/EstimateLineItemForm';
+import { LikelyLinesCard } from '@/components/enyo/LikelyLinesCard';
+import { Suspense } from 'react';
 import { EstimateLinesTable, EstimateLineEditLink, EstimateLineRemoveButton, EstimateLineEditor, type EstimateLineView } from '@/components/EstimateLinesTable';
 import { requestStoreMatchingFormAction } from '@/lib/actions/store-form-handlers';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
@@ -873,6 +875,13 @@ export default async function JobCardDetailPage({
                 </div>
               </>
             )}
+
+            {jobCard.approvalStatus === 'APPROVED' && isEstimateContributor && (!estimate || estimate.status === 'DRAFT') ? (
+              // Enyo (Suggest mode only): lines similar jobs had; "Add" fills in the form below.
+              <Suspense fallback={null}>
+                <LikelyLinesCard kind="JOB_CARD" id={jobCard.id} existing={estimateLineItems} />
+              </Suspense>
+            ) : null}
 
             {jobCard.approvalStatus === 'APPROVED' && isEstimateContributor && (!estimate || estimate.status === 'DRAFT') ? (
               <EstimateLineItemForm
