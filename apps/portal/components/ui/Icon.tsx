@@ -109,5 +109,5 @@ export function Icon({ name, size = 18, className, strokeWidth = 1.7, title }: {
 export const MODULE_ICON: Record<string, IconName> = {
   dashboard: 'dashboard', organisation: 'building', structure: 'sitemap', branches: 'branch', users: 'users', roles: 'shield', permissions: 'key',
   crm: 'handshake', workshop: 'wrench', inventory: 'boxes', warranty: 'shield-check', security: 'lock', scheduling: 'calendar', analytics: 'chart',
-  notifications: 'bell', 'audit-logs': 'history', 'recycle-bin': 'trash', settings: 'settings', 'exit-passes': 'exit', 'my-visitors': 'badge', deliveries: 'truck', approvals: 'check-circle', profile: 'user', assist: 'user-plus',
+  notifications: 'bell', 'audit-logs': 'history', 'recycle-bin': 'trash', settings: 'settings', 'exit-passes': 'exit', 'my-visitors': 'badge', deliveries: 'truck', approvals: 'check-circle', profile: 'user', assist: 'user-plus', 'support-inbox': 'inbox',
 };

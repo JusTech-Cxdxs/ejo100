@@ -51,6 +51,8 @@ jobs:
       E2E_WEBSITE_URL: 'http://localhost:3002'
       # The seeded test organisation's display name (sign-in pages, website wordmark).
       NEXT_PUBLIC_ORGANISATION_NAME: 'Kewalram Chanrai Group'
+      # The organisation the public website (and its Enyo assistant) belongs to.
+      WEBSITE_ORGANISATION_SLUG: 'kewalram-nigeria'
       SMTP_HOST: 'localhost'
       SMTP_PORT: '1025'
       SMTP_FROM: 'EJO 100 <no-reply@e2e.test>'
@@ -106,15 +108,13 @@ jobs:
         run: |
           (cd apps/portal && nohup npx next start -p 3001 > ../../portal.log 2>&1 &)
           for i in $(seq 1 60); do curl -sf http://localhost:3001/login > /dev/null && break; sleep 2; done
-      # The customer portal is being rebuilt on another branch — its build
-      # never blocks the staff-portal suite (its specs skip when it is down).
+      # The website and customer portal are production: a failed build or
+      # start fails the run.
       - name: Build the website (customer portal)
         id: website
-        continue-on-error: true
         run: npm run build --workspace=apps/website
       - name: Start the website on :3002
         if: steps.website.outcome == 'success'
-        continue-on-error: true
         run: |
           (cd apps/website && BETTER_AUTH_URL=http://localhost:3002 nohup npx next start -p 3002 > ../../website.log 2>&1 &)
           for i in $(seq 1 60); do curl -sf http://localhost:3002/customer-portal > /dev/null && break; sleep 2; done

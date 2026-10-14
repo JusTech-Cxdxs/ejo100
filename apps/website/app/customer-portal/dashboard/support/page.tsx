@@ -1,7 +1,10 @@
 import { requireCustomer } from '@/lib/customer-portal/session';
-import { loadContact } from '@/lib/customer-portal/data';
-import { Card, PageHero, SectionTitle } from '@/components/customer/ui';
-import { Icon, type IconName } from '@/components/customer/Icon';
+import { loadContact, loadSupportTickets } from '@/lib/customer-portal/data';
+import { supportStatus } from '@/lib/customer-portal/status';
+import { fmtDateTime } from '@/lib/customer-portal/format';
+import { Badge, Card, EmptyState, KeepCodes, PageHero, SectionTitle } from '@/components/customer/ui';
+import { Icon } from '@/components/customer/Icon';
+import { SupportReplyForm } from '@/components/customer/SupportReplyForm';
 import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-payment-constants';
 import { APPROVAL_DEADLINE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/customer-portal/format';
 
@@ -18,49 +21,53 @@ const FAQS: { q: string; a: string }[] = [
   { q: 'How do I change my name or email?', a: 'Please contact your branch — we confirm these in person to keep your account safe. You can change your phone numbers and addresses yourself in Profile & settings.' },
 ];
 
-const AI_FEATURES: { icon: IconName; title: string; text: string }[] = [
-  { icon: 'chat', title: 'Ask anything, any time', text: 'Ask “When will my car be ready?” and get an answer from your own records, at any hour.' },
-  { icon: 'receipt', title: 'Explain my estimate', text: 'Every line in plain words, and why it’s needed.' },
-  { icon: 'calendar', title: 'Book and reschedule', text: 'Pick a time for your next service in a few taps.' },
-  { icon: 'phone', title: 'A person when you need one', text: 'Hand over to our team, with the whole conversation attached.' },
-];
 
-/** Who to call, answers to common questions, and what's coming next. */
+/** Who to call, the customer's support requests (with replies), and answers to common questions. */
 export default async function SupportPage() {
   const me = await requireCustomer();
-  const c = await loadContact(me.id, me.organisationId);
+  const [c, tickets] = await Promise.all([loadContact(me.id, me.organisationId), loadSupportTickets(me.id, me.organisationId)]);
   const lines = c ? [...new Set([...(c.hotlines ?? []), ...(c.orgHotlines ?? [])])] : [];
   const emails = c ? [...new Set([c.email, c.orgEmail].filter((x): x is string => Boolean(x)))] : [];
   return (
     <div className="space-y-6">
-      <PageHero eyebrow="Help & support" icon="help" title="We’re here to help" subtitle="Talk to your branch about anything — your vehicle, an estimate, a payment or a warranty. Most answers are also below." />
+      <PageHero eyebrow="Help & support" icon="help" title="We’re here to help" subtitle="Ask the assistant any time, follow your support requests, or talk to your branch about anything — your vehicle, an estimate, a payment or a warranty." />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-6">
-          {/* AI support centre — coming soon (roadmap style) */}
-          <section className="ejo-roadmap-hero ejo-rise relative overflow-hidden rounded-[var(--ejo-radius-xl)] border border-[var(--ejo-border)] p-6 sm:p-8" aria-labelledby="ai-title" data-testid="ai-support-coming-soon">
-            <div className="ejo-orb pointer-events-none absolute -right-16 -top-16 h-72 w-72 rounded-full bg-[var(--ejo-primary)]/20 blur-3xl" aria-hidden="true" />
-            <div className="ejo-orb-slow pointer-events-none absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-[var(--ejo-accent)]/10 blur-3xl" aria-hidden="true" />
-            <div className="relative flex flex-wrap items-start gap-6">
-              <div className="relative flex h-20 w-20 shrink-0 items-center justify-center">
-                <span className="ejo-spin absolute inset-0 rounded-full border-2 border-dashed border-[var(--ejo-primary)]/40" aria-hidden="true" />
-                <span className="ejo-glow absolute inset-2 rounded-full bg-[var(--ejo-primary)]/30 blur-md" aria-hidden="true" />
-                <span className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ejo-surface)] text-[var(--ejo-primary)] shadow-sm"><Icon name="chat" size={28} /></span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ejo-warning)]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--ejo-warning)]" />Coming soon</p>
-                <h2 id="ai-title" className="mt-2 text-2xl font-bold text-[var(--ejo-text)]">AI support centre</h2>
-                <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--ejo-text-muted)]">An assistant that knows your vehicles and visits and can answer common questions straight away. Our team is still a tap away.</p>
-              </div>
-            </div>
-            <ul className="relative mt-6 grid gap-3 sm:grid-cols-2">
-              {AI_FEATURES.map((f, i) => (
-                <li key={f.title} className="ejo-rise flex gap-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)]/80 p-3.5" style={{ animationDelay: `${120 + i * 60}ms` }}>
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]"><Icon name={f.icon} size={17} /></span>
-                  <span><span className="block text-sm font-semibold text-[var(--ejo-text)]">{f.title}</span><span className="mt-0.5 block text-xs text-[var(--ejo-text-muted)]">{f.text}</span></span>
-                </li>
-              ))}
-            </ul>
+          {/* The customer's own support requests (hand-overs from the assistant) and the team's replies. */}
+          <section aria-labelledby="tickets-title" data-testid="support-tickets">
+            <SectionTitle id="tickets-title" icon="chat" title="Your support requests" />
+            {tickets.length ? (
+              <ul className="space-y-3">
+                {tickets.map((t, i) => {
+                  const info = supportStatus(t.status);
+                  return (
+                    <li key={t.id} className="ejo-rise rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4" style={{ animationDelay: `${i * 40}ms` }} data-testid={`support-ticket-${t.number}`}>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-[var(--ejo-text)]"><KeepCodes text={t.number} /></p>
+                          <p className="mt-0.5 break-words text-sm text-[var(--ejo-text-muted)]">{t.subject}</p>
+                        </div>
+                        <Badge tone={info.tone}>{info.label}</Badge>
+                      </div>
+                      <ol className="mt-3 space-y-2" aria-label={`Messages on ${t.number}`}>
+                        {t.replies.length === 0 ? (
+                          <li className="text-sm text-[var(--ejo-text-muted)]">Opened {fmtDateTime(t.createdAt)}. {info.explain}</li>
+                        ) : t.replies.map((r) => (
+                          <li key={r.id} className={`rounded-[var(--ejo-radius-md)] px-3 py-2 text-sm ${r.fromCustomer ? 'ml-6 bg-[var(--ejo-primary)]/[0.07]' : 'mr-6 border border-[var(--ejo-border)] bg-[var(--ejo-bg)]'}`}>
+                            <p className="text-xs font-medium text-[var(--ejo-text-muted)]">{r.fromCustomer ? 'You' : 'Customer care'} · {fmtDateTime(r.createdAt)}</p>
+                            <p className="mt-1 whitespace-pre-wrap break-words text-[var(--ejo-text)] [overflow-wrap:anywhere]">{r.body}</p>
+                          </li>
+                        ))}
+                      </ol>
+                      {t.status !== 'CLOSED' ? <SupportReplyForm ticketId={t.id} number={t.number} /> : <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">{info.explain} Ask the assistant or call your branch if you need anything else.</p>}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <EmptyState icon="chat" title="No support requests yet" text="Ask the assistant (the chat button at the bottom of the screen). If it can’t help, it passes your question to our team, and their replies appear here and by email." />
+            )}
           </section>
 
           <section aria-labelledby="faq-title">

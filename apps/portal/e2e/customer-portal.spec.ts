@@ -328,7 +328,7 @@ test.describe('on a 375 px phone', () => {
     await drawer.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Help & support' }).click();
     await page.waitForURL(/\/customer-portal\/dashboard\/support/);
     await expect(drawer).toHaveCount(0);
-    await expect(page.getByTestId('ai-support-coming-soon')).toBeVisible();
+    await expect(page.getByTestId('support-tickets')).toBeVisible();
 
     await page.getByRole('button', { name: 'Open menu', exact: true }).click();
     await expect(drawer).toBeVisible();

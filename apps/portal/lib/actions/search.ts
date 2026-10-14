@@ -3,7 +3,8 @@
 import { prisma, type Prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { navigationFor } from '@/lib/authz/navigation';
-import { firstReach, getPrincipal, jobOrServiceReach, orgOwned, orgWhere, partsOfMyOrganisation, reachWhere } from '@/lib/authz/server';
+import { firstReach, getPrincipal, jobOrServiceReach, myOrganisationId, orgOwned, orgWhere, partsOfMyOrganisation, reachWhere } from '@/lib/authz/server';
+import { ticketReachWhere } from '@/lib/support-rules';
 import { decide, STORE_COST_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
 import { getSchedulingAccess } from './scheduling';
 import { groupRank, numberFilters, planSearch, referenceUrl, type RefPrefix, type SearchPlan } from '@/lib/search-plan';
@@ -37,6 +38,7 @@ const MORE_PAGES: (SearchHit & { needs?: PermissionKey[] })[] = [
   { label: 'Appointments (APT)', href: '/schedule/appointments', needs: ['schedule.view'] },
   { label: 'Notification Center', href: '/notifications' },
   { label: 'Broadcasts (BC)', href: '/notifications/broadcasts', needs: ['notifications.broadcast.send'] },
+  { label: 'Support inbox (SUP)', href: '/crm/support', needs: ['support.tickets.manage'] },
 ];
 
 type Text = { startsWith?: string; contains?: string; mode?: 'insensitive' };
@@ -134,6 +136,8 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const canCustomers = canWorkshop || allowed('crm.view');
   const canWarranty = allowed('warranty.view');
   const canStructure = allowed('admin.structure.manage');
+  // Support tickets: the inbox's own fence (organisation + branch reach; website enquiries are the organisation's).
+  const supportReach: Where | null = allowed('support.tickets.manage') ? ticketReachWhere(await reachWhere('support.tickets.manage'), await myOrganisationId()) : null;
 
   /** Runs one table's search when the person may open it and the query can match it. */
   function find<T>(reach: Where | null | false, fields: Fields, run: (where: Where) => Promise<T[]>): Promise<T[]> {
@@ -145,7 +149,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const W = <T,>(w: Where) => w as T;
   const newest = { createdAt: 'desc' } as const;
 
-  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
+  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, tickets, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
     find(jobReach, { numbers: [['JC', 'jobNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
       (w) => prisma.jobCard.findMany({ where: W<Prisma.JobCardWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, jobNumber: true, status: true, customer: { select: { fullName: true } }, vehicle: { select: { plateNumber: true } } } })),
     find(jobReach, { numbers: [['SV', 'serviceNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
@@ -180,6 +184,8 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
       (w) => prisma.appointment.findMany({ where: W<Prisma.AppointmentWhereInput>(w), take, orderBy: { startsAt: 'desc' }, select: { id: true, appointmentNumber: true, title: true } })),
     find(allowed('notifications.broadcast.send') && sameOrg, { numbers: [['BC', 'broadcastNumber']], text: ['title'] },
       (w) => prisma.broadcast.findMany({ where: W<Prisma.BroadcastWhereInput>(w), take, orderBy: newest, select: { id: true, broadcastNumber: true, title: true } })),
+    find(supportReach, { numbers: [['SUP', 'number']], text: ['contactName', 'subject'], phones: ['contactPhone'] },
+      (w) => prisma.supportTicket.findMany({ where: W<Prisma.SupportTicketWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, contactName: true, status: true } })),
     find(canWorkshop && { customer: mineOrg }, { text: ['make', 'model'], codes: ['plateNumber', 'chassisNumber', 'engineNumber'] },
       (w) => prisma.customerVehicle.findMany({ where: W<Prisma.CustomerVehicleWhereInput>(w), take, select: { id: true, make: true, model: true, plateNumber: true, customer: { select: { fullName: true } } } })),
     find(canCustomers && mineOrg, { text: ['fullName', 'email'], phones: ['phone', 'altPhone'] },
@@ -233,6 +239,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     ref('CTR', 'Contractors', contractors.filter((r) => opens(['security.view', 'security.pass.approve'], r.branchId) || r.hostUserId === user.id || r.requestedById === user.id).map((r) => ({ label: r.passNumber, sub: r.company, href: referenceUrl('CTR', r.id) }))),
     ref('APT', 'Appointments', appts.map((r) => ({ label: r.appointmentNumber, sub: r.title, href: referenceUrl('APT', r.id) }))),
     ref('BC', 'Broadcasts', broadcasts.map((r) => ({ label: r.broadcastNumber, sub: r.title, href: referenceUrl('BC', r.id) }))),
+    ref('SUP', 'Support tickets', tickets.map((r) => ({ label: r.number, sub: dot(r.contactName, words(r.status)), href: referenceUrl('SUP', r.id) }))),
     { group: 'Vehicles', hits: vehicles.map((r) => ({ label: [r.make, r.model].filter(Boolean).join(' ') || 'Vehicle', sub: dot(r.plateNumber, r.customer?.fullName), href: `/workshop/vehicles/${r.id}/edit` })) },
     // The customer's 360° page (CRM), or the Workshop customer list for people without the CRM.
     { group: 'Customers', hits: customers.map((r) => ({ label: r.fullName, sub: r.phone ?? undefined, href: canCrm ? `/crm/customers/${r.id}` : `/workshop/customers?q=${encodeURIComponent(r.fullName)}` })) },

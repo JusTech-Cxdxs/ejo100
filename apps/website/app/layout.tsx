@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { SiteChrome } from '@/components/SiteChrome';
+import { EnyoChat } from '@/components/enyo/EnyoChat';
 import { ThemeProvider } from '@/lib/theme';
 import { I18nProvider } from '@/lib/i18n';
 import { siteConfig } from '@/lib/site-config';
@@ -59,6 +60,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <SiteChrome><Header /></SiteChrome>
             {children}
             <SiteChrome><Footer /></SiteChrome>
+            {/* Enyo for visitors (the customer portal has its own, in PortalShell). */}
+            <SiteChrome><EnyoChat variant="public" /></SiteChrome>
           </I18nProvider>
         </ThemeProvider>
       </body>
