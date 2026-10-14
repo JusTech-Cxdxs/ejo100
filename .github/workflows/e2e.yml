@@ -7,6 +7,7 @@ name: E2E
 on:
   pull_request:
     branches: [main]
+    paths-ignore: ['docs/**', '**/*.md']
   push:
     branches: ['work/e2e']
   workflow_dispatch:

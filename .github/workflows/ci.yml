@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    paths-ignore: ['docs/**', '**/*.md']
+
+# A newer push to the same branch cancels the run still going (saves Actions minutes).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
