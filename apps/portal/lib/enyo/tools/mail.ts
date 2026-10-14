@@ -93,10 +93,7 @@ export const mailTools: StaffTool[] = [
     name: 'draft_mail_reply',
     kind: 'draft',
     status: 'Preparing the reply…',
-    description: [
-      'Prepare an email for the person to check and send themselves — a reply to one of their messages (pass the message link from mail_search or mail_overview), or a new message (pass to and subject).',
-      'It opens the compose page filled in; it NEVER sends. Write the body in plain text, in the person\'s voice, polite and short, without inventing facts, prices or dates.',
-    ].join(' '),
+    description: 'Prepare an email for the person to check and send themselves — a reply to one of their messages (pass the message link from mail_search or mail_overview), or a new message (pass to and subject). It opens the compose page filled in; it NEVER sends. Write the body in plain text, in the person\'s voice, polite and short, without inventing facts, prices or dates.',
     parameters: {
       type: 'object',
       properties: {

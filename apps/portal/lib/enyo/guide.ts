@@ -511,9 +511,24 @@ export const GUIDE: GuideEntry[] = [
     ],
   },
   {
-    id: 'enyo-settings', title: 'Switch Enyo features on or off', page: '/settings', needs: ['admin.settings.manage'], does: ['enyo.manage'], who: 'Administrators',
-    keywords: ['enyo settings', 'switch off ai', 'ai settings', 'display name', 'predictions', 'test connection'],
-    steps: ['Open Settings and go to the Enyo section.', 'Turn the staff assistant, customer assistant, website assistant or mail features on or off, set the display name, and press save.', 'Use "Test connection" to check the model server answers.'],
+    id: 'enyo-settings', title: 'Switch Enyo features on or off', page: '/settings/enyo', needs: ['admin.settings.manage'], does: ['enyo.manage'], who: 'Administrators',
+    keywords: ['enyo settings', 'switch off ai', 'ai settings', 'display name', 'predictions', 'test connection', 'model'],
+    steps: ['Go to Settings → Enyo.', 'Turn the staff assistant, customer assistant, website assistant or mail features on or off, set the display name and the predictions mode, then save.', 'Press "Test connection" to check that the model server answers.'],
+  },
+  {
+    id: 'enyo-memory', title: 'See or delete what Enyo remembers about me', page: '/profile/enyo', needs: EVERYONE,
+    keywords: ['enyo memory', 'what do you remember', 'forget me', 'remembered facts', 'privacy'],
+    steps: ['Open your Profile and choose "My Enyo memory".', 'Each fact you asked Enyo to remember is listed. Press "Delete" next to any you want gone.'],
+  },
+  {
+    id: 'enyo-learning', title: 'See how accurate Enyo\'s workshop predictions are', page: '/enyo/learning', needs: ['enyo.manage'], who: 'Administrators and managers with business analytics',
+    keywords: ['learning', 'accuracy', 'predictions', 'likely lines', 'shadow mode', 'suggest mode', 'training data'],
+    steps: ['Go to Settings → Enyo — learning (also linked from Business Analytics).', 'Read the accuracy by week, the lines it keeps missing and its progress toward the rule for switching to Suggest mode.', 'An administrator decides when to switch modes on Settings → Enyo.'],
+  },
+  {
+    id: 'support-inbox', title: 'Answer customers handed over by Enyo (support inbox)', page: '/crm/support', needs: ['crm.view'], does: ['support.tickets.manage'], who: 'Front desk, managers and administrators',
+    keywords: ['support', 'ticket', 'handover', 'customer care', 'complaint', 'sup', 'customer message', 'inbox'],
+    steps: ['Go to Customers → Support inbox. New conversations Enyo handed over are under "Open".', 'Open a ticket to read Enyo\'s summary and the conversation, then write your reply and send it. The customer gets it by email and in their portal.', 'Assign it to yourself or a colleague, and mark it resolved when done.'],
   },
   {
     id: 'reminders', title: 'Set a reminder', page: '/reminders', needs: EVERYONE,
@@ -521,9 +536,19 @@ export const GUIDE: GuideEntry[] = [
     steps: ['Go to Reminders and create a new one.', 'Give it a title and the date and time it is due, then save. You are reminded when it is due.', 'You can also ask Enyo: "Remind me to call Mr Ade at 3 pm" — check the draft and save it.'],
   },
   {
+    id: 'reminders-delegate', title: 'Let a colleague set reminders for me', page: '/reminders', needs: EVERYONE,
+    keywords: ['reminder for someone', 'remind my manager', 'delegate', 'set reminders for me', 'permission'],
+    steps: ['Go to Reminders and open "Who may set reminders for me".', 'Choose the colleague and press allow. They can now set reminders for you; you can withdraw it at any time.', 'To set one for a colleague, they must have allowed you first.'],
+  },
+  {
     id: 'mail', title: 'Read and send email from my connected mailbox', page: '/mail', needs: EVERYONE,
     keywords: ['mail', 'email', 'inbox', 'mailbox', 'compose', 'reply'],
     steps: ['Go to Mail and connect your work mailbox the first time.', 'Open a message to read it, or compose a new one and press send.', 'Enyo can draft a reply for you to check before you send it.'],
+  },
+  {
+    id: 'mail-connect', title: 'Connect my work email (Gmail, Zoho or company mail)', page: '/mail/connect', needs: EVERYONE,
+    keywords: ['connect email', 'gmail', 'app password', 'imap', 'smtp', 'zoho', 'outlook', 'microsoft', 'mailbox settings'],
+    steps: ['Go to Mail → Connect and pick your provider (Gmail, Zoho or your company\'s mail).', 'For Gmail, turn on 2-step verification and create an app password, then use that instead of your normal password.', 'Press connect: the portal checks the mailbox before saving. Then choose whether Enyo may read, sort and summarise your email.', 'Microsoft 365 mailboxes need a sign-in option that is not available yet.'],
   },
 ];
 

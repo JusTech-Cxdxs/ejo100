@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import { replyToSupportTicketAction, type SupportReplyState } from '@/lib/actions/support-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const initial: SupportReplyState = { error: null, body: '' };
 
@@ -27,7 +28,7 @@ export function SupportReplyForm({ ticketId, emailTo, phone }: { ticketId: strin
           className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-base text-[var(--ejo-text)] focus:border-[var(--ejo-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--ejo-primary)]/20 sm:text-sm"
           placeholder="Write in plain words. The customer sees exactly this."
         />
-        {/* Enyo: RefineTextButton targetId="support-reply-body" */}
+        <RefineTextButton targetId="support-reply-body" />
         <p id="support-reply-hint" className="mt-1 text-xs text-[var(--ejo-text-muted)]">
           {emailTo ? <>Emailed to <span className="font-medium text-[var(--ejo-text)]">{emailTo}</span>{' '}and shown in their customer portal when they have one.</> : <>No email address on this ticket{phone ? <> — call them on <a className="font-medium text-[var(--ejo-primary)] underline" href={`tel:${phone.replace(/[^\d+]/g, '')}`}>{phone}</a></> : null}. The reply is kept on the ticket.</>}
         </p>

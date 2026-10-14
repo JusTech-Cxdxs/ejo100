@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { EnyoAvatar } from '@ejo/enyo/src/ui/EnyoAvatar';
 import { readEvents, type EnyoEvent } from '@ejo/enyo/src/protocol';
 import { EnyoMarkdown } from './EnyoMarkdown';
 
@@ -54,14 +55,6 @@ function writeStored(variant: string, id: string | null) {
 let seq = 0;
 const nextId = () => `m${Date.now().toString(36)}${(seq += 1)}`;
 
-function ChatGlyph({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-      <path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.2A8 8 0 1 1 21 12z" />
-      <path d="M8.5 11h.01M12 11h.01M15.5 11h.01" />
-    </svg>
-  );
-}
 function Glyph({ d, size = 18 }: { d: string; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d={d} /></svg>
@@ -229,7 +222,7 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
           data-testid="enyo-chat-button"
           className={`ejo-rise fixed right-[calc(env(safe-area-inset-right)+1rem)] z-[45] flex h-14 min-w-14 items-center justify-center gap-2 rounded-full bg-[var(--ejo-primary)] px-4 text-white shadow-lg shadow-[var(--ejo-primary)]/25 transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--ejo-primary)]/35 motion-reduce:transition-none motion-reduce:hover:scale-100 sm:right-6 ${lift}`}
         >
-          <ChatGlyph />
+          <span className="-ml-2 overflow-hidden rounded-full bg-white/95"><EnyoAvatar size={40} mood="idle" /></span>
           <span className="hidden text-sm font-semibold sm:inline">Ask {name}</span>
         </button>
       ) : null}
@@ -243,8 +236,7 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
           className="ejo-pop fixed inset-0 z-[60] flex flex-col bg-[var(--ejo-bg)] pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] sm:inset-auto sm:bottom-6 sm:right-6 sm:h-[min(640px,calc(100dvh-3rem))] sm:w-[400px] sm:overflow-hidden sm:rounded-[var(--ejo-radius-xl)] sm:border sm:border-[var(--ejo-border)] sm:pb-0 sm:pt-0 sm:shadow-2xl"
         >
           <header className="flex items-center gap-3 border-b border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2.5 sm:px-4">
-            {/* Enyo avatar slot */}
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--ejo-primary)]/12 text-[var(--ejo-primary)]" aria-hidden="true"><ChatGlyph size={20} /></span>
+            <EnyoAvatar size={40} mood={busy ? (messages.at(-1)?.text ? 'speaking' : 'thinking') : messages.length ? 'idle' : 'wave'} level={busy ? 0.55 : 0} />
             <div className="min-w-0 flex-1">
               <h2 id="enyo-chat-title" className="truncate text-sm font-semibold text-[var(--ejo-text)]">{name}</h2>
               <p className="truncate text-xs text-[var(--ejo-text-muted)]">{variant === 'portal' ? 'Your assistant for your vehicles and visits' : 'Questions about our company and services'}</p>

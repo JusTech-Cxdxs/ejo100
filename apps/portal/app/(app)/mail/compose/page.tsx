@@ -10,6 +10,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { NOT_SET_UP } from '@/lib/mail/config';
 import { BODY_MAX, parseComposePrefill, quoteForReply, replySubject, SUBJECT_MAX } from '@/lib/mail/rules';
 import { formatLagos } from '@/lib/reminders-rules';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 export const metadata: Metadata = { title: 'New message' };
 
@@ -90,7 +91,7 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
         <div>
           <div className="mb-1 flex items-center justify-between gap-2">
             <label htmlFor="mail-body" className={label.replace('mb-1 ', '')}>Message</label>
-            {/* Enyo: RefineTextButton targetId="mail-body" */}
+            <RefineTextButton targetId="mail-body" />
           </div>
           <textarea id="mail-body" name="body" required rows={14} maxLength={BODY_MAX} defaultValue={body} className={`${input} min-h-64 font-[inherit] leading-relaxed`} />
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Sent as plain text from your own mailbox.</p>

@@ -20,17 +20,14 @@ import type {
   EnyoStatus,
   EnyoTone,
 } from '@/lib/enyo/client-contract';
+import { listEnyoConversations, getEnyoConversation, renameEnyoConversation, deleteEnyoConversation, rateEnyoMessage, listEnyoMemories, deleteEnyoMemory, saveEnyoSettings, testEnyoConnection } from '@/lib/actions/enyo';
 
-// MERGE (lead): connect the engine's server actions (lib/actions/enyo.ts) by replacing the line
-// `const actions: Partial<EnyoActions> = {};` below with (names as in the engine branch today):
-//   import { listEnyoConversations, getEnyoConversation, renameEnyoConversation, deleteEnyoConversation, rateEnyoMessage, listEnyoMemories, deleteEnyoMemory, saveEnyoSettings, testEnyoConnection } from '@/lib/actions/enyo';
-//   const actions: Partial<EnyoActions> = {
-//     listConversations: listEnyoConversations, getConversation: getEnyoConversation, renameConversation: renameEnyoConversation,
-//     deleteConversation: deleteEnyoConversation, rateMessage: rateEnyoMessage, listMemories: listEnyoMemories,
-//     deleteMemory: deleteEnyoMemory, saveEnyoSettings, testEnyoConnection,
-//   } satisfies EnyoActions;
-// Until then every call answers "This part of Enyo is not available yet."
-const actions: Partial<EnyoActions> = {};
+// The engine's server actions (lib/actions/enyo.ts), each authorised and fenced to the signed-in person.
+const actions: Partial<EnyoActions> = {
+  listConversations: listEnyoConversations, getConversation: getEnyoConversation, renameConversation: renameEnyoConversation,
+  deleteConversation: deleteEnyoConversation, rateMessage: rateEnyoMessage, listMemories: listEnyoMemories,
+  deleteMemory: deleteEnyoMemory, saveEnyoSettings, testEnyoConnection,
+} satisfies EnyoActions;
 
 const NOT_AVAILABLE = 'This part of Enyo is not available yet.';
 const TRY_AGAIN = 'That did not work. Please try again in a moment.';

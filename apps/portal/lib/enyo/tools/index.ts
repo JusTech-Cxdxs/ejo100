@@ -5,8 +5,8 @@
  * refusal while Finance gets the figure. A tool never widens access — it runs
  * the module's own authorised code as the signed-in person.
  *
- * Other workstreams add their own `tools/<area>.ts` files; the lead adds
- * their imports here at merge.
+ * Each area keeps its tools in its own `tools/<area>.ts` file; every file in
+ * this folder must be imported here (a unit test checks it).
  */
 import type { StaffTool } from '../types';
 import { guideTools } from './guide';
@@ -17,6 +17,9 @@ import { businessTools } from './business';
 import { aftercareTools } from './aftercare';
 import { personalTools } from './personal';
 import { draftTools } from './drafts';
+import { remindersTools } from './reminders';
+import { mailTools } from './mail';
+import { workshopTools } from './workshop';
 
 export function staffTools(): StaffTool[] {
   return [
@@ -28,5 +31,8 @@ export function staffTools(): StaffTool[] {
     ...aftercareTools,
     ...personalTools,
     ...draftTools,
+    ...remindersTools,
+    ...mailTools,
+    ...workshopTools,
   ];
 }

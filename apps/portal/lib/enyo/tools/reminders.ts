@@ -71,11 +71,7 @@ export const remindersTools: StaffTool[] = [
     name: 'draft_reminder',
     kind: 'draft',
     status: 'Preparing the reminder…',
-    description: [
-      'Prepare a reminder for the person (or for a colleague who has allowed them) — it opens the New reminder form filled in; the person checks it and presses Save. Nothing is saved by this tool.',
-      'Work out the time yourself from what they said ("tomorrow at 10", "in 2 hours", "Friday morning" = 9:00) using today\'s date and time in Lagos, and pass it as an ISO date-time with the Lagos offset, e.g. 2026-10-15T10:00:00+01:00.',
-      'Use for_person only when they ask to remind someone else (their name as they said it). Use reference for a record number they mention (JC-…, SV-…, WC-…), or about_this_page when they say "this job" / "this customer" while on that page.',
-    ].join(' '),
+    description: 'Prepare a reminder for the person (or for a colleague who has allowed them) — it opens the New reminder form filled in; the person checks it and presses Save. Nothing is saved by this tool. Work out the time yourself from what they said ("tomorrow at 10", "in 2 hours", "Friday morning" = 9:00) using today\'s date and time in Lagos, and pass it as an ISO date-time with the Lagos offset, e.g. 2026-10-15T10:00:00+01:00. Use for_person only when they ask to remind someone else (their name as they said it). Use reference for a record number they mention (JC-…, SV-…, WC-…), or about_this_page when they say "this job" / "this customer" while on that page.',
     parameters: {
       type: 'object',
       properties: {

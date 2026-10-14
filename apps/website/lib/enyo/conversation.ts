@@ -43,10 +43,10 @@ export function ipHash(ip: string | null): string | null {
   return createHmac('sha256', key).update(`enyo-ip:${ip}`).digest('hex').slice(0, 32);
 }
 
-/** The person's message. For visitors, the hashed address rides along (in toolCalls, unused on a USER message) for the per-address limits. */
+/** The person's message. For visitors, the hashed address is kept (ipHash) for the per-address limits. */
 export async function storeUserMessage(conversationId: string, content: string, hashedIp: string | null): Promise<void> {
   await prisma.enyoMessage.create({
-    data: { conversationId, role: 'USER', content, ...(hashedIp ? { toolCalls: { ipHash: hashedIp } } : {}) },
+    data: { conversationId, role: 'USER', content, ...(hashedIp ? { ipHash: hashedIp } : {}) },
     select: { id: true },
   });
 }
@@ -114,7 +114,7 @@ export async function customerCounts(organisationId: string, customerId: string)
 export async function publicCounts(visitorKey: string, hashedIp: string | null): Promise<{ perMinute: number; perDay: number; ipPerMinute: number; ipPerDay: number }> {
   const byVisitor = (since: Date) => prisma.enyoMessage.count({ where: { role: 'USER', createdAt: { gte: since }, conversation: { channel: 'PUBLIC', visitorKey } } });
   const byIp = (since: Date) => (hashedIp
-    ? prisma.enyoMessage.count({ where: { role: 'USER', createdAt: { gte: since }, conversation: { channel: 'PUBLIC' }, toolCalls: { path: ['ipHash'], equals: hashedIp } } })
+    ? prisma.enyoMessage.count({ where: { role: 'USER', createdAt: { gte: since }, conversation: { channel: 'PUBLIC' }, ipHash: hashedIp } })
     : Promise.resolve(0));
   const [perMinute, perDay, ipPerMinute, ipPerDay] = await Promise.all([byVisitor(ago(60_000)), byVisitor(ago(86_400_000)), byIp(ago(60_000)), byIp(ago(86_400_000))]);
   return { perMinute, perDay, ipPerMinute, ipPerDay };

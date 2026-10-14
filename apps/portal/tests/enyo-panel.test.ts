@@ -109,7 +109,7 @@ test('panel code: no raw HTML, browser-safe engine import only, no secrets', () 
 });
 
 test('avatar: decorative, and still when motion is reduced', () => {
-  const src = read('components/enyo/EnyoAvatar.tsx');
+  const src = read('../../packages/enyo/src/ui/EnyoAvatar.tsx');
   assert.match(src, /aria-hidden="true"/);
   assert.match(src, /prefers-reduced-motion: reduce/);
   for (const mood of ['idle', 'wave', 'listening', 'thinking', 'speaking', 'happy']) assert.ok(src.includes(`'${mood}'`), mood);

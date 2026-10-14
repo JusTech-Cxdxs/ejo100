@@ -3450,9 +3450,12 @@ model EnyoMessage {
   // 1 = helpful, -1 = not helpful, from the person who asked.
   rating         Int?
   ratingNote     String?
+  // Public website only: a salted hash of the visitor's address, for rate limits. Never the address itself.
+  ipHash         String?
   createdAt      DateTime         @default(now())
 
   @@index([conversationId, createdAt])
+  @@index([ipHash, createdAt])
   @@map("enyo_messages")
 }
 

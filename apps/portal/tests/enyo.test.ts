@@ -25,7 +25,7 @@ const who = (roleSlugs: string[], extra: Partial<Principal> = {}): Principal => 
 // ── The guide ─────────────────────────────────────────────────────────
 
 /** Pages built by other Enyo workstreams (reminders, mail) — not in this tree yet. */
-const PAGES_ELSEWHERE = new Set(['/reminders', '/mail']);
+const PAGES_ELSEWHERE = new Set<string>();
 
 test('the guide covers every live module with 40+ well-formed entries', () => {
   assert.ok(GUIDE.length >= 40, `only ${GUIDE.length} entries`);
