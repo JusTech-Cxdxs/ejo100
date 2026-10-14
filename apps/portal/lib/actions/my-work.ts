@@ -30,17 +30,20 @@ function monthStart(): Date {
 export async function getMyWorkItems(): Promise<MyWorkItem[]> {
   const user = await requireUser();
   const [work, mine] = await Promise.all([reachWhere('workshop.job_card.view'), reachWhere('security.exit_pass.request')]);
-  const [jcs, svs, tests, passes] = await Promise.all([
+  const [jcs, svs, tests, passes, reminders] = await Promise.all([
     prisma.jobCard.findMany({ where: { ...work, supervisorId: user.id, approvalStatus: 'APPROVED', assignedTechnicianId: null, status: { in: [...JC_OPEN] } }, take: 20, select: { id: true, jobNumber: true, updatedAt: true } }),
     prisma.vehicleService.findMany({ where: { ...work, supervisorId: user.id, approvalStatus: 'APPROVED', assignedTechnicianId: null, escalatedToJobCardId: null, status: { in: [...SV_OPEN] } }, take: 20, select: { id: true, serviceNumber: true, createdAt: true } }),
     prisma.roadTestPermit.findMany({ where: { ...mine, status: 'APPROVED', driverId: user.id }, take: 10, select: { id: true, permitNumber: true, managerApprovedAt: true, createdAt: true, vehicle: { select: { plateNumber: true } } } }),
     prisma.exitPass.findMany({ where: { ...mine, status: 'APPROVED', OR: [{ requestedById: user.id }, { people: { some: { userId: user.id } } }] }, take: 10, select: { id: true, passNumber: true, managerApprovedAt: true, createdAt: true } }),
+    // My own reminders that are due: delivered by the 10-minute job, or past due and not yet delivered.
+    prisma.reminder.findMany({ where: { ownerId: user.id, OR: [{ status: 'SENT' }, { status: 'PENDING', dueAt: { lte: new Date() } }] }, orderBy: { dueAt: 'asc' }, take: 20, select: { id: true, title: true, recordRef: true, dueAt: true } }),
   ]);
   return [
     ...jcs.map((j: (typeof jcs)[number]) => ({ id: `my-assign-${j.id}`, title: `Assign a technician — ${j.jobNumber}`, detail: 'You are supervising this job and nobody is working on it yet.', url: `/workshop/job-cards/${j.id}`, createdAt: j.updatedAt })),
     ...svs.map((v: (typeof svs)[number]) => ({ id: `my-sassign-${v.id}`, title: `Assign a technician — ${v.serviceNumber}`, detail: 'You are supervising this service and nobody is working on it yet.', url: `/workshop/vehicle-service/${v.id}`, createdAt: v.createdAt })),
     ...tests.map((t: (typeof tests)[number]) => ({ id: `my-roadtest-${t.id}`, title: `Road test approved — ${t.permitNumber}`, detail: `You are the driver${t.vehicle?.plateNumber ? ` of ${t.vehicle.plateNumber}` : ''}. Security records the time and odometer at the gate.`, url: `/security/road-tests/${t.id}`, createdAt: t.managerApprovedAt ?? t.createdAt })),
     ...passes.map((p: (typeof passes)[number]) => ({ id: `my-exitpass-${p.id}`, title: `Exit pass approved — ${p.passNumber}`, detail: 'Show it at the gate when you go out.', url: `/security/exit-passes/${p.id}`, createdAt: p.managerApprovedAt ?? p.createdAt })),
+    ...reminders.map((r: (typeof reminders)[number]) => ({ id: `my-reminder-${r.id}`, title: `Reminder — ${r.title}`, detail: `${r.recordRef ? `About ${r.recordRef}. ` : ''}Mark it done or snooze it.`, url: `/reminders?focus=${r.id}#r-${r.id}`, createdAt: r.dueAt })),
   ];
 }
 

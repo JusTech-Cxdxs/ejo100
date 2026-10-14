@@ -14,7 +14,7 @@ import { isApproval } from '@/lib/approvals';
 
 /** The menu's sections. A module not listed here goes under "Operations". */
 const GROUPS: { title: string; keys: string[] }[] = [
-  { title: 'Overview', keys: ['dashboard', 'approvals', 'notifications', 'analytics'] },
+  { title: 'Overview', keys: ['dashboard', 'approvals', 'notifications', 'mail', 'reminders', 'analytics'] },
   { title: 'Operations', keys: [] },
   { title: 'Administration', keys: ['organisation', 'structure', 'branches', 'users', 'roles', 'permissions', 'audit-logs', 'recycle-bin', 'settings'] },
 ];
@@ -98,6 +98,9 @@ export function Sidebar({
                       <Icon name={MODULE_ICON[mod.key] ?? 'grid'} size={mini ? 20 : 18} />
                     </span>
                     <span className={mini ? 'sr-only' : 'min-w-0 flex-1 truncate'}>{mod.name}</span>
+                    {mod.key === 'mail' && (summary.mailUnread ?? 0) > 0 ? (
+                      <span aria-label={`${summary.mailUnread} unread`} className={mini ? 'absolute right-2 top-1 h-2 w-2 rounded-full bg-[var(--ejo-primary)]' : 'shrink-0 rounded-full bg-[var(--ejo-primary)]/15 px-2 py-px text-[11px] font-semibold text-[var(--ejo-primary)]'}>{mini ? null : (summary.mailUnread ?? 0) > 99 ? '99+' : summary.mailUnread}</span>
+                    ) : null}
                     {mod.key === 'approvals' && waiting > 0 ? (
                       <span className={mini ? 'absolute right-2 top-1 h-2 w-2 rounded-full bg-[var(--ejo-warning)]' : 'shrink-0 rounded-full bg-[var(--ejo-warning)]/15 px-2 py-px text-[11px] font-semibold text-[var(--ejo-warning-text)]'}>{mini ? null : waiting}</span>
                     ) : null}

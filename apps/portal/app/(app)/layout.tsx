@@ -53,7 +53,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <NotificationProvider userId={session?.user?.id ? (assist ? `${session.user.id}.assist.${assist.subject.id}` : session.user.id) : null}>
       <AppShell
-        items={navigationFor(principal)}
+        items={assist ? navigationFor(principal).filter((i) => i.key !== 'mail') : navigationFor(principal)}
         organisationName={user.organisation?.name ?? portalConfig.companyName}
         userName={user?.fullName ?? 'Unknown user'}
         roleName={user?.roles[0]?.role.name ?? 'No role assigned'}
