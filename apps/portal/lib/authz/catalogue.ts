@@ -26,6 +26,7 @@ export const PERMISSIONS = {
   'admin.settings.manage': { module: 'Administration', label: 'Manage settings, branding and modules' },
   'audit.view': { module: 'Administration', label: 'View the full audit trail' },
   'admin.recycle_bin.manage': { module: 'Administration', label: 'Open the Recycle bin, restore records deleted by mistake, and delete such records' },
+  'enyo.manage': { module: 'Administration', label: 'Manage Enyo (AI): switch features on or off, see what it is learning and how accurate it is' },
   // Analytics
   'analytics.business.view': { module: 'Analytics', label: 'View Business Analytics (sales, cost, profit, cash)' },
   'analytics.inventory.view': { module: 'Analytics', label: 'View Inventory Analytics' },
@@ -50,6 +51,7 @@ export const PERMISSIONS = {
   // Customers (CRM)
   'crm.view': { module: 'Customers', label: 'See customers, their 360 pages, spend and history' },
   'crm.manage': { module: 'Customers', label: 'Edit customers, their contacts, addresses, notes, tags and portal access' },
+  'support.tickets.manage': { module: 'Customers', label: 'Answer customer support conversations handed over by Enyo' },
   'workshop.refund.record': { module: 'Finance', label: 'Record refunds' },
   // Store & procurement
   'store.view': { module: 'Store', label: 'Open the Store — parts, stock, parts requests and outside purchases' },
@@ -113,20 +115,20 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'admin.organisation.manage': A, 'admin.structure.manage': A, 'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A,
     'audit.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A, 'notifications.broadcast.send': A,
     'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'schedule.view': 'OWN',
-    'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A,
+    'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A, 'enyo.manage': A, 'support.tickets.manage': A,
   },
   // One branch: its people and their roles, and oversight of that branch.
   'branch-administrator': {
     'admin.users.manage': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
-    'crm.view': B, 'crm.manage': B, 'admin.recycle_bin.manage': B,
+    'crm.view': B, 'crm.manage': B, 'admin.recycle_bin.manage': B, 'support.tickets.manage': B,
   },
   // ── Workshop ─────────────────────────────────────────────────────
   // Front desk: the customer relationship — customers, vehicles, opening
   // Job Cards and Vehicle Services, telling customers, receiving visitors.
   receptionist: {
     ...VIEW_WORKSHOP, 'workshop.job_card.create': B, 'workshop.customer.manage': B, 'workshop.customer.notify': B, 'workshop.close.request': MINE,
-    'crm.view': B, 'crm.manage': B,
+    'crm.view': B, 'crm.manage': B, 'support.tickets.manage': B,
     'security.view': B, 'security.reception.operate': B, 'schedule.view': 'OWN',
   },
   // Accepts the job, assigns the technician, prepares and APPROVES the estimate.
@@ -148,7 +150,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'workshop.estimate.final_approve': B, 'workshop.close.approve': B, 'store.prs.approve_hod': B, 'procurement.epr.approve': B,
     'warranty.manage': B, 'warranty.claim.approve': B, 'security.pass.approve': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
-    'crm.view': B, 'crm.manage': B,
+    'crm.view': B, 'crm.manage': B, 'support.tickets.manage': B,
   },
   // ── Finance ──────────────────────────────────────────────────────
   // Money only: payments, refunds, outside-purchase review and cash.

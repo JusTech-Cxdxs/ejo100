@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@ejo/database": "*",
+    "@ejo/enyo": "*",
     "@ejo/types": "*",
     "@ejo/ui": "*",
     "@ejo/utils": "*",

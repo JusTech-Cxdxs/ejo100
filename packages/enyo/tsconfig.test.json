@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": false, "outDir": ".test-out", "module": "commonjs", "moduleResolution": "node", "rootDir": "." },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}

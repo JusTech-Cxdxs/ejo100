@@ -175,6 +175,21 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   Broadcast: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: '2 years', ai: 'AUTHORISED_USER' },
   Announcement: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: '2 years', ai: 'AUTHORISED_USER' },
 
+  // ── Enyo (AI), support, reminders, mailbox (v31) ───────────────────
+  // Transcripts, memories, predictions and emails are not journaled (high-volume
+  // personal content); the business steps around them write their own audit entries.
+  EnyoSetting: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EDITABLE', retention: 'Life of the contract', ai: 'AUTHORISED_USER' },
+  EnyoConversation: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['PERSONAL'], lifecycle: 'EXPIRES', retention: 'Staff and customer chats 12 months, public website chats 90 days, then removed by the clean-up job', ai: 'AUTHORISED_USER' },
+  EnyoMessage: { tenancy: 'VIA_PARENT', owner: 'conversationId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: 'With its conversation', ai: 'AUTHORISED_USER' },
+  EnyoMemory: { tenancy: 'USER', owner: 'userId', classification: ['PERSONAL'], lifecycle: 'EDITABLE', retention: 'Until the person deletes it or leaves the organisation', ai: 'AUTHORISED_USER' },
+  EnyoPrediction: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL', 'FINANCIAL'], lifecycle: 'IMMUTABLE', retention: '3 years (training and accuracy history)', ai: 'AUTHORISED_USER' },
+  SupportTicket: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['PERSONAL'], lifecycle: 'STATE_MACHINE', retention: '3 years after it is closed', ai: 'AUTHORISED_USER' },
+  SupportReply: { tenancy: 'VIA_PARENT', owner: 'ticketId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: 'With its ticket', ai: 'AUTHORISED_USER' },
+  Reminder: { tenancy: 'USER', owner: 'ownerId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: '12 months after it is done or cancelled', ai: 'AUTHORISED_USER' },
+  ReminderDelegate: { tenancy: 'USER', owner: 'ownerId', classification: ['INTERNAL'], lifecycle: 'EDITABLE', retention: 'Until the owner withdraws it', ai: 'NEVER' },
+  MailAccount: { tenancy: 'USER', owner: 'userId', classification: ['PERSONAL', 'SECRET'], lifecycle: 'EDITABLE', retention: 'Until the person disconnects it or leaves; the encrypted password is deleted on disconnect', ai: 'NEVER' },
+  MailMessage: { tenancy: 'VIA_PARENT', owner: 'accountId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: 'The last 90 days, refreshed from the mailbox; removed when the mailbox is disconnected', ai: 'AUTHORISED_USER' },
+
   // ── Audit ──────────────────────────────────────────────────────────
   // v30 — what was deleted by mistake: a full copy of the deleted rows until it
   // is restored or the retention period (RECYCLE_BIN_DAYS, 7–90, default 30)

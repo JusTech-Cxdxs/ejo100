@@ -63,6 +63,14 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
       # One retry in CI (a flaky test is reported as a warning, never hidden).
       E2E_RETRIES: '1'
+      # Enyo talks to a stand-in model server in CI (packages/enyo/testing/mock-llm.mjs):
+      # tests drive it with markers, so permissions and hand-overs are checked end to end.
+      ENYO_LLM_BASE_URL: 'http://localhost:4010/v1'
+      ENYO_LLM_MODEL: 'mock'
+      ENYO_LLM_API_KEY: 'e2e-mock-key'
+      MOCK_LLM_KEY: 'e2e-mock-key'
+      # Test-only key for encrypting connected mailbox passwords (32 bytes, base64).
+      MAILBOX_ENCRYPTION_KEY: 'ZTJlLW9ubHktbWFpbGJveC1rZXktMzItYnl0ZXMhISE='
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -89,6 +97,10 @@ jobs:
           npx tsx apps/portal/e2e/seed.ts
           # Idempotent: a second run changes nothing and does not fail.
           npx tsx apps/portal/e2e/seed.ts
+      - name: Start the stand-in model server (Enyo)
+        run: |
+          nohup node packages/enyo/testing/mock-llm.mjs > mock-llm.log 2>&1 &
+          for i in $(seq 1 20); do curl -sf -H 'authorization: Bearer e2e-mock-key' http://localhost:4010/v1/models > /dev/null && break; sleep 1; done
       - run: npm run build --workspace=apps/portal
       - name: Start the portal
         run: |

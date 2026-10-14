@@ -17,7 +17,7 @@ if (process.env.VERCEL_ENV === 'production') {
 const serverActionOrigins = (process.env.SERVER_ACTIONS_ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
 const nextConfig: NextConfig = {
-  transpilePackages: ['@ejo/ui', '@ejo/types', '@ejo/utils'],
+  transpilePackages: ['@ejo/ui', '@ejo/types', '@ejo/utils', '@ejo/enyo'],
   reactStrictMode: true,
   // Don't advertise the framework.
   poweredByHeader: false,

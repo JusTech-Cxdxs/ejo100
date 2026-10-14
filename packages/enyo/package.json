@@ -1,0 +1,12 @@
+{
+  "name": "@ejo/enyo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enyo 1.0 — the AI engine shared by the staff portal and the website: model client, agent loop, guardrails, streaming protocol.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "rm -rf .test-out && tsc -p tsconfig.test.json && node --test .test-out/tests/*.test.js; status=$?; rm -rf .test-out; exit $status"
+  }
+}

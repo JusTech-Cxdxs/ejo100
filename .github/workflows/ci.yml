@@ -57,6 +57,8 @@ jobs:
       - run: npm run test --workspace=apps/portal
       # The data journal: before/after values kept, rolled-back work never recorded.
       - run: npm run test --workspace=packages/database
+      # Enyo's engine: model client, agent loop, tool checks, guardrails, streaming protocol.
+      - run: npm run test --workspace=packages/enyo
       - run: npm run build
       # Known vulnerabilities in production dependencies — reported on every push
       # (report-only so a new advisory never blocks an urgent fix; review the log).

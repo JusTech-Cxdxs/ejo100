@@ -152,6 +152,11 @@ const SKIP_MODELS = new Set([
   // A recycle-bin snapshot is a full copy of the deleted rows. The move,
   // restore and purge each write their own business audit entry instead.
   'RecycleBinItem',
+  // v31: chat transcripts, email contents and prediction logs are high-volume
+  // personal content, not business changes. Mailbox connect/disconnect, ticket
+  // and reminder actions write their own business audit entries instead.
+  'EnyoConversation', 'EnyoMessage', 'EnyoMemory', 'EnyoPrediction',
+  'MailAccount', 'MailMessage',
 ]);
 const SENSITIVE_KEY = /password|token|secret|hash/i;
 const MAX_JSON = 6000;
