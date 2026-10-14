@@ -17,9 +17,13 @@ export const JOBS: { key: string; name: string; when: string; does: string }[] =
   { key: 'appointment-reminders', name: 'Appointment reminders & scheduled broadcasts', when: 'Every 10 minutes (Supabase scheduler)', does: 'Emails people ~1 hour before their appointment, and sends scheduled broadcasts by email at their start time.' },
   { key: 'morning-digest', name: 'Morning appointments digest', when: '7:00 am, Monday–Friday (Vercel)', does: 'Emails each person a list of their appointments for the day — only people who have appointments that day.' },
   { key: 'access-notices', name: 'Access-changed emails', when: 'Every 10 minutes, with the reminders', does: 'When permissions are added to or removed from a role, emails everyone who holds it their full, current access — one email per batch of changes.' },
+  { key: 'reminders', name: 'Personal reminders', when: 'Every 10 minutes, with the appointment reminders', does: 'Puts reminders that are due into each person\'s bell and emails them when they asked for it. Each reminder is delivered once.' },
+  { key: 'mail-sync', name: 'Work mailbox refresh', when: 'Every 10 minutes, with the appointment reminders', does: 'Fetches new mail for connected work mailboxes of people who used the portal in the last 7 days, within a time limit per run.' },
   { key: 'pricing-alerts', name: 'Pricing alerts digest', when: '8:00 am daily (Vercel)', does: 'Emails Store staff one summary of open pricing alerts — only when there are open alerts.' },
   { key: 'error-log-cleanup', name: 'Error log clean-up', when: '8:00 am daily, with the pricing digest (Vercel)', does: 'Removes error references older than 90 days from the Error log.' },
   { key: 'enyo-cleanup', name: 'Enyo chat clean-up', when: '8:00 am daily, with the pricing digest (Vercel)', does: 'Removes Enyo conversations 12 months after their last message (staff and customers) and website chats after 90 days.' },
+  { key: 'mail-retention', name: 'Mail clean-up', when: '8:00 am daily, with the pricing digest (Vercel)', does: 'Removes stored copies of emails older than 90 days. The mailbox itself is not touched.' },
+  { key: 'reminder-retention', name: 'Reminder clean-up', when: '8:00 am daily, with the pricing digest (Vercel)', does: 'Removes reminders that were done or cancelled more than 12 months ago.' },
   { key: 'recycle-bin-purge', name: 'Recycle bin clean-up', when: '8:00 am daily, with the pricing digest (Vercel)', does: 'Permanently removes Recycle bin items whose restore period has ended (30 days unless RECYCLE_BIN_DAYS says otherwise). A short record of what was removed, by whom and why stays.' },
 ];
 
