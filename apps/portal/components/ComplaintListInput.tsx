@@ -9,9 +9,9 @@ type ComplaintRow = { key: string; value: string };
  * <input name="complaints">, read with formData.getAll('complaints').
  * Rows use stable keys, not the index, because rows can be removed.
  */
-export function ComplaintListInput() {
-  const [rows, setRows] = useState<ComplaintRow[]>([{ key: 'c0', value: '' }]);
-  const nextId = useRef(1);
+export function ComplaintListInput({ initial }: { initial?: string[] } = {}) {
+  const [rows, setRows] = useState<ComplaintRow[]>(() => (initial?.length ? initial.map((value, i) => ({ key: `c${i}`, value })) : [{ key: 'c0', value: '' }]));
+  const nextId = useRef(initial?.length || 1);
 
   function addRow() {
     setRows((prev) => [...prev, { key: `c${nextId.current++}`, value: '' }]);

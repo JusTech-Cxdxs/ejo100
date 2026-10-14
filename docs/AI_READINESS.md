@@ -233,3 +233,42 @@ DPO signs off each feature.
 Each phase ships as its own pull request with tests, the same CI gates as the
 rest of the platform, and a Playwright spec that proves a person from another
 organisation or branch cannot see the AI output.
+
+---
+
+## 9. Enyo 1.0 — staff tools (status: built)
+
+The staff assistant (`POST /api/enyo/chat`, `apps/portal/lib/enyo/tools/`)
+offers these tools to the model for every question. Each one calls the
+module's own authorised readers as the signed-in person; the permission rule
+is enforced inside the tool, which refuses (`refused: true`) when the person
+lacks it. Figures are computed in code and quoted, never added up by the
+model; tool results are clipped and redacted before they are stored.
+
+| Tool | Kind | What it returns | Permission rule |
+|---|---|---|---|
+| `guide_search` | read | Numbered how-to steps and the page link, from the curated guide (`lib/enyo/guide.ts`, 60+ entries). | Only entries whose page the person can open (`decide()`, as the page guards); others named only. |
+| `my_work` | read | Decisions and other steps waiting (oldest first, overdue ≥ 3 days), open jobs. | The person's own lists (`getDashboardNotifications`, `getMyJobs`); no decisions during an assisted session. |
+| `daily_brief` | read | Counts waiting and overdue, open jobs, today's appointments, *My numbers this month*. | As above, plus `listCalendar` and `getMyNumbers`. |
+| `search_records` | read | Grouped hits for any reference, plate, VIN, name, phone or part number. | `globalSearch` — each record type only for people who may open it, within their reach. |
+| `job_card_details` | read | Status, approval, customer, vehicle, complaints, diagnosis, people, estimate, payments, balance, next step. | `workshop.job_card.view`; the record through `getJobCard` (branch fence); out of reach = not found. |
+| `vehicle_service_details` | read | The same for a Vehicle Service, plus next service due. | `workshop.job_card.view`; `getVehicleService`, `getServiceEstimate`, `getVehicleServicePayments`, `listRefunds`. |
+| `customer_profile` | read | Contact, vehicles, jobs, net spend, outstanding, last visit, open jobs. | `crm.view`; `searchCrmCustomers` + `getCustomer360` (organisation fence, money within reach). |
+| `vehicle_history` | read | Past jobs and services with complaints, diagnosis, notes, work, findings, parts fitted. | `workshop.job_card.view`; vehicle in the organisation; visits within `reachWhere`. |
+| `part_lookup` | read | Selling price, stock on hand / reserved / available, level. Cost and margin only for cost-seers. | `store.view` (`listParts` in the person's Store); costs only with a `STORE_COST_PERMISSIONS` key for that branch. |
+| `stock_alerts` | read | Parts out of stock or at/below reorder point; pricing alerts for cost-seers. | `store.view`; pricing alerts via `getPricingAlertSummary` (cost permissions). |
+| `business_summary` | read | Takings, revenue, gross profit, jobs, previous period and changes, money owed — today, this week, month, last month, 30 days, quarter, year or custom. | `analytics.business.view`; `getMasterAnalytics` (branch-aware). |
+| `technician_leaderboard` | read | Ranking by jobs completed, average start-to-complete hours vs team average, labour billed (money viewers only), with the formula. | `analytics.business.view` or `workshop.close.approve`, within that reach. |
+| `warranty_watch` | read | Warranties ending in N days, awaiting verification, open claims by deadline. | `warranty.view`; the organisation's customers (`orgWhere`). |
+| `service_due` | read | Vehicles overdue or due soon, reminder state. | `workshop.job_card.view`; `listVehiclesDueForService` for the person's workshop branch. |
+| `my_schedule` | read | The person's appointments today, tomorrow or this week. | `listCalendar` (own, delegated and participating calendars). |
+| `my_security` | read | Own active exit passes, visitors expected today or on site. | `listExitPasses('mine')`, `listMyVisits()`. |
+| `remember_fact` / `forget_fact` | read* | Adds or removes the person's own remembered facts (max 50 × 200 characters). | Own user id and organisation; refused during an assisted session; instructions, passwords and card details are never stored. |
+| `draft_job_card` | draft | A draft whose link opens the Open Job Card form pre-filled (customer, vehicle, complaints, mileage). | `workshop.job_card.create`; customer and vehicle through the organisation-fenced pickers; the page re-checks every value and never submits. |
+
+\* The memory tools change only the person's own Enyo memory, never a business
+record; the engine's tool kinds are `read` and `draft` only.
+
+Chat transcripts are kept 12 months after the last message (public website
+chats 90 days) and removed by the daily clean-up (`enyo-cleanup` job run).
+

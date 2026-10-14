@@ -152,6 +152,43 @@ and *What's new*. Each number is a count on indexed columns fenced to the
 person's reach; the tiles shown depend on the permissions held, so a person
 with two roles sees both sets.
 
+## Enyo (the assistant)
+
+Enyo answers **as the person asking**. Every tool it uses calls the module's
+own authorised code (the same readers, `authorize` / `allows` / `reachWhere`
+checks and organisation fences as the pages), so what Enyo can see for a role
+is exactly what that role can see on the pages — never more. All tools are
+offered for every question; a tool the person has no right to refuses on its
+own, and Enyo says so kindly ("Not allowed: business figures are for Finance,
+the Workshop Manager and administrators"). Enyo is never an authorisation
+authority and never saves, sends, approves or pays: drafts open the normal page
+pre-filled and the person presses the normal button.
+
+| Role | What Enyo can tell them | What Enyo refuses |
+|---|---|---|
+| **Front Desk** | What is waiting for them, Job Cards and Vehicle Services in their branch (status, estimate, payments, balance, next step), customer profiles (Customers), vehicle histories, vehicles due a service; their calendar, passes and visitors; how-to steps for their pages. Prepares a pre-filled **Open Job Card** form. | Business figures, technician ranking, the Store (parts, prices, stock), warranty watch. |
+| **Technician** | Their jobs and steps, Job Cards and Vehicle Services in their branch, vehicle histories (past complaints, diagnosis, work, findings, parts fitted), part prices and stock, service due, their calendar, passes and visitors. | Business figures, technician ranking, customer profiles (no Customers access), costs and margins, warranty watch. |
+| **Workshop Supervisor** | As the technician, plus customer profiles (read). | Business figures, technician ranking, costs and margins. |
+| **Workshop Manager** | Everything waiting for their decision, the branch's jobs, customers, business figures and technician ranking for the branch, warranty watch, stock alerts, costs and margins (inventory analytics). | Nothing in their branch; never another branch or organisation. |
+| **Finance Officer** | Business figures (takings, revenue, profit) and technician ranking with labour billed, for their branch; jobs, payments and balances; part prices, costs and margins. | Customer profiles, warranty watch. |
+| **Store Manager / Officer** | Stock alerts and pricing alerts, part prices, costs and margins, jobs (read), parts requests waiting on the Store. | Business figures, technician ranking, customer profiles, warranty watch. |
+| **Warranty HOD / Officer** | Warranty watch (warranties ending, claims and deadlines), jobs (read), part prices and costs. | Business figures, technician ranking, customer profiles. |
+| **Security, Department Head, Calendar User, Scheduling Admin, Broadcaster, Branch Assistant** | What is waiting for them, their calendar, their own exit passes and visitors (the Security desk: what the desk sees through search), and how-to steps for the pages they can open. | Workshop, Store, money, customers and warranty tools. |
+| **Organisation Administrator** | Read-only oversight of everything the role sees (all branches), business figures, technician ranking, warranty watch, and the Enyo settings (`enyo.manage`). | Nothing outside their organisation. |
+
+Also true for everyone:
+
+- **Guide answers are filtered** by the same rule as the menu: a "how do I…"
+  answer only links to pages the person can open; for anything else Enyo says
+  it exists and who usually does it.
+- **During an assisted session** Enyo works for the colleague being helped
+  (read-only tools and drafts only). Earlier conversations of the colleague
+  are not listed, and memory, deleting and settings refuse.
+- **Conversations and remembered facts are personal**: only the person who
+  had them can list, open, rename, rate or delete them. Questions are limited
+  per person per minute (`ENYO_REQUESTS_PER_MINUTE`, default 20, counted in
+  the database) and to 4,000 characters.
+
 ## Known gaps (left as they are)
 
 - Reception holds `security.view`, so the front desk sees the whole Security
