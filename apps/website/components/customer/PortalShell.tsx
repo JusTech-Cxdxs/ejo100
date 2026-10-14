@@ -10,6 +10,7 @@ import { PoweredByEjo } from './PoweredByEjo';
 import { ThemeSwitch } from './ThemeSwitch';
 import { NotificationBell } from './NotificationBell';
 import { Icon, type IconName } from './Icon';
+import { EnyoChat } from '@/components/enyo/EnyoChat';
 
 const BASE = '/customer-portal/dashboard';
 
@@ -205,6 +206,9 @@ export function PortalShell({ who, initialUnread, children }: { who: Who; initia
           </li>
         </ul>
       </nav>
+
+      {/* Enyo, the customer's assistant (shown only when switched on). */}
+      <EnyoChat variant="portal" />
 
       {/* Drawer — phones and tablets */}
       {drawer ? (

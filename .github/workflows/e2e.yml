@@ -7,6 +7,7 @@ name: E2E
 on:
   pull_request:
     branches: [main]
+    paths-ignore: ['docs/**', '**/*.md']
   push:
     branches: ['work/e2e']
   workflow_dispatch:
@@ -51,6 +52,8 @@ jobs:
       E2E_WEBSITE_URL: 'http://localhost:3002'
       # The seeded test organisation's display name (sign-in pages, website wordmark).
       NEXT_PUBLIC_ORGANISATION_NAME: 'Kewalram Chanrai Group'
+      # The organisation the public website (and its Enyo assistant) belongs to.
+      WEBSITE_ORGANISATION_SLUG: 'kewalram-nigeria'
       SMTP_HOST: 'localhost'
       SMTP_PORT: '1025'
       SMTP_FROM: 'EJO 100 <no-reply@e2e.test>'
@@ -63,6 +66,20 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
       # One retry in CI (a flaky test is reported as a warning, never hidden).
       E2E_RETRIES: '1'
+      # Enyo talks to a stand-in model server in CI (packages/enyo/testing/mock-llm.mjs):
+      # tests drive it with markers, so permissions and hand-overs are checked end to end.
+      ENYO_LLM_BASE_URL: 'http://localhost:4010/v1'
+      ENYO_LLM_MODEL: 'mock'
+      ENYO_LLM_API_KEY: 'e2e-mock-key'
+      MOCK_LLM_KEY: 'e2e-mock-key'
+      # Test-only key for encrypting connected mailbox passwords (32 bytes, base64).
+      MAILBOX_ENCRYPTION_KEY: 'ZTJlLW9ubHktbWFpbGJveC1rZXktMzItYnl0ZXMhISE='
+      # The test mail server runs without TLS on localhost: allow plain connections, any port and
+      # private addresses for mailboxes (lib/mail/config.ts). NEVER set this in production.
+      MAILBOX_ALLOW_INSECURE: '1'
+      E2E_IMAP_HOST: 'localhost'
+      E2E_IMAP_PORT: '3143'
+      E2E_SMTP_PORT: '3025'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -89,20 +106,29 @@ jobs:
           npx tsx apps/portal/e2e/seed.ts
           # Idempotent: a second run changes nothing and does not fail.
           npx tsx apps/portal/e2e/seed.ts
+      # A real IMAP + SMTP test server for the work-mailbox spec (apps/portal/e2e/mailbox.spec.ts):
+      # plain IMAP on 3143 and SMTP on 3025, one mailbox (wura@mail.e2e.test, password
+      # "wura-mail-pass"); mail sent to it lands in its inbox. Test-only credentials.
+      - name: Start the test mail server (IMAP + SMTP)
+        run: |
+          nohup node apps/portal/e2e/mail-test-server.cjs > mail-test-server.log 2>&1 &
+          for i in $(seq 1 20); do (echo > /dev/tcp/127.0.0.1/3143) 2>/dev/null && break; sleep 1; done
+      - name: Start the stand-in model server (Enyo)
+        run: |
+          nohup node packages/enyo/testing/mock-llm.mjs > mock-llm.log 2>&1 &
+          for i in $(seq 1 20); do curl -sf -H 'authorization: Bearer e2e-mock-key' http://localhost:4010/v1/models > /dev/null && break; sleep 1; done
       - run: npm run build --workspace=apps/portal
       - name: Start the portal
         run: |
           (cd apps/portal && nohup npx next start -p 3001 > ../../portal.log 2>&1 &)
           for i in $(seq 1 60); do curl -sf http://localhost:3001/login > /dev/null && break; sleep 2; done
-      # The customer portal is being rebuilt on another branch — its build
-      # never blocks the staff-portal suite (its specs skip when it is down).
+      # The website and customer portal are production: a failed build or
+      # start fails the run.
       - name: Build the website (customer portal)
         id: website
-        continue-on-error: true
         run: npm run build --workspace=apps/website
       - name: Start the website on :3002
         if: steps.website.outcome == 'success'
-        continue-on-error: true
         run: |
           (cd apps/website && BETTER_AUTH_URL=http://localhost:3002 nohup npx next start -p 3002 > ../../website.log 2>&1 &)
           for i in $(seq 1 60); do curl -sf http://localhost:3002/customer-portal > /dev/null && break; sleep 2; done

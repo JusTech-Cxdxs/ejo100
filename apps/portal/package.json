@@ -12,12 +12,15 @@
   },
   "dependencies": {
     "@ejo/database": "*",
+    "@ejo/enyo": "*",
     "@ejo/types": "*",
     "@ejo/ui": "*",
     "@ejo/utils": "*",
     "@react-pdf/renderer": "^4.9.0",
     "better-auth": "~1.6.33",
     "framer-motion": "^11.18.2",
+    "imapflow": "^2.4.2",
+    "mailparser": "^3.9.39",
     "next": "15.5.27",
     "nodemailer": "^10.1.0",
     "react": "^19.2.8",
@@ -27,6 +30,7 @@
   "devDependencies": {
     "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "^4.3.3",
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^24.19.2",
     "@types/nodemailer": "^6.4.24",
     "@types/pg": "^8.23.1",
@@ -34,7 +38,9 @@
     "@types/react-dom": "^19.2.7",
     "eslint": "^8.57.1",
     "eslint-config-next": "15.5.27",
+    "hoodiecrow-imap": "^2.1.0",
     "pg": "^8.23.1",
+    "smtp-server": "^3.19.22",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "5.9.3"

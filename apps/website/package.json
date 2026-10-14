@@ -7,10 +7,12 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "rm -rf .test-out && tsc -p tsconfig.test.json && node --test .test-out/tests/*.test.js; status=$?; rm -rf .test-out; exit $status"
   },
   "dependencies": {
     "@ejo/database": "*",
+    "@ejo/enyo": "*",
     "@ejo/types": "*",
     "@ejo/ui": "*",
     "@ejo/utils": "*",

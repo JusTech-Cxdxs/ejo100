@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    paths-ignore: ['docs/**', '**/*.md']
+
+# A newer push to the same branch cancels the run still going (saves Actions minutes).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -57,6 +63,10 @@ jobs:
       - run: npm run test --workspace=apps/portal
       # The data journal: before/after values kept, rolled-back work never recorded.
       - run: npm run test --workspace=packages/database
+      # Enyo's engine: model client, agent loop, tool checks, guardrails, streaming protocol.
+      - run: npm run test --workspace=packages/enyo
+      # Enyo on the website: a customer finds only their own jobs, ticket numbers, limits, safe answers.
+      - run: npm run test --workspace=apps/website
       - run: npm run build
       # Known vulnerabilities in production dependencies — reported on every push
       # (report-only so a new advisory never blocks an urgent fix; review the log).

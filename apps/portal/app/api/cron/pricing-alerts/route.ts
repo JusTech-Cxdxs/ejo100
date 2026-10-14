@@ -6,9 +6,12 @@ import { setAuditActor } from '@ejo/database';
 import { recordJobRun } from '@/lib/job-runs';
 import { purgeOldErrorEvents } from '@/lib/error-events';
 import { purgeExpiredOnSchedule } from '@/lib/recycle-bin/server';
+import { purgeOldEnyoConversations } from '@/lib/enyo/retention';
 import { getOpenPricingAlertsForDigest } from '@/lib/pricing-digest';
 import { sendEmail } from '@/lib/email';
 import { renderPricingAlertsDigestEmail } from '@/lib/email-templates/pricing-alerts-digest';
+import { purgeOldMailMessages } from '@/lib/mail/sync';
+import { purgeOldReminders } from '@/lib/reminders';
 
 /**
  * Pricing alert digest (scheduled in vercel.json). Reads the alerts that are
@@ -76,6 +79,15 @@ export async function GET(request: NextRequest) {
   // Recycle bin items past their restore period (data inventory: RecycleBinItem).
   const binned = await purgeExpiredOnSchedule().catch((err) => { logFailure('Recycle bin clean-up failed', err); return null; });
   if (binned !== null) await recordJobRun('recycle-bin-purge', { itemsRemoved: binned });
+  // Enyo chats: staff and customer 12 months, public website 90 days (data inventory: EnyoConversation).
+  const chats = await purgeOldEnyoConversations().catch((err) => { logFailure('Enyo conversation clean-up failed', err); return null; });
+  if (chats !== null) await recordJobRun('enyo-cleanup', { conversationsRemoved: chats.staffAndCustomer + chats.publicChats, staffAndCustomer: chats.staffAndCustomer, publicChats: chats.publicChats });
+  // Stored copies of connected mailboxes are kept 90 days (data inventory: MailMessage).
+  const mailPurged = await purgeOldMailMessages().catch((err) => { logFailure('Mail clean-up failed', err); return null; });
+  if (mailPurged !== null) await recordJobRun('mail-retention', { messagesRemoved: mailPurged });
+  // Done and cancelled reminders are kept 12 months (data inventory: Reminder).
+  const remindersPurged = await purgeOldReminders().catch((err) => { logFailure('Reminder clean-up failed', err); return null; });
+  if (remindersPurged !== null) await recordJobRun('reminder-retention', { remindersRemoved: remindersPurged });
   return NextResponse.json({
     branchesWithOpenAlerts: groups.length,
     emailsSent,

@@ -45,7 +45,12 @@ export function navigationFor(p: Principal): NavItem[] {
     if (EVERYONE.has(m.key)) { out.push({ key: m.key, name: m.name, href: m.href, status: m.status }); continue; }
     const needs = MODULE_NEEDS[m.key];
     if (!needs || needs.some(can)) out.push({ key: m.key, name: m.name, href: m.href, status: m.status });
+    // Customers handed over by Enyo, right under Customers.
+    if (m.key === 'crm' && can('support.tickets.manage')) out.push({ key: 'support-inbox', name: 'Support inbox', href: '/crm/support', status: m.status });
   }
+  // Everyone's own: reminders, and their work mailbox (the layout hides Mail during an assisted session).
+  out.push({ key: 'reminders', name: 'Reminders', href: '/reminders', status: 'LIVE' });
+  out.push({ key: 'mail', name: 'Mail', href: '/mail', status: 'LIVE' });
   // Assisted sessions: the Branch Assistant starts them; user administrators review them.
   if (!p.isSuperAdmin && can('support.assist')) out.push({ key: 'assist', name: 'Assist a colleague', href: '/support/assist', status: 'LIVE' });
   else if (can('admin.users.manage')) out.push({ key: 'assist', name: 'Assisted sessions', href: '/support/assist', status: 'LIVE' });

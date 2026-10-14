@@ -55,6 +55,10 @@ regexes = [
   '''Bearer forged-token''',
   '''forged\.not-a-real-session''',
   '''CANARY[A-Z]+[0-9]*''',
+  # Enyo CI: the stand-in model server's key and the test-only mailbox key
+  # (base64 of "e2e-only-mailbox-key-32-bytes!!!"); never used outside CI.
+  '''e2e-mock-key''',
+  '''ZTJlLW9ubHktbWFpbGJveC1rZXktMzItYnl0ZXMhISE=''',
 ]
 paths = [
   '''(^|/)package-lock\.json$''',

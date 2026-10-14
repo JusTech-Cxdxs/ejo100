@@ -5,6 +5,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { BROADCAST_CATEGORY, DURATIONS, isCustomerAudience } from '@/lib/notification-rules';
 import { CustomerMultiPicker } from '@/components/crm/CustomerMultiPicker';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]';
 const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
@@ -39,7 +40,7 @@ export function BroadcastForm({ options, action, initialAudience, initialCustome
         {category ? (
           <>
             <div><label className={label}>Title</label><input name="title" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder={category === 'GREETING' ? 'e.g. Happy Independence Day!' : category === 'MAINTENANCE' ? 'e.g. EJO 100 maintenance on Saturday' : category === 'SECURITY_ALERT' ? 'e.g. Fire drill at 2 pm — assemble at the car park' : 'A short headline'} className={input} /></div>
-            <div><label className={label}>Message</label><textarea name="message" required rows={5} value={message} onChange={(e) => setMessage(e.target.value)} className={input} /></div>
+            <div><label className={label}>Message</label><textarea id="broadcast-message" name="message" required rows={5} value={message} onChange={(e) => setMessage(e.target.value)} className={input} /><RefineTextButton targetId="broadcast-message" /></div>
             <div>
               <label className={label}>Who is it for?</label>
               <select name="audience" required value={audience} onChange={(e) => setAudience(e.target.value)} className={input}>

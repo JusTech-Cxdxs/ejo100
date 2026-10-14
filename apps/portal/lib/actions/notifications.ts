@@ -20,6 +20,7 @@ import { deliverDueBroadcastEmails } from '@/lib/broadcast-delivery';
 import { resolveRecords } from '@/lib/record-resolver';
 import { livePulse } from '@/lib/live-pulse';
 import { lagosYear } from '@/lib/utils/format-date';
+import { mailUnreadFor } from '@/lib/mail/counts';
 
 class NotificationError extends Error {}
 
@@ -155,6 +156,8 @@ export type NotificationSummary = {
   /** Changes whenever something new arrives — the bell plays a sound. */
   signature: string;
   muted: boolean;
+  /** Unread messages in the person's own connected work mailbox (never during an assisted session). */
+  mailUnread?: number;
 };
 
 // Per-user summary cache (per server instance): if nothing has changed since
@@ -174,7 +177,11 @@ export async function getNotificationSummary(): Promise<NotificationSummary> {
     // Unchanged organisation → the cached summary (up to a minute). Changed →
     // recomputed, but never more than once every 20 s per person: one busy
     // organisation can't make every open tab recompute on every click.
-    if (hit && pulse && ((hit.pulse === pulse && Date.now() - hit.at < SUMMARY_TTL_MS) || Date.now() - hit.at < SUMMARY_MIN_AGE_MS)) return hit.value;
+    if (hit && pulse && ((hit.pulse === pulse && Date.now() - hit.at < SUMMARY_TTL_MS) || Date.now() - hit.at < SUMMARY_MIN_AGE_MS)) {
+      // The cache is per person; during an assisted session the colleague's mail count stays theirs.
+      if (hit.value.mailUnread && (await currentAssist().catch(() => null))) return { ...hit.value, mailUnread: 0 };
+      return hit.value;
+    }
     const value = await computeSummary(m);
     if (pulse) {
       if (summaryCache.size > 2000) summaryCache.clear();
@@ -189,15 +196,17 @@ export async function getNotificationSummary(): Promise<NotificationSummary> {
 
 async function computeSummary(m: Me): Promise<NotificationSummary> {
   {
-    const [actions, activity, broadcasts, pref] = await Promise.all([
+    const [actions, activity, broadcasts, pref, mailUnread] = await Promise.all([
       getDashboardNotifications(),
       getActivityFeed({ unreadOnly: true, take: 100 }),
       getMyBroadcasts(),
       prisma.notificationPreference.findUnique({ where: { userId: m.id }, select: { muted: true } }),
+      // A person's mail is theirs alone: an assistant never sees a colleague's count.
+      currentAssist().then((a) => (a ? 0 : mailUnreadFor(m.id))).catch(() => 0),
     ]);
     const unreadBroadcasts = broadcasts.filter((b) => !b.read);
     const signature = [actions.map((a) => a.id).join(','), activity[0]?.key ?? '', unreadBroadcasts[0]?.key ?? ''].join('|');
-    return { actions, unreadActivity: activity, unreadBroadcasts, total: actions.length + activity.length + unreadBroadcasts.length, signature, muted: pref?.muted ?? false };
+    return { actions, unreadActivity: activity, unreadBroadcasts, total: actions.length + activity.length + unreadBroadcasts.length, signature, muted: pref?.muted ?? false, mailUnread };
   }
 }
 

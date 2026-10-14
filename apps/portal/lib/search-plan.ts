@@ -28,6 +28,8 @@ export const REFERENCE_TYPES = [
   { prefix: 'CTR', model: 'ContractorPass', group: 'Contractors', path: (id: string) => `/security/contractors/${id}` },
   { prefix: 'APT', model: 'Appointment', group: 'Appointments', path: (id: string) => `/schedule/${id}` },
   { prefix: 'BC', model: 'Broadcast', group: 'Broadcasts', path: (id: string) => `/notifications/broadcasts/${id}` },
+  // Support tickets: customers and website visitors handed over by Enyo (numbered by the website).
+  { prefix: 'SUP', model: 'SupportTicket', group: 'Support tickets', path: (id: string) => `/crm/support/${id}` },
 ] as const;
 
 export type RefPrefix = (typeof REFERENCE_TYPES)[number]['prefix'];

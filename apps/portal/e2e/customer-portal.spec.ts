@@ -273,10 +273,16 @@ test('profile: save contact details, add and remove an address, switch announcem
 
   await test.step('contact details', async () => {
     const form = page.locator('form').filter({ has: page.getByRole('button', { name: 'Save contact details' }) });
+    const address = `3 Portal Road, Lekki ${tag}`.slice(0, 80);
+    // The live character count only moves once the form is hydrated — type until it does,
+    // so the save runs through the form's own handler (not a click before the page is ready).
+    await expect(async () => {
+      await form.getByLabel('Main address').fill(address);
+      await expect(form.getByText(`${address.length}/80`)).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
     await form.getByLabel('Phone number').fill(phone);
-    await form.getByLabel('Main address').fill(`3 Portal Road, Lekki ${tag}`.slice(0, 80));
     await form.getByRole('button', { name: 'Save contact details' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'Your contact details are saved.' })).toBeVisible();
+    await visibleOrExplain(page, page.getByRole('status').filter({ hasText: 'Your contact details are saved.' }), 'the confirmation that the contact details were saved');
     await page.reload();
     await expect(page.getByLabel('Phone number')).toHaveValue(phone);
   });
@@ -328,7 +334,7 @@ test.describe('on a 375 px phone', () => {
     await drawer.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Help & support' }).click();
     await page.waitForURL(/\/customer-portal\/dashboard\/support/);
     await expect(drawer).toHaveCount(0);
-    await expect(page.getByTestId('ai-support-coming-soon')).toBeVisible();
+    await expect(page.getByTestId('support-tickets')).toBeVisible();
 
     await page.getByRole('button', { name: 'Open menu', exact: true }).click();
     await expect(drawer).toBeVisible();

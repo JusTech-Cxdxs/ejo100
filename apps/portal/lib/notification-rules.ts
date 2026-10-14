@@ -7,7 +7,7 @@ import { dayKind, lagosYmd } from '@/lib/nigeria-calendar';
 
 /** Areas of the business and the record types that belong to each. */
 export const AREAS: Record<string, string[]> = {
-  WORKSHOP: ['JobCard', 'VehicleService', 'CustomerVehicle', 'Customer', 'VehicleInspection', 'EstimateLineItem', 'ServiceEstimateLineItem', 'RoadTestPermit'],
+  WORKSHOP: ['JobCard', 'VehicleService', 'CustomerVehicle', 'Customer', 'VehicleInspection', 'EstimateLineItem', 'ServiceEstimateLineItem', 'RoadTestPermit', 'SupportTicket'],
   STORE: ['Part', 'PartType', 'PartCategory', 'PartRequestSlip', 'ExternalProcurementRequest', 'GoodsReceipt', 'PricingAlert', 'GateDelivery'],
   WARRANTY: ['Warranty', 'WarrantyPolicy', 'WarrantyProvider', 'WarrantyClaim'],
   SECURITY: ['Visit', 'ExitPass', 'VehicleGateExit', 'RoadTestPermit', 'SecurityIncident', 'GateDelivery', 'ContractorPass'],
@@ -33,6 +33,9 @@ export const ALL_ACTIVITY_ROLES = ['administrator'];
 export const HIDDEN_ACTIONS = [
   'security.email_sent', 'security.email_failed', 'appointment.reminder_sent', 'system.job_run',
   'customer.signed_in', 'customer.password_reset_requested', 'customer.password_reset', 'customer.password_changed', 'customer.preferences_updated',
+  // Personal: a person's own reminders and work mailbox (kept in Audit Logs, never news for colleagues).
+  'reminder.sent', 'reminder.created', 'reminder.changed', 'reminder.snoozed', 'reminder.done', 'reminder.cancelled', 'reminder.delegate_granted', 'reminder.delegate_withdrawn',
+  'mailbox.connected', 'mailbox.reconnected', 'mailbox.disconnected', 'mailbox.ai_consent_given', 'mailbox.ai_consent_declined', 'mailbox.ai_consent_withdrawn',
 ];
 
 export function entityTypesForRoles(slugs: string[]): string[] | 'ALL' {
@@ -49,6 +52,7 @@ export function recordUrl(entityType: string, id: string): string {
     VehicleService: `/workshop/vehicle-service/${id}`,
     CustomerVehicle: `/workshop/vehicles/${id}/edit`,
     Customer: `/crm/customers/${id}`,
+    SupportTicket: `/crm/support/${id}`,
     PartRequestSlip: `/workshop/parts-requests/${id}`,
     ExternalProcurementRequest: `/workshop/external-procurement/${id}`,
     Part: `/inventory/parts/${id}`,
@@ -78,6 +82,9 @@ export function recordUrl(entityType: string, id: string): string {
     Organisation: '/organisation',
     Branch: '/branches',
     AssistSession: '/profile#assisted',
+    Reminder: '/reminders',
+    ReminderDelegate: '/reminders',
+    MailAccount: '/mail/settings',
   };
   return map[entityType] ?? '/audit-logs';
 }

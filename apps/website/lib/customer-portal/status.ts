@@ -146,3 +146,16 @@ export const CUSTOMER_RESOLUTION: Record<string, string> = {
   CUSTOMER_PAID: 'Paid by you',
   NOT_COVERED: 'Not covered',
 };
+
+// ------------------------------------------------------------------- Support
+
+/** A support request (hand-over to the team), in the customer's words. */
+export const SUPPORT_STATUS: Record<string, StatusInfo> = {
+  OPEN: { label: 'With our team', tone: 'info', explain: 'Our customer care team has your request and will reply here.' },
+  WAITING_ON_CUSTOMER: { label: 'Waiting for your reply', tone: 'attention', explain: 'Our team replied and needs an answer from you.' },
+  RESOLVED: { label: 'Resolved', tone: 'success', explain: 'Our team marked this as sorted. Reply below if it is not.' },
+  CLOSED: { label: 'Closed', tone: 'neutral', explain: 'This request is closed.' },
+};
+export function supportStatus(s: string): StatusInfo {
+  return SUPPORT_STATUS[s] ?? { label: titleCase(s), tone: 'neutral', explain: '' };
+}

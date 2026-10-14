@@ -74,6 +74,7 @@ import { renderCustomerQualityCheckEmail } from '@/lib/email-templates/customer-
 import { renderCustomerJobCompletedEmail } from '@/lib/email-templates/customer-job-completed';
 import { renderCustomerReadyForCollectionEmail } from '@/lib/email-templates/customer-ready-for-collection';
 import { lagosYear } from '@/lib/utils/format-date';
+import { schedulePrediction, scheduleResolution } from '@/lib/enyo/predict/lines';
 
 class WorkshopActionError extends Error {}
 
@@ -1046,6 +1047,10 @@ export async function createJobCard(input: CreateJobCardInput) {
     entityId: created.id,
     metadata: { jobNumber: created.jobNumber, departmentId: department.id, supervisorId: input.supervisorId },
   });
+
+  // Enyo: what similar past jobs needed, stored after the creation has
+  // committed (Shadow / Suggest mode). Never in the way: errors are only logged.
+  schedulePrediction({ kind: 'JOB_CARD', id: created.id });
 
   return created;
 }
@@ -2518,6 +2523,8 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
     entityType: 'JobCard',
     entityId: jobCardId,
   });
+  // Enyo: score its prediction against the approved lines (once; errors only logged).
+  scheduleResolution({ kind: 'JOB_CARD', id: jobCardId });
 
   // Tell the Job Card's creator; they decide when the customer is notified
   // (notifyCustomerOfApprovedEstimate). Fail-soft.

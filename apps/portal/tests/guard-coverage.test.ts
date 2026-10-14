@@ -18,7 +18,16 @@ const GUARDS = [
   'currentUserIsMasterAdmin', 'isSuperAdmin', 'getWarrantyRoles', 'getSecurityRoles',
 ];
 /** Acting only on the person's OWN data (their read marks, their passes) — checked inside by user id. */
-const SELF_SCOPED = new Set(['markNotificationsRead', 'markNotificationsUnread', 'markAllRead', 'setNotificationsMuted', 'cancelExitPass', 'createExitPass', 'getJobCardSourcingNeeds']);
+const SELF_SCOPED = new Set(['markNotificationsRead', 'markNotificationsUnread', 'markAllRead', 'setNotificationsMuted', 'cancelExitPass', 'createExitPass', 'getJobCardSourcingNeeds',
+  // Enyo: the person's own conversations, ratings and remembered facts (by user id and organisation).
+  'renameEnyoConversation', 'deleteEnyoConversation', 'rateEnyoMessage', 'deleteEnyoMemory',
+  // Reminders (lib/actions/reminders.ts): the owner's own reminders (ownReminder: owner + organisation), and
+  // for a colleague only with that colleague's own grant (mayCreateFor); delegates are the owner's own list.
+  'createReminder', 'updateReminder', 'completeReminder', 'cancelReminder', 'snoozeReminder', 'grantReminderDelegate', 'withdrawReminderDelegate',
+  // Work mailbox (lib/actions/mail.ts): only the signed-in person's own mailbox (myMailbox: user id + organisation),
+  // refused during assisted sessions; no permission can open another person's mail.
+  'connectMailbox', 'setMailConsent', 'disconnectMailbox', 'readMyMessage', 'setMyMessageFlags',
+]);
 const WRITE = /\b(?:prisma|tx)\.\w+\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(/;
 
 test('every data-changing server action is guarded', () => {

@@ -11,6 +11,8 @@ import { AppShell } from '@/components/AppShell';
 import { NotificationProvider } from '@/components/NotificationProvider';
 import { OfflineNotice } from '@/components/OfflineNotice';
 import { portalConfig } from '@/lib/site-config';
+import { decide } from '@/lib/authz/catalogue';
+import { EnyoPanel } from '@/components/enyo/EnyoPanel';
 
 /**
  * Signed-in shell. The user's name and role come from Prisma (`fullName`),
@@ -53,7 +55,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <NotificationProvider userId={session?.user?.id ? (assist ? `${session.user.id}.assist.${assist.subject.id}` : session.user.id) : null}>
       <AppShell
-        items={navigationFor(principal)}
+        items={assist ? navigationFor(principal).filter((i) => i.key !== 'mail') : navigationFor(principal)}
         organisationName={user.organisation?.name ?? portalConfig.companyName}
         userName={user?.fullName ?? 'Unknown user'}
         roleName={user?.roles[0]?.role.name ?? 'No role assigned'}
@@ -62,6 +64,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       >
         {children}
       </AppShell>
+      {/* Enyo: shows itself only when the status route says it is ready (administrators see a quiet "not switched on yet"). */}
+      <EnyoPanel
+        userId={session.user.id}
+        userName={user?.fullName ?? ''}
+        roleName={user?.roles[0]?.role.name ?? ''}
+        canManage={decide(principal, 'enyo.manage').allowed}
+      />
       <OfflineNotice />
     </NotificationProvider>
   );

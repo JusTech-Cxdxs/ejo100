@@ -23,6 +23,8 @@ import { getJobCard, getJobCardAuditTrail, getJobCardEstimate, getJobCardPayment
 import { getJobCardSourcingNeeds } from '@/lib/actions/sourcing';
 import { listPartCategories, listPartTypes } from '@/lib/actions/store';
 import { EstimateLineItemForm } from '@/components/EstimateLineItemForm';
+import { LikelyLinesCard } from '@/components/enyo/LikelyLinesCard';
+import { Suspense } from 'react';
 import { EstimateLinesTable, EstimateLineEditLink, EstimateLineRemoveButton, EstimateLineEditor, type EstimateLineView } from '@/components/EstimateLinesTable';
 import { requestStoreMatchingFormAction } from '@/lib/actions/store-form-handlers';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
@@ -38,6 +40,7 @@ import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { IdempotencyKey } from '@/components/IdempotencyKey';
 import { PageTitle, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 
 const STATUS_LABEL: Record<string, string> = {
@@ -875,6 +878,13 @@ export default async function JobCardDetailPage({
             )}
 
             {jobCard.approvalStatus === 'APPROVED' && isEstimateContributor && (!estimate || estimate.status === 'DRAFT') ? (
+              // Enyo (Suggest mode only): lines similar jobs had; "Add" fills in the form below.
+              <Suspense fallback={null}>
+                <LikelyLinesCard kind="JOB_CARD" id={jobCard.id} existing={estimateLineItems} />
+              </Suspense>
+            ) : null}
+
+            {jobCard.approvalStatus === 'APPROVED' && isEstimateContributor && (!estimate || estimate.status === 'DRAFT') ? (
               <EstimateLineItemForm
                 key={estimate?.lineItems.length ?? 0}
                 jobCardId={jobCard.id}
@@ -891,11 +901,12 @@ export default async function JobCardDetailPage({
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <div className="flex-1 min-w-[180px]">
                   <label className="mb-1 block text-[11px] text-[var(--ejo-text-muted)]">Notify supervisor (optional note)</label>
-                  <input
+                  <input id="jc-note-supervisor"
                     name="note"
                     placeholder="e.g. Compressor priced, ready to check"
                     className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                   />
+                  <RefineTextButton targetId="jc-note-supervisor" />
                 </div>
                 <SubmitButton
                   label="Notify supervisor"
@@ -911,11 +922,12 @@ export default async function JobCardDetailPage({
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
                 <div className="flex-1 min-w-[180px]">
                   <label className="mb-1 block text-[11px] text-[var(--ejo-text-muted)]">Notify technician (optional note)</label>
-                  <input
+                  <input id="jc-note-technician"
                     name="note"
                     placeholder="e.g. Please add the AC compressor price"
                     className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                   />
+                  <RefineTextButton targetId="jc-note-technician" />
                 </div>
                 <SubmitButton
                   label="Notify technician"
@@ -1314,12 +1326,13 @@ export default async function JobCardDetailPage({
               <form action={approveJobCardFormAction} className="mt-4 space-y-2">
                 <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
-                <textarea
+                <textarea id="jc-approve-notes"
                   name="notes"
                   rows={2}
                   placeholder="Optional notes"
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                 />
+                <RefineTextButton targetId="jc-approve-notes" />
                 <SubmitButton
                   label="Approve"
                   pendingLabel="Approving…"
@@ -1335,12 +1348,13 @@ export default async function JobCardDetailPage({
                   placeholder="Reason for rejection (required)"
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                 />
-                <textarea
+                <textarea id="jc-reject-notes"
                   name="notes"
                   rows={2}
                   placeholder="Optional additional notes"
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                 />
+                <RefineTextButton targetId="jc-reject-notes" />
                 <SubmitButton
                   label="Reject"
                   pendingLabel="Rejecting…"
@@ -1440,13 +1454,14 @@ export default async function JobCardDetailPage({
                       <FormPendingOverlay />
                       <input type="hidden" name="jobCardId" value={jobCard.id} />
                       <input type="hidden" name="status" value="IN_PROGRESS" />
-                      <textarea
+                      <textarea id="jc-rework-reason"
                         name="reworkReason"
                         required
                         rows={2}
                         placeholder="What still needs fixing?"
                         className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 py-2 text-xs text-[var(--ejo-text)]"
                       />
+                      <RefineTextButton targetId="jc-rework-reason" />
                       <p className="text-[11px] text-[var(--ejo-text-muted)]">
                         Back to In Progress, logged as &quot;Sent back for rework&quot; with this reason.
                         {jobCard.status !== 'QUALITY_CHECK' ? ' The earlier completion is cleared so the final finish is what gets recorded.' : ''}
@@ -1608,13 +1623,14 @@ export default async function JobCardDetailPage({
               <form action={requestJobCardCancellationFormAction} className="mt-3 space-y-2">
                 <FormPendingOverlay />
                 <input type="hidden" name="jobCardId" value={jobCard.id} />
-                <textarea
+                <textarea id="jc-cancel-reason"
                   name="reason"
                   required
                   rows={2}
                   placeholder="Reason — e.g. customer called to cancel, could not afford repair"
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
                 />
+                <RefineTextButton targetId="jc-cancel-reason" />
                 <SubmitButton
                   label="Request cancellation"
                   pendingLabel="Requesting…"

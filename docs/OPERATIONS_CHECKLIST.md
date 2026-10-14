@@ -34,6 +34,9 @@ Names only. Values never go into the repository, chat, or tickets.
 | `BETTER_AUTH_TRUSTED_ORIGINS` | optional | Extra addresses allowed to sign in (e.g. the `vercel.app` address next to a custom domain) |
 | `SERVER_ACTIONS_ALLOWED_ORIGINS` | optional | Only if a proxy in front changes the host name |
 | `AUTH_SIGNIN_PER_MINUTE`, `AUTH_RESET_REQUESTS_PER_5_MIN` | optional | Sign-in limits per address (defaults 20 and 5) |
+| `ENYO_LLM_BASE_URL`, `ENYO_LLM_API_KEY`, `ENYO_LLM_MODEL` | for Enyo | The AI model server (any OpenAI-compatible endpoint; the model must support tool calling). Without them Enyo shows "not switched on yet" and everything else works as before |
+| `ENYO_LLM_FAST_MODEL`, `ENYO_LLM_PROVIDER_LABEL`, `ENYO_LLM_TIMEOUT_MS`, `ENYO_REQUESTS_PER_MINUTE` | optional | A smaller model for briefs and refinement; the name shown on Settings → Enyo; the per-request time limit; questions per person per minute (default 20) |
+| `MAILBOX_ENCRYPTION_KEY` | for Mail | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts connected mailbox passwords. Changing it disconnects every mailbox |
 
 ### Website and customer portal (Vercel project for `apps/website`)
 
@@ -51,6 +54,10 @@ Names only. Values never go into the repository, chat, or tickets.
 | `NEXT_PUBLIC_SOCIAL_FACEBOOK`, `_LINKEDIN`, `_X`, `_YOUTUBE`, `_INSTAGRAM` | optional | Footer social links (hidden when not set) |
 | `SMTP_*` | yes | Outgoing email (customer password reset) |
 | `CUSTOMER_SIGNIN_PER_MINUTE`, `CUSTOMER_RESET_REQUESTS_PER_5_MIN` | optional | Sign-in limits per address |
+| `ENYO_LLM_BASE_URL`, `ENYO_LLM_API_KEY`, `ENYO_LLM_MODEL` (and the optional ones) | for Enyo | The same model settings as the portal, for the customer-portal and website assistants |
+| `WEBSITE_ORGANISATION_SLUG` | for Enyo | The organisation the public website belongs to (its slug in the database). Without it the website assistant stays off when the names don't match |
+| `ENYO_IP_HASH_KEY` | recommended | A long random secret used only to hash visitors' addresses for rate limits |
+| `ENYO_CUSTOMER_PER_MINUTE`, `ENYO_PUBLIC_PER_MINUTE`, `ENYO_PUBLIC_PER_DAY`, `ENYO_PUBLIC_IP_PER_MINUTE`, `ENYO_PUBLIC_IP_PER_DAY` | optional | Chat limits (defaults 12, 6, 60, 20, 200) |
 
 ### API (Render service for `apps/api`)
 
@@ -60,6 +67,9 @@ Names only. Values never go into the repository, chat, or tickets.
 | `NEXT_PUBLIC_PORTAL_URL` | yes | The only browser origin allowed to call the API. The API refuses to start in production without it. |
 | `NODE_ENV` | yes | `production` |
 | `PORT` | set by Render | |
+
+### Never in production
+`MAILBOX_ALLOW_INSECURE` is for the CI test mail server only. The portal ignores it on a production build outside CI, but it should never be set on Vercel, Render or a company server.
 
 ### Rules that apply to every project
 

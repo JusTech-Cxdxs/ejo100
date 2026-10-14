@@ -3373,3 +3373,310 @@ model RecycleBinItem {
   @@index([purgeAfter])
   @@map("recycle_bin_items")
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// v31 — Enyo 1.0 (AI), support tickets, reminders, mailbox. Additive only.
+// Ids of people and records are plain strings (no foreign keys to existing
+// tables), like ErrorEvent and RecycleBinItem, so nothing existing changes.
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Per-organisation switches for Enyo. No row = defaults (everything on, predictions in shadow).
+model EnyoSetting {
+  organisationId    String   @id
+  // Master switch: off = every Enyo feature hidden; the ERP works as before.
+  enabled           Boolean  @default(true)
+  staffAssistant    Boolean  @default(true)
+  customerAssistant Boolean  @default(true)
+  publicAssistant   Boolean  @default(true)
+  mailAi            Boolean  @default(true)
+  // SHADOW (measured, never shown) | SUGGEST (shown as suggestions) | OFF
+  predictionsMode   String   @default("SHADOW")
+  // Display name and greeting shown to staff and customers (branding).
+  displayName       String   @default("Enyo")
+  updatedById       String?
+  updatedAt         DateTime @updatedAt
+
+  @@map("enyo_settings")
+}
+
+enum EnyoChannel {
+  STAFF
+  CUSTOMER
+  PUBLIC
+}
+
+enum EnyoMessageRole {
+  USER
+  ASSISTANT
+  TOOL
+}
+
+/// One chat thread. Staff: userId. Customer portal: customerId. Public website: visitorKey (random, no personal data).
+model EnyoConversation {
+  id             String            @id @default(cuid())
+  organisationId String
+  channel        EnyoChannel
+  userId         String?
+  customerId     String?
+  visitorKey     String?
+  title          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  archivedAt     DateTime?
+  messages       EnyoMessage[]
+
+  @@index([userId, updatedAt])
+  @@index([customerId, updatedAt])
+  @@index([visitorKey, updatedAt])
+  @@index([organisationId, createdAt])
+  // Daily clean-up by channel and age.
+  @@index([channel, updatedAt])
+  @@index([archivedAt])
+  @@map("enyo_conversations")
+}
+
+model EnyoMessage {
+  id             String           @id @default(cuid())
+  conversationId String
+  conversation   EnyoConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           EnyoMessageRole
+  content        String
+  // ASSISTANT: the tool calls it asked for. TOOL: the tool's name (result kept short, redacted).
+  toolName       String?
+  toolCalls      Json?
+  // { sources: [{ label, href }] } shown under an answer.
+  citations      Json?
+  model          String?
+  tokensIn       Int?
+  tokensOut      Int?
+  latencyMs      Int?
+  // 1 = helpful, -1 = not helpful, from the person who asked.
+  rating         Int?
+  ratingNote     String?
+  // Public website only: a salted hash of the visitor's address, for rate limits. Never the address itself.
+  ipHash         String?
+  createdAt      DateTime         @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([ipHash, createdAt])
+  @@map("enyo_messages")
+}
+
+/// Facts a staff member asked Enyo to remember ("call me Ada"). Theirs only; visible and deletable by them.
+model EnyoMemory {
+  id             String   @id @default(cuid())
+  organisationId String
+  userId         String
+  fact           String
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("enyo_memories")
+}
+
+enum EnyoPredictionStatus {
+  SHADOW
+  SHOWN
+  RESOLVED
+  DISMISSED
+}
+
+/// What Enyo predicted for a record (e.g. likely estimate lines for a Job Card), and how it compared with what people actually did.
+model EnyoPrediction {
+  id             String               @id @default(cuid())
+  organisationId String
+  branchId       String?
+  // JOB_CARD_LINES | SERVICE_LINES
+  kind           String
+  subjectType    String
+  subjectId      String
+  modelVersion   String
+  input          Json
+  output         Json
+  status         EnyoPredictionStatus @default(SHADOW)
+  // What was finally approved, and the comparison.
+  outcome        Json?
+  precision      Float?
+  recall         Float?
+  createdAt      DateTime             @default(now())
+  resolvedAt     DateTime?
+
+  @@unique([kind, subjectType, subjectId])
+  @@index([organisationId, kind, createdAt])
+  @@map("enyo_predictions")
+}
+
+enum SupportTicketStatus {
+  OPEN
+  WAITING_ON_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum SupportChannel {
+  CUSTOMER_PORTAL
+  WEBSITE
+}
+
+/// A customer or website visitor handed over from Enyo to the company's people.
+model SupportTicket {
+  id              String              @id @default(cuid())
+  organisationId  String
+  branchId        String?
+  // SUP-2026-000001
+  number          String              @unique
+  channel         SupportChannel
+  customerId      String?
+  contactName     String
+  contactPhone    String?
+  contactEmail    String?
+  subject         String
+  // Enyo's hand-over summary for the person picking it up.
+  summary         String
+  // The Enyo conversation holding the transcript.
+  conversationId  String?
+  status          SupportTicketStatus @default(OPEN)
+  assignedToId    String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  firstResponseAt DateTime?
+  resolvedAt      DateTime?
+  replies         SupportReply[]
+
+  @@index([organisationId, status, createdAt])
+  @@index([customerId, createdAt])
+  @@map("support_tickets")
+}
+
+model SupportReply {
+  id           String        @id @default(cuid())
+  ticketId     String
+  ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  // Staff author; null when the customer wrote it.
+  authorUserId String?
+  fromCustomer Boolean       @default(false)
+  body         String
+  createdAt    DateTime      @default(now())
+
+  @@index([ticketId, createdAt])
+  @@map("support_replies")
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  DONE
+  CANCELLED
+}
+
+/// A reminder for one person, set by them, by someone they allowed, or by Enyo at their request.
+model Reminder {
+  id             String         @id @default(cuid())
+  organisationId String
+  // Who is reminded.
+  ownerId        String
+  // Who set it (the owner, a delegate, or the owner through Enyo).
+  createdById    String
+  // form | enyo
+  source         String         @default("form")
+  title          String
+  notes          String?
+  dueAt          DateTime
+  // Optional link to a record: JobCard, VehicleService, Customer, …
+  recordType     String?
+  recordId       String?
+  recordRef      String?
+  viaEmail       Boolean        @default(true)
+  status         ReminderStatus @default(PENDING)
+  sentAt         DateTime?
+  doneAt         DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([status, dueAt])
+  @@index([ownerId, status, dueAt])
+  @@map("reminders")
+}
+
+/// "This person may set reminders for me."
+model ReminderDelegate {
+  id             String   @id @default(cuid())
+  organisationId String
+  ownerId        String
+  delegateId     String
+  createdAt      DateTime @default(now())
+
+  @@unique([ownerId, delegateId])
+  @@index([delegateId])
+  @@map("reminder_delegates")
+}
+
+enum MailAccountStatus {
+  ACTIVE
+  ERROR
+  DISCONNECTED
+}
+
+/// A staff member's own work mailbox, connected by IMAP/SMTP. The password is encrypted (AES-256-GCM) and never returned.
+model MailAccount {
+  id             String            @id @default(cuid())
+  organisationId String
+  userId         String
+  address        String
+  displayName    String?
+  imapHost       String
+  imapPort       Int
+  imapSecure     Boolean           @default(true)
+  smtpHost       String
+  smtpPort       Int
+  smtpSecure     Boolean           @default(true)
+  username       String
+  secret         String
+  // Set when the person allows Enyo to read, sort and summarise this mailbox.
+  aiConsentAt    DateTime?
+  status         MailAccountStatus @default(ACTIVE)
+  lastSyncAt     DateTime?
+  lastError      String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  messages       MailMessage[]
+
+  @@unique([userId, address])
+  @@map("mail_accounts")
+}
+
+model MailMessage {
+  id             String      @id @default(cuid())
+  accountId      String
+  account        MailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  folder         String
+  uid            Int
+  messageId      String?
+  inReplyTo      String?
+  threadKey      String?
+  fromAddress    String
+  fromName       String?
+  toList         Json
+  ccList         Json?
+  subject        String
+  snippet        String
+  bodyText       String?
+  receivedAt     DateTime
+  seen           Boolean     @default(false)
+  flagged        Boolean     @default(false)
+  hasAttachments Boolean     @default(false)
+  // Enyo's brief (only with consent).
+  aiSummary      String?
+  aiCategory     String?
+  aiPriority     Int?
+  aiActions      Json?
+  linkedRefs     Json?
+  aiAt           DateTime?
+  createdAt      DateTime    @default(now())
+
+  @@unique([accountId, folder, uid])
+  @@index([accountId, folder, receivedAt])
+  // Daily 90-day clean-up.
+  @@index([receivedAt])
+  @@map("mail_messages")
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { startTransition, useActionState, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { PasswordField, StrengthMeter } from './PasswordField';
 import { Spinner } from '@/components/Spinner';
@@ -188,17 +188,23 @@ export function PreferencesForm({ notifyByEmail }: { notifyByEmail: boolean }) {
   const [email, setEmail] = useState(notifyByEmail);
   const [sound, setSound] = useState(true);
   const [state, action, pending] = useActionState(updateEmailPreference, initial);
-  const formRef = useRef<HTMLFormElement>(null);
   useEffect(() => { setSound(soundEnabled()); }, []);
   return (
     <div className="space-y-5">
-      <form ref={formRef} action={action}>
+      <form action={action}>
         <input type="hidden" name="notifyByEmail" value={email ? 'on' : 'off'} />
         <Toggle
           id="pref-email"
           checked={email}
           disabled={pending}
-          onChange={(v) => { setEmail(v); setTimeout(() => formRef.current?.requestSubmit(), 0); }}
+          onChange={(v) => {
+            setEmail(v);
+            // Send the new value itself: submitting the form on a timer could race the
+            // re-render and post the old hidden value, so the change would not be saved.
+            const fd = new FormData();
+            fd.set('notifyByEmail', v ? 'on' : 'off');
+            startTransition(() => action(fd));
+          }}
           label="Email me announcements too"
           description="News, offers and notices from your branch by email, as well as here. Emails about your own vehicle (estimates, receipts, ready for collection) always come."
         />
