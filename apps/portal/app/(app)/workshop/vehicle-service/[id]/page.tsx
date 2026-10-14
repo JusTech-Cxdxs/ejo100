@@ -68,6 +68,7 @@ import { EstimateLinesTable, EstimateLineEditLink, EstimateLineRemoveButton, Est
 import { IdempotencyKey } from '@/components/IdempotencyKey';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -861,12 +862,13 @@ export default async function VehicleServiceDetailPage({
                       <FormPendingOverlay />
                       <input type="hidden" name="serviceId" value={service.id} />
                       <SupervisorPicker vehicleType={service.vehicle.vehicleType} defaultSupervisorId={service.supervisor?.id} />
-                      <textarea
+                      <textarea id="vs-escalate-complaint"
                         name="additionalComplaint"
                         rows={2}
                         placeholder="Anything else to add (optional)"
                         className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                       />
+                      <RefineTextButton targetId="vs-escalate-complaint" />
                       <SubmitButton
                         label="Create Job Card & Estimate"
                         pendingLabel="Creating…"
@@ -1028,11 +1030,12 @@ export default async function VehicleServiceDetailPage({
                       <input type="hidden" name="vehicleServiceId" value={service.id} />
                       <div className="min-w-[180px] flex-1">
                         <label className="mb-1 block text-[11px] text-[var(--ejo-text-muted)]">Notify supervisor (optional note)</label>
-                        <input
+                        <input id="vs-note-supervisor"
                           name="note"
                           placeholder="e.g. Parts priced, ready to check"
                           className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                         />
+                        <RefineTextButton targetId="vs-note-supervisor" />
                       </div>
                       <SubmitButton
                         label="Notify supervisor"
@@ -1048,11 +1051,12 @@ export default async function VehicleServiceDetailPage({
                       <input type="hidden" name="vehicleServiceId" value={service.id} />
                       <div className="min-w-[180px] flex-1">
                         <label className="mb-1 block text-[11px] text-[var(--ejo-text-muted)]">Notify technician (optional note)</label>
-                        <input
+                        <input id="vs-note-technician"
                           name="note"
                           placeholder="e.g. Please add the pricing"
                           className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1.5 text-xs text-[var(--ejo-text)]"
                         />
+                        <RefineTextButton targetId="vs-note-technician" />
                       </div>
                       <SubmitButton
                         label="Notify technician"
@@ -1346,12 +1350,13 @@ export default async function VehicleServiceDetailPage({
               <form action={approveVehicleServiceFormAction} className="mt-4 space-y-2">
                 <FormPendingOverlay />
                 <input type="hidden" name="serviceId" value={service.id} />
-                <textarea
+                <textarea id="vs-approve-notes"
                   name="notes"
                   rows={2}
                   placeholder="Optional notes"
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                 />
+                <RefineTextButton targetId="vs-approve-notes" />
                 <SubmitButton
                   label="Approve"
                   pendingLabel="Approving…"
@@ -1367,12 +1372,13 @@ export default async function VehicleServiceDetailPage({
                   placeholder="Reason for rejection (required)"
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                 />
-                <textarea
+                <textarea id="vs-reject-notes"
                   name="notes"
                   rows={2}
                   placeholder="Optional additional notes"
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                 />
+                <RefineTextButton targetId="vs-reject-notes" />
                 <SubmitButton
                   label="Reject"
                   pendingLabel="Rejecting…"
@@ -1427,12 +1433,13 @@ export default async function VehicleServiceDetailPage({
                   <>
                     <div>
                       <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Technician Notes</label>
-                      <textarea
+                      <textarea id="vs-technician-notes"
                         name="technicianNotes"
                         rows={3}
                         placeholder="Work done"
                         className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                       />
+                      <RefineTextButton targetId="vs-technician-notes" />
                     </div>
                     <p className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-xs text-[var(--ejo-text-muted)]">
                       Completing this service starts the vehicle&apos;s next-service count from this visit
@@ -1652,7 +1659,8 @@ export default async function VehicleServiceDetailPage({
               <form action={requestVehicleServiceCancellationFormAction} className="mt-3 space-y-2">
                 <FormPendingOverlay />
                 <input type="hidden" name="serviceId" value={service.id} />
-                <textarea name="reason" required rows={2} placeholder="Why should this Vehicle Service be cancelled?" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                <textarea id="vs-cancel-reason" name="reason" required rows={2} placeholder="Why should this Vehicle Service be cancelled?" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                <RefineTextButton targetId="vs-cancel-reason" />
                 <p className="text-[11px] text-[var(--ejo-text-muted)]">
                   A Workshop Manager approves or declines it.{paymentsTotal > 0 ? ` ${formatNaira(paymentsTotal)} has been paid; approval authorises a full refund.` : ''} Cancelling also stops this vehicle&apos;s service reminders until its next completed service.
                 </p>

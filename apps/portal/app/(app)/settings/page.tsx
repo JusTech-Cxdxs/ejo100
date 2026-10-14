@@ -2,6 +2,8 @@ import { jobStatuses } from '@/lib/job-runs';
 import { allows, getPrincipal, guardPage } from '@/lib/authz/server';
 import { LoadingLink } from '@/components/LoadingLink';
 import { formatDateTime, formatRelative } from '@/lib/utils/format-date';
+import Link from 'next/link';
+import { decide } from '@/lib/authz/catalogue';
 import { PageHeader } from '@/components/ui';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6';
@@ -21,6 +23,16 @@ export default async function SettingsPage() {
         title="Settings"
         description={<>What runs on its own, and whether it is working.</>}
       />
+
+      {decide(p, 'enyo.manage').allowed ? (
+        <section className={`${card} mt-8 flex flex-wrap items-center justify-between gap-4`}>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Enyo</h2>
+            <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">The assistant built into the portal: switch features on or off, choose how estimate predictions are used, and test the language model.</p>
+          </div>
+          <Link href="/settings/enyo" className="inline-flex min-h-11 items-center rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-4 text-sm font-medium text-[var(--ejo-text)] hover:border-[var(--ejo-primary)] hover:text-[var(--ejo-primary)]">Enyo settings</Link>
+        </section>
+      ) : null}
 
       <section className={`${card} mt-8`}>
         <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Scheduled jobs</h2>

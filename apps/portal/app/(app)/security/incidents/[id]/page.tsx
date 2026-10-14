@@ -11,6 +11,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { INCIDENT_STATUS_LABEL, SEVERITY_LABEL, SEVERITY_CHIP } from '@/lib/security-rules';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const DONE: Record<string, string> = { reported: 'Incident reported — the Chief Security Officer has been emailed.', assign: 'Assigned — the officer has been emailed.', close: 'Incident closed.', reopen: 'Incident reopened.', follow_up: 'Follow-up saved.' };
 const HREF: Record<string, string> = { Visit: '/security/visitors/', ExitPass: '/security/exit-passes/', RoadTestPermit: '/security/road-tests/', VehicleGateExit: '/security/vehicles/exits/', GateDelivery: '/security/deliveries/', ContractorPass: '/security/contractors/' };
@@ -69,7 +70,8 @@ export default async function IncidentPage({ params, searchParams }: { params: P
               </form>
               <form action={incidentActionFormAction} className="space-y-2 border-t border-[var(--ejo-border)] pt-3">
                 <Hidden action="close" />
-                <textarea name="resolution" required rows={2} placeholder="How it was resolved" className={`${input} w-full`} />
+                <textarea id="incident-resolution" name="resolution" required rows={2} placeholder="How it was resolved" className={`${input} w-full`} />
+                <RefineTextButton targetId="incident-resolution" />
                 <SubmitButton label="Close incident" pendingLabel="Saving…" className={btn} />
               </form>
             </>

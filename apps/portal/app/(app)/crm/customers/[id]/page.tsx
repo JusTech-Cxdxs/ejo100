@@ -19,6 +19,7 @@ import { CrmIcon, type CrmIconName } from '@/components/crm/CrmIcon';
 import { Chip, Empty, Kpi, NoticeBox, Section, type Notice } from '@/components/crm/ui';
 import { SpendChart } from '@/components/crm/LazyCrmCharts';
 import { EditCustomerForm } from '@/components/crm/EditCustomerForm';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 export const metadata = { title: 'Customer' };
 
@@ -292,6 +293,7 @@ export default async function Customer360Page({ params, searchParams }: { params
                 <input type="hidden" name="customerId" value={c.id} /><input type="hidden" name="op" value="add" />
                 <label className={labelCls} htmlFor="note-body">New note</label>
                 <textarea id="note-body" name="body" required minLength={2} maxLength={2000} rows={3} placeholder="e.g. Prefers calls after 4 pm. Fleet manager approves estimates." className={field} />
+                <RefineTextButton targetId="note-body" />
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="flex items-center gap-2 text-sm text-[var(--ejo-text)]"><input type="checkbox" name="pinned" value="yes" className="h-4 w-4" />Pin to the top</label>
                   <SubmitButton label="Add note" pendingLabel="Adding…" className={primary} />

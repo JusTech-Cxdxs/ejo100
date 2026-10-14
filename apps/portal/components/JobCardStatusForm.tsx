@@ -6,6 +6,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { LoadingLink } from '@/components/LoadingLink';
 import { isReworkTransition as isReworkMove } from '@/lib/job-card-status-rules';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 export function JobCardStatusForm({
   jobCardId,
@@ -44,13 +45,14 @@ export function JobCardStatusForm({
       {isReworkTransition ? (
         <div>
           <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Reason for rework</label>
-          <textarea
+          <textarea id="status-rework-reason"
             name="reworkReason"
             required
             rows={2}
             placeholder="What needs to be fixed before this can pass quality check?"
             className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
+          <RefineTextButton targetId="status-rework-reason" />
           <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">
             The Job Card goes back to In Progress, and the rework and its reason are recorded in the audit trail.
           </p>

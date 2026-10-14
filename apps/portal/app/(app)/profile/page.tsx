@@ -7,6 +7,7 @@ import { STAFF_RULES } from '@/lib/email-templates/staff-access';
 import { Avatar } from '@/components/Avatar';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ChangePasswordForm } from '@/components/ChangePasswordForm';
+import Link from 'next/link';
 import { EmptyState, PageTitle } from '@/components/ui';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6';
@@ -72,6 +73,9 @@ export default async function ProfilePage() {
           <div className="mt-4"><ThemeToggle variant="segmented" /></div>
           <h2 className="mt-8 text-sm font-semibold text-[var(--ejo-text)]">Change my password</h2>
           <div className="mt-3"><ChangePasswordForm /></div>
+          <h2 className="mt-8 text-sm font-semibold text-[var(--ejo-text)]">Enyo</h2>
+          <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">The short facts the assistant keeps about you, which you can delete.</p>
+          <Link href="/profile/enyo" className="mt-3 inline-flex min-h-11 items-center rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 text-sm font-medium text-[var(--ejo-text)] hover:border-[var(--ejo-primary)] hover:text-[var(--ejo-primary)]">What Enyo remembers</Link>
         </section>
       </div>
 
