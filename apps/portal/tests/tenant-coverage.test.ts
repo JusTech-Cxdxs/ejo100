@@ -52,6 +52,8 @@ const READ_FENCES = [
   'allows(', // with the record (branch / assignees) — e.g. canRequestRoadTestOn
   // Customers (lib/actions/crm.ts): the customer — or its address / contact / note — looked up inside the person's organisation (orgWhere).
   'fencedCustomer',
+  // Enyo (lib/actions/enyo.ts): the person's own chats and facts, by user id AND the organisation the chat route stores them under.
+  'myEnyoOrg(',
 ];
 
 /** Reads that need no record fence, with the reason. */

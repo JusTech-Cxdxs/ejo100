@@ -164,8 +164,10 @@ export function urlError(page: Page): string | null {
  * which case fail with the server's own message (the most useful clue).
  */
 export async function waitOutcome(page: Page, ok: RegExp, timeout = 45_000) {
+  // An ?error= left from an earlier try is not this action's outcome: wait for the address to change.
+  const before = urlError(page) !== null ? page.url() : null;
   try {
-    await page.waitForURL((u) => ok.test(u.toString()) || u.searchParams.has('error'), { timeout });
+    await page.waitForURL((u) => (before === null || u.toString() !== before) && (ok.test(u.toString()) || u.searchParams.has('error')), { timeout });
   } catch (e) {
     // Say WHY nothing happened: a field the browser refused, or what the page shows.
     const why = await page.evaluate(() => ({

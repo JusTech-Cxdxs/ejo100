@@ -80,6 +80,9 @@ test('connect: a wrong password is refused with a plain message; the right one c
   await expect(page.getByText(/did not accept the username or password/)).toBeVisible();
   await expect(page.getByLabel('Work email address')).toHaveValue(BOX.address);
   await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+  // Start from a clean page: the ?error= of the first try must not count as the second try's outcome.
+  await open(page, '/mail/connect');
+  await expect(page.getByRole('heading', { name: 'Connect your mailbox', level: 1 })).toBeVisible();
   await fill(BOX.password);
   await waitOutcome(page, /\/mail\/consent/);
   await expect(page.getByText('Allow Enyo to read, sort and summarise your email? It never sends anything without you.')).toBeVisible();

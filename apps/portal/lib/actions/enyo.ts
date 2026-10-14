@@ -3,7 +3,7 @@
 import { prisma } from '@ejo/database';
 import { complete, LlmError, llmErrorMessage, readLlmConfig } from '@ejo/enyo';
 import { requireUser } from './workshop';
-import { authorize, currentAssist, orgWhere, myOrganisationId, refuseDuringAssist } from '@/lib/authz/server';
+import { authorize, currentAssist, getPrincipal, myOrganisationId, refuseDuringAssist } from '@/lib/authz/server';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { getEnyoSettings, type EnyoSettings } from '@/lib/enyo/settings';
 
@@ -23,6 +23,17 @@ class EnyoError extends Error {}
 
 const NOT_FOUND = 'That conversation is not available.';
 
+/**
+ * The organisation fence for the person's own chats and facts: the SAME
+ * organisation the chat route stores them under (myOrganisationId), so a
+ * person whose account resolves the organisation from their branch still
+ * finds their own chats. The platform team: any organisation (their own user id still fences).
+ */
+async function myEnyoOrg(): Promise<{ organisationId?: string }> {
+  if ((await getPrincipal()).isSuperAdmin) return {};
+  return { organisationId: (await myOrganisationId()) ?? '__no_organisation__' };
+}
+
 /** Conversations started during the current assisted session only (none of the colleague's earlier ones). */
 async function assistWindow(): Promise<{ createdAt?: { gte: Date } }> {
   const a = await currentAssist();
@@ -34,7 +45,7 @@ export type EnyoConversationSummary = { id: string; title: string; updatedAt: Da
 export async function listEnyoConversations(): Promise<EnyoConversationSummary[]> {
   const user = await requireUser();
   const rows = await prisma.enyoConversation.findMany({
-    where: { userId: user.id, channel: 'STAFF', archivedAt: null, ...(await orgWhere()), ...(await assistWindow()) },
+    where: { userId: user.id, channel: 'STAFF', archivedAt: null, ...(await myEnyoOrg()), ...(await assistWindow()) },
     orderBy: { updatedAt: 'desc' },
     take: 50,
     select: { id: true, title: true, updatedAt: true },
@@ -48,7 +59,7 @@ export async function getEnyoConversation(conversationId: string): Promise<{ id:
   const user = await requireUser();
   if (typeof conversationId !== 'string' || !conversationId) return null;
   const c = await prisma.enyoConversation.findFirst({
-    where: { id: conversationId, userId: user.id, channel: 'STAFF', archivedAt: null, ...(await orgWhere()), ...(await assistWindow()) },
+    where: { id: conversationId, userId: user.id, channel: 'STAFF', archivedAt: null, ...(await myEnyoOrg()), ...(await assistWindow()) },
     select: {
       id: true, title: true,
       messages: { where: { role: { in: ['USER', 'ASSISTANT'] } }, orderBy: { createdAt: 'asc' }, take: 200, select: { id: true, role: true, content: true, createdAt: true, rating: true, citations: true } },
@@ -73,7 +84,7 @@ export async function renameEnyoConversation(conversationId: string, title: stri
   if (!clean) throw new EnyoError('Give the conversation a name.');
   if (clean.length > 80) throw new EnyoError('Keep the name to 80 characters or fewer.');
   const res = await prisma.enyoConversation.updateMany({
-    where: { id: conversationId, userId: user.id, channel: 'STAFF', archivedAt: null, ...(await orgWhere()), ...(await assistWindow()) },
+    where: { id: conversationId, userId: user.id, channel: 'STAFF', archivedAt: null, ...(await myEnyoOrg()), ...(await assistWindow()) },
     data: { title: clean },
   });
   if (!res.count) throw new EnyoError(NOT_FOUND);
@@ -84,7 +95,7 @@ export async function deleteEnyoConversation(conversationId: string): Promise<vo
   const user = await requireUser();
   await refuseDuringAssist('enyo.conversation.delete');
   const res = await prisma.enyoConversation.updateMany({
-    where: { id: conversationId, userId: user.id, channel: 'STAFF', archivedAt: null, ...(await orgWhere()) },
+    where: { id: conversationId, userId: user.id, channel: 'STAFF', archivedAt: null, ...(await myEnyoOrg()) },
     data: { archivedAt: new Date() },
   });
   if (!res.count) throw new EnyoError(NOT_FOUND);
@@ -96,7 +107,7 @@ export async function rateEnyoMessage(messageId: string, rating: number, note?: 
   if (rating !== 1 && rating !== -1 && rating !== 0) throw new EnyoError('Choose helpful or not helpful.');
   const cleanNote = typeof note === 'string' ? note.replace(/\s+/g, ' ').trim().slice(0, 500) : '';
   const res = await prisma.enyoMessage.updateMany({
-    where: { id: messageId, role: 'ASSISTANT', conversation: { userId: user.id, channel: 'STAFF', ...(await orgWhere()), ...(await assistWindow()) } },
+    where: { id: messageId, role: 'ASSISTANT', conversation: { userId: user.id, channel: 'STAFF', ...(await myEnyoOrg()), ...(await assistWindow()) } },
     data: { rating: rating === 0 ? null : rating, ratingNote: rating === 0 ? null : cleanNote || null },
   });
   if (!res.count) throw new EnyoError('That answer is not available.');
@@ -108,13 +119,13 @@ export type EnyoMemoryFact = { id: string; fact: string; createdAt: Date };
 export async function listEnyoMemories(): Promise<EnyoMemoryFact[]> {
   const user = await requireUser();
   if (await currentAssist()) return [];
-  return prisma.enyoMemory.findMany({ where: { userId: user.id, ...(await orgWhere()) }, orderBy: { createdAt: 'asc' }, take: 50, select: { id: true, fact: true, createdAt: true } });
+  return prisma.enyoMemory.findMany({ where: { userId: user.id, ...(await myEnyoOrg()) }, orderBy: { createdAt: 'asc' }, take: 50, select: { id: true, fact: true, createdAt: true } });
 }
 
 export async function deleteEnyoMemory(memoryId: string): Promise<void> {
   const user = await requireUser();
   await refuseDuringAssist('enyo.memory.delete');
-  const res = await prisma.enyoMemory.deleteMany({ where: { id: memoryId, userId: user.id, ...(await orgWhere()) } });
+  const res = await prisma.enyoMemory.deleteMany({ where: { id: memoryId, userId: user.id, ...(await myEnyoOrg()) } });
   if (!res.count) throw new EnyoError('That fact is not available.');
 }
 
