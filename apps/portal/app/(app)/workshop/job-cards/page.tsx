@@ -18,6 +18,8 @@ import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { BackLink, PageHeader, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
+import { parseJobCardPrefill } from '@/lib/enyo/prefill';
+import { checkJobCardPrefill } from '@/lib/enyo/prefill-server';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -36,10 +38,14 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function WorkshopJobCardsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string; outcome?: string; binned?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string; outcome?: string; binned?: string; prefill?: string; customerId?: string; vehicleId?: string; complaint?: string | string[]; mileage?: string }>;
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
-  const { q, type, error, outcome: rawOutcome, binned } = await searchParams;
+  const sp = await searchParams;
+  const { q, type, error, outcome: rawOutcome, binned } = sp;
+  // A form prepared by Enyo: validated, checked against this person's
+  // organisation and rights, and only ever filled in — never submitted.
+  const prefill = await checkJobCardPrefill(parseJobCardPrefill(sp));
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
   const outcomeFilter = parseOutcomeFilter(rawOutcome);
@@ -151,18 +157,23 @@ export default async function WorkshopJobCardsPage({
 
         <div id="open-job-card" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 xl:sticky xl:top-6 scroll-mt-20">
           <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Open Job Card</h2>
+          {prefill ? (
+            <p role="status" className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 px-3 py-2 text-xs text-[var(--ejo-text)]">
+              Prepared by Enyo. Check the details, choose the supervisor and press &ldquo;Open Job Card&rdquo; — nothing is saved until you do.
+            </p>
+          ) : null}
           <form action={createJobCardFormAction} className="mt-4 space-y-3">
             <FormPendingOverlay />
-            <CustomerVehiclePicker />
+            <CustomerVehiclePicker initialCustomer={prefill?.customer} initialVehicleId={prefill?.vehicleId} />
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Mileage at check-in (km)</label>
-              <input name="mileageAtCheckIn" type="number" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+              <label htmlFor="job-card-mileage" className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Mileage at check-in (km)</label>
+              <input id="job-card-mileage" name="mileageAtCheckIn" type="number" defaultValue={prefill?.mileage ?? undefined} className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">
                 Complaints / reasons for visit <span className="text-[var(--ejo-error)]">*</span>
               </label>
-              <ComplaintListInput />
+              <ComplaintListInput initial={prefill?.complaints} />
             </div>
             <SubmitButton
               label="Open Job Card"

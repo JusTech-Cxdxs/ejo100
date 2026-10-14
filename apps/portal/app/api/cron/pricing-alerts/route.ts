@@ -6,6 +6,7 @@ import { setAuditActor } from '@ejo/database';
 import { recordJobRun } from '@/lib/job-runs';
 import { purgeOldErrorEvents } from '@/lib/error-events';
 import { purgeExpiredOnSchedule } from '@/lib/recycle-bin/server';
+import { purgeOldEnyoConversations } from '@/lib/enyo/retention';
 import { getOpenPricingAlertsForDigest } from '@/lib/pricing-digest';
 import { sendEmail } from '@/lib/email';
 import { renderPricingAlertsDigestEmail } from '@/lib/email-templates/pricing-alerts-digest';
@@ -76,6 +77,9 @@ export async function GET(request: NextRequest) {
   // Recycle bin items past their restore period (data inventory: RecycleBinItem).
   const binned = await purgeExpiredOnSchedule().catch((err) => { logFailure('Recycle bin clean-up failed', err); return null; });
   if (binned !== null) await recordJobRun('recycle-bin-purge', { itemsRemoved: binned });
+  // Enyo chats: staff and customer 12 months, public website 90 days (data inventory: EnyoConversation).
+  const chats = await purgeOldEnyoConversations().catch((err) => { logFailure('Enyo conversation clean-up failed', err); return null; });
+  if (chats !== null) await recordJobRun('enyo-cleanup', { conversationsRemoved: chats.staffAndCustomer + chats.publicChats, staffAndCustomer: chats.staffAndCustomer, publicChats: chats.publicChats });
   return NextResponse.json({
     branchesWithOpenAlerts: groups.length,
     emailsSent,

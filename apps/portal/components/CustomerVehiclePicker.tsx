@@ -17,8 +17,17 @@ type AsyncState = 'idle' | 'loading' | 'success' | 'error';
  * Services. The vehicle's Passenger/Commercial type decides which
  * department's supervisors are listed.
  */
-export function CustomerVehiclePicker() {
-  const [customerId, setCustomerId] = useState('');
+export function CustomerVehiclePicker({
+  initialCustomer,
+  initialVehicleId,
+}: {
+  /** Pre-filled customer (an Enyo draft, checked on the server against the person's organisation). */
+  initialCustomer?: { id: string; label: string } | null;
+  /** Pre-filled vehicle: chosen once that customer's vehicles have loaded, if it is one of them. */
+  initialVehicleId?: string | null;
+} = {}) {
+  const [customerId, setCustomerId] = useState(initialCustomer?.id ?? '');
+  const pendingVehicleId = useRef(initialVehicleId ?? '');
   const [vehicles, setVehicles] = useState<VehicleSearchResult[]>([]);
   const [vehiclesState, setVehiclesState] = useState<AsyncState>('idle');
   const vehiclesRequestId = useRef(0);
@@ -43,7 +52,11 @@ export function CustomerVehiclePicker() {
         if (requestId !== vehiclesRequestId.current) return;
         setVehicles(found);
         setVehiclesState('success');
-        setSelectedVehicleId(found[0]?.id ?? ''); // matches the browser's own default of selecting the first <option>
+        // A pre-filled vehicle wins once, if it belongs to this customer; otherwise
+        // the first one (the browser's own default for a <select>).
+        const wanted = pendingVehicleId.current && found.some((v) => v.id === pendingVehicleId.current) ? pendingVehicleId.current : '';
+        pendingVehicleId.current = '';
+        setSelectedVehicleId(wanted || (found[0]?.id ?? ''));
       })
       .catch(() => {
         if (requestId !== vehiclesRequestId.current) return;
@@ -81,7 +94,7 @@ export function CustomerVehiclePicker() {
     <>
       <div>
         <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Customer</label>
-        <CustomerSearchField required onSelect={setCustomerId} />
+        <CustomerSearchField required onSelect={setCustomerId} defaultValue={initialCustomer?.id} defaultLabel={initialCustomer?.label} />
       </div>
 
       <div>
