@@ -185,9 +185,8 @@ test.describe('a website visitor', () => {
       await button.click();
       const chat = page.getByTestId('enyo-chat');
       await expect(chat).toBeVisible();
-      const box = await chat.boundingBox();
-      // Full width of the 360 px screen (a pixel either way is rounding, not layout).
-      expect(Math.abs((box?.width ?? 0) - 360)).toBeLessThanOrEqual(1.5);
+      // Full width of the 360 px screen once the opening animation settles (a pixel either way is rounding, not layout).
+      await expect.poll(async () => Math.abs(((await chat.boundingBox())?.width ?? 0) - 360), { timeout: 5_000 }).toBeLessThanOrEqual(1.5);
       const scroll = await page.evaluate(() => document.scrollingElement!.scrollWidth - window.innerWidth);
       expect(scroll).toBeLessThanOrEqual(1);
       await chat.getByRole('button', { name: 'Close chat' }).click();

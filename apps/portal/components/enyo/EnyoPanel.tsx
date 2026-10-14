@@ -396,7 +396,7 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
             ref={sheetRef}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="enyo-title"
+            aria-label={name}
             className="enyo-sheet absolute inset-0 flex flex-col bg-[var(--ejo-bg)] pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] sm:inset-y-0 sm:left-auto sm:right-0 sm:w-[420px] sm:border-l sm:border-[var(--ejo-border)] sm:shadow-[-24px_0_60px_-30px_rgba(15,23,42,0.45)]"
           >
             {/* Header */}

@@ -147,11 +147,11 @@ test('reply goes out through the person\'s own SMTP; the original is marked answ
   await open(page, messageUrl.replace(/^https?:\/\/[^/]+/, ''));
   await page.locator('article').getByRole('link', { name: 'Reply', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Reply', level: 1 })).toBeVisible();
-  await expect(page.getByLabel('To')).toHaveValue('customer@e2e.test');
-  await expect(page.getByLabel('Subject')).toHaveValue(`Re: ${SUBJECT}`);
-  await expect(page.getByLabel('Message')).toHaveValue(/wrote:\n> Good morning,/);
-  await page.getByLabel('Message').press('Control+Home');
-  await page.getByLabel('Message').pressSequentially(`Thank you, Ada. Bring it in tomorrow. ${tag}`);
+  await expect(page.getByLabel('To', { exact: true })).toHaveValue('customer@e2e.test');
+  await expect(page.getByLabel('Subject', { exact: true })).toHaveValue(`Re: ${SUBJECT}`);
+  await expect(page.getByLabel('Message', { exact: true })).toHaveValue(/wrote:\n> Good morning,/);
+  await page.getByLabel('Message', { exact: true }).press('Control+Home');
+  await page.getByLabel('Message', { exact: true }).pressSequentially(`Thank you, Ada. Bring it in tomorrow. ${tag}`);
   await page.getByRole('button', { name: 'Send' }).click();
   await waitOutcome(page, /\/mail\?status=sent/);
   await expect(page.getByText('Sent.')).toBeVisible();
