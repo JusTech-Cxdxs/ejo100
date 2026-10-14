@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 type ComplaintRow = { key: string; value: string };
 
@@ -30,12 +31,14 @@ export function ServiceComplaintListInput() {
         <div key={row.key} className="flex items-center gap-2">
           <span className="w-5 shrink-0 text-xs font-medium text-[var(--ejo-text-muted)]">{i + 1}.</span>
           <input
+            id={`service-complaint-${row.key}`}
             name="customerComplaints"
             value={row.value}
             onChange={(e) => updateRow(row.key, e.target.value)}
             placeholder={i === 0 ? 'e.g. AC not cooling well' : 'e.g. Brake pedal feels soft'}
             className="min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
+          <RefineTextButton targetId={`service-complaint-${row.key}`} label={`complaint ${i + 1}`} compact />
           {rows.length > 1 || row.value ? (
             <button
               type="button"

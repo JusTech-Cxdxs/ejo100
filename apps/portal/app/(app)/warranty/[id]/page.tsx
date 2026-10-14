@@ -18,6 +18,7 @@ import { warrantyCoverage, WARRANTY_STATE_LABEL, splitLines } from '@/lib/warran
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const ACTION_LABEL: Record<string, string> = {
   'warranty.covers_job_card_line': 'Covers a Job Card line',
@@ -302,7 +303,8 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
                   <option value="VOID">Void</option>
                   {w.kind === 'ASSET' ? <option value="TRANSFERRED">Transferred (ownership changed)</option> : null}
                 </select>
-                <textarea name="reason" required rows={2} placeholder="Reason (required, recorded on the audit trail)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                <textarea id="warranty-reason" name="reason" required rows={2} placeholder="Reason (required, recorded on the audit trail)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+                <RefineTextButton targetId="warranty-reason" />
                 <SubmitButton label="Update status" pendingLabel="Saving…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]" />
               </form>
             </details>

@@ -6,7 +6,7 @@ import { THEME_BOOT_SCRIPT } from './theme';
  * Node APIs, so the middleware can import it.
  */
 
-/** Browser features the portal never uses are switched off for every page. */
+/** Browser features the portal never uses are switched off for every page; the microphone is allowed for this site only (Enyo voice). */
 export const PERMISSIONS_POLICY = [
   'accelerometer=()',
   'autoplay=()',
@@ -18,7 +18,8 @@ export const PERMISSIONS_POLICY = [
   'gyroscope=()',
   'hid=()',
   'magnetometer=()',
-  'microphone=()',
+  // The Enyo panel's push-to-talk (browser speech recognition): this site only, never embedded frames or other sites.
+  'microphone=(self)',
   'midi=()',
   'payment=()',
   'publickey-credentials-get=()',

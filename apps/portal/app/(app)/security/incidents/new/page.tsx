@@ -6,6 +6,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { INCIDENT_TYPES, SEVERITY_LABEL } from '@/lib/security-rules';
 import { PageHeader } from '@/components/ui';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 export default async function ReportIncidentPage({ searchParams }: { searchParams: Promise<{ error?: string; related?: string }> }) {
   await guardAnyPage(['security.view'], '/security/incidents');
@@ -43,7 +44,7 @@ export default async function ReportIncidentPage({ searchParams }: { searchParam
           <div><label className={label}>When it happened</label><input name="occurredAt" type="datetime-local" required className={input} /></div>
           <div><label className={label}>Where</label><input name="location" required placeholder="e.g. Main gate, workshop bay 3, car park" className={input} /></div>
         </div>
-        <div><label className={label}>Describe what happened</label><textarea name="description" required rows={4} placeholder="Say exactly what happened, in order." className={input} /></div>
+        <div><label className={label}>Describe what happened</label><textarea id="incident-description" name="description" required rows={4} placeholder="Say exactly what happened, in order." className={input} /><RefineTextButton targetId="incident-description" /></div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div><label className={label}>People involved (optional)</label><input name="peopleInvolved" placeholder="Names, staff or visitors" className={input} /></div>
           <div><label className={label}>Vehicle plate (optional)</label><input name="vehiclePlate" placeholder="e.g. KJA 453 GX" className={`${input} uppercase`} /></div>

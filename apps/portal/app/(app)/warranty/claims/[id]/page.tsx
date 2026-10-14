@@ -32,6 +32,7 @@ import { WarrantyClaimFields } from '@/components/WarrantyClaimFields';
 import { CLAIM_STATUS_LABEL, REMEDY_LABEL, PART_RETURN_LABEL, CUSTOMER_RESOLUTION_LABEL, coverageLabel } from '@/lib/warranty-claim-status';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 function naira(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -330,7 +331,8 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                 <form action={sendBackWarrantyClaimFormAction} className="space-y-2">
                   <FormPendingOverlay />
                   <input type="hidden" name="claimId" value={c.id} />
-                  <textarea name="reason" required rows={2} placeholder="What needs fixing?" className={input} />
+                  <textarea id="claim-fix-reason" name="reason" required rows={2} placeholder="What needs fixing?" className={input} />
+                  <RefineTextButton targetId="claim-fix-reason" />
                   <SubmitButton label="Send back to draft" pendingLabel="Sending back…" className={btnLine} />
                 </form>
               </>
@@ -355,7 +357,8 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                     <option value="REJECTED">Rejected</option>
                   </select>
                   <input name="approvedAmount" type="number" step="0.01" min={0} placeholder="Amount accepted (partial only)" className={input} />
-                  <textarea name="notes" rows={2} placeholder="Provider's notes / reason (required if partial or rejected)" className={input} />
+                  <textarea id="claim-provider-notes" name="notes" rows={2} placeholder="Provider's notes / reason (required if partial or rejected)" className={input} />
+                  <RefineTextButton targetId="claim-provider-notes" />
                   <SubmitButton label="Record decision" pendingLabel="Saving…" className={btn} />
                 </form>
               ) : (
@@ -412,7 +415,8 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
               <form action={reopenRejectedWarrantyClaimFormAction} className="space-y-2">
                 <FormPendingOverlay />
                 <input type="hidden" name="claimId" value={c.id} />
-                <textarea name="reason" required rows={2} placeholder="What will be corrected for the resubmission?" className={input} />
+                <textarea id="claim-resubmit-reason" name="reason" required rows={2} placeholder="What will be corrected for the resubmission?" className={input} />
+                <RefineTextButton targetId="claim-resubmit-reason" />
                 <SubmitButton label="Reopen for resubmission" pendingLabel="Reopening…" className={btnLine} />
               </form>
             ) : null}
@@ -423,7 +427,8 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
                 <form action={cancelWarrantyClaimFormAction} className="mt-2 space-y-2">
                   <FormPendingOverlay />
                   <input type="hidden" name="claimId" value={c.id} />
-                  <textarea name="reason" required rows={2} placeholder="Why is it being cancelled?" className={input} />
+                  <textarea id="claim-cancel-reason" name="reason" required rows={2} placeholder="Why is it being cancelled?" className={input} />
+                  <RefineTextButton targetId="claim-cancel-reason" />
                   <SubmitButton label="Cancel claim" pendingLabel="Cancelling…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10" />
                 </form>
               </details>
