@@ -75,7 +75,7 @@ test('[engine] asks a question, streams the answer, keeps it in history, takes a
   await expect(sheet(page).locator('[aria-busy="true"]')).toHaveCount(0);
 
   // Thumbs up (rateMessage), with the optional note offered.
-  const helpful = sheet(page).getByRole('button', { name: 'Helpful' });
+  const helpful = sheet(page).getByRole('button', { name: 'Helpful', exact: true });
   await helpful.click();
   await expect(helpful).toHaveAttribute('aria-pressed', 'true');
   await expect(sheet(page).getByRole('button', { name: 'Send note' })).toBeVisible();

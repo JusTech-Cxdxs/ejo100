@@ -38,7 +38,9 @@
     "@types/react-dom": "^19.2.7",
     "eslint": "^8.57.1",
     "eslint-config-next": "15.5.27",
+    "hoodiecrow-imap": "^2.1.0",
     "pg": "^8.23.1",
+    "smtp-server": "^3.19.22",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "5.9.3"

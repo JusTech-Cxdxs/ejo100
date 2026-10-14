@@ -186,7 +186,8 @@ test.describe('a website visitor', () => {
       const chat = page.getByTestId('enyo-chat');
       await expect(chat).toBeVisible();
       const box = await chat.boundingBox();
-      expect(box && Math.round(box.width)).toBe(360);
+      // Full width of the 360 px screen (a pixel either way is rounding, not layout).
+      expect(Math.abs((box?.width ?? 0) - 360)).toBeLessThanOrEqual(1.5);
       const scroll = await page.evaluate(() => document.scrollingElement!.scrollWidth - window.innerWidth);
       expect(scroll).toBeLessThanOrEqual(1);
       await chat.getByRole('button', { name: 'Close chat' }).click();

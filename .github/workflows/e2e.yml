@@ -40,14 +40,6 @@ jobs:
       mail:
         image: axllent/mailpit:v1.21
         ports: ['1025:1025', '8025:8025']
-      # A real IMAP + SMTP test server for the work-mailbox spec (apps/portal/e2e/mailbox.spec.ts):
-      # GreenMail, plain (no TLS) IMAP on 3143 and SMTP on 3025, one known mailbox
-      # (login and address wura@mail.e2e.test, password "wura-mail-pass"). Test-only credentials.
-      imap:
-        image: greenmail/standalone:2.0.1
-        env:
-          GREENMAIL_OPTS: '-Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=wura:wura-mail-pass@mail.e2e.test -Dgreenmail.users.login=email -Dgreenmail.verbose'
-        ports: ['3025:3025', '3143:3143']
     env:
       DATABASE_URL: 'postgresql://postgres:e2e-test-only@localhost:5432/ejo_e2e'
       DIRECT_URL: 'postgresql://postgres:e2e-test-only@localhost:5432/ejo_e2e'
@@ -81,7 +73,7 @@ jobs:
       MOCK_LLM_KEY: 'e2e-mock-key'
       # Test-only key for encrypting connected mailbox passwords (32 bytes, base64).
       MAILBOX_ENCRYPTION_KEY: 'ZTJlLW9ubHktbWFpbGJveC1rZXktMzItYnl0ZXMhISE='
-      # The GreenMail test server runs without TLS on localhost: allow plain connections, any port and
+      # The test mail server runs without TLS on localhost: allow plain connections, any port and
       # private addresses for mailboxes (lib/mail/config.ts). NEVER set this in production.
       MAILBOX_ALLOW_INSECURE: '1'
       E2E_IMAP_HOST: 'localhost'
@@ -113,6 +105,13 @@ jobs:
           npx tsx apps/portal/e2e/seed.ts
           # Idempotent: a second run changes nothing and does not fail.
           npx tsx apps/portal/e2e/seed.ts
+      # A real IMAP + SMTP test server for the work-mailbox spec (apps/portal/e2e/mailbox.spec.ts):
+      # plain IMAP on 3143 and SMTP on 3025, one mailbox (wura@mail.e2e.test, password
+      # "wura-mail-pass"); mail sent to it lands in its inbox. Test-only credentials.
+      - name: Start the test mail server (IMAP + SMTP)
+        run: |
+          nohup node apps/portal/e2e/mail-test-server.cjs > mail-test-server.log 2>&1 &
+          for i in $(seq 1 20); do (echo > /dev/tcp/127.0.0.1/3143) 2>/dev/null && break; sleep 1; done
       - name: Start the stand-in model server (Enyo)
         run: |
           nohup node packages/enyo/testing/mock-llm.mjs > mock-llm.log 2>&1 &

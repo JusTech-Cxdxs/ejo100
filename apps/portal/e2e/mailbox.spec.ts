@@ -6,14 +6,15 @@ import { as, open, uniq, waitOutcome } from './helpers';
 import { db } from './db';
 
 /**
- * The work mailbox against a real IMAP/SMTP server: GreenMail (a test mail
- * server, CI service `imap` in .github/workflows/e2e.yml) with one known
- * user. A seeded member of staff connects it (a wrong password first), allows
+ * The work mailbox against a real IMAP/SMTP server: the test mail server
+ * (e2e/mail-test-server.cjs, started by .github/workflows/e2e.yml) with one
+ * known user. A seeded member of staff connects it (a wrong password first), allows
  * Enyo, receives mail (plain and HTML-only), reads it as text with Enyo's
  * brief (the stand-in model), replies through SMTP, and disconnects — which
  * deletes everything stored. Another person can never open it.
  *
- * Skipped when the GreenMail service is not running (local runs).
+ * Skipped when the test mail server is not running (start it locally with
+ * `node apps/portal/e2e/mail-test-server.cjs`).
  */
 test.describe.configure({ mode: 'serial' });
 
@@ -28,7 +29,7 @@ const HTML_SUBJECT = `Newsletter ${tag}`;
 const SUMMARY = `Ada asks for an update on her brake noise ${tag}`;
 let messageUrl = '';
 
-async function greenmailUp(): Promise<boolean> {
+async function mailServerUp(): Promise<boolean> {
   const client = new ImapFlow({ host: HOST, port: IMAP_PORT, secure: false, doSTARTTLS: false, auth: { user: BOX.username, pass: BOX.password }, logger: false });
   client.on('error', () => undefined);
   try {
@@ -40,7 +41,7 @@ async function greenmailUp(): Promise<boolean> {
   }
 }
 
-/** Mail arriving from outside: straight into GreenMail over SMTP. */
+/** Mail arriving from outside: straight into the test server over SMTP. */
 async function deliver(opts: { subject: string; text?: string; html?: string; from?: string }) {
   const t = nodemailer.createTransport({ host: HOST, port: SMTP_PORT, secure: false, ignoreTLS: true });
   await t.sendMail({ from: opts.from ?? 'Ada Customer <customer@e2e.test>', to: BOX.address, subject: opts.subject, text: opts.text, html: opts.html });
@@ -48,7 +49,7 @@ async function deliver(opts: { subject: string; text?: string; html?: string; fr
 }
 
 test.beforeAll(async () => {
-  test.skip(!(await greenmailUp()), 'GreenMail (IMAP/SMTP test server) is not running');
+  test.skip(!(await mailServerUp()), 'The test mail server (IMAP/SMTP) is not running');
 });
 
 test('connect: a wrong password is refused with a plain message; the right one connects', async ({ page }) => {
