@@ -7,7 +7,7 @@ import { dayKind, lagosYmd } from '@/lib/nigeria-calendar';
 
 /** Areas of the business and the record types that belong to each. */
 export const AREAS: Record<string, string[]> = {
-  WORKSHOP: ['JobCard', 'VehicleService', 'CustomerVehicle', 'Customer', 'VehicleInspection', 'EstimateLineItem', 'ServiceEstimateLineItem', 'RoadTestPermit'],
+  WORKSHOP: ['JobCard', 'VehicleService', 'CustomerVehicle', 'Customer', 'VehicleInspection', 'EstimateLineItem', 'ServiceEstimateLineItem', 'RoadTestPermit', 'SupportTicket'],
   STORE: ['Part', 'PartType', 'PartCategory', 'PartRequestSlip', 'ExternalProcurementRequest', 'GoodsReceipt', 'PricingAlert', 'GateDelivery'],
   WARRANTY: ['Warranty', 'WarrantyPolicy', 'WarrantyProvider', 'WarrantyClaim'],
   SECURITY: ['Visit', 'ExitPass', 'VehicleGateExit', 'RoadTestPermit', 'SecurityIncident', 'GateDelivery', 'ContractorPass'],
@@ -52,6 +52,7 @@ export function recordUrl(entityType: string, id: string): string {
     VehicleService: `/workshop/vehicle-service/${id}`,
     CustomerVehicle: `/workshop/vehicles/${id}/edit`,
     Customer: `/crm/customers/${id}`,
+    SupportTicket: `/crm/support/${id}`,
     PartRequestSlip: `/workshop/parts-requests/${id}`,
     ExternalProcurementRequest: `/workshop/external-procurement/${id}`,
     Part: `/inventory/parts/${id}`,

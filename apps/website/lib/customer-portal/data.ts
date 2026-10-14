@@ -305,3 +305,70 @@ export const loadContact = cache(async (customerId: string, organisationId: stri
     orgAddress: org?.hqAddress ?? null,
   };
 });
+
+// ----------------------------------------------------------------- Estimates
+
+/**
+ * The estimate lines a customer may see — the SAME selects the Job Card and
+ * Vehicle Service pages use (and Enyo's my_estimate tool): on a Job Card only
+ * the lines billed to the customer; on either, nothing until the customer has
+ * been notified (customerEstimateLines returns null before that).
+ */
+const estimateLineFields = { id: true, type: true, description: true, quantity: true, unitPrice: true, amount: true, unitOfMeasure: true } as const;
+export const jobCardEstimateSelect = {
+  customerNotifiedAt: true,
+  lineItems: { where: { billTo: 'CUSTOMER' as const }, orderBy: { createdAt: 'asc' as const }, select: estimateLineFields },
+} satisfies Prisma.EstimateSelect;
+export const serviceEstimateSelect = {
+  customerNotifiedAt: true,
+  lineItems: { orderBy: { createdAt: 'asc' as const }, select: estimateLineFields },
+} satisfies Prisma.ServiceEstimateSelect;
+
+export type CustomerEstimateLine = { id: string; type: string; description: string; quantity: number; unitPrice: number | null; amount: number | null; unit: string | null };
+
+type RawLine = { id: string; type: unknown; description: string; quantity: unknown; unitPrice: unknown; amount: unknown; unitOfMeasure: string | null };
+
+export function customerEstimateLines(est: { customerNotifiedAt: Date | null; lineItems: RawLine[] } | null | undefined): CustomerEstimateLine[] | null {
+  if (!est?.customerNotifiedAt) return null;
+  return est.lineItems.map((l) => ({
+    id: l.id, type: String(l.type), description: l.description, quantity: num(l.quantity),
+    unitPrice: l.unitPrice === null || l.unitPrice === undefined ? null : num(l.unitPrice),
+    amount: l.amount === null || l.amount === undefined ? null : num(l.amount),
+    unit: l.unitOfMeasure,
+  }));
+}
+
+/** One of the customer's own jobs with its customer-visible estimate (null lines = not sent yet), found by its number. */
+export async function loadOwnEstimate(customerId: string, item: { kind: 'jc' | 'vs'; id: string }): Promise<CustomerEstimateLine[] | null> {
+  if (item.kind === 'jc') {
+    const jc = await prisma.jobCard.findFirst({ where: { id: item.id, customerId }, select: { estimate: { select: jobCardEstimateSelect } } });
+    return customerEstimateLines(jc?.estimate);
+  }
+  const vs = await prisma.vehicleService.findFirst({ where: { id: item.id, customerId }, select: { serviceEstimate: { select: serviceEstimateSelect } } });
+  return customerEstimateLines(vs?.serviceEstimate);
+}
+
+// ------------------------------------------------------------------- Support
+
+export type SupportTicketView = {
+  id: string; number: string; subject: string; status: string; createdAt: Date; updatedAt: Date;
+  replies: { id: string; fromCustomer: boolean; body: string; createdAt: Date }[];
+};
+
+/**
+ * The customer's own support requests (hand-overs from the assistant) with
+ * every reply, newest first. Staff replies carry no staff names here — they
+ * read as "Customer care". Enyo's internal summary is never shown.
+ */
+export const loadSupportTickets = cache(async (customerId: string, organisationId: string): Promise<SupportTicketView[]> => {
+  const rows = await prisma.supportTicket.findMany({
+    where: { customerId, organisationId },
+    orderBy: { updatedAt: 'desc' },
+    take: 30,
+    select: {
+      id: true, number: true, subject: true, status: true, createdAt: true, updatedAt: true,
+      replies: { orderBy: { createdAt: 'asc' }, take: 100, select: { id: true, fromCustomer: true, body: true, createdAt: true } },
+    },
+  });
+  return rows.map((t) => ({ ...t, status: String(t.status) }));
+});

@@ -52,6 +52,8 @@ export function Sidebar({
   // Decisions waiting on this person — the same live list as the bell.
   const { summary } = useNotifications();
   const waiting = summary.actions.filter(isApproval).length;
+  // Support tickets waiting on the team (from the same live list: lib/actions/my-work.ts).
+  const support = summary.actions.filter((a) => a.id.startsWith('support-')).length;
   const mini = collapsed && variant === 'desktop';
   const linkBase = 'group relative flex items-center rounded-[var(--ejo-radius-md)] text-sm font-medium transition-colors';
 
@@ -79,7 +81,8 @@ export function Sidebar({
             )}
             <div className="space-y-0.5">
               {g.items.map((mod) => {
-                const active = pathname === mod.href || pathname.startsWith(`${mod.href}/`);
+                // Customers stays unhighlighted inside its Support inbox (which has its own entry).
+                const active = (pathname === mod.href || pathname.startsWith(`${mod.href}/`)) && !(mod.key === 'crm' && pathname.startsWith('/crm/support'));
                 return (
                   <Link
                     key={mod.key}
@@ -103,6 +106,9 @@ export function Sidebar({
                     ) : null}
                     {mod.key === 'approvals' && waiting > 0 ? (
                       <span className={mini ? 'absolute right-2 top-1 h-2 w-2 rounded-full bg-[var(--ejo-warning)]' : 'shrink-0 rounded-full bg-[var(--ejo-warning)]/15 px-2 py-px text-[11px] font-semibold text-[var(--ejo-warning-text)]'}>{mini ? null : waiting}</span>
+                    ) : null}
+                    {mod.key === 'support-inbox' && support > 0 ? (
+                      <span className={mini ? 'absolute right-2 top-1 h-2 w-2 rounded-full bg-[var(--ejo-info)]' : 'shrink-0 rounded-full bg-[var(--ejo-info)]/15 px-2 py-px text-[11px] font-semibold text-[var(--ejo-info)]'}>{mini ? null : support}</span>
                     ) : null}
                     {!mini && mod.status !== 'LIVE' ? <ModuleStatusBadge status={mod.status as never} /> : null}
                   </Link>
