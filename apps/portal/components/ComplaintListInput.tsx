@@ -29,7 +29,7 @@ export function ComplaintListInput({ initial }: { initial?: string[] } = {}) {
   return (
     <div className="space-y-2">
       {rows.map((row, i) => (
-        <div key={row.key} className="flex items-center gap-2">
+        <div key={row.key} className="flex min-w-0 items-center gap-2">
           <span className="w-5 shrink-0 text-xs font-medium text-[var(--ejo-text-muted)]">{i + 1}.</span>
           <input
             id={`complaint-${row.key}`}
@@ -38,7 +38,7 @@ export function ComplaintListInput({ initial }: { initial?: string[] } = {}) {
             value={row.value}
             onChange={(e) => updateRow(row.key, e.target.value)}
             placeholder={i === 0 ? 'e.g. Fan not working' : 'e.g. AC not working'}
-            className="min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
+            className="w-0 min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
           <RefineTextButton targetId={`complaint-${row.key}`} label={`complaint ${i + 1}`} compact />
           {rows.length > 1 ? (

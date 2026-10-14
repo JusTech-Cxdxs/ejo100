@@ -28,7 +28,7 @@ function decide(body) {
   const messages = body.messages || [];
   const last = messages[messages.length - 1] || {};
   if (last.role === 'tool') {
-    return { content: `Here is what I found: ${String(last.content).slice(0, 600)}` };
+    return { content: `Here is what I found: ${String(last.content).slice(0, 2000)}` };
   }
   const text = lastText(messages);
   const offered = new Set((body.tools || []).map((t) => t.function && t.function.name));

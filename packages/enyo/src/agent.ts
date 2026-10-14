@@ -38,6 +38,8 @@ export type AgentOptions<Ctx> = {
   maxToolCalls?: number;
   /** How much of each tool result the model sees. */
   maxToolChars?: number;
+  /** Total time for the whole answer, all steps included (default 55 s, under a 60 s function limit). */
+  deadlineMs?: number;
   fetchImpl?: typeof fetch;
 };
 
@@ -59,6 +61,9 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
   let model = o.config.model;
   let answer = '';
   let calls = 0;
+  const deadline = AbortSignal.timeout(o.deadlineMs ?? 55_000);
+  const signal = o.signal ? AbortSignal.any([o.signal, deadline]) : deadline;
+  const outOfTime = () => deadline.aborted && !o.signal?.aborted;
 
   for (let step = 0; step < maxSteps; step += 1) {
     // The last step offers no tools, so the model must answer with what it has.
@@ -66,7 +71,7 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
     let text = '';
     let toolCalls: ToolCall[] = [];
     try {
-      for await (const piece of stream(o.config, { messages: convo, tools: lastStep ? undefined : specs, signal: o.signal }, o.fetchImpl)) {
+      for await (const piece of stream(o.config, { messages: convo, tools: lastStep ? undefined : specs, signal }, o.fetchImpl)) {
         if (piece.type === 'text') {
           text += piece.text;
           o.emit({ type: 'text', text: piece.text });
@@ -78,7 +83,7 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
         }
       }
     } catch (err) {
-      const kind = err instanceof LlmError ? err.kind : 'bad_response';
+      const kind = outOfTime() ? 'timeout' : err instanceof LlmError ? err.kind : 'bad_response';
       const message = llmErrorMessage(kind as never);
       return { answer: answer + text, transcript, toolRuns, sources, drafts, usage, model, unverified: [], error: { kind, message } };
     }
@@ -97,6 +102,10 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
     transcript.push(assistantTurn);
 
     for (const call of toolCalls) {
+      if (signal.aborted) {
+        const kind = outOfTime() ? 'timeout' : 'aborted';
+        return { answer, transcript, toolRuns, sources, drafts, usage, model, unverified: [], error: { kind, message: llmErrorMessage(kind) } };
+      }
       calls += 1;
       const tool = byName.get(call.name);
       let result: ToolResult;

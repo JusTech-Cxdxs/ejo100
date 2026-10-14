@@ -158,3 +158,14 @@ test('prompts: who is asking, the rules, and Lagos time', () => {
   const kept = trimHistory(turns, 5000, 16);
   assert.ok(kept.length <= 5 && kept.at(-1)?.content.startsWith('turn 29'));
 });
+
+test('agent: the whole answer has a time limit; running out ends calmly as "took too long"', async () => {
+  const hang = (async (_u: string | URL | Request, init?: RequestInit) => new Promise<Response>((_, reject) => {
+    init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+  })) as typeof fetch;
+  const t = Date.now();
+  const r = await runAgent({ config, system: 's', messages: [{ role: 'user', content: 'hi' }], tools: [], ctx: { role: 'finance' }, emit: () => undefined, fetchImpl: hang, deadlineMs: 150 });
+  assert.equal(r.error?.kind, 'timeout');
+  assert.match(r.error?.message ?? '', /too long/);
+  assert.ok(Date.now() - t < 3_000);
+});

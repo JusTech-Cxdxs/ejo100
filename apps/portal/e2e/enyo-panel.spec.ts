@@ -68,7 +68,8 @@ test('[engine] asks a question, streams the answer, keeps it in history, takes a
   await expect(answer).toBeVisible({ timeout: 30_000 });
   // Markdown: bold is rendered, the marks are not shown.
   await expect(sheet(page).locator('strong', { hasText: 'mock' })).toBeVisible();
-  await expect(sheet(page).getByText('**mock**')).toHaveCount(0);
+  // (The question itself keeps its ** marks; only the answer is rendered.)
+  await expect(answer).not.toContainText('**');
   // Finished: the copy and rating buttons appear; nothing is still busy.
   await expect(sheet(page).getByRole('button', { name: 'Copy answer' })).toBeVisible();
   await expect(sheet(page).locator('[aria-busy="true"]')).toHaveCount(0);

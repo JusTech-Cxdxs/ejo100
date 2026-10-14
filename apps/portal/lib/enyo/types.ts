@@ -18,6 +18,12 @@ export type StaffCtx = {
   assisted: boolean;
   /** The page the person had open when they asked, e.g. "/workshop/job-cards/abc". */
   page?: string;
+  /**
+   * The person's own message this turn. Tools that change Enyo's memory act
+   * only when this message asks for it, never because an email or web page
+   * read in the same turn told the model to.
+   */
+  question?: string;
 };
 
 export type StaffTool = Tool<StaffCtx>;

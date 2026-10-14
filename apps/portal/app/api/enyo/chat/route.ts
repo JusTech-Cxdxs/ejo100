@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const { ctx, organisationId, assistantName, assistStartedAt: assistStart } = await staffContext(cleanPage(body.page));
+    ctx.question = message;
     if (!organisationId) return sseError(403, 'Your account is not placed in an organisation yet, so I cannot help here. Please ask an administrator.');
     const ready = await enyoReady(organisationId, 'staffAssistant');
     if (!ready.ready) {
@@ -95,13 +96,18 @@ export async function POST(request: NextRequest) {
         emit({ type: 'conversation', id: conversation.id });
         try {
           const result = await runAgent({ config: ready.config, system, messages: turns, tools: staffTools(), ctx, emit, signal: request.signal });
-          // Keep what was said: the tool turns (clipped and redacted) and the answer.
+          // Keep what was said: which tools ran and how they ended, and the answer.
+          // Tool RESULTS are not kept: they can hold email text or records whose own
+          // retention and consent rules (mail: 90 days, withdrawn consent) must win.
           const rows: Prisma.EnyoMessageCreateManyInput[] = [];
+          let run = 0;
           for (const m of result.transcript) {
             if (m.role === 'assistant' && m.toolCalls?.length) {
               rows.push({ conversationId: conversation.id, role: 'ASSISTANT', content: '', toolCalls: m.toolCalls.map((c) => ({ name: c.name, arguments: clip(redactForLog(c.arguments), 500) })) });
             } else if (m.role === 'tool') {
-              rows.push({ conversationId: conversation.id, role: 'TOOL', toolName: m.name, content: clip(redactForLog(m.content), 2000) });
+              const outcome = result.toolRuns[run];
+              run += 1;
+              rows.push({ conversationId: conversation.id, role: 'TOOL', toolName: m.name, content: JSON.stringify({ ok: outcome?.ok ?? false, ...(outcome?.refused ? { refused: true } : {}) }) });
             }
           }
           if (rows.length) await prisma.enyoMessage.createMany({ data: rows });

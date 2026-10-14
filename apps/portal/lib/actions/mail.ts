@@ -169,7 +169,7 @@ export async function syncMyMailbox(reason: 'open' | 'refresh' = 'open'): Promis
   if (!mailKey()) return { status: 'none', added: 0 };
   const box = await myMailbox(m);
   if (!box) return { status: 'none', added: 0 };
-  return syncAccount(box.id, { minGapMs: reason === 'refresh' ? 15_000 : 60_000, timeoutMs: 25_000 });
+  return syncAccount(box.id, { minGapMs: reason === 'refresh' ? 30_000 : 60_000, timeoutMs: 25_000 });
 }
 
 export type MailView = 'inbox' | 'unread' | 'flagged' | 'today';

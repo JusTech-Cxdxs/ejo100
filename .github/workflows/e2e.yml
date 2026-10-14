@@ -42,11 +42,11 @@ jobs:
         ports: ['1025:1025', '8025:8025']
       # A real IMAP + SMTP test server for the work-mailbox spec (apps/portal/e2e/mailbox.spec.ts):
       # GreenMail, plain (no TLS) IMAP on 3143 and SMTP on 3025, one known mailbox
-      # (login "wura", password "wura-mail-pass", address wura@mail.e2e.test). Test-only credentials.
+      # (login and address wura@mail.e2e.test, password "wura-mail-pass"). Test-only credentials.
       imap:
         image: greenmail/standalone:2.0.1
         env:
-          GREENMAIL_OPTS: '-Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=wura:wura-mail-pass@mail.e2e.test -Dgreenmail.verbose'
+          GREENMAIL_OPTS: '-Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=wura:wura-mail-pass@mail.e2e.test -Dgreenmail.users.login=email -Dgreenmail.verbose'
         ports: ['3025:3025', '3143:3143']
     env:
       DATABASE_URL: 'postgresql://postgres:e2e-test-only@localhost:5432/ejo_e2e'

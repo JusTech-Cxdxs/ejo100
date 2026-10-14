@@ -101,7 +101,8 @@ test.describe('a signed-in customer', () => {
     await as(page, 'receptionist');
     await open(page, '/crm/support?filter=all');
     await expect(page.getByRole('heading', { level: 1, name: 'Support inbox' })).toBeVisible();
-    await page.getByRole('link', { name: new RegExp(S.ticket) }).first().click();
+    // The inbox list, not the scrolling ticker (which also links new tickets).
+    await page.getByRole('main').getByRole('link', { name: new RegExp(S.ticket) }).first().click();
     await page.waitForURL(/\/crm\/support\/[^/?]+/);
     await expect(page.getByRole('heading', { level: 1, name: S.ticket })).toBeVisible();
     await expect(page.getByText('Enyo’s summary')).toBeVisible();
@@ -150,7 +151,7 @@ test.describe('a website visitor', () => {
 
     await as(page, 'receptionist');
     await open(page, `/crm/support?filter=all&q=${encodeURIComponent(ticket)}`);
-    await page.getByRole('link', { name: new RegExp(ticket) }).first().click();
+    await page.getByRole('main').getByRole('link', { name: new RegExp(ticket) }).first().click();
     await expect(page.getByRole('heading', { level: 1, name: ticket })).toBeVisible();
     await expect(page.getByText('Website enquiry')).toBeVisible();
     await expect(page.getByText(`Visitor ${tag}`).first()).toBeVisible();

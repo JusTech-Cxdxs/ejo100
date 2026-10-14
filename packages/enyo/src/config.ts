@@ -50,7 +50,8 @@ function hostLabel(baseUrl: string): string {
     if (host.includes('anthropic')) return 'Anthropic';
     if (host.includes('openai')) return 'OpenAI';
     if (host === 'localhost' || host === '127.0.0.1') return 'Local model server';
-    return host;
+    // Never show an internal host name to staff: set ENYO_LLM_PROVIDER_LABEL to name it.
+    return 'Model server';
   } catch {
     return 'Model server';
   }

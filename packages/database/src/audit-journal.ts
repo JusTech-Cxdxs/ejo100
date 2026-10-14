@@ -157,6 +157,10 @@ const SKIP_MODELS = new Set([
   // and reminder actions write their own business audit entries instead.
   'EnyoConversation', 'EnyoMessage', 'EnyoMemory', 'EnyoPrediction',
   'MailAccount', 'MailMessage',
+  // Message bodies, contact details and reminder notes stay out of audit_logs;
+  // replies, status changes, assignments and reminder steps write their own
+  // business audit entries without the text.
+  'SupportTicket', 'SupportReply', 'Reminder',
 ]);
 const SENSITIVE_KEY = /password|token|secret|hash/i;
 const MAX_JSON = 6000;

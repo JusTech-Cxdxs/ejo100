@@ -40,7 +40,7 @@ async function ask(page: Page, message: string, extra: Record<string, unknown> =
 const tool = (events: Event[], name: string) => events.find((e) => e.type === 'tool' && e.name === name);
 const conversationOf = (events: Event[]) => String(events.find((e) => e.type === 'conversation')?.id ?? '');
 
-/** The stored tool result for the newest call of `name` in a conversation (clipped and redacted, as kept). */
+/** The stored outcome ({ok, refused}) of the newest call of `name` in a conversation. Results themselves are not kept. */
 async function storedToolResult(conversationId: string, name: string): Promise<string> {
   const row = await db().enyoMessage.findFirst({ where: { conversationId, role: 'TOOL', toolName: name }, orderBy: { createdAt: 'desc' }, select: { content: true } });
   return row?.content ?? '';
@@ -97,8 +97,9 @@ test.describe('Enyo staff assistant (API)', () => {
     expect(r.text).toContain('Not allowed');
     expect(r.text).toContain('"refused":true');
     expect(r.text).not.toContain('"takings"');
+    // Only the outcome is kept, never the result itself.
     const stored = await storedToolResult(conversationOf(r.events), 'business_summary');
-    expect(stored).toContain('"refused":true');
+    expect(JSON.parse(stored)).toEqual({ ok: false, refused: true });
   });
 
   test('part_lookup works for a technician: price and stock, never the purchase cost', async ({ page }) => {
@@ -107,11 +108,13 @@ test.describe('Enyo staff assistant (API)', () => {
     const r = await ask(page, `[[tool:part_lookup {"query":"${part.number}"}]]`);
     expect(tool(r.events, 'part_lookup')).toMatchObject({ ok: true });
     expect(r.text).toContain(part.number);
+    // The stand-in model echoes the tool result it was given.
+    expect(r.text).toContain(`"sellingPrice":${part.price}`);
+    expect(r.text).toContain('"costsShown":false');
+    expect(r.text).not.toContain('lastUnitCost');
+    expect(r.text).not.toContain('marginPercent');
     const stored = await storedToolResult(conversationOf(r.events), 'part_lookup');
-    expect(stored).toContain(`"sellingPrice":${part.price}`);
-    expect(stored).toContain('"costsShown":false');
-    expect(stored).not.toContain('lastUnitCost');
-    expect(stored).not.toContain('marginPercent');
+    expect(JSON.parse(stored)).toEqual({ ok: true });
   });
 
   test('guide_search answers "how do I" with the steps and a link to the page', async ({ page }) => {

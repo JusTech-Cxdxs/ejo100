@@ -20,7 +20,7 @@ test.describe.configure({ mode: 'serial' });
 const HOST = process.env.E2E_IMAP_HOST ?? 'localhost';
 const IMAP_PORT = Number(process.env.E2E_IMAP_PORT ?? 3143);
 const SMTP_PORT = Number(process.env.E2E_SMTP_PORT ?? 3025);
-const BOX = { address: 'wura@mail.e2e.test', username: 'wura', password: 'wura-mail-pass' };
+const BOX = { address: 'wura@mail.e2e.test', username: 'wura@mail.e2e.test', password: 'wura-mail-pass' };
 const OWNER = who('warranty-officer'); // Wura Warrantyofficer
 const tag = uniq();
 const SUBJECT = `Brake noise again ${tag}`;

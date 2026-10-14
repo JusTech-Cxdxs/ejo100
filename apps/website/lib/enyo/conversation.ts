@@ -39,7 +39,8 @@ export async function startConversation(o: Owner, firstMessage: string): Promise
 /** One-way, keyed hash of the internet address: lets limits work across servers without keeping the address. */
 export function ipHash(ip: string | null): string | null {
   if (!ip) return null;
-  const key = process.env.BETTER_AUTH_SECRET || 'enyo-website';
+  // A dedicated key when set (ENYO_IP_HASH_KEY); otherwise the site's own secret.
+  const key = process.env.ENYO_IP_HASH_KEY || process.env.BETTER_AUTH_SECRET || 'enyo-website-dev-only';
   return createHmac('sha256', key).update(`enyo-ip:${ip}`).digest('hex').slice(0, 32);
 }
 

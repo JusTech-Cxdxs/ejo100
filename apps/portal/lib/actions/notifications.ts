@@ -177,7 +177,11 @@ export async function getNotificationSummary(): Promise<NotificationSummary> {
     // Unchanged organisation → the cached summary (up to a minute). Changed →
     // recomputed, but never more than once every 20 s per person: one busy
     // organisation can't make every open tab recompute on every click.
-    if (hit && pulse && ((hit.pulse === pulse && Date.now() - hit.at < SUMMARY_TTL_MS) || Date.now() - hit.at < SUMMARY_MIN_AGE_MS)) return hit.value;
+    if (hit && pulse && ((hit.pulse === pulse && Date.now() - hit.at < SUMMARY_TTL_MS) || Date.now() - hit.at < SUMMARY_MIN_AGE_MS)) {
+      // The cache is per person; during an assisted session the colleague's mail count stays theirs.
+      if (hit.value.mailUnread && (await currentAssist().catch(() => null))) return { ...hit.value, mailUnread: 0 };
+      return hit.value;
+    }
     const value = await computeSummary(m);
     if (pulse) {
       if (summaryCache.size > 2000) summaryCache.clear();

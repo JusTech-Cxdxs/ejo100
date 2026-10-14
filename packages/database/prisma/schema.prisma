@@ -3429,6 +3429,9 @@ model EnyoConversation {
   @@index([customerId, updatedAt])
   @@index([visitorKey, updatedAt])
   @@index([organisationId, createdAt])
+  // Daily clean-up by channel and age.
+  @@index([channel, updatedAt])
+  @@index([archivedAt])
   @@map("enyo_conversations")
 }
 
@@ -3673,5 +3676,7 @@ model MailMessage {
 
   @@unique([accountId, folder, uid])
   @@index([accountId, folder, receivedAt])
+  // Daily 90-day clean-up.
+  @@index([receivedAt])
   @@map("mail_messages")
 }

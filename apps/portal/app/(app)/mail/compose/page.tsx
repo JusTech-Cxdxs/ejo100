@@ -42,7 +42,6 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
   const p = parseComposePrefill(sp);
   const error = typeof sp.error === 'string' ? sp.error : null;
   const kept = sp.kept === '1';
-  const fromEnyo = sp.source === 'enyo';
   const refId = p.inReplyTo ?? p.forwardOf ?? null;
   const original = refId ? await getMessageForCompose(refId).catch(() => null) : null;
   let { to, cc, subject, body } = p;
@@ -69,7 +68,7 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
   return (
     <div className="p-4 sm:p-8">
       <PageHeader icon="mail" title={heading} back={{ href: original ? `/mail?m=${original.id}` : '/mail', label: 'Mail' }}
-        description={fromEnyo ? 'Enyo prepared this draft. Read it, change anything you like, then press Send.' : `From ${box.account.displayName ? `${box.account.displayName} <${box.account.address}>` : box.account.address}`} />
+        description={`From ${box.account.displayName ? `${box.account.displayName} <${box.account.address}>` : box.account.address} · read it and change anything you like before you press Send.`} />
       {error ? <div className="max-w-3xl" role="alert"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       {replyGone ? <div className="max-w-3xl" role="status"><FormFeedbackBanner kind="warning" message="The message you are answering is no longer here, so this is sent as a new message." /></div> : null}
       {p.forwardOf && original?.hasAttachments ? <div className="max-w-3xl" role="status"><FormFeedbackBanner kind="warning" message="Attachments are not forwarded from here. To forward them, use your usual mail app." /></div> : null}
