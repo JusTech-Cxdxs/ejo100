@@ -86,13 +86,13 @@ test('an administrator chooses the model; the themes show; retiring hides them',
   await open(page, '/enyo/models');
   await expect(page.getByRole('heading', { level: 1, name: /models/ })).toBeVisible();
   // Nothing is used until a person chooses it.
-  await expect(page.getByText('What customers bring their vehicles in for')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'What customers bring their vehicles in for' })).toHaveCount(0);
   const row = page.locator('li').filter({ hasText: VERSION });
-  await expect(row.getByText('Ready to use')).toBeVisible();
+  await expect(row.getByText('Ready to use', { exact: true })).toBeVisible();
   await row.getByRole('button', { name: 'Use this model' }).click();
   await waitOutcome(page, /status=model_in_use/);
-  await expect(page.locator('li').filter({ hasText: VERSION }).getByText('In use')).toBeVisible();
-  await expect(page.getByText('What customers bring their vehicles in for')).toBeVisible();
+  await expect(page.locator('li').filter({ hasText: VERSION }).getByText('In use', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What customers bring their vehicles in for' })).toBeVisible();
   await expect(page.getByText(fixture.artifact.themes[0]!.label, { exact: true }).first()).toBeVisible();
 
   // Switching the capability off hides it, whatever model is in use.
@@ -100,7 +100,7 @@ test('an administrator chooses the model; the themes show; retiring hides them',
   await card.getByLabel('Level').selectOption('OFF');
   await card.getByRole('button', { name: 'Save level' }).click();
   await waitOutcome(page, /status=level_saved/);
-  await expect(page.getByText('What customers bring their vehicles in for')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'What customers bring their vehicles in for' })).toHaveCount(0);
   const back = page.locator('div').filter({ has: page.getByRole('heading', { name: 'Complaint themes', level: 3 }) }).last();
   await back.getByLabel('Level').selectOption('ASSIST');
   await back.getByRole('button', { name: 'Save level' }).click();
@@ -108,7 +108,7 @@ test('an administrator chooses the model; the themes show; retiring hides them',
 
   await page.locator('li').filter({ hasText: VERSION }).getByRole('button', { name: 'Retire' }).click();
   await waitOutcome(page, /status=model_retired/);
-  await expect(page.getByText('What customers bring their vehicles in for')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'What customers bring their vehicles in for' })).toHaveCount(0);
   const audit = await db().auditLog.count({ where: { action: { in: ['enyo.model_promoted', 'enyo.model_retired', 'enyo.capability_level_changed'] } } });
   expect(audit).toBeGreaterThanOrEqual(3);
 });
