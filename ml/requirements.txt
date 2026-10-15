@@ -1,0 +1,6 @@
+# Pinned for reproducible training (CI and the training workflow install exactly these).
+numpy==2.3.3
+pandas==2.3.2
+scipy==1.16.2
+scikit-learn==1.7.2
+lightgbm==4.6.0

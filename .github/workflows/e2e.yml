@@ -80,6 +80,8 @@ jobs:
       E2E_IMAP_HOST: 'localhost'
       E2E_IMAP_PORT: '3143'
       E2E_SMTP_PORT: '3025'
+      # Test-only token for the Enyo trainer's machine door (/api/ml); e2e/ml-models.spec.ts uploads a model with it.
+      ML_SERVICE_TOKEN: 'e2e-ml-service-token-0123456789abcdef'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

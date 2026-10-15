@@ -12,6 +12,7 @@ import { sendEmail } from '@/lib/email';
 import { renderPricingAlertsDigestEmail } from '@/lib/email-templates/pricing-alerts-digest';
 import { purgeOldMailMessages } from '@/lib/mail/sync';
 import { purgeOldReminders } from '@/lib/reminders';
+import { resolveDurations } from '@/lib/enyo/ml/models';
 
 /**
  * Pricing alert digest (scheduled in vercel.json). Reads the alerts that are
@@ -88,6 +89,10 @@ export async function GET(request: NextRequest) {
   // Done and cancelled reminders are kept 12 months (data inventory: Reminder).
   const remindersPurged = await purgeOldReminders().catch((err) => { logFailure('Reminder clean-up failed', err); return null; });
   if (remindersPurged !== null) await recordJobRun('reminder-retention', { remindersRemoved: remindersPurged });
+
+  // Enyo: score yesterday's job time estimates against when the vehicles were actually ready.
+  const durations = await resolveDurations().catch((err) => { logFailure('Enyo job time scoring failed', err); return null; });
+  if (durations !== null) await recordJobRun('enyo-duration-scoring', { estimatesScored: durations });
   return NextResponse.json({
     branchesWithOpenAlerts: groups.length,
     emailsSent,

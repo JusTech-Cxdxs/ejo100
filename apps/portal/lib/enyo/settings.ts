@@ -1,6 +1,7 @@
 /** Server-only helpers (never a 'use server' file: nothing here is callable from a browser). */
 import { prisma } from '@ejo/database';
 import { readLlmConfig, type LlmConfig } from '@ejo/enyo';
+import { readLevels, type CapabilityKey, type Level } from './ml/capabilities';
 
 export type EnyoSettings = {
   enabled: boolean;
@@ -11,6 +12,8 @@ export type EnyoSettings = {
   /** SHADOW | SUGGEST | OFF */
   predictionsMode: 'SHADOW' | 'SUGGEST' | 'OFF';
   displayName: string;
+  /** The automation level of each learning capability (lib/enyo/ml/capabilities.ts). */
+  capabilityLevels: Record<CapabilityKey, Level>;
 };
 
 export const DEFAULT_ENYO_SETTINGS: EnyoSettings = {
@@ -21,6 +24,7 @@ export const DEFAULT_ENYO_SETTINGS: EnyoSettings = {
   mailAi: true,
   predictionsMode: 'SHADOW',
   displayName: 'Enyo',
+  capabilityLevels: readLevels(null),
 };
 
 /** The organisation's Enyo switches (defaults when never saved). Never throws: a read failure means "off". */
@@ -30,7 +34,7 @@ export async function getEnyoSettings(organisationId: string | null | undefined)
     const row = await prisma.enyoSetting.findUnique({ where: { organisationId } });
     if (!row) return DEFAULT_ENYO_SETTINGS;
     const mode = row.predictionsMode === 'SUGGEST' || row.predictionsMode === 'OFF' ? row.predictionsMode : 'SHADOW';
-    return { enabled: row.enabled, staffAssistant: row.staffAssistant, customerAssistant: row.customerAssistant, publicAssistant: row.publicAssistant, mailAi: row.mailAi, predictionsMode: mode, displayName: row.displayName || 'Enyo' };
+    return { enabled: row.enabled, staffAssistant: row.staffAssistant, customerAssistant: row.customerAssistant, publicAssistant: row.publicAssistant, mailAi: row.mailAi, predictionsMode: mode, displayName: row.displayName || 'Enyo', capabilityLevels: readLevels(row.capabilityLevels) };
   } catch {
     return { ...DEFAULT_ENYO_SETTINGS, enabled: false };
   }

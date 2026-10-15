@@ -72,3 +72,19 @@ jobs:
       # (report-only so a new advisory never blocks an urgent fix; review the log).
       - name: Dependency vulnerability report
         run: npm audit --omit=dev --audit-level=high || echo "::warning::npm audit found vulnerabilities — review the log above"
+
+  # Enyo machine learning (ml/): the trainer's tests on an invented history —
+  # every task trains and beats its baseline, exports match the libraries to
+  # 1e-6, and the parity fixtures the portal tests use are current.
+  ml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: ml/requirements-dev.txt
+      - run: pip install -r ml/requirements-dev.txt
+      - run: python -m pytest -q
+        working-directory: ml

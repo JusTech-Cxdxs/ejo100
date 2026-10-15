@@ -25,6 +25,7 @@ import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { scheduleResolution } from '@/lib/enyo/predict/lines';
+import { scheduleDuration } from '@/lib/enyo/ml/models';
 
 class ServiceEstimateActionError extends Error {}
 
@@ -707,6 +708,8 @@ export async function approveServiceEstimateAsManager(estimateId: string): Promi
   });
   // Enyo: score its prediction against the approved lines (once; errors only logged).
   scheduleResolution({ kind: 'SERVICE', id: estimate.vehicleService.id });
+  // Enyo: how long the job is likely to take, now its lines are known (when switched on; errors only logged).
+  scheduleDuration({ kind: 'SERVICE', id: estimate.vehicleService.id });
 
   // Tell the Vehicle Service's creator; they decide when the customer is
   // notified. Fail-soft.

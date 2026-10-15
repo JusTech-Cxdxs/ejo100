@@ -11,7 +11,8 @@ export type LearningFence = { organisationId?: string; branchId?: string | { in:
 const WEEKS = 12;
 
 export async function learningData(fence: LearningFence, now = new Date()) {
-  const where = { ...fence };
+  // Estimate-line predictions only (job time estimates have their own page: /enyo/models).
+  const where = { ...fence, kind: { in: ['JOB_CARD_LINES', 'SERVICE_LINES'] } };
   const since = new Date(lagosWeekStart(now).getTime() - (WEEKS - 1) * 7 * 86_400_000);
   const [byStatus, accuracy, resolvedAll, recent, byKind] = await Promise.all([
     prisma.enyoPrediction.groupBy({ by: ['status'], where, _count: { _all: true } }),

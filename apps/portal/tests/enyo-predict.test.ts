@@ -238,6 +238,7 @@ test('dataset rows carry only the declared columns — never names, contacts, pl
     make: 'Toyota', model: 'Corolla', year: 2018, mileage_band_km: mileageBand(82_345), vehicle_type: 'PASSENGER',
     lines: datasetLines([L('LABOUR', 'Labour for Ada', { amount: 5000, unitPrice: 5000 }), L('STORE_PART', 'x', { partTypeName: 'AC Gas', unitPrice: 9000, amount: 9000 })], ['Ada Customer']),
     labour_total: 5000, predicted_keys: ['LABOUR'], precision: 1, recall: 0.5, model_version: 'knn-tfidf-1',
+    complaint_tokens: ['aircon', 'notcooling'], feature_tokens: ['kind:job', 'make:toyota'], work_numbers: { lines_total: 2 }, turnaround_hours: 26.5,
     // A field that must never go out, even if a future change adds it to the object.
     customerName: 'Ada Customer', plateNumber: 'E2E-001-AA',
   } as unknown as DatasetRow;
