@@ -5,6 +5,7 @@ import { complete, LlmError, llmAdminMessage, readLlmConfig } from '@ejo/enyo';
 import { requireUser } from './workshop';
 import { authorize, currentAssist, getPrincipal, myOrganisationId, refuseDuringAssist } from '@/lib/authz/server';
 import { writeAuditLog } from '@/lib/workshop-core';
+import { logError } from '@/lib/errors';
 import { getEnyoSettings, type EnyoSettings } from '@/lib/enyo/settings';
 
 /**
@@ -202,6 +203,9 @@ export async function testEnyoConnection(): Promise<EnyoConnectionResult> {
     const res = await complete({ ...config, timeoutMs: Math.min(config.timeoutMs, 20_000) }, { messages: [{ role: 'system', content: 'Reply with the single word OK.' }, { role: 'user', content: 'Are you there?' }], maxTokens: 5, temperature: 0 });
     return { ok: true, latencyMs: Date.now() - started, model: res.model, provider: config.providerLabel };
   } catch (err) {
-    return { ok: false, message: err instanceof LlmError ? llmAdminMessage(err) : 'The model server could not be reached.' };
+    // Also in Vercel → Logs (search "enyo.test_connection"), with the provider's reason; never the key.
+    const ref = logError('enyo.test_connection', err, err instanceof LlmError ? { kind: err.kind, status: err.status, code: err.code, detail: err.detail } : undefined);
+    const message = err instanceof LlmError ? llmAdminMessage(err) : `The model server could not be reached: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown error'}.`;
+    return { ok: false, message: `${message} (reference ${ref})` };
   }
 }
