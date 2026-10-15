@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readLlmConfig, type LlmConfig } from '../src/config';
-import { complete, LlmError, llmAdminMessage, stream } from '../src/llm';
+import { complete, isReasoningModel, LlmError, llmAdminMessage, stream } from '../src/llm';
 import { validateArgs, type Tool } from '../src/tools';
 import { ungroundedFigures, moneyFigures, redactForLog, looksLikeInjection, asData, clip } from '../src/guardrails';
 import { encodeEvent, readEvents, type EnyoEvent } from '../src/protocol';
@@ -270,4 +270,25 @@ test('admin messages for a failed connection test fit what Settings shows (≤ 1
     const m = llmAdminMessage(new LlmError(kind, 'x', 400, 'y'.repeat(240), 'code'));
     assert.ok(m.length <= 1000, `${kind}: ${m.length}`);
   }
+});
+
+test('reasoning models (gpt-oss): little thinking and extra room for short jobs; refused settings are dropped and retried', async () => {
+  const ok = () => new Response(JSON.stringify({ choices: [{ message: { content: 'OK' }, finish_reason: 'stop' }], model: 'openai/gpt-oss-120b' }), { status: 200 });
+  const { impl, seen } = scripted([ok, ok]);
+  const oss = { ...config, model: 'openai/gpt-oss-120b', fastModel: 'openai/gpt-oss-20b' };
+  await complete(oss, { messages: [{ role: 'user', content: 'hi' }], maxTokens: 300 }, impl);
+  assert.equal(seen[0]!.body.reasoning_effort, 'low');
+  assert.equal(seen[0]!.body.include_reasoning, false);
+  assert.equal(seen[0]!.body.max_tokens, 1324);
+  await complete(config, { messages: [{ role: 'user', content: 'hi' }], maxTokens: 300 }, impl);
+  assert.equal(seen[1]!.body.reasoning_effort, undefined);
+  assert.equal(seen[1]!.body.max_tokens, 300);
+  assert.ok(isReasoningModel('openai/gpt-oss-20b') && !isReasoningModel('llama-3.3-70b-versatile') && !isReasoningModel('qwen/qwen3.8-27b'));
+
+  const refuse = () => new Response(JSON.stringify({ error: { message: 'property \'reasoning_effort\' is unsupported', type: 'invalid_request_error' } }), { status: 400 });
+  const again = scripted([refuse, ok]);
+  const r = await complete(oss, { messages: [{ role: 'user', content: 'hi' }] }, again.impl);
+  assert.equal(r.content, 'OK');
+  assert.equal(again.seen[1]!.body.reasoning_effort, undefined);
+  assert.equal(again.seen[0]!.body.reasoning_effort, 'medium');
 });

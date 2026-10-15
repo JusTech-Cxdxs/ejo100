@@ -31,6 +31,17 @@ export function EnyoMarkdown({ text }: { text: string }) {
   return (
     <div className="space-y-2 break-words [overflow-wrap:anywhere]">
       {blocks.map((b, i) => {
+        if (b.t === 'table') {
+          const al = (j: number) => (b.align[j] === 'right' ? 'text-right' : b.align[j] === 'center' ? 'text-center' : 'text-left');
+          return (
+            <div key={i} className="overflow-x-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] [overflow-wrap:normal]" role="region" aria-label="Table" tabIndex={0}>
+              <table className="w-full border-collapse text-[13px] leading-snug">
+                <thead className="bg-[var(--ejo-surface)]"><tr>{b.head.map((h, j) => <th key={j} scope="col" className={`whitespace-nowrap border-b border-[var(--ejo-border)] px-2.5 py-2 font-semibold ${al(j)}`}>{inlines(h, `${i}.h${j}.`)}</th>)}</tr></thead>
+                <tbody>{b.rows.map((r, ri) => <tr key={ri} className="border-b border-[var(--ejo-border)] last:border-0">{r.map((c, j) => <td key={j} className={`px-2.5 py-2 align-top ${al(j)}`}>{inlines(c, `${i}.${ri}.${j}.`)}</td>)}</tr>)}</tbody>
+              </table>
+            </div>
+          );
+        }
         if (b.t === 'p') return <p key={i}>{inlines(b.c, `${i}.`)}</p>;
         if (b.t === 'ul') return <ul key={i} className="list-disc space-y-1 pl-5">{b.items.map((it, j) => <li key={j}>{inlines(it, `${i}.${j}.`)}</li>)}</ul>;
         return <ol key={i} start={b.start} className="list-decimal space-y-1 pl-5">{b.items.map((it, j) => <li key={j}>{inlines(it, `${i}.${j}.`)}</li>)}</ol>;

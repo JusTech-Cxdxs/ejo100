@@ -13,11 +13,13 @@ export type EnyoPrefs = {
   greeting: boolean;
   hair: 'straight' | 'curly';
   glasses: boolean;
+  /** The chosen reading voice (its name on this device); empty = Enyo picks a gentle female voice. */
+  voice: string;
   /** Lagos day (YYYY-MM-DD) the greeting was last shown, per person. */
   greeted: Record<string, string>;
 };
 
-export const DEFAULT_PREFS: EnyoPrefs = { speak: false, greeting: true, hair: 'straight', glasses: false, greeted: {} };
+export const DEFAULT_PREFS: EnyoPrefs = { speak: false, greeting: true, hair: 'straight', glasses: false, voice: '', greeted: {} };
 
 export function readPrefs(): EnyoPrefs {
   try {
@@ -29,6 +31,7 @@ export function readPrefs(): EnyoPrefs {
       greeting: v.greeting !== false,
       hair: v.hair === 'curly' ? 'curly' : 'straight',
       glasses: v.glasses === true,
+      voice: typeof v.voice === 'string' ? v.voice.slice(0, 200) : '',
       greeted: v.greeted && typeof v.greeted === 'object' ? Object.fromEntries(Object.entries(v.greeted).filter(([, d]) => typeof d === 'string').slice(-5)) : {},
     };
   } catch {

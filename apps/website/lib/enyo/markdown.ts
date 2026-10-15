@@ -4,9 +4,10 @@
  * plain data and rendered as React elements — never as HTML — so nothing in
  * an answer can inject markup or script. Links are kept only when they point
  * inside this site or at an https address (rules.safeHref); anything else
- * stays as plain text. Browser-safe, no imports beyond ./rules.
+ * stays as plain text. Browser-safe: imports only ./rules and the shared table reader.
  */
 import { safeHref } from './rules';
+import { readTable, type TableAlign } from './markdown-table';
 
 export type Inline =
   | { t: 'text'; v: string }
@@ -17,6 +18,7 @@ export type Inline =
   | { t: 'br' };
 
 export type Block =
+  | { t: 'table'; head: Inline[][]; align: TableAlign[]; rows: Inline[][][] }
   | { t: 'p'; c: Inline[] }
   | { t: 'ul'; items: Inline[][] }
   | { t: 'ol'; items: Inline[][]; start: number };
@@ -35,6 +37,13 @@ export function parseMarkdown(src: string): Block[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     if (!line.trim()) { flush(); continue; }
+    const tbl = readTable(lines, i);
+    if (tbl) {
+      flush();
+      out.push({ t: 'table', head: tbl.table.head.map((c) => inline(c)), align: tbl.table.align, rows: tbl.table.rows.map((r) => r.map((c) => inline(c))) });
+      i = tbl.next - 1;
+      continue;
+    }
     const b = BULLET.exec(line);
     const n = NUMBERED.exec(line);
     if (b || n) {
@@ -120,5 +129,5 @@ export function inline(s: string): Inline[] {
 /** Plain text of an answer (for copying, screen-reader summaries and tests). */
 export function plainText(blocks: Block[]): string {
   const flat = (c: Inline[]): string => c.map((x) => (x.t === 'text' || x.t === 'code' ? x.v : x.t === 'br' ? '\n' : flat(x.c))).join('');
-  return blocks.map((b) => (b.t === 'p' ? flat(b.c) : b.items.map((it, k) => `${b.t === 'ol' ? `${b.start + k}.` : '-'} ${flat(it)}`).join('\n'))).join('\n\n');
+  return blocks.map((b) => (b.t === 'p' ? flat(b.c) : b.t === 'table' ? [b.head, ...b.rows].map((r) => r.map(flat).join(' | ')).join('\n') : b.items.map((it, k) => `${b.t === 'ol' ? `${b.start + k}.` : '-'} ${flat(it)}`).join('\n'))).join('\n\n');
 }

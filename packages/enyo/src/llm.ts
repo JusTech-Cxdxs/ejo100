@@ -25,6 +25,8 @@ export type CompletionRequest = {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  /** For reasoning models: how much to think (default: low for short jobs, medium otherwise). */
+  reasoning?: 'low' | 'medium' | 'high';
   signal?: AbortSignal;
 };
 
@@ -128,13 +130,31 @@ function wireMessages(messages: ChatMessage[]): unknown[] {
   });
 }
 
+/**
+ * Reasoning models (OpenAI's gpt-oss, served by Groq and others) think before
+ * they answer, and the thinking counts against max_tokens. Short jobs (a
+ * brief, a refined sentence, a connection test) ask for little thinking and
+ * get extra room, so the answer is never cut to nothing; the reasoning text
+ * itself is never returned. A server that refuses these settings gets the
+ * request again without them (post()).
+ */
+export function isReasoningModel(model: string): boolean {
+  return /(^|\/)gpt-oss|(^|\/)o[134](-|$)/i.test(model);
+}
+
+const REASONING_ROOM = 1024;
+
 function body(config: LlmConfig, req: CompletionRequest, stream: boolean): string {
+  const model = req.model ?? config.model;
+  const reasoning = isReasoningModel(model);
+  const effort = req.reasoning ?? (req.maxTokens !== undefined && req.maxTokens <= 1200 ? 'low' : 'medium');
   return JSON.stringify({
-    model: req.model ?? config.model,
+    model,
     messages: wireMessages(req.messages),
     ...(req.tools?.length ? { tools: req.tools.map((t) => ({ type: 'function', function: t })), tool_choice: 'auto' } : {}),
     temperature: req.temperature ?? 0.2,
-    ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+    ...(req.maxTokens ? { max_tokens: reasoning ? req.maxTokens + REASONING_ROOM : req.maxTokens } : {}),
+    ...(reasoning ? { reasoning_effort: effort, include_reasoning: false } : {}),
     stream,
     ...(stream ? { stream_options: { include_usage: true } } : {}),
   });
@@ -171,6 +191,14 @@ async function post(config: LlmConfig, firstPayload: string, signal: AbortSignal
       if (kind === 'rejected' && payload.includes('"stream_options"') && /stream_options/i.test(detail ?? '')) {
         const p = JSON.parse(payload) as Record<string, unknown>;
         delete p.stream_options;
+        payload = JSON.stringify(p);
+        continue;
+      }
+      // A server that does not know the reasoning settings: send it again without them.
+      if (kind === 'rejected' && /reasoning_effort|include_reasoning/.test(payload) && /reasoning/i.test(detail ?? '')) {
+        const p = JSON.parse(payload) as Record<string, unknown>;
+        delete p.reasoning_effort;
+        delete p.include_reasoning;
         payload = JSON.stringify(p);
         continue;
       }

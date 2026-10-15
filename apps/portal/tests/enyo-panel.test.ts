@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseInline, parseMarkdown, plainText, safeHref, type Inline } from '../lib/enyo/markdown';
+import { speakable, speechChunks } from '../components/enyo/voice';
 import { firstName, greetingText, lagosDay, lagosHour, starterPrompts } from '../lib/enyo/greeting';
 
 const ROOT = join(__dirname, '..', '..');
@@ -158,4 +159,28 @@ test('the panel is mounted in the signed-in layout and the settings page is guar
   assert.match(read('app/(app)/layout.tsx'), /<EnyoPanel[\s\S]*canManage=\{decide\(principal, 'enyo\.manage'\)\.allowed\}/);
   assert.match(read('app/(app)/settings/enyo/page.tsx'), /guardPage\('enyo\.manage', '\/settings\/enyo'\)/);
   assert.match(read('app/(app)/profile/enyo/page.tsx'), /currentAssist\(\)/);
+});
+
+test('answers with a table render as a table; a half-streamed table stays text until its separator arrives', () => {
+  const md = 'What is on your plate:\n\n| Category | Items |\n|---|---:|\n| Decisions waiting | 0 |\n| Other steps | 2 |\n\nAnything else?';
+  const blocks = parseMarkdown(md);
+  assert.deepEqual(blocks.map((b) => b.type), ['p', 'table', 'p']);
+  const t = blocks[1] as Extract<ReturnType<typeof parseMarkdown>[number], { type: 'table' }>;
+  assert.equal(t.rows.length, 2);
+  assert.deepEqual(t.align, ['left', 'right']);
+  assert.deepEqual(parseMarkdown('| Category | Items |').map((b) => b.type), ['p']);
+  assert.match(plainText(md), /Category: Other steps, Items: 2\./);
+});
+
+test('reading aloud: gentle pieces, no links or symbols, record numbers read short', () => {
+  assert.equal(speakable('See [JC-2026-000412](/x) — ₦12,500 at https://x.y/z **now**'), 'See [JC 412](/x) — naira 12,500 at now');
+  const pieces = speechChunks(`${'This is one sentence. '.repeat(30)}`, 100);
+  assert.ok(pieces.length > 3 && pieces.every((p) => p.length <= 100));
+  assert.deepEqual(speechChunks(''), []);
+});
+
+test('the table reader is the same in the portal and the website', () => {
+  const a = readFileSync(join(ROOT, 'lib/enyo/markdown-table.ts'), 'utf8');
+  const b = readFileSync(join(ROOT, '..', 'website', 'lib/enyo/markdown-table.ts'), 'utf8');
+  assert.equal(a, b);
 });
