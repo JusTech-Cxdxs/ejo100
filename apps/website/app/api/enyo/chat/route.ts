@@ -201,7 +201,11 @@ export async function POST(req: NextRequest) {
             maxToolChars: 6000,
           });
           const messageId = await storeAgentResult(conversation.id, result, Date.now() - started);
-          if (result.error) emit({ type: 'error', message: result.error.message });
+          if (result.error) {
+            emit({ type: 'error', message: result.error.message });
+            // The model server's own reason, for administrators only.
+            if (result.error.kind === 'auth' || result.error.kind === 'not_found' || result.error.kind === 'rejected') console.error(JSON.stringify({ level: 'error', where: 'enyo.model', kind: result.error.kind, status: result.error.status, code: result.error.code, detail: result.error.detail }));
+          }
           else emit({ type: 'done', messageId });
         } catch (err) {
           const ref = await failure(req, err, 'POST /api/enyo/chat (stream)');

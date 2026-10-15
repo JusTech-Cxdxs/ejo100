@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readLlmConfig, type LlmConfig } from '../src/config';
-import { complete, LlmError } from '../src/llm';
+import { complete, LlmError, llmAdminMessage, stream } from '../src/llm';
 import { validateArgs, type Tool } from '../src/tools';
 import { ungroundedFigures, moneyFigures, redactForLog, looksLikeInjection, asData, clip } from '../src/guardrails';
 import { encodeEvent, readEvents, type EnyoEvent } from '../src/protocol';
@@ -168,4 +168,43 @@ test('agent: the whole answer has a time limit; running out ends calmly as "took
   assert.equal(r.error?.kind, 'timeout');
   assert.match(r.error?.message ?? '', /too long/);
   assert.ok(Date.now() - t < 3_000);
+});
+
+test('model server errors: a bad key reads as "auth" with the reason, never the key', async () => {
+  const { impl, seen } = scripted([() => new Response(JSON.stringify({ error: { message: 'Invalid API Key gsk_abcdefghijklmnop1234', type: 'invalid_request_error', code: 'invalid_api_key' } }), { status: 401 })]);
+  await assert.rejects(complete(config, { messages: [{ role: 'user', content: 'hi' }] }, impl), (e: unknown) => {
+    assert.ok(e instanceof LlmError);
+    assert.equal(e.kind, 'auth');
+    assert.equal(e.code, 'invalid_api_key');
+    assert.match(e.detail ?? '', /Invalid API Key/);
+    assert.ok(!(e.detail ?? '').includes('gsk_abcdefghijklmnop1234'));
+    assert.match(llmAdminMessage(e), /ENYO_LLM_API_KEY/);
+    return true;
+  });
+  assert.equal(seen.length, 1);
+});
+
+test('model server errors: an unknown model reads as "not_found"', async () => {
+  const { impl } = scripted([() => new Response(JSON.stringify({ error: { message: 'The model `llama-x` does not exist', code: 'model_not_found' } }), { status: 404 })]);
+  await assert.rejects(complete(config, { messages: [{ role: 'user', content: 'hi' }] }, impl), (e: unknown) => e instanceof LlmError && e.kind === 'not_found' && /ENYO_LLM_MODEL/.test(llmAdminMessage(e)));
+});
+
+test('a malformed tool call (tool_use_failed) is tried once more; stream_options is dropped when refused', async () => {
+  const bad = () => new Response(JSON.stringify({ error: { message: 'Failed to call a function', code: 'tool_use_failed' } }), { status: 400 });
+  const ok = () => new Response(JSON.stringify({ model: 'm', choices: [{ message: { content: 'fine' }, finish_reason: 'stop' }] }), { status: 200 });
+  const a = scripted([bad, ok]);
+  assert.equal((await complete(config, { messages: [{ role: 'user', content: 'hi' }] }, a.impl)).content, 'fine');
+  assert.equal(a.seen.length, 2);
+  const b = scripted([() => new Response(JSON.stringify({ error: { message: "property 'stream_options' is unsupported" } }), { status: 400 }), () => say('ok')]);
+  let text = '';
+  for await (const p of stream(config, { messages: [{ role: 'user', content: 'hi' }] }, b.impl)) if (p.type === 'text') text += p.text;
+  assert.equal(text, 'ok');
+  assert.ok('stream_options' in b.seen[0]!.body && !('stream_options' in b.seen[1]!.body));
+});
+
+test('config: quotes pasted around a value are removed', () => {
+  const c = readLlmConfig({ ENYO_LLM_BASE_URL: '"https://api.groq.com/openai/v1"', ENYO_LLM_MODEL: "'llama-3.3-70b-versatile'", ENYO_LLM_API_KEY: ' "k" ' });
+  assert.equal(c?.baseUrl, 'https://api.groq.com/openai/v1');
+  assert.equal(c?.model, 'llama-3.3-70b-versatile');
+  assert.equal(c?.apiKey, 'k');
 });

@@ -147,6 +147,11 @@ export default async function OrganisationPage({ searchParams }: { searchParams:
               <dt className="text-xs font-medium text-[var(--ejo-text-muted)]">Legal Name</dt>
               <dd className="mt-0.5 text-sm text-[var(--ejo-text)]">{organisation.legalName ?? '—'}</dd>
             </div>
+            <div>
+              <dt className="text-xs font-medium text-[var(--ejo-text-muted)]">Organisation ID for the website</dt>
+              <dd className="mt-0.5 font-mono text-sm text-[var(--ejo-text)]">{organisation.slug}</dd>
+              <dd className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">The value for WEBSITE_ORGANISATION_SLUG in the website&apos;s hosting settings.</dd>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <dt className="text-xs font-medium text-[var(--ejo-text-muted)]">Website</dt>

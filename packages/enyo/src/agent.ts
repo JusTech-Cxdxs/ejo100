@@ -22,7 +22,8 @@ export type AgentResult = {
   model: string;
   /** Money figures in the answer that no tool returned. */
   unverified: number[];
-  error?: { kind: string; message: string };
+  /** `detail` / `status` come from the model server: for the error log, never for the person. */
+  error?: { kind: string; message: string; detail?: string; status?: number; code?: string };
 };
 
 export type AgentOptions<Ctx> = {
@@ -85,7 +86,8 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
     } catch (err) {
       const kind = outOfTime() ? 'timeout' : err instanceof LlmError ? err.kind : 'bad_response';
       const message = llmErrorMessage(kind as never);
-      return { answer: answer + text, transcript, toolRuns, sources, drafts, usage, model, unverified: [], error: { kind, message } };
+      const extra = err instanceof LlmError ? { ...(err.detail ? { detail: err.detail } : {}), ...(err.status ? { status: err.status } : {}), ...(err.code ? { code: err.code } : {}) } : {};
+      return { answer: answer + text, transcript, toolRuns, sources, drafts, usage, model, unverified: [], error: { kind, message, ...extra } };
     }
 
     if (!toolCalls.length) {

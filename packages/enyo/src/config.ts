@@ -18,7 +18,8 @@ export type LlmConfig = {
 
 type Env = Record<string, string | undefined>;
 
-const clean = (v: string | undefined): string => (v ?? '').trim();
+/** Trimmed, and without quotes pasted around the value (a common copy-paste slip). */
+const clean = (v: string | undefined): string => (v ?? '').trim().replace(/^(['"`])(.*)\1$/s, '$2').trim();
 
 /** Null when Enyo has no model configured: every Enyo feature then shows "not switched on yet". */
 export function readLlmConfig(env: Env = process.env): LlmConfig | null {

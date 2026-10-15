@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { complete, LlmError, llmErrorMessage, readLlmConfig } from '@ejo/enyo';
+import { complete, LlmError, llmAdminMessage, readLlmConfig } from '@ejo/enyo';
 import { requireUser } from './workshop';
 import { authorize, currentAssist, getPrincipal, myOrganisationId, refuseDuringAssist } from '@/lib/authz/server';
 import { writeAuditLog } from '@/lib/workshop-core';
@@ -190,6 +190,6 @@ export async function testEnyoConnection(): Promise<EnyoConnectionResult> {
     const res = await complete({ ...config, timeoutMs: Math.min(config.timeoutMs, 20_000) }, { messages: [{ role: 'system', content: 'Reply with the single word OK.' }, { role: 'user', content: 'Are you there?' }], maxTokens: 5, temperature: 0 });
     return { ok: true, latencyMs: Date.now() - started, model: res.model, provider: config.providerLabel };
   } catch (err) {
-    return { ok: false, message: err instanceof LlmError ? llmErrorMessage(err.kind) : 'The model server could not be reached.' };
+    return { ok: false, message: err instanceof LlmError ? llmAdminMessage(err) : 'The model server could not be reached.' };
   }
 }

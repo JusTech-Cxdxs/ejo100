@@ -32,14 +32,54 @@ export type Usage = { tokensIn: number; tokensOut: number };
 
 export type Completion = { content: string; toolCalls: ToolCall[]; usage: Usage; model: string; finishReason: string };
 
-export type LlmErrorKind = 'timeout' | 'rate_limited' | 'unavailable' | 'rejected' | 'bad_response' | 'aborted';
+export type LlmErrorKind = 'timeout' | 'rate_limited' | 'unavailable' | 'rejected' | 'auth' | 'not_found' | 'bad_response' | 'aborted';
 
 /** What went wrong, in a form the app can turn into a calm message. Never carries the key or the prompt. */
 export class LlmError extends Error {
-  constructor(public readonly kind: LlmErrorKind, message: string, public readonly status?: number) {
+  constructor(
+    public readonly kind: LlmErrorKind,
+    message: string,
+    public readonly status?: number,
+    /** The model server's own explanation (keys redacted, at most 240 characters) — for administrators and logs only. */
+    public readonly detail?: string,
+    /** The model server's error code, e.g. "invalid_api_key", "model_not_found", "tool_use_failed". */
+    public readonly code?: string,
+  ) {
     super(message);
     this.name = 'LlmError';
   }
+}
+
+/** Anything that looks like a key or a bearer token, hidden. */
+export function redactSecrets(text: string): string {
+  return text
+    .replace(/\b(gsk|sk|sk-proj|sk-or|xai|pk|rk|key|AIza)[-_][A-Za-z0-9_\-]{8,}/g, '[key hidden]')
+    .replace(/Bearer\s+[A-Za-z0-9._\-]+/gi, 'Bearer [hidden]')
+    .replace(/\b[A-Za-z0-9_\-]{40,}\b/g, '[hidden]');
+}
+
+/** The kind of failure for an HTTP status from the model server. */
+export function kindForStatus(status: number): LlmErrorKind {
+  if (status === 401 || status === 403) return 'auth';
+  if (status === 404) return 'not_found';
+  if (status === 429) return 'rate_limited';
+  if (status >= 500) return 'unavailable';
+  return 'rejected';
+}
+
+/** The model server's error body → a short, key-free explanation and code. */
+export function readErrorBody(text: string): { detail?: string; code?: string } {
+  let detail = text;
+  let code: string | undefined;
+  try {
+    const j = JSON.parse(text) as { error?: { message?: unknown; code?: unknown; type?: unknown } | string; message?: unknown };
+    const e = typeof j.error === 'object' && j.error ? j.error : undefined;
+    detail = String(e?.message ?? (typeof j.error === 'string' ? j.error : j.message) ?? text);
+    const c = e?.code ?? e?.type;
+    code = typeof c === 'string' && /^[a-z0-9_.-]{1,60}$/i.test(c) ? c : undefined;
+  } catch { /* not JSON: keep the text */ }
+  const clean = redactSecrets(detail.replace(/\s+/g, ' ').trim()).slice(0, 240);
+  return { ...(clean ? { detail: clean } : {}), ...(code ? { code } : {}) };
 }
 
 /** Friendly text for each failure, shown to people instead of library messages. */
@@ -49,8 +89,26 @@ export function llmErrorMessage(kind: LlmErrorKind): string {
     case 'rate_limited': return "I'm handling a lot of questions right now. Please try again in a minute.";
     case 'unavailable': return "I can't reach my thinking engine just now. Please try again in a minute.";
     case 'rejected': return "I couldn't answer that one. Please rephrase it and try again.";
+    case 'auth':
+    case 'not_found': return "I'm not set up correctly at the moment. Please let an administrator know (Settings → Enyo → Test connection).";
     case 'aborted': return 'Stopped.';
     default: return 'Something went wrong on my side. Please try again.';
+  }
+}
+
+/** For administrators (the connection test): what is wrong and what to change. Never includes the key. */
+export function llmAdminMessage(err: LlmError): string {
+  const why = err.detail ? ` The model server said: "${err.detail}"` : '';
+  const status = err.status ? ` (HTTP ${err.status})` : '';
+  switch (err.kind) {
+    case 'auth': return `The model server refused the key${status}. Check ENYO_LLM_API_KEY: paste the key again with no quotes or spaces, make sure it has not been deleted or expired, then redeploy.${why}`;
+    case 'not_found': return `The model or the address was not found${status}. Check ENYO_LLM_MODEL (the exact model id) and ENYO_LLM_BASE_URL (it ends in /v1 for most providers, without /chat/completions), then redeploy.${why}`;
+    case 'rejected': return `The model server rejected the request${status}. The model id may not exist for this provider, or it does not accept one of the settings.${why}`;
+    case 'rate_limited': return `The model server says too many requests${status}. Wait a minute and test again; on a free tier, check its limits.${why}`;
+    case 'unavailable': return `The model server could not be reached or had an error${status}. Check ENYO_LLM_BASE_URL and that the provider is up.${why}`;
+    case 'timeout': return 'The model server took too long to answer. Try again; if it keeps happening, choose a faster model or raise ENYO_LLM_TIMEOUT_MS.';
+    case 'bad_response': return `The model server answered in an unexpected format. Check that ENYO_LLM_BASE_URL points at an OpenAI-compatible endpoint.${why}`;
+    default: return llmErrorMessage(err.kind);
   }
 }
 
@@ -88,8 +146,10 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
 });
 
 /** POST with a timeout and up to two retries on 429 / 5xx / network errors. */
-async function post(config: LlmConfig, payload: string, signal: AbortSignal | undefined, fetchImpl: Fetch): Promise<Response> {
+async function post(config: LlmConfig, firstPayload: string, signal: AbortSignal | undefined, fetchImpl: Fetch): Promise<Response> {
   let lastError: LlmError = new LlmError('unavailable', 'No attempt made');
+  let payload = firstPayload;
+  let toolRetry = false;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (signal?.aborted) throw new LlmError('aborted', 'Aborted');
     const timeout = new AbortController();
@@ -104,15 +164,28 @@ async function post(config: LlmConfig, payload: string, signal: AbortSignal | un
         signal: timeout.signal,
       });
       if (res.ok) return res;
-      const retryable = res.status === 429 || res.status >= 500;
-      lastError = new LlmError(res.status === 429 ? 'rate_limited' : res.status >= 500 ? 'unavailable' : 'rejected', `Model server answered ${res.status}`, res.status);
-      await res.body?.cancel().catch(() => undefined);
+      const { detail, code } = readErrorBody((await res.text().catch(() => '')).slice(0, 4000));
+      const kind = kindForStatus(res.status);
+      lastError = new LlmError(kind, `Model server answered ${res.status}`, res.status, detail, code);
+      // Some servers do not accept stream_options: send the request again without it.
+      if (kind === 'rejected' && payload.includes('"stream_options"') && /stream_options/i.test(detail ?? '')) {
+        const p = JSON.parse(payload) as Record<string, unknown>;
+        delete p.stream_options;
+        payload = JSON.stringify(p);
+        continue;
+      }
+      // A model sometimes writes a malformed tool call (Groq: "tool_use_failed"): one more try.
+      if (kind === 'rejected' && code === 'tool_use_failed' && !toolRetry) {
+        toolRetry = true;
+        continue;
+      }
+      const retryable = kind === 'rate_limited' || kind === 'unavailable';
       if (!retryable) throw lastError;
       const after = Number(res.headers.get('retry-after'));
       await sleep(Number.isFinite(after) && after > 0 ? Math.min(after * 1000, 5_000) : 600 * (attempt + 1), signal);
     } catch (err) {
       if (err instanceof LlmError) {
-        if (err.kind === 'rejected' || err.kind === 'aborted') throw err;
+        if (err.kind === 'rejected' || err.kind === 'auth' || err.kind === 'not_found' || err.kind === 'aborted') throw err;
         lastError = err;
       } else if (signal?.aborted) {
         throw new LlmError('aborted', 'Aborted');
