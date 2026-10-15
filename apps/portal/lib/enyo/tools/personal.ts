@@ -33,10 +33,12 @@ export const personalTools: StaffTool[] = [
     description: 'What this person did in the portal recently (their own actions only, newest first, last 7 days by default): records they created, changed, approved or sent, with links. Use for "what was I working on", "where did I stop", "what did I do yesterday", and to pick up where they left off or suggest the next step.',
     parameters: { type: 'object', properties: { days: { type: 'integer', minimum: 1, maximum: 30, description: 'How many days back (default 7).' } }, additionalProperties: false },
     run: async (args) => {
+      // A person's own history is theirs alone: never shown to someone assisting them.
+      if (await currentAssist()) return refused('only the person themselves can see their own recent activity, not during an assisted session.');
       const p = await getPrincipal();
       const days = Math.min(30, Math.max(1, Number(args.days) || 7));
       const rows = await prisma.auditLog.findMany({
-        where: { userId: p.userId, createdAt: { gte: new Date(Date.now() - days * 86_400_000) }, NOT: { action: { startsWith: 'auth.' } } },
+        where: { userId: p.userId, ...(p.organisationId ? { organisationId: p.organisationId } : {}), createdAt: { gte: new Date(Date.now() - days * 86_400_000) }, NOT: { action: { startsWith: 'auth.' } } },
         select: { action: true, entityType: true, entityId: true, createdAt: true },
         orderBy: { createdAt: 'desc' },
         take: 40,
@@ -49,7 +51,9 @@ export const personalTools: StaffTool[] = [
         const key = `${r.action}|${r.entityId ?? ''}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const rec = r.entityId ? records.get(`${r.entityType.replace(/^db:/, '')}:${r.entityId}`) : undefined;
+        const found = r.entityId ? records.get(`${r.entityType.replace(/^db:/, '')}:${r.entityId}`) : undefined;
+        // Names and links only for records still inside the person's organisation.
+        const rec = found && (p.isSuperAdmin || !found.branchId || !p.orgBranchIds || p.orgBranchIds.includes(found.branchId)) ? found : undefined;
         items.push({ did: humanizeAction(r.action), record: rec?.label ?? r.entityType.replace(/^db:/, '').replace(/([a-z])([A-Z])/g, '$1 $2'), when: when(r.createdAt), ...(rec?.url ? { href: rec.url } : {}) });
         if (items.length >= 15) break;
       }

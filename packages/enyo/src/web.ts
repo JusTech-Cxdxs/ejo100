@@ -26,9 +26,25 @@ export function webLookupEnabled(env: Record<string, string | undefined> = proce
   return (env.ENYO_WEB_LOOKUP ?? '').trim().toLowerCase() !== 'off';
 }
 
-/** A clean search phrase: plain words only, at most 120 characters. */
+/**
+ * A clean search phrase: plain words only, at most 120 characters, with
+ * anything that could identify a person or a record removed first (emails,
+ * phone numbers, links, number plates, VINs, reference numbers like
+ * JC-2026-000412) — those never leave for the web.
+ */
 export function cleanQuery(raw: string): string {
-  return raw.replace(/[\u0000-\u001f<>{}[\]\\^`|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+  return String(raw ?? '')
+    .replace(/\bhttps?:\/\/\S+/gi, ' ')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, ' ')
+    .replace(/\b[A-Z]{2,4}-\d{4}-\d{3,}\b/gi, ' ')
+    .replace(/\b[A-HJ-NPR-Z0-9]{17}\b/gi, (m) => (/\d/.test(m) ? ' ' : m))
+    // Plates as written on records: LSR-123-XY, KJA123AB (capitals; "GLE 450 AMG" or "BMW 320i" are left alone).
+    .replace(/\b[A-Z]{3}-?\d{2,4}-?[A-Z]{2,3}\b/g, ' ')
+    .replace(/(?:\+?\d[\s.-]?){7,}/g, ' ')
+    .replace(/[\u0000-\u001f<>{}[\]\\^`|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
 }
 
 /** First paragraphs only, cut at a sentence end near `max` characters. */
@@ -90,7 +106,8 @@ export function webLookupTool<Ctx>(opts: { fetchImpl?: FetchLike } = {}): Tool<C
       additionalProperties: false,
     },
     async run(args): Promise<ToolResult> {
-      if (!webLookupEnabled()) return { ok: false, message: 'Web look-up is switched off for this organisation. Answer from general knowledge, say it may be out of date, or say you cannot check.' };
+      if (!webLookupEnabled()) return { ok: false, message: 'Web look-up is switched off on this installation. Answer from general knowledge, say it may be out of date, or say you cannot check.' };
+      if (cleanQuery(String(args.query ?? '')).length < 2) return { ok: false, message: 'That search had nothing to look up once personal details and reference numbers were removed. Never send those to the web.' };
       try {
         const r = await webLookup(String(args.query ?? ''), { lang: typeof args.language === 'string' ? args.language : undefined, fetchImpl: opts.fetchImpl });
         if (!r.pages.length) return { ok: false, message: 'Nothing relevant was found on the web for that. Say so; answer from general knowledge only if you are confident, and say it may be out of date.' };

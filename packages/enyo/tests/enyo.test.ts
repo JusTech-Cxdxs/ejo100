@@ -7,7 +7,7 @@ import { ungroundedFigures, moneyFigures, redactForLog, looksLikeInjection, asDa
 import { encodeEvent, readEvents, type EnyoEvent } from '../src/protocol';
 import { runAgent } from '../src/agent';
 import { buildSystemPrompt, lagosNow, trimHistory } from '../src/prompts';
-import { trimExtract, webLookup, webLookupEnabled, webLookupTool } from '../src/web';
+import { cleanQuery, trimExtract, webLookup, webLookupEnabled, webLookupTool } from '../src/web';
 
 const config: LlmConfig = { baseUrl: 'https://llm.test/v1', apiKey: 'k', model: 'm', fastModel: 'm', providerLabel: 'Test', timeoutMs: 5_000 };
 
@@ -249,4 +249,18 @@ test('web look-up: searches Wikipedia, returns introductions as untrusted data, 
   assert.ok(trimExtract(`${'Sentence one is here. '.repeat(100)}`, 200).endsWith('.'));
   assert.equal(webLookupEnabled({ ENYO_WEB_LOOKUP: 'off' }), false);
   assert.equal(webLookupEnabled({}), true);
+  // Personal details and record numbers never reach the web.
+  const q = cleanQuery('Toyota Hilux LSR-123-XY JC-2026-000412 ada@example.com +234 803 123 4567 JTDBR32E720123456 https://x.y/z');
+  assert.equal(q, 'Toyota Hilux');
+  assert.equal(cleanQuery('President of Nigeria'), 'President of Nigeria');
+  assert.equal(cleanQuery('BMW 320i vs Mercedes GLE 450 AMG'), 'BMW 320i vs Mercedes GLE 450 AMG');
+});
+
+test('prompts: no money figures unless a tool gave them; inside details for staff only', () => {
+  for (const channel of ['STAFF', 'CUSTOMER', 'PUBLIC'] as const) {
+    const p = buildSystemPrompt({ assistantName: 'Enyo', organisationName: 'X', channel, now: 'n' });
+    assert.match(p, /Never state a price, cost, fee or amount of money unless a tool returned it/);
+    if (channel === 'STAFF') assert.match(p, /machine-learning models/);
+    else assert.doesNotMatch(p, /machine-learning|parts demand|unusual prices/);
+  }
 });

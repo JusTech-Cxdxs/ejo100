@@ -39,6 +39,7 @@ export function useChatViewport(active: boolean, query = '(max-width: 639px)'): 
     const body = document.body;
     const prev = { htmlOverflow: html.style.overflow, bodyOverflow: body.style.overflow, position: body.style.position, top: body.style.top, width: body.style.width };
     const scrollY = window.scrollY;
+    const scrollX = window.scrollX;
     const lock = small.matches;
     if (lock) {
       html.style.overflow = 'hidden';
@@ -59,7 +60,8 @@ export function useChatViewport(active: boolean, query = '(max-width: 639px)'): 
         body.style.position = prev.position;
         body.style.top = prev.top;
         body.style.width = prev.width;
-        window.scrollTo(0, scrollY);
+        // 'instant': pages with smooth scrolling would otherwise glide down from the top.
+        window.scrollTo({ top: scrollY, left: scrollX, behavior: 'instant' as ScrollBehavior });
       }
     };
   }, [active, query]);

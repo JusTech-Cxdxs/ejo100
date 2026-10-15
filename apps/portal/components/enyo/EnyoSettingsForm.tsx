@@ -115,7 +115,7 @@ export function EnyoSettingsForm({ initial, provider }: { initial: EnyoAdminSett
             Set this to the day you started using the portal for real. Anything typed before it, such as test jobs, is never learned from: not by the suggestions, the training export or the trained models. Leave it empty to learn from all history.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <input id="enyo-learn-from" type="date" aria-describedby="enyo-learn-from-help" value={s.learnFrom ?? ''} max={new Date().toISOString().slice(0, 10)} min="2000-01-01" onChange={(e) => set('learnFrom', e.target.value || null)} className="min-h-11 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 text-sm text-[var(--ejo-text)]" />
+            <input id="enyo-learn-from" type="date" aria-describedby="enyo-learn-from-help" value={s.learnFrom ?? ''} max={new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())} min="2000-01-01" onChange={(e) => set('learnFrom', e.target.value || null)} className="min-h-11 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 text-sm text-[var(--ejo-text)]" />
             {s.learnFrom ? <button type="button" onClick={() => set('learnFrom', null)} className="min-h-11 rounded-[var(--ejo-radius-md)] px-3 text-sm font-medium text-[var(--ejo-primary)] hover:underline">Use all history</button> : null}
           </div>
         </div>

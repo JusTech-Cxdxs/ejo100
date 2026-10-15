@@ -431,9 +431,9 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
                   <MenuToggle label="Curly hair" on={prefs.hair === 'curly'} onChange={(v) => updatePrefs({ hair: v ? 'curly' : 'straight' })} />
                   <MenuToggle label="Glasses" on={prefs.glasses} onChange={(v) => updatePrefs({ glasses: v })} />
                   <div className="my-1.5 border-t border-[var(--ejo-border)]" role="none" />
-                  <Link role="menuitem" href="/profile/enyo" onClick={() => setMenu(false)} className="flex min-h-11 items-center gap-3 px-4 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><EIcon name="brain" size={17} className="text-[var(--ejo-text-muted)]" />What {name} remembers</Link>
+                  <Link role="menuitem" href="/profile/enyo" onClick={() => { setMenu(false); onNavigate(); }} className="flex min-h-11 items-center gap-3 px-4 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><EIcon name="brain" size={17} className="text-[var(--ejo-text-muted)]" />What {name} remembers</Link>
                   {canManage ? (
-                    <Link role="menuitem" href="/settings/enyo" onClick={() => setMenu(false)} className="flex min-h-11 items-center gap-3 px-4 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><EIcon name="settings" size={17} className="text-[var(--ejo-text-muted)]" />{name} settings</Link>
+                    <Link role="menuitem" href="/settings/enyo" onClick={() => { setMenu(false); onNavigate(); }} className="flex min-h-11 items-center gap-3 px-4 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><EIcon name="settings" size={17} className="text-[var(--ejo-text-muted)]" />{name} settings</Link>
                   ) : null}
                 </div>
               ) : null}

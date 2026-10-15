@@ -7,7 +7,7 @@ import { averagePathLength, checkPrice, leafOf, lineProbabilities, predictDurati
 import { ageBand, featureTokens, lineTokens, mileageToken, workNumbers } from '../lib/enyo/ml/features-core';
 import { readLevels, CAPABILITIES } from '../lib/enyo/ml/capabilities';
 import { parseUpload, UploadError } from '../lib/enyo/ml/upload-core';
-import { lastCompleteWeek, weeklySeries } from '../lib/enyo/ml/datasets-core';
+import { completeWeeksSince, lastCompleteWeek, weeklySeries } from '../lib/enyo/ml/datasets-core';
 import { turnaroundHours } from '../lib/enyo/predict/dataset-core';
 
 /** The parity fixtures written by the Python trainer (ml/ejo_ml/fixtures.py). */
@@ -168,4 +168,16 @@ test('turnaround: hours from opening to ready, only when it makes sense', () => 
   assert.equal(turnaroundHours(open, null), null);
   assert.equal(turnaroundHours(open, new Date('2026-09-30T08:00:00Z')), null);
   assert.equal(turnaroundHours(open, new Date('2027-10-01T08:00:00Z')), null);
+});
+
+test('parts weeks after a learn-from day: only whole Lagos weeks wholly on or after it', () => {
+  const monday = new Date('2026-10-12T00:00:00+01:00');
+  // Friday of the same week: no complete week since the Monday yet.
+  assert.equal(completeWeeksSince(monday, new Date('2026-10-16T12:00:00+01:00')), 0);
+  // The following Tuesday: the week of 12–18 October is complete.
+  assert.equal(completeWeeksSince(monday, new Date('2026-10-20T12:00:00+01:00')), 1);
+  // Starting mid-week: that partial week never counts.
+  const wednesday = new Date('2026-10-14T00:00:00+01:00');
+  assert.equal(completeWeeksSince(wednesday, new Date('2026-10-28T12:00:00+01:00')), 1);
+  assert.equal(completeWeeksSince(wednesday, new Date('2026-11-03T12:00:00+01:00')), 2);
 });

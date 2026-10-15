@@ -17,7 +17,7 @@ import { prisma } from '@ejo/database';
 import { withinLimit } from '@/lib/mail/account';
 import { buildTrainingRows } from '@/lib/enyo/predict/dataset';
 import { learningSince } from '@/lib/enyo/predict/learn-from';
-import { weeklySeries, type ConsumptionEvent, type PartsRow } from './datasets-core';
+import { completeWeeksSince, weeklySeries, type ConsumptionEvent, type PartsRow } from './datasets-core';
 
 export const NO_STORE = { 'Cache-Control': 'private, no-store, max-age=0', 'X-Content-Type-Options': 'nosniff' };
 
@@ -58,7 +58,8 @@ export async function partsDataset(organisationId: string, now = new Date()): Pr
   // After a "learn from" day, only whole weeks since then: the weeks before it
   // are not "no use", they are unknown, and zeros would drag forecasts down.
   const since = await learningSince(organisationId, floor);
-  const weeks = since > floor ? Math.max(1, Math.min(PARTS_WEEKS, Math.floor((now.getTime() - since.getTime()) / WEEK))) : PARTS_WEEKS;
+  const weeks = since > floor ? Math.min(PARTS_WEEKS, completeWeeksSince(since, now)) : PARTS_WEEKS;
+  if (weeks < 1) return [];
   const [parts, quantity, batch] = await Promise.all([
     prisma.part.findMany({ where: { ...inOrg, isActive: true }, select: { id: true }, orderBy: { id: 'asc' }, take: 20_000 }),
     prisma.partQuantityConsumption.findMany({ where: { part: inOrg, consumedAt: { gte: since } }, select: { partId: true, consumedAt: true, quantityTaken: true } }),

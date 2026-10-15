@@ -326,7 +326,7 @@ test('data quality: test and keyboard-mash complaints are recognised; real ones,
     assert.notEqual(complaintQuality(junk), 'ok', junk);
   }
   assert.equal(complaintQuality(''), 'empty');
-  for (const real of ['Noise', 'Brake noise when stopping', 'AC not cooling', 'Check engine light on, car jerks', 'General service at 50,000 km', 'Vibration at high speed', 'Ẹ̀rọ náà ń pariwo', 'Le moteur chauffe']) {
+  for (const real of ['Noise', 'AC', 'A/C', 'Check AC', 'TPMS', '4WD', 'ABS light', 'Brake noise when stopping', 'AC not cooling', 'Check engine light on, car jerks', 'General service at 50,000 km', 'Vibration at high speed', 'Ẹ̀rọ náà ń pariwo', 'Le moteur chauffe']) {
     assert.equal(complaintQuality(real), 'ok', real);
   }
   assert.ok(isMash('qwertyuiop') && isMash('zzzz') && !isMash('strength') && !isMash('brakes'));
@@ -338,19 +338,23 @@ test('data quality: test and keyboard-mash complaints are recognised; real ones,
 test('data quality: the filter drops junk, impossible lines and duplicates, blanks impossible job times, and reports why', () => {
   const line = { type: 'LABOUR', key: 'labour:brake service', label: 'Brake service', quantity: 1, unit_price: 15000, amount: 15000 };
   const base = { row_id: 'a', kind: 'JOB_CARD', opened_on: '2026-03-02', branch_code: 'LAG', complaint_text: 'Brake noise', make: 'Toyota', model: 'Corolla', year: 2018, mileage_band_km: 50000, vehicle_type: 'CAR', lines: [line], labour_total: 15000, predicted_keys: null, precision: null, recall: null, model_version: null, complaint_tokens: ['brake', 'noise'], feature_tokens: [], work_numbers: {}, turnaround_hours: 26 } as unknown as DatasetRow;
-  const rows: DatasetRow[] = [
-    base,
-    { ...base, row_id: 'dup' },
+  const rows = [
+    { ...base, vehicle_key: 'v1' },
+    { ...base, row_id: 'dup', vehicle_key: 'v1' },
+    { ...base, row_id: 'fleet', vehicle_key: 'v2' },
+    { ...base, row_id: 'service', kind: 'SERVICE', complaint_text: '', vehicle_key: 'v3' } as unknown as DatasetRow & { vehicle_key: string },
     { ...base, row_id: 'junk', complaint_text: 'test test' },
     { ...base, row_id: 'empty', complaint_text: '' },
     { ...base, row_id: 'neg', complaint_text: 'Oil leak', lines: [{ ...line, quantity: -2 }] },
     { ...base, row_id: 'nolines', complaint_text: 'Oil leak', lines: [] },
     { ...base, row_id: 'quick', complaint_text: 'Wiper blade', turnaround_hours: 0.1 },
-  ];
+  ] as (DatasetRow & { vehicle_key?: string })[];
   const { rows: kept, report } = qualityFilter(rows);
-  assert.deepEqual(kept.map((r) => r.row_id), ['a', 'quick']);
-  assert.equal(kept[1]!.turnaround_hours, null);
-  assert.deepEqual(report, { examined: 7, kept: 2, dropped: { no_complaint: 1, test_or_junk_text: 1, impossible_line: 2, duplicate: 1 }, blanked: { turnaround_too_short: 1 } });
+  // Fleet vans serviced alike stay; a routine service without a complaint stays; the in-memory key never leaves.
+  assert.deepEqual(kept.map((r) => r.row_id), ['a', 'fleet', 'service', 'quick']);
+  assert.equal(kept[3]!.turnaround_hours, null);
+  assert.ok(kept.every((r) => !('vehicle_key' in r)));
+  assert.deepEqual(report, { examined: 9, kept: 4, dropped: { no_complaint: 1, test_or_junk_text: 1, impossible_line: 2, duplicate: 1 }, blanked: { turnaround_too_short: 1 } });
 });
 
 test('learn-from day: every learning path respects it (similar jobs, training rows, trainer datasets)', () => {

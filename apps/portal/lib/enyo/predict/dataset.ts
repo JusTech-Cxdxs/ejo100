@@ -44,6 +44,7 @@ type Job = {
   year: number | null;
   mileage: number | null;
   vehicleType: string | null;
+  vehicleId: string;
   department: string | null;
   readyAt: Date | null;
   /** Only to scrub them out of free text. */
@@ -77,7 +78,7 @@ export async function buildTrainingSet(scope: DatasetScope, opts: { limit?: numb
         id: true, createdAt: true, complaint: true, mileageAtCheckIn: true, readyForCollectionAt: true, completedAt: true, department: { select: { name: true } },
         complaints: { select: { description: true }, orderBy: { sequenceNumber: 'asc' } },
         branch: { select: { code: true } },
-        vehicle: { select: { make: true, model: true, year: true, vehicleType: true } },
+        vehicle: { select: { id: true, make: true, model: true, year: true, vehicleType: true } },
         customer: { select: { fullName: true, contacts: { select: { name: true } } } },
         supervisor: people, assignedTechnician: people, createdBy: people,
       },
@@ -90,7 +91,7 @@ export async function buildTrainingSet(scope: DatasetScope, opts: { limit?: numb
         id: true, createdAt: true, customerComplaint: true, odometerAtService: true, readyForCollectionAt: true, completedAt: true, department: { select: { name: true } },
         complaints: { select: { description: true }, orderBy: { sequenceNumber: 'asc' } },
         branch: { select: { code: true } },
-        vehicle: { select: { make: true, model: true, year: true, vehicleType: true } },
+        vehicle: { select: { id: true, make: true, model: true, year: true, vehicleType: true } },
         customer: { select: { fullName: true, contacts: { select: { name: true } } } },
         supervisor: people, assignedTechnician: people, createdBy: people,
       },
@@ -105,13 +106,13 @@ export async function buildTrainingSet(scope: DatasetScope, opts: { limit?: numb
     ...jobRows.map((r: (typeof jobRows)[number]) => ({
       id: r.id, kind: 'JOB_CARD' as const, createdAt: r.createdAt, branchCode: r.branch.code,
       complaint: [...r.complaints.map((c: { description: string }) => c.description), r.complaint ?? ''].map((s) => s.trim()).filter(Boolean).join('. '),
-      make: r.vehicle.make, model: r.vehicle.model, year: plausibleYear(r.vehicle.year, now), mileage: r.mileageAtCheckIn, vehicleType: r.vehicle.vehicleType,
+      make: r.vehicle.make, model: r.vehicle.model, year: plausibleYear(r.vehicle.year, now), mileage: r.mileageAtCheckIn, vehicleType: r.vehicle.vehicleType, vehicleId: r.vehicle.id,
       department: r.department?.name ?? null, readyAt: r.readyForCollectionAt ?? r.completedAt ?? null, names: namesOf(r),
     })),
     ...serviceRows.map((r: (typeof serviceRows)[number]) => ({
       id: r.id, kind: 'SERVICE' as const, createdAt: r.createdAt, branchCode: r.branch.code,
       complaint: [...r.complaints.map((c: { description: string }) => c.description), r.customerComplaint ?? ''].map((s) => s.trim()).filter(Boolean).join('. '),
-      make: r.vehicle.make, model: r.vehicle.model, year: plausibleYear(r.vehicle.year, now), mileage: r.odometerAtService, vehicleType: r.vehicle.vehicleType,
+      make: r.vehicle.make, model: r.vehicle.model, year: plausibleYear(r.vehicle.year, now), mileage: r.odometerAtService, vehicleType: r.vehicle.vehicleType, vehicleId: r.vehicle.id,
       department: r.department?.name ?? null, readyAt: r.readyForCollectionAt ?? r.completedAt ?? null, names: namesOf(r),
     })),
   ]
@@ -133,7 +134,7 @@ export async function buildTrainingSet(scope: DatasetScope, opts: { limit?: numb
   }
 
   const salt = randomBytes(16).toString('hex');
-  const out: DatasetRow[] = [];
+  const out: (DatasetRow & { vehicle_key: string })[] = [];
   for (const j of jobs) {
     const final = lines.get(j.id) ?? [];
     if (final.length === 0) continue;
@@ -166,6 +167,8 @@ export async function buildTrainingSet(scope: DatasetScope, opts: { limit?: numb
       }),
       work_numbers: workNumbers(complaintText, rowLines.map((l) => ({ type: l.type, key: l.key, quantity: l.quantity }))),
       turnaround_hours: turnaroundHours(j.createdAt, j.readyAt),
+      // In memory only, for spotting double entries; never exported (pickColumns).
+      vehicle_key: opaqueId(j.vehicleId, salt),
     });
   }
   const { rows, report } = qualityFilter(out);
