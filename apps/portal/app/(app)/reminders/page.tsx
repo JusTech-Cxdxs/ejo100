@@ -3,7 +3,7 @@ import { listMyReminders, listReminderDelegates } from '@/lib/actions/reminders'
 import { grantDelegateFormAction, withdrawDelegateFormAction } from '@/lib/actions/reminders-form-handlers';
 import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { currentAssist, myOrganisationId } from '@/lib/authz/server';
-import { PageHeader, HeaderAction, SectionCard, EmptyState } from '@/components/ui';
+import { PageHeader, HeaderAction, SectionCard, EmptyState, RevealPanel } from '@/components/ui';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -99,14 +99,16 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
             {assist ? (
               <p className="text-xs text-[var(--ejo-text-muted)]">This can only be changed by the person themselves, not during an assisted session.</p>
             ) : (
+              <RevealPanel label="Allow a colleague" icon="user-plus" open={Boolean(error)}>
               <form action={grantDelegateFormAction} className="space-y-3">
                 <FormPendingOverlay />
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]" htmlFor="delegate-pick">Allow a colleague</label>
+                  <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]" htmlFor="delegate-pick">Colleague</label>
                   <SearchableSelect id="delegate-pick" name="delegateId" required search={searchStaffOptions} loadDefaultOptions={loadStaffOptions} defaultOptionsLabel="Colleagues" placeholder="Search colleagues by name…" emptyMessage="No active colleague matches." minQueryLength={1} />
                 </div>
                 <SubmitButton label="Allow" pendingLabel="Saving…" className="min-h-11 w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2.5 text-sm font-medium text-white hover:brightness-110" />
               </form>
+              </RevealPanel>
             )}
           </SectionCard>
           {people.canSetFor.length ? (

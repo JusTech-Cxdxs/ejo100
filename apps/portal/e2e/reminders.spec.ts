@@ -65,6 +65,7 @@ test('the owner allows a colleague, who sets a reminder for them; someone not al
   await as(page, OWNER);
   await open(page, '/reminders');
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Who may set reminders for me' }) });
+  await section.locator('summary', { hasText: 'Allow a colleague' }).click();
   await pickSearchable(section, page, DELEGATE.name.split(' ')[0]!, DELEGATE.name);
   await section.getByRole('button', { name: 'Allow', exact: true }).click();
   await waitOutcome(page, /status=delegate_granted/);

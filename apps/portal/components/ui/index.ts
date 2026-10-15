@@ -8,3 +8,4 @@ export { SubNav } from './SubNav';
 export { PriorityActions, BarRow, DataRow, PeriodPills, CHART, type PriorityItem } from './Analytics';
 export { ResponsiveTable } from './ResponsiveTable';
 export { FormJumpLink } from './FormJumpLink';
+export { RevealPanel } from './RevealPanel';

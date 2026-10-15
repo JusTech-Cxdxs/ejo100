@@ -79,10 +79,16 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
           <label htmlFor="mail-to" className={label}>To</label>
           <input id="mail-to" name="to" required defaultValue={to} placeholder="name@example.com, another@example.com" className={input} autoComplete="off" inputMode="email" />
         </div>
-        <div>
-          <label htmlFor="mail-cc" className={label}>Cc (optional)</label>
-          <input id="mail-cc" name="cc" defaultValue={cc} className={input} autoComplete="off" inputMode="email" />
-        </div>
+        {/* Cc stays out of the way until wanted (open when a reply-all filled it). */}
+        <details open={Boolean(cc) || undefined} className="group">
+          <summary className="inline-flex min-h-10 cursor-pointer list-none items-center gap-1.5 rounded-[var(--ejo-radius-md)] text-sm font-medium text-[var(--ejo-primary)] hover:underline [&::-webkit-details-marker]:hidden">
+            <span className="group-open:hidden">+ Add Cc</span><span className="hidden group-open:inline">Cc</span>
+          </summary>
+          <div className="mt-1">
+            <label htmlFor="mail-cc" className="sr-only">Cc</label>
+            <input id="mail-cc" name="cc" defaultValue={cc} placeholder="Copy others (optional)" className={input} autoComplete="off" inputMode="email" />
+          </div>
+        </details>
         <div>
           <label htmlFor="mail-subject" className={label}>Subject</label>
           <input id="mail-subject" name="subject" required maxLength={SUBJECT_MAX} defaultValue={subject} className={input} autoComplete="off" />
@@ -95,7 +101,7 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
           <textarea id="mail-body" name="body" required rows={14} maxLength={BODY_MAX} defaultValue={body} className={`${input} min-h-64 font-[inherit] leading-relaxed`} />
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Sent as plain text from your own mailbox.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-wrap items-center gap-3 border-t border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-4 py-3 sm:static sm:mx-0 sm:mb-0 sm:border-0 sm:p-0">
           <SubmitButton label="Send" pendingLabel="Sending…" className="min-h-11 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-6 py-2.5 text-sm font-medium text-white hover:brightness-110" />
           <LoadingLink href={original ? `/mail?m=${original.id}` : '/mail'} className="min-h-11 rounded-[var(--ejo-radius-md)] px-4 py-2.5 text-sm font-medium text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">Discard</LoadingLink>
         </div>

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { SEED_WARRANTY } from './people';
 import { as, open, expectNoUrlError, uniq, visitHealthy, waitOutcome } from './helpers';
 import { freshVehicle } from './db';
-import { jcForm, pickSearchable } from './workflows';
+import { jcForm, pickSearchable, reveal } from './workflows';
 
 /**
  * Warranty, A to Z: the HOD sets up a provider and a vehicle policy → an
@@ -23,6 +23,7 @@ test.beforeAll(async () => { S.plate = (await freshVehicle('WTY', { make: 'Toyot
 test('the Warranty HOD adds a provider and a vehicle policy', async ({ page }) => {
   await as(page, 'warranty-hod');
   await page.goto('/warranty/providers');
+  await reveal(page, 'Add a provider');
   const prov = jcForm(page, 'Add provider');
   await prov.locator('input[name="name"]').fill(S.provider);
   await prov.locator('select[name="type"]').selectOption('MANUFACTURER');
@@ -34,6 +35,7 @@ test('the Warranty HOD adds a provider and a vehicle policy', async ({ page }) =
   await expect(page.getByRole('link', { name: S.provider })).toBeVisible();
 
   await page.goto('/warranty/policies');
+  await reveal(page, 'Add a policy');
   const pol = jcForm(page, 'Add policy');
   await pol.locator('input[name="code"]').fill(S.code);
   await pol.locator('select[name="kind"]').selectOption('ASSET');

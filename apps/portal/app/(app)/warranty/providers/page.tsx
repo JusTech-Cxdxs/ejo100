@@ -8,7 +8,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { pluralize } from '@/lib/utils/pluralize';
 import { PROVIDER_TYPE_LABEL } from '@/lib/warranty-claim-status';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { PageHeader } from '@/components/ui';
+import { PageHeader, RevealPanel } from '@/components/ui';
 
 
 const BANNER: Record<string, string> = {
@@ -106,9 +106,10 @@ export default async function WarrantyProvidersPage({ searchParams }: { searchPa
           </div>
         </div>
         {roles.canApprove ? (
-          <form action={createWarrantyProviderFormAction} className="h-fit space-y-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+          <RevealPanel label="Add a provider" open={Boolean(error)}>
+            <form action={createWarrantyProviderFormAction} className="space-y-3">
             <FormPendingOverlay />
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Add a provider</h2>
+            
             <div><label className={label}>Name</label><input name="name" required placeholder="Foton International" className={input} /></div>
             <div>
               <label className={label}>Type</label>
@@ -129,6 +130,7 @@ export default async function WarrantyProvidersPage({ searchParams }: { searchPa
             <div><label className={label}>Notes</label><textarea name="notes" rows={2} className={input} /></div>
             <SubmitButton label="Add provider" pendingLabel="Adding…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
           </form>
+          </RevealPanel>
         ) : null}
       </div>
     </div>

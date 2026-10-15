@@ -5,7 +5,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SearchableSelect } from '@/components/SearchableSelect';
-import { EmptyState, PageHeader } from '@/components/ui';
+import { EmptyState, PageHeader, RevealPanel } from '@/components/ui';
 
 const FOLDER_ICON = (
   <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0 text-[var(--ejo-primary)]">
@@ -81,7 +81,7 @@ export default async function PartTypesPage({
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-3">
           {categories.length === 0 ? (
-            <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="layers" title="No Part Categories yet — add the first one on the right." /></div>
+            <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="layers" title="No Part Categories yet — use “Add a category” to create the first one." /></div>
           ) : (
             categories.map((category: (typeof categories)[number]) => {
               const children = typesByCategory.get(category.id) ?? [];
@@ -118,12 +118,8 @@ export default async function PartTypesPage({
         </div>
 
         <div className="h-fit space-y-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto">
-          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-            <div className="flex items-center gap-2">
-              {FOLDER_ICON}
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Add Category</h2>
-            </div>
-            <form action={createPartCategoryFormAction} className="mt-3 space-y-2">
+          <RevealPanel label="Add a category" icon="layers" open={Boolean(error)}>
+            <form action={createPartCategoryFormAction} className="space-y-2">
               <FormPendingOverlay />
               <input type="hidden" name="branchId" value={branchId} />
               <input
@@ -146,17 +142,13 @@ export default async function PartTypesPage({
                 className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
               />
             </form>
-          </div>
+          </RevealPanel>
 
-          <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
-            <div className="flex items-center gap-2">
-              {TAG_ICON}
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Add Type</h2>
-            </div>
+          <RevealPanel label="Add a part type" icon="tag" open={Boolean(error)}>
             {categories.length === 0 ? (
-              <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Add a Category first — every Part Type belongs to one.</p>
+              <p className="text-xs text-[var(--ejo-text-muted)]">Add a Category first — every Part Type belongs to one.</p>
             ) : (
-              <form action={createPartTypeFormAction} className="mt-3 space-y-2">
+              <form action={createPartTypeFormAction} className="space-y-2">
                 <FormPendingOverlay />
                 <input type="hidden" name="branchId" value={branchId} />
                 <SearchableSelect
@@ -181,7 +173,7 @@ export default async function PartTypesPage({
                 />
               </form>
             )}
-          </div>
+          </RevealPanel>
         </div>
       </div>
     </div>

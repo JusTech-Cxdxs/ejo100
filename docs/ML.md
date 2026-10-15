@@ -30,6 +30,18 @@ Levels are Off → Shadow (measured, not shown) → Assist (shown; people decide
 
 Job time estimates are stored when the estimate gets its final approval. The daily scheduled job then scores them against when the vehicle was actually ready. `/enyo/models` shows the average error and how many estimates fell inside their range.
 
+## Data quality
+
+Before any row is learned from (by the similar-jobs suggestions, the CSV/JSONL export or the trainer's datasets):
+
+- **Go-live day.** Settings → Enyo → "Learn from records opened on or after". Set it to the day the organisation started using the portal for real; everything before it (test jobs typed while trying the system out) is ignored. For parts demand, only whole weeks since that day are sent, so the weeks before it do not count as "no use".
+- **Left out automatically** (`qualityFilter`, `predict/dataset-core.ts`): complaints that are empty, placeholder words ("test", "demo", "hello") or keyboard mash ("asdfgh"); jobs with no lines or a line with an impossible quantity or price; the same job saved twice.
+- **Blanked, row kept:** a vehicle year before 1950 or after next year; a job time under 30 minutes.
+
+The learning page (Enyo learning) shows how many finished jobs were examined, used and left out, and why. Each export records the same report in the audit trail.
+
+The models grow with the data: more finished jobs give the trainer more rows, more trees and more themes. Nothing about the model size needs changing by hand; the gates decide whether each new model is better.
+
 ## Switching it on (owner, once)
 
 1. **Make a token.** In a browser console, run `btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))`. You get a value of about 44 characters.
