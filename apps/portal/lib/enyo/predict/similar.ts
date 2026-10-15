@@ -13,6 +13,7 @@ import 'server-only';
  * branches) after their own permission checks and pass it in.
  */
 import { prisma } from '@ejo/database';
+import { learningSince } from './learn-from';
 import { scoreCandidates, type Candidate, type Scored, type VehicleFeatures } from './similar-core';
 import { modelFamily } from './text';
 import type { HistLine, LineType } from './lines-core';
@@ -123,8 +124,10 @@ async function serviceCandidates(scope: SimilarScope, since: Date, tier: Tier, n
  */
 export async function loadCandidates(query: SimilarQuery, scope: SimilarScope, limit = CANDIDATE_LIMIT, now = new Date()): Promise<Candidate[]> {
   if (scope.branchIds && scope.branchIds.length === 0) return [];
-  const since = new Date(now);
-  since.setFullYear(since.getFullYear() - YEARS_BACK);
+  const threeYears = new Date(now);
+  threeYears.setFullYear(threeYears.getFullYear() - YEARS_BACK);
+  // Never learn from before the organisation's go-live ("learn from") day.
+  const since = await learningSince(scope.organisationId, threeYears);
   const make = query.make?.trim() || null;
   const family = modelFamily(query.model) || null;
   const tiers: Tier[] = [];

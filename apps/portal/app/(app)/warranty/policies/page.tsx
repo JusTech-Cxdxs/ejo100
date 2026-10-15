@@ -12,7 +12,7 @@ import { LineItemsInput } from '@/components/LineItemsInput';
 import { pluralize } from '@/lib/utils/pluralize';
 import { splitLines, durationLabel } from '@/lib/warranty-state';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
-import { PageHeader } from '@/components/ui';
+import { PageHeader, RevealPanel } from '@/components/ui';
 
 const BANNER: Record<string, string> = {
   policy_created: 'Policy added.',
@@ -154,9 +154,10 @@ export default async function WarrantyPoliciesPage({
         </div>
 
         {roles.canApprove ? (
-          <form action={createWarrantyPolicyFormAction} className="h-fit space-y-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+          <RevealPanel label="Add a policy" open={Boolean(error)}>
+            <form action={createWarrantyPolicyFormAction} className="space-y-3">
             <FormPendingOverlay />
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Add a policy</h2>
+            
             {activeProviders.length === 0 ? (
               <p className="text-xs text-[var(--ejo-warning)]">
                 Add a <LoadingLink href="/warranty/providers" className="text-[var(--ejo-primary)] hover:underline">provider</LoadingLink> first (or load the samples).
@@ -210,6 +211,7 @@ export default async function WarrantyPoliciesPage({
             <div><label className={label}>Conditions</label><LineItemsInput name="conditionItem" placeholder="e.g. Serviced on schedule at an authorised workshop" addLabel="+ Add condition" /></div>
             <SubmitButton label="Add policy" pendingLabel="Adding…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
           </form>
+          </RevealPanel>
         ) : null}
       </div>
     </div>

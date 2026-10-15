@@ -186,5 +186,11 @@ test.describe('phone', () => {
     // Every control in the sheet is at least 44 px tall (touch targets).
     const small = await sheet(page).locator('button:visible').evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().height < 43).map((e) => e.getAttribute('aria-label') || e.textContent));
     expect(small).toEqual([]);
+    // The header stays in view and the page behind is locked while the chat is open.
+    const header = await sheet(page).getByRole('button', { name: /^Close / }).boundingBox();
+    expect(header?.y ?? -1).toBeGreaterThanOrEqual(0);
+    expect(await page.evaluate(() => document.body.style.position)).toBe('fixed');
+    await sheet(page).getByRole('button', { name: /^Close / }).click();
+    expect(await page.evaluate(() => document.body.style.position)).toBe('');
   });
 });

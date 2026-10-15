@@ -15,6 +15,7 @@ import { EIcon } from './icons';
 import { getEnyoStatus, loadConversation, streamChat } from './api';
 import { DEFAULT_PREFS, readPrefs, writePrefs, type EnyoPrefs } from './prefs';
 import { createMouthDriver, useSpeechInput, useSpeechOutput, type MouthDriver } from './voice';
+import { useChatViewport } from '@ejo/enyo/src/ui/useChatViewport';
 
 /**
  * Enyo in the staff portal: a floating launcher (bottom-right) and a chat
@@ -105,6 +106,8 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
   const name = status?.displayName || 'Enyo';
   const ready = status?.ready === true;
   const busy = turns.some((t) => t.state === 'waiting' || t.state === 'streaming');
+  // Phones: the chat fits the visible screen above the keyboard, header always in view.
+  const viewportBox = useChatViewport(open);
 
   // ------------------------------------------------------------ status, prefs
   useEffect(() => {
@@ -352,7 +355,7 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
   };
 
   const first = firstName(userName);
-  const starters = starterPrompts(roleName);
+  const starters = starterPrompts(roleName, pathname ?? '');
 
   return (
     <>
@@ -390,7 +393,7 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
       ) : null}
 
       {open ? (
-        <div className="fixed inset-0 z-[55] print:hidden">
+        <div className="fixed inset-0 z-[55] print:hidden" style={viewportBox} data-testid="enyo-sheet-box">
           <div className="enyo-scrim absolute inset-0 bg-slate-950/40 sm:bg-slate-950/15" onClick={closePanel} aria-hidden="true" />
           <div
             ref={sheetRef}
@@ -428,9 +431,9 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
                   <MenuToggle label="Curly hair" on={prefs.hair === 'curly'} onChange={(v) => updatePrefs({ hair: v ? 'curly' : 'straight' })} />
                   <MenuToggle label="Glasses" on={prefs.glasses} onChange={(v) => updatePrefs({ glasses: v })} />
                   <div className="my-1.5 border-t border-[var(--ejo-border)]" role="none" />
-                  <Link role="menuitem" href="/profile/enyo" onClick={() => setMenu(false)} className="flex min-h-11 items-center gap-3 px-4 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><EIcon name="brain" size={17} className="text-[var(--ejo-text-muted)]" />What {name} remembers</Link>
+                  <Link role="menuitem" href="/profile/enyo" onClick={() => { setMenu(false); onNavigate(); }} className="flex min-h-11 items-center gap-3 px-4 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><EIcon name="brain" size={17} className="text-[var(--ejo-text-muted)]" />What {name} remembers</Link>
                   {canManage ? (
-                    <Link role="menuitem" href="/settings/enyo" onClick={() => setMenu(false)} className="flex min-h-11 items-center gap-3 px-4 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><EIcon name="settings" size={17} className="text-[var(--ejo-text-muted)]" />{name} settings</Link>
+                    <Link role="menuitem" href="/settings/enyo" onClick={() => { setMenu(false); onNavigate(); }} className="flex min-h-11 items-center gap-3 px-4 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><EIcon name="settings" size={17} className="text-[var(--ejo-text-muted)]" />{name} settings</Link>
                   ) : null}
                 </div>
               ) : null}
@@ -514,7 +517,7 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
                     rows={1}
                     maxLength={MAX_LEN}
                     placeholder={voiceIn.listening ? '' : `Ask ${name}…`}
-                    className="max-h-36 min-h-11 flex-1 resize-none bg-transparent py-2.5 text-[15px] leading-6 text-[var(--ejo-text)] outline-none [field-sizing:content] placeholder:text-[var(--ejo-text-muted)] sm:text-sm"
+                    className="max-h-36 min-h-11 flex-1 resize-none bg-transparent py-2.5 text-base leading-6 text-[var(--ejo-text)] outline-none [field-sizing:content] placeholder:text-[var(--ejo-text-muted)] sm:text-sm"
                   />
                   {voiceIn.supported ? (
                     <button

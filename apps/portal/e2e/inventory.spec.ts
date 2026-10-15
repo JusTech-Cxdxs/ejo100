@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { as, expectHealthy, expectNoUrlError, readStock, uniq, visitHealthy, waitOutcome } from './helpers';
-import { jcForm, pickSearchable } from './workflows';
+import { jcForm, pickSearchable, reveal } from './workflows';
 
 /**
  * The Store's own day: a new category and part type, a new part in the
@@ -22,6 +22,7 @@ const S = {
 test('a store manager adds a category, a part type and a part', async ({ page }) => {
   await as(page, 'store-manager');
   await page.goto('/inventory/part-types');
+  await reveal(page, 'Add a category');
   const cat = jcForm(page, 'Add Category');
   await cat.locator('input[name="name"]').fill(S.category);
   await cat.locator('input[name="code"]').fill(S.code);
@@ -29,6 +30,7 @@ test('a store manager adds a category, a part type and a part', async ({ page })
   await waitOutcome(page, /status=category_created/);
   await expect(page.getByText('Part Category created.')).toBeVisible();
 
+  await reveal(page, 'Add a part type');
   const type = jcForm(page, 'Add Type');
   await pickSearchable(type, page, S.category, new RegExp(S.category), 'Search Categories…');
   await type.locator('input[name="name"]').fill(S.type);

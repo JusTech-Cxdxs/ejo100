@@ -1,5 +1,5 @@
 /**
- * Enyo's tools for a website visitor nobody knows. Only public company
+ * Enyo's tools for a website visitor nobody knows. Only public organisation
  * information (from the database and the site's own configuration) and the
  * hand-over to a person. No customer record is reachable from here.
  */
@@ -12,8 +12,8 @@ import type { WebTool } from './types';
 export const CONSENT_LINE = 'We use your name and phone number or email only to reply to this request, and keep it with the conversation.';
 
 const companyInfo: WebTool = {
-  name: 'company_info',
-  description: 'The company\'s public information: organisation name, branches with addresses, phone numbers and emails, opening hours if listed, the businesses and services described on the website, and how to book. The only source for answers to visitors.',
+  name: 'organisation_info',
+  description: 'The organisation\'s public information: organisation name, branches with addresses, phone numbers and emails, opening hours if listed, the businesses and services described on the website, and how to book. The only source for answers to visitors.',
   parameters: { type: 'object', properties: {}, additionalProperties: false },
   kind: 'read',
   status: 'Looking up our details…',
@@ -25,7 +25,7 @@ const companyInfo: WebTool = {
 
 const requestHandover: WebTool = {
   name: 'request_handover',
-  description: `Asks the company's customer care team to contact the visitor. Needs the visitor's name AND a phone number or email, and their agreement: before calling, tell them "${CONSENT_LINE}" and ask if that is fine; set consent to true only when they agree.`,
+  description: `Asks the organisation's customer care team to contact the visitor. Needs the visitor's name AND a phone number or email, and their agreement: before calling, tell them "${CONSENT_LINE}" and ask if that is fine; set consent to true only when they agree.`,
   parameters: {
     type: 'object',
     properties: {

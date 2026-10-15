@@ -17,6 +17,17 @@ export function lastCompleteWeek(now: Date): Date {
 }
 
 /**
+ * How many complete Lagos weeks (Monday to Sunday) lie wholly on or after
+ * `since`, up to the last complete week before `now`. 0 when none yet.
+ */
+export function completeWeeksSince(since: Date, now: Date): number {
+  const start = lagosWeekStart(since).getTime();
+  const firstFull = start === since.getTime() ? start : start + WEEK;
+  const last = lastCompleteWeek(now).getTime();
+  return last < firstFull ? 0 : Math.round((last - firstFull) / WEEK) + 1;
+}
+
+/**
  * `weeks` complete weeks ending with the last complete one. Every part in
  * `partIds` gets a series (zeros when never used); events outside the window
  * or for other parts are ignored.

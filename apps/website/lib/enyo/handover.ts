@@ -1,5 +1,5 @@
 /**
- * Hand-over from Enyo to the company's people: a SupportTicket
+ * Hand-over from Enyo to the organisation's people: a SupportTicket
  * (SUP-<Lagos year>-<6 digits>) with Enyo's short summary and the
  * conversation attached, an email to the branch / front desk and, for a
  * signed-in customer, a confirmation email. One open ticket per

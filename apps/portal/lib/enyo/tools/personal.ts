@@ -12,6 +12,8 @@ import { currentAssist, getPrincipal, myOrganisationId } from '@/lib/authz/serve
 import { requireUser } from '@/lib/actions/workshop';
 import { listCalendar } from '@/lib/actions/scheduling';
 import { listExitPasses, listMyVisits } from '@/lib/actions/security';
+import { humanizeAction } from '@/lib/humanize-action';
+import { resolveRecords } from '@/lib/record-resolver';
 import { count, lagosDayStart, lagosWeekStart, nothing, ok, refused, STATUS_WORDS, text, when } from '../tool-helpers';
 import type { StaffTool } from '../types';
 
@@ -24,6 +26,40 @@ const ASKED_TO_REMEMBER = /\b(remember|note (that|down)|keep in mind|call me|my 
 const ASKED_TO_FORGET = /\b(forget|stop remembering|remove (that|the note|what you remember)|delete (that|the note|what you remember))\b/i;
 
 export const personalTools: StaffTool[] = [
+  {
+    name: 'my_recent_activity',
+    kind: 'read',
+    status: 'Looking at what you worked on recently…',
+    description: 'What this person did in the portal recently (their own actions only, newest first, last 7 days by default): records they created, changed, approved or sent, with links. Use for "what was I working on", "where did I stop", "what did I do yesterday", and to pick up where they left off or suggest the next step.',
+    parameters: { type: 'object', properties: { days: { type: 'integer', minimum: 1, maximum: 30, description: 'How many days back (default 7).' } }, additionalProperties: false },
+    run: async (args) => {
+      // A person's own history is theirs alone: never shown to someone assisting them.
+      if (await currentAssist()) return refused('only the person themselves can see their own recent activity, not during an assisted session.');
+      const p = await getPrincipal();
+      const days = Math.min(30, Math.max(1, Number(args.days) || 7));
+      const rows = await prisma.auditLog.findMany({
+        where: { userId: p.userId, ...(p.organisationId ? { organisationId: p.organisationId } : {}), createdAt: { gte: new Date(Date.now() - days * 86_400_000) }, NOT: { action: { startsWith: 'auth.' } } },
+        select: { action: true, entityType: true, entityId: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 40,
+      });
+      if (!rows.length) return nothing(`No recorded actions by this person in the last ${days} days.`);
+      const records = await resolveRecords(rows.filter((r) => r.entityId).map((r) => ({ type: r.entityType, id: r.entityId! }))).catch(() => new Map());
+      const seen = new Set<string>();
+      const items = [];
+      for (const r of rows) {
+        const key = `${r.action}|${r.entityId ?? ''}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const found = r.entityId ? records.get(`${r.entityType.replace(/^db:/, '')}:${r.entityId}`) : undefined;
+        // Names and links only for records still inside the person's organisation.
+        const rec = found && (p.isSuperAdmin || !found.branchId || !p.orgBranchIds || p.orgBranchIds.includes(found.branchId)) ? found : undefined;
+        items.push({ did: humanizeAction(r.action), record: rec?.label ?? r.entityType.replace(/^db:/, '').replace(/([a-z])([A-Z])/g, '$1 $2'), when: when(r.createdAt), ...(rec?.url ? { href: rec.url } : {}) });
+        if (items.length >= 15) break;
+      }
+      return ok({ days, actions: items }, items.filter((i) => 'href' in i).slice(0, 3).map((i) => ({ label: i.record, href: (i as { href: string }).href })));
+    },
+  },
   {
     name: 'my_schedule',
     kind: 'read',

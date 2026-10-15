@@ -38,17 +38,48 @@ export function greetingText(opts: { name: string; hour: number; approvals: numb
   return `${hello} ${opts.approvals} approvals are waiting.`;
 }
 
-/** Up to four starter questions that suit the person's role. */
-export function starterPrompts(roleName: string): string[] {
+/**
+ * Questions that fit the page the person has open: a record page gets
+ * questions about that record ("this Job Card"), a list page questions about
+ * the list. Every one is something Enyo's tools can actually answer.
+ */
+const PAGE_PROMPTS: [RegExp, string[]][] = [
+  [/^\/workshop\/job-cards\/[^/]+$/, ['Summarise this Job Card and what happens next', 'Are the parts on this job in stock?', 'When is this vehicle likely to be ready?']],
+  [/^\/workshop\/vehicle-service\/[^/]+$/, ['Summarise this service and what happens next', 'Are the parts on this service in stock?', 'When is this vehicle likely to be ready?']],
+  [/^\/workshop/, ['Which jobs are waiting on approval or parts?', 'How do I open a Job Card?']],
+  [/^\/inventory\/reorder/, ['Which parts should we reorder first, and why?', 'Explain how the reorder quantity is worked out']],
+  [/^\/inventory/, ['Which parts are out of stock or below their reorder point?', 'Is a brake pad set in stock at my branch?']],
+  [/^\/(analytics|dashboard)/, ['How is this month going compared with last month?', 'Brief me on my day']],
+  [/^\/mail/, ['Anything important in my email?', 'Which emails still need a reply from me?']],
+  [/^\/reminders/, ['What is due for me this week?', 'Remind me tomorrow at 9 am to follow up on approvals']],
+  [/^\/approvals/, ['Which approvals have waited longest?', 'How do I approve or return a request?']],
+  [/^\/(crm|support)/, ['How do I log a customer complaint?', 'Which customers are due a service soon?']],
+  [/^\/warranty/, ['Which warranty claims need attention?', 'How do I raise a warranty claim?']],
+  [/^\/security/, ['Which visitors are expected today?', 'How do I check a visitor in?']],
+  [/^\/(users|roles|permissions|settings|organisation|branches|structure)/, ['How do I add a user and give them a role?', 'What can each role see and do?']],
+  [/^\/enyo/, ['How do Enyo\'s models learn, and who decides what is used?', 'What does Shadow mode mean?']],
+];
+
+/** By role, for the dashboard and pages without their own questions. */
+function rolePrompts(roleName: string): string[] {
   const r = roleName.toLowerCase();
-  const out = ["What's waiting for me?"];
-  const workshop = /workshop|front ?desk|reception|supervisor|technician|service|department head|branch/.test(r);
-  const money = /finance|account|cashier|manager|admin|director|owner/.test(r);
-  const store = /store|inventory|parts|procure/.test(r);
-  if (workshop || /admin/.test(r)) out.push('How do I open a Job Card?');
-  if (money) out.push("Today's takings");
-  if (store || workshop || /admin/.test(r)) out.push('Price of an oil filter');
-  if (out.length < 3) out.push('What can you help me with?');
-  if (out.length < 4 && !out.includes('How do I open a Job Card?')) out.push('How do I open a Job Card?');
-  return out.slice(0, 4);
+  const out: string[] = [];
+  if (/store|inventory|parts|procure/.test(r)) out.push('Which parts are out of stock or below their reorder point?', 'What should we reorder this week?');
+  if (/workshop|front ?desk|reception|supervisor|technician|service|department head|branch/.test(r)) out.push('Which jobs are waiting on approval or parts?', 'How do I open a Job Card?');
+  if (/finance|account|cashier/.test(r)) out.push("Today's takings", 'How is this month going compared with last month?');
+  if (/manager|admin|director|owner/.test(r)) out.push('How is this month going compared with last month?', 'What do customers come in for most?');
+  if (/security|gate/.test(r)) out.push('Which visitors are expected today?');
+  return out;
+}
+
+/**
+ * Up to four starter questions for the person's role and the page they are
+ * on: always "What's waiting for me?" first, then the page's questions, then
+ * the role's, then a guided tour of their role.
+ */
+export function starterPrompts(roleName: string, page = ''): string[] {
+  const path = page.split(/[?#]/)[0] ?? '';
+  const fromPage = path === '/dashboard' || path === '/' ? [] : (PAGE_PROMPTS.find(([re]) => re.test(path))?.[1] ?? []);
+  const all = ["What's waiting for me?", ...fromPage, ...rolePrompts(roleName), 'Walk me through what my role does here, step by step'];
+  return [...new Set(all)].slice(0, 4);
 }

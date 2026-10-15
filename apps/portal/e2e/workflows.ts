@@ -12,6 +12,12 @@ import { db } from './db';
 export const jcForm = (page: Page, button: string | RegExp): Locator =>
   page.locator('form').filter({ has: page.getByRole('button', { name: button }) });
 
+/** Opens a form kept behind a button (RevealPanel: "Add a provider"…), if it is not open already. */
+export async function reveal(page: Page, label: string): Promise<void> {
+  const panel = page.locator('details[data-reveal]').filter({ has: page.locator('summary', { hasText: label }) }).first();
+  if (!(await panel.evaluate((d) => (d as HTMLDetailsElement).open))) await panel.locator('summary').click();
+}
+
 /** A Job Card page section (the bordered card around an h2). */
 export const card = (page: Page, heading: string): Locator =>
   page.getByRole('heading', { name: heading, exact: true }).locator('xpath=ancestor::div[contains(@class,"p-6") or contains(@class,"p-5")][1]');

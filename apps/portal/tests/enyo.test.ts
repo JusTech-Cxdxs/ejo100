@@ -348,7 +348,7 @@ test('Enyo actions: settings are audited and validated; nothing personal changes
   const personal = read('lib/enyo/tools/personal.ts');
   assert.match(personal, /MAX_FACTS = 50/);
   assert.match(personal, /MAX_FACT_CHARS = 200/);
-  assert.equal((personal.match(/if \(await currentAssist\(\)\) return refused\(/g) ?? []).length, 2, 'remember and forget refuse during an assisted session');
+  assert.equal((personal.match(/if \(await currentAssist\(\)\) return refused\(/g) ?? []).length, 3, 'remember, forget and recent activity refuse during an assisted session');
 });
 
 test('old Enyo chats are removed by the daily job, each run recorded', () => {

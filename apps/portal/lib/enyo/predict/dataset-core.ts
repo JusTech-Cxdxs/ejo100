@@ -147,3 +147,96 @@ export function turnaroundHours(openedAt: Date, readyAt: Date | null | undefined
   const h = (readyAt.getTime() - openedAt.getTime()) / 3_600_000;
   return h > 0 && h <= 24 * 180 ? Math.round(h * 100) / 100 : null;
 }
+
+// ------------------------------------------------------------ data quality
+//
+// Models are only as good as what they learn from. Before any row leaves for
+// training (or the CSV export), rows that would teach the wrong thing are
+// dropped, and impossible values are blanked. Test data typed while the
+// system was being tried out ("test", "asdf", "hello") is the commonest case;
+// the organisation's "learn from" date (Settings → Enyo) removes the rest.
+
+/** Placeholder words a person types when trying a form out. */
+const PLACEHOLDER = new Set(['test', 'tests', 'testing', 'tested', 'demo', 'sample', 'dummy', 'example', 'asdf', 'qwerty', 'lorem', 'ipsum', 'abc', 'abcd', 'xyz', 'hello', 'hi', 'hey', 'ok', 'okay', 'nil', 'none', 'na', 'nothing', 'blah', 'foo', 'bar', 'trial', 'something', 'stuff', 'whatever', 'random', 'fake', 'temp', 'tmp']);
+/** Workshop shorthand that is real work even when short or without vowels. */
+const SHORTHAND = new Set(['ac', 'abs', 'tpms', 'ecu', 'cvt', 'dpf', 'egr', 'srs', 'esp', 'ebd', 'obd', 'mil', 'cel', 'wd', 'awd', 'fwd', 'rwd', 'atf', 'ps', 'tcm', 'pcm', 'bcm', 'maf', 'map', 'tps', 'iac', 'crv', 'hvac', 'led', 'hid', 'drl', 'svc', 'pdi', 'cv', 'tdc', 'rpm', 'km', 'mpg', 'lpg', 'cng', 'gps', 'dvd', 'usb', 'brk', 'trns']);
+const SCRUB_MARK = /\[(?:name|email|phone|plate|vin|link)\]/g;
+
+/** A keyboard-mash word: a long run of consonants, one letter repeated, or a keyboard row. */
+export function isMash(word: string): boolean {
+  const w = word.toLowerCase();
+  if (w.length < 4 || SHORTHAND.has(w)) return false;
+  if (/(.)\1{3,}/u.test(w)) return true;
+  if (/^[a-z]+$/.test(w) && !/[aeiouy]/.test(w)) return true;
+  if (/[bcdfghjklmnpqrstvwxz]{6,}/.test(w)) return true;
+  return /^(?:qwer|wert|asdf|sdfg|dfgh|fghj|ghjk|hjkl|zxcv|xcvb|cvbn|vbnm|jkl|uiop)/.test(w) && w.length <= 10;
+}
+
+/** 'ok', 'empty' (no words) or 'junk' (placeholder or keyboard mash) for a complaint, after scrubbing. */
+export function complaintQuality(text: string): 'ok' | 'empty' | 'junk' {
+  // "A/C" and "4WD" read as the words "ac" and "wd".
+  const words = String(text ?? '').replace(SCRUB_MARK, ' ').replace(/\b([a-z])\/([a-z])\b/gi, '$1$2').toLowerCase().match(/\p{L}+/gu) ?? [];
+  if (!words.length) return 'empty';
+  const real = words.filter((w) => !PLACEHOLDER.has(w) && !isMash(w) && (w.length >= 2 || SHORTHAND.has(w)));
+  if (!real.length) return 'junk';
+  // Mostly mash with a stray real word ("asdfgh ok brake qwerty") is still junk.
+  const mash = words.filter(isMash).length;
+  if (mash >= 2 && mash / words.length > 0.5) return 'junk';
+  return 'ok';
+}
+
+/** A model year a vehicle can have; anything else is a typing slip and is blanked. */
+export function plausibleYear(year: number | null | undefined, now = new Date()): number | null {
+  if (year === null || year === undefined || !Number.isInteger(year)) return null;
+  return year >= 1950 && year <= now.getUTCFullYear() + 1 ? year : null;
+}
+
+/** Shortest believable time from opening to ready (anything quicker was a test or a slip). */
+export const MIN_TURNAROUND_HOURS = 0.5;
+
+function badLine(l: DatasetLine): boolean {
+  if (!Number.isFinite(l.quantity) || l.quantity <= 0 || l.quantity > 10_000) return true;
+  if (l.unit_price !== null && (!Number.isFinite(l.unit_price) || l.unit_price < 0 || l.unit_price > 50_000_000)) return true;
+  if (l.amount !== null && (!Number.isFinite(l.amount) || l.amount < 0 || l.amount > 500_000_000)) return true;
+  return !l.key || !l.label.replace(SCRUB_MARK, '').trim();
+}
+
+export type QualityReport = {
+  examined: number;
+  kept: number;
+  /** Rows left out, by reason. */
+  dropped: { no_complaint: number; test_or_junk_text: number; impossible_line: number; duplicate: number };
+  /** Values blanked in rows that were kept, by reason. */
+  blanked: { turnaround_too_short: number };
+};
+
+/**
+ * The rows worth learning from, and what was left out and why. Keeps order.
+ * Duplicates: the same vehicle on the same day with the same complaint and
+ * lines (a record saved twice) count once. `vehicle_key` is an in-memory,
+ * salted key that never leaves the portal (pickColumns drops it).
+ */
+export function qualityFilter(rows: (DatasetRow & { vehicle_key?: string })[]): { rows: DatasetRow[]; report: QualityReport } {
+  const report: QualityReport = { examined: rows.length, kept: 0, dropped: { no_complaint: 0, test_or_junk_text: 0, impossible_line: 0, duplicate: 0 }, blanked: { turnaround_too_short: 0 } };
+  const seen = new Set<string>();
+  const out: DatasetRow[] = [];
+  for (const r of rows) {
+    const q = complaintQuality(r.complaint_text);
+    // A routine service needs no complaint (make, model and mileage predict its lines); a Job Card does.
+    if (q === 'empty' && r.kind === 'JOB_CARD') { report.dropped.no_complaint += 1; continue; }
+    if (q === 'junk') { report.dropped.test_or_junk_text += 1; continue; }
+    if (!r.lines.length || r.lines.some(badLine)) { report.dropped.impossible_line += 1; continue; }
+    // The same vehicle, day and work twice is a double entry; five fleet vans serviced alike are five jobs.
+    const sig = r.vehicle_key ? JSON.stringify([r.vehicle_key, r.opened_on, r.kind, r.complaint_text.toLowerCase(), r.lines.map((l) => `${l.key}:${l.quantity}`).sort()]) : null;
+    if (sig && seen.has(sig)) { report.dropped.duplicate += 1; continue; }
+    if (sig) seen.add(sig);
+    const { vehicle_key: _key, ...row } = r;
+    void _key;
+    if (row.turnaround_hours !== null && row.turnaround_hours < MIN_TURNAROUND_HOURS) {
+      report.blanked.turnaround_too_short += 1;
+      out.push({ ...row, turnaround_hours: null });
+    } else out.push(row);
+  }
+  report.kept = out.length;
+  return { rows: out, report };
+}

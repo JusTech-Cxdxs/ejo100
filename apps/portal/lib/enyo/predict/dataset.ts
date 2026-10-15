@@ -15,7 +15,8 @@ import 'server-only';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@ejo/database';
 import { lagosDayKey } from '@/lib/utils/format-date';
-import { datasetLines, mileageBand, opaqueId, scrubText, turnaroundHours, type DatasetRow } from './dataset-core';
+import { datasetLines, mileageBand, opaqueId, plausibleYear, qualityFilter, scrubText, turnaroundHours, type DatasetRow, type QualityReport } from './dataset-core';
+import { learningSince } from './learn-from';
 import { complaintTokens, featureTokens, workNumbers } from '../ml/features-core';
 import { loadFinalLines, YEARS_BACK } from './similar';
 import type { PredictionOutput } from './lines';
@@ -43,6 +44,7 @@ type Job = {
   year: number | null;
   mileage: number | null;
   vehicleType: string | null;
+  vehicleId: string;
   department: string | null;
   readyAt: Date | null;
   /** Only to scrub them out of free text. */
@@ -51,10 +53,18 @@ type Job = {
 
 const nameOf = (u: { fullName: string } | null | undefined) => (u?.fullName ? [u.fullName] : []);
 
+/** The rows worth learning from (qualityFilter in dataset-core.ts). */
 export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: number; now?: Date } = {}): Promise<DatasetRow[]> {
+  return (await buildTrainingSet(scope, opts)).rows;
+}
+
+/** The training rows and the data-quality report (what was left out and why). */
+export async function buildTrainingSet(scope: DatasetScope, opts: { limit?: number; now?: Date } = {}): Promise<{ rows: DatasetRow[]; report: QualityReport; learnFrom: Date | null }> {
   const limit = Math.min(opts.limit ?? DATASET_ROW_LIMIT, DATASET_ROW_LIMIT);
-  const since = new Date(opts.now ?? new Date());
-  since.setFullYear(since.getFullYear() - YEARS_BACK);
+  const now = opts.now ?? new Date();
+  const threeYears = new Date(now);
+  threeYears.setFullYear(threeYears.getFullYear() - YEARS_BACK);
+  const since = await learningSince(scope.organisationId, threeYears);
   const where = {
     branch: { businessUnit: { organisationId: scope.organisationId } },
     ...(scope.branchIds ? { branchId: { in: scope.branchIds } } : {}),
@@ -68,7 +78,7 @@ export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: num
         id: true, createdAt: true, complaint: true, mileageAtCheckIn: true, readyForCollectionAt: true, completedAt: true, department: { select: { name: true } },
         complaints: { select: { description: true }, orderBy: { sequenceNumber: 'asc' } },
         branch: { select: { code: true } },
-        vehicle: { select: { make: true, model: true, year: true, vehicleType: true } },
+        vehicle: { select: { id: true, make: true, model: true, year: true, vehicleType: true } },
         customer: { select: { fullName: true, contacts: { select: { name: true } } } },
         supervisor: people, assignedTechnician: people, createdBy: people,
       },
@@ -81,7 +91,7 @@ export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: num
         id: true, createdAt: true, customerComplaint: true, odometerAtService: true, readyForCollectionAt: true, completedAt: true, department: { select: { name: true } },
         complaints: { select: { description: true }, orderBy: { sequenceNumber: 'asc' } },
         branch: { select: { code: true } },
-        vehicle: { select: { make: true, model: true, year: true, vehicleType: true } },
+        vehicle: { select: { id: true, make: true, model: true, year: true, vehicleType: true } },
         customer: { select: { fullName: true, contacts: { select: { name: true } } } },
         supervisor: people, assignedTechnician: people, createdBy: people,
       },
@@ -96,13 +106,13 @@ export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: num
     ...jobRows.map((r: (typeof jobRows)[number]) => ({
       id: r.id, kind: 'JOB_CARD' as const, createdAt: r.createdAt, branchCode: r.branch.code,
       complaint: [...r.complaints.map((c: { description: string }) => c.description), r.complaint ?? ''].map((s) => s.trim()).filter(Boolean).join('. '),
-      make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, mileage: r.mileageAtCheckIn, vehicleType: r.vehicle.vehicleType,
+      make: r.vehicle.make, model: r.vehicle.model, year: plausibleYear(r.vehicle.year, now), mileage: r.mileageAtCheckIn, vehicleType: r.vehicle.vehicleType, vehicleId: r.vehicle.id,
       department: r.department?.name ?? null, readyAt: r.readyForCollectionAt ?? r.completedAt ?? null, names: namesOf(r),
     })),
     ...serviceRows.map((r: (typeof serviceRows)[number]) => ({
       id: r.id, kind: 'SERVICE' as const, createdAt: r.createdAt, branchCode: r.branch.code,
       complaint: [...r.complaints.map((c: { description: string }) => c.description), r.customerComplaint ?? ''].map((s) => s.trim()).filter(Boolean).join('. '),
-      make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, mileage: r.odometerAtService, vehicleType: r.vehicle.vehicleType,
+      make: r.vehicle.make, model: r.vehicle.model, year: plausibleYear(r.vehicle.year, now), mileage: r.odometerAtService, vehicleType: r.vehicle.vehicleType, vehicleId: r.vehicle.id,
       department: r.department?.name ?? null, readyAt: r.readyForCollectionAt ?? r.completedAt ?? null, names: namesOf(r),
     })),
   ]
@@ -124,7 +134,7 @@ export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: num
   }
 
   const salt = randomBytes(16).toString('hex');
-  const out: DatasetRow[] = [];
+  const out: (DatasetRow & { vehicle_key: string })[] = [];
   for (const j of jobs) {
     const final = lines.get(j.id) ?? [];
     if (final.length === 0) continue;
@@ -157,7 +167,10 @@ export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: num
       }),
       work_numbers: workNumbers(complaintText, rowLines.map((l) => ({ type: l.type, key: l.key, quantity: l.quantity }))),
       turnaround_hours: turnaroundHours(j.createdAt, j.readyAt),
+      // In memory only, for spotting double entries; never exported (pickColumns).
+      vehicle_key: opaqueId(j.vehicleId, salt),
     });
   }
-  return out;
+  const { rows, report } = qualityFilter(out);
+  return { rows, report, learnFrom: since > threeYears ? since : null };
 }

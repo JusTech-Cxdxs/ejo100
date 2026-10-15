@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { who } from './people';
 import { as, open, expectNoUrlError, latestMail, uniq, visitHealthy, waitOutcome } from './helpers';
-import { jcForm, pickSearchable } from './workflows';
+import { jcForm, pickSearchable, reveal } from './workflows';
 
 /**
  * Scheduling: the scheduling admin sets up a meeting room → a calendar user
@@ -18,6 +18,7 @@ const S = { room: `E2E Boardroom ${tag}`, title: `Supplier review ${tag}`, url: 
 test('the scheduling admin adds a meeting room', async ({ page }) => {
   await as(page, 'scheduling-admin');
   await page.goto('/schedule/rooms');
+  await reveal(page, 'Add a room');
   const form = jcForm(page, 'Add room');
   await form.locator('input[name="name"]').fill(S.room);
   await form.locator('input[name="location"]').fill('Admin block, 1st floor');

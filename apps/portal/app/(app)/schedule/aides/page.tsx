@@ -9,7 +9,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { formatDateOnly } from '@/lib/utils/format-date';
-import { PageHeader } from '@/components/ui';
+import { PageHeader, RevealPanel } from '@/components/ui';
 
 const DONE: Record<string, string> = { aide_added: 'Aide added — they have been emailed.', aide_removed: 'Aide removed.' };
 
@@ -48,9 +48,10 @@ export default async function AidesPage({ searchParams }: { searchParams: Promis
           ))}
         </SecurityTable>
         {canAdd && officials.length ? (
-          <form action={addDelegateFormAction} className="h-fit space-y-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">
+          <RevealPanel label="Add an aide" open={Boolean(error)}>
+            <form action={addDelegateFormAction} className="space-y-3">
             <FormPendingOverlay />
-            <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Add an aide</h2>
+            
             {officials.length === 1 ? (
               <><input type="hidden" name="ownerId" value={officials[0]!.id} /><p className="text-sm text-[var(--ejo-text)]">For: <span className="font-medium">{officials[0]!.fullName}</span></p></>
             ) : (
@@ -68,6 +69,7 @@ export default async function AidesPage({ searchParams }: { searchParams: Promis
             </div>
             <SubmitButton label="Add aide" pendingLabel="Saving…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2.5 text-sm font-medium text-white hover:opacity-90" />
           </form>
+          </RevealPanel>
         ) : null}
       </div>
     </div>

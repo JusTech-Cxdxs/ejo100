@@ -78,7 +78,7 @@ export function ConnectForm({ action, defaults, allowInsecure, reconnect }: { ac
             <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,1fr)_100px_150px]">
               <div>
                 <label className={label} htmlFor={`${ids.preset}-ih`}>Incoming server (IMAP)</label>
-                <input id={`${ids.preset}-ih`} name="imapHost" required value={s.imapHost} onChange={(e) => setS({ ...s, imapHost: e.target.value })} placeholder="mail.yourcompany.com" className={input} autoComplete="off" />
+                <input id={`${ids.preset}-ih`} name="imapHost" required value={s.imapHost} onChange={(e) => setS({ ...s, imapHost: e.target.value })} placeholder="mail.yourorganisation.com" className={input} autoComplete="off" />
               </div>
               <div>
                 <label className={label} htmlFor={`${ids.preset}-ip`}>Port</label>
@@ -90,7 +90,7 @@ export function ConnectForm({ action, defaults, allowInsecure, reconnect }: { ac
               </div>
               <div>
                 <label className={label} htmlFor={`${ids.preset}-sh`}>Outgoing server (SMTP)</label>
-                <input id={`${ids.preset}-sh`} name="smtpHost" required value={s.smtpHost} onChange={(e) => setS({ ...s, smtpHost: e.target.value })} placeholder="mail.yourcompany.com" className={input} autoComplete="off" />
+                <input id={`${ids.preset}-sh`} name="smtpHost" required value={s.smtpHost} onChange={(e) => setS({ ...s, smtpHost: e.target.value })} placeholder="mail.yourorganisation.com" className={input} autoComplete="off" />
               </div>
               <div>
                 <label className={label} htmlFor={`${ids.preset}-sp`}>Port</label>

@@ -244,8 +244,8 @@ const howToPay: WebTool = {
 };
 
 const companyInfo: WebTool = {
-  name: 'company_info',
-  description: 'The company\'s contact details: the customer\'s own branch, other branches with addresses, phone numbers and emails, opening hours if listed, the businesses and services described on the website, and how to book.',
+  name: 'organisation_info',
+  description: 'The organisation\'s contact details: the customer\'s own branch, other branches with addresses, phone numbers and emails, opening hours if listed, the businesses and services described on the website, and how to book.',
   parameters: { type: 'object', properties: {}, additionalProperties: false },
   kind: 'read',
   status: 'Looking up our contact details…',

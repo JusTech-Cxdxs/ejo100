@@ -170,11 +170,11 @@ test('approving the estimate and recording a payment on a phone', async ({ page 
 test('busy pages do not scroll sideways on a phone', async ({ page }) => {
   const customer = await db().customer.findUniqueOrThrow({ where: { email: CUSTOMER.email }, select: { id: true } });
   const visits: { who: string; urls: string[] }[] = [
-    { who: 'receptionist', urls: ['/workshop/job-cards', '/workshop/vehicle-service', '/workshop/customers', '/workshop/vehicles', '/crm', `/crm/customers/${customer.id}`, `/crm/customers/${customer.id}?tab=jobs`, '/notifications'] },
+    { who: 'receptionist', urls: ['/reminders', '/mail', '/workshop/job-cards', '/workshop/vehicle-service', '/workshop/customers', '/workshop/vehicles', '/crm', `/crm/customers/${customer.id}`, `/crm/customers/${customer.id}?tab=jobs`, '/notifications'] },
     { who: 'workshop-manager', urls: ['/workshop/refunds', '/workshop/external-procurement', '/workshop/parts-requests', '/analytics'] },
     { who: 'store-manager', urls: ['/inventory/parts', '/inventory/goods-receipts'] },
     { who: 'warranty-hod', urls: ['/warranty', '/warranty/claims'] },
-    { who: 'administrator', urls: ['/users', '/roles', '/structure', '/audit-logs'] },
+    { who: 'administrator', urls: ['/settings', '/settings/enyo', '/enyo/learning', '/enyo/models', '/users', '/roles', '/structure', '/audit-logs'] },
   ];
   if (S.url) visits[0]!.urls.unshift(S.url);
   for (const { who: role, urls } of visits) {

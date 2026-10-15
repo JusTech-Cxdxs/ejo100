@@ -72,7 +72,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
           <EmptyState icon="settings" title={NOT_SET_UP}>Ask your administrator to set it up. Until then, keep using your usual mail app.</EmptyState>
         ) : (
           <EmptyState icon="mail" title="Connect your work mailbox" action={<HeaderAction href="/mail/connect" icon="mail">Connect mailbox</HeaderAction>}>
-            Gmail, Zoho and company (cPanel) mailboxes work with an app password. Only you can see your mail here — nobody else, administrators included.
+            Gmail, Zoho and your organisation&apos;s own (cPanel) mailboxes work with an app password. Only you can see your mail here — nobody else, administrators included.
           </EmptyState>
         )}
       </div>
@@ -148,8 +148,8 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
           <form action="/mail" method="get" role="search" className="mb-3 flex gap-2">
             {view !== 'inbox' ? <input type="hidden" name="view" value={view} /> : null}
             <label htmlFor="mail-search" className="sr-only">Search your mail</label>
-            <input id="mail-search" name="q" defaultValue={q} placeholder="Search your mail…" maxLength={100}
-              className="min-h-11 w-full min-w-0 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 text-sm text-[var(--ejo-text)]" />
+            <input id="mail-search" name="q" type="search" defaultValue={q} placeholder="Search by sender, subject, JC- number, plate…" maxLength={100} enterKeyHint="search"
+              className="min-h-11 w-full min-w-0 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 text-base text-[var(--ejo-text)] sm:text-sm" />
             <button type="submit" className="min-h-11 shrink-0 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 text-sm font-medium text-[var(--ejo-text)] hover:text-[var(--ejo-primary)]">Search</button>
           </form>
           {q ? <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">{plural(list.items.length, 'message')} matching “{q}” · <LoadingLink href={href({ view })} className="text-[var(--ejo-primary)] hover:underline">Clear</LoadingLink></p> : null}
@@ -266,7 +266,7 @@ function Reading({ d, consent, aiAvailable, back }: { d: MailDetail; consent: bo
         ) : null}
       </article>
 
-      <aside aria-label="Enyo's brief" className="h-fit rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4">
+      <aside aria-label="Enyo's brief" className="order-first h-fit rounded-[var(--ejo-radius-lg)] 2xl:order-none border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--ejo-text)]"><Icon name="sparkles" size={16} className="text-[var(--ejo-primary)]" />Enyo&apos;s brief</h3>
         {!aiAvailable ? (
           <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Enyo for email is switched off for your organisation.</p>
