@@ -96,12 +96,13 @@ test('an administrator chooses the model; the themes show; retiring hides them',
   await expect(page.getByText(fixture.artifact.themes[0]!.label, { exact: true }).first()).toBeVisible();
 
   // Switching the capability off hides it, whatever model is in use.
-  const card = page.locator('div').filter({ has: page.getByRole('heading', { name: 'Complaint themes', level: 3 }) }).last();
+  // The capability's card: the box holding both its heading and its Level select.
+  const card = page.locator('div').filter({ has: page.getByRole('heading', { name: 'Complaint themes', level: 3 }) }).filter({ has: page.getByLabel('Level') }).last();
   await card.getByLabel('Level').selectOption('OFF');
   await card.getByRole('button', { name: 'Save level' }).click();
   await waitOutcome(page, /status=level_saved/);
   await expect(page.getByRole('heading', { name: 'What customers bring their vehicles in for' })).toHaveCount(0);
-  const back = page.locator('div').filter({ has: page.getByRole('heading', { name: 'Complaint themes', level: 3 }) }).last();
+  const back = page.locator('div').filter({ has: page.getByRole('heading', { name: 'Complaint themes', level: 3 }) }).filter({ has: page.getByLabel('Level') }).last();
   await back.getByLabel('Level').selectOption('ASSIST');
   await back.getByRole('button', { name: 'Save level' }).click();
   await waitOutcome(page, /status=level_saved/);
@@ -116,7 +117,7 @@ test('an administrator chooses the model; the themes show; retiring hides them',
 test('a technician cannot open the models page or the reorder suggestions', async ({ page }) => {
   await as(page, 'technician');
   await open(page, '/enyo/models');
-  await expect(page.getByRole('heading', { level: 1, name: /models/ })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/access-denied/);
   await open(page, '/inventory/reorder');
-  await expect(page.getByRole('heading', { level: 1, name: 'Reorder suggestions' })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/access-denied/);
 });
