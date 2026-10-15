@@ -55,7 +55,7 @@ export type AnomalyArtifact = {
   task: 'PRICE_ANOMALY';
   /** Typical unit price and quantity of each line key, from approved estimates. */
   refs: Record<string, { price: number; qty: number; n: number }>;
-  features: ['price_ratio_log', 'qty_ratio_log', 'amount_log'];
+  features: ['price_ratio_log', 'qty_ratio_log', 'amount_ratio_log'];
   forest: { trees: (Tree & { samples: number[] })[]; maxSamples: number; offset: number };
 };
 
@@ -175,7 +175,9 @@ export function validateArtifact(task: MlTask, raw: unknown): Artifact {
         if (!isObj(a.quantiles)) fail('quantiles are missing');
         const q = a.quantiles as Record<string, unknown>;
         const features = tfidf.vocab.length + numeric.length;
-        return { format: ARTIFACT_FORMAT, task, tfidf, numeric, target: 'log1p_hours', quantiles: { p10: checkTrees(q.p10, features, 'p10'), p50: checkTrees(q.p50, features, 'p50'), p90: checkTrees(q.p90, features, 'p90') } };
+        const quantiles = { p10: checkTrees(q.p10, features, 'p10'), p50: checkTrees(q.p50, features, 'p50'), p90: checkTrees(q.p90, features, 'p90') };
+        if (!quantiles.p10.length || !quantiles.p50.length || !quantiles.p90.length) fail('each quantile needs at least one tree');
+        return { format: ARTIFACT_FORMAT, task, tfidf, numeric, target: 'log1p_hours', quantiles };
       }
       case 'ESTIMATE_LINES': {
         const tfidf = checkTfidf(a.tfidf);
@@ -195,9 +197,11 @@ export function validateArtifact(task: MlTask, raw: unknown): Artifact {
         if (!isObj(a.refs)) fail('refs are missing');
         const entries = Object.entries(a.refs as Record<string, unknown>);
         if (entries.length > LIMITS.labels * 10) fail('too many reference keys');
-        const refs: AnomalyArtifact['refs'] = {};
+        // No prototype: a key like "__proto__" stays an ordinary key (and such keys are refused anyway).
+        const refs: AnomalyArtifact['refs'] = Object.create(null) as AnomalyArtifact['refs'];
         for (const [k, v] of entries) {
           str(k, 'refs key', 200);
+          if (k === '__proto__' || k === 'constructor' || k === 'prototype') fail(`refs key "${k}" is not allowed`);
           if (!isObj(v)) fail(`refs.${k} is not a reference`);
           const o = v as Record<string, unknown>;
           const price = num(o.price, `refs.${k}.price`);
@@ -206,12 +210,12 @@ export function validateArtifact(task: MlTask, raw: unknown): Artifact {
           refs[k] = { price, qty, n: int(o.n, `refs.${k}.n`, 1) };
         }
         const features = arr(a.features, 'features', 3);
-        if (features.join(',') !== 'price_ratio_log,qty_ratio_log,amount_log') fail('features must be price_ratio_log, qty_ratio_log, amount_log');
+        if (features.join(',') !== 'price_ratio_log,qty_ratio_log,amount_ratio_log') fail('features must be price_ratio_log, qty_ratio_log, amount_ratio_log');
         if (!isObj(a.forest)) fail('forest is missing');
         const f = a.forest as Record<string, unknown>;
         const trees = arr(f.trees, 'forest.trees', LIMITS.trees).map((t, i) => checkTree(t, 3, `forest.trees[${i}]`, true) as Tree & { samples: number[] });
         if (!trees.length) fail('forest has no trees');
-        return { format: ARTIFACT_FORMAT, task, refs, features: ['price_ratio_log', 'qty_ratio_log', 'amount_log'], forest: { trees, maxSamples: int(f.maxSamples, 'forest.maxSamples', 2), offset: num(f.offset, 'forest.offset') } };
+        return { format: ARTIFACT_FORMAT, task, refs, features: ['price_ratio_log', 'qty_ratio_log', 'amount_ratio_log'], forest: { trees, maxSamples: int(f.maxSamples, 'forest.maxSamples', 2), offset: num(f.offset, 'forest.offset') } };
       }
       case 'PARTS_DEMAND': {
         const methods = new Set(['croston_sba', 'ses', 'moving_average', 'none']);

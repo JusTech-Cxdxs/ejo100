@@ -1,7 +1,7 @@
 import { actorLabel } from '@/lib/assist/rules';
 import { canRequestRoadTestOn } from '@/lib/actions/security';
-import { jobCardVisible, guardAnyPage, can, allows, myOrganisationId } from '@/lib/authz/server';
-import { priceWarnings, shownDuration } from '@/lib/enyo/ml/models';
+import { jobCardVisible, guardAnyPage, can, allows } from '@/lib/authz/server';
+import { organisationOfBranch, priceWarnings, shownDuration } from '@/lib/enyo/ml/models';
 import { getEnyoSettings } from '@/lib/enyo/settings';
 import { ReadyEstimate, UnusualPrice } from '@/components/enyo/EnyoInsights';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
@@ -382,7 +382,8 @@ export default async function JobCardDetailPage({
     getPartWarrantyBadges((estimate?.lineItems ?? []).map((li: { matchedPartId: string | null }) => li.matchedPartId ?? '')),
   ]);
   // Enyo, when switched on at Assist: unusual typed-in prices and when the vehicle is likely ready. Never in the way.
-  const enyoOrg = await myOrganisationId();
+  // The record's own organisation decides (its model and level), never the viewer's.
+  const enyoOrg = await organisationOfBranch(jobCard.branchId).catch(() => null);
   const [priceFlags, readyEstimate, enyoName] = await Promise.all([
     priceWarnings(enyoOrg, (estimate?.lineItems ?? []).map((li: { id: string; type: string; description: string; quantity: unknown; unitPrice: unknown }) => ({ id: li.id, type: li.type, description: li.description, quantity: Number(li.quantity) || 1, unitPrice: li.unitPrice == null ? null : Number(li.unitPrice) }))).catch(() => new Map()),
     jobCard.readyForCollectionAt ? Promise.resolve(null) : shownDuration({ kind: 'JOB_CARD', id: id }, enyoOrg).catch(() => null),

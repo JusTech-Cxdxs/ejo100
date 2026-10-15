@@ -6,8 +6,7 @@ import { prisma } from '@ejo/database';
 import { friendlyError } from '@/lib/errors';
 import { authorize, myOrganisationId, orgWhere, refuseDuringAssist } from '@/lib/authz/server';
 import { writeAuditLog } from '@/lib/workshop-core';
-import { getEnyoSettings } from '@/lib/enyo/settings';
-import { capabilityOf, type Level } from '@/lib/enyo/ml/capabilities';
+import { capabilityOf, readLevels, type Level } from '@/lib/enyo/ml/capabilities';
 import { forgetModels } from '@/lib/enyo/ml/models';
 import { requireUser } from './workshop';
 
@@ -63,7 +62,11 @@ export async function retireEnyoModel(modelId: string): Promise<void> {
   if (!m) throw new ModelError('That model is not available.');
   const organisationId = m.organisationId;
   if (m.status !== 'ACTIVE') throw new ModelError('Only the model in use can be retired.');
-  await prisma.enyoModel.updateMany({ where: { id: m.id, status: 'ACTIVE' }, data: { status: 'RETIRED', retiredAt: new Date() } });
+  const res = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`enyo-model:${organisationId}:${m.task}`}))`;
+    return tx.enyoModel.updateMany({ where: { id: m.id, status: 'ACTIVE' }, data: { status: 'RETIRED', retiredAt: new Date() } });
+  });
+  if (res.count !== 1) throw new ModelError('This model changed meanwhile. Reload the page and try again.');
   forgetModels(organisationId);
   await writeAuditLog({ userId, action: 'enyo.model_retired', entityType: 'EnyoModel', entityId: m.id, organisationId, metadata: { task: m.task, version: m.version } });
 }
@@ -77,11 +80,18 @@ export async function setCapabilityLevel(key: string, level: string): Promise<vo
   const cap = capabilityOf(key);
   if (!cap) throw new ModelError('Unknown capability.');
   if (!(cap.levels as readonly string[]).includes(level)) throw new ModelError(`${cap.label} can be set to ${cap.levels.join(', ').toLowerCase()}.`);
-  const before = await getEnyoSettings(organisationId);
-  if (before.capabilityLevels[cap.key] === level) return;
-  const next = { ...before.capabilityLevels, [cap.key]: level as Level };
-  await prisma.enyoSetting.upsert({ where: { organisationId }, create: { organisationId, capabilityLevels: next, updatedById: userId }, update: { capabilityLevels: next, updatedById: userId } });
-  await writeAuditLog({ userId, action: 'enyo.capability_level_changed', entityType: 'EnyoSetting', entityId: organisationId, organisationId, metadata: { capability: cap.key, from: before.capabilityLevels[cap.key], to: level } });
+  // Read and write under one lock, so two administrators changing different capabilities at once both count.
+  const before = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`enyo-levels:${organisationId}`}))`;
+    const row = await tx.enyoSetting.findUnique({ where: { organisationId }, select: { capabilityLevels: true } });
+    const current = readLevels(row?.capabilityLevels ?? null);
+    if (current[cap.key] === level) return null;
+    const next = { ...current, [cap.key]: level as Level };
+    await tx.enyoSetting.upsert({ where: { organisationId }, create: { organisationId, capabilityLevels: next, updatedById: userId }, update: { capabilityLevels: next, updatedById: userId } });
+    return current;
+  });
+  if (!before) return;
+  await writeAuditLog({ userId, action: 'enyo.capability_level_changed', entityType: 'EnyoSetting', entityId: organisationId, organisationId, metadata: { capability: cap.key, from: before[cap.key], to: level } });
 }
 
 // ------------------------------------------------------------------ form handlers

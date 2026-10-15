@@ -9,6 +9,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+const MAX_BODY = 4_400_000;
+
 /**
  * POST /api/ml/models — the trainer hands in one trained model. It is stored
  * as CANDIDATE when it passed its gate (REJECTED otherwise, with the reasons)
@@ -21,11 +23,25 @@ export async function POST(request: Request) {
   if (access === 'denied') return NextResponse.json({ error: 'Not authorised' }, { status: 401, headers: NO_STORE });
   if (access === 'limited') return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: { ...NO_STORE, 'Retry-After': '60' } });
   const declared = Number(request.headers.get('content-length') ?? '0');
-  if (declared > 4_400_000) return NextResponse.json({ error: 'The upload is too large' }, { status: 413, headers: NO_STORE });
-  let text: string;
+  if (declared > MAX_BODY) return NextResponse.json({ error: 'The upload is too large' }, { status: 413, headers: NO_STORE });
+  // Read at most the limit, whatever the declared length (a chunked body has none).
+  let text = '';
   let raw: unknown;
   try {
-    text = await request.text();
+    const reader = request.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const r = reader ? await reader.read() : { done: true as const, value: undefined };
+      if (r.done) break;
+      size += r.value.byteLength;
+      if (size > MAX_BODY) {
+        await reader?.cancel().catch(() => undefined);
+        return NextResponse.json({ error: 'The upload is too large' }, { status: 413, headers: NO_STORE });
+      }
+      chunks.push(r.value);
+    }
+    text = Buffer.concat(chunks).toString('utf8');
     raw = JSON.parse(text);
   } catch {
     return NextResponse.json({ error: 'The upload must be JSON' }, { status: 400, headers: NO_STORE });

@@ -67,7 +67,7 @@ def write_fixtures(out: Path) -> None:
         for ln in row["lines"]:
             if ln["key"] in a.artifact["refs"] and ln.get("unit_price"):
                 ref = a.artifact["refs"][ln["key"]]
-                feats = [float(np.log(ln["unit_price"] / ref["price"])), float(np.log(ln["quantity"] / ref["qty"])), float(np.log1p(ln["unit_price"] * ln["quantity"]))]
+                feats = [float(np.log(ln["unit_price"] / ref["price"])), float(np.log(ln["quantity"] / ref["qty"])), float(np.log((ln["unit_price"] * ln["quantity"]) / (ref["price"] * ref["qty"])))]
                 f = a.artifact["forest"]
                 a_cases.append({"input": {"key": ln["key"], "unitPrice": ln["unit_price"], "quantity": ln["quantity"]}, "expected": {"score": iforest_decision(f["trees"], f["maxSamples"], f["offset"], feats)}})
     # Two deliberate outliers: ten times the usual price, and a tenth of it.
@@ -75,7 +75,7 @@ def write_fixtures(out: Path) -> None:
     ref = a.artifact["refs"][key]
     for factor in (10.0, 0.1):
         price = ref["price"] * factor
-        feats = [float(np.log(price / ref["price"])), 0.0, float(np.log1p(price * ref["qty"]))]
+        feats = [float(np.log(price / ref["price"])), 0.0, float(np.log(factor))]
         f = a.artifact["forest"]
         a_cases.append({"input": {"key": key, "unitPrice": price, "quantity": ref["qty"]}, "expected": {"score": iforest_decision(f["trees"], f["maxSamples"], f["offset"], feats)}})
     files["price_anomaly.json"] = {"artifact": a.artifact, "cases": a_cases[:60]}

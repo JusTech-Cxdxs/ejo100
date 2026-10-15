@@ -23,7 +23,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ name
   const org = await organisationBySlug(new URL(request.url).searchParams.get('organisation'));
   if (!org) return NextResponse.json({ error: 'Unknown or inactive organisation' }, { status: 404, headers: NO_STORE });
   try {
-    const body = name === 'jobs' ? toJsonl(await jobsDataset(org.id)) : (await partsDataset(org.id)).map((r) => JSON.stringify(r)).join('\n') + '\n';
+    // The trainer reads tokens, never the free text: complaint_text stays in the portal.
+    const body = name === 'jobs'
+      ? toJsonl(await jobsDataset(org.id)).split('\n').filter(Boolean).map((l) => { const r = JSON.parse(l) as Record<string, unknown>; delete r.complaint_text; return JSON.stringify(r); }).join('\n') + '\n'
+      : (await partsDataset(org.id)).map((r) => JSON.stringify(r)).join('\n') + '\n';
     const rows = body.trim() ? body.trim().split('\n').length : 0;
     await writeAuditLog({ userId: null, action: 'enyo.ml_dataset_read', entityType: 'Organisation', entityId: org.id, organisationId: org.id, metadata: { dataset: name, rows } });
     return new NextResponse(body, { headers: { ...NO_STORE, 'Content-Type': 'application/x-ndjson; charset=utf-8' } });

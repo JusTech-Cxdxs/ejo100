@@ -132,9 +132,9 @@ export function averagePathLength(n: number): number {
 
 /** The three anomaly features for one estimate line, or null when the key has no reference yet. */
 export function anomalyFeatures(a: AnomalyArtifact, line: { key: string; unitPrice: number; quantity: number }): [number, number, number] | null {
-  const ref = a.refs[line.key];
+  const ref = Object.hasOwn(a.refs, line.key) ? a.refs[line.key] : undefined;
   if (!ref || !(line.unitPrice > 0) || !(line.quantity > 0)) return null;
-  return [Math.log(line.unitPrice / ref.price), Math.log(line.quantity / ref.qty), Math.log1p(line.unitPrice * line.quantity)];
+  return [Math.log(line.unitPrice / ref.price), Math.log(line.quantity / ref.qty), Math.log((line.unitPrice * line.quantity) / (ref.price * ref.qty))];
 }
 
 /** scikit-learn's decision_function: below zero = unusual. */

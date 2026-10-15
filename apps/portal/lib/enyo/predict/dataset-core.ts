@@ -99,7 +99,8 @@ export function mileageBand(km: number | null | undefined): number | null {
 export function datasetLines(lines: HistLine[], names: string[] = []): DatasetLine[] {
   return lines.map((l) => ({
     type: l.type,
-    key: lineKey(l),
+    // The key from the scrubbed description too: it goes into trained models.
+    key: lineKey({ ...l, description: scrubText(l.description, names) }),
     label: scrubText(l.type === 'STORE_PART' ? (l.partTypeName || l.description) : l.description, names).slice(0, 200),
     quantity: l.quantity,
     unit_price: l.type === 'STORE_PART' ? null : l.unitPrice,

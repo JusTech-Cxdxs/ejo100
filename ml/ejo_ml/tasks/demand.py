@@ -66,16 +66,13 @@ METHODS = {
 }
 
 
-def backtest(y: np.ndarray, method: str) -> float:
-    """Mean absolute error of one-week-ahead forecasts over the last BACKTEST weeks."""
-    errs = []
-    for h in range(len(y) - BACKTEST, len(y)):
-        errs.append(abs(METHODS[method](y[:h]) - float(y[h])))
-    return float(np.mean(errs))
+def backtest(y: np.ndarray, method: str, start: int, end: int) -> float:
+    """Mean absolute error of one-week-ahead forecasts for weeks start..end-1."""
+    return float(np.mean([abs(METHODS[method](y[:h]) - float(y[h])) for h in range(start, end)]))
 
 
-def naive_backtest(y: np.ndarray) -> float:
-    return float(np.mean([abs(float(y[h - 1]) - float(y[h])) for h in range(len(y) - BACKTEST, len(y))]))
+def naive_backtest(y: np.ndarray, start: int, end: int) -> float:
+    return float(np.mean([abs(float(y[h - 1]) - float(y[h])) for h in range(start, end)]))
 
 
 def train(parts: pd.DataFrame) -> Result:
@@ -90,12 +87,15 @@ def train(parts: pd.DataFrame) -> Result:
             rows.append({"partId": str(p["part_id"]), "method": "none", "weeklyRate": 0.0, "weeklySd": 0.0, "forecast4w": 0.0, "safetyStock": 0.0, "reorderPoint": 0.0,
                          "backtestMae": None, "baselineMae": None, "nonzeroWeeks": nonzero})
             continue
-        errors = {m: backtest(y, m) for m in METHODS}
-        method = min(errors, key=lambda m: (errors[m], m))
+        n = len(y)
+        # Choose the method on the 8 weeks before the last 8, then judge it (and the naive one) on the last 8.
+        choose = {m: backtest(y, m, n - 2 * BACKTEST, n - BACKTEST) for m in METHODS}
+        method = min(choose, key=lambda m: (choose[m], m))
+        errors = {method: backtest(y, method, n - BACKTEST, n)}
         rate = max(0.0, METHODS[method](y))
         sd = float(np.std(y[-26:], ddof=1)) if len(y) >= 2 else 0.0
         safety = SERVICE_Z * sd * math.sqrt(LEAD_WEEKS)
-        naive = naive_backtest(y)
+        naive = naive_backtest(y, n - BACKTEST, n)
         total_ours += errors[method]
         total_naive += naive
         rows.append({"partId": str(p["part_id"]), "method": method, "weeklyRate": r4(rate), "weeklySd": r4(sd), "forecast4w": r4(4 * rate),
@@ -106,9 +106,10 @@ def train(parts: pd.DataFrame) -> Result:
     passed = total_ours <= total_naive
     reasons = [f"Forecast error over {len(usable)} parts: {total_ours:.1f} against {total_naive:.1f} for \"same as last week\"" + ("." if passed else " — no better than the naive forecast.")]
     weeks = int(max(len(w) for w in parts["weekly"]))
-    artifact = {"format": ARTIFACT_FORMAT, "task": TASK, "asOf": str(as_of), "weeks": weeks, "leadTimeWeeks": LEAD_WEEKS, "serviceZ": SERVICE_Z, "parts": rows}
+    # Only forecast parts go into the model (parts without enough history have nothing to say).
+    artifact = {"format": ARTIFACT_FORMAT, "task": TASK, "asOf": str(as_of), "weeks": weeks, "leadTimeWeeks": LEAD_WEEKS, "serviceZ": SERVICE_Z, "parts": usable}
     by_method = {m: sum(1 for r in usable if r["method"] == m) for m in METHODS}
-    metrics = {"parts": len(rows), "forecast_parts": len(usable), "backtest_mae_total": r4(total_ours), "methods": by_method}
+    metrics = {"parts": len(rows), "forecast_parts": len(usable), "parts_without_history": len(rows) - len(usable), "backtest_mae_total": r4(total_ours), "methods": by_method}
     end = dt.date.fromisoformat(str(as_of))
     return Result(TASK, ALGORITHM, artifact, metrics, {"name": "same as last week", "backtest_mae_total": r4(total_naive)}, Gate(passed, reasons), len(rows),
                   end - dt.timedelta(weeks=weeks - 1), end)

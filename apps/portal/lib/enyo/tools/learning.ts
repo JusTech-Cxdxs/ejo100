@@ -7,7 +7,7 @@
 import type { ToolResult } from '@ejo/enyo';
 import { prisma } from '@ejo/database';
 import { allows, getPrincipal, myOrganisationId, reachWhere } from '@/lib/authz/server';
-import { complaintThemes, reorderList, shownDuration } from '@/lib/enyo/ml/models';
+import { complaintThemes, organisationOfBranch, reorderList, shownDuration } from '@/lib/enyo/ml/models';
 import { NOT_PERMITTED, type StaffTool } from '../types';
 
 const nothing = (message: string): ToolResult => ({ ok: false, message });
@@ -63,7 +63,8 @@ export const learningTools: StaffTool[] = [
       if (!rec || !(await allows('workshop.job_card.view', { branchId: rec.branchId }))) return nothing('No Job Card or Vehicle Service with that number is available to this person. Say so and ask them to check the number.');
       const href = job ? `/workshop/job-cards/${rec.id}` : `/workshop/vehicle-service/${rec.id}`;
       if (rec.readyForCollectionAt) return { ok: true, data: { record: n, readyAlready: lagos(rec.readyForCollectionAt) }, sources: [{ label: n, href }] };
-      const p = await shownDuration({ kind: job ? 'JOB_CARD' : 'SERVICE', id: rec.id }, await orgId());
+      // The record's own organisation decides which model and level apply.
+      const p = await shownDuration({ kind: job ? 'JOB_CARD' : 'SERVICE', id: rec.id }, await organisationOfBranch(rec.branchId));
       if (!p) return nothing(`There is no time estimate for ${n} to show: either the capability is not at Assist, no model is in use, or the estimate has not had its final approval yet. Say which steps remain if asked.`);
       const at = (h: number) => lagos(new Date(new Date(p.openedAt).getTime() + h * 3_600_000));
       return { ok: true, data: { record: n, likely: at(p.p50), earliest: at(p.p10), latest: at(p.p90), model: p.modelVersion, note: 'An estimate from similar finished jobs, not a promise. Confirm with the workshop before telling the customer.' }, sources: [{ label: n, href }] };

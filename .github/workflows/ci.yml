@@ -88,3 +88,5 @@ jobs:
       - run: pip install -r ml/requirements-dev.txt
       - run: python -m pytest -q
         working-directory: ml
+        env:
+          OMP_NUM_THREADS: '1'

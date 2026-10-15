@@ -54,6 +54,13 @@ Until then, a task reports "not trained" and nothing changes.
 
 To retrain weekly, uncomment the `schedule:` lines in `.github/workflows/ml-train.yml`.
 
+## Things to know
+
+- **Caching.** Each server keeps the model in use for up to a minute. After **Use this model** or **Retire**, another server can carry on with the previous model for up to 60 seconds.
+- **Names in free text.** Training removes the names of the customer and the staff from complaint text. Use in the portal removes contacts, plates and links, but not names. A name is a rare word that the models ignore, so the effect is negligible.
+- **Unusual prices.** The model learns what normal looks like only from lines within 3× of the usual price. Its gate checks two things: that it flags a small share of new lines, and that it catches at least 80% of test prices made ten times too high or too low.
+- **Job times.** Jobs opened within the usual longest turnaround are left out of training and testing. The long jobs from that period are still open, so the finished ones would be the quick ones and flatter the model.
+
 ## Running the trainer elsewhere
 
 ```bash

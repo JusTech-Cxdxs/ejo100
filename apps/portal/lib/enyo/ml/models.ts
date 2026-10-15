@@ -23,6 +23,17 @@ import { complaintTokens, featureTokens, lineTokens, workNumbers } from './featu
 import { checkPrice, predictDuration, reorderSuggestions, type DurationOutput, type PriceCheck, type ReorderSuggestion } from './runtime-core';
 
 const CACHE_MS = 60_000;
+
+/** A line's identity exactly as in the training data (dataset-core.ts datasetLines): from the scrubbed description. */
+export function mlLineKey(l: { type: string; description: string; partTypeName?: string | null }): string {
+  return lineKey({ type: l.type as never, description: scrubText(l.description), partTypeName: l.partTypeName ?? null });
+}
+
+/** The organisation a branch belongs to (a record's own organisation, never the viewer's). */
+export async function organisationOfBranch(branchId: string): Promise<string | null> {
+  const b = await prisma.branch.findUnique({ where: { id: branchId }, select: { businessUnit: { select: { organisationId: true } } } });
+  return b?.businessUnit.organisationId ?? null;
+}
 const cache = new Map<string, { at: number; value: { id: string; version: string; artifact: Artifact } | null }>();
 
 /** The organisation's ACTIVE model for a task (checked once, remembered for a minute per server). */
@@ -74,10 +85,10 @@ async function durationFacts(s: DurationSubject) {
   if (!row) return null;
   const r = row as typeof row & { complaint?: string | null; customerComplaint?: string | null; mileageAtCheckIn?: number | null; odometerAtService?: number | null };
   const complaint = scrubText([...r.complaints.map((c: { description: string }) => c.description), (r.complaint ?? r.customerComplaint ?? '')].map((x) => x.trim()).filter(Boolean).join('. '));
-  const lines = ((await loadFinalLines(s.kind === 'JOB_CARD' ? [s.id] : [], s.kind === 'SERVICE' ? [s.id] : [])).get(s.id) ?? []).map((l) => ({ type: l.type, key: lineKey(l), quantity: l.quantity }));
+  const lines = ((await loadFinalLines(s.kind === 'JOB_CARD' ? [s.id] : [], s.kind === 'SERVICE' ? [s.id] : [])).get(s.id) ?? []).map((l) => ({ type: l.type, key: mlLineKey(l), quantity: l.quantity }));
   return {
     organisationId: r.branch.businessUnit.organisationId, branchId: r.branchId, openedAt: r.createdAt, lines,
-    tokens: [...complaintTokens(complaint), ...featureTokens({ kind: s.kind, complaint, make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, mileageKm: r.mileageAtCheckIn ?? r.odometerAtService ?? r.vehicle.mileage, vehicleType: r.vehicle.vehicleType, branchCode: r.branch.code, department: r.department?.name ?? null, openedAt: r.createdAt }), ...lineTokens(lines)],
+    tokens: [...complaintTokens(complaint), ...featureTokens({ kind: s.kind, complaint, make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, mileageKm: r.mileageAtCheckIn ?? r.odometerAtService ?? null, vehicleType: r.vehicle.vehicleType, branchCode: r.branch.code, department: r.department?.name ?? null, openedAt: r.createdAt }), ...lineTokens(lines)],
     numbers: workNumbers(complaint, lines),
   };
 }
@@ -115,30 +126,48 @@ export function scheduleDuration(s: DurationSubject): void {
 /**
  * Scores stored time estimates whose vehicle is now ready: the actual hours,
  * the error of the middle estimate, and whether it fell inside the range.
- * Run daily (the scheduled jobs) — at most `limit` per run, each exactly once.
+ * Run daily (the scheduled jobs). Pages through the open estimates oldest
+ * first (at most `scan`), so jobs still in the workshop never block newer
+ * ones; an estimate still open after 120 days, or whose record was
+ * cancelled or removed, is set aside (DISMISSED). Each is scored exactly once.
  */
-export async function resolveDurations(limit = 300): Promise<number> {
-  const open = await prisma.enyoPrediction.findMany({ where: { kind: DURATION_KIND, resolvedAt: null }, select: { id: true, subjectType: true, subjectId: true, output: true }, orderBy: { createdAt: 'asc' }, take: limit });
+export async function resolveDurations(scan = 2_000): Promise<number> {
+  const STALE = 120 * 86_400_000;
   let done = 0;
-  for (const p of open) {
-    const ready = p.subjectType === 'JobCard'
-      ? await prisma.jobCard.findUnique({ where: { id: p.subjectId }, select: { createdAt: true, readyForCollectionAt: true, completedAt: true, status: true } })
-      : await prisma.vehicleService.findUnique({ where: { id: p.subjectId }, select: { createdAt: true, readyForCollectionAt: true, completedAt: true, status: true } });
-    const out = p.output as Partial<DurationPrediction>;
-    if (!ready || ready.status === 'CANCELLED') {
-      await prisma.enyoPrediction.updateMany({ where: { id: p.id, resolvedAt: null }, data: { status: 'DISMISSED', resolvedAt: new Date() } });
-      continue;
-    }
-    const end = ready.readyForCollectionAt ?? ready.completedAt;
-    if (!end) continue;
-    const actual = (end.getTime() - ready.createdAt.getTime()) / 3_600_000;
-    if (!(actual > 0) || typeof out.p50 !== 'number') continue;
-    const inRange = actual >= (out.p10 ?? 0) && actual <= (out.p90 ?? Infinity);
-    const res = await prisma.enyoPrediction.updateMany({
-      where: { id: p.id, resolvedAt: null },
-      data: { status: 'RESOLVED', outcome: { actualHours: Math.round(actual * 100) / 100, absErrorHours: Math.round(Math.abs(actual - out.p50) * 100) / 100, inRange }, resolvedAt: new Date() },
+  let cursor: string | undefined;
+  for (let seen = 0; seen < scan; ) {
+    const open = await prisma.enyoPrediction.findMany({
+      where: { kind: DURATION_KIND, resolvedAt: null }, select: { id: true, subjectType: true, subjectId: true, output: true, createdAt: true },
+      orderBy: { id: 'asc' }, take: 300, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
-    done += res.count;
+    if (!open.length) break;
+    seen += open.length;
+    cursor = open.at(-1)!.id;
+    const ids = (t: string) => open.filter((p: { subjectType: string }) => p.subjectType === t).map((p: { subjectId: string }) => p.subjectId);
+    const pick = { id: true, createdAt: true, readyForCollectionAt: true, completedAt: true, status: true } as const;
+    const [jobs, services] = await Promise.all([
+      prisma.jobCard.findMany({ where: { id: { in: ids('JobCard') } }, select: pick }),
+      prisma.vehicleService.findMany({ where: { id: { in: ids('VehicleService') } }, select: pick }),
+    ]);
+    type Rec = { id: string; createdAt: Date; readyForCollectionAt: Date | null; completedAt: Date | null; status: string };
+    const recs = new Map<string, Rec>([...jobs, ...services].map((r: Rec) => [r.id, r]));
+    for (const p of open) {
+      const rec = recs.get(p.subjectId);
+      const out = (p.output ?? {}) as Partial<DurationPrediction>;
+      const end = rec ? rec.readyForCollectionAt ?? rec.completedAt : null;
+      const actual = rec && end ? (end.getTime() - rec.createdAt.getTime()) / 3_600_000 : NaN;
+      if (!rec || rec.status === 'CANCELLED' || typeof out.p50 !== 'number' || (end && !(actual > 0)) || (!end && Date.now() - p.createdAt.getTime() > STALE)) {
+        await prisma.enyoPrediction.updateMany({ where: { id: p.id, resolvedAt: null }, data: { status: 'DISMISSED', resolvedAt: new Date() } });
+        continue;
+      }
+      if (!end) continue;
+      const inRange = actual >= (out.p10 ?? 0) && actual <= (out.p90 ?? Infinity);
+      const res = await prisma.enyoPrediction.updateMany({
+        where: { id: p.id, resolvedAt: null },
+        data: { status: 'RESOLVED', outcome: { actualHours: Math.round(actual * 100) / 100, absErrorHours: Math.round(Math.abs(actual - out.p50) * 100) / 100, inRange }, resolvedAt: new Date() },
+      });
+      done += res.count;
+    }
   }
   return done;
 }
@@ -147,7 +176,7 @@ export async function resolveDurations(limit = 300): Promise<number> {
 export async function shownDuration(s: DurationSubject, organisationId: string | null): Promise<DurationPrediction | null> {
   const { level } = await capability(organisationId, 'JOB_DURATION');
   if (!shown(level)) return null;
-  const row = await prisma.enyoPrediction.findUnique({ where: { kind_subjectType_subjectId: { kind: DURATION_KIND, subjectType: SUBJECT_TYPE[s.kind], subjectId: s.id } }, select: { output: true } });
+  const row = await prisma.enyoPrediction.findFirst({ where: { kind: DURATION_KIND, subjectType: SUBJECT_TYPE[s.kind], subjectId: s.id, organisationId: organisationId ?? '__none__' }, select: { output: true } });
   const out = row?.output as Partial<DurationPrediction> | undefined;
   return out && typeof out.p50 === 'number' && typeof out.p10 === 'number' && typeof out.p90 === 'number' && typeof out.openedAt === 'string' ? (out as DurationPrediction) : null;
 }
@@ -163,7 +192,7 @@ export async function priceWarnings(organisationId: string | null, lines: Priced
   if (!model || !shown(level)) return out;
   for (const l of lines) {
     if (l.type === 'STORE_PART' || !(l.unitPrice && l.unitPrice > 0)) continue;
-    const c = checkPrice(model.artifact, { key: lineKey({ type: l.type as never, description: l.description, partTypeName: l.partTypeName ?? null }), unitPrice: l.unitPrice, quantity: l.quantity || 1 });
+    const c = checkPrice(model.artifact, { key: mlLineKey(l), unitPrice: l.unitPrice, quantity: l.quantity || 1 });
     if (c?.unusual) out.set(l.id, c);
   }
   return out;

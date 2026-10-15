@@ -41,6 +41,12 @@ def train(jobs: pd.DataFrame, seed: int = 7, n_estimators: int = 400) -> Result:
     import lightgbm as lgb
 
     df = jobs[jobs["turnaround_hours"].notna() & (jobs["turnaround_hours"] > 0) & (jobs["turnaround_hours"] < 24 * 120)].reset_index(drop=True)
+    # The newest jobs that are finished are mostly the quick ones (their long peers are still open):
+    # leave out jobs opened within the usual longest turnaround, or the test period flatters the model.
+    if len(df):
+        p95_days = float(np.percentile(df["turnaround_hours"], 95)) / 24
+        cutoff = df["opened_on"].max() - pd.Timedelta(days=p95_days)
+        df = df[df["opened_on"] <= cutoff].reset_index(drop=True)
     if len(df) < MIN_ROWS:
         return not_enough(TASK, ALGORITHM, len(df), MIN_ROWS, "finished jobs with a ready time")
     split = time_split(df)
@@ -53,7 +59,7 @@ def train(jobs: pd.DataFrame, seed: int = 7, n_estimators: int = 400) -> Result:
     for name, alpha in QUANTILES.items():
         model = lgb.LGBMRegressor(
             objective="quantile", alpha=alpha, n_estimators=n_estimators, learning_rate=0.05, num_leaves=15, min_child_samples=10,
-            subsample=0.8, subsample_freq=1, colsample_bytree=0.8, max_bin=63, random_state=seed, verbose=-1, deterministic=True, force_col_wise=True,
+            subsample=0.8, subsample_freq=1, colsample_bytree=0.8, max_bin=63, random_state=seed, verbose=-1, deterministic=True, force_col_wise=True, n_jobs=1,
         )
         model.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], callbacks=[lgb.early_stopping(40, verbose=False)])
         booster = model.booster_
