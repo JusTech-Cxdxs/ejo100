@@ -171,7 +171,7 @@ export async function testConnection(): Promise<EnyoConnectionTest> {
     const r = await call('testEnyoConnection');
     if (r.ok) return r;
     const text = r.error ?? r.message;
-    return { ok: false, error: typeof text === 'string' && text.length < 300 ? text : 'The model did not answer. Check the server settings.', ref: r.ref };
+    return { ok: false, error: typeof text === 'string' && text.length <= 1000 ? text : 'The model did not answer. Check the server settings.', ref: r.ref };
   } catch (e) {
     return { ok: false, error: e instanceof Error && e.message === NOT_AVAILABLE ? NOT_AVAILABLE : 'The test could not run. Please try again.' };
   }
