@@ -140,7 +140,7 @@ export async function getEnyoAdminSettings(): Promise<EnyoAdminSettings> {
   return { ...settings, configured: Boolean(config), provider: config?.providerLabel ?? null, model: config?.model ?? null };
 }
 
-export type EnyoSettingsInput = Partial<Pick<EnyoSettings, 'enabled' | 'staffAssistant' | 'customerAssistant' | 'publicAssistant' | 'mailAi' | 'predictionsMode' | 'displayName'>>;
+export type EnyoSettingsInput = Partial<Pick<EnyoSettings, 'enabled' | 'staffAssistant' | 'customerAssistant' | 'publicAssistant' | 'mailAi' | 'predictionsMode' | 'displayName' | 'learnFrom'>>;
 
 const SWITCHES = ['enabled', 'staffAssistant', 'customerAssistant', 'publicAssistant', 'mailAi'] as const;
 const MODES = ['SHADOW', 'SUGGEST', 'OFF'] as const;
@@ -152,7 +152,7 @@ export async function saveEnyoSettings(input: EnyoSettingsInput): Promise<void> 
   const organisationId = await myOrganisationId();
   if (!organisationId) throw new EnyoError('This account is not placed in an organisation yet.');
   if (!input || typeof input !== 'object') throw new EnyoError('Nothing to save.');
-  const data: Partial<Record<(typeof SWITCHES)[number], boolean>> & { predictionsMode?: string; displayName?: string } = {};
+  const data: Partial<Record<(typeof SWITCHES)[number], boolean>> & { predictionsMode?: string; displayName?: string; learnFrom?: Date | null } = {};
   for (const k of SWITCHES) {
     if (input[k] === undefined) continue;
     if (typeof input[k] !== 'boolean') throw new EnyoError('Each switch must be on or off.');
@@ -169,10 +169,22 @@ export async function saveEnyoSettings(input: EnyoSettingsInput): Promise<void> 
     if (/[<>{}]/.test(name)) throw new EnyoError('Use letters, numbers and simple punctuation in the display name.');
     data.displayName = name;
   }
+  if (input.learnFrom !== undefined) {
+    const day = input.learnFrom === null || input.learnFrom === '' ? null : typeof input.learnFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.learnFrom) ? input.learnFrom : 'bad';
+    if (day === 'bad') throw new EnyoError('Choose the learn-from day from the calendar, or leave it empty to learn from all history.');
+    if (day) {
+      const at = new Date(`${day}T00:00:00Z`);
+      if (Number.isNaN(at.getTime()) || at.toISOString().slice(0, 10) !== day) throw new EnyoError('That learn-from day is not a real date.');
+      if (day < '2000-01-01') throw new EnyoError('Choose a learn-from day in 2000 or later.');
+      if (at.getTime() > Date.now() + 86_400_000) throw new EnyoError('The learn-from day cannot be in the future.');
+      data.learnFrom = at;
+    } else data.learnFrom = null;
+  }
   if (!Object.keys(data).length) throw new EnyoError('Nothing to save.');
   const before = await getEnyoSettings(organisationId);
   await prisma.enyoSetting.upsert({ where: { organisationId }, create: { organisationId, ...data, updatedById: user.id }, update: { ...data, updatedById: user.id } });
-  const changes = Object.fromEntries(Object.entries(data).filter(([k, v]) => before[k as keyof EnyoSettings] !== v).map(([k, v]) => [k, { from: before[k as keyof EnyoSettings], to: v }]));
+  const shown = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : v);
+  const changes = Object.fromEntries(Object.entries(data).filter(([k, v]) => before[k as keyof EnyoSettings] !== shown(v)).map(([k, v]) => [k, { from: before[k as keyof EnyoSettings], to: shown(v) }]));
   if (Object.keys(changes).length) {
     await writeAuditLog({ userId: user.id, action: 'enyo.settings_changed', entityType: 'EnyoSetting', entityId: organisationId, organisationId, metadata: { changes } });
   }

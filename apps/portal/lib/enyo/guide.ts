@@ -556,9 +556,9 @@ export const GUIDE: GuideEntry[] = [
     steps: ['Go to Mail and connect your work mailbox the first time.', 'Open a message to read it, or compose a new one and press send.', 'Enyo can draft a reply for you to check before you send it.'],
   },
   {
-    id: 'mail-connect', title: 'Connect my work email (Gmail, Zoho or company mail)', page: '/mail/connect', needs: EVERYONE,
+    id: 'mail-connect', title: 'Connect my work email (Gmail, Zoho or your organisation\'s mail)', page: '/mail/connect', needs: EVERYONE,
     keywords: ['connect email', 'gmail', 'app password', 'imap', 'smtp', 'zoho', 'outlook', 'microsoft', 'mailbox settings'],
-    steps: ['Go to Mail → Connect and pick your provider (Gmail, Zoho or your company\'s mail).', 'For Gmail, turn on 2-step verification and create an app password, then use that instead of your normal password.', 'Press connect: the portal checks the mailbox before saving. Then choose whether Enyo may read, sort and summarise your email.', 'Microsoft 365 mailboxes need a sign-in option that is not available yet.'],
+    steps: ['Go to Mail → Connect and pick your provider (Gmail, Zoho or your organisation\'s mail).', 'For Gmail, turn on 2-step verification and create an app password, then use that instead of your normal password.', 'Press connect: the portal checks the mailbox before saving. Then choose whether Enyo may read, sort and summarise your email.', 'Microsoft 365 mailboxes need a sign-in option that is not available yet.'],
   },
 ];
 

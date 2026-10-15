@@ -109,6 +109,17 @@ export function EnyoSettingsForm({ initial, provider }: { initial: EnyoAdminSett
           </div>
         </fieldset>
 
+        <div className="mt-6 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4">
+          <label htmlFor="enyo-learn-from" className="text-sm font-medium text-[var(--ejo-text)]">Learn from records opened on or after</label>
+          <p id="enyo-learn-from-help" className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">
+            Set this to the day you started using the portal for real. Anything typed before it, such as test jobs, is never learned from: not by the suggestions, the training export or the trained models. Leave it empty to learn from all history.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input id="enyo-learn-from" type="date" aria-describedby="enyo-learn-from-help" value={s.learnFrom ?? ''} max={new Date().toISOString().slice(0, 10)} min="2000-01-01" onChange={(e) => set('learnFrom', e.target.value || null)} className="min-h-11 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 text-sm text-[var(--ejo-text)]" />
+            {s.learnFrom ? <button type="button" onClick={() => set('learnFrom', null)} className="min-h-11 rounded-[var(--ejo-radius-md)] px-3 text-sm font-medium text-[var(--ejo-primary)] hover:underline">Use all history</button> : null}
+          </div>
+        </div>
+
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <button type="submit" disabled={saving || !changed} className="min-h-11 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-50">
             {saving ? 'Saving…' : 'Save Enyo settings'}

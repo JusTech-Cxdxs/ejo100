@@ -147,3 +147,89 @@ export function turnaroundHours(openedAt: Date, readyAt: Date | null | undefined
   const h = (readyAt.getTime() - openedAt.getTime()) / 3_600_000;
   return h > 0 && h <= 24 * 180 ? Math.round(h * 100) / 100 : null;
 }
+
+// ------------------------------------------------------------ data quality
+//
+// Models are only as good as what they learn from. Before any row leaves for
+// training (or the CSV export), rows that would teach the wrong thing are
+// dropped, and impossible values are blanked. Test data typed while the
+// system was being tried out ("test", "asdf", "hello") is the commonest case;
+// the organisation's "learn from" date (Settings → Enyo) removes the rest.
+
+/** Placeholder words a person types when trying a form out. */
+const PLACEHOLDER = new Set(['test', 'tests', 'testing', 'tested', 'demo', 'sample', 'dummy', 'example', 'asdf', 'qwerty', 'lorem', 'ipsum', 'abc', 'abcd', 'xyz', 'hello', 'hi', 'hey', 'ok', 'okay', 'nil', 'none', 'na', 'nothing', 'blah', 'foo', 'bar', 'trial', 'check', 'checking', 'something', 'stuff', 'whatever', 'random', 'fake', 'temp', 'tmp']);
+const SCRUB_MARK = /\[(?:name|email|phone|plate|vin|link)\]/g;
+
+/** A keyboard-mash word: a long run of consonants, one letter repeated, or a keyboard row. */
+export function isMash(word: string): boolean {
+  const w = word.toLowerCase();
+  if (w.length < 4) return false;
+  if (/(.)\1{3,}/u.test(w)) return true;
+  if (/^[a-z]+$/.test(w) && !/[aeiouy]/.test(w)) return true;
+  if (/[bcdfghjklmnpqrstvwxz]{6,}/.test(w)) return true;
+  return /^(?:qwer|wert|asdf|sdfg|dfgh|fghj|ghjk|hjkl|zxcv|xcvb|cvbn|vbnm|jkl|uiop)/.test(w) && w.length <= 10;
+}
+
+/** 'ok', 'empty' (no words) or 'junk' (placeholder or keyboard mash) for a complaint, after scrubbing. */
+export function complaintQuality(text: string): 'ok' | 'empty' | 'junk' {
+  const words = String(text ?? '').replace(SCRUB_MARK, ' ').toLowerCase().match(/\p{L}+/gu) ?? [];
+  if (!words.length) return 'empty';
+  const real = words.filter((w) => !PLACEHOLDER.has(w) && !isMash(w) && w.length >= 2);
+  if (!real.length) return 'junk';
+  // Mostly mash with a stray real word ("asdfgh ok brake qwerty") is still junk.
+  const mash = words.filter(isMash).length;
+  if (mash >= 2 && mash / words.length > 0.5) return 'junk';
+  if (real.join('').length < 3) return 'junk';
+  return 'ok';
+}
+
+/** A model year a vehicle can have; anything else is a typing slip and is blanked. */
+export function plausibleYear(year: number | null | undefined, now = new Date()): number | null {
+  if (year === null || year === undefined || !Number.isInteger(year)) return null;
+  return year >= 1950 && year <= now.getUTCFullYear() + 1 ? year : null;
+}
+
+/** Shortest believable time from opening to ready (anything quicker was a test or a slip). */
+export const MIN_TURNAROUND_HOURS = 0.5;
+
+function badLine(l: DatasetLine): boolean {
+  if (!Number.isFinite(l.quantity) || l.quantity <= 0 || l.quantity > 10_000) return true;
+  if (l.unit_price !== null && (!Number.isFinite(l.unit_price) || l.unit_price < 0 || l.unit_price > 50_000_000)) return true;
+  if (l.amount !== null && (!Number.isFinite(l.amount) || l.amount < 0 || l.amount > 500_000_000)) return true;
+  return !l.key || !l.label.replace(SCRUB_MARK, '').trim();
+}
+
+export type QualityReport = {
+  examined: number;
+  kept: number;
+  /** Rows left out, by reason. */
+  dropped: { no_complaint: number; test_or_junk_text: number; impossible_line: number; duplicate: number };
+  /** Values blanked in rows that were kept, by reason. */
+  blanked: { turnaround_too_short: number };
+};
+
+/**
+ * The rows worth learning from, and what was left out and why. Keeps order.
+ * Duplicates: the same complaint, vehicle, day and lines (a record saved
+ * twice, or the same test repeated) count once.
+ */
+export function qualityFilter(rows: DatasetRow[]): { rows: DatasetRow[]; report: QualityReport } {
+  const report: QualityReport = { examined: rows.length, kept: 0, dropped: { no_complaint: 0, test_or_junk_text: 0, impossible_line: 0, duplicate: 0 }, blanked: { turnaround_too_short: 0 } };
+  const seen = new Set<string>();
+  const out: DatasetRow[] = [];
+  for (const r of rows) {
+    const q = complaintQuality(r.complaint_text);
+    if (q === 'empty') { report.dropped.no_complaint += 1; continue; }
+    if (q === 'junk') { report.dropped.test_or_junk_text += 1; continue; }
+    if (!r.lines.length || r.lines.some(badLine)) { report.dropped.impossible_line += 1; continue; }
+    const sig = JSON.stringify([r.opened_on, r.kind, r.complaint_text.toLowerCase(), r.make, r.model, r.lines.map((l) => `${l.key}:${l.quantity}`).sort()]);
+    if (seen.has(sig)) { report.dropped.duplicate += 1; continue; }
+    seen.add(sig);
+    if (r.turnaround_hours !== null && r.turnaround_hours < MIN_TURNAROUND_HOURS) {
+      report.blanked.turnaround_too_short += 1;
+      out.push({ ...r, turnaround_hours: null });
+    } else out.push(r);
+  }
+  report.kept = out.length;
+  return { rows: out, report };
+}

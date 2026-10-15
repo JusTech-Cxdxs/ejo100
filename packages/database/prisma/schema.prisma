@@ -3397,6 +3397,10 @@ model EnyoSetting {
   // {"JOB_DURATION":"SHADOW","PRICE_ANOMALY":"ASSIST"}. Missing = the
   // capability's default (OFF or SHADOW); see lib/enyo/ml/capabilities.ts.
   capabilityLevels  Json?
+  // v33: learn only from records opened on or after this day (Lagos). Set it
+  // to the go-live date so test data typed while trying the system out is
+  // never learned from. Null = all history (up to three years).
+  learnFrom         DateTime? @db.Date
   updatedById       String?
   updatedAt         DateTime @updatedAt
 

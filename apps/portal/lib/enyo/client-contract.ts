@@ -60,6 +60,8 @@ export type EnyoAdminSettings = {
   mailAi: boolean;
   predictionsMode: 'SHADOW' | 'SUGGEST' | 'OFF';
   displayName: string;
+  /** Learn only from records opened on or after this day (YYYY-MM-DD); null = all history. */
+  learnFrom: string | null;
 };
 
 export type EnyoProviderInfo = { configured: boolean; label?: string; model?: string };

@@ -72,7 +72,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
           <EmptyState icon="settings" title={NOT_SET_UP}>Ask your administrator to set it up. Until then, keep using your usual mail app.</EmptyState>
         ) : (
           <EmptyState icon="mail" title="Connect your work mailbox" action={<HeaderAction href="/mail/connect" icon="mail">Connect mailbox</HeaderAction>}>
-            Gmail, Zoho and company (cPanel) mailboxes work with an app password. Only you can see your mail here — nobody else, administrators included.
+            Gmail, Zoho and your organisation's own (cPanel) mailboxes work with an app password. Only you can see your mail here — nobody else, administrators included.
           </EmptyState>
         )}
       </div>

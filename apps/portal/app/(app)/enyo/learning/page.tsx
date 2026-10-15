@@ -5,6 +5,8 @@ import { MODEL_VERSION } from '@/lib/enyo/predict/lines';
 import { PageHeader, SectionCard, StatTile, BarRow, EmptyState, Icon, CHART } from '@/components/ui';
 import { LearningAccuracyChartLazy } from '@/components/enyo/LearningAccuracyChartLazy';
 import { pluralize } from '@/lib/utils/pluralize';
+import { Suspense } from 'react';
+import { DataQualityCard } from '@/components/enyo/DataQualityCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -125,6 +127,14 @@ export default async function EnyoLearningPage() {
           </div>
         </SectionCard>
       </div>
+
+      {canManage && orgId ? (
+        <div className="mb-6">
+          <Suspense fallback={<SectionCard icon="check-circle" title="Training data quality"><p role="status" className="text-sm text-[var(--ejo-text-muted)]">Checking the training data…</p></SectionCard>}>
+            <DataQualityCard organisationId={orgId} branchIds={reach.branchId === undefined ? null : typeof reach.branchId === 'string' ? [reach.branchId] : reach.branchId.in} />
+          </Suspense>
+        </div>
+      ) : null}
 
       {d.total === 0 ? (
         <SectionCard icon="sparkles" title="Nothing measured yet">

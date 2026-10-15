@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { EnyoAvatar } from '@ejo/enyo/src/ui/EnyoAvatar';
 import { readEvents, type EnyoEvent } from '@ejo/enyo/src/protocol';
+import { useChatViewport } from '@ejo/enyo/src/ui/useChatViewport';
 import { EnyoMarkdown } from './EnyoMarkdown';
 
 /**
  * Enyo's chat on the website: a floating button that opens a chat panel.
  *  - variant "portal": the signed-in customer portal (the customer's own records);
- *  - variant "public": the public website (company information and hand-over).
+ *  - variant "public": the public website (organisation information and hand-over).
  * The server decides which assistant answers from the session, never this
  * component. The button only appears when the assistant is switched on.
  *
@@ -38,7 +39,7 @@ const MAX = 2000;
 
 const SUGGESTIONS: Record<'portal' | 'public', string[]> = {
   portal: ['Where is my vehicle up to?', 'What do I still owe?', 'How do I pay?', 'I would like to talk to a person'],
-  public: ['Where are your branches?', 'How do I book a service?', 'What does your company do?', 'I would like someone to call me'],
+  public: ['Where are your branches?', 'How do I book a service?', 'What does your organisation do?', 'I would like someone to call me'],
 };
 
 const storageKey = (variant: string) => `enyo:conversation:${variant}`;
@@ -81,6 +82,8 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
   const panel = useRef<HTMLDivElement>(null);
   const log = useRef<HTMLDivElement>(null);
   const name = status?.displayName || 'Enyo';
+  // Phones: the chat fits the visible screen above the keyboard, header always in view.
+  const viewportBox = useChatViewport(open);
 
   // May the button show? (Also reopens this tab's conversation.)
   useEffect(() => {
@@ -107,7 +110,7 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
     requestAnimationFrame(() => button.current?.focus());
   }, []);
 
-  // Focus the message box on open; Esc closes; phones: the page behind does not scroll.
+  // Focus the message box on open; Esc closes (useChatViewport locks the page behind on phones).
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => input.current?.focus(), 30);
@@ -126,9 +129,7 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     };
     document.addEventListener('keydown', onKey);
-    const prev = document.body.style.overflow;
-    if (small) document.body.style.overflow = 'hidden';
-    return () => { clearTimeout(t); document.removeEventListener('keydown', onKey); if (small) document.body.style.overflow = prev; };
+    return () => { clearTimeout(t); document.removeEventListener('keydown', onKey); };
   }, [open, close]);
 
   // Keep the newest message in view while it streams (unless the person scrolled up to read).
@@ -233,13 +234,14 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
           role="dialog"
           aria-labelledby="enyo-chat-title"
           data-testid="enyo-chat"
+          style={viewportBox}
           className="ejo-pop fixed inset-0 z-[60] flex flex-col bg-[var(--ejo-bg)] pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] sm:inset-auto sm:bottom-6 sm:right-6 sm:h-[min(640px,calc(100dvh-3rem))] sm:w-[400px] sm:overflow-hidden sm:rounded-[var(--ejo-radius-xl)] sm:border sm:border-[var(--ejo-border)] sm:pb-0 sm:pt-0 sm:shadow-2xl"
         >
-          <header className="flex items-center gap-3 border-b border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2.5 sm:px-4">
+          <header className="flex shrink-0 items-center gap-3 border-b border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2.5 sm:px-4">
             <EnyoAvatar size={40} mood={busy ? (messages.at(-1)?.text ? 'speaking' : 'thinking') : messages.length ? 'idle' : 'wave'} level={busy ? 0.55 : 0} />
             <div className="min-w-0 flex-1">
               <h2 id="enyo-chat-title" className="truncate text-sm font-semibold text-[var(--ejo-text)]">{name}</h2>
-              <p className="truncate text-xs text-[var(--ejo-text-muted)]">{variant === 'portal' ? 'Your assistant for your vehicles and visits' : 'Questions about our company and services'}</p>
+              <p className="truncate text-xs text-[var(--ejo-text-muted)]">{variant === 'portal' ? 'Your assistant for your vehicles and visits' : 'Questions about our organisation and services'}</p>
             </div>
             {messages.length ? (
               <button type="button" onClick={restart} aria-label="Start a new conversation" title="New conversation" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-text)]">
@@ -309,7 +311,7 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
             )))}
           </div>
 
-          <form onSubmit={onSubmit} className="border-t border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 pb-3 pt-2.5 sm:px-4">
+          <form onSubmit={onSubmit} className="shrink-0 border-t border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 pb-3 pt-2.5 sm:px-4">
             <div className="flex items-end gap-2">
               <label htmlFor="enyo-message" className="sr-only">Your message</label>
               <textarea

@@ -136,7 +136,7 @@ test.describe('a signed-in customer', () => {
 test.describe('a website visitor', () => {
   test('asks about the company and gets its details', async ({ page }) => {
     await page.goto(`${WEB}/`);
-    const answer = await ask(page, '[[tool:company_info]]');
+    const answer = await ask(page, '[[tool:organisation_info]]');
     await expect(answer).toContainText('Here is what I found');
     await expect(answer).toContainText('Kewalram');
     await expect(answer.getByTestId('enyo-error')).toHaveCount(0);

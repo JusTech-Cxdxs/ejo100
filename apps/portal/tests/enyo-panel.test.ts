@@ -89,8 +89,18 @@ test('starter questions suit the role, at most four, always "What\'s waiting for
     assert.equal(new Set(s).size, s.length);
   }
   assert.ok(starterPrompts('Finance Officer').includes("Today's takings"));
-  assert.ok(starterPrompts('Store Manager').includes('Price of an oil filter'));
+  assert.ok(starterPrompts('Store Manager').includes('Which parts are out of stock or below their reorder point?'));
   assert.ok(starterPrompts('Workshop Supervisor').includes('How do I open a Job Card?'));
+  for (const role of ['Administrator', 'Store Manager', 'Technician']) assert.ok(!starterPrompts(role).some((q) => /oil filter/i.test(q)), role);
+});
+
+test('starter questions follow the page: a Job Card page asks about this Job Card', () => {
+  const s = starterPrompts('Technician', '/workshop/job-cards/abc123');
+  assert.equal(s[0], "What's waiting for me?");
+  assert.equal(s[1], 'Summarise this Job Card and what happens next');
+  assert.ok(starterPrompts('Clerk', '/mail?m=1').includes('Anything important in my email?'));
+  assert.ok(starterPrompts('Administrator', '/dashboard').includes('How is this month going compared with last month?'));
+  for (const page of ['/workshop/job-cards/x', '/inventory', '/reminders', '/settings/enyo', '/whatever']) assert.equal(new Set(starterPrompts('Store Manager', page)).size, starterPrompts('Store Manager', page).length);
 });
 
 // ------------------------------------------------------------ static guarantees

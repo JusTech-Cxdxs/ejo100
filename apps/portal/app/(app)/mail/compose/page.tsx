@@ -77,7 +77,7 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
         {original && p.inReplyTo ? <input type="hidden" name="inReplyTo" value={original.id} /> : null}
         <div>
           <label htmlFor="mail-to" className={label}>To</label>
-          <input id="mail-to" name="to" required defaultValue={to} placeholder="name@company.com, another@company.com" className={input} autoComplete="off" inputMode="email" />
+          <input id="mail-to" name="to" required defaultValue={to} placeholder="name@example.com, another@example.com" className={input} autoComplete="off" inputMode="email" />
         </div>
         <div>
           <label htmlFor="mail-cc" className={label}>Cc (optional)</label>

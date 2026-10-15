@@ -11,12 +11,12 @@
  *
  * The SERVER decides who is asking: a valid, active customer session is the
  * CUSTOMER assistant (that customer's own records only); anyone else is the
- * PUBLIC assistant (company information and hand-over only), known by a
+ * PUBLIC assistant (organisation information and hand-over only), known by a
  * random `enyo_visitor` cookie.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, setAuditActor } from '@ejo/database';
-import { buildSystemPrompt, encodeEvent, lagosNow, runAgent, SSE_HEADERS, trimHistory, type EnyoEvent } from '@ejo/enyo';
+import { buildSystemPrompt, encodeEvent, lagosNow, runAgent, SSE_HEADERS, trimHistory, webLookupEnabled, webLookupTool, type EnyoEvent } from '@ejo/enyo';
 import { currentCustomer, type SignedInCustomer } from '@/lib/customer-portal/session';
 import { clientIp } from '@/lib/customer-audit';
 import { recordErrorEvent, newRef, redact } from '@/lib/error-events';
@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
     const turns = trimHistory(await history(conversation.id), 12_000, 16);
 
     const org = await prisma.organisation.findUnique({ where: { id: organisationId }, select: { name: true } });
-    const organisationName = org?.name ?? 'the company';
+    const organisationName = org?.name ?? 'the organisation';
     const extra = [
       'Figures: quote the "text" form of an amount exactly as the tool gives it (for example ₦12,500.00).',
       'Links: tool results give paths such as /customer-portal/dashboard/services/jc/…; link to them with Markdown. Never link anywhere else.',
@@ -192,7 +192,7 @@ export async function POST(req: NextRequest) {
             config: ready.config,
             system,
             messages: turns,
-            tools: mode === 'CUSTOMER' ? customerTools : publicTools,
+            tools: [...(mode === 'CUSTOMER' ? customerTools : publicTools), ...(webLookupEnabled() ? [webLookupTool<WebCtx>()] : [])],
             ctx,
             emit,
             signal: req.signal,

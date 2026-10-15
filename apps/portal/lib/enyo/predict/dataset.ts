@@ -15,7 +15,8 @@ import 'server-only';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@ejo/database';
 import { lagosDayKey } from '@/lib/utils/format-date';
-import { datasetLines, mileageBand, opaqueId, scrubText, turnaroundHours, type DatasetRow } from './dataset-core';
+import { datasetLines, mileageBand, opaqueId, plausibleYear, qualityFilter, scrubText, turnaroundHours, type DatasetRow, type QualityReport } from './dataset-core';
+import { learningSince } from './learn-from';
 import { complaintTokens, featureTokens, workNumbers } from '../ml/features-core';
 import { loadFinalLines, YEARS_BACK } from './similar';
 import type { PredictionOutput } from './lines';
@@ -51,10 +52,18 @@ type Job = {
 
 const nameOf = (u: { fullName: string } | null | undefined) => (u?.fullName ? [u.fullName] : []);
 
+/** The rows worth learning from (qualityFilter in dataset-core.ts). */
 export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: number; now?: Date } = {}): Promise<DatasetRow[]> {
+  return (await buildTrainingSet(scope, opts)).rows;
+}
+
+/** The training rows and the data-quality report (what was left out and why). */
+export async function buildTrainingSet(scope: DatasetScope, opts: { limit?: number; now?: Date } = {}): Promise<{ rows: DatasetRow[]; report: QualityReport; learnFrom: Date | null }> {
   const limit = Math.min(opts.limit ?? DATASET_ROW_LIMIT, DATASET_ROW_LIMIT);
-  const since = new Date(opts.now ?? new Date());
-  since.setFullYear(since.getFullYear() - YEARS_BACK);
+  const now = opts.now ?? new Date();
+  const threeYears = new Date(now);
+  threeYears.setFullYear(threeYears.getFullYear() - YEARS_BACK);
+  const since = await learningSince(scope.organisationId, threeYears);
   const where = {
     branch: { businessUnit: { organisationId: scope.organisationId } },
     ...(scope.branchIds ? { branchId: { in: scope.branchIds } } : {}),
@@ -96,13 +105,13 @@ export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: num
     ...jobRows.map((r: (typeof jobRows)[number]) => ({
       id: r.id, kind: 'JOB_CARD' as const, createdAt: r.createdAt, branchCode: r.branch.code,
       complaint: [...r.complaints.map((c: { description: string }) => c.description), r.complaint ?? ''].map((s) => s.trim()).filter(Boolean).join('. '),
-      make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, mileage: r.mileageAtCheckIn, vehicleType: r.vehicle.vehicleType,
+      make: r.vehicle.make, model: r.vehicle.model, year: plausibleYear(r.vehicle.year, now), mileage: r.mileageAtCheckIn, vehicleType: r.vehicle.vehicleType,
       department: r.department?.name ?? null, readyAt: r.readyForCollectionAt ?? r.completedAt ?? null, names: namesOf(r),
     })),
     ...serviceRows.map((r: (typeof serviceRows)[number]) => ({
       id: r.id, kind: 'SERVICE' as const, createdAt: r.createdAt, branchCode: r.branch.code,
       complaint: [...r.complaints.map((c: { description: string }) => c.description), r.customerComplaint ?? ''].map((s) => s.trim()).filter(Boolean).join('. '),
-      make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, mileage: r.odometerAtService, vehicleType: r.vehicle.vehicleType,
+      make: r.vehicle.make, model: r.vehicle.model, year: plausibleYear(r.vehicle.year, now), mileage: r.odometerAtService, vehicleType: r.vehicle.vehicleType,
       department: r.department?.name ?? null, readyAt: r.readyForCollectionAt ?? r.completedAt ?? null, names: namesOf(r),
     })),
   ]
@@ -159,5 +168,6 @@ export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: num
       turnaround_hours: turnaroundHours(j.createdAt, j.readyAt),
     });
   }
-  return out;
+  const { rows, report } = qualityFilter(out);
+  return { rows, report, learnFrom: since > threeYears ? since : null };
 }

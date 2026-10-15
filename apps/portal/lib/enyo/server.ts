@@ -93,7 +93,7 @@ export function roleDescription(roleSlugs: string[], isSuperAdmin: boolean): str
 
 export async function staffSystemPrompt(o: { ctx: StaffCtx; settings: EnyoSettings; organisationId: string | null; memory: string[]; assistantName: string | null }): Promise<string> {
   const org = o.organisationId ? await prisma.organisation.findUnique({ where: { id: o.organisationId }, select: { name: true } }).catch(() => null) : null;
-  const organisationName = org?.name || process.env.NEXT_PUBLIC_ORGANISATION_NAME || 'the company';
+  const organisationName = org?.name || process.env.NEXT_PUBLIC_ORGANISATION_NAME || 'the organisation';
   const firstName = o.ctx.name.split(/\s+/)[0] || o.ctx.name;
   const extra = [
     'Money is in Nigerian naira (₦). Dates and times are Lagos time.',

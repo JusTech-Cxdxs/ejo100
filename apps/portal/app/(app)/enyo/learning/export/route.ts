@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { allows, currentAssist, getPrincipal, myOrganisationId, reachWhere } from '@/lib/authz/server';
 import { writeAuditLog } from '@/lib/workshop-core';
-import { buildTrainingRows } from '@/lib/enyo/predict/dataset';
+import { buildTrainingSet } from '@/lib/enyo/predict/dataset';
 import { toCsv, toJsonl } from '@/lib/enyo/predict/dataset-core';
 import { lagosDayKey } from '@/lib/utils/format-date';
 import { logError, withReference } from '@/lib/errors';
@@ -30,8 +30,8 @@ export async function GET(request: Request) {
     const reach = await reachWhere('enyo.manage');
     const b = reach.branchId;
     const branchIds = b === undefined ? null : typeof b === 'string' ? [b] : b.in;
-    const rows = await buildTrainingRows({ organisationId, branchIds });
-    await writeAuditLog({ userId: p.userId, action: 'enyo.training_data_exported', entityType: 'Organisation', entityId: organisationId, metadata: { format, rows: rows.length } });
+    const { rows, report } = await buildTrainingSet({ organisationId, branchIds });
+    await writeAuditLog({ userId: p.userId, action: 'enyo.training_data_exported', entityType: 'Organisation', entityId: organisationId, metadata: { format, rows: rows.length, quality: report } });
     const body = format === 'jsonl' ? toJsonl(rows) : toCsv(rows);
     return new NextResponse(body, {
       headers: {

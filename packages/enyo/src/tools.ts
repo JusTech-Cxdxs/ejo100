@@ -1,5 +1,5 @@
 /**
- * Tools: the only way Enyo reaches company data or does anything.
+ * Tools: the only way Enyo reaches the organisation's data or does anything.
  *
  * Each tool wraps code the app already trusts (a server action or reader that
  * runs the normal permission checks for the signed-in person). A tool never

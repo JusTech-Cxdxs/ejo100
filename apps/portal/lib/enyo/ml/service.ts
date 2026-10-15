@@ -16,6 +16,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { prisma } from '@ejo/database';
 import { withinLimit } from '@/lib/mail/account';
 import { buildTrainingRows } from '@/lib/enyo/predict/dataset';
+import { learningSince } from '@/lib/enyo/predict/learn-from';
 import { weeklySeries, type ConsumptionEvent, type PartsRow } from './datasets-core';
 
 export const NO_STORE = { 'Cache-Control': 'private, no-store, max-age=0', 'X-Content-Type-Options': 'nosniff' };
@@ -49,10 +50,15 @@ export async function jobsDataset(organisationId: string) {
 
 export const PARTS_WEEKS = 104;
 
-/** Weekly consumption of every active part of the organisation over the last two years. */
+/** Weekly consumption of every active part of the organisation over the last two years (or since the learn-from day). */
 export async function partsDataset(organisationId: string, now = new Date()): Promise<PartsRow[]> {
   const inOrg = { branch: { businessUnit: { organisationId } } };
-  const since = new Date(now.getTime() - (PARTS_WEEKS + 2) * 7 * 86_400_000);
+  const WEEK = 7 * 86_400_000;
+  const floor = new Date(now.getTime() - (PARTS_WEEKS + 2) * WEEK);
+  // After a "learn from" day, only whole weeks since then: the weeks before it
+  // are not "no use", they are unknown, and zeros would drag forecasts down.
+  const since = await learningSince(organisationId, floor);
+  const weeks = since > floor ? Math.max(1, Math.min(PARTS_WEEKS, Math.floor((now.getTime() - since.getTime()) / WEEK))) : PARTS_WEEKS;
   const [parts, quantity, batch] = await Promise.all([
     prisma.part.findMany({ where: { ...inOrg, isActive: true }, select: { id: true }, orderBy: { id: 'asc' }, take: 20_000 }),
     prisma.partQuantityConsumption.findMany({ where: { part: inOrg, consumedAt: { gte: since } }, select: { partId: true, consumedAt: true, quantityTaken: true } }),
@@ -62,5 +68,5 @@ export async function partsDataset(organisationId: string, now = new Date()): Pr
     ...quantity.map((q: { partId: string; consumedAt: Date; quantityTaken: unknown }) => ({ partId: q.partId, at: q.consumedAt, quantity: Number(q.quantityTaken) })),
     ...batch.map((b: { batch: { partId: string }; consumedAt: Date; quantityTaken: unknown }) => ({ partId: b.batch.partId, at: b.consumedAt, quantity: Number(b.quantityTaken) })),
   ];
-  return weeklySeries(parts.map((p: { id: string }) => p.id), events, PARTS_WEEKS, now);
+  return weeklySeries(parts.map((p: { id: string }) => p.id), events, weeks, now);
 }

@@ -1,5 +1,5 @@
 /**
- * What Enyo may say about the company: only what the database and the
+ * What Enyo may say about the organisation: only what the database and the
  * website's own configuration hold. Nothing is invented — a missing fact
  * (opening hours, prices) is reported as missing.
  */
