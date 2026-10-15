@@ -34,12 +34,21 @@ export type DatasetRow = {
   precision: number | null;
   recall: number | null;
   model_version: string | null;
+  /** v32, for the Python trainer: the complaint's words as the portal tokenises them (from the scrubbed text). */
+  complaint_tokens: string[];
+  /** The job's context as tokens (kind, make, model family, age band, mileage band, vehicle type, branch, department). */
+  feature_tokens: string[];
+  /** Counts about the work (lines of each type, part quantities, complaint length): ml/features-core.ts workNumbers. */
+  work_numbers: Record<string, number>;
+  /** Hours from opening to ready for collection (or completion); null when not finished. */
+  turnaround_hours: number | null;
 };
 
 /** Every column of a row — and nothing else ever goes out. */
 export const DATASET_COLUMNS: readonly (keyof DatasetRow)[] = [
   'row_id', 'kind', 'opened_on', 'branch_code', 'complaint_text', 'make', 'model', 'year', 'mileage_band_km', 'vehicle_type',
   'lines', 'labour_total', 'predicted_keys', 'precision', 'recall', 'model_version',
+  'complaint_tokens', 'feature_tokens', 'work_numbers', 'turnaround_hours',
 ];
 
 const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
@@ -90,7 +99,8 @@ export function mileageBand(km: number | null | undefined): number | null {
 export function datasetLines(lines: HistLine[], names: string[] = []): DatasetLine[] {
   return lines.map((l) => ({
     type: l.type,
-    key: lineKey(l),
+    // The key from the scrubbed description too: it goes into trained models.
+    key: lineKey({ ...l, description: scrubText(l.description, names) }),
     label: scrubText(l.type === 'STORE_PART' ? (l.partTypeName || l.description) : l.description, names).slice(0, 200),
     quantity: l.quantity,
     unit_price: l.type === 'STORE_PART' ? null : l.unitPrice,
@@ -118,13 +128,22 @@ function csvCell(v: unknown): string {
 }
 
 /** CSV with one row per job; `line_keys` is the multi-label target (pipe-separated), `lines` the full JSON. */
+const CSV_PLAIN = DATASET_COLUMNS.filter((c) => c !== 'lines' && c !== 'predicted_keys');
+
 export function toCsv(rows: DatasetRow[]): string {
-  const header = [...DATASET_COLUMNS.filter((c) => c !== 'lines' && c !== 'predicted_keys'), 'line_keys', 'predicted_line_keys', 'lines'];
+  const header = [...CSV_PLAIN, 'line_keys', 'predicted_line_keys', 'lines'];
   const out = [header.join(',')];
   for (const r of rows.map(pickColumns)) {
-    const cells = DATASET_COLUMNS.filter((c) => c !== 'lines' && c !== 'predicted_keys').map((c) => csvCell(r[c]));
+    const cells = CSV_PLAIN.map((c) => csvCell(Array.isArray(r[c]) ? (r[c] as string[]).join(' ') : r[c]));
     cells.push(csvCell(r.lines.map((l) => l.key).join('|')), csvCell(r.predicted_keys ? r.predicted_keys.join('|') : null), csvCell(r.lines));
     out.push(cells.join(','));
   }
   return `${out.join('\n')}\n`;
+}
+
+/** Hours between opening and ready, two decimals; null unless the end exists and follows the start (at most 180 days). */
+export function turnaroundHours(openedAt: Date, readyAt: Date | null | undefined): number | null {
+  if (!readyAt) return null;
+  const h = (readyAt.getTime() - openedAt.getTime()) / 3_600_000;
+  return h > 0 && h <= 24 * 180 ? Math.round(h * 100) / 100 : null;
 }

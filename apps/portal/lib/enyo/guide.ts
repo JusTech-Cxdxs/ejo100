@@ -526,6 +526,16 @@ export const GUIDE: GuideEntry[] = [
     steps: ['Go to Settings → Enyo — learning (also linked from Business Analytics).', 'Read the accuracy by week, the lines it keeps missing and its progress toward the rule for switching to Suggest mode.', 'An administrator decides when to switch modes on Settings → Enyo.'],
   },
   {
+    id: 'enyo-models', title: 'Review Enyo\'s trained models and set each capability\'s level', page: '/enyo/models', needs: ['enyo.manage'], does: ['enyo.manage'], who: 'Administrators',
+    keywords: ['model', 'machine learning', 'ml', 'trained', 'shadow', 'assist', 'automation level', 'job time', 'ready time', 'unusual price', 'reorder', 'complaint themes'],
+    steps: ['Go to Enyo learning and open "Models" (or go to /enyo/models).', 'Each model shows how it did on the newest jobs against a simple baseline. Press "Use this model" on one marked Ready to use.', 'Set each capability\'s level: Shadow measures it without showing anyone; Assist shows it to people, who still decide. "Retire" stops a model at once.'],
+  },
+  {
+    id: 'reorder-suggestions', title: 'See which parts to reorder (Enyo)', page: '/inventory/reorder', needs: ['store.view', 'analytics.inventory.view'], who: 'Store staff and managers',
+    keywords: ['reorder', 'restock', 'order parts', 'running low', 'reorder point', 'demand', 'forecast'],
+    steps: ['Go to Inventory → Reorder suggestions (/inventory/reorder).', 'Each part listed is at or below the reorder point learned from its real use, with the next four weeks\' expected use and a suggested quantity.', 'Raise the order the usual way; nothing is ordered for you.'],
+  },
+  {
     id: 'support-inbox', title: 'Answer customers handed over by Enyo (support inbox)', page: '/crm/support', needs: ['crm.view'], does: ['support.tickets.manage'], who: 'Front desk, managers and administrators',
     keywords: ['support', 'ticket', 'handover', 'customer care', 'complaint', 'sup', 'customer message', 'inbox'],
     steps: ['Go to Customers → Support inbox. New conversations Enyo handed over are under "Open".', 'Open a ticket to read Enyo\'s summary and the conversation, then write your reply and send it. The customer gets it by email and in their portal.', 'Assign it to yourself or a colleague, and mark it resolved when done.'],

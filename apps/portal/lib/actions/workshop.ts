@@ -75,6 +75,7 @@ import { renderCustomerJobCompletedEmail } from '@/lib/email-templates/customer-
 import { renderCustomerReadyForCollectionEmail } from '@/lib/email-templates/customer-ready-for-collection';
 import { lagosYear } from '@/lib/utils/format-date';
 import { schedulePrediction, scheduleResolution } from '@/lib/enyo/predict/lines';
+import { scheduleDuration } from '@/lib/enyo/ml/models';
 
 class WorkshopActionError extends Error {}
 
@@ -2525,6 +2526,8 @@ export async function approveEstimateAsManager(jobCardId: string): Promise<void>
   });
   // Enyo: score its prediction against the approved lines (once; errors only logged).
   scheduleResolution({ kind: 'JOB_CARD', id: jobCardId });
+  // Enyo: how long the job is likely to take, now its lines are known (when switched on; errors only logged).
+  scheduleDuration({ kind: 'JOB_CARD', id: jobCardId });
 
   // Tell the Job Card's creator; they decide when the customer is notified
   // (notifyCustomerOfApprovedEstimate). Fail-soft.

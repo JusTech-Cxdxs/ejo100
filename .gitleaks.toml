@@ -59,6 +59,8 @@ regexes = [
   # (base64 of "e2e-only-mailbox-key-32-bytes!!!"); never used outside CI.
   '''e2e-mock-key''',
   '''ZTJlLW9ubHktbWFpbGJveC1rZXktMzItYnl0ZXMhISE=''',
+  # The Enyo trainer's test-only token (e2e.yml, e2e/ml-models.spec.ts); never used outside CI.
+  '''e2e-ml-service-token-0123456789abcdef''',
 ]
 paths = [
   '''(^|/)package-lock\.json$''',

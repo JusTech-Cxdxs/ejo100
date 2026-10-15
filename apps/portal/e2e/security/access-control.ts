@@ -90,6 +90,14 @@ async function cron(): Promise<Check[]> {
     checks.push({ id: 'AC-CRON', title: p, pass: [none, wrong, query, raw].every((r) => r.status === 401) && right.status === 200 && post.status !== 200,
       detail: `none=${none.status} wrong=${wrong.status} ?key=${query.status} no-Bearer=${raw.status} POST=${post.status} correct=${right.status}` });
   }
+  // The Enyo trainer's door: never open without its own token (404 when not set up, 401 otherwise).
+  for (const p of ['/api/ml/datasets/jobs?organisation=kewalram-nigeria', '/api/ml/datasets/parts?organisation=kewalram-nigeria']) {
+    const none = await fetch(`${BASE}${p}`, { redirect: 'manual' });
+    const forged = await fetch(`${BASE}${p}`, { headers: { cookie: FORGED_COOKIE, authorization: 'Bearer forged-token' }, redirect: 'manual' });
+    checks.push({ id: 'AC-ML', title: p.split('?')[0]!, pass: [none, forged].every((r) => r.status === 401 || r.status === 404), detail: `none=${none.status} forged=${forged.status}` });
+  }
+  const upload = await fetch(`${BASE}/api/ml/models`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', redirect: 'manual' });
+  checks.push({ id: 'AC-ML', title: 'POST /api/ml/models', pass: upload.status === 401 || upload.status === 404, detail: `status=${upload.status}` });
   const pulse = await fetch(`${BASE}/api/live/pulse`, { redirect: 'manual' });
   const pulseForged = await fetch(`${BASE}/api/live/pulse`, { headers: { cookie: FORGED_COOKIE }, redirect: 'manual' });
   const toLogin = pulse.status === 307 && (pulse.headers.get('location') ?? '').includes('/login');

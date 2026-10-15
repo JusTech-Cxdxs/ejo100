@@ -20,6 +20,7 @@ import { draftTools } from './drafts';
 import { remindersTools } from './reminders';
 import { mailTools } from './mail';
 import { workshopTools } from './workshop';
+import { learningTools } from './learning';
 
 export function staffTools(): StaffTool[] {
   return [
@@ -34,5 +35,6 @@ export function staffTools(): StaffTool[] {
     ...remindersTools,
     ...mailTools,
     ...workshopTools,
+    ...learningTools,
   ];
 }

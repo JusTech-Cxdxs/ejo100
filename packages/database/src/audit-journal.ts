@@ -155,7 +155,7 @@ const SKIP_MODELS = new Set([
   // v31: chat transcripts, email contents and prediction logs are high-volume
   // personal content, not business changes. Mailbox connect/disconnect, ticket
   // and reminder actions write their own business audit entries instead.
-  'EnyoConversation', 'EnyoMessage', 'EnyoMemory', 'EnyoPrediction',
+  'EnyoConversation', 'EnyoMessage', 'EnyoMemory', 'EnyoPrediction', 'EnyoModel',
   'MailAccount', 'MailMessage',
   // Message bodies, contact details and reminder notes stay out of audit_logs;
   // replies, status changes, assignments and reminder steps write their own

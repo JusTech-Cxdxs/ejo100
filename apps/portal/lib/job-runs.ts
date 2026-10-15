@@ -24,6 +24,7 @@ export const JOBS: { key: string; name: string; when: string; does: string }[] =
   { key: 'enyo-cleanup', name: 'Enyo chat clean-up', when: '8:00 am daily, with the pricing digest (Vercel)', does: 'Removes Enyo conversations 12 months after their last message (staff and customers) and website chats after 90 days.' },
   { key: 'mail-retention', name: 'Mail clean-up', when: '8:00 am daily, with the pricing digest (Vercel)', does: 'Removes stored copies of emails older than 90 days. The mailbox itself is not touched.' },
   { key: 'reminder-retention', name: 'Reminder clean-up', when: '8:00 am daily, with the pricing digest (Vercel)', does: 'Removes reminders that were done or cancelled more than 12 months ago.' },
+  { key: 'enyo-duration-scoring', name: 'Enyo job time scoring', when: '8:00 am daily, with the pricing digest (Vercel)', does: 'Compares each job time estimate with when the vehicle was actually ready, so the Enyo models page can show how accurate it is.' },
   { key: 'recycle-bin-purge', name: 'Recycle bin clean-up', when: '8:00 am daily, with the pricing digest (Vercel)', does: 'Permanently removes Recycle bin items whose restore period has ended (30 days unless RECYCLE_BIN_DAYS says otherwise). A short record of what was removed, by whom and why stays.' },
 ];
 

@@ -15,7 +15,8 @@ const AUTH_PAGES = ['/login', '/forgot-password', '/reset-password', '/verify-em
 // /signed-out clears a session the server refused (switched-off account).
 // /api/error-report stores the reference a browser-side failure shows, even
 // on the sign-in pages; it checks the origin and limits itself.
-const ALWAYS_PUBLIC = ['/api/auth', '/api/cron', '/api/health', '/api/error-report', '/signed-out'];
+// /api/ml: the trainer's machine door, protected by its own token (lib/enyo/ml/service.ts).
+const ALWAYS_PUBLIC = ['/api/auth', '/api/cron', '/api/health', '/api/error-report', '/api/ml', '/signed-out'];
 
 // Flood protection for submissions (form posts / server actions): at most
 // 120 a minute per person (1,500 per shared address), per server instance. Reading pages is never

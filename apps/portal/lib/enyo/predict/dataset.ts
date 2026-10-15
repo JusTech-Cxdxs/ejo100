@@ -15,7 +15,8 @@ import 'server-only';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@ejo/database';
 import { lagosDayKey } from '@/lib/utils/format-date';
-import { datasetLines, mileageBand, opaqueId, scrubText, type DatasetRow } from './dataset-core';
+import { datasetLines, mileageBand, opaqueId, scrubText, turnaroundHours, type DatasetRow } from './dataset-core';
+import { complaintTokens, featureTokens, workNumbers } from '../ml/features-core';
 import { loadFinalLines, YEARS_BACK } from './similar';
 import type { PredictionOutput } from './lines';
 import type { HistLine } from './lines-core';
@@ -42,6 +43,8 @@ type Job = {
   year: number | null;
   mileage: number | null;
   vehicleType: string | null;
+  department: string | null;
+  readyAt: Date | null;
   /** Only to scrub them out of free text. */
   names: string[];
 };
@@ -62,7 +65,7 @@ export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: num
     prisma.jobCard.findMany({
       where: { ...where, status: { not: 'CANCELLED' }, estimate: { is: { status: 'MANAGER_APPROVED' } } },
       select: {
-        id: true, createdAt: true, complaint: true, mileageAtCheckIn: true,
+        id: true, createdAt: true, complaint: true, mileageAtCheckIn: true, readyForCollectionAt: true, completedAt: true, department: { select: { name: true } },
         complaints: { select: { description: true }, orderBy: { sequenceNumber: 'asc' } },
         branch: { select: { code: true } },
         vehicle: { select: { make: true, model: true, year: true, vehicleType: true } },
@@ -75,7 +78,7 @@ export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: num
     prisma.vehicleService.findMany({
       where: { ...where, status: { notIn: ['CANCELLED', 'ESCALATED'] }, serviceEstimate: { is: { status: 'MANAGER_APPROVED' } } },
       select: {
-        id: true, createdAt: true, customerComplaint: true, odometerAtService: true,
+        id: true, createdAt: true, customerComplaint: true, odometerAtService: true, readyForCollectionAt: true, completedAt: true, department: { select: { name: true } },
         complaints: { select: { description: true }, orderBy: { sequenceNumber: 'asc' } },
         branch: { select: { code: true } },
         vehicle: { select: { make: true, model: true, year: true, vehicleType: true } },
@@ -93,12 +96,14 @@ export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: num
     ...jobRows.map((r: (typeof jobRows)[number]) => ({
       id: r.id, kind: 'JOB_CARD' as const, createdAt: r.createdAt, branchCode: r.branch.code,
       complaint: [...r.complaints.map((c: { description: string }) => c.description), r.complaint ?? ''].map((s) => s.trim()).filter(Boolean).join('. '),
-      make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, mileage: r.mileageAtCheckIn, vehicleType: r.vehicle.vehicleType, names: namesOf(r),
+      make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, mileage: r.mileageAtCheckIn, vehicleType: r.vehicle.vehicleType,
+      department: r.department?.name ?? null, readyAt: r.readyForCollectionAt ?? r.completedAt ?? null, names: namesOf(r),
     })),
     ...serviceRows.map((r: (typeof serviceRows)[number]) => ({
       id: r.id, kind: 'SERVICE' as const, createdAt: r.createdAt, branchCode: r.branch.code,
       complaint: [...r.complaints.map((c: { description: string }) => c.description), r.customerComplaint ?? ''].map((s) => s.trim()).filter(Boolean).join('. '),
-      make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, mileage: r.odometerAtService, vehicleType: r.vehicle.vehicleType, names: namesOf(r),
+      make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, mileage: r.odometerAtService, vehicleType: r.vehicle.vehicleType,
+      department: r.department?.name ?? null, readyAt: r.readyForCollectionAt ?? r.completedAt ?? null, names: namesOf(r),
     })),
   ]
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
@@ -112,7 +117,7 @@ export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: num
   const predictions = new Map<string, { output: unknown; precision: number | null; recall: number | null; modelVersion: string }>();
   for (const part of chunks(jobs)) {
     const rows = await prisma.enyoPrediction.findMany({
-      where: { organisationId: scope.organisationId, status: 'RESOLVED', subjectId: { in: part.map((j) => j.id) } },
+      where: { organisationId: scope.organisationId, status: 'RESOLVED', kind: { in: ['JOB_CARD_LINES', 'SERVICE_LINES'] }, subjectId: { in: part.map((j) => j.id) } },
       select: { subjectId: true, output: true, precision: true, recall: true, modelVersion: true },
     });
     for (const p of rows) predictions.set(p.subjectId, p);
@@ -126,23 +131,32 @@ export async function buildTrainingRows(scope: DatasetScope, opts: { limit?: num
     const p = predictions.get(j.id);
     const pOut = p?.output as Partial<PredictionOutput> | undefined;
     const labour = final.filter((l) => l.type === 'LABOUR');
+    const complaintText = scrubText(j.complaint, j.names);
+    const rowLines = datasetLines(final, j.names);
     out.push({
       row_id: opaqueId(j.id, salt),
       kind: j.kind,
       opened_on: lagosDayKey(j.createdAt),
       branch_code: j.branchCode,
-      complaint_text: scrubText(j.complaint, j.names),
+      complaint_text: complaintText,
       make: j.make,
       model: j.model,
       year: j.year,
       mileage_band_km: mileageBand(j.mileage),
       vehicle_type: j.vehicleType,
-      lines: datasetLines(final, j.names),
+      lines: rowLines,
       labour_total: labour.length ? Math.round(labour.reduce((s, l) => s + (l.amount ?? 0), 0) * 100) / 100 : null,
       predicted_keys: p ? (pOut?.ok && Array.isArray(pOut.lines) ? pOut.lines.map((l) => l.key) : []) : null,
       precision: p?.precision ?? null,
       recall: p?.recall ?? null,
       model_version: p?.modelVersion ?? null,
+      complaint_tokens: complaintTokens(complaintText),
+      feature_tokens: featureTokens({
+        kind: j.kind, complaint: complaintText, make: j.make, model: j.model, year: j.year, mileageKm: j.mileage,
+        vehicleType: j.vehicleType, branchCode: j.branchCode, department: j.department, openedAt: j.createdAt,
+      }),
+      work_numbers: workNumbers(complaintText, rowLines.map((l) => ({ type: l.type, key: l.key, quantity: l.quantity }))),
+      turnaround_hours: turnaroundHours(j.createdAt, j.readyAt),
     });
   }
   return out;

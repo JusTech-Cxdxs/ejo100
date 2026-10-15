@@ -20,3 +20,10 @@ next-env.d.ts
 # TypeScript incremental build caches
 *.tsbuildinfo
 .email-previews/
+
+# Enyo trainer (ml/)
+__pycache__/
+*.pyc
+.pytest_cache/
+ml/.venv/
+ml-out/

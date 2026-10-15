@@ -1,6 +1,9 @@
 import { actorLabel } from '@/lib/assist/rules';
 import { canRequestRoadTestOn } from '@/lib/actions/security';
 import { serviceVisible, guardAnyPage, can, allows } from '@/lib/authz/server';
+import { organisationOfBranch, priceWarnings, shownDuration } from '@/lib/enyo/ml/models';
+import { getEnyoSettings } from '@/lib/enyo/settings';
+import { ReadyEstimate, UnusualPrice } from '@/components/enyo/EnyoInsights';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
 import { listRoadTestsFor } from '@/lib/actions/security';
 import { securityActionDetail } from '@/lib/security-labels';
@@ -341,6 +344,14 @@ export default async function VehicleServiceDetailPage({
     listEligibleFinanceOfficersForBranch(service.branchId),
     listEligibleManagersForBranch(service.branchId),
     getPartWarrantyBadges((serviceEstimate?.lineItems ?? []).map((li: { matchedPartId: string | null }) => li.matchedPartId ?? '')),
+  ]);
+  // Enyo, when switched on at Assist: unusual typed-in prices and when the vehicle is likely ready. Never in the way.
+  // The record's own organisation decides (its model and level), never the viewer's.
+  const enyoOrg = await organisationOfBranch(service.branchId).catch(() => null);
+  const [priceFlags, readyEstimate, enyoName] = await Promise.all([
+    priceWarnings(enyoOrg, (serviceEstimate?.lineItems ?? []).map((li: { id: string; type: string; description: string; quantity: unknown; unitPrice: unknown }) => ({ id: li.id, type: li.type, description: li.description, quantity: Number(li.quantity) || 1, unitPrice: li.unitPrice == null ? null : Number(li.unitPrice) }))).catch(() => new Map()),
+    service.readyForCollectionAt ? Promise.resolve(null) : shownDuration({ kind: 'SERVICE', id: id }, enyoOrg).catch(() => null),
+    getEnyoSettings(enyoOrg).then((x) => x.displayName),
   ]);
   const partCategoriesWithTypes = partCategories.map((category: (typeof partCategories)[number]) => ({
     id: category.id,
@@ -893,6 +904,7 @@ export default async function VehicleServiceDetailPage({
                 <>
                   {serviceEstimate.lineItems.length > 0 ? (
                     <div className="mt-4">
+                    {readyEstimate ? <ReadyEstimate prediction={readyEstimate} name={enyoName} /> : null}
                     <EstimateLinesTable
                       withActions={isEstimateContributor}
                       lines={serviceEstimate.lineItems.map((line: (typeof serviceEstimate.lineItems)[number]): EstimateLineView => {
@@ -931,6 +943,7 @@ export default async function VehicleServiceDetailPage({
                                   <div className="mt-0.5 text-[11px] font-medium text-[var(--ejo-warning-text)]">Awaiting Store match</div>
                                 )
                               ) : null}
+                              {priceFlags.get(line.id) ? <UnusualPrice check={priceFlags.get(line.id)!} /> : null}
                             </>
                           ),
                           quantity: Number(line.quantity),

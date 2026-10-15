@@ -61,6 +61,9 @@ export default async function EnyoLearningPage() {
         actions={
           canManage ? (
             <>
+              <a href="/enyo/models" className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 text-sm font-medium text-white hover:brightness-110 sm:min-h-9">
+                <Icon name="layers" size={15} />Models
+              </a>
               <a href="/enyo/learning/export?format=csv" className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)] sm:min-h-9">
                 <Icon name="file" size={15} />Training data (CSV)
               </a>
@@ -68,7 +71,11 @@ export default async function EnyoLearningPage() {
                 <Icon name="file" size={15} />Training data (JSONL)
               </a>
             </>
-          ) : undefined
+          ) : (
+            <a href="/enyo/models" className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)] sm:min-h-9">
+              <Icon name="layers" size={15} />Models
+            </a>
+          )
         }
       />
 

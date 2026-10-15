@@ -3393,6 +3393,10 @@ model EnyoSetting {
   predictionsMode   String   @default("SHADOW")
   // Display name and greeting shown to staff and customers (branding).
   displayName       String   @default("Enyo")
+  // v32: the automation level of each learning capability, e.g.
+  // {"JOB_DURATION":"SHADOW","PRICE_ANOMALY":"ASSIST"}. Missing = the
+  // capability's default (OFF or SHADOW); see lib/enyo/ml/capabilities.ts.
+  capabilityLevels  Json?
   updatedById       String?
   updatedAt         DateTime @updatedAt
 
@@ -3679,4 +3683,53 @@ model MailMessage {
   // Daily 90-day clean-up.
   @@index([receivedAt])
   @@map("mail_messages")
+}
+
+// v32 — Enyo machine learning: each organisation's own trained models. Additive only.
+
+enum EnyoModelStatus {
+  // Trained and passed its checks; not used until someone chooses it.
+  CANDIDATE
+  // The model in use for its task (one per organisation and task).
+  ACTIVE
+  // Replaced or switched off; kept for the record.
+  RETIRED
+  // Failed its acceptance checks (kept so people can see why).
+  REJECTED
+}
+
+/// A model trained for one organisation (by the Python trainer, ml/), with its
+/// evaluation and the portable artifact the portal runs. Only one ACTIVE model
+/// per organisation and task; promotion is a person's decision (enyo.manage).
+model EnyoModel {
+  id             String          @id @default(cuid())
+  organisationId String
+  // JOB_DURATION | ESTIMATE_LINES | PARTS_DEMAND | PRICE_ANOMALY | COMPLAINT_THEMES
+  task           String
+  // e.g. "job-duration-gbm-20261015-a1b2"
+  version        String
+  // e.g. "lightgbm-quantile", "tfidf-logreg-ovr", "croston-sba", "isolation-forest", "tfidf-kmeans"
+  algorithm      String
+  status         EnyoModelStatus @default(CANDIDATE)
+  // Held-out evaluation, the baseline it was compared with, and the gate result.
+  metrics        Json
+  baseline       Json?
+  gate           Json
+  // The portable model (coefficients, trees, tables) the portal evaluates.
+  artifact       Json
+  artifactBytes  Int
+  rows           Int
+  dataFrom       DateTime?
+  dataTo         DateTime?
+  // Trainer name and versions (python, scikit-learn, lightgbm).
+  trainer        String
+  trainedAt      DateTime
+  createdAt      DateTime        @default(now())
+  promotedAt     DateTime?
+  promotedById   String?
+  retiredAt      DateTime?
+
+  @@unique([organisationId, version])
+  @@index([organisationId, task, status])
+  @@map("enyo_models")
 }

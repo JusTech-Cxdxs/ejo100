@@ -1,0 +1,69 @@
+name: Train Enyo models
+
+# Trains one organisation's Enyo models (ml/, docs/ML.md) from its de-identified
+# history and uploads each to the portal as a CANDIDATE — nothing is used until
+# an administrator chooses it on the Enyo models page.
+#
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+#   PORTAL_URL        the portal's address, e.g. https://ejo100-portal.vercel.app
+#   ML_SERVICE_TOKEN  the same long random value as the portal's ML_SERVICE_TOKEN
+# The trainer never holds database credentials.
+on:
+  workflow_dispatch:
+    inputs:
+      organisation:
+        description: "Organisation slug (Organisation page → Organisation ID for the website)"
+        required: true
+        default: kewalram-nigeria
+      tasks:
+        description: "Comma-separated tasks, empty for all (JOB_DURATION, ESTIMATE_LINES, PARTS_DEMAND, PRICE_ANOMALY, COMPLAINT_THEMES)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Train and report only (upload nothing)"
+        type: boolean
+        default: false
+  # Weekly retraining, Mondays 03:00 Lagos — switch on by removing the # signs
+  # once the organisation has enough history (each run is about 3 minutes).
+  # schedule:
+  #   - cron: '0 2 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ml-train
+  cancel-in-progress: false
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: ml/requirements.txt
+      - run: pip install -r ml/requirements.txt
+      - name: Train and upload
+        working-directory: ml
+        env:
+          PORTAL_URL: ${{ secrets.PORTAL_URL }}
+          ML_SERVICE_TOKEN: ${{ secrets.ML_SERVICE_TOKEN }}
+          ORGANISATION: ${{ inputs.organisation || 'kewalram-nigeria' }}
+          TASKS: ${{ inputs.tasks }}
+          DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: |
+          if [ -z "$PORTAL_URL" ] || [ -z "$ML_SERVICE_TOKEN" ]; then
+            echo "::error::Set the PORTAL_URL and ML_SERVICE_TOKEN repository secrets first (docs/ML.md)."; exit 1
+          fi
+          python -m ejo_ml train --portal "$PORTAL_URL" --organisation "$ORGANISATION" ${TASKS:+--tasks "$TASKS"} $DRY_RUN --out ../ml-out | tee ../ml-summary.txt
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Enyo training' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat ml-summary.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "No summary (see the log)." >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

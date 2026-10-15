@@ -1,6 +1,9 @@
 import { actorLabel } from '@/lib/assist/rules';
 import { canRequestRoadTestOn } from '@/lib/actions/security';
 import { jobCardVisible, guardAnyPage, can, allows } from '@/lib/authz/server';
+import { organisationOfBranch, priceWarnings, shownDuration } from '@/lib/enyo/ml/models';
+import { getEnyoSettings } from '@/lib/enyo/settings';
+import { ReadyEstimate, UnusualPrice } from '@/components/enyo/EnyoInsights';
 import { RoadTestsPanel } from '@/components/RoadTestsPanel';
 import { listRoadTestsFor } from '@/lib/actions/security';
 import { securityActionDetail } from '@/lib/security-labels';
@@ -378,6 +381,14 @@ export default async function JobCardDetailPage({
     listPartTypes(jobCard.branchId),
     getPartWarrantyBadges((estimate?.lineItems ?? []).map((li: { matchedPartId: string | null }) => li.matchedPartId ?? '')),
   ]);
+  // Enyo, when switched on at Assist: unusual typed-in prices and when the vehicle is likely ready. Never in the way.
+  // The record's own organisation decides (its model and level), never the viewer's.
+  const enyoOrg = await organisationOfBranch(jobCard.branchId).catch(() => null);
+  const [priceFlags, readyEstimate, enyoName] = await Promise.all([
+    priceWarnings(enyoOrg, (estimate?.lineItems ?? []).map((li: { id: string; type: string; description: string; quantity: unknown; unitPrice: unknown }) => ({ id: li.id, type: li.type, description: li.description, quantity: Number(li.quantity) || 1, unitPrice: li.unitPrice == null ? null : Number(li.unitPrice) }))).catch(() => new Map()),
+    jobCard.readyForCollectionAt ? Promise.resolve(null) : shownDuration({ kind: 'JOB_CARD', id: id }, enyoOrg).catch(() => null),
+    getEnyoSettings(enyoOrg).then((x) => x.displayName),
+  ]);
   const partCategoriesWithTypes = partCategories.map((category: (typeof partCategories)[number]) => ({
     id: category.id,
     name: category.name,
@@ -742,6 +753,7 @@ export default async function JobCardDetailPage({
               <p className="mt-2 text-sm text-[var(--ejo-text-muted)]">No estimate lines yet.</p>
             ) : (
               <>
+                {readyEstimate ? <ReadyEstimate prediction={readyEstimate} name={enyoName} /> : null}
                 <EstimateLinesTable
                   withActions={isEstimateContributor}
                   lines={estimate.lineItems.map((item: (typeof estimate.lineItems)[number]): EstimateLineView => {
@@ -783,6 +795,7 @@ export default async function JobCardDetailPage({
                               <div className="mt-0.5 text-[11px] font-medium text-[var(--ejo-warning-text)]">Awaiting Store match</div>
                             )
                           ) : null}
+                          {priceFlags.get(item.id) ? <UnusualPrice check={priceFlags.get(item.id)!} /> : null}
                         </>
                       ),
                       quantity: item.quantity,
