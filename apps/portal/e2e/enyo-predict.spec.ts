@@ -117,7 +117,9 @@ test('in Suggest mode the estimate shows likely lines; Add fills in the normal f
       const form = addForm(page);
       await expect(form.locator('select[name="type"]')).toHaveValue('LABOUR');
       await expect(form.locator('input[name="description"]')).toHaveValue('Labour for brake');
-      await expect(form.locator('input[name="unitPrice"]')).toHaveValue('15000');
+      // The median of what the similar jobs charged (seeded between ₦12,000 and ₦18,000). A retry seeds
+      // more look-alike jobs, which can move the median within that range, so the range is checked.
+      await expect(form.locator('input[name="unitPrice"]')).toHaveValue(/^1[2-8][05]00$/);
       await form.getByRole('button', { name: 'Add', exact: true }).click();
       await expect(card(page, 'Estimate').locator('table tbody tr')).toHaveCount(2);
       expectNoUrlError(page);
