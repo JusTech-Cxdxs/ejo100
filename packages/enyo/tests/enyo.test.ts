@@ -264,3 +264,10 @@ test('prompts: no money figures unless a tool gave them; inside details for staf
     else assert.doesNotMatch(p, /machine-learning|parts demand|unusual prices/);
   }
 });
+
+test('admin messages for a failed connection test fit what Settings shows (≤ 1000 characters, detail included)', () => {
+  for (const kind of ['auth', 'not_found', 'rejected', 'rate_limited', 'unavailable', 'timeout', 'bad_response'] as const) {
+    const m = llmAdminMessage(new LlmError(kind, 'x', 400, 'y'.repeat(240), 'code'));
+    assert.ok(m.length <= 1000, `${kind}: ${m.length}`);
+  }
+});
