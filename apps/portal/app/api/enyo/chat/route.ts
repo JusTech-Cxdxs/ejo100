@@ -126,6 +126,8 @@ export async function POST(request: NextRequest) {
           await prisma.enyoConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }).catch(() => undefined);
           if (result.error) {
             if (result.error.kind !== 'aborted') emit({ type: 'error', message: result.error.message });
+            // The model server's own reason goes to the error log for administrators (never to the person).
+            if (result.error.kind === 'auth' || result.error.kind === 'not_found' || result.error.kind === 'rejected') logError('enyo.model', new Error(`${result.error.kind} ${result.error.status ?? ''} ${result.error.code ?? ''} ${result.error.detail ?? ''}`.trim()));
           } else {
             emit({ type: 'done', messageId: messageId ?? '' });
           }
