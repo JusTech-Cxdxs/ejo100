@@ -21,6 +21,7 @@ import { MAIL_STYLES, renderPersonalMail, type MailStyle } from '@/lib/email-tem
 import { portalBaseUrl } from '@/lib/portal-url';
 import { PLATFORM } from '@/lib/brand';
 import { asData, complete } from '@ejo/enyo';
+import { tokenise } from '@/lib/enyo/predict/text';
 
 /**
  * The person's OWN work mailbox. Every action here works only on the
@@ -153,6 +154,8 @@ export async function setMailConsent(allow: boolean): Promise<void> {
     return;
   }
   await prisma.mailAccount.update({ where: { id: box.id }, data: { aiConsentAt: null } });
+  // How they write goes with the consent.
+  await prisma.mailStyleSample.deleteMany({ where: { userId: m.id } });
   await prisma.mailMessage.updateMany({ where: { accountId: box.id }, data: { aiSummary: null, aiCategory: null, aiPriority: null, aiActions: Prisma.DbNull, linkedRefs: Prisma.DbNull, aiAt: null } });
   await writeAuditLog({ userId: m.id, action: box.aiConsentAt ? 'mailbox.ai_consent_withdrawn' : 'mailbox.ai_consent_declined', entityType: 'MailAccount', entityId: box.id });
 }
@@ -163,6 +166,7 @@ export async function disconnectMailbox(): Promise<void> {
   const box = await myMailbox(m);
   if (!box) return;
   const removed = await prisma.mailMessage.deleteMany({ where: { accountId: box.id } });
+  await prisma.mailStyleSample.deleteMany({ where: { userId: m.id } });
   await prisma.mailAccount.delete({ where: { id: box.id } });
   await writeAuditLog({ userId: m.id, action: 'mailbox.disconnected', entityType: 'MailAccount', entityId: box.id, metadata: { domain: box.address.split('@')[1], messagesRemoved: removed.count } });
 }
@@ -505,6 +509,44 @@ export async function sendMyMail(input: { to?: string; cc?: string; subject?: st
     transport?.close();
   }
   if (original) pushFlags(box.id, original.uid, { answered: true });
+  // With their consent, Enyo keeps how they write (their own sent emails, 90 days) to draft in their voice.
+  if (box.aiConsentAt) await keepWritingSample(m, subject, body, Boolean(original));
+}
+
+const STYLE_KEEP = 200;
+
+async function keepWritingSample(m: Me, subject: string, body: string, isReply: boolean): Promise<void> {
+  try {
+    // Only what they wrote: quoted earlier messages below the reply are left out.
+    const own = body.split(/\n(?:On .{5,200} wrote:|-{2,} ?Original Message ?-{2,}|From: .+)\n/i)[0]!.replace(/\n>.*$/gm, '').trim().slice(0, 4000);
+    if (own.length < 20) return;
+    await prisma.mailStyleSample.create({ data: { userId: m.id, organisationId: m.organisationId, subject: subject.slice(0, 300), body: own, tokens: tokenise(`${subject} ${own}`).slice(0, 200), isReply } });
+    const extra = await prisma.mailStyleSample.findMany({ where: { userId: m.id }, orderBy: { sentAt: 'desc' }, skip: STYLE_KEEP, select: { id: true } });
+    if (extra.length) await prisma.mailStyleSample.deleteMany({ where: { id: { in: extra.map((e) => e.id) } } });
+  } catch {
+    /* a style sample never stops a send */
+  }
+}
+
+/**
+ * The person's own emails most like what they are about to write (their
+ * voice, greeting, sign-off and layout) — for Enyo's drafts only, with their
+ * consent, never during an assisted session.
+ */
+export async function myWritingExamples(about: string, limit = 3): Promise<{ subject: string; body: string; isReply: boolean; sentAt: Date }[]> {
+  const m = await me();
+  const box = await myMailbox(m);
+  if (!box?.aiConsentAt) return [];
+  const rows = await prisma.mailStyleSample.findMany({ where: { userId: m.id }, orderBy: { sentAt: 'desc' }, take: STYLE_KEEP, select: { subject: true, body: true, tokens: true, isReply: true, sentAt: true } });
+  const want = new Set(tokenise(about));
+  const scored = rows.map((r, i) => {
+    const t = Array.isArray(r.tokens) ? (r.tokens as string[]) : [];
+    let hit = 0;
+    for (const w of t) if (want.has(w)) hit += 1;
+    // Similar first; among equals, the most recent.
+    return { r, score: hit / Math.sqrt(t.length + 1) - i * 1e-6 };
+  });
+  return scored.sort((a, b) => b.score - a.score).slice(0, Math.min(5, Math.max(1, limit))).map(({ r }) => ({ subject: r.subject, body: r.body.slice(0, 1500), isReply: r.isReply, sentAt: r.sentAt }));
 }
 
 /** Original message details for a reply or forward (own messages only). */

@@ -13,7 +13,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 export const dynamic = 'force-dynamic';
 
 const TASK_LABEL: Record<string, string> = {
-  JOB_DURATION: 'Job time estimates', ESTIMATE_LINES: 'Estimate lines', PARTS_DEMAND: 'Parts reorder suggestions', PRICE_ANOMALY: 'Unusual price warnings', COMPLAINT_THEMES: 'Complaint themes',
+  JOB_DURATION: 'Job time estimates', ESTIMATE_LINES: 'Estimate lines', PARTS_DEMAND: 'Parts reorder suggestions', PRICE_ANOMALY: 'Unusual price warnings', COMPLAINT_THEMES: 'Complaint themes', DECISION_RISK: 'How decisions go (send-back risk)',
 };
 const LEVEL_TEXT: Record<Level, string> = { OFF: 'Off', SHADOW: 'Shadow — measured, not shown', ASSIST: 'Assist — shown to people', PARTIAL: 'Partial automation', FULL: 'Full automation' };
 const STATUS_TONE: Record<ModelRow['status'], string> = {
@@ -36,6 +36,7 @@ function headline(m: ModelRow): string {
     case 'PRICE_ANOMALY': return `Flags ${pct(m.metrics.flagged_share_test)} of new lines (3× rule ${pct(b.flagged_share_test)})`;
     case 'PARTS_DEMAND': return `${String(m.metrics.forecast_parts ?? '—')} parts forecast · error ${String(m.metrics.backtest_mae_total ?? '—')} (naive ${String(b.backtest_mae_total ?? '—')})`;
     case 'COMPLAINT_THEMES': return `${String(m.metrics.themes ?? '—')} themes · silhouette ${typeof m.metrics.silhouette === 'number' ? m.metrics.silhouette.toFixed(2) : '—'}`;
+    case 'DECISION_RISK': return `AUC ${typeof m.metrics.auc === 'number' ? m.metrics.auc.toFixed(2) : '—'} · Brier ${typeof m.metrics.brier === 'number' ? m.metrics.brier.toFixed(3) : '—'} (base rate ${typeof b.brier === 'number' ? b.brier.toFixed(3) : '—'})`;
     default: return '';
   }
 }

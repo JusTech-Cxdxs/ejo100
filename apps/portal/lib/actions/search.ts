@@ -8,6 +8,7 @@ import { ticketReachWhere } from '@/lib/support-rules';
 import { decide, STORE_COST_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
 import { getSchedulingAccess } from './scheduling';
 import { groupRank, numberFilters, planSearch, referenceUrl, type RefPrefix, type SearchPlan } from '@/lib/search-plan';
+import { fenceStaffHelp } from '@/lib/support/reach';
 
 export type SearchHit = { label: string; sub?: string; href: string };
 /** prefix: the reference prefix of this kind of record (shown next to the group name). */
@@ -137,7 +138,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const canWarranty = allowed('warranty.view');
   const canStructure = allowed('admin.structure.manage');
   // Support tickets: the inbox's own fence (organisation + branch reach; website enquiries are the organisation's).
-  const supportReach: Where | null = allowed('support.tickets.manage') ? ticketReachWhere(await reachWhere('support.tickets.manage'), await myOrganisationId()) : null;
+  const supportReach: Where | null = allowed('support.tickets.manage') ? (await fenceStaffHelp(ticketReachWhere(await reachWhere('support.tickets.manage'), await myOrganisationId()))) : null;
 
   /** Runs one table's search when the person may open it and the query can match it. */
   function find<T>(reach: Where | null | false, fields: Fields, run: (where: Where) => Promise<T[]>): Promise<T[]> {

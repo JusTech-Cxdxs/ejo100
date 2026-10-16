@@ -6,6 +6,7 @@ import { logFailure } from '@/lib/log';
 import { mailKey } from '@/lib/mail/config';
 import { pollSupportMailboxes } from '@/lib/support/intake';
 import { runSupportAutomations } from '@/lib/support/automations';
+import { integrityScanDue, scanAllOrganisations } from '@/lib/integrity/scan';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -35,5 +36,14 @@ export async function GET(request: NextRequest) {
   const left = 54_000 - (Date.now() - started);
   const auto = left > 5_000 ? await runSupportAutomations(left, 'rest').catch((err) => { logFailure('Support automations failed', err); return null; }) : null;
   await recordJobRun('support', { ...(intake ?? {}), ...(auto ? { normalised: auto.normalised, warned: auto.warned, breached: auto.breached, nudged: auto.nudged, resolved: auto.resolved, closed: auto.closed, surveyed: auto.surveyed, assumed: auto.assumed } : {}) });
-  return NextResponse.json({ ok: true, intake, automations: auto });
+  // Once a day, in the quiet hours (1–5 am Lagos), the integrity watch's checks run with what is left of this run.
+  let integrity: Awaited<ReturnType<typeof scanAllOrganisations>> | null = null;
+  const remaining = 56_000 - (Date.now() - started);
+  const due = remaining > 25_000 ? await integrityScanDue().catch(() => ({ due: false, after: null })) : { due: false, after: null };
+  if (due.due) {
+    setAuditActor(null, 'cron:integrity');
+    integrity = await scanAllOrganisations(remaining - 4_000, due.after).catch((err) => { logFailure('Integrity scan failed', err); return null; });
+    if (integrity) await recordJobRun('integrity-scan', integrity);
+  }
+  return NextResponse.json({ ok: true, intake, automations: auto, integrity });
 }

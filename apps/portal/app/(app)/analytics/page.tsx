@@ -49,7 +49,7 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
         eyebrow="Analytics"
         title="Business analytics"
         description={<>{a.periodLabel} · Job Cards and Vehicle Services together · sales counted when a job is completed; parts at their actual goods-receipt cost.</>}
-        actions={<HeaderAction href="/enyo/learning" icon="sparkles" variant="secondary">Enyo learning</HeaderAction>}
+        actions={<><HeaderAction href="/analytics/workflows" icon="chart" variant="secondary">How work flows</HeaderAction><HeaderAction href="/enyo/learning" icon="sparkles" variant="secondary">Enyo learning</HeaderAction></>}
       />
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--ejo-text-muted)]"><Icon name="calendar" size={14} />Period</span>

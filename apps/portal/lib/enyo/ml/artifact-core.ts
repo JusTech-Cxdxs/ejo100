@@ -8,7 +8,7 @@
  */
 
 export const ARTIFACT_FORMAT = 'ejo-ml/1';
-export const ML_TASKS = ['JOB_DURATION', 'ESTIMATE_LINES', 'PARTS_DEMAND', 'PRICE_ANOMALY', 'COMPLAINT_THEMES'] as const;
+export const ML_TASKS = ['JOB_DURATION', 'ESTIMATE_LINES', 'PARTS_DEMAND', 'PRICE_ANOMALY', 'COMPLAINT_THEMES', 'DECISION_RISK'] as const;
 export type MlTask = (typeof ML_TASKS)[number];
 
 /** Upper bounds: generous for a company's models, small enough for a database row and under the hosting limit on request bodies (4.5 MB on Vercel). */
@@ -90,7 +90,24 @@ export type ThemesArtifact = {
   minSimilarity: number;
 };
 
-export type Artifact = DurationArtifact | LinesArtifact | AnomalyArtifact | DemandArtifact | ThemesArtifact;
+/**
+ * v37: how likely a request is to be sent back at an approval step, from what
+ * is known when it arrives (the step, the requester's role, the amount, the
+ * lines, when). LightGBM trees give a score; the isotonic calibration table
+ * turns it into a probability (linear between points, clipped at the ends).
+ * Learns how the organisation decides — it never decides.
+ */
+export type DecisionArtifact = {
+  format: typeof ARTIFACT_FORMAT;
+  task: 'DECISION_RISK';
+  steps: string[];
+  roles: string[];
+  features: string[];
+  trees: Tree[];
+  calibration: { x: number[]; y: number[] };
+};
+
+export type Artifact = DurationArtifact | LinesArtifact | AnomalyArtifact | DemandArtifact | ThemesArtifact | DecisionArtifact;
 
 // ------------------------------------------------------------------ checks
 
@@ -259,6 +276,28 @@ export function validateArtifact(task: MlTask, raw: unknown): Artifact {
         });
         const minSimilarity = num(a.minSimilarity, 'minSimilarity');
         return { format: ARTIFACT_FORMAT, task, tfidf, themes, minSimilarity };
+      }
+      case 'DECISION_RISK': {
+        const steps = arr(a.steps, 'steps', 40).map((x, i) => str(x, `steps[${i}]`, 40));
+        const roles = arr(a.roles, 'roles', 80).map((x, i) => str(x, `roles[${i}]`, 60));
+        for (const x of [...steps, ...roles]) if (!/^[a-z0-9_-]{1,60}$/.test(x)) fail(`"${x}" is not a step or role key`);
+        if (!steps.length) fail('steps must not be empty');
+        const features = arr(a.features, 'features', 200).map((x, i) => str(x, `features[${i}]`, 80));
+        const want = [...steps.map((x) => `step:${x}`), ...roles.map((x) => `requester:${x}`), 'requester:other', 'log_amount', 'lines', 'hour', 'weekday', 'has_amount'];
+        if (features.join('|') !== want.join('|')) fail('features must follow the steps and roles (step:…, requester:…, requester:other, log_amount, lines, hour, weekday, has_amount)');
+        const trees = checkTrees(a.trees, features.length, 'trees');
+        if (!trees.length) fail('trees must not be empty');
+        if (!isObj(a.calibration)) fail('calibration is missing');
+        const c = a.calibration as Record<string, unknown>;
+        const x = arr(c.x, 'calibration.x', 2000).map((v, i) => num(v, `calibration.x[${i}]`));
+        const y = arr(c.y, 'calibration.y', 2000).map((v, i) => num(v, `calibration.y[${i}]`));
+        if (x.length < 2 || x.length !== y.length) fail('calibration needs at least two points, x and y of the same length');
+        for (let i = 1; i < x.length; i += 1) {
+          if (x[i]! < x[i - 1]!) fail('calibration.x must not decrease');
+          if (y[i]! < y[i - 1]! - 1e-12) fail('calibration.y must not decrease');
+        }
+        if (y.some((v) => v < 0 || v > 1)) fail('calibration.y must be probabilities (0 to 1)');
+        return { format: ARTIFACT_FORMAT, task, steps, roles, features, trees, calibration: { x, y } };
       }
       default:
         return fail('Unknown task');

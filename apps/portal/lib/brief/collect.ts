@@ -17,6 +17,7 @@ import { ticketReachWhere } from '@/lib/support-rules';
 import { dueLabel } from '@/lib/support/core';
 import { requireUser } from '@/lib/actions/workshop';
 import { greetingFor, type BriefData, type BriefItem, type BriefSection } from './core';
+import { fenceStaffHelp } from '@/lib/support/reach';
 
 const DAY = 86_400_000;
 const lagos = (d: Date) => d.toLocaleString('en-GB', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -87,7 +88,7 @@ export async function collectBrief(period: { from: Date | null; to: Date; label:
 /** The person's own support requests that need an answer, and late ones in their teams. */
 async function supportFor(userId: string): Promise<BriefSection | null> {
   if (!(await allows('support.tickets.manage').catch(() => false))) return null;
-  const reach = ticketReachWhere(await reachWhere('support.tickets.manage'), await myOrganisationId());
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere('support.tickets.manage'), await myOrganisationId())));
   const queues = (await prisma.supportQueueMember.findMany({ where: { userId }, select: { queueId: true } }).catch(() => [])).map((q) => q.queueId);
   const rows = await prisma.supportTicket.findMany({
     where: { AND: [reach as object, { status: { in: ['OPEN', 'ON_HOLD'] } }, { OR: [{ assignedToId: userId }, ...(queues.length ? [{ queueId: { in: queues }, assignedToId: null }] : [])] }] },

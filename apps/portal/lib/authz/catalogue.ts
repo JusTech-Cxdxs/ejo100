@@ -27,6 +27,7 @@ export const PERMISSIONS = {
   'audit.view': { module: 'Administration', label: 'View the full audit trail' },
   'admin.recycle_bin.manage': { module: 'Administration', label: 'Open the Recycle bin, restore records deleted by mistake, and delete such records' },
   'enyo.manage': { module: 'Administration', label: 'Manage Enyo (AI): switch features on or off, see what it is learning and how accurate it is' },
+  'integrity.review': { module: 'Administration', label: 'Review integrity alerts (unusual money, parts, warranty, gate and sign-in activity) and Speak up reports — never alerts about themselves' },
   // Analytics
   'analytics.business.view': { module: 'Analytics', label: 'View Business Analytics (sales, cost, profit, cash)' },
   'analytics.inventory.view': { module: 'Analytics', label: 'View Inventory Analytics' },
@@ -116,7 +117,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'admin.organisation.manage': A, 'admin.structure.manage': A, 'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A,
     'audit.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A, 'notifications.broadcast.send': A,
     'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'schedule.view': 'OWN',
-    'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A, 'enyo.manage': A, 'support.tickets.manage': A, 'support.manage': A,
+    'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A, 'enyo.manage': A, 'support.tickets.manage': A, 'support.manage': A, 'integrity.review': A,
   },
   // One branch: its people and their roles, and oversight of that branch.
   'branch-administrator': {
@@ -240,6 +241,7 @@ export const PAGE_PERMISSIONS: Record<string, PermissionKey> = {
   cities: 'admin.structure.manage', branches: 'admin.structure.manage', departments: 'admin.structure.manage', teams: 'admin.structure.manage',
   users: 'admin.users.manage', roles: 'admin.roles.manage', permissions: 'admin.roles.manage', settings: 'admin.settings.manage', branding: 'admin.settings.manage',
   'module-registry': 'admin.settings.manage', 'audit-logs': 'audit.view', 'recycle-bin': 'admin.recycle_bin.manage', analytics: 'analytics.business.view', crm: 'crm.view',
+  integrity: 'integrity.review',
 };
 
 /** How each role is named to people. */

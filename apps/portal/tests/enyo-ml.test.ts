@@ -2,13 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ArtifactError, validateArtifact, type AnomalyArtifact, type DemandArtifact, type DurationArtifact, type LinesArtifact, type MlTask, type ThemesArtifact } from '../lib/enyo/ml/artifact-core';
-import { averagePathLength, checkPrice, leafOf, lineProbabilities, predictDuration, reorderSuggestions, themeOf } from '../lib/enyo/ml/runtime-core';
+import { ArtifactError, validateArtifact, type DecisionArtifact, type AnomalyArtifact, type DemandArtifact, type DurationArtifact, type LinesArtifact, type MlTask, type ThemesArtifact } from '../lib/enyo/ml/artifact-core';
+import { averagePathLength, decisionRisk, interpolate, checkPrice, leafOf, lineProbabilities, predictDuration, reorderSuggestions, themeOf } from '../lib/enyo/ml/runtime-core';
 import { ageBand, featureTokens, lineTokens, mileageToken, workNumbers } from '../lib/enyo/ml/features-core';
 import { readLevels, CAPABILITIES } from '../lib/enyo/ml/capabilities';
 import { parseUpload, UploadError } from '../lib/enyo/ml/upload-core';
 import { completeWeeksSince, lastCompleteWeek, weeklySeries } from '../lib/enyo/ml/datasets-core';
 import { turnaroundHours } from '../lib/enyo/predict/dataset-core';
+import { decisionFeatures, featureNames } from '../lib/insights/decisions-core';
 
 /** The parity fixtures written by the Python trainer (ml/ejo_ml/fixtures.py). */
 const FIX = join(__dirname, '..', '..', '..', '..', 'ml', 'fixtures');
@@ -180,4 +181,25 @@ test('parts weeks after a learn-from day: only whole Lagos weeks wholly on or af
   const wednesday = new Date('2026-10-14T00:00:00+01:00');
   assert.equal(completeWeeksSince(wednesday, new Date('2026-10-28T12:00:00+01:00')), 1);
   assert.equal(completeWeeksSince(wednesday, new Date('2026-11-03T12:00:00+01:00')), 2);
+});
+
+test('parity: the decision model (LightGBM + isotonic calibration) matches the trainer', () => {
+  const f = fixture<{ input: { step: string; requester_role: string | null; amount: number; lines: number; hour: number; weekday: number }; expected: { raw: number; probability: number } }>('decision_risk.json');
+  const a = validateArtifact('DECISION_RISK', f.artifact) as DecisionArtifact;
+  assert.deepEqual(a.features, featureNames(a.steps, a.roles));
+  assert.ok(f.cases.length >= 40);
+  for (const [i, c] of f.cases.entries()) {
+    const p = decisionRisk(a, decisionFeatures(c.input, a.steps, a.roles));
+    near(p, c.expected.probability, `case ${i}`);
+    assert.ok(p >= 0 && p <= 1);
+  }
+  // The table is linear between points and clipped at the ends.
+  assert.equal(interpolate([0, 1], [0.1, 0.5], -3), 0.1);
+  assert.equal(interpolate([0, 1], [0.1, 0.5], 9), 0.5);
+  near(interpolate([0, 1, 3], [0.1, 0.5, 0.9], 2), 0.7, 'midpoint');
+  // Features that do not follow the steps and roles, or a falling calibration, are refused.
+  const art = f.artifact as Record<string, unknown>;
+  assert.throws(() => validateArtifact('DECISION_RISK', { ...art, features: ['x'] }), ArtifactError);
+  assert.throws(() => validateArtifact('DECISION_RISK', { ...art, calibration: { x: [0, 1], y: [0.6, 0.2] } }), /must not decrease/);
+  assert.throws(() => validateArtifact('DECISION_RISK', { ...art, roles: ['Bad Role!'] }), /not a step or role key/);
 });

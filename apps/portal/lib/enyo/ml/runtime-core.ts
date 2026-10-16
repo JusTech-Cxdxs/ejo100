@@ -7,7 +7,7 @@
  *
  * Pure: no database, no framework imports.
  */
-import type { AnomalyArtifact, DemandArtifact, DurationArtifact, LinesArtifact, SparseWeights, TfidfSpec, ThemesArtifact, Tree } from './artifact-core';
+import type { DecisionArtifact, AnomalyArtifact, DemandArtifact, DurationArtifact, LinesArtifact, SparseWeights, TfidfSpec, ThemesArtifact, Tree } from './artifact-core';
 
 /** Word → position, built once per artifact and remembered. */
 const vocabIndex = new WeakMap<TfidfSpec, Map<string, number>>();
@@ -207,4 +207,27 @@ export function themeOf(a: ThemesArtifact, tokens: string[]): { index: number; l
     if (s > sim) { sim = s; best = k; }
   });
   return best >= 0 && sim >= a.minSimilarity ? { index: best, label: a.themes[best]!.label, similarity: sim } : null;
+}
+
+// ------------------------------------------------------------------ decisions (v37)
+
+/** Linear interpolation on a non-decreasing table, clipped at both ends (as numpy.interp / scikit-learn's isotonic predict). */
+export function interpolate(x: number[], y: number[], v: number): number {
+  if (!x.length) return 0;
+  if (v <= x[0]!) return y[0]!;
+  if (v >= x[x.length - 1]!) return y[y.length - 1]!;
+  let lo = 0;
+  let hi = x.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (x[mid]! <= v) lo = mid; else hi = mid;
+  }
+  const span = x[hi]! - x[lo]!;
+  return span > 0 ? y[lo]! + ((v - x[lo]!) / span) * (y[hi]! - y[lo]!) : y[hi]!;
+}
+
+/** How likely a request is to be sent back at its step (0–1), from the features decisions-core builds. */
+export function decisionRisk(a: DecisionArtifact, features: number[]): number {
+  const raw = boosted(a.trees, (f) => features[f] ?? 0);
+  return Math.max(0, Math.min(1, interpolate(a.calibration.x, a.calibration.y, raw)));
 }

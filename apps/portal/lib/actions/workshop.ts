@@ -76,6 +76,7 @@ import { renderCustomerReadyForCollectionEmail } from '@/lib/email-templates/cus
 import { lagosYear } from '@/lib/utils/format-date';
 import { schedulePrediction, scheduleResolution } from '@/lib/enyo/predict/lines';
 import { scheduleDuration } from '@/lib/enyo/ml/models';
+import { customerLinks } from '@/lib/customer-links-core';
 
 class WorkshopActionError extends Error {}
 
@@ -1029,7 +1030,7 @@ export async function createJobCard(input: CreateJobCardInput) {
         jobNumber: created.jobNumber,
         vehicleDescription: [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
         complaints: created.complaints.map((c: (typeof created.complaints)[number]) => c.description),
-        dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${created.id}`,
+        dashboardUrl: `${customerLinks(websiteUrl).jobCard(created.id)}`,
         logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
@@ -1215,7 +1216,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
       const orgContext = await getWorkshopOrgContext(jobCard.department?.name);
       const websiteUrl = websiteBaseUrl();
       const vehicleDescription = [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
-      const dashboardUrl = `${websiteUrl}/customer-portal/dashboard#jobcard-${id}`;
+      const dashboardUrl = `${customerLinks(websiteUrl).jobCard(id)}`;
       const logoUrl = `${websiteUrl}/images/logo/email-logo.png`;
       // Has this Job Card been sent back for rework before? (This move isn't
       // counted; its audit entry is written after these emails.)
@@ -2689,7 +2690,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
         depositPercent: Math.round(MINIMUM_DEPOSIT_FRACTION * 100),
         ...(await bankDetailsFor(estimate.jobCard.branch.id)),
         paymentRemarkSuggestion,
-        dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
+        dashboardUrl: `${customerLinks(websiteUrl).jobCard(jobCardId)}`,
         logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: estimate.jobCard.branch.businessUnit.organisation.name,
         branchName: estimate.jobCard.branch.name,
@@ -3096,7 +3097,7 @@ export async function recordPayment(
         totalPaidSoFar: formatNaira(newTotal),
         totalEstimate: formatNaira(roundedTotal),
         balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
-        dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
+        dashboardUrl: `${customerLinks(websiteUrl).jobCard(jobCardId)}`,
         logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
@@ -3354,7 +3355,7 @@ export async function approveCancellationRequest(requestId: string, decisionNote
         customerName: request.jobCard.customer.fullName,
         jobNumber: request.jobCard.jobNumber,
         vehicleDescription: [request.jobCard.vehicle.make, request.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
-        dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${request.jobCardId}`,
+        dashboardUrl: `${customerLinks(websiteUrl).jobCard(request.jobCardId)}`,
         logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
@@ -4043,7 +4044,7 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
       depositPercent: Math.round(MINIMUM_DEPOSIT_FRACTION * 100),
       dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
       reminderNumber,
-      dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
+      dashboardUrl: `${customerLinks(websiteUrl).jobCard(jobCardId)}`,
       logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
@@ -4151,7 +4152,7 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
       vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
       daysSinceCancellationLabel: pluralize(daysElapsed, 'working day'),
       reminderNumber,
-      dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
+      dashboardUrl: `${customerLinks(websiteUrl).jobCard(jobCardId)}`,
       logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
@@ -4212,7 +4213,7 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
       vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
       dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
       reminderNumber,
-      dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
+      dashboardUrl: `${customerLinks(websiteUrl).jobCard(jobCardId)}`,
       logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,

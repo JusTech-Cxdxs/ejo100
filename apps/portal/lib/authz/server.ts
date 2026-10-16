@@ -61,6 +61,15 @@ const principalFor = cache(async (userId: string): Promise<Principal> => {
 });
 
 /**
+ * Another colleague's principal — ONLY to tailor what is shown to that
+ * colleague (the how-to guides that fit their own permissions in a help
+ * request). Never use it to authorise the signed-in person.
+ */
+export async function colleaguePrincipal(userId: string): Promise<Principal> {
+  return principalFor(userId);
+}
+
+/**
  * The person the business rules run as, loaded once per request. During an
  * assisted session this is the colleague being helped (see requireUser), so
  * every check below applies the colleague's own permissions, never more.

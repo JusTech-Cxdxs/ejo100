@@ -33,6 +33,7 @@ import { renderPartRequestApprovalNeededEmail, renderPartRequestStatusEmail, PAR
 import { renderExternalProcurementApprovalNeededEmail, renderExternalProcurementStatusEmail, EXTERNAL_PROCUREMENT_STATUS } from '@/lib/email-templates/external-procurement-status';
 import { renderServiceEstimatePartRequestApprovalNeededEmail, renderServiceEstimatePartRequestStatusEmail } from '@/lib/email-templates/service-estimate-part-request-status';
 import { lagosYear } from '@/lib/utils/format-date';
+import { customerLinks } from '@/lib/customer-links-core';
 
 /** Like getStoreOrgContext(), but by branch: these emails go to both
  * Workshop and Store staff, so the department name is passed in. */
@@ -354,7 +355,7 @@ async function syncJobCardSourcingStatus(jobCardId: string): Promise<void> {
           customerName: jobCard.customer.fullName,
           jobNumber: jobCard.jobNumber,
           vehicleDescription: [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
-          dashboardUrl: `${websiteUrl}/customer-portal/dashboard#jobcard-${jobCardId}`,
+          dashboardUrl: `${customerLinks(websiteUrl).jobCard(jobCardId)}`,
           logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
           companyName: orgContext.companyName,
           branchName: orgContext.branchName,

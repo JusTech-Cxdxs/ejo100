@@ -62,17 +62,17 @@ export function renderSupportAcknowledgement(o: Common & { promise: string; open
 }
 
 /** A reply on the ticket: by a colleague, or by Enyo (labelled, with Solved / Talk to a person). */
-export function renderSupportReply(o: Common & { body: string; by: 'agent' | 'ai'; assistantName: string; signature: string | null; statusLabel: string }): { subject: string; html: string } {
+export function renderSupportReply(o: Common & { body: string; by: 'agent' | 'ai'; assistantName: string; signature: string | null; statusLabel: string; fromRecords?: boolean; colleague?: boolean }): { subject: string; html: string } {
   const ai = o.by === 'ai';
   const bodyHtml = html`
     ${marker()}
     ${greeting(o.customerName)}
     ${textBlocks(o.body)}
     ${o.signature ? html`<p style="margin: 18px 0 0 0; font-family: ${raw(EMAIL_FONT)}; font-size: 13px; line-height: 1.55; color: #334155; white-space: pre-line;">${o.signature}</p>` : ''}
-    ${ai ? callout(`This answer was written by ${o.assistantName}, our AI assistant, from our published information. A colleague is one click away.`, 'neutral', 'About this reply') : ''}
+    ${ai ? callout(`This answer was written by ${o.assistantName}, our AI assistant, from ${o.fromRecords ? (o.colleague ? 'your account and our how-to guides' : 'your records with us and our published information') : 'our published information'}. A ${o.colleague ? 'person on the support team' : 'colleague'} is one click away.`, 'neutral', 'About this reply') : ''}
     ${ai && o.responseUrl ? buttons([{ label: 'Yes, this solved it', url: `${o.responseUrl}?a=solved`, tone: 'primary' }, { label: 'I still need a person', url: `${o.responseUrl}?a=person`, tone: 'plain' }]) : ''}
     ${details([['Reference', o.number], ['Status', o.statusLabel]])}
-    ${para('To answer, reply to this email and keep the reference in the subject.', 'small')}`;
+    ${para(o.colleague ? 'To answer, open your request in the portal (Get help) and write there.' : 'To answer, reply to this email and keep the reference in the subject.', 'small')}`;
   return {
     subject: `[#${o.number}] ${o.subject.replace(/^\s*(re|fw|fwd)\s*:\s*/i, '')}`.slice(0, 300),
     html: renderEmailLayout({
@@ -83,8 +83,8 @@ export function renderSupportReply(o: Common & { body: string; by: 'agent' | 'ai
       ...(ai ? { status: { label: 'AI assistant', tone: 'info' as const } } : {}),
       heading: ai ? 'An answer to your question' : 'A reply from our team',
       bodyHtml,
-      ...(!ai && o.responseUrl ? { ctaLabel: 'Follow your request', ctaUrl: o.responseUrl } : {}),
-      audience: 'customer',
+      ...(!ai && o.responseUrl ? { ctaLabel: o.colleague ? 'Open my request' : 'Follow your request', ctaUrl: o.responseUrl } : {}),
+      audience: o.colleague ? 'staff' : 'customer',
       reason: `You are receiving this because you asked ${o.companyName} for help (${o.number}).`,
       ...(o.branchContact ? { branchContact: o.branchContact } : {}),
     }),

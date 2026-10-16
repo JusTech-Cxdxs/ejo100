@@ -51,6 +51,10 @@ export function navigationFor(p: Principal): NavItem[] {
   // Everyone's own: reminders, and their work mailbox (the layout hides Mail during an assisted session).
   out.push({ key: 'reminders', name: 'Reminders', href: '/reminders', status: 'LIVE' });
   out.push({ key: 'mail', name: 'Mail', href: '/mail', status: 'LIVE' });
+  // Everyone in an organisation can ask for help (the platform team answers, it does not ask).
+  if (!p.isSuperAdmin) out.push({ key: 'get-help', name: 'Get help', href: '/support/help', status: 'LIVE' });
+  // The integrity watch: reviewers only.
+  if (can('integrity.review')) out.push({ key: 'integrity', name: 'Integrity watch', href: '/integrity', status: 'LIVE' });
   // Assisted sessions: the Branch Assistant starts them; user administrators review them.
   if (!p.isSuperAdmin && can('support.assist')) out.push({ key: 'assist', name: 'Assist a colleague', href: '/support/assist', status: 'LIVE' });
   else if (can('admin.users.manage')) out.push({ key: 'assist', name: 'Assisted sessions', href: '/support/assist', status: 'LIVE' });

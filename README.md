@@ -45,6 +45,9 @@ planned work is labelled as planned.
 | Scheduling | Personal calendars, appointments, meeting rooms, aides who book for others, availability. |
 | Business Analytics | Sales, cost, gross profit, collections, receivables and work in progress per period and branch; every figure links to the records behind it. |
 | Support centre | Every support request in one place: emails to support@ / warranty@ / technical@ addresses, Enyo chat hand-overs and logged calls; teams with targets in business hours, fair assignment, acknowledgements, Enyo's triage, drafts and (where allowed) answers, reminders, satisfaction, and the numbers. See [docs/SUPPORT_CENTRE.md](docs/SUPPORT_CENTRE.md). |
+| Support context & Get help | Enyo recognises who writes in (customer, colleague or both), checks their portal access, sign-ins, Job Cards, services and warranties (or a colleague's role, errors and guides), and answers proven senders with a link to the exact page; colleagues ask for help from any page; the support team checks every Enyo reply and the gaps it could not close. See [docs/ENYO_CONTEXT_AND_INTEGRITY.md](docs/ENYO_CONTEXT_AND_INTEGRITY.md). |
+| Integrity watch & Speak up | Daily checks for unusual or risky activity — same person asking and approving, refunds above what was paid, split purchases, repeat warranty claims, vehicles leaving with work open, out-of-hours money, password guessing, activity spikes (robust z-scores), Benford — and an anonymous Speak up channel; reviewers never see alerts about themselves. |
+| How work flows | Every approval step's volume, send-back rate and reasons, waits, and who decides by role, with where Enyo could help; a calibrated LightGBM decision model learns how the organisation decides. |
 | Enyo (AI) | The assistant in every page: answers from the records each person may see, the guide and the web; drafts (never submits) Job Cards, reminders and mail; voice notes (pause, edit as text, send) and read-aloud; the brief on the dashboard; tailored to each person's role and work; learns from approved answers, support resolutions and chats; small model for small talk, large for records. See [docs/ENYO_BRIEF_AND_LEARNING.md](docs/ENYO_BRIEF_AND_LEARNING.md). |
 | Mail | Each person's own work mailbox (IMAP/SMTP, encrypted password): inbox with layout and pictures on request, compose in the organisation's letterhead with a live preview, Enyo's briefs and summaries read aloud. |
 | Reminders | Personal reminders into the bell and by email, with colleagues allowed to set them for you. |
@@ -365,6 +368,7 @@ ejo100/
 | [docs/E2E_COVERAGE.md](docs/E2E_COVERAGE.md) | Playwright coverage matrix and defects found. |
 | [docs/MASTER_PLAN.md](docs/MASTER_PLAN.md) | Phase history and the list of carried-over requests. |
 | [docs/SUPPORT_CENTRE.md](docs/SUPPORT_CENTRE.md) | The Support centre: flow, teams and addresses, safety rules, numbers, learning, running it. |
+| [docs/ENYO_CONTEXT_AND_INTEGRITY.md](docs/ENYO_CONTEXT_AND_INTEGRITY.md) | v37: who is writing and answering from their records with links, Get help, checking Enyo's replies, the integrity watch and Speak up, how work flows and the decision model, writing in your own voice. |
 | [docs/ENYO_RELEASE.md](docs/ENYO_RELEASE.md), [docs/ML.md](docs/ML.md), [docs/ENYO_BRIEF_AND_LEARNING.md](docs/ENYO_BRIEF_AND_LEARNING.md) | Enyo (AI), its trained models, the brief and how it learns. |
 | [docs/architecture.md](docs/architecture.md), [docs/folder-structure.md](docs/folder-structure.md), [docs/coding-standards.md](docs/coding-standards.md), [docs/module-creation-guide.md](docs/module-creation-guide.md) | Conventions for engineers adding to the codebase. |
 
@@ -378,11 +382,14 @@ will work (data model, permissions, delivery order) and which live records it
 builds on.
 
 **Next: the AI phase**
-- **AI support centre**: the customer side is live (Support centre, v36); next
-  is the staff help desk (“something is wrong here” from any page).
-- **Intelligence**: forecasting (parts demand, workshop load, revenue) and
-  anomaly detection, in a separate Python service that reads curated data only.
-  The rules for this phase are in [docs/AI_READINESS.md](docs/AI_READINESS.md).
+- **AI support centre**: live — customers (v36), context-aware answers with
+  deep links, the staff help desk and checking Enyo's replies (v37).
+- **Intelligence**: parts demand, job time, unusual prices, complaint themes,
+  the integrity watch and the decision model are live; next, the decision
+  model's suggestions on requests (Shadow first), Microsoft 365 sign-in for
+  mailboxes, and importing an organisation's historical support mail
+  (de-identified, under a data-processing agreement). The rules for this
+  phase are in [docs/AI_READINESS.md](docs/AI_READINESS.md).
 
 **Then, by area**
 - People & performance: HR & People, Payroll, Targets & performance.

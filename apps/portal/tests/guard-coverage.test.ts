@@ -18,6 +18,8 @@ const GUARDS = [
   'currentUserIsMasterAdmin', 'isSuperAdmin', 'getWarrantyRoles', 'getSecurityRoles',
   // Support centre set-up (lib/actions/support-admin.ts): authorize('support.manage') + the person's own organisation.
   'supportOrg(',
+  // Integrity watch (lib/actions/integrity.ts): authorize('integrity.review') + the reviewer's own organisation, never alerts about themselves.
+  'integrityReviewer(',
 ];
 /** Acting only on the person's OWN data (their read marks, their passes) — checked inside by user id. */
 const SELF_SCOPED = new Set(['markNotificationsRead', 'markNotificationsUnread', 'markAllRead', 'setNotificationsMuted', 'cancelExitPass', 'createExitPass', 'getJobCardSourcingNeeds',
@@ -29,6 +31,13 @@ const SELF_SCOPED = new Set(['markNotificationsRead', 'markNotificationsUnread',
   // Work mailbox (lib/actions/mail.ts): only the signed-in person's own mailbox (myMailbox: user id + organisation),
   // refused during assisted sessions; no permission can open another person's mail.
   'connectMailbox', 'setMailConsent', 'disconnectMailbox', 'readMyMessage', 'setMyMessageFlags',
+  // sendMyMail keeps the sender's OWN writing sample (by their user id), only with their mail consent.
+  'sendMyMail',
+  // Get help (lib/actions/help.ts): the signed-in person's own requests only (requesterUserId + organisation),
+  // refused during assisted sessions.
+  'openHelpRequest', 'replyToMyHelpRequest', 'answerMyHelpRequest',
+  // Speak up (lib/actions/integrity.ts): anyone raises a concern as themselves (or anonymously) into their own organisation.
+  'speakUp',
 ]);
 const WRITE = /\b(?:prisma|tx)\.\w+\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(/;
 

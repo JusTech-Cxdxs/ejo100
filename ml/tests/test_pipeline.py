@@ -114,3 +114,30 @@ def close(a, b, where: str) -> None:
         assert b == pytest.approx(a, rel=1e-6, abs=1e-9), f"{where}: {a} != {b} — fixtures out of date"
     else:
         assert a == b, f"{where}: {a!r} != {b!r} — fixtures out of date"
+
+
+def test_the_decision_model_learns_send_backs_and_is_calibrated():
+    from ejo_ml.data import decisions_frame
+    from ejo_ml.tasks import decisions
+
+    r = decisions.train(decisions_frame(synth.decisions()))
+    assert r.task == "DECISION_RISK" and r.gate.passed, r.gate.reasons
+    assert r.metrics["auc"] >= 0.65 and r.metrics["brier"] < r.baseline["brier"]
+    a = r.artifact
+    assert a["features"] == decisions.feature_names(a["steps"], a["roles"])
+    xs, ys = a["calibration"]["x"], a["calibration"]["y"]
+    assert all(b >= c for b, c in zip(xs[1:], xs)) and all(b >= c - 1e-12 for b, c in zip(ys[1:], ys)) and 0 <= min(ys) and max(ys) <= 1
+    # Nothing about people: roles and steps only.
+    assert not any("@" in str(v) for v in a["roles"] + a["steps"])
+    json.dumps(a)
+
+
+def test_the_decision_model_waits_for_enough_send_backs():
+    from ejo_ml.data import decisions_frame
+    from ejo_ml.tasks import decisions
+
+    rows = [dict(r, rejected=0) for r in synth.decisions(400)]
+    r = decisions.train(decisions_frame(rows))
+    assert r.artifact is None and "send-backs" in r.gate.reasons[0]
+    few = decisions.train(decisions_frame(synth.decisions(100)))
+    assert few.artifact is None and "Needs at least 300" in few.gate.reasons[0]

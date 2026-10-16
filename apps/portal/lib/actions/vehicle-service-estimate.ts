@@ -26,6 +26,7 @@ import { formatDateTime } from '@/lib/utils/format-date';
 import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { scheduleResolution } from '@/lib/enyo/predict/lines';
 import { scheduleDuration } from '@/lib/enyo/ml/models';
+import { customerLinks } from '@/lib/customer-links-core';
 
 class ServiceEstimateActionError extends Error {}
 
@@ -846,7 +847,7 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
         depositPercent: Math.round(MINIMUM_DEPOSIT_FRACTION * 100),
         ...(await bankDetailsFor((await prisma.vehicleService.findUnique({ where: { id: estimate.vehicleService.id }, select: { branchId: true } }))?.branchId)),
         paymentRemarkSuggestion,
-        dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${estimate.vehicleService.id}`,
+        dashboardUrl: `${customerLinks(websiteUrl).service(estimate.vehicleService.id)}`,
         logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: estimate.vehicleService.branch.businessUnit.organisation.name,
         branchName: estimate.vehicleService.branch.name,

@@ -1,6 +1,7 @@
 'use server';
 import { logFailure } from '@/lib/log';
 
+import { countOpenIntegrityAlerts } from './integrity';
 import { prisma } from '@ejo/database';
 import { jobCardActive, serviceInside } from '@/lib/custody';
 import { allows, getPrincipal, myOrganisationId, orgWhere, reachWhere } from '@/lib/authz/server';
@@ -240,6 +241,15 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   // Scheduling: today's appointments (host or participant) still to come.
   for (const w of await workflowP) notifications.push({ ...w, kind: 'WORKFLOW' });
   for (const w of await myWorkP) notifications.push({ ...w, kind: 'WORKFLOW' });
+  // Integrity watch reviewers: new alerts (never ones about themselves).
+  const integrity = await countOpenIntegrityAlerts().catch(() => ({ open: 0, high: 0 }));
+  if (integrity.open) {
+    notifications.push({
+      id: 'integrity-new', kind: 'WORKFLOW', url: '/integrity?status=NEW', createdAt: new Date(),
+      title: `${integrity.open} new integrity alert${integrity.open === 1 ? '' : 's'} to review`,
+      detail: integrity.high ? `${integrity.high} high — unusual money, parts, gate or access activity` : 'Unusual money, parts, warranty, gate or access activity',
+    });
+  }
   for (const item of schedulingItems) {
     notifications.push({ id: item.id, kind: 'SCHEDULING', title: item.title, detail: item.detail, url: item.url, createdAt: item.createdAt });
   }

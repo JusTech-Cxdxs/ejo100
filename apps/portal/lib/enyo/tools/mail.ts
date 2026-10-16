@@ -8,7 +8,7 @@
  */
 import { asData } from '@ejo/enyo';
 import { draftResult, type StaffTool, type StaffCtx } from '../types';
-import { briefMyRecentMail, getMessageForCompose, getMyMailDigest, listMyMail } from '@/lib/actions/mail';
+import { briefMyRecentMail, getMessageForCompose, getMyMailDigest, listMyMail, myWritingExamples } from '@/lib/actions/mail';
 import { composeHref, parseAddressList, replySubject } from '@/lib/mail/rules';
 import { formatLagos, plural } from '@/lib/reminders-rules';
 
@@ -98,10 +98,24 @@ export const mailTools: StaffTool[] = [
     },
   },
   {
+    name: 'my_writing_examples',
+    kind: 'read',
+    status: 'Looking at how you usually write…',
+    description: "The person's own past emails most like the one they want now (from emails they sent from the portal, kept with their consent): how they greet, sign off, lay out and phrase things. Call it BEFORE draft_mail_reply and write the draft in the same voice and layout — never copy facts, names, dates or amounts from the examples.",
+    parameters: { type: 'object', properties: { about: { type: 'string', minLength: 2, maxLength: 300, description: 'What the new email is about, in a few words.' } }, required: ['about'], additionalProperties: false },
+    run: async (args, ctx) => {
+      const g = await gate(ctx);
+      if (!g.ok) return g;
+      const rows = await myWritingExamples(String(args.about ?? '')).catch(() => []);
+      if (!rows.length) return { ok: true, data: { examples: [], note: 'No examples yet (they build up as the person sends email from the portal with Enyo allowed to read their mail). Write politely and briefly.' } };
+      return { ok: true, data: { examples: rows.map((r) => ({ subject: r.subject, body: r.body, reply: r.isReply })), note: 'Match the voice and layout; take no facts from these.' } };
+    },
+  },
+  {
     name: 'draft_mail_reply',
     kind: 'draft',
     status: 'Preparing the reply…',
-    description: 'Prepare an email for the person to check and send themselves — a reply to one of their messages (pass the message link from mail_search or mail_overview), or a new message (pass to and subject). It opens the compose page filled in; it NEVER sends. Write the body in plain text, in the person\'s voice, polite and short, without inventing facts, prices or dates.',
+    description: 'Prepare an email for the person to check and send themselves — a reply to one of their messages (pass the message link from mail_search or mail_overview), or a new message (pass to and subject). It opens the compose page filled in; it NEVER sends. Write the body in plain text, in the person\'s voice (call my_writing_examples first), polite and short, without inventing facts, prices or dates.',
     parameters: {
       type: 'object',
       properties: {

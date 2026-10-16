@@ -8,6 +8,7 @@ import {
 } from './support';
 import { changeSupportMailbox, connectSupportMailbox, saveSupportQueue, saveSupportSettings, setMySupportAway, setSupportQueueMembers } from './support-admin';
 import { requireUser } from './workshop';
+import { reviewEnyoReply } from './support-monitor';
 
 /** <form action> wrappers for the Support centre (each calls the authorised action). */
 
@@ -226,4 +227,20 @@ export async function saveSupportSettingsAction(f: FormData): Promise<void> {
     setupBack(err, 'Could not save the settings.', '#hours');
   }
   setupDone('settings_saved', '#hours');
+}
+
+/** A person's check of an Enyo reply (the Enyo replies page). */
+export async function reviewEnyoReplyAction(f: FormData): Promise<void> {
+  await requireUser();
+  const filter = /^[a-z_]{1,20}$/.test(str(f, 'filter')) ? str(f, 'filter') : 'to_check';
+  const days = /^\d{1,3}$/.test(str(f, 'days')) ? str(f, 'days') : '30';
+  let status = 'reviewed';
+  try {
+    const r = await reviewEnyoReply({ replyId: str(f, 'replyId'), verdict: str(f, 'verdict'), reason: str(f, 'reason'), note: str(f, 'note'), corrected: str(f, 'corrected') });
+    if (r.learned) status = 'reviewed_learned';
+  } catch (err) {
+    redirect(`/crm/support/enyo?filter=${filter}&days=${days}&error=${encodeURIComponent(friendlyError(err, 'Could not save your check.', 'support-form-handlers'))}#r-${encodeURIComponent(str(f, 'replyId'))}`);
+  }
+  revalidatePath('/crm/support/enyo');
+  redirect(`/crm/support/enyo?filter=${filter}&days=${days}&status=${status}`);
 }

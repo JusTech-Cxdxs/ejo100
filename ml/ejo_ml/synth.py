@@ -119,3 +119,37 @@ def parts(weeks: int = 104, seed: int = 11, as_of: dt.date = dt.date(2026, 10, 5
         out.append({"part_id": f"part{i:03d}", "weekly": weekly, "as_of": as_of.isoformat()})
     out.append({"part_id": "part-unused", "weekly": [0] * weeks, "as_of": as_of.isoformat()})
     return out
+
+
+STEPS = ["prs_hod", "prs_store", "epr_finance", "epr_manager", "job_card_approval", "service_approval", "job_cancellation", "estimate_manager", "warranty_provider"]
+ROLES = ["technician", "workshop-supervisor", "store-officer", "finance-officer", "receptionist", "warranty-officer"]
+
+
+def decisions(n: int = 2400, seed: int = 5, start: dt.date = dt.date(2024, 3, 4), days: int = 560) -> list[dict]:
+    """Approval decisions with real-world patterns: large outside purchases and
+    late-evening requests are sent back more often, technicians' first parts
+    slips more than store officers', warranty providers refuse about a quarter."""
+    rng = random.Random(seed)
+    base = {"prs_hod": 0.08, "prs_store": 0.05, "epr_finance": 0.12, "epr_manager": 0.1, "job_card_approval": 0.06, "service_approval": 0.04,
+            "job_cancellation": 0.3, "estimate_manager": 0.15, "warranty_provider": 0.25}
+    out = []
+    for k in range(n):
+        on = start + dt.timedelta(days=int(days * k / n))
+        step = rng.choices(STEPS, [5, 4, 3, 2, 5, 4, 1, 3, 1])[0]
+        role = rng.choice(ROLES)
+        amount = round(rng.lognormvariate(11.5, 1.0), 2) if step.startswith("epr") or step == "warranty_provider" else 0.0
+        lines = rng.randint(1, 8) if step.startswith("prs") or step == "estimate_manager" else (1 if amount else 0)
+        hour = rng.choices(range(24), [1] * 7 + [8] * 10 + [3] * 7)[0]
+        p = base[step]
+        if amount > 250_000:
+            p *= 3.0
+        if hour >= 18 or hour < 7:
+            p *= 2.5
+        if role == "technician" and step.startswith("prs"):
+            p *= 2.5
+        if lines >= 6:
+            p *= 2.0
+        rejected = 1 if rng.random() < min(0.9, p) else 0
+        out.append({"row_id": f"d{k:05d}", "on": on.isoformat(), "step": step, "rejected": rejected, "amount": amount, "lines": lines, "hour": hour,
+                    "weekday": on.isoweekday(), "requester_role": role, "decider_role": "workshop-manager", "wait_hours": round(rng.expovariate(1 / 6), 2)})
+    return out

@@ -22,10 +22,11 @@ import { PLATFORM } from '@/lib/brand';
 import { findLearned } from '@/lib/enyo/learned';
 import { EXAMPLE_MIN } from '@/lib/enyo/learned-core';
 import {
-  asAiMode, autoReplyHeaders, DEFAULT_HOURS, dueDates, newMessageId, pickAssignee, readHours, readTargets, taggedSubject, unknownContacts,
+  asAiMode, autoReplyHeaders, DEFAULT_HOURS, dueDates, newMessageId, pickAssignee, readHours, readTargets, taggedSubject, unknownContacts, unknownSpecifics,
   type AiMode, type Hours, type Priority, type Triage,
 } from './core';
 import { answerMessages, hoursSentence, parseAnswer, parseTriage, summaryMessages, triageMessages, type AiAnswer, type Knowledge } from './ai-core';
+import { recordsReadyFor, senderFacts, SENDER_KIND_LABEL, type SenderContext } from './context-core';
 
 // ─────────────────────────────────────────────────────────── settings & queues
 
@@ -86,6 +87,15 @@ export async function nextSupportNumber(): Promise<string> {
 
 export const newToken = () => randomBytes(24).toString('base64url');
 
+/** Where the sender follows their request: a colleague's own help page in the portal, or the customer's page on the website. */
+export function followUrl(t: { id: string; token: string | null; requesterUserId?: string | null }): string | null {
+  if (t.requesterUserId) {
+    const portal = portalBaseUrl();
+    return portal ? `${portal}/support/help/${t.id}` : null;
+  }
+  return responseUrl(t.token);
+}
+
 /** The customer's own page for a request ("Solved / Talk to a person / Rate us") on the website. */
 export function responseUrl(token: string | null | undefined): string | null {
   const site = websiteBaseUrl();
@@ -100,6 +110,8 @@ export type NewTicket = {
   priority: Priority; triage?: Triage | null; entities?: unknown; verified?: boolean; authenticatedSender?: boolean; sourceMessageId?: string | null; openedAt?: Date;
   /** Enyo should read it on the next run (email tickets). */
   aiPending?: boolean; handoverReason?: string | null;
+  /** v37: a colleague's own help request (private from the first moment), who is writing, and tags. */
+  requesterUserId?: string | null; senderKind?: string | null; senderUserId?: string | null; tags?: string[];
 };
 
 /** Creates the ticket with its targets and owner (load-balanced in the queue). */
@@ -117,6 +129,7 @@ export async function openTicket(t: NewTicket, tx: Prisma.TransactionClient = pr
       priority: t.priority, topic: t.triage?.topic ?? null, sentiment: t.triage?.sentiment ?? null, language: t.triage?.language ?? null,
       entities: (t.entities ?? undefined) as Prisma.InputJsonValue | undefined, verified: Boolean(t.verified), authenticatedSender: Boolean(t.authenticatedSender), token,
       aiPendingAt: t.aiPending ? new Date() : null, handoverReason: t.handoverReason ?? null,
+      requesterUserId: t.requesterUserId ?? null, senderKind: t.senderKind ?? null, senderUserId: t.senderUserId ?? null, ...(t.tags?.length ? { tags: t.tags.slice(0, 10) } : {}),
       dueFirstResponseAt: due.first, dueResolutionAt: due.resolve, lastCustomerAt: opened, assignedToId: assignee, sourceMessageId: t.sourceMessageId ?? null,
       createdAt: opened,
     },
@@ -140,11 +153,11 @@ export async function nextAssignee(organisationId: string, queueId: string): Pro
 // ─────────────────────────────────────────────────────────── Enyo
 
 /** Enyo's reading of an email (fast model). Null when Enyo is off or the model did not answer usefully. */
-export async function triageEmail(organisationId: string, o: { queueName: string; subject: string; body: string; timeoutMs?: number }): Promise<Triage | null> {
+export async function triageEmail(organisationId: string, o: { queueName: string; subject: string; body: string; timeoutMs?: number; sender?: SenderContext | null }): Promise<Triage | null> {
   const ready = await enyoReady(organisationId, 'customerAssistant');
   if (!ready.ready) return null;
   try {
-    const res = await complete({ ...ready.config, timeoutMs: Math.min(ready.config.timeoutMs, o.timeoutMs ?? 15_000) }, { model: ready.config.fastModel, messages: triageMessages(o, asData), temperature: 0, maxTokens: 300 });
+    const res = await complete({ ...ready.config, timeoutMs: Math.min(ready.config.timeoutMs, o.timeoutMs ?? 15_000) }, { model: ready.config.fastModel, messages: triageMessages({ ...o, sender: o.sender ? SENDER_KIND_LABEL[o.sender.kind] : undefined }, asData), temperature: 0, maxTokens: 300 });
     return parseTriage(res.content);
   } catch (err) {
     logFailure('Support triage failed', err);
@@ -153,12 +166,13 @@ export async function triageEmail(organisationId: string, o: { queueName: string
 }
 
 /** What Enyo may answer from: the organisation's contact facts, hours, and answers people approved. */
-export async function supportKnowledge(organisationId: string, question: string): Promise<{ knowledge: Knowledge; bestScore: number }> {
+export async function supportKnowledge(organisationId: string, question: string, colleague = false): Promise<{ knowledge: Knowledge; bestScore: number }> {
   const [org, branches, settings, learned] = await Promise.all([
     prisma.organisation.findUnique({ where: { id: organisationId }, select: { name: true, hotlines: true, email: true, hqAddress: true, website: true } }),
     prisma.branch.findMany({ where: { isActive: true, businessUnit: { organisationId, isActive: true } }, orderBy: { name: 'asc' }, take: 20, select: { name: true, address: true, hotlines: true, email: true } }),
     supportSettings(organisationId),
-    findLearned(organisationId, ['SUPPORT', 'CUSTOMER', 'PUBLIC'], question, 5).catch(() => []),
+    // A colleague's help request learns from colleagues' answers too; customers never see those.
+    findLearned(organisationId, colleague ? ['STAFF', 'SUPPORT'] : ['SUPPORT', 'CUSTOMER', 'PUBLIC'], question, 5).catch(() => []),
   ]);
   return {
     bestScore: learned[0]?.score ?? 0,
@@ -175,26 +189,52 @@ export async function supportKnowledge(organisationId: string, question: string)
 /** Facts-type topics Enyo can answer from the organisation's details even without an approved answer. */
 const FACT_TOPICS = new Set(['opening_hours', 'location_contact']);
 
-/** Enyo's reply (to send by itself, or as a draft for a colleague). */
-export async function aiReply(organisationId: string, o: { customerName: string; subject: string; body: string; topic: string | null; mode: 'answer' | 'draft'; timeoutMs?: number }): Promise<(AiAnswer & { hasSources: boolean; model: string; unknownContacts: string[] }) | null> {
+export type AiReplyResult = AiAnswer & { hasSources: boolean; model: string; unknownContacts: string[]; recordsReady: boolean; personOnly: string | null };
+
+/** Something only a colleague can do, from the sign-in check (a reason code for aiDecision). */
+export function personOnlyFrom(ctx: SenderContext | null | undefined, topic: string | null): string | null {
+  // Unproven senders are treated alike whatever the account's state (nothing confirms that an account exists).
+  if (!ctx?.proven || !ctx.login || !ctx.login.needsPerson) return null;
+  // Only when the question is about getting in: a switched-off customer asking opening hours is answered as usual.
+  if (topic !== 'account_access') return null;
+  return ctx.login.code === 'access_off' ? 'access_off' : ctx.login.code === 'deactivated' ? 'deactivated' : 'no_account';
+}
+
+/**
+ * Enyo's reply (to send by itself, or as a draft for a colleague), from the
+ * organisation's details, approved answers and — when the sender is proven —
+ * their own records and the links to them (context-core senderFacts).
+ */
+export async function aiReply(organisationId: string, o: { customerName: string; subject: string; body: string; topic: string | null; mode: 'answer' | 'draft'; timeoutMs?: number; context?: SenderContext | null }): Promise<AiReplyResult | null> {
   const ready = await enyoReady(organisationId, 'customerAssistant');
   if (!ready.ready) return null;
-  const { knowledge, bestScore } = await supportKnowledge(organisationId, `${o.subject}\n${o.body}`.slice(0, 2000));
-  const hasSources = knowledge.answers.length > 0 || FACT_TOPICS.has(o.topic ?? '');
+  const colleague = Boolean(o.context?.staff && (o.context.provenHow === 'own_request' || o.context.kind === 'staff'));
+  const { knowledge, bestScore } = await supportKnowledge(organisationId, `${o.subject}\n${o.body}`.slice(0, 2000), o.context?.provenHow === 'own_request');
+  const sender = o.context ? senderFacts(o.context) : null;
+  // Records Enyo was given for a question it may answer from them (still never money, complaints or safety).
+  const recordsReady = recordsReadyFor(o.context, o.topic);
+  const personOnly = personOnlyFrom(o.context, o.topic);
+  const hasSources = knowledge.answers.length > 0 || FACT_TOPICS.has(o.topic ?? '') || recordsReady;
   try {
     const res = await complete({ ...ready.config, timeoutMs: Math.min(ready.config.timeoutMs, o.timeoutMs ?? 25_000) }, {
       model: ready.config.model,
-      messages: answerMessages({ assistant: ready.settings.displayName || PLATFORM.assistant, customerName: o.customerName, subject: o.subject, body: o.body, knowledge, mode: o.mode }, asData),
+      messages: answerMessages({ assistant: ready.settings.displayName || PLATFORM.assistant, customerName: o.customerName, subject: o.subject, body: o.body, knowledge, mode: o.mode, ...(sender ? { sender: { ...sender, colleague } } : {}) }, asData),
       temperature: 0.2,
-      maxTokens: 900,
+      maxTokens: 1100,
     });
     const a = parseAnswer(res.content, knowledge.answers.map((x) => x.id));
     if (!a) return null;
-    // Sure of itself only as far as the sources go: an approved answer that barely matches caps the confidence.
-    const confidence = knowledge.answers.length ? Math.min(a.confidence, 0.5 + bestScore / 2) : FACT_TOPICS.has(o.topic ?? '') ? a.confidence : Math.min(a.confidence, 0.5);
-    // Links, phones and emails must come from our own details or approved answers.
-    const strangers = unknownContacts(a.reply, JSON.stringify(knowledge));
-    return { ...a, confidence: a.needsPerson || strangers.length ? 0 : confidence, hasSources, model: res.model, unknownContacts: strangers };
+    // Sure of itself only as far as the sources go: an approved answer that barely matches caps the confidence;
+    // an answer from the sender's own records is capped a little below certain.
+    const confidence = recordsReady ? Math.min(a.confidence, 0.9)
+      : knowledge.answers.length ? Math.min(a.confidence, 0.5 + bestScore / 2)
+        : FACT_TOPICS.has(o.topic ?? '') ? a.confidence : Math.min(a.confidence, 0.5);
+    // Links, phones and emails must come from our own details, approved answers or the sender's links.
+    const strangers = [
+      ...unknownContacts(a.reply, `${JSON.stringify(knowledge)}\n${(sender?.links ?? []).map((l) => l.url).join('\n')}`),
+      ...unknownSpecifics(a.reply, [...(sender?.links ?? []).map((l) => l.url), ...(o.context?.customerLinks ?? []).slice(0, 3).map((l) => l.url), ...(knowledge.contact.website ? [knowledge.contact.website] : []), ...knowledge.answers.flatMap((x) => [...x.answer.matchAll(/https?:\/\/[^\s<>()"']+/g)].map((m) => m[0]))], `${sender?.text ?? ''}\n${o.subject}\n${o.body}`),
+    ];
+    return { ...a, confidence: a.needsPerson || strangers.length || personOnly ? 0 : confidence, hasSources, model: res.model, unknownContacts: strangers, recordsReady, personOnly };
   } catch (err) {
     logFailure('Support AI reply failed', err);
     return null;

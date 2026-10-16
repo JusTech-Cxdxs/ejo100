@@ -12,11 +12,12 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from . import synth
-from .data import jobs_frame, parts_frame
+from .data import decisions_frame, jobs_frame, parts_frame
 from .export import boosted, iforest_decision
-from .tasks import anomaly, demand, duration, lines, themes
+from .tasks import anomaly, decisions, demand, duration, lines, themes
 from .text import tfidf_from_spec
 
 
@@ -99,6 +100,26 @@ def write_fixtures(out: Path) -> None:
         if want > 0:
             expected.append({"partId": r["partId"], "suggestedQuantity": want})
     files["parts_demand.json"] = {"artifact": p.artifact, "cases": [{"input": {"onHand": on_hand}, "expected": {"suggestions": expected}}]}
+
+    dec = decisions_frame(synth.decisions(seed=13))
+    dr = decisions.train(dec)
+    if not dr.artifact:
+        raise SystemExit(f"DECISION_RISK: no artifact ({dr.gate.reasons})")
+    da = dr.artifact
+    sample_d = dec.tail(40)
+    X = decisions.features(sample_d, da["steps"], da["roles"])
+    d_cases = []
+    for k, (_, row) in enumerate(sample_d.iterrows()):
+        raw = boosted(da["trees"], lambda f, k=k: float(X[k, f]))
+        prob = float(np.clip(np.interp(raw, da["calibration"]["x"], da["calibration"]["y"]), 0, 1))
+        role = row["requester_role"] if isinstance(row["requester_role"], str) else None
+        d_cases.append({"input": {"step": row["step"], "requester_role": role, "amount": float(row["amount"]), "lines": int(row["lines"]), "hour": int(row["hour"]), "weekday": int(row["weekday"])}, "expected": {"raw": raw, "probability": prob}})
+    # A role the model never saw counts as "other".
+    unseen = pd.DataFrame([{"step": da["steps"][0], "requester_role": "not-a-role", "amount": 0.0, "lines": 2, "hour": 10, "weekday": 3}])
+    Xu = decisions.features(unseen, da["steps"], da["roles"])
+    raw_u = boosted(da["trees"], lambda f: float(Xu[0, f]))
+    d_cases.append({"input": unseen.iloc[0].to_dict(), "expected": {"raw": raw_u, "probability": float(np.clip(np.interp(raw_u, da["calibration"]["x"], da["calibration"]["y"]), 0, 1))}})
+    files["decision_risk.json"] = {"artifact": da, "cases": d_cases}
 
     for name, body in files.items():
         (out / name).write_text(json.dumps(body, separators=(",", ":")), encoding="utf-8")

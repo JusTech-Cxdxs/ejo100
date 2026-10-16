@@ -11,6 +11,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SupportReplyForm } from '@/components/support/SupportReplyForm';
 import { SupportNoteForm } from '@/components/support/SupportNoteForm';
+import { SupportSenderCard } from '@/components/support/SupportSenderCard';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SUPPORT_STATUSES, SUPPORT_STATUS_LABEL, type SupportStatus } from '@/lib/support-rules';
 import { CHANNEL_LABEL, PRIORITIES, PRIORITY_LABEL } from '@/lib/support/core';
@@ -152,17 +153,20 @@ export default async function SupportTicketPage({ params, searchParams }: { para
         </div>
 
         <aside className="min-w-0 space-y-6">
-          <SectionCard icon="user" title="Customer">
+          {t.sender ? <SupportSenderCard s={t.sender} /> : null}
+          <SectionCard icon="user" title={t.colleagueRequest ? 'Colleague' : 'Contact'}>
             <dl className="space-y-2 text-sm">
               <div><dt className="text-xs text-[var(--ejo-text-muted)]">Name</dt><dd className="font-medium text-[var(--ejo-text)]">{t.customerId ? <CustomerLink id={t.customerId} name={t.customerName ?? t.contactName} canView={t.canCrm} /> : t.contactName}</dd></div>
               {t.contactPhone ? <div><dt className="text-xs text-[var(--ejo-text-muted)]">Phone</dt><dd><a className="font-medium text-[var(--ejo-primary)] underline" href={`tel:${t.contactPhone.replace(/[^\d+]/g, '')}`}>{t.contactPhone}</a></dd></div> : null}
               {t.emailTo ? <div><dt className="text-xs text-[var(--ejo-text-muted)]">Email</dt><dd className="break-all font-medium text-[var(--ejo-text)]">{t.emailTo}</dd></div> : null}
-              <div>
-                <dt className="text-xs text-[var(--ejo-text-muted)]">Identity</dt>
-                <dd className={t.verified ? 'font-medium text-[var(--ejo-success)]' : 'text-[var(--ejo-warning-text)]'}>
-                  {t.verified ? 'Verified — signed in, or their email server proved the address' : t.customerId ? 'Not verified — check before discussing their vehicle, jobs or money' : 'Not a known customer'}
-                </dd>
-              </div>
+              {!t.sender ? (
+                <div>
+                  <dt className="text-xs text-[var(--ejo-text-muted)]">Identity</dt>
+                  <dd className={t.verified ? 'font-medium text-[var(--ejo-success)]' : 'text-[var(--ejo-warning-text)]'}>
+                    {t.verified ? 'Verified — signed in, or their email server proved the address' : t.customerId ? 'Not verified — check before discussing their vehicle, jobs or money' : 'Not a known customer'}
+                  </dd>
+                </div>
+              ) : null}
               <div><dt className="text-xs text-[var(--ejo-text-muted)]">Opened</dt><dd className="text-[var(--ejo-text)]">{formatDateTime(t.createdAt)}</dd></div>
               <div><dt className="text-xs text-[var(--ejo-text-muted)]">First response</dt><dd className={SLA_TEXT[t.sla]}>{t.firstResponse ? `${t.firstResponse} after opening${t.sla === 'breached' ? ' (late)' : ''}` : t.dueLabel ? `Not answered yet — ${t.dueLabel}` : 'Not answered yet'}</dd></div>
               {t.resolvedAt ? <div><dt className="text-xs text-[var(--ejo-text-muted)]">Resolved</dt><dd className="text-[var(--ejo-text)]">{formatDateTime(t.resolvedAt)}</dd></div> : null}

@@ -16,7 +16,7 @@ on:
         required: true
         default: kewalram-nigeria
       tasks:
-        description: "Comma-separated tasks, empty for all (JOB_DURATION, ESTIMATE_LINES, PARTS_DEMAND, PRICE_ANOMALY, COMPLAINT_THEMES)"
+        description: "Comma-separated tasks, empty for all (JOB_DURATION, ESTIMATE_LINES, PARTS_DEMAND, PRICE_ANOMALY, COMPLAINT_THEMES, DECISION_RISK)"
         required: false
         default: ""
       dry_run:

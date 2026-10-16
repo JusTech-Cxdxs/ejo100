@@ -16,6 +16,7 @@ import { renderServicePaymentRecordedUpdateEmail } from '@/lib/email-templates/s
 import { renderServicePaymentRequirementMetEmail } from '@/lib/email-templates/service-payment-requirement-met';
 import { renderServicePaymentCompletedInFullEmail } from '@/lib/email-templates/service-payment-completed-in-full';
 import { renderCustomerServicePaymentReceivedEmail } from '@/lib/email-templates/customer-service-payment-received';
+import { customerLinks } from '@/lib/customer-links-core';
 
 class ServicePaymentActionError extends Error {}
 
@@ -293,7 +294,7 @@ export async function recordServicePayment(
         totalPaidSoFar: formatNaira(newTotal),
         totalEstimate: formatNaira(roundedTotal),
         balanceRemaining: balance > 0 ? formatNaira(balance) : undefined,
-        serviceUrl: `${websiteUrl}/customer-portal/dashboard#service-${vehicleServiceId}`,
+        serviceUrl: `${customerLinks(websiteUrl).service(vehicleServiceId)}`,
         logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,

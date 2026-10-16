@@ -54,6 +54,8 @@ const READ_FENCES = [
   'fencedCustomer',
   // Enyo (lib/actions/enyo.ts): the person's own chats and facts, by user id AND the organisation the chat route stores them under.
   'myEnyoOrg(',
+  // Integrity alerts: where { AND: [{ id }, visible(await integrityReviewer()) ] } — the reviewer's organisation, never about themselves.
+  'integrityReviewer(',
 ];
 
 /** Reads that need no record fence, with the reason. */

@@ -36,6 +36,9 @@ export const HIDDEN_ACTIONS = [
   // Personal: a person's own reminders and work mailbox (kept in Audit Logs, never news for colleagues).
   'reminder.sent', 'reminder.created', 'reminder.changed', 'reminder.snoozed', 'reminder.done', 'reminder.cancelled', 'reminder.delegate_granted', 'reminder.delegate_withdrawn',
   'mailbox.connected', 'mailbox.reconnected', 'mailbox.disconnected', 'mailbox.ai_consent_given', 'mailbox.ai_consent_declined', 'mailbox.ai_consent_withdrawn',
+  // v37: sign-ins are security records, not news; integrity alerts are shown only on the Integrity page and to its reviewers (never to the person they are about).
+  'user.signed_in', 'user.sign_in_failed', 'customer.sign_in_failed',
+  'integrity.alert_raised', 'integrity.alert_reviewed', 'integrity.speak_up', 'integrity.scan',
 ];
 
 export function entityTypesForRoles(slugs: string[]): string[] | 'ALL' {

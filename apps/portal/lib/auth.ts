@@ -1,4 +1,5 @@
 import { betterAuth } from 'better-auth';
+import { createAuthMiddleware, isAPIError } from 'better-auth/api';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { prisma } from '@ejo/database';
 import { after } from 'next/server';
@@ -103,8 +104,29 @@ export const auth = betterAuth({
           const u = await prisma.user.findUnique({ where: { id: session.userId }, select: { isActive: true } });
           return Boolean(u?.isActive);
         },
+        // Every sign-in is recorded (when, from where) — not the sessions
+        // Better Auth re-issues itself. Raw update: a sign-in is not a change
+        // to the person's record, so it stays out of the data journal.
+        after: async (session, ctx) => {
+          if (!ctx?.path?.startsWith('/sign-in')) return;
+          await recordStaffSignIn(session.userId, typeof session.ipAddress === 'string' ? session.ipAddress : null, typeof session.userAgent === 'string' ? session.userAgent : null);
+        },
       },
     },
+  },
+
+  // A failed sign-in is recorded too (the address tried, why it failed, from
+  // where — never the password): the Support centre uses it for "I can't log
+  // in", and the integrity checks for password-guessing.
+  hooks: {
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== '/sign-in/email') return;
+      const r = ctx.context.returned;
+      if (!isAPIError(r)) return;
+      const body = (ctx.body ?? {}) as { email?: unknown };
+      const ip = ctx.headers?.get('x-forwarded-for')?.split(',')[0]?.trim() || ctx.headers?.get('x-real-ip') || null;
+      await recordFailedSignIn(typeof body.email === 'string' ? body.email : '', String((r.body as { code?: unknown } | undefined)?.code ?? r.status ?? 'failed'), ip, ctx.headers?.get('user-agent') ?? null);
+    }),
   },
 
   user: {
@@ -156,3 +178,29 @@ export const auth = betterAuth({
 });
 
 export type Session = typeof auth.$Infer.Session;
+
+async function recordStaffSignIn(userId: string, ip: string | null, userAgent: string | null): Promise<void> {
+  try {
+    await prisma.$executeRaw`UPDATE "users" SET "lastLoginAt" = now() WHERE "id" = ${userId}`;
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { organisationId: true } });
+    await prisma.auditLog.create({ data: { organisationId: u?.organisationId ?? null, userId, action: 'user.signed_in', entityType: 'User', entityId: userId, ipAddress: ip?.slice(0, 64) ?? null, metadata: { userAgent: userAgent?.slice(0, 200) ?? null } } });
+  } catch {
+    /* never stops a sign-in */
+  }
+}
+
+async function recordFailedSignIn(rawEmail: string, code: string, ip: string | null, userAgent: string | null): Promise<void> {
+  try {
+    const email = rawEmail.trim().toLowerCase().slice(0, 160);
+    if (!email) return;
+    const u = await prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true, organisationId: true, isActive: true } });
+    await prisma.auditLog.create({
+      data: {
+        organisationId: u?.organisationId ?? null, userId: null, action: 'user.sign_in_failed', entityType: 'User', entityId: u?.id ?? null, ipAddress: ip?.slice(0, 64) ?? null,
+        metadata: { email, known: Boolean(u), inactive: u ? !u.isActive : undefined, reason: code.slice(0, 60), userAgent: userAgent?.slice(0, 200) ?? null },
+      },
+    });
+  } catch {
+    /* never changes the answer */
+  }
+}

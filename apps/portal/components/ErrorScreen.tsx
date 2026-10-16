@@ -14,6 +14,8 @@ type Props = {
   homeLabel?: string;
   /** Who to tell, e.g. "IT". */
   contact?: string;
+  /** Inside the signed-in portal: offer "Ask for help" with the reference and page filled in. */
+  helpLink?: boolean;
 };
 
 const NETWORK = /Failed to fetch|NetworkError|Load failed|fetch failed|network error|ERR_INTERNET_DISCONNECTED/i;
@@ -24,11 +26,13 @@ const NETWORK = /Failed to fetch|NetworkError|Load failed|fetch failed|network e
  * /api/error-report for failures in the browser. A lost connection gets its
  * own words, and the screen notices when the connection comes back.
  */
-export function ErrorScreen({ error, reset, title, message, homeHref = '/dashboard', homeLabel = 'Back to the dashboard', contact = 'IT' }: Props) {
+export function ErrorScreen({ error, reset, title, message, homeHref = '/dashboard', homeLabel = 'Back to the dashboard', contact = 'IT', helpLink = false }: Props) {
   const router = useRouter();
   const [ref, setRef] = useState<string | null>(error.digest ?? null);
   const [offline, setOffline] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [path, setPath] = useState('');
+  useEffect(() => { setPath(window.location.pathname); }, []);
   const unsent = useRef<{ ref: string; name: string; message: string; path: string } | null>(null);
 
   useEffect(() => {
@@ -103,6 +107,9 @@ export function ErrorScreen({ error, reset, title, message, homeHref = '/dashboa
             </button>
             <span className="sr-only" aria-live="polite">{copied ? 'Reference copied' : ''}</span>
           </div>
+        ) : null}
+        {helpLink && ref && !offline ? (
+          <p className="mt-3 text-sm"><Link href={`/support/help?ref=${encodeURIComponent(ref)}${path ? `&page=${encodeURIComponent(path)}` : ''}`} className="font-medium text-[var(--ejo-primary)] underline">Ask for help with this error</Link></p>
         ) : null}
         <div className="mt-6 flex flex-col-reverse justify-center gap-2 sm:flex-row sm:gap-3">
           <Link href={homeHref} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] transition hover:-translate-y-0.5 hover:bg-[var(--ejo-bg)] motion-reduce:transform-none">{homeLabel}</Link>

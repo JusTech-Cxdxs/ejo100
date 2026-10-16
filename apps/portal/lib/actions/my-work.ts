@@ -5,6 +5,7 @@ import { allows, myOrganisationId, orgWhere, reachWhere } from '@/lib/authz/serv
 import { ticketReachWhere } from '@/lib/support-rules';
 import { requireUser } from './workshop';
 import { lagosYmd } from '@/lib/nigeria-calendar';
+import { fenceStaffHelp } from '@/lib/support/reach';
 
 /**
  * The personal side of the dashboard: the jobs this person is working on,
@@ -57,7 +58,7 @@ export async function getMyWorkItems(): Promise<MyWorkItem[]> {
  */
 async function supportItems(userId: string): Promise<MyWorkItem[]> {
   if (!(await allows('support.tickets.manage'))) return [];
-  const fence = ticketReachWhere(await reachWhere('support.tickets.manage'), await myOrganisationId());
+  const fence = (await fenceStaffHelp(ticketReachWhere(await reachWhere('support.tickets.manage'), await myOrganisationId())));
   const rows = await prisma.supportTicket.findMany({
     where: { AND: [fence, { status: 'OPEN' }, { OR: [{ assignedToId: userId }, { assignedToId: null }] }] },
     orderBy: { createdAt: 'asc' },

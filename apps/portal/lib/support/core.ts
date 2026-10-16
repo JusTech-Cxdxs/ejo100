@@ -25,12 +25,12 @@ export function asPriority(v: unknown): Priority {
   return typeof v === 'string' && (PRIORITIES as readonly string[]).includes(v) ? (v as Priority) : 'NORMAL';
 }
 
-export const CHANNEL_LABEL: Record<string, string> = { EMAIL: 'Email', CUSTOMER_PORTAL: 'Customer portal', WEBSITE: 'Website enquiry', STAFF: 'Opened by a colleague' };
+export const CHANNEL_LABEL: Record<string, string> = { EMAIL: 'Email', CUSTOMER_PORTAL: 'Customer portal', WEBSITE: 'Website enquiry', STAFF: 'Opened by a colleague', HELP: 'A colleague’s own request' };
 
-export const QUEUE_KINDS = ['general', 'warranty', 'technical', 'customer_care', 'parts', 'sales', 'other'] as const;
+export const QUEUE_KINDS = ['general', 'warranty', 'technical', 'customer_care', 'parts', 'sales', 'internal', 'other'] as const;
 export type QueueKind = (typeof QUEUE_KINDS)[number];
 export const QUEUE_KIND_LABEL: Record<QueueKind, string> = {
-  general: 'General support', warranty: 'Warranty & recalls', technical: 'Technical / workshop', customer_care: 'Customer care & complaints', parts: 'Parts', sales: 'Vehicle sales', other: 'Other',
+  general: 'General support', warranty: 'Warranty & recalls', technical: 'Technical / workshop', customer_care: 'Customer care & complaints', parts: 'Parts', sales: 'Vehicle sales', internal: 'Staff help (colleagues’ own requests)', other: 'Other',
 };
 export function asQueueKind(v: unknown): QueueKind {
   return typeof v === 'string' && (QUEUE_KINDS as readonly string[]).includes(v) ? (v as QueueKind) : 'general';
@@ -348,12 +348,20 @@ export function aiDecision(o: {
   mode: AiMode; triage: Triage | null; text: string; threshold: number; answerConfidence: number | null; hasSources: boolean; repeatContact: boolean; autoReplyAllowed: boolean;
   /** The sender's address is proven (DMARC) — or not an email at all. Default true. */
   senderVerified?: boolean;
+  /**
+   * v37: the sender is PROVEN and Enyo was given their own records for a
+   * question it may answer from them (context-core RECORD_ANSWERABLE): a
+   * record question no longer needs a person by itself.
+   */
+  recordsReady?: boolean;
+  /** v37: something only a colleague can do (access switched off, account deactivated, no account found). */
+  personOnly?: string | null;
 }): { action: 'answer' | 'draft' | 'none'; reasons: string[] } {
   if (o.mode === 'OFF') return { action: 'none', reasons: [] };
   const reasons = sensitiveReasons(o.text);
   if (!o.triage) reasons.push('triage_failed');
   else {
-    if (o.triage.needsRecords) reasons.push('needs_records');
+    if (o.triage.needsRecords && !o.recordsReady) reasons.push('needs_records');
     if (o.triage.sentiment === 'negative') reasons.push('negative_mood');
     if (o.triage.priority === 'URGENT') reasons.push('urgent');
   }
@@ -362,6 +370,7 @@ export function aiDecision(o: {
   if (o.repeatContact) reasons.push('repeat_contact');
   if (!o.autoReplyAllowed) reasons.push('automated_sender');
   if (o.senderVerified === false) reasons.push('unverified_sender');
+  if (o.personOnly) reasons.push(o.personOnly);
   const unique = [...new Set(reasons)];
   if (o.mode === 'AUTO' && unique.length === 0) return { action: 'answer', reasons: [] };
   return { action: o.autoReplyAllowed ? 'draft' : 'none', reasons: unique };
@@ -385,6 +394,10 @@ export const HANDOVER_REASON_LABEL: Record<string, string> = {
   triage_failed: 'Enyo could not read it',
   queue_off: 'Enyo is off for this queue',
   chat_handover: 'Handed over from a chat with Enyo',
+  access_off: 'Their portal access is switched off — a person decides',
+  deactivated: 'Their staff account is deactivated — an administrator decides',
+  no_account: 'No account matches the sender — a person checks',
+  staff_help: 'A colleague asked for help',
 };
 
 export function reasonLabels(reason: string | null | undefined): string[] {
@@ -526,5 +539,25 @@ export function unknownContacts(reply: string, facts: string): string[] {
     const core = m[0].replace(/\D/g, '').replace(/^234/, '0').replace(/^0/, '');
     if (core.length >= 7 && !allDigits.includes(core)) out.push(m[0].trim());
   }
+  return [...new Set(out)];
+}
+
+/**
+ * v37: links to OUR OWN sites must be exactly ones Enyo was given (a made-up
+ * path on our domain is still made up), and every record number it writes
+ * (JC-…, SV-…, SUP-…) must be in the facts. Returns what does not fit.
+ */
+export function unknownSpecifics(reply: string, allowedUrls: string[], facts: string): string[] {
+  const norm = (u: string) => u.trim().replace(/[).,;:!?'"\]]+$/, '').replace(/\/+$/, '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '');
+  const allowed = new Set(allowedUrls.map(norm));
+  const hostOf = (u: string) => u.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split(/[/?#]/)[0]!;
+  const ours = new Set(allowedUrls.map(hostOf).filter(Boolean));
+  const out: string[] = [];
+  for (const m of reply.matchAll(/\bhttps?:\/\/[^\s<>()"']+/gi)) {
+    if (ours.has(hostOf(m[0])) && !allowed.has(norm(m[0]))) out.push(m[0]);
+  }
+  const known = new Set(extractEntities(facts).records);
+  const factsUpper = facts.toUpperCase();
+  for (const r of extractEntities(reply).records) if (!known.has(r) && !factsUpper.includes(r)) out.push(r);
   return [...new Set(out)];
 }

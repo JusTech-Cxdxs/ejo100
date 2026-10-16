@@ -39,6 +39,7 @@ import { renderTechnicianVehicleServiceAssignedEmail } from '@/lib/email-templat
 import { renderTechnicianVehicleServiceResponseEmail } from '@/lib/email-templates/technician-vehicle-service-response';
 import { lagosDayKey, lagosYear } from '@/lib/utils/format-date';
 import { schedulePrediction } from '@/lib/enyo/predict/lines';
+import { customerLinks } from '@/lib/customer-links-core';
 
 class VehicleServiceActionError extends Error {}
 
@@ -1272,7 +1273,7 @@ export async function updateVehicleServiceStatus(
     const websiteUrl = websiteBaseUrl();
     const portalUrl = portalBaseUrl();
     const vehicleDescription = [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
-    const dashboardUrl = `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`;
+    const dashboardUrl = `${customerLinks(websiteUrl).service(serviceId)}`;
     const websiteLogoUrl = `${websiteUrl}/images/logo/email-logo.png`;
     const longDate = (d: Date) => d.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' });
 
@@ -1409,7 +1410,7 @@ export async function sendVehicleServiceCollectionReminder(serviceId: string): P
       vehicleDescription: [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
       dueDate: dueDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Lagos' }),
       reminderNumber,
-      dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`,
+      dashboardUrl: `${customerLinks(websiteUrl).service(serviceId)}`,
       logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
@@ -1655,7 +1656,7 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
         customerName: service.customer.fullName,
         serviceNumber: service.serviceNumber,
         vehicleDescription: [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
-        dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${request.vehicleServiceId}`,
+        dashboardUrl: `${customerLinks(websiteUrl).service(request.vehicleServiceId)}`,
         logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
@@ -1779,7 +1780,7 @@ export async function sendVehicleServiceCancelledCollectionNotice(serviceId: str
       vehicleDescription: [service.vehicle.make, service.vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
       daysSinceCancellationLabel: pluralize(daysElapsed, 'working day'),
       reminderNumber: reminderState.nextNumber,
-      dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${serviceId}`,
+      dashboardUrl: `${customerLinks(websiteUrl).service(serviceId)}`,
       logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
       companyName: orgContext.companyName,
       branchName: orgContext.branchName,
@@ -1955,7 +1956,7 @@ export async function approveVehicleServiceCloseRequest(requestId: string, decis
         customerName: service.customer.fullName,
         serviceNumber: service.serviceNumber,
         vehicleDescription,
-        dashboardUrl: `${websiteUrl}/customer-portal/dashboard#service-${request.vehicleServiceId}`,
+        dashboardUrl: `${customerLinks(websiteUrl).service(request.vehicleServiceId)}`,
         logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,
