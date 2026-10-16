@@ -12,9 +12,9 @@ import 'server-only';
  *    that were answered from the organisation's public information only (no
  *    one's records) and did not end in a hand-over become PENDING learned
  *    answers (scrubbed). An administrator approves before Enyo uses them.
- *  • Training export (JSONL, chat fine-tuning format): only approved learned
- *    answers and helpful-rated first answers that read nobody's records,
- *    scrubbed again; tagged with channel and role, never a name or an id.
+ *  • Training export (JSONL, chat fine-tuning format): only learned answers an
+ *    administrator approved (each read by a person), scrubbed again; tagged
+ *    with channel and source, never a name or an id.
  *
  * Organisation-fenced throughout. Conversation text never leaves the
  * organisation's database except in the administrator's own export.
@@ -25,6 +25,7 @@ import { tokenise } from './predict/text';
 import { scrubKeepingLines } from './learned-core';
 import { LEARNABLE_TOOLS } from './learned';
 import { ROLE_LABELS } from '@/lib/authz/catalogue';
+import { withoutGreeting } from './conversations-core';
 
 const DAY = 86_400_000;
 /** Customer and website tools that read nobody's records. */
@@ -55,7 +56,8 @@ export async function conversationInsights(organisationId: string, days = 30): P
   });
   const ids = convs.map((c) => c.id);
   const [firstQuestions, tools, rated, handovers, pending, approved] = await Promise.all([
-    ids.length ? prisma.enyoMessage.findMany({ where: { conversationId: { in: ids }, role: 'USER' }, orderBy: { createdAt: 'asc' }, distinct: ['conversationId'], take: 5000, select: { conversationId: true, content: true } }) : [],
+    // The first question of each chat, in one query (DISTINCT ON in the database, not in memory).
+    ids.length ? prisma.$queryRaw<{ conversationId: string; content: string }[]>`SELECT DISTINCT ON ("conversationId") "conversationId", "content" FROM "enyo_messages" WHERE "conversationId" = ANY(${ids}) AND "role" = 'USER' ORDER BY "conversationId", "createdAt" ASC` : [],
     ids.length ? prisma.enyoMessage.groupBy({ by: ['toolName'], where: { conversationId: { in: ids }, role: 'TOOL' }, _count: { _all: true } }) : [],
     ids.length ? prisma.enyoMessage.findMany({ where: { conversationId: { in: ids }, role: 'ASSISTANT', rating: { not: null } }, take: 2000, select: { rating: true, ratingNote: true, conversationId: true, createdAt: true } }) : [],
     prisma.supportTicket.findMany({ where: { organisationId, createdAt: { gte: since }, conversationId: { not: null } }, take: 500, select: { conversationId: true, subject: true } }),
@@ -120,10 +122,16 @@ export async function harvestPublicConversations(organisationId: string, now = n
     where: { organisationId, channel: { in: ['CUSTOMER', 'PUBLIC'] }, createdAt: { gte: since, lte: until } },
     orderBy: { createdAt: 'desc' },
     take: 300,
-    select: { id: true, channel: true, messages: { orderBy: { createdAt: 'asc' }, take: 6, select: { id: true, role: true, content: true, toolName: true } } },
+    select: { id: true, channel: true, customerId: true, messages: { orderBy: { createdAt: 'asc' }, take: 6, select: { id: true, role: true, content: true, toolName: true } } },
   });
   const handedOver = new Set((await prisma.supportTicket.findMany({ where: { organisationId, conversationId: { in: convs.map((c) => c.id) } }, select: { conversationId: true } })).map((t) => t.conversationId));
   const staff = (await prisma.user.findMany({ where: { organisationId }, select: { fullName: true }, take: 2000 })).map((u) => u.fullName);
+  // Answers already learned (or removed by an administrator): never again.
+  const assistantIds = convs.flatMap((c) => c.messages.filter((m) => m.role === 'ASSISTANT').map((m) => `chat:${m.id}`));
+  const known = new Set((await prisma.enyoLearnedAnswer.findMany({ where: { organisationId, sourceId: { in: assistantIds } }, select: { sourceId: true } })).map((x) => x.sourceId));
+  // The customers of these chats: their names never survive into an answer.
+  const customerIds = [...new Set(convs.map((c) => c.customerId).filter((x): x is string => Boolean(x)))];
+  const customerNames = new Map((customerIds.length ? await prisma.customer.findMany({ where: { id: { in: customerIds }, organisationId }, select: { id: true, fullName: true } }) : []).map((x) => [x.id, x.fullName]));
   let made = 0;
   for (const c of convs) {
     if (made >= 20) break;
@@ -131,31 +139,35 @@ export async function harvestPublicConversations(organisationId: string, now = n
     const q = c.messages.find((m) => m.role === 'USER');
     const qi = c.messages.indexOf(q!);
     const a = c.messages.slice(qi + 1).find((m) => m.role === 'ASSISTANT');
-    if (!q || !a) continue;
+    if (!q || !a || known.has(`chat:${a.id}`)) continue;
+    // Someone giving their name, or anything about themselves: not a general question.
+    if (/\b(my name is|i am|i'm|this is|call me)\b/i.test(q.content)) continue;
     const between = c.messages.slice(qi + 1, c.messages.indexOf(a));
     if (between.some((m) => m.role === 'TOOL' && !PUBLIC_SAFE_TOOLS.has(m.toolName ?? ''))) continue;
     if (between.some((m) => m.role === 'USER')) continue;
-    const question = scrubText(q.content, staff).slice(0, 500);
-    const answer = scrubKeepingLines(a.content, staff, 4000);
+    const names = [...staff, ...(c.customerId && customerNames.get(c.customerId) ? [customerNames.get(c.customerId)!] : [])];
+    const question = scrubText(q.content, names).slice(0, 500);
+    // The greeting line ("Hi Chinedu,") is personal: dropped; the rest is scrubbed.
+    const answer = scrubKeepingLines(withoutGreeting(a.content), names, 4000);
     const tokens = tokenise(question);
     if (tokens.length < 3 || answer.length < 20) continue;
     // Customer chats read the customer's own records: only questions that are clearly general are taken.
     if (c.channel === 'CUSTOMER' && /\b(my|mine|i|me)\b/i.test(q.content)) continue;
-    const r = await prisma.enyoLearnedAnswer.upsert({
+    await prisma.enyoLearnedAnswer.upsert({
       where: { sourceId: `chat:${a.id}` },
       create: { organisationId, channel: c.channel, question, answer, tokens, source: 'chat', sourceId: `chat:${a.id}`, status: 'PENDING' },
       update: {},
-      select: { createdAt: true },
+      select: { id: true },
     });
-    if (now.getTime() - r.createdAt.getTime() < 60_000) made += 1;
+    made += 1;
   }
   return made;
 }
 
 export type TrainingExample = { messages: { role: 'system' | 'user' | 'assistant'; content: string }[]; meta: { channel: string; source: string; role?: string } };
 
-/** The fine-tuning set: approved answers, and first answers people rated helpful that read nobody's records. Scrubbed again. */
-export async function conversationTrainingSet(organisationId: string): Promise<{ rows: TrainingExample[]; report: { approved: number; rated: number } }> {
+/** The fine-tuning set: answers an administrator approved, scrubbed again. */
+export async function conversationTrainingSet(organisationId: string): Promise<{ rows: TrainingExample[]; report: { approved: number } }> {
   const [org, approved, staff] = await Promise.all([
     prisma.organisation.findUnique({ where: { id: organisationId }, select: { name: true } }),
     prisma.enyoLearnedAnswer.findMany({ where: { organisationId, status: 'APPROVED' }, orderBy: { createdAt: 'asc' }, take: 5000, select: { channel: true, question: true, answer: true, source: true } }),
@@ -167,29 +179,6 @@ export async function conversationTrainingSet(organisationId: string): Promise<{
     messages: [{ role: 'system', content: system(a.channel) }, { role: 'user', content: scrubText(a.question, names) }, { role: 'assistant', content: scrubKeepingLines(a.answer, names, 4000) }],
     meta: { channel: a.channel, source: `approved:${a.source}` },
   }));
-  // Helpful-rated first answers in staff chats that read nobody's records (not already approved above).
-  const helpful = await prisma.enyoMessage.findMany({
-    where: { role: 'ASSISTANT', rating: 1, conversation: { organisationId } },
-    orderBy: { createdAt: 'desc' },
-    take: 1000,
-    select: { id: true, content: true, conversationId: true, createdAt: true, conversation: { select: { channel: true, userId: true } } },
-  });
-  const learnedIds = new Set((await prisma.enyoLearnedAnswer.findMany({ where: { organisationId, sourceId: { in: helpful.map((h) => `msg:${h.id}`) } }, select: { sourceId: true } })).map((x) => x.sourceId));
-  const roleOf = new Map<string, string>();
-  const users = [...new Set(helpful.map((h) => h.conversation.userId).filter((x): x is string => Boolean(x)))];
-  for (const r of users.length ? await prisma.userRole.findMany({ where: { userId: { in: users } }, select: { userId: true, role: { select: { slug: true } } } }) : []) if (!roleOf.has(r.userId)) roleOf.set(r.userId, ROLE_LABELS[r.role.slug] ?? r.role.slug);
-  let rated = 0;
-  for (const h of helpful) {
-    if (learnedIds.has(`msg:${h.id}`)) continue;
-    const before = await prisma.enyoMessage.findMany({ where: { conversationId: h.conversationId, createdAt: { lte: h.createdAt } }, orderBy: { createdAt: 'asc' }, take: 12, select: { role: true, content: true, toolName: true } });
-    const users2 = before.filter((m) => m.role === 'USER');
-    if (users2.length !== 1) continue;
-    if (before.some((m) => m.role === 'TOOL' && !LEARNABLE_TOOLS.has(m.toolName ?? ''))) continue;
-    rows.push({
-      messages: [{ role: 'system', content: system(h.conversation.channel) }, { role: 'user', content: scrubText(users2[0]!.content, names) }, { role: 'assistant', content: scrubKeepingLines(h.content, names, 4000) }],
-      meta: { channel: h.conversation.channel, source: 'rated_helpful', ...(h.conversation.userId && roleOf.get(h.conversation.userId) ? { role: roleOf.get(h.conversation.userId)! } : {}) },
-    });
-    rated += 1;
-  }
-  return { rows, report: { approved: approved.length, rated } };
+  // Only answers an administrator approved are exported (each was read by a person).
+  return { rows, report: { approved: approved.length } };
 }

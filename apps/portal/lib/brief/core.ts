@@ -11,7 +11,7 @@ export const BRIEF_SCOPE_LABEL: Record<BriefScope, string> = {
 };
 
 export type BriefItem = { title: string; detail?: string; href: string; when?: string; overdue?: boolean };
-export type BriefSection = { key: string; title: string; count: number; overdue?: number; items: BriefItem[]; href: string };
+export type BriefSection = { key: string; title: string; count: number; overdue?: number; items: BriefItem[]; href: string; /** "60+" when the list was capped. */ countLabel?: string };
 export type BriefData = {
   name: string;
   greeting: string;
@@ -46,8 +46,10 @@ export function briefPeriod(input: { scope?: unknown; since?: unknown; from?: un
     return { scope, from, to: now, label: 'since your last brief' };
   }
   if (scope === 'custom') {
-    const f = date(input.from);
-    const t = date(input.to);
+    // Calendar days are Lagos days (00:00 Lagos is 23:00 UTC the day before).
+    const day = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? date(`${v}T00:00:00+01:00`) : date(v));
+    const f = day(input.from);
+    const t = day(input.to);
     if (f && t && f <= t && t.getTime() - f.getTime() <= 92 * 86_400_000) {
       const end = new Date(Math.min(now.getTime(), t.getTime() + 86_400_000 - 1));
       return { scope, from: f, to: end, label: `${f.toLocaleDateString('en-GB', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short' })} to ${t.toLocaleDateString('en-GB', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short' })}` };
@@ -58,15 +60,23 @@ export function briefPeriod(input: { scope?: unknown; since?: unknown; from?: un
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+/** Text from mail subjects, names and titles must never become markdown (a subject like "x](https://evil)" stays text). */
+export function mdText(v: string): string {
+  // Exactly the characters the chat's markdown reader un-escapes (lib/enyo/markdown.ts).
+  return v.replace(/[\\*_`[\]()]/g, (c) => `\\${c}`).replace(/\s+/g, ' ').trim();
+}
+
+const countText = (s: BriefSection) => s.countLabel ?? String(s.count);
+
 /** The brief without the model: plain, complete, with links (also the fallback). */
 export function plainBrief(d: BriefData): string {
   const busy = d.sections.filter((s) => s.count > 0);
   if (!busy.length) return `${d.greeting}, ${d.name}. Nothing is waiting for you ${d.periodLabel === 'right now' ? 'right now' : d.periodLabel}. Enjoy the calm.`;
   const lines = [`${d.greeting}, ${d.name}. Here is what is waiting ${d.periodLabel === 'right now' ? 'for you' : d.periodLabel}:`, ''];
   for (const s of busy) {
-    lines.push(`**${s.title}** — ${s.count}${s.overdue ? ` (${s.overdue} overdue)` : ''}`);
-    for (const i of s.items.slice(0, 4)) lines.push(`- [${i.title}](${i.href})${i.detail ? ` — ${i.detail}` : ''}${i.overdue ? ' (overdue)' : ''}`);
-    if (s.count > 4) lines.push(`- [See all ${s.count}](${s.href})`);
+    lines.push(`**${s.title}** — ${countText(s)}${s.overdue ? ` (${s.overdue} overdue)` : ''}`);
+    for (const i of s.items.slice(0, 4)) lines.push(`- [${mdText(i.title)}](${i.href})${i.detail ? ` — ${mdText(i.detail)}` : ''}${i.overdue ? ' (overdue)' : ''}`);
+    if (s.count > 4) lines.push(`- [See all ${countText(s)}](${s.href})`);
     lines.push('');
   }
   return lines.join('\n').trim();
@@ -75,7 +85,7 @@ export function plainBrief(d: BriefData): string {
 /** What the model gets: the facts only, with the links it may use. */
 export function briefMessages(d: BriefData, assistant: string, wrap: (label: string, text: string) => string): { role: 'system' | 'user'; content: string }[] {
   const facts = d.sections.filter((s) => s.count > 0).map((s) => [
-    `${s.title}: ${s.count}${s.overdue ? `, ${s.overdue} overdue` : ''} (all: ${s.href})`,
+    `${s.title}: ${countText(s)}${s.overdue ? `, ${s.overdue} overdue` : ''} (all: ${s.href})`,
     ...s.items.slice(0, 6).map((i) => `  - ${i.title}${i.detail ? ` — ${i.detail}` : ''}${i.when ? ` (${i.when})` : ''}${i.overdue ? ' [overdue]' : ''} → ${i.href}`),
   ].join('\n')).join('\n');
   return [

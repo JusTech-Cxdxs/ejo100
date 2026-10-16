@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
   // Enyo: yesterday's customer and website chats → answers waiting for approval (Enyo learning page).
   let harvested = 0;
   try {
-    const orgs = await prisma.organisation.findMany({ where: { isActive: true }, select: { id: true }, take: 50 });
+    const orgs = await prisma.organisation.findMany({ where: { isActive: true }, select: { id: true }, take: 500 });
     for (const o of orgs) harvested += await harvestPublicConversations(o.id).catch((err) => { logFailure('Enyo chat learning failed', err); return 0; });
     await recordJobRun('enyo-chat-learning', { candidates: harvested });
   } catch (err) {

@@ -109,7 +109,7 @@ export default async function DashboardPage() {
       />
 
       {/* Enyo's brief: what is waiting for this person, with links, to read or to hear. */}
-      <EnyoBriefCard />
+      <EnyoBriefCard userKey={me.id} />
 
       {seesWorkshop ? (
         <div className="ejo-stagger mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">

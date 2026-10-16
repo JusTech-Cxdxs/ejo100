@@ -38,6 +38,9 @@ export async function learnFromResolution(o: { ticketId: string; organisationId:
   const a = scrubKeepingLines(answer, names, 4000);
   const tokens = tokenise(q);
   if (tokens.length < 3 || !a) return 'skipped';
+  // An administrator removed this one before: never suggested again.
+  const before = await prisma.enyoLearnedAnswer.findUnique({ where: { sourceId: `sup:${t.id}` }, select: { status: true } });
+  if (before?.status === 'REJECTED') return 'skipped';
   await prisma.enyoLearnedAnswer.upsert({
     where: { sourceId: `sup:${t.id}` },
     create: { organisationId: o.organisationId, channel: 'SUPPORT', question: q, answer: a, tokens, source: 'support', sourceId: `sup:${t.id}`, createdById: o.userId, status: 'PENDING' },

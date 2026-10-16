@@ -24,7 +24,8 @@ export async function getMyBrief(input: { scope?: string; since?: string; from?:
   const user = await requireUser();
   const period = briefPeriod(input ?? {});
   const data = await collectBrief(period);
-  const plain = plainBrief(data);
+  // Even the plain list keeps only our own links.
+  const plain = onlyKnownLinks(plainBrief(data), allowedLinks(data));
   const total = briefCount(data);
   if (!withinLimit(`brief:${user.id}`, 12, 10 * 60_000)) return { text: plain, data, byEnyo: false, total };
   const ready = await enyoReady(await myOrganisationId(), 'staffAssistant');

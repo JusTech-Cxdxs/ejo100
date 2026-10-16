@@ -24,7 +24,8 @@ Each item comes with its link. The brief can cover:
 It is built from the same lists the person sees elsewhere, with their own
 permissions. Mail is never included during an assisted session. The small
 model writes it up and may only use links we gave it; if the model is off, a
-plain list is shown instead. **Listen** reads it aloud.
+plain list is shown instead. Mail subjects and names are shown as text, never
+as links. **Listen** reads it aloud.
 
 By default the brief runs once each morning, afternoon and evening when the
 dashboard opens. You can switch this off on the card; the choice is remembered
@@ -64,11 +65,17 @@ them. They come from:
 - since this release, each day's customer and website chats: a general
   question answered from public information, with no hand-over
 
+Customer and website candidates drop the greeting line (which carries the
+customer's name) and scrub the customer's and staff names. Questions where
+someone introduces themselves are skipped. An answer an administrator
+removes is kept as *rejected*, so the same chat or reply is never suggested
+again.
+
 **Training set (JSONL, chat fine-tuning format):**
 
 - Download it from the same card.
-- It contains approved answers and helpful-rated first answers that read
-  nobody's records. Everything is scrubbed again and tagged with channel and
-  role, never with a name or an id.
+- It contains only answers an administrator approved, each read by a
+  person. Everything is scrubbed again and tagged with channel and source,
+  never with a name or an id.
 - "Manage Enyo" only, never during an assisted session, and every export is in
   the audit trail.

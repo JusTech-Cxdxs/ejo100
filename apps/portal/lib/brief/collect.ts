@@ -26,21 +26,24 @@ const safe = <T,>(p: Promise<T>, fallback: T) => p.catch(() => fallback);
 export async function collectBrief(period: { from: Date | null; to: Date; label: string }): Promise<BriefData> {
   const user = await requireUser();
   const me = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } });
-  const assisting = Boolean(await currentAssist().catch(() => null));
+  // When in doubt, treat it as an assisted session (no mail, no decisions).
+  const assisting = await currentAssist().then(Boolean).catch(() => true);
   const now = period.to;
   const lagosMidnight = new Date(`${now.toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T00:00:00+01:00`);
   const calFrom = period.from && period.from < lagosMidnight ? period.from : lagosMidnight;
   const calTo = period.from ? new Date(Math.max(now.getTime(), lagosMidnight.getTime() + DAY)) : new Date(lagosMidnight.getTime() + DAY);
 
-  const [actions, jobs, calendar, reminders, support, mail, activity, broadcasts] = await Promise.all([
+  const reminderWindow = { ownerId: user.id, status: 'PENDING' as const, dueAt: { lte: new Date(Math.max(now.getTime(), lagosMidnight.getTime() + DAY)) } };
+  const [actions, jobs, calendar, reminders, support, mail, activity, broadcasts, reminderTotal] = await Promise.all([
     safe(getDashboardNotifications() as Promise<{ id: string; title: string; detail: string; url: string; createdAt: Date }[]>, []),
     safe(getMyJobs(), []),
     safe(listCalendar(calFrom, calTo) as Promise<{ id: string; title: string; startsAt: Date; status: string; room: { name: string } | null; location: string | null }[]>, []),
-    safe(prisma.reminder.findMany({ where: { ownerId: user.id, status: 'PENDING', dueAt: { lte: new Date(Math.max(now.getTime(), lagosMidnight.getTime() + DAY)) } }, orderBy: { dueAt: 'asc' }, take: 20, select: { id: true, title: true, dueAt: true } }), []),
+    safe(prisma.reminder.findMany({ where: reminderWindow, orderBy: { dueAt: 'asc' }, take: 20, select: { id: true, title: true, dueAt: true } }), []),
     supportFor(user.id),
     assisting ? Promise.resolve(null) : mailFor(user.id, period.from),
     safe(getActivityFeed({ unreadOnly: true, take: 60 }) as Promise<{ id: string; title: string; detail: string | null; url: string; at: Date; read: boolean }[]>, []),
     safe(getMyBroadcasts(), []),
+    safe(prisma.reminder.count({ where: reminderWindow }), 0),
   ]);
 
   const sections: BriefSection[] = [];
@@ -58,7 +61,7 @@ export async function collectBrief(period: { from: Date | null; to: Date; label:
   if (support) sections.push(support);
   const overdueReminders = reminders.filter((r) => r.dueAt.getTime() < nowMs);
   sections.push({
-    key: 'reminders', title: 'Reminders due', count: reminders.length, overdue: overdueReminders.length,
+    key: 'reminders', title: 'Reminders due', count: reminderTotal, overdue: overdueReminders.length,
     items: reminders.slice(0, 8).map((r) => ({ title: r.title, href: '/reminders', when: r.dueAt.getTime() < nowMs ? `was due ${lagos(r.dueAt)}` : `due ${time(r.dueAt)}`, overdue: r.dueAt.getTime() < nowMs })),
     href: '/reminders',
   });
@@ -67,13 +70,13 @@ export async function collectBrief(period: { from: Date | null; to: Date; label:
   sections.push({ key: 'jobs', title: 'Your open jobs', count: jobs.length, items: jobs.slice(0, 8).map((j) => ({ title: `${j.number}${j.vehicle ? ` — ${j.vehicle}` : ''}`, detail: `${j.as}, ${j.status.replace(/_/g, ' ').toLowerCase()}`, href: j.url })), href: '/dashboard' });
   if (mail) sections.push(mail);
   const fresh = activity.filter((a) => !a.read && (!period.from || new Date(a.at) >= period.from));
-  sections.push({ key: 'activity', title: period.from ? `New notifications ${period.label}` : 'Unread notifications', count: fresh.length, items: fresh.slice(0, 6).map((a) => ({ title: a.title, detail: a.detail ?? undefined, href: a.url || '/notifications', when: lagos(new Date(a.at)) })), href: '/notifications' });
+  sections.push({ key: 'activity', title: period.from ? `New notifications ${period.label}` : 'Unread notifications', count: fresh.length, ...(activity.length >= 60 && !period.from ? { countLabel: '60+' } : {}), items: fresh.slice(0, 6).map((a) => ({ title: a.title, detail: a.detail ?? undefined, href: a.url || '/notifications', when: lagos(new Date(a.at)) })), href: '/notifications' });
   const unreadBc = broadcasts.filter((b) => !b.read);
   sections.push({ key: 'broadcasts', title: 'Unread announcements', count: unreadBc.length, items: unreadBc.slice(0, 4).map((b) => ({ title: b.title, href: '/notifications', when: lagos(new Date(b.startsAt)) })), href: '/notifications' });
 
   return {
     name: (me?.fullName ?? 'there').split(/\s+/)[0] ?? 'there',
-    greeting: greetingFor(now),
+    greeting: greetingFor(new Date()),
     periodLabel: period.label,
     from: period.from?.toISOString() ?? null,
     to: now.toISOString(),
@@ -94,8 +97,9 @@ async function supportFor(userId: string): Promise<BriefSection | null> {
   }).catch(() => []);
   const now = new Date();
   const late = rows.filter((r) => !r.firstResponseAt && r.dueFirstResponseAt && r.dueFirstResponseAt < now);
+  const total = rows.length < 30 ? rows.length : await prisma.supportTicket.count({ where: { AND: [reach as object, { status: { in: ['OPEN', 'ON_HOLD'] } }, { OR: [{ assignedToId: userId }, ...(queues.length ? [{ queueId: { in: queues }, assignedToId: null }] : [])] }] } }).catch(() => rows.length);
   return {
-    key: 'support', title: 'Support requests for you', count: rows.length, overdue: late.length,
+    key: 'support', title: 'Support requests for you', count: total, overdue: late.length,
     items: rows.slice(0, 8).map((r) => ({
       title: `${r.number} — ${r.contactName}`, detail: `${r.priority === 'URGENT' ? 'URGENT: ' : ''}${r.subject}${r.assignedToId ? '' : ' (not assigned yet)'}`,
       href: `/crm/support/${r.id}`, when: r.dueFirstResponseAt && !r.firstResponseAt ? `first answer ${dueLabel(r.dueFirstResponseAt, now)}` : undefined, overdue: late.includes(r),
@@ -115,8 +119,9 @@ async function mailFor(userId: string, from: Date | null): Promise<BriefSection 
     take: 40,
     select: { id: true, subject: true, fromName: true, fromAddress: true, receivedAt: true, aiPriority: true, aiSummary: true },
   }).catch(() => []);
+  const total = rows.length < 40 ? rows.length : await prisma.mailMessage.count({ where: { accountId: box.id, seen: false, ...(from ? { receivedAt: { gte: from } } : {}) } }).catch(() => rows.length);
   return {
-    key: 'mail', title: from ? 'Unread mail in this period' : 'Unread mail', count: rows.length, overdue: rows.filter((r) => r.aiPriority === 1).length,
+    key: 'mail', title: from ? 'Unread mail in this period' : 'Unread mail', count: total, overdue: rows.filter((r) => r.aiPriority === 1).length,
     items: rows.slice(0, 6).map((r) => ({ title: r.subject, detail: `from ${r.fromName ?? r.fromAddress}${r.aiPriority === 1 ? ' — needs you today' : ''}`, href: `/mail?m=${r.id}`, when: lagos(r.receivedAt), overdue: r.aiPriority === 1 })),
     href: '/mail',
   };

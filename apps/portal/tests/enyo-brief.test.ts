@@ -50,20 +50,40 @@ test('Enyo’s brief keeps only links we gave it', () => {
 });
 
 test('wiring: brief on the dashboard and in chat; work profile; conversation learning is scrubbed, approved and fenced', () => {
-  assert.match(read('app/(app)/dashboard/page.tsx'), /<EnyoBriefCard \/>/);
+  assert.match(read('app/(app)/dashboard/page.tsx'), /<EnyoBriefCard userKey=\{me\.id\} \/>/);
   assert.match(read('lib/enyo/tools/work.ts'), /collectBrief\(period\)/);
   const collect = read('lib/brief/collect.ts');
   assert.match(collect, /assisting \? Promise\.resolve\(null\) : mailFor/, 'never a colleague’s mail during an assisted session');
+  assert.match(collect, /currentAssist\(\)\.then\(Boolean\)\.catch\(\(\) => true\)/, 'fails closed');
   const route = read('app/api/enyo/chat/route.ts');
   assert.match(route, /const profile = ctx\.assisted \? null : await workProfile\(userId, organisationId\)/);
   const conv = read('lib/enyo/conversations.ts');
   assert.match(conv, /status: 'PENDING'/);
   assert.match(conv, /if \(handedOver\.has\(c\.id\)\) continue;/);
   assert.match(conv, /!PUBLIC_SAFE_TOOLS\.has/);
-  assert.match(conv, /scrubKeepingLines\(a\.content, staff, 4000\)/);
+  assert.match(conv, /scrubKeepingLines\(withoutGreeting\(a\.content\), names, 4000\)/);
+  assert.match(conv, /customerNames/);
   assert.match(conv, /where: \{ organisationId, status: 'APPROVED' \}/);
   const exp = read('app/(app)/enyo/learning/conversations/route.ts');
   assert.match(exp, /allows\('enyo\.manage'\)/);
   assert.match(exp, /currentAssist\(\)/);
   assert.match(exp, /enyo\.conversation_training_exported/);
+});
+
+import { mdText } from '../lib/brief/core';
+import { parseMarkdown } from '../lib/enyo/markdown';
+test('a mail subject can never become a link in the brief', () => {
+  const evil = 'Verify](https://evil.example/x) now';
+  const text = plainBrief({ ...data, sections: [{ key: 'mail', title: 'Unread mail', count: 1, href: '/mail', items: [{ title: evil, href: '/mail?m=1' }] }] });
+  assert.match(text, /\[Verify\\\]\\\(https:\/\/evil\.example\/x\\\) now\]\(\/mail\?m=1\)/);
+  const blocks = JSON.stringify(parseMarkdown(text));
+  assert.doesNotMatch(blocks, /"href":"https:\/\/evil/);
+  assert.equal(mdText('a*b_c'), 'a\\*b\\_c');
+});
+
+import { withoutGreeting } from '../lib/enyo/conversations-core';
+test('the greeting line with a customer’s name is dropped from learned answers', () => {
+  assert.equal(withoutGreeting('Hi Chinedu, our Ikeja branch opens at 8.'), 'our Ikeja branch opens at 8.');
+  assert.equal(withoutGreeting('Good morning, Mr Okafor. We open at 8.'), 'We open at 8.');
+  assert.equal(withoutGreeting('We open at 8.'), 'We open at 8.');
 });

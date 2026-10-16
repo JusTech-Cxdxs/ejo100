@@ -9,9 +9,8 @@ import { createMouthDriver, speakable, useSpeechOutput } from './voice';
 import { readPrefs } from './prefs';
 import { EIcon } from './icons';
 
-const AUTO_KEY = 'ejo:brief:auto';
-const PART_KEY = 'ejo:brief:part';
-const LAST_KEY = 'ejo:brief:last';
+// Per person on this device (a shared workshop PC keeps each person's own).
+const keys = (who: string) => ({ AUTO_KEY: `ejo:brief:${who}:auto`, PART_KEY: `ejo:brief:${who}:part`, LAST_KEY: `ejo:brief:${who}:last` });
 const get = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };
 const set = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* private mode */ } };
 
@@ -23,7 +22,8 @@ const set = (k: string, v: string) => { try { window.localStorage.setItem(k, v);
  * default it briefs itself once each morning, afternoon and evening when the
  * dashboard opens (switch off below; remembered on this device).
  */
-export function EnyoBriefCard() {
+export function EnyoBriefCard({ userKey }: { userKey: string }) {
+  const { AUTO_KEY, PART_KEY, LAST_KEY } = useMemo(() => keys(userKey), [userKey]);
   const [scope, setScope] = useState<BriefScope>('now');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -49,7 +49,7 @@ export function EnyoBriefCard() {
       setError('Enyo could not put your brief together just now. Please try again.');
     }
     setBusy(false);
-  }, [voice]);
+  }, [voice, LAST_KEY, PART_KEY]);
 
   // Once each morning, afternoon and evening: a brief since the last one.
   useEffect(() => {
@@ -58,7 +58,7 @@ export function EnyoBriefCard() {
     const on = get(AUTO_KEY) !== 'off';
     setAuto(on);
     if (on && get(PART_KEY) !== partOfDay()) void run(get(LAST_KEY) ? 'since_last' : 'now');
-  }, [run]);
+  }, [run, AUTO_KEY, PART_KEY, LAST_KEY]);
 
   const toggleAuto = (v: boolean) => { setAuto(v); set(AUTO_KEY, v ? 'on' : 'off'); };
   const go = () => void run(scope, scope === 'custom' ? { from, to } : undefined);
