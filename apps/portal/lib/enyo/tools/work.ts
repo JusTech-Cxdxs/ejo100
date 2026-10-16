@@ -6,9 +6,10 @@
 import { currentAssist } from '@/lib/authz/server';
 import { getDashboardNotifications } from '@/lib/actions/dashboard';
 import { getMyJobs, getMyNumbers } from '@/lib/actions/my-work';
-import { listCalendar } from '@/lib/actions/scheduling';
 import { approvalArea } from '@/lib/approvals';
-import { count, lagosDayStart, ok, STATUS_WORDS, when } from '../tool-helpers';
+import { collectBrief } from '@/lib/brief/collect';
+import { briefPeriod } from '@/lib/brief/core';
+import { count, ok, STATUS_WORDS, when } from '../tool-helpers';
 import type { StaffTool } from '../types';
 
 const DAY = 86_400_000;
@@ -32,16 +33,6 @@ async function waiting() {
     decisions: decisions.sort(oldestFirst).map(shape),
     toDo: toDo.sort(oldestFirst).map(shape),
   };
-}
-
-async function todaysAppointments() {
-  const from = lagosDayStart(0);
-  const rows = await listCalendar(from, lagosDayStart(1)).catch(() => []);
-  return rows
-    .filter((a: { status: string }) => a.status !== 'CANCELLED')
-    .map((a: { title: string; startsAt: Date; endsAt: Date; status: string; room: { name: string } | null; location: string | null; id: string }) => ({
-      title: a.title, starts: when(a.startsAt), ends: when(a.endsAt), status: STATUS_WORDS(a.status), where: a.room?.name ?? a.location ?? undefined, href: `/schedule/${a.id}`,
-    }));
 }
 
 export const workTools: StaffTool[] = [
@@ -69,26 +60,18 @@ export const workTools: StaffTool[] = [
   {
     name: 'daily_brief',
     kind: 'read',
-    status: 'Preparing your day…',
+    status: 'Preparing your brief…',
     description:
-      'A short start-of-day brief for this person: counts of decisions and steps waiting (and how many are overdue), their open jobs, today\'s appointments, and their own numbers for this month (the same tiles as the dashboard). Use for "good morning", "brief me", "my day".',
-    parameters: { type: 'object', properties: {}, additionalProperties: false },
-    run: async () => {
-      const [{ decisions, toDo }, jobs, appointments, numbers] = await Promise.all([
-        waiting(),
-        getMyJobs().catch(() => []),
-        todaysAppointments(),
-        getMyNumbers().catch(() => []),
-      ]);
+      'This person\'s brief: decisions and steps waiting (with overdue), their support requests (and late ones), reminders due, appointments, open jobs, their own unread mail (Enyo-flagged first; never during an assisted session), new notifications and announcements — each with a link — plus their numbers this month. Periods: "now" (everything waiting), "today", "week", or "since_last" with no date. Use for "good morning", "brief me", "what have I left", "what did I miss today".',
+    parameters: { type: 'object', properties: { period: { type: 'string', enum: ['now', 'today', 'week'], description: 'Default: now.' } }, additionalProperties: false },
+    run: async (args) => {
+      const period = briefPeriod({ scope: typeof args.period === 'string' ? args.period : 'now' });
+      const [data, numbers] = await Promise.all([collectBrief(period), getMyNumbers().catch(() => [])]);
       return ok(
         {
-          decisionsWaiting: decisions.length,
-          decisionsOverdue: decisions.filter((d) => d.overdue).length,
-          otherStepsWaiting: toDo.length,
-          otherStepsOverdue: toDo.filter((d) => d.overdue).length,
-          oldestWaiting: [...decisions, ...toDo].sort((a, b) => b.waitingDays - a.waitingDays).slice(0, 3),
-          openJobs: jobs.length,
-          appointmentsToday: appointments,
+          period: data.periodLabel,
+          sections: data.sections.filter((x) => x.count > 0).map((x) => ({ what: x.title, count: x.count, ...(x.overdue ? { overdue: x.overdue } : {}), all: x.href, items: x.items.slice(0, 5) })),
+          nothingWaiting: data.sections.every((x) => x.count === 0),
           myNumbersThisMonth: numbers.map((n) => ({ label: n.label, value: n.value, ...(n.suffix ? { unit: n.suffix.trim() } : {}), hint: n.hint, ...(n.href ? { href: n.href } : {}) })),
         },
         [{ label: 'Dashboard', href: '/dashboard' }],

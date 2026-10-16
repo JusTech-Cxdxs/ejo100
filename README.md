@@ -45,7 +45,7 @@ planned work is labelled as planned.
 | Scheduling | Personal calendars, appointments, meeting rooms, aides who book for others, availability. |
 | Business Analytics | Sales, cost, gross profit, collections, receivables and work in progress per period and branch; every figure links to the records behind it. |
 | Support centre | Every support request in one place: emails to support@ / warranty@ / technical@ addresses, Enyo chat hand-overs and logged calls; teams with targets in business hours, fair assignment, acknowledgements, Enyo's triage, drafts and (where allowed) answers, reminders, satisfaction, and the numbers. See [docs/SUPPORT_CENTRE.md](docs/SUPPORT_CENTRE.md). |
-| Enyo (AI) | The assistant in every page: answers from the records each person may see, the guide and the web; drafts (never submits) Job Cards, reminders and mail; voice in and out; learns from approved answers; small model for small talk, large for records. |
+| Enyo (AI) | The assistant in every page: answers from the records each person may see, the guide and the web; drafts (never submits) Job Cards, reminders and mail; voice notes (pause, edit as text, send) and read-aloud; the brief on the dashboard; tailored to each person's role and work; learns from approved answers, support resolutions and chats; small model for small talk, large for records. See [docs/ENYO_BRIEF_AND_LEARNING.md](docs/ENYO_BRIEF_AND_LEARNING.md). |
 | Mail | Each person's own work mailbox (IMAP/SMTP, encrypted password): inbox with layout and pictures on request, compose in the organisation's letterhead with a live preview, Enyo's briefs and summaries read aloud. |
 | Reminders | Personal reminders into the bell and by email, with colleagues allowed to set them for you. |
 | Notifications | Action items, activity feed, email, staff and customer broadcasts with delivery figures. |
@@ -365,7 +365,7 @@ ejo100/
 | [docs/E2E_COVERAGE.md](docs/E2E_COVERAGE.md) | Playwright coverage matrix and defects found. |
 | [docs/MASTER_PLAN.md](docs/MASTER_PLAN.md) | Phase history and the list of carried-over requests. |
 | [docs/SUPPORT_CENTRE.md](docs/SUPPORT_CENTRE.md) | The Support centre: flow, teams and addresses, safety rules, numbers, learning, running it. |
-| [docs/ENYO_RELEASE.md](docs/ENYO_RELEASE.md), [docs/ML.md](docs/ML.md) | Enyo (AI) and its trained models. |
+| [docs/ENYO_RELEASE.md](docs/ENYO_RELEASE.md), [docs/ML.md](docs/ML.md), [docs/ENYO_BRIEF_AND_LEARNING.md](docs/ENYO_BRIEF_AND_LEARNING.md) | Enyo (AI), its trained models, the brief and how it learns. |
 | [docs/architecture.md](docs/architecture.md), [docs/folder-structure.md](docs/folder-structure.md), [docs/coding-standards.md](docs/coding-standards.md), [docs/module-creation-guide.md](docs/module-creation-guide.md) | Conventions for engineers adding to the codebase. |
 
 ---

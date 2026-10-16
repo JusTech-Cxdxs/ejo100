@@ -13,6 +13,8 @@ import { renderPricingAlertsDigestEmail } from '@/lib/email-templates/pricing-al
 import { purgeOldMailMessages } from '@/lib/mail/sync';
 import { purgeOldReminders } from '@/lib/reminders';
 import { resolveDurations } from '@/lib/enyo/ml/models';
+import { harvestPublicConversations } from '@/lib/enyo/conversations';
+import { prisma } from '@ejo/database';
 
 /**
  * Pricing alert digest (scheduled in vercel.json). Reads the alerts that are
@@ -93,6 +95,16 @@ export async function GET(request: NextRequest) {
   // Enyo: score yesterday's job time estimates against when the vehicles were actually ready.
   const durations = await resolveDurations().catch((err) => { logFailure('Enyo job time scoring failed', err); return null; });
   if (durations !== null) await recordJobRun('enyo-duration-scoring', { estimatesScored: durations });
+
+  // Enyo: yesterday's customer and website chats → answers waiting for approval (Enyo learning page).
+  let harvested = 0;
+  try {
+    const orgs = await prisma.organisation.findMany({ where: { isActive: true }, select: { id: true }, take: 50 });
+    for (const o of orgs) harvested += await harvestPublicConversations(o.id).catch((err) => { logFailure('Enyo chat learning failed', err); return 0; });
+    await recordJobRun('enyo-chat-learning', { candidates: harvested });
+  } catch (err) {
+    logFailure('Enyo chat learning failed', err);
+  }
   return NextResponse.json({
     branchesWithOpenAlerts: groups.length,
     emailsSent,

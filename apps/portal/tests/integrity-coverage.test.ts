@@ -81,6 +81,8 @@ const ALLOWED_PLAIN_STATUS_WRITES: Record<string, string> = {
   'lib/support/intake.ts:supportMailbox.update': 'reading status and position of a support mailbox',
   // A colleague's answer becomes a PENDING candidate again for approval.
   'lib/support/learn.ts:enyoLearnedAnswer.upsert': 'creates or resets the PENDING candidate',
+  // A customer / website chat answer becomes a PENDING candidate (an existing one is left as it is).
+  'lib/enyo/conversations.ts:enyoLearnedAnswer.upsert': 'creates the PENDING candidate',
 };
 
 function body(fnName: string, src: string): string {
