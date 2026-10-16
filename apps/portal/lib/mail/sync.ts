@@ -99,7 +99,8 @@ export async function parseOne(f: Fetched, accountId: string) {
     subject,
     snippet: snippetOf(text),
     bodyText: withAttachments(text, attachments),
-    bodyHtml: cleaned?.html ?? null,
+    // '' = looked at, no layout to show (so older messages can be told apart: null).
+    bodyHtml: cleaned?.html ?? '',
     receivedAt,
     seen: f.flags.has('\\Seen'),
     flagged: f.flags.has('\\Flagged'),
@@ -164,10 +165,38 @@ async function readInbox(client: ImapFlow, accountId: string, deadline: number):
       }
     }
     if (Date.now() < deadline) await refreshFlags(client, accountId);
+    if (Date.now() < deadline - 4_000) await backfillLayouts(client, accountId, deadline - 2_000);
   } finally {
     lock.release();
   }
   return { added };
+}
+
+/**
+ * Messages stored before Mail kept each email's own layout (bodyHtml null):
+ * a few at a time, newest first, read again so they show with their pictures
+ * and a clean text. '' marks "looked at, nothing to show", so none is read twice.
+ */
+const BACKFILL_PER_RUN = 15;
+async function backfillLayouts(client: ImapFlow, accountId: string, deadline: number): Promise<void> {
+  const todo = await prisma.mailMessage.findMany({ where: { accountId, folder: FOLDER, bodyHtml: null }, orderBy: { receivedAt: 'desc' }, take: BACKFILL_PER_RUN, select: { id: true, uid: true } });
+  if (!todo.length) return;
+  const byUid = new Map(todo.map((t: { id: string; uid: number }) => [t.uid, t.id]));
+  const fetched = await fetchChunk(client, [...byUid.keys()]);
+  for (const f of fetched) {
+    if (Date.now() > deadline) break;
+    const id = byUid.get(f.uid);
+    if (!id) continue;
+    byUid.delete(f.uid);
+    try {
+      const row = await parseOne(f, accountId);
+      await prisma.mailMessage.update({ where: { id }, data: { bodyHtml: row.bodyHtml, bodyText: row.bodyText, snippet: row.snippet } });
+    } catch {
+      await prisma.mailMessage.update({ where: { id }, data: { bodyHtml: '' } });
+    }
+  }
+  // Gone from the server: nothing to read again.
+  if (Date.now() < deadline && byUid.size) await prisma.mailMessage.updateMany({ where: { id: { in: [...byUid.values()] }, bodyHtml: null }, data: { bodyHtml: '' } });
 }
 
 /** Seen / flagged changes made elsewhere, and messages deleted on the server. */

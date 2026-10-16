@@ -169,6 +169,17 @@ const SUMMARY_MIN_AGE_MS = 20_000;
 const summaryCache = new Map<string, { pulse: string; at: number; value: NotificationSummary }>();
 function forgetSummary(userId: string) { summaryCache.delete(userId); }
 
+/** The person's unread mail right now (the menu badge): cheap, never cached, 0 during an assisted session. */
+export async function getMailUnreadNow(): Promise<number> {
+  try {
+    const m = await me();
+    if (await currentAssist().catch(() => null)) return 0;
+    return await mailUnreadFor(m.id);
+  } catch {
+    return 0;
+  }
+}
+
 export async function getNotificationSummary(): Promise<NotificationSummary> {
   try {
     const m = await me();

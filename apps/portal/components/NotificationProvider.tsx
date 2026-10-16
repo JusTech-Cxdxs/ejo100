@@ -1,9 +1,9 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useMemo, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useChangePings } from '@/lib/hooks/use-change-pings';
-import { getNotificationSummary, markNotificationsRead, setNotificationsMuted, type NotificationSummary } from '@/lib/actions/notifications';
+import { getMailUnreadNow, getNotificationSummary, markNotificationsRead, setNotificationsMuted, type NotificationSummary } from '@/lib/actions/notifications';
 import { PLATFORM } from '@/lib/brand';
 
 /** How often an open, visible tab asks "has anything changed?" (a tiny GET). */
@@ -235,6 +235,25 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     }, wait);
   }, [load, refreshPageSoon]);
   const pushed = useChangePings(onPing);
+
+  // The mail badge: its own small count, fresh every 90 s while the tab is in
+  // view and straight away when Mail changes something ("ejo:mail-changed").
+  const [mailUnread, setMailUnread] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let last = 0;
+    const refresh = async (force = false) => {
+      if (document.visibilityState === 'hidden' || (!force && Date.now() - last < 20_000)) return;
+      last = Date.now();
+      const n = await getMailUnreadNow().catch(() => null);
+      if (alive && typeof n === 'number') setMailUnread(n);
+    };
+    const onChanged = () => { void refresh(true); };
+    const timer = window.setInterval(() => { void refresh(); }, 90_000);
+    window.addEventListener('ejo:mail-changed', onChanged);
+    document.addEventListener('visibilitychange', onChanged);
+    return () => { alive = false; window.clearInterval(timer); window.removeEventListener('ejo:mail-changed', onChanged); document.removeEventListener('visibilitychange', onChanged); };
+  }, []);
   useEffect(() => {
     const on = () => { setOnline(true); void check(); };
     const off = () => setOnline(false);
@@ -392,5 +411,6 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     await markNotificationsRead(keys).catch(() => undefined);
   }, []);
 
-  return <NotificationContext.Provider value={{ summary, loaded, state, muted, toggleMute, markRead, markManyRead, mode, lastSync }}>{children}</NotificationContext.Provider>;
+  const merged = useMemo(() => (mailUnread === null ? summary : { ...summary, mailUnread }), [summary, mailUnread]);
+  return <NotificationContext.Provider value={{ summary: merged, loaded, state, muted, toggleMute, markRead, markManyRead, mode, lastSync }}>{children}</NotificationContext.Provider>;
 }

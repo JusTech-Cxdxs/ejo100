@@ -12,6 +12,7 @@ import { BODY_MAX, parseComposePrefill, quoteForReply, replySubject, SUBJECT_MAX
 import { formatLagos } from '@/lib/reminders-rules';
 import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 import { MailStyleField } from '@/components/mail/MailStyleField';
+import { RecipientField } from '@/components/mail/RecipientField';
 import { MAIL_STYLES, type MailStyle } from '@/lib/email-templates/personal-mail-styles';
 
 export const metadata: Metadata = { title: 'New message' };
@@ -77,18 +78,14 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
       <form action={sendMailFormAction} className="relative max-w-3xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">
         <FormPendingOverlay />
         {original && p.inReplyTo ? <input type="hidden" name="inReplyTo" value={original.id} /> : null}
-        <div>
-          <label htmlFor="mail-to" className={label}>To</label>
-          <input id="mail-to" name="to" required defaultValue={to} placeholder="name@example.com, another@example.com" className={input} autoComplete="off" inputMode="email" />
-        </div>
+        <RecipientField id="mail-to" name="to" label="To" required defaultValue={to} placeholder="Type a name, branch or department — or an email address" className={input} />
         {/* Cc stays out of the way until wanted (open when a reply-all filled it). */}
         <details open={Boolean(cc) || undefined} className="group">
           <summary className="inline-flex min-h-10 cursor-pointer list-none items-center gap-1.5 rounded-[var(--ejo-radius-md)] text-sm font-medium text-[var(--ejo-primary)] hover:underline [&::-webkit-details-marker]:hidden">
             <span className="group-open:hidden">+ Add Cc</span><span className="hidden group-open:inline">Cc</span>
           </summary>
           <div className="mt-1">
-            <label htmlFor="mail-cc" className="sr-only">Cc</label>
-            <input id="mail-cc" name="cc" defaultValue={cc} placeholder="Copy others (optional)" className={input} autoComplete="off" inputMode="email" />
+            <RecipientField id="mail-cc" name="cc" label="Cc" defaultValue={cc} placeholder="Copy others (optional)" className={input} />
           </div>
         </details>
         <div>
