@@ -7,6 +7,7 @@ import { pluralizeWord } from '@/lib/utils/pluralize';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { BackLink, PageTitle } from '@/components/ui';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 /**
  * Edits a part and its alternative units. Tracking type and base unit are
@@ -71,12 +72,13 @@ export default async function EditPartPage({
         </div>
         <div>
           <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Description</label>
-          <textarea
+          <textarea id="inventory-parts-id-edit-text-1"
             name="description"
             rows={2}
             defaultValue={part.description ?? ''}
             className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
+          <RefineTextButton targetId="inventory-parts-id-edit-text-1" />
         </div>
 
         <div className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-3">

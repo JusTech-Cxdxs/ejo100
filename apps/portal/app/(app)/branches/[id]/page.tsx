@@ -12,6 +12,7 @@ import { getBranchDepartments } from '@/lib/actions/structure';
 import { DepartmentsPanel } from '@/components/DepartmentsPanel';
 import { STRUCTURE_STATUS } from '@/lib/structure-messages';
 import { BackLink, PageTitle } from '@/components/ui';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 /** A branch's printed details. Read-only until Edit is chosen, as on /organisation. */
 export default async function BranchEditPage({
@@ -73,13 +74,14 @@ export default async function BranchEditPage({
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Address</label>
-            <textarea
+            <textarea id="branches-id-text-1"
               name="address"
               defaultValue={branch.address ?? ''}
               rows={2}
               placeholder="e.g. Plot 6, Block H, Abimbola Way, Isolo Industrial Estate, Lagos, Nigeria"
               className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
             />
+            <RefineTextButton targetId="branches-id-text-1" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Email</label>

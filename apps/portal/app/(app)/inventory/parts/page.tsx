@@ -18,6 +18,7 @@ import { SearchableSelect } from '@/components/SearchableSelect';
 import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { EmptyState, PageHeader } from '@/components/ui';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const TRACKING_TYPE_LABEL: Record<string, string> = {
   QUANTITY: 'Quantity',
@@ -181,11 +182,12 @@ export default async function InventoryPartsPage({
             </div>
             <div>
               <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Description</label>
-              <textarea
+              <textarea id="inventory-parts-text-1"
                 name="description"
                 rows={2}
                 className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
               />
+              <RefineTextButton targetId="inventory-parts-text-1" />
             </div>
             <div>
               <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Tracking Type</label>

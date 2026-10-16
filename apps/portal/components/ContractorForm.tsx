@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { SearchableSelect, type SearchableOption } from '@/components/SearchableSelect';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]';
 const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
@@ -20,7 +21,8 @@ export function ContractorForm({ isFrontDesk, action, search, loadDefaultOptions
     <form action={action} className="space-y-4">
       <FormPendingOverlay />
       <div><label className={label}>Contractor company</label><input name="company" required placeholder="e.g. Bright Electricals Ltd" className={input} /></div>
-      <div><label className={label}>Work to be done</label><textarea name="work" required rows={2} placeholder="e.g. Rewire workshop bay 2 and install new sockets" className={input} /></div>
+      <div><label className={label}>Work to be done</label><textarea id="contractorform-text-1" name="work" required rows={2} placeholder="e.g. Rewire workshop bay 2 and install new sockets" className={input} />
+      <RefineTextButton targetId="contractorform-text-1" /></div>
       <div><label className={label}>Where on site</label><input name="workArea" required placeholder="e.g. Workshop bay 2" className={input} /></div>
       <div>
         <label className={label}>How many people?</label>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { SearchableSelect, type SearchableOption } from '@/components/SearchableSelect';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 type Row = { key: number; kind: 'EMPLOYEE' | 'OTHER' };
 const CLOSE_HOUR = 17; // work ends 5 pm
@@ -77,7 +78,8 @@ export function ExitPassForm({ me, action, search, loadDefaultOptions }: { me: {
       ) : null}
       {who && (!needOthers || rows.length > 0) ? (
         <>
-          <div><label className={label}>Reason for going out</label><textarea name="reason" required rows={3} className={input} /></div>
+          <div><label className={label}>Reason for going out</label><textarea id="exitpassform-text-1" name="reason" required rows={3} className={input} />
+          <RefineTextButton targetId="exitpassform-text-1" /></div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className={label}>When are you leaving?</label>

@@ -20,6 +20,7 @@ import { pluralizeWord } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { BackLink, PageTitle } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_FINANCE_REVIEW: 'Awaiting Finance review',
@@ -306,7 +307,8 @@ export default async function ExternalProcurementDetailPage({
                   <FormPendingOverlay />
                   <input type="hidden" name="requestId" value={request.id} />
                   <input type="hidden" name="jobCardId" value={request.jobCard.id} />
-                  <textarea name="reason" required rows={1} placeholder="Reason for rejection" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <textarea id="workshop-external-procurement-id-text-1" name="reason" required rows={1} placeholder="Reason for rejection" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <RefineTextButton targetId="workshop-external-procurement-id-text-1" />
                   <SubmitButton label="Reject" pendingLabel="Rejecting…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-2 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/5" />
                 </form>
               </div>
@@ -324,14 +326,16 @@ export default async function ExternalProcurementDetailPage({
                   <FormPendingOverlay />
                   <input type="hidden" name="requestId" value={request.id} />
                   <input type="hidden" name="jobCardId" value={request.jobCard.id} />
-                  <textarea name="notes" rows={2} placeholder="Notes (optional)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <textarea id="workshop-external-procurement-id-text-2" name="notes" rows={2} placeholder="Notes (optional)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <RefineTextButton targetId="workshop-external-procurement-id-text-2" />
                   <SubmitButton label="Approve" pendingLabel="Approving…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-2 text-xs font-medium text-white hover:opacity-90" />
                 </form>
                 <form action={rejectExternalProcurementRequestFormAction} className="space-y-2">
                   <FormPendingOverlay />
                   <input type="hidden" name="requestId" value={request.id} />
                   <input type="hidden" name="jobCardId" value={request.jobCard.id} />
-                  <textarea name="reason" required rows={2} placeholder="Reason for rejection" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <textarea id="workshop-external-procurement-id-text-3" name="reason" required rows={2} placeholder="Reason for rejection" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <RefineTextButton targetId="workshop-external-procurement-id-text-3" />
                   <SubmitButton label="Reject" pendingLabel="Rejecting…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-2 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/5" />
                 </form>
               </div>
@@ -372,11 +376,12 @@ export default async function ExternalProcurementDetailPage({
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Notes (optional)</label>
-                  <textarea
+                  <textarea id="workshop-external-procurement-id-text-4"
                     name="disbursementNotes"
                     rows={2}
                     className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                   />
+                  <RefineTextButton targetId="workshop-external-procurement-id-text-4" />
                 </div>
                 <SubmitButton label="Disburse" pendingLabel="Disbursing…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
               </form>

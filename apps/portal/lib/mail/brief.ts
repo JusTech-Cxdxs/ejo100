@@ -16,14 +16,18 @@ import { splitAttachments } from './parse-core';
  * what THEY may open (lib/mail/refs.ts).
  */
 const PER_SYNC = 10;
+/** Empty briefs allowed before Enyo stops trying a message by itself (the owner can still ask). */
+export const MAX_TRIES = 2;
 
-export async function briefNewMessages(organisationId: string, accountId: string, messageIds: string[], deadline: number): Promise<number> {
+export async function briefNewMessages(organisationId: string, accountId: string, messageIds: string[], deadline: number, opts: { again?: boolean; owner?: boolean } = {}): Promise<number> {
   const ready = await enyoReady(organisationId, 'mailAi');
   if (!ready.ready) return 0;
   const account = await prisma.mailAccount.findUnique({ where: { id: accountId }, select: { address: true, aiConsentAt: true } });
   if (!account?.aiConsentAt) return 0;
   const rows = await prisma.mailMessage.findMany({
-    where: { id: { in: messageIds }, accountId, aiAt: null },
+    // `again`: also messages tried before without a summary (the owner asked, or the model has changed).
+    // `owner`: the owner pressed "Brief this email" — try even after earlier empty briefs.
+    where: { id: { in: messageIds }, accountId, ...(opts.again ? { aiSummary: null, ...(opts.owner ? {} : { aiTries: { lt: MAX_TRIES } }) } : { aiAt: null }) },
     orderBy: { receivedAt: 'desc' },
     take: PER_SYNC,
     select: { id: true, fromAddress: true, fromName: true, subject: true, bodyText: true, receivedAt: true },
@@ -44,7 +48,7 @@ export async function briefNewMessages(organisationId: string, accountId: string
         where: { id: m.id },
         data: brief
           ? { aiSummary: brief.summary, aiCategory: brief.category, aiPriority: brief.priority, aiActions: brief.actions as never, linkedRefs: brief.refs as never, aiAt: new Date() }
-          : { linkedRefs: found as never, aiAt: new Date() },
+          : { linkedRefs: found as never, aiAt: new Date(), aiTries: { increment: 1 } },
       });
       done += brief ? 1 : 0;
     } catch {

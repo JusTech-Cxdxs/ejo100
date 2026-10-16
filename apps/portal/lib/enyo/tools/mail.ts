@@ -8,7 +8,7 @@
  */
 import { asData } from '@ejo/enyo';
 import { draftResult, type StaffTool, type StaffCtx } from '../types';
-import { getMessageForCompose, getMyMailDigest, listMyMail } from '@/lib/actions/mail';
+import { briefMyRecentMail, getMessageForCompose, getMyMailDigest, listMyMail } from '@/lib/actions/mail';
 import { composeHref, parseAddressList, replySubject } from '@/lib/mail/rules';
 import { formatLagos, plural } from '@/lib/reminders-rules';
 
@@ -36,12 +36,18 @@ export const mailTools: StaffTool[] = [
     name: 'mail_overview',
     kind: 'read',
     status: 'Looking at your mail…',
-    description: "The person's own work email at a glance: unread count and what needs them today, each with Enyo's one-line summary and a link. Use for \"anything important in my email?\", \"what's in my inbox\".",
-    parameters: { type: 'object', properties: {}, additionalProperties: false },
-    run: async (_args, ctx) => {
+    description: "The person's own work email at a glance, briefed by Enyo: unread count, what needs them today, and the latest messages each with a one-line summary, category and link. Use for \"anything important in my email?\", \"what's in my inbox\", \"summarise my mail\", \"brief me on my emails\". Group the answer by what needs action first.",
+    parameters: { type: 'object', properties: { days: { type: 'integer', minimum: 1, maximum: 14, description: 'How many days of mail to cover (default 3).' } }, additionalProperties: false },
+    run: async (args, ctx) => {
       const g = await gate(ctx);
       if (!g.ok) return g;
-      const d = await getMyMailDigest();
+      // Brief what has not been briefed yet (a few at a time, within the answer's time).
+      await briefMyRecentMail({ limit: 4, budgetMs: 10_000, from: 'enyo' }).catch(() => null);
+      const days = Math.min(14, Math.max(1, Number(args.days) || 3));
+      const since = Date.now() - days * 86_400_000;
+      const [d, list] = await Promise.all([getMyMailDigest(), listMyMail({ view: 'inbox' })]);
+      const recent = list.items.filter((m) => m.receivedAt.getTime() >= since).slice(0, 15);
+      const latest = recent.map((m, i) => `${i + 1}. ${m.seen ? '' : '[unread] '}From ${m.fromName ?? m.fromAddress}, ${formatLagos(m.receivedAt)}: "${m.subject}"${m.aiCategory ? ` (${m.aiCategory})` : ''}${m.aiSummary ? ` — ${m.aiSummary}` : ` — ${m.snippet}`}`);
       const lines = d.needsYou.map((n, i) => `${i + 1}. From ${n.from}, ${formatLagos(n.receivedAt)}: "${n.subject}"${n.summary ? ` — ${n.summary}` : ''}`);
       return {
         ok: true,
@@ -50,6 +56,8 @@ export const mailTools: StaffTool[] = [
           summary: `${plural(d.unread, 'unread message')}; ${plural(d.needsYou.length, 'message')} marked as needing them today.`,
           needsYouToday: lines.length ? asData('their email', lines.join('\n')) : 'Nothing marked as needing them today.',
           links: d.needsYou.map((n, i) => ({ n: i + 1, link: n.href })),
+          [`latest${days}Days`]: latest.length ? asData('their email', latest.join('\n')) : `No mail in the last ${days} days.`,
+          latestLinks: recent.map((m, i) => ({ n: i + 1, link: `/mail?m=${m.id}` })),
           lastChecked: d.lastSyncAt ? `${formatLagos(d.lastSyncAt)} (Lagos)` : 'not yet',
           page: '/mail',
         },

@@ -182,7 +182,7 @@ function ErrorBox({ error }: { error: { message: string; ref?: string } }) {
   );
 }
 
-export function AssistantTurn({ turn, last, onRated, onNavigate }: { turn: Turn; last: boolean; onRated: (r: 1 | -1 | undefined) => void; onNavigate?: () => void }) {
+export function AssistantTurn({ turn, last, onRated, onNavigate, onListen, speaking }: { turn: Turn; last: boolean; onRated: (r: 1 | -1 | undefined) => void; onNavigate?: () => void; onListen?: () => void; speaking?: boolean }) {
   const live = turn.state === 'waiting' || turn.state === 'streaming';
   return (
     <div className="text-sm leading-relaxed text-[var(--ejo-text)]">
@@ -212,6 +212,11 @@ export function AssistantTurn({ turn, last, onRated, onNavigate }: { turn: Turn;
       {turn.state === 'done' && turn.text ? (
         <div className="-ml-2.5 mt-1 flex flex-wrap items-center">
           <CopyAnswer text={turn.text} />
+          {onListen ? (
+            <button type="button" className={iconBtn} aria-label={speaking ? 'Stop reading' : 'Listen'} title={speaking ? 'Stop reading' : 'Listen'} onClick={onListen}>
+              <EIcon name={speaking ? 'speaker-off' : 'speaker'} size={17} />
+            </button>
+          ) : null}
           <Rating turn={turn} onRated={onRated} />
         </div>
       ) : null}

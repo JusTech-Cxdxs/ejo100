@@ -6,6 +6,8 @@ import { ACCOUNT_SECRET_SELECT, connectionSettings } from './account';
 import { closeImap, MailConnectError, openImap, withTimeout } from './transport';
 import { cleanBody, flattenAddresses, snippetOf, threadKeyOf, withAttachments, type AttachmentInfo } from './parse-core';
 import { MailCryptoError } from './crypto';
+import { sanitizeMailHtml } from './html';
+import { htmlToText } from '@/lib/email-templates/layout';
 import { briefNewMessages } from './brief';
 
 /**
@@ -17,8 +19,9 @@ import { briefNewMessages } from './brief';
  *    next time.
  *  • Seen / flagged changes made in another mail app are copied back for the
  *    stored messages, and messages deleted on the server are removed here.
- *  • Text only: remote HTML is converted to text by the parser and never
- *    stored; attachments are listed by name and size, never downloaded.
+ *  • The text, and the email's own layout cleaned by lib/mail/html.ts (no
+ *    scripts, remote pictures held back); attachments are listed by name and
+ *    size here and fetched from the server only when the owner downloads one.
  *
  * Two syncs of one mailbox never run together: each claims the mailbox by
  * moving `lastSyncAt` forward in one conditional update (only one instance
@@ -61,12 +64,20 @@ export async function parseOne(f: Fetched, accountId: string) {
   const from = flattenAddresses(parsed?.from)[0];
   const to = flattenAddresses(parsed?.to);
   const cc = flattenAddresses(parsed?.cc);
+  // An email sent only as HTML still gets its words as text (search, the snippet, Enyo's brief, plain view).
+  const plainFromHtml = !parsed?.text?.trim() && typeof parsed?.html === 'string'
+    ? htmlToText(parsed.html.slice(0, 1_500_000).replace(/<(style|script|title)\b[\s\S]*?<\/\1>/gi, ''))
+    : '';
   const text = tooLarge
     ? `This message is too large to show here (${(f.size / 1_048_576).toFixed(1)} MB). Open it in your mail app to read it.`
-    : cleanBody(parsed?.text ?? '');
+    : cleanBody(parsed?.text?.trim() ? parsed.text : plainFromHtml);
   const attachments: AttachmentInfo[] = (parsed?.attachments ?? [])
     .filter((a) => !(a.related && a.contentDisposition === 'inline'))
     .map((a) => ({ name: (a.filename || 'attachment').slice(0, 200), size: a.size ?? 0 }));
+  // The email's own layout, cleaned; its inline pictures travel with it.
+  const cleaned = tooLarge || typeof parsed?.html !== 'string'
+    ? null
+    : sanitizeMailHtml(parsed.html, (parsed?.attachments ?? []).filter((a) => a.cid && a.content).map((a) => ({ cid: a.cid!, contentType: a.contentType ?? '', content: a.content as Buffer })));
   const internal = f.internalDate && !Number.isNaN(f.internalDate.getTime()) ? f.internalDate : null;
   const headerDate = parsed?.date && !Number.isNaN(parsed.date.getTime()) ? parsed.date : null;
   // A date header far in the future is not trusted (spam does this to stay on top).
@@ -88,6 +99,7 @@ export async function parseOne(f: Fetched, accountId: string) {
     subject,
     snippet: snippetOf(text),
     bodyText: withAttachments(text, attachments),
+    bodyHtml: cleaned?.html ?? null,
     receivedAt,
     seen: f.flags.has('\\Seen'),
     flagged: f.flags.has('\\Flagged'),

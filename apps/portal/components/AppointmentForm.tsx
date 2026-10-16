@@ -6,6 +6,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { timingNote } from '@/lib/nigeria-calendar';
 import { VisitorGroupFields } from '@/components/VisitorGroupFields';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240, 360, 480];
 const dLabel = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} hr${m % 60 ? ` ${m % 60} min` : ''}`);
@@ -71,7 +72,8 @@ export function AppointmentForm({
         </div>
       )}
       <div><label className={label}>Title</label><input name="title" required defaultValue={defaults?.title ?? ''} placeholder="e.g. Supplier meeting — ABC Motors" className={input} /></div>
-      <div><label className={label}>Agenda (optional)</label><textarea name="agenda" rows={2} defaultValue={defaults?.agenda ?? ''} className={input} /></div>
+      <div><label className={label}>Agenda (optional)</label><textarea id="appointmentform-text-1" name="agenda" rows={2} defaultValue={defaults?.agenda ?? ''} className={input} />
+      <RefineTextButton targetId="appointmentform-text-1" /></div>
       <div className="grid gap-3 sm:grid-cols-3">
         <div><label className={label}>Date</label><input name="date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} className={input} /></div>
         <div><label className={label}>Start time</label><input name="time" type="time" required value={time} onChange={(e) => setTime(e.target.value)} className={input} /></div>

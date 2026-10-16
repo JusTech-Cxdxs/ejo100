@@ -9,6 +9,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { PROVIDER_TYPE_LABEL } from '@/lib/warranty-claim-status';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { PageHeader, RevealPanel } from '@/components/ui';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 
 const BANNER: Record<string, string> = {
@@ -127,7 +128,8 @@ export default async function WarrantyProvidersPage({ searchParams }: { searchPa
               <div><label className={label}>Claim within (days)</label><input name="claimSubmissionDays" type="number" min={1} className={input} /></div>
               <div><label className={label}>Keep failed parts (days)</label><input name="partRetentionDays" type="number" min={1} className={input} /></div>
             </div>
-            <div><label className={label}>Notes</label><textarea name="notes" rows={2} className={input} /></div>
+            <div><label className={label}>Notes</label><textarea id="warranty-providers-text-1" name="notes" rows={2} className={input} />
+            <RefineTextButton targetId="warranty-providers-text-1" /></div>
             <SubmitButton label="Add provider" pendingLabel="Adding…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
           </form>
           </RevealPanel>

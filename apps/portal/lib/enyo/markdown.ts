@@ -16,7 +16,10 @@ export type Inline =
   | { t: 'code'; v: string }
   | { t: 'a'; href: string; internal: boolean; c: Inline[] };
 
+import { readTable, type TableAlign } from './markdown-table';
+
 export type Block =
+  | { type: 'table'; head: Inline[][]; align: TableAlign[]; rows: Inline[][][] }
   | { type: 'p'; c: Inline[] }
   | { type: 'h'; c: Inline[] }
   | { type: 'ul'; items: Inline[][] }
@@ -122,8 +125,16 @@ export function parseMarkdown(src: string): Block[] {
       list = null;
     }
   };
-  for (const line of lines) {
+  for (let li = 0; li < lines.length; li += 1) {
+    const line = lines[li]!;
     if (!line.trim()) { endPara(); endList(); continue; }
+    const t = readTable(lines, li);
+    if (t) {
+      endPara(); endList();
+      blocks.push({ type: 'table', head: t.table.head.map((c) => parseInline(c)), align: t.table.align, rows: t.table.rows.map((r) => r.map((c) => parseInline(c))) });
+      li = t.next - 1;
+      continue;
+    }
     const b = BULLET.exec(line);
     const n = b ? null : NUMBERED.exec(line);
     if (b || n) {
@@ -149,6 +160,9 @@ export function parseMarkdown(src: string): Block[] {
 export function plainText(src: string): string {
   const walk = (c: Inline[]): string => c.map((n) => (n.t === 'text' || n.t === 'code' ? n.v : walk(n.c))).join('');
   return parseMarkdown(src)
-    .map((b) => (b.type === 'ul' || b.type === 'ol' ? b.items.map((it) => walk(it)).join('\n') : walk(b.c)))
+    .map((b) => (b.type === 'table'
+      // Read aloud row by row: "Category: Decisions waiting, Items: 0."
+      ? b.rows.map((r) => `${r.map((c, i) => `${walk(b.head[i] ?? [])}: ${walk(c)}`).join(', ')}.`).join('\n')
+      : b.type === 'ul' || b.type === 'ol' ? b.items.map((it) => walk(it)).join('\n') : walk(b.c)))
     .join('\n\n');
 }

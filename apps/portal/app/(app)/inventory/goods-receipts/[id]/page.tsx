@@ -13,6 +13,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
 import { BackLink, PageTitle } from '@/components/ui';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
   'goods_receipt.recorded': 'Goods Receipt recorded',
@@ -159,12 +160,13 @@ export default async function GoodsReceiptDetailPage({
               </div>
               <div>
                 <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Notes</label>
-                <textarea
+                <textarea id="inventory-goods-receipts-id-text-1"
                   name="notes"
                   rows={2}
                   defaultValue={receipt.notes ?? ''}
                   className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
                 />
+                <RefineTextButton targetId="inventory-goods-receipts-id-text-1" />
               </div>
               <SubmitButton
                 label="Save"

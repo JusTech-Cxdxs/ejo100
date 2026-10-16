@@ -7,8 +7,10 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
 import { MailSync } from '@/components/mail/MailSync';
+import { MailHtmlFrame } from '@/components/mail/MailHtmlFrame';
+import { BriefNow, BriefRecent } from '@/components/mail/BriefNow';
 import { NOT_SET_UP } from '@/lib/mail/config';
-import { CATEGORY_LABEL, PRIORITY_LABEL } from '@/lib/mail/brief-core';
+import { CATEGORY_LABEL, MAIL_CATEGORIES, PRIORITY_LABEL, type MailCategory } from '@/lib/mail/brief-core';
 import { addressLabel, formatSize } from '@/lib/mail/parse-core';
 import { formatLagos, plural, relativeTime } from '@/lib/reminders-rules';
 import { friendlyError } from '@/lib/errors';
@@ -29,14 +31,48 @@ const VIEWS: { key: MailView; label: string; icon: 'inbox' | 'mail' | 'star' | '
   { key: 'today', label: 'Needs you today', icon: 'bell' },
 ];
 
-function href(p: { view?: MailView; q?: string; m?: string; before?: string }): string {
+function href(p: { view?: MailView; q?: string; m?: string; before?: string; cat?: MailCategory | null }): string {
   const s = new URLSearchParams();
   if (p.view && p.view !== 'inbox') s.set('view', p.view);
+  if (p.cat) s.set('cat', p.cat);
   if (p.q) s.set('q', p.q);
   if (p.before) s.set('before', p.before);
   if (p.m) s.set('m', p.m);
   const q = s.toString();
   return `/mail${q ? `?${q}` : ''}`;
+}
+
+const lagosDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' });
+
+/** "Today", "Yesterday", "Monday" (this week), "Earlier in October", "September 2026". */
+function dayGroup(d: Date, now = new Date()): string {
+  const day = lagosDay(d);
+  const today = lagosDay(now);
+  if (day === today) return 'Today';
+  if (day === lagosDay(new Date(now.getTime() - 86_400_000))) return 'Yesterday';
+  const days = (Date.parse(today) - Date.parse(day)) / 86_400_000;
+  if (days < 7) return d.toLocaleDateString('en-GB', { timeZone: 'Africa/Lagos', weekday: 'long' });
+  const month = (x: Date) => x.toLocaleDateString('en-GB', { timeZone: 'Africa/Lagos', month: 'long', year: 'numeric' });
+  return month(d) === month(now) ? `Earlier in ${d.toLocaleDateString('en-GB', { timeZone: 'Africa/Lagos', month: 'long' })}` : month(d);
+}
+
+const CATEGORY_TONE: Record<MailCategory, string> = {
+  customer: 'bg-[var(--ejo-info)]/12 text-[var(--ejo-info)]',
+  supplier: 'bg-[var(--ejo-primary)]/12 text-[var(--ejo-primary)]',
+  warranty: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning-text)]',
+  finance: 'bg-[var(--ejo-success)]/12 text-[var(--ejo-success)]',
+  internal: 'bg-[var(--ejo-text-muted)]/12 text-[var(--ejo-text-muted)]',
+  other: 'bg-[var(--ejo-text-muted)]/10 text-[var(--ejo-text-muted)]',
+};
+
+const CATEGORY_DOT: Record<MailCategory, string> = {
+  customer: 'bg-[var(--ejo-info)]', supplier: 'bg-[var(--ejo-primary)]', warranty: 'bg-[var(--ejo-warning)]',
+  finance: 'bg-[var(--ejo-success)]', internal: 'bg-[var(--ejo-text-muted)]', other: 'bg-[var(--ejo-border)]',
+};
+
+function initials(name: string): string {
+  const parts = name.replace(/[<>"@].*$/, '').trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? '?') + (parts.length > 1 ? parts[parts.length - 1]![0] : '')).toUpperCase();
 }
 
 const shortWhen = (d: Date) => {
@@ -52,7 +88,7 @@ const shortWhen = (d: Date) => {
  * the message and Enyo's brief. Phones show one pane at a time. Text only —
  * remote HTML is never shown.
  */
-export default async function MailPage({ searchParams }: { searchParams: Promise<{ view?: string; q?: string; m?: string; before?: string; status?: string; error?: string }> }) {
+export default async function MailPage({ searchParams }: { searchParams: Promise<{ view?: string; q?: string; m?: string; before?: string; cat?: string; status?: string; error?: string }> }) {
   const sp = await searchParams;
   if (await currentAssist()) {
     return (
@@ -81,10 +117,11 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
 
   const view: MailView = (['unread', 'flagged', 'today'] as const).includes(sp.view as never) ? (sp.view as MailView) : 'inbox';
   const q = (sp.q ?? '').trim().slice(0, 100);
+  const cat = (MAIL_CATEGORIES as readonly string[]).includes(sp.cat ?? '') ? (sp.cat as MailCategory) : null;
   const selectedId = typeof sp.m === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(sp.m) ? sp.m : null;
   // The open message first (it is marked read), then the list and counts reflect that.
   const selected = selectedId ? await readMyMessage(selectedId).then((d) => ({ ok: true as const, d })).catch((err) => ({ ok: false as const, message: friendlyError(err, 'This message could not be opened.', 'mail-page') })) : null;
-  const [list, digest] = await Promise.all([listMyMail({ view, q, before: sp.before }), getMyMailDigest()]);
+  const [list, digest] = await Promise.all([listMyMail({ view, q, before: sp.before, category: cat ?? undefined }), getMyMailDigest()]);
   const account = box.account;
   const counts: Record<MailView, number> = { inbox: list.counts.all, unread: list.counts.unread, flagged: list.counts.flagged, today: list.counts.today };
   const lastSync = account.lastSyncAt ? relativeTime(account.lastSyncAt) : null;
@@ -115,9 +152,9 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
         <aside className={`min-w-0 space-y-4 ${selectedId ? 'hidden lg:block' : ''}`} aria-label="Mail folders">
           <nav aria-label="Folders" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
             {VIEWS.map((v) => {
-              const active = v.key === view;
+              const active = v.key === view && !cat;
               return (
-                <LoadingLink key={v.key} href={href({ view: v.key, q })} aria-current={active ? 'page' : undefined}
+                <LoadingLink key={v.key} href={href({ view: v.key, q })} aria-current={active && !cat ? 'page' : undefined}
                   className={`flex min-h-11 shrink-0 items-center justify-between gap-3 rounded-[var(--ejo-radius-md)] px-3 text-sm font-medium transition-colors ${active ? 'bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]' : 'text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-text)]'}`}>
                   <span className="flex items-center gap-2"><Icon name={v.icon} size={16} />{v.label}</span>
                   {v.key !== 'inbox' && counts[v.key] > 0 ? <span className="rounded-full bg-[var(--ejo-primary)]/15 px-2 text-[11px] font-semibold text-[var(--ejo-primary)]">{counts[v.key]}</span> : null}
@@ -125,6 +162,18 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
               );
             })}
           </nav>
+          {account.aiConsent && Object.keys(list.counts.byCategory).length ? (
+            <nav aria-label="Categories" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:pb-0">
+              <p className="hidden px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)] lg:block">Sorted by Enyo</p>
+              {MAIL_CATEGORIES.filter((c) => list.counts.byCategory[c]).map((c) => (
+                <LoadingLink key={c} href={href({ view, q, cat: cat === c ? null : c })} aria-current={cat === c ? 'page' : undefined}
+                  className={`flex min-h-10 shrink-0 items-center justify-between gap-3 rounded-[var(--ejo-radius-md)] px-3 text-sm transition-colors ${cat === c ? 'bg-[var(--ejo-primary)]/10 font-medium text-[var(--ejo-primary)]' : 'text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-text)]'}`}>
+                  <span className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${CATEGORY_DOT[c]}`} aria-hidden="true" />{CATEGORY_LABEL[c]}</span>
+                  <span className="text-[11px] tabular-nums">{list.counts.byCategory[c]}</span>
+                </LoadingLink>
+              ))}
+            </nav>
+          ) : null}
           <section aria-labelledby="todays-mail" className="hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-3 lg:block">
             <h2 id="todays-mail" className="text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Today&apos;s mail</h2>
             <p className="mt-1 text-sm text-[var(--ejo-text)]">{plural(digest.unread, 'unread message')}</p>
@@ -140,6 +189,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
                 ))}
               </ul>
             ) : <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Nothing marked as needing you today.</p>}
+            {account.aiConsent && box.aiAvailable ? <BriefRecent /> : null}
           </section>
         </aside>
 
@@ -147,16 +197,25 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
         <section className={`min-w-0 ${selectedId ? 'hidden xl:block' : ''}`} aria-label="Messages">
           <form action="/mail" method="get" role="search" className="mb-3 flex gap-2">
             {view !== 'inbox' ? <input type="hidden" name="view" value={view} /> : null}
+            {cat ? <input type="hidden" name="cat" value={cat} /> : null}
             <label htmlFor="mail-search" className="sr-only">Search your mail</label>
             <input id="mail-search" name="q" type="search" defaultValue={q} placeholder="Search by sender, subject, JC- number, plate…" maxLength={100} enterKeyHint="search"
               className="min-h-11 w-full min-w-0 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 text-base text-[var(--ejo-text)] sm:text-sm" />
             <button type="submit" className="min-h-11 shrink-0 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 text-sm font-medium text-[var(--ejo-text)] hover:text-[var(--ejo-primary)]">Search</button>
           </form>
+          {cat ? <p className="mb-2 flex items-center gap-2 text-xs text-[var(--ejo-text-muted)]">Showing <span className={`rounded-full px-2 py-0.5 font-semibold ${CATEGORY_TONE[cat]}`}>{CATEGORY_LABEL[cat]}</span> mail · <LoadingLink href={href({ view, q })} className="text-[var(--ejo-primary)] hover:underline">Show all</LoadingLink></p> : null}
           {q ? <p className="mb-2 text-xs text-[var(--ejo-text-muted)]">{plural(list.items.length, 'message')} matching “{q}” · <LoadingLink href={href({ view })} className="text-[var(--ejo-primary)] hover:underline">Clear</LoadingLink></p> : null}
           {list.items.length ? (
-            <ul className="divide-y divide-[var(--ejo-border)] overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
-              {list.items.map((m) => <MessageRow key={m.id} m={m} active={m.id === selectedId} link={href({ view, q, before: sp.before, m: m.id })} showBrief={account.aiConsent} />)}
-            </ul>
+            <div className="overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
+              {groupByDay(list.items).map(([label, items]) => (
+                <section key={label} aria-label={label}>
+                  <h3 className="sticky top-0 z-[1] border-b border-[var(--ejo-border)] bg-[color-mix(in_srgb,var(--ejo-bg)_92%,var(--ejo-surface))] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)] backdrop-blur">{label} <span className="font-normal normal-case tracking-normal">· {items.length}</span></h3>
+                  <ul className="divide-y divide-[var(--ejo-border)]">
+                    {items.map((m) => <MessageRow key={m.id} m={m} active={m.id === selectedId} link={href({ view, q, before: sp.before, m: m.id, cat })} showBrief={account.aiConsent} />)}
+                  </ul>
+                </section>
+              ))}
+            </div>
           ) : (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
               <EmptyState compact icon="inbox" title={q ? 'Nothing matches' : view === 'inbox' ? (account.lastSyncAt ? 'No messages in the last 30 days' : 'Fetching your mail…') : 'Nothing here'}>
@@ -165,14 +224,14 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
             </div>
           )}
           {list.more && list.items.length ? (
-            <LoadingLink href={href({ view, q, before: list.items[list.items.length - 1]!.receivedAt.toISOString() })} className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-[var(--ejo-primary)] hover:underline">Older messages</LoadingLink>
+            <LoadingLink href={href({ view, q, cat, before: list.items[list.items.length - 1]!.receivedAt.toISOString() })} className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-[var(--ejo-primary)] hover:underline">Older messages</LoadingLink>
           ) : null}
         </section>
 
         {/* Reading pane */}
         <section className={`min-w-0 ${selectedId ? '' : 'hidden xl:block'} lg:col-span-1 lg:col-start-2 xl:col-start-auto`} aria-label="Message">
           {selectedId ? (
-            <LoadingLink href={href({ view, q, before: sp.before })} className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)] xl:hidden">
+            <LoadingLink href={href({ view, q, cat, before: sp.before })} className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)] xl:hidden">
               <Icon name="arrow-left" size={15} />Back to {VIEWS.find((v) => v.key === view)!.label.toLowerCase()}
             </LoadingLink>
           ) : null}
@@ -181,7 +240,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
           ) : !selected.ok ? (
             <div role="alert"><FormFeedbackBanner kind="error" message={selected.message} /></div>
           ) : (
-            <Reading d={selected.d} consent={account.aiConsent} aiAvailable={box.aiAvailable} back={href({ view, q, before: sp.before, m: selected.d.id })} />
+            <Reading d={selected.d} consent={account.aiConsent} aiAvailable={box.aiAvailable} back={href({ view, q, cat, before: sp.before, m: selected.d.id })} />
           )}
         </section>
       </div>
@@ -189,25 +248,42 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
   );
 }
 
+function groupByDay(items: MailListItem[]): [string, MailListItem[]][] {
+  const out: [string, MailListItem[]][] = [];
+  for (const m of items) {
+    const label = dayGroup(m.receivedAt);
+    const last = out[out.length - 1];
+    if (last && last[0] === label) last[1].push(m); else out.push([label, [m]]);
+  }
+  return out;
+}
+
 function MessageRow({ m, active, link, showBrief }: { m: MailListItem; active: boolean; link: string; showBrief: boolean }) {
+  const who = m.fromName ?? m.fromAddress;
   return (
     <li>
       <LoadingLink href={link} aria-current={active ? 'true' : undefined}
-        className={`block px-3 py-3 transition-colors ${active ? 'bg-[var(--ejo-primary)]/10' : 'hover:bg-[var(--ejo-bg)]'}`}>
-        <div className="flex items-baseline justify-between gap-2">
+        className={`flex gap-3 px-3 py-3 transition-colors ${active ? 'bg-[var(--ejo-primary)]/10' : 'hover:bg-[var(--ejo-bg)]'}`}>
+        <span aria-hidden="true" className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${m.seen ? 'bg-[var(--ejo-bg)] text-[var(--ejo-text-muted)]' : 'bg-[var(--ejo-primary)]/15 text-[var(--ejo-primary)]'}`}>{initials(who)}</span>
+        <span className="min-w-0 flex-1">
+        <span className="flex items-baseline justify-between gap-2">
           <span className={`flex min-w-0 items-center gap-1.5 truncate text-sm ${m.seen ? 'text-[var(--ejo-text-muted)]' : 'font-semibold text-[var(--ejo-text)]'}`}>
             {!m.seen ? <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--ejo-primary)]" aria-label="Unread" /> : null}
             <span className="truncate">{m.fromName ?? m.fromAddress}</span>
           </span>
-          <span className="shrink-0 text-[11px] text-[var(--ejo-text-muted)]">{shortWhen(m.receivedAt)}</span>
-        </div>
-        <p className={`mt-0.5 flex items-center gap-1.5 truncate text-sm ${m.seen ? 'text-[var(--ejo-text)]' : 'font-medium text-[var(--ejo-text)]'}`}>
+          <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--ejo-text-muted)]">{m.hasAttachments ? <Icon name="file" size={12} /> : null}{shortWhen(m.receivedAt)}</span>
+        </span>
+        <span className={`mt-0.5 flex items-center gap-1.5 truncate text-sm ${m.seen ? 'text-[var(--ejo-text)]' : 'font-medium text-[var(--ejo-text)]'}`}>
           {m.flagged ? <span className="text-[var(--ejo-warning)]" aria-label="Flagged"><Icon name="star" size={13} /></span> : null}
           {showBrief && m.aiPriority === 1 ? <span className="shrink-0 rounded-full bg-[var(--ejo-warning)]/15 px-1.5 text-[10px] font-semibold text-[var(--ejo-warning-text)]">Today</span> : null}
           {m.hasAttachments ? <span className="sr-only">Has attachments.</span> : null}
           <span className="truncate">{m.subject}</span>
-        </p>
-        <p className="mt-0.5 line-clamp-2 break-words text-xs text-[var(--ejo-text-muted)]">{showBrief && m.aiSummary ? m.aiSummary : m.snippet}</p>
+        </span>
+        <span className="mt-0.5 line-clamp-2 block break-words text-xs text-[var(--ejo-text-muted)]">
+          {showBrief && m.aiCategory ? <span className={`mr-1.5 inline-block rounded-full px-1.5 text-[10px] font-semibold ${CATEGORY_TONE[m.aiCategory]}`}>{CATEGORY_LABEL[m.aiCategory]}</span> : null}
+          {showBrief && m.aiSummary ? m.aiSummary : m.snippet}
+        </span>
+        </span>
       </LoadingLink>
     </li>
   );
@@ -246,12 +322,27 @@ function Reading({ d, consent, aiAvailable, back }: { d: MailDetail; consent: bo
             This email contains wording that tries to give instructions to an assistant. Enyo treats it as text only and ignores it. Be careful with any links or requests in it.
           </p>
         ) : null}
-        {/* Plain text only: the email's own HTML is never shown. */}
-        <div className="mt-4 whitespace-pre-wrap break-words border-t border-[var(--ejo-border)] pt-4 text-sm leading-relaxed text-[var(--ejo-text)]">{d.body || '(This message has no text.)'}</div>
+        {/* The email's own layout in a sandboxed frame (cleaned on the server), or its text. */}
+        {d.html ? (
+          <MailHtmlFrame html={d.html} remoteImages={d.remoteImages} text={d.body} />
+        ) : (
+          <div className="mt-4 whitespace-pre-wrap break-words border-t border-[var(--ejo-border)] pt-4 text-sm leading-relaxed text-[var(--ejo-text)]">{d.body || '(This message has no text.)'}</div>
+        )}
         {d.attachments.length ? (
           <div className="mt-4 border-t border-[var(--ejo-border)] pt-3">
-            <h3 className="text-xs font-semibold text-[var(--ejo-text-muted)]">{plural(d.attachments.length, 'attachment')} — open them in your mail app</h3>
-            <ul className="mt-1 space-y-1">{d.attachments.map((a, i) => <li key={`${a.name}-${i}`} className="flex items-center gap-2 text-xs text-[var(--ejo-text)]"><Icon name="file" size={14} /><span className="break-all">{a.name}</span><span className="text-[var(--ejo-text-muted)]">{formatSize(a.size)}</span></li>)}</ul>
+            <h3 className="text-xs font-semibold text-[var(--ejo-text-muted)]">{plural(d.attachments.length, 'attachment')}</h3>
+            <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+              {d.attachments.map((a, i) => (
+                <li key={`${a.name}-${i}`}>
+                  <a href={`/api/mail/attachment/${d.id}/${i}`} target={/\.(png|jpe?g|gif|webp|bmp)$/i.test(a.name) ? '_blank' : undefined} rel="noopener" download={/\.(png|jpe?g|gif|webp|bmp)$/i.test(a.name) ? undefined : a.name}
+                    className="flex min-h-11 items-center gap-2.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)] transition-colors hover:border-[var(--ejo-primary)]/60">
+                    <Icon name="file" size={16} className="shrink-0 text-[var(--ejo-primary)]" />
+                    <span className="min-w-0 flex-1"><span className="block truncate font-medium">{a.name}</span><span className="text-[var(--ejo-text-muted)]">{formatSize(a.size)}</span></span>
+                    <span className="shrink-0 font-medium text-[var(--ejo-primary)]">Download</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
         {d.thread.length ? (
@@ -273,7 +364,7 @@ function Reading({ d, consent, aiAvailable, back }: { d: MailDetail; consent: bo
         ) : !consent ? (
           <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Enyo does not read your email unless you allow it. <LoadingLink href="/mail/settings#enyo" className="font-medium text-[var(--ejo-primary)] hover:underline">Choose in Mail settings</LoadingLink></p>
         ) : !d.brief ? (
-          <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Not briefed yet. New messages are briefed when your mail is checked.</p>
+          d.canBrief ? <BriefNow messageId={d.id} auto={d.autoBrief} /> : <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Not briefed yet.</p>
         ) : (
           <div className="mt-2 space-y-3">
             <p className="text-sm text-[var(--ejo-text)]">{d.brief.summary}</p>

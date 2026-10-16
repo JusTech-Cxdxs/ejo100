@@ -19,6 +19,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { PROVIDER_TYPE_LABEL } from '@/lib/warranty-claim-status';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { BackLink, PageTitle } from '@/components/ui';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const ACTION_LABEL: Record<string, string> = {
   'warranty_provider.created': 'Provider created',
@@ -110,7 +111,8 @@ export default async function WarrantyProviderPage({ params, searchParams }: { p
                 <div><label className={label}>Claim within (days)</label><input name="claimSubmissionDays" type="number" min={1} defaultValue={p.claimSubmissionDays ?? ''} className={input} /></div>
                 <div><label className={label}>Keep failed parts (days)</label><input name="partRetentionDays" type="number" min={1} defaultValue={p.partRetentionDays ?? ''} className={input} /></div>
               </div>
-              <div><label className={label}>Notes</label><textarea name="notes" rows={2} defaultValue={p.notes ?? ''} className={input} /></div>
+              <div><label className={label}>Notes</label><textarea id="warranty-providers-id-text-1" name="notes" rows={2} defaultValue={p.notes ?? ''} className={input} />
+              <RefineTextButton targetId="warranty-providers-id-text-1" /></div>
               <p className="text-[11px] text-[var(--ejo-text-muted)]">Claims already opened keep their deadline; new rules apply to claims opened from now on.</p>
               <div className="flex gap-2">
                 <SubmitButton label="Save changes" pendingLabel="Saving…" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
@@ -211,7 +213,8 @@ export default async function WarrantyProviderPage({ params, searchParams }: { p
               <form action={requestWarrantyProviderDeletionFormAction} className="mt-2 space-y-2">
                 <FormPendingOverlay />
                 <input type="hidden" name="providerId" value={p.id} />
-                <textarea name="reason" required rows={2} placeholder="Why should this provider be deleted?" className={input} />
+                <textarea id="warranty-providers-id-text-2" name="reason" required rows={2} placeholder="Why should this provider be deleted?" className={input} />
+                <RefineTextButton targetId="warranty-providers-id-text-2" />
                 <p className="text-[11px] text-[var(--ejo-text-muted)]">Approved by the Warranty HOD, then the Branch Manager. A provider in use is archived instead of erased.</p>
                 <SubmitButton label="Request deletion" pendingLabel="Requesting…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10" />
               </form>

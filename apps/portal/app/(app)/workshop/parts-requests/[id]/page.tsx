@@ -26,6 +26,7 @@ import { SearchableSelect } from '@/components/SearchableSelect';
 import { searchStaffOptions, loadStaffOptions } from '@/lib/actions/security';
 import { PageTitle } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_HOD_APPROVAL: 'Awaiting HOD approval',
@@ -292,7 +293,8 @@ export default async function PartRequestSlipDetailPage({
                   <input type="hidden" name="slipId" value={slip.id} />
                   <input type="hidden" name="jobCardId" value={slip.jobCard?.id ?? ''} />
                   <input type="hidden" name="vehicleServiceId" value={slip.vehicleService?.id ?? ''} />
-                  <textarea name="notes" rows={2} placeholder="Notes (optional)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <textarea id="workshop-parts-requests-id-text-1" name="notes" rows={2} placeholder="Notes (optional)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <RefineTextButton targetId="workshop-parts-requests-id-text-1" />
                   <SubmitButton label="Approve" pendingLabel="Approving…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-2 text-xs font-medium text-white hover:opacity-90" />
                 </form>
                 <form action={rejectPartRequestSlipFormAction} className="space-y-2">
@@ -300,7 +302,8 @@ export default async function PartRequestSlipDetailPage({
                   <input type="hidden" name="slipId" value={slip.id} />
                   <input type="hidden" name="jobCardId" value={slip.jobCard?.id ?? ''} />
                   <input type="hidden" name="vehicleServiceId" value={slip.vehicleService?.id ?? ''} />
-                  <textarea name="reason" required rows={2} placeholder="Reason for rejection" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <textarea id="workshop-parts-requests-id-text-2" name="reason" required rows={2} placeholder="Reason for rejection" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <RefineTextButton targetId="workshop-parts-requests-id-text-2" />
                   <SubmitButton label="Reject" pendingLabel="Rejecting…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-2 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/5" />
                 </form>
               </div>
@@ -317,7 +320,8 @@ export default async function PartRequestSlipDetailPage({
                   <input type="hidden" name="slipId" value={slip.id} />
                   <input type="hidden" name="jobCardId" value={slip.jobCard?.id ?? ''} />
                   <input type="hidden" name="vehicleServiceId" value={slip.vehicleService?.id ?? ''} />
-                  <textarea name="notes" rows={2} placeholder="Notes (optional)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <textarea id="workshop-parts-requests-id-text-3" name="notes" rows={2} placeholder="Notes (optional)" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <RefineTextButton targetId="workshop-parts-requests-id-text-3" />
                   <SubmitButton label="Approve & Reserve" pendingLabel="Approving…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-2 text-xs font-medium text-white hover:opacity-90" />
                 </form>
                 <form action={rejectPartRequestSlipFormAction} className="space-y-2">
@@ -325,7 +329,8 @@ export default async function PartRequestSlipDetailPage({
                   <input type="hidden" name="slipId" value={slip.id} />
                   <input type="hidden" name="jobCardId" value={slip.jobCard?.id ?? ''} />
                   <input type="hidden" name="vehicleServiceId" value={slip.vehicleService?.id ?? ''} />
-                  <textarea name="reason" required rows={2} placeholder="Reason for rejection" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <textarea id="workshop-parts-requests-id-text-4" name="reason" required rows={2} placeholder="Reason for rejection" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-xs text-[var(--ejo-text)]" />
+                  <RefineTextButton targetId="workshop-parts-requests-id-text-4" />
                   <SubmitButton label="Reject" pendingLabel="Rejecting…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-3 py-2 text-xs font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/5" />
                 </form>
               </div>

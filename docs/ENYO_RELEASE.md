@@ -37,6 +37,9 @@ It runs as the person using it. Every lookup goes through the same permission ch
   - Passwords are encrypted with AES-256-GCM.
   - Connections to private network addresses are refused, and TLS 1.2 or higher is required.
   - Strictly the person's own mailbox: no administrator access, and nothing during assisted sessions.
+  - An email is shown in its own layout only after cleaning (`lib/mail/html.ts`: no scripts, forms, frames or event handlers; CSS that loads anything removed; a second full pass), inside a sandboxed frame that runs no scripts. Pictures from the sender's servers wait for "Show pictures", so opening an email never tells the sender it was read; tracking pixels are dropped.
+  - Attachments are fetched from the mail server only when the owner downloads one (`/api/mail/attachment`); pictures open in the browser, everything else downloads.
+  - Email sent from Mail goes out in the organisation's letterhead (Standard, Action needed, Urgent, For information) or as plain text, always with a plain-text copy.
 - **Retention:**
   - Chats are kept 12 months; website chats 90 days; deleted chats 30 days.
   - Stored mail is kept 90 days.

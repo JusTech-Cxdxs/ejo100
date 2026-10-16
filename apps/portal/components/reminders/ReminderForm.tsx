@@ -4,6 +4,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { Icon } from '@/components/ui';
 import { DueAtField } from './DueAtField';
 import { NOTES_MAX, TITLE_MAX } from '@/lib/reminders-rules';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const input = 'min-h-11 w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]';
 const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
@@ -56,6 +57,7 @@ export function ReminderForm({
       <div>
         <label htmlFor="reminder-notes" className={label}>Notes (optional)</label>
         <textarea id="reminder-notes" name="notes" rows={3} maxLength={NOTES_MAX} defaultValue={values.notes ?? ''} className={`${input} min-h-24`} />
+        <RefineTextButton targetId="reminder-notes" />
       </div>
       {record ? (
         <div className="flex flex-wrap items-center gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm">
