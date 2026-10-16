@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 import { EnyoAvatar } from '@ejo/enyo/src/ui/EnyoAvatar';
 import { readEvents, type EnyoEvent } from '@ejo/enyo/src/protocol';
 import { useChatViewport } from '@ejo/enyo/src/ui/useChatViewport';
+import { joinSpoken, useSpeechInput } from '@ejo/enyo/src/ui/speechInput';
 import { EnyoMarkdown } from './EnyoMarkdown';
 
 /**
@@ -67,7 +68,50 @@ const ICON = {
   stop: 'M7 7h10v10H7z',
   restart: 'M3 12a9 9 0 1 0 3-6.7M3 4v5h5',
   person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c1.5-4 4.5-6 8-6s6.5 2 8 6',
+  mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
+  pause: 'M9 6v12M15 6v12',
+  pencil: 'M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4',
 };
+
+/** "0:07" since the voice note started (ticks while listening). */
+function Elapsed({ since, running }: { since: number | null; running: boolean }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => tick((n) => n + 1), 500);
+    return () => clearInterval(t);
+  }, [running]);
+  const s = since ? Math.max(0, Math.floor((Date.now() - since) / 1000)) : 0;
+  return <>{Math.floor(s / 60)}:{String(s % 60).padStart(2, '0')}</>;
+}
+
+/** A voice note in progress: what was heard so far, with cancel, pause / carry on, edit as text, and send. */
+function VoiceBar(p: { listening: boolean; paused: boolean; processing: boolean; words: string; startedAt: number | null; busy: boolean; onCancel: () => void; onPause: () => void; onResume: () => void; onEdit: () => void; onSend: () => void }) {
+  const small = 'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40';
+  return (
+    <div role="group" aria-label="Voice note" className="mb-2 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-bg)] p-2" data-testid="enyo-voice-note">
+      <p role="status" aria-live="polite" className="flex items-start gap-2 px-1.5 pb-1.5 text-sm text-[var(--ejo-text)]">
+        <span className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${p.listening ? 'animate-pulse bg-[var(--ejo-error)] motion-reduce:animate-none' : 'bg-[var(--ejo-text-muted)]'}`} aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          <span className="font-medium">{p.processing ? 'Getting your words…' : p.listening ? 'Listening' : 'Paused'}</span>
+          <span className="text-[var(--ejo-text-muted)]"> · <Elapsed since={p.startedAt} running={p.listening} /></span>
+          <span className="mt-0.5 block max-h-24 overflow-y-auto break-words text-[var(--ejo-text-muted)]">{p.words || (p.listening ? 'Speak now…' : 'Nothing heard yet.')}</span>
+        </span>
+      </p>
+      <div className="flex items-center gap-1">
+        <button type="button" onClick={p.onCancel} aria-label="Cancel the voice note" title="Cancel" className={`${small} text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-text)]`}><Glyph d={ICON.close} /></button>
+        {p.listening ? (
+          <button type="button" onClick={p.onPause} disabled={p.processing} aria-label="Pause" title="Pause — keep the words" className={`${small} text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]`}><Glyph d={ICON.pause} /></button>
+        ) : (
+          <button type="button" onClick={p.onResume} disabled={p.processing} aria-label="Carry on speaking" title="Carry on speaking" className={`${small} text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10`}><Glyph d={ICON.mic} /></button>
+        )}
+        <span className="flex-1" />
+        <button type="button" onClick={p.onEdit} disabled={p.processing} className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[var(--ejo-primary)] hover:bg-[var(--ejo-primary)]/10 disabled:opacity-40"><Glyph d={ICON.pencil} size={16} />Edit as text</button>
+        <button type="button" onClick={p.onSend} disabled={p.processing || p.busy} aria-label="Send the voice note" title="Send now" className={`${small} bg-[var(--ejo-primary)] text-white hover:brightness-110`}><Glyph d={ICON.send} /></button>
+      </div>
+    </div>
+  );
+}
 
 export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
   const [status, setStatus] = useState<Status | null>(null);
@@ -194,6 +238,18 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
     }
   }, [busy, patch, variant]);
 
+  // Voice notes (the browser's own speech recognition): send at once, or put the words in the box to edit.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const voice = useSpeechInput((heard, how) => {
+    const words = joinSpoken(draftRef.current, heard).slice(0, MAX);
+    if (how === 'send') { void send(words); return; }
+    setDraft(words);
+    requestAnimationFrame(() => input.current?.focus());
+  });
+  // Closing the chat throws an unfinished voice note away (nothing is sent).
+  useEffect(() => { if (!open) voice.cancel(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const onSubmit = (e: FormEvent) => { e.preventDefault(); void send(draft); };
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(draft); }
@@ -312,6 +368,27 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
           </div>
 
           <form onSubmit={onSubmit} className="shrink-0 border-t border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 pb-3 pt-2.5 sm:px-4">
+            {voice.active ? (
+              <VoiceBar
+                listening={voice.listening}
+                paused={voice.paused}
+                processing={voice.processing}
+                words={voice.interim}
+                startedAt={voice.startedAt}
+                busy={busy}
+                onCancel={voice.cancel}
+                onPause={voice.pause}
+                onResume={voice.resume}
+                onEdit={() => voice.finish('text')}
+                onSend={() => voice.finish('send')}
+              />
+            ) : null}
+            {voice.error ? (
+              <p role="alert" className="mb-2 flex items-start gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-warning)]/10 px-3 py-2 text-xs text-[var(--ejo-text)]">
+                <span className="flex-1">{voice.error}</span>
+                <button type="button" onClick={voice.clearError} className="font-medium text-[var(--ejo-primary)]">OK</button>
+              </p>
+            ) : null}
             <div className="flex items-end gap-2">
               <label htmlFor="enyo-message" className="sr-only">Your message</label>
               <textarea
@@ -322,11 +399,24 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
                 onKeyDown={onKeyDown}
                 rows={1}
                 maxLength={MAX + 200}
-                placeholder={`Message ${name}…`}
+                placeholder={voice.active ? 'Type more if you like…' : `Message ${name}…`}
                 aria-describedby="enyo-small-print"
                 aria-invalid={over || undefined}
                 className="max-h-36 min-h-11 flex-1 resize-none rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-base text-[var(--ejo-text)] placeholder:text-[var(--ejo-text-muted)] focus:border-[var(--ejo-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--ejo-primary)]/25 sm:text-sm"
               />
+              {voice.supported && !voice.active ? (
+                <button
+                  type="button"
+                  onClick={() => voice.start()}
+                  disabled={busy}
+                  aria-label="Speak your message"
+                  title="Speak — then send, pause, or edit the words first"
+                  data-testid="enyo-mic"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-[var(--ejo-text)] hover:border-[var(--ejo-primary)]/50 hover:text-[var(--ejo-primary)] disabled:opacity-40"
+                >
+                  <Glyph d={ICON.mic} />
+                </button>
+              ) : null}
               {busy ? (
                 <button type="button" onClick={() => abort.current?.abort()} aria-label="Stop" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-[var(--ejo-text)]">
                   <Glyph d={ICON.stop} />

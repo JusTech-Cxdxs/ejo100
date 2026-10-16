@@ -22,7 +22,8 @@ export const PERMISSIONS_POLICY = [
   'gyroscope=()',
   'hid=()',
   'magnetometer=()',
-  'microphone=()',
+  // This site only: voice notes to Enyo (the browser asks the person first).
+  'microphone=(self)',
   'midi=()',
   'payment=()',
   'publickey-credentials-get=()',

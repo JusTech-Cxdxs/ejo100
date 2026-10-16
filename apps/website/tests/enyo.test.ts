@@ -167,3 +167,13 @@ test('hand-over never loses a request: older database, refused save, visitor con
   const md = readFileSync(join(__dirname, '..', '..', 'lib', 'enyo', 'markdown.ts'), 'utf8');
   assert.match(md, /stripCitationMarks\(src/);
 });
+
+test('voice notes on the website and in the customer portal, microphone allowed for this site only', () => {
+  const chat = readFileSync(join(__dirname, '..', '..', 'components', 'enyo', 'EnyoChat.tsx'), 'utf8');
+  assert.match(chat, /useSpeechInput\(/);
+  assert.match(chat, /Edit as text/);
+  assert.match(chat, /if \(how === 'send'\) \{ void send\(words\); return; \}/);
+  const headers = readFileSync(join(__dirname, '..', '..', 'lib', 'security-headers.ts'), 'utf8');
+  assert.match(headers, /'microphone=\(self\)'/);
+  assert.doesNotMatch(headers, /'microphone=\(\)'/);
+});
