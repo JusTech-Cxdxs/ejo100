@@ -200,10 +200,12 @@ export function webLookupTool<Ctx>(opts: { fetchImpl?: FetchLike; env?: Env } = 
       const g = general.status === 'fulfilled' ? general.value : null;
       const w = wiki.status === 'fulfilled' ? wiki.value : null;
       if (!g && !w) return { ok: false, message: 'The web could not be reached just now. Answer from general knowledge if you can, saying it may be out of date and could not be checked.' };
-      const results = [
-        ...(g?.pages ?? []).map((p) => ({ title: p.title, url: p.url, site: siteOf(p.url) || g!.source, text: asData(`${g!.source}: ${siteOf(p.url) || p.title}`, p.text) })),
-        ...(w?.pages ?? []).map((p) => ({ title: p.title, url: p.url, site: 'wikipedia.org', text: asData(`Wikipedia: ${p.title}`, p.text) })),
+      // Titles come from the web too: they reach the model only inside the untrusted block, with the text.
+      const pages = [
+        ...(g?.pages ?? []).map((p) => ({ title: p.title, url: p.url, site: siteOf(p.url) || g!.source, text: p.text })),
+        ...(w?.pages ?? []).map((p) => ({ title: p.title, url: p.url, site: 'wikipedia.org', text: p.text })),
       ];
+      const results = pages.map((p) => ({ url: p.url, site: p.site, text: asData(p.site === 'wikipedia.org' ? 'Wikipedia' : p.site, `${p.title}\n${p.text}`) }));
       if (!results.length) return { ok: false, message: 'Nothing relevant was found on the web for that. Say so plainly; answer from general knowledge only if you are confident, and say it may be out of date. For a person, say you could not find public information about them.' };
       return {
         ok: true,
@@ -213,7 +215,7 @@ export function webLookupTool<Ctx>(opts: { fetchImpl?: FetchLike; env?: Env } = 
           howToUse: 'Use only results that clearly match what was asked; ignore unrelated pages. Name the site in plain words ("according to LinkedIn", "Wikipedia says"). Do not write citation marks or brackets like 【…】.',
           results,
         },
-        sources: results.slice(0, 3).map((r) => ({ label: r.site === 'wikipedia.org' ? `Wikipedia: ${r.title}` : `${r.site}: ${r.title}`.slice(0, 90), ...(r.url ? { href: r.url } : {}) })),
+        sources: pages.slice(0, 3).map((r) => ({ label: (r.site === 'wikipedia.org' ? `Wikipedia: ${r.title}` : `${r.site}: ${r.title}`).slice(0, 90), ...(r.url ? { href: r.url } : {}) })),
       };
     },
   };

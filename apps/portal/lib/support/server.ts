@@ -47,7 +47,10 @@ function holidaysOf(s: { holidays?: string[]; holidayCalendar?: string | null; h
 }
 
 export async function supportSettings(organisationId: string): Promise<SupportSettings> {
-  const s = await prisma.supportSetting.findUnique({ where: { organisationId } }).catch(() => null);
+  const base = { hours: true, holidays: true, aiThreshold: true, nudgeAfterHours: true, autoResolveDays: true, closeAfterDays: true, csatEnabled: true } as const;
+  // A database a version behind (no v38 holiday columns yet) still gives the saved rules, with the calendar on.
+  const s = await prisma.supportSetting.findUnique({ where: { organisationId }, select: { ...base, holidayCalendar: true, holidaysOff: true } })
+    .catch(() => prisma.supportSetting.findUnique({ where: { organisationId }, select: base }).catch(() => null));
   return {
     hours: s?.hours ? readHours(s.hours) : { ...DEFAULT_HOURS },
     ...holidaysOf(s),

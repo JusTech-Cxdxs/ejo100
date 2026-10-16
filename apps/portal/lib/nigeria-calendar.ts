@@ -48,6 +48,8 @@ export function islamicHolidaysEstimated(year: number): [string, string][] {
   } catch {
     return [];
   }
+  // A runtime without the Hijri calendar quietly falls back to the Gregorian one: then give no estimate rather than wrong days.
+  if (!/^islamic/.test(f.resolvedOptions().calendar)) return [];
   const out: [string, string][] = [];
   const nextWeekday = (iso: string) => {
     let t = Date.parse(`${iso}T00:00:00Z`) + 86_400_000;

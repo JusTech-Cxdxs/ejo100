@@ -159,7 +159,8 @@ test('hand-over never loses a request: older database, refused save, visitor con
   assert.match(src, /P2022/);
   assert.match(src, /emailOnly\(ctx, contact, topic, summary/);
   assert.match(src, /\/support\/request\/\$\{ticket\.token\}/);
-  assert.match(src, /customerByEmail\(ctx\.organisationId, contact\.email\)/);
+  assert.match(src, /const linkedCustomerId = ctx\.customer\?\.id \?\? null;/);
+  assert.doesNotMatch(src, /customerByEmail/);
   const pub = readFileSync(join(__dirname, '..', '..', 'lib', 'enyo', 'public-tools.ts'), 'utf8');
   assert.match(pub, /if \(!r\.ticketNumber\)/);
   const chat = readFileSync(join(__dirname, '..', '..', 'components', 'enyo', 'EnyoChat.tsx'), 'utf8');

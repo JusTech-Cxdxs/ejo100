@@ -35,8 +35,9 @@ export async function replyToSupportTicket(_prev: ActionState, fd: FormData): Pr
   if (body.length > REPLY_MAX) return { ok: false, error: `Please keep your reply under ${REPLY_MAX.toLocaleString('en-NG')} characters.`, fieldErrors: { body: 'Too long.' } };
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(ticketId)) return { ok: false, error: 'That request isn’t on your account. Refresh the page and try again.' };
 
+  // Their own request, or one they left on the website with their account's email (replying signed in files it on their account).
   const ticket = await prisma.supportTicket.findFirst({
-    where: { id: ticketId, customerId: me.id, organisationId: me.organisationId },
+    where: { id: ticketId, organisationId: me.organisationId, OR: [{ customerId: me.id }, { customerId: null, channel: 'WEBSITE', contactEmail: { equals: me.email, mode: 'insensitive' } }] },
     select: { id: true, number: true, status: true, assignedToId: true, branchId: true, organisationId: true, aiOutcome: true, handoverReason: true },
   });
   if (!ticket) return { ok: false, error: 'That request isn’t on your account. Refresh the page and try again.' };
@@ -51,6 +52,7 @@ export async function replyToSupportTicket(_prev: ActionState, fd: FormData): Pr
       prisma.supportTicket.update({
         where: { id: ticket.id },
         data: {
+          customerId: me.id,
           status: ticket.status === 'ON_HOLD' ? 'ON_HOLD' : 'OPEN', resolvedAt: null, lastCustomerAt: new Date(), pendingSince: null, nudgeCount: 0,
           ...(ticket.status === 'RESOLVED' ? { reopenCount: { increment: 1 } } : {}),
           // Enyo answered and the customer came back: not resolved by Enyo after all.

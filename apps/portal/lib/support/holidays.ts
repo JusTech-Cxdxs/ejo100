@@ -30,7 +30,9 @@ export function holidayEntries(calendar: HolidayCalendar | null, custom: string[
   }
   for (const d of custom.filter(isIsoDay)) {
     if (!years.includes(Number(d.slice(0, 4)))) continue;
-    if (!out.has(d)) out.set(d, { date: d, name: 'Closed (the organisation’s own day)', source: 'custom', provisional: false, open: false });
+    // The organisation's own closed day wins over a calendar entry on the same date (closed whatever the calendar says).
+    const cal = out.get(d);
+    out.set(d, { date: d, name: cal ? `${cal.name} (also the organisation’s own closed day)` : 'Closed (the organisation’s own day)', source: 'custom', provisional: false, open: false });
   }
   return [...out.values()].sort((a, b) => a.date.localeCompare(b.date));
 }

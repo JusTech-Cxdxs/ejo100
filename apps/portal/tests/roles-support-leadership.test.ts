@@ -104,3 +104,26 @@ test('features guide: each person sees only what their role opens', async () => 
   assert.ok(areas.includes('Workshop'));
   assert.ok(!guideFor(who(['technician'])).flatMap((g) => g.entries).some((e) => e.href.startsWith('/users')));
 });
+
+test('review fixes: no escalation through new accounts, role grants or switching administrators off; holidays never lost', () => {
+  const users = read('lib/actions/users-admin.ts');
+  assert.match(users, /Only an Organisation Administrator can give the Administrator role\./);
+  assert.match(users, /Only an Organisation Administrator can switch another Administrator on or off\./);
+  const roles = read('lib/actions/roles.ts');
+  assert.match(roles, /You can only add a permission you hold yourself/);
+  assert.match(roles, /Only an Organisation Administrator can change the administrator roles\./);
+  const hours = read('app/(app)/settings/support/hours/page.tsx');
+  assert.match(hours, /keepCustom\.map/);
+  assert.match(hours, /keepOpen\.map/);
+  assert.match(read('lib/support/server.ts'), /select: base \}\)/);
+  assert.match(read('components/SelectSearch.tsx'), /!el\.closest\('dialog\[open\]'\)/);
+});
+
+test('an own closed day on a calendar holiday is kept as the organisation’s own', async () => {
+  const { holidayEntries } = await import('../lib/support/holidays');
+  const e = holidayEntries('NG', ['2026-12-25'], [], [2026]).find((x) => x.date === '2026-12-25')!;
+  assert.equal(e.source, 'custom');
+  assert.equal(holidayEntries(null, ['2026-12-25'], [], [2026]).length, 1);
+  const { stripCitationMarks } = await import('../lib/enyo/citations');
+  assert.equal(stripCitationMarks('【标题】 正文'), '【标题】 正文');
+});

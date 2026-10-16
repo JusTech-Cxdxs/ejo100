@@ -24,10 +24,14 @@ export default async function SupportHoursPage({ searchParams }: { searchParams:
   const s = await getSupportSetup();
   const year = Number(new Date(Date.now() + 3_600_000).toISOString().slice(0, 4));
   const today = new Date(Date.now() + 3_600_000).toISOString().slice(0, 10);
-  const entries = holidayEntries(s.settings.holidayCalendar ?? 'NG', s.settings.customHolidays, s.settings.holidaysOff, [year, year + 1]);
   const calendarOn = Boolean(s.settings.holidayCalendar);
+  const entries = holidayEntries(s.settings.holidayCalendar, s.settings.customHolidays, s.settings.holidaysOff, [year, year + 1]);
   const upcoming = entries.filter((e) => e.date >= today);
-  const past = entries.filter((e) => e.date < today && e.date.startsWith(String(year)));
+  // Everything stored but not shown as a box below is sent back unchanged, so saving never loses a day.
+  const shownCustom = new Set(upcoming.filter((e) => e.source === 'custom').map((e) => e.date));
+  const shownCalendar = new Set(upcoming.filter((e) => e.source === 'calendar').map((e) => e.date));
+  const keepCustom = s.settings.customHolidays.filter((d) => !shownCustom.has(d));
+  const keepOpen = s.settings.holidaysOff.filter((d) => !shownCalendar.has(d));
 
   return (
     <SupportSetupFrame active="/settings/support/hours" icon="clock" title="Hours & holidays" sp={sp}
@@ -80,15 +84,15 @@ export default async function SupportHoursPage({ searchParams }: { searchParams:
             ) : <p className="text-sm text-[var(--ejo-text-muted)]">No closed days ahead.</p>}
           </div>
 
-          {/* Days already passed this year keep their settings when the form is saved. */}
-          {past.map((e) => (e.source === 'calendar' ? (e.open ? <input key={e.date} type="hidden" name="openOn" value={e.date} /> : null) : <input key={e.date} type="hidden" name="extraDay" value={e.date} />))}
+          {keepCustom.map((d) => <input key={`x-${d}`} type="hidden" name="extraDay" value={d} />)}
+          {keepOpen.map((d) => <input key={`o-${d}`} type="hidden" name="openOn" value={d} />)}
 
           <div className="max-w-xs">
             <label className={label} htmlFor="extra-day">Add a closed day of the organisation’s own (optional)</label>
             <input id="extra-day" type="date" name="extraDay" min={today} className="min-h-11 w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 text-sm text-[var(--ejo-text)]" />
             <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">A staff day, a stock-take, a local holiday. Pick it from the calendar.</p>
           </div>
-          <SaveRow note={past.length ? `${past.length} earlier ${past.length === 1 ? 'day' : 'days'} this year ${past.length === 1 ? 'is' : 'are'} kept as set.` : undefined}><SubmitButton label="Save holidays" pendingLabel="Saving…" className={btn} /></SaveRow>
+          <SaveRow note={calendarOn ? undefined : 'With the calendar off, only the organisation’s own closed days count.'}><SubmitButton label="Save holidays" pendingLabel="Saving…" className={btn} /></SaveRow>
         </form>
       </SectionCard>
     </SupportSetupFrame>

@@ -29,16 +29,9 @@ export type HandoverResult = { ticketNumber: string | null; existing: boolean; e
 /** A database that has not had the newest columns added yet (Prisma P2021/P2022). */
 function missingColumn(err: unknown): boolean {
   const code = (err as { code?: string })?.code;
-  return code === 'P2021' || code === 'P2022' || /column .* does not exist|Unknown argument/i.test(String((err as Error)?.message ?? ''));
+  return code === 'P2021' || code === 'P2022' || /column "?[\w.]+"? does not exist/i.test(String((err as Error)?.message ?? ''));
 }
 
-/** The customer with this email address in the organisation, when exactly one has it (so a website request shows in their portal). */
-async function customerByEmail(organisationId: string, email: string | null): Promise<string | null> {
-  const e = (email ?? '').trim();
-  if (!e) return null;
-  const rows = await prisma.customer.findMany({ where: { organisationId, email: { equals: e, mode: 'insensitive' } }, take: 2, select: { id: true } }).catch(() => []);
-  return rows.length === 1 ? rows[0]!.id : null;
-}
 
 /** Runs a piece of work after the response when the platform allows it, else in the background. Never throws. */
 function later(work: () => Promise<unknown>): void {
@@ -117,11 +110,11 @@ export async function openHandover(ctx: WebCtx, contact: HandoverContact, topicR
   const id = `sup${randomBytes(11).toString('hex')}`;
   const channel = ctx.mode === 'CUSTOMER' ? 'CUSTOMER_PORTAL' as const : 'WEBSITE' as const;
 
-  // A visitor on the website who gives the email address of a customer on
-  // file: the request also shows in that customer's portal (Help & support).
-  // It stays unproven (verified=false), so nobody discusses records with them
-  // until they sign in or write from that address.
-  const linkedCustomerId = ctx.customer?.id ?? (await customerByEmail(ctx.organisationId, contact.email));
+  // Only a signed-in customer's request is filed on their account. A website
+  // visitor is never linked to a customer by an email they typed (anyone can
+  // type anyone's address); the customer still sees it in their portal once
+  // signed in (matched by their own account's email, read-only until they reply).
+  const linkedCustomerId = ctx.customer?.id ?? null;
   const token = randomBytes(24).toString('base64url');
   const base = {
     id,

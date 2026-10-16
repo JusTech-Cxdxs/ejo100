@@ -20,7 +20,8 @@ const MIN = 6;
 type Opt = { value: string; label: string; group: string; disabled: boolean };
 
 function wants(el: EventTarget | null): el is HTMLSelectElement {
-  return el instanceof HTMLSelectElement && !el.multiple && !el.disabled && el.size <= 1 && el.dataset.plain === undefined && el.options.length >= MIN;
+  // Not inside an open modal <dialog>: the list lives in <body>, which a modal makes unreachable.
+  return el instanceof HTMLSelectElement && !el.multiple && !el.disabled && el.size <= 1 && el.dataset.plain === undefined && el.options.length >= MIN && !el.closest('dialog[open]');
 }
 
 function optionsOf(sel: HTMLSelectElement): Opt[] {
@@ -169,6 +170,7 @@ export function SelectSearch() {
             placeholder="Type to search…"
             aria-label={`Search ${name}`}
             aria-controls="select-search-list"
+            aria-activedescendant={active >= 0 ? `select-search-opt-${active}` : undefined}
             className="min-h-10 w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 text-base text-[var(--ejo-text)] focus:border-[var(--ejo-primary)] focus:outline-none sm:text-sm"
           />
         </div>
@@ -185,6 +187,7 @@ export function SelectSearch() {
                   type="button"
                   role="option"
                   data-i={o.i}
+                  id={`select-search-opt-${o.i}`}
                   aria-selected={selected}
                   disabled={o.disabled}
                   onMouseEnter={() => setActive(o.i)}

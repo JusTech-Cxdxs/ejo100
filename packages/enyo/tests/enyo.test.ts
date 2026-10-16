@@ -242,7 +242,7 @@ test('web look-up: searches Wikipedia, returns introductions as untrusted data, 
   const out = await tool.run({ query: 'President of Nigeria' }, {});
   assert.ok(out.ok);
   const text = JSON.stringify(out.ok ? out.data : null);
-  assert.match(text, /<untrusted source=\\"Wikipedia: President of Nigeria\\">/);
+  assert.match(text, /<untrusted source=\\"Wikipedia\\">[^<]*President of Nigeria/);
   const down = webLookupTool<object>({ fetchImpl: async () => { throw new Error('offline'); } });
   const failed = await down.run({ query: 'x y' }, {});
   assert.equal(failed.ok, false);

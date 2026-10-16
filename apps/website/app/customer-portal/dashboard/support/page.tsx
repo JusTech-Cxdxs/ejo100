@@ -26,7 +26,7 @@ const FAQS: { q: string; a: string }[] = [
 /** Who to call, the customer's support requests (with replies), and answers to common questions. */
 export default async function SupportPage() {
   const me = await requireCustomer();
-  const [c, tickets] = await Promise.all([loadContact(me.id, me.organisationId), loadSupportTickets(me.id, me.organisationId)]);
+  const [c, tickets] = await Promise.all([loadContact(me.id, me.organisationId), loadSupportTickets(me.id, me.organisationId, me.email)]);
   const lines = c ? [...new Set([...(c.hotlines ?? []), ...(c.orgHotlines ?? [])])] : [];
   const emails = c ? [...new Set([c.email, c.orgEmail].filter((x): x is string => Boolean(x)))] : [];
   return (

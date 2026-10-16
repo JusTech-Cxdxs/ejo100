@@ -44,7 +44,8 @@ test('citation marks never reach the reader', () => {
   assert.equal(stripCitationMarks('Ada Obi leads the auto business【web_lookup†source】.'), 'Ada Obi leads the auto business.');
   const blocks = parseMarkdown('Hello 【1†source】 world');
   assert.doesNotMatch(JSON.stringify(blocks), /【/);
-  assert.equal(stripCitationMarks(read('../website/lib/enyo/citations.ts').includes('【') ? 'x【y】' : ''), 'x');
+  assert.equal(stripCitationMarks('x【1†source】'), 'x');
+  assert.equal(read('../website/lib/enyo/citations.ts').replace(/^.*\n/, ''), read('lib/enyo/citations.ts').replace(/^.*\n/, ''), 'the website strips the same marks');
 });
 
 test('support holidays: Nigerian calendar worked out every year, own days added, days opened anyway removed', async () => {
