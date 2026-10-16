@@ -78,6 +78,8 @@ async function checkPair(userId: string, roleId: string) {
   if (branchOnly && user.branchId !== branchOnly) throw new Error('You can only manage the people of your own branch.');
   if (branchOnly && ADMIN_ROLE_SLUGS.includes(role.slug)) throw new Error('Administrator roles are given by headquarters.');
   if (userId === p.userId) throw new Error('You cannot change your own roles — ask another administrator.');
+  // Only an Organisation Administrator gives or takes the Administrator role (an IT administrator, for example, cannot).
+  if (role.slug === 'administrator' && !p.isSuperAdmin && !p.roleSlugs.includes('administrator')) throw new Error('Only an Organisation Administrator can give or remove the Administrator role.');
   const targetIsPlatform = user.roles.some((r: { role: { isSuperAdmin: boolean } }) => r.role.isSuperAdmin);
   if (targetIsPlatform && !p.isSuperAdmin) throw new Error('That person no longer exists — refresh the page.');
   // The platform OWNER (PLATFORM_OWNER_EMAIL) can only be changed by the owner — not even by other platform-team members.

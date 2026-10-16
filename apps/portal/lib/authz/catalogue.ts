@@ -184,6 +184,34 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   // their behalf, with their password as consent. Nothing else: while
   // assisting, what can be done is exactly what the colleague can do.
   'branch-assistant': { 'support.assist': B },
+  // Customer care — the support department. Works the Support centre (customer
+  // and colleague requests, complaints, chat hand-overs) for their branch and
+  // looks up what an answer needs (customers, jobs, warranties) — read-only
+  // outside the Support centre, and never its set-up.
+  'customer-care': { 'support.tickets.manage': B, 'crm.view': B, ...VIEW_WORKSHOP, 'warranty.view': B, 'schedule.view': 'OWN' },
+  // Heads customer care for the whole organisation: every branch's requests,
+  // and keeping customer records right. Still not the Support centre's set-up.
+  'customer-care-lead': {
+    'support.tickets.manage': A, 'crm.view': A, 'crm.manage': A, 'workshop.view': A, 'workshop.job_card.view': A, 'warranty.view': A,
+    'analytics.warranty.view': A, 'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT',
+  },
+  // ── Leadership & IT ──────────────────────────────────────────────
+  // A director or general manager: sees how the whole business is doing —
+  // every module and all analytics, read-only, with the daily brief — and
+  // approves nothing (decisions stay with the managers who own them).
+  executive: {
+    'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A,
+    'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'crm.view': A,
+    'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT',
+  },
+  // Group IT: people and their roles, settings and system health, the audit
+  // trail and error log, and Enyo (AI), across the organisation — but none of
+  // the business transactions or money (so not the Recycle bin, whose deleted
+  // records carry amounts).
+  'it-administrator': {
+    'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A, 'admin.structure.manage': A, 'audit.view': A,
+    'enyo.manage': A, 'schedule.view': 'OWN',
+  },
 };
 
 /** Steps only the platform team may take — never grantable to organisation roles. */
@@ -251,6 +279,7 @@ export const ROLE_LABELS: Record<string, string> = {
   'warranty-officer': 'Warranty Officer', 'department-head': 'Department Head', 'chief-security-officer': 'Chief Security Officer',
   'security-officer': 'Security Officer', receptionist: 'Front Desk (Receptionist)', 'calendar-user': 'Calendar User', 'scheduling-admin': 'Scheduling Admin', broadcaster: 'Broadcaster',
   'branch-assistant': 'Branch Assistant (IT support)',
+  'customer-care': 'Customer Care', 'customer-care-lead': 'Customer Care Lead', executive: 'Executive (director / general manager)', 'it-administrator': 'IT Administrator',
 };
 
 /**
@@ -276,6 +305,10 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
   'scheduling-admin': 'Manages meeting rooms and calendar aides, and can book on anyone\'s calendar.',
   broadcaster: 'Sends broadcasts (notices) to staff and customers.',
   'branch-assistant': 'IT support at the branch. Helps colleagues who are not comfortable with computers: with the colleague\'s own password, works on their tasks for a limited time. Every action is recorded as done for that colleague, with the assistant named. Cannot help managers, supervisors, finance or administrators, and approves nothing.',
+  'customer-care': 'The support department. Works the Support centre for their branch: customers\' emails, website and portal hand-overs, complaints and colleagues\' Get help requests — answers, uses Enyo\'s drafts, hands over and resolves. Can look up customers, jobs and warranties to answer, but changes nothing there and cannot open the Support centre\'s set-up.',
+  'customer-care-lead': 'Heads customer care for the whole organisation: every branch\'s support requests and complaints, the Support centre\'s numbers, and keeping customer records right. Authorises exit passes for the customer care team. Not the Support centre\'s set-up.',
+  executive: 'A director or general manager. Sees how the whole business is doing — every module and all analytics, read-only — with a daily brief of what needs attention. Approves nothing; decisions stay with the managers who own them. Authorises exit passes for their own department.',
+  'it-administrator': 'Group IT. Adds people and gives them roles, manages settings, structure and system health, reads the audit trail and the error log, and looks after Enyo (AI), for the whole organisation. Does none of the business transactions (no jobs, approvals, payments or stock). Cannot change a role they hold, or give the Administrator role.',
 };
 
 /** Permissions that DECIDE something (approve, authorise, release, pay) —

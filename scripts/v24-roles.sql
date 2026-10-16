@@ -23,11 +23,15 @@ CROSS JOIN (VALUES
   ('Calendar User', 'calendar-user', 'Keeps a calendar and books appointments.'),
   ('Scheduling Admin', 'scheduling-admin', 'Meeting rooms, aides, and any calendar.'),
   ('Broadcaster', 'broadcaster', 'Sends broadcasts to the organisation.'),
-  ('Branch Assistant', 'branch-assistant', 'Helps colleagues who are not at ease with computers, on their behalf and with their password as consent. Every action is recorded for both.')
+  ('Branch Assistant', 'branch-assistant', 'Helps colleagues who are not at ease with computers, on their behalf and with their password as consent. Every action is recorded for both.'),
+  ('Customer Care', 'customer-care', 'The support department: works support requests, complaints and colleagues'' Get help requests for their branch. Not the Support centre''s set-up.'),
+  ('Customer Care Lead', 'customer-care-lead', 'Heads customer care across the organisation: every branch''s requests and complaints, and customer records.'),
+  ('Executive', 'executive', 'A director or general manager: every module and all analytics, read-only, with a daily brief. Approves nothing.'),
+  ('IT Administrator', 'it-administrator', 'Group IT: people and roles, settings and system health, audit trail and error log, and Enyo. No business transactions.')
 ) AS r(name, slug, description)
 ON CONFLICT ("organisationId", "slug") DO NOTHING;
 
--- Check: the roles each organisation now has (expect at least 18 per organisation).
+-- Check: the roles each organisation now has (expect at least 22 per organisation).
 SELECT o."name" AS organisation, COUNT(r."id") AS roles
 FROM "organisations" o LEFT JOIN "roles" r ON r."organisationId" = o."id"
 GROUP BY o."name";

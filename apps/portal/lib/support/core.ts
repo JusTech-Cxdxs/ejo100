@@ -27,10 +27,10 @@ export function asPriority(v: unknown): Priority {
 
 export const CHANNEL_LABEL: Record<string, string> = { EMAIL: 'Email', CUSTOMER_PORTAL: 'Customer portal', WEBSITE: 'Website enquiry', STAFF: 'Opened by a colleague', HELP: 'A colleague’s own request' };
 
-export const QUEUE_KINDS = ['general', 'warranty', 'technical', 'customer_care', 'parts', 'sales', 'internal', 'other'] as const;
+export const QUEUE_KINDS = ['general', 'warranty', 'technical', 'customer_care', 'parts', 'sales', 'internal', 'hr', 'other'] as const;
 export type QueueKind = (typeof QUEUE_KINDS)[number];
 export const QUEUE_KIND_LABEL: Record<QueueKind, string> = {
-  general: 'General support', warranty: 'Warranty & recalls', technical: 'Technical / workshop', customer_care: 'Customer care & complaints', parts: 'Parts', sales: 'Vehicle sales', internal: 'Staff help (colleagues’ own requests)', other: 'Other',
+  general: 'General support', warranty: 'Warranty & recalls', technical: 'Technical / workshop', customer_care: 'Customer care & complaints', parts: 'Parts', sales: 'Vehicle sales', internal: 'Staff help (colleagues’ own requests)', hr: 'HR & people (colleagues’ HR questions)', other: 'Other',
 };
 export function asQueueKind(v: unknown): QueueKind {
   return typeof v === 'string' && (QUEUE_KINDS as readonly string[]).includes(v) ? (v as QueueKind) : 'general';

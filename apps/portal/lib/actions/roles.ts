@@ -33,6 +33,8 @@ async function editableRole(roleId: string) {
   if (!role) throw new Error('That role no longer exists — refresh the page.');
   if (role.isSuperAdmin) throw new Error('The Master Administrator role belongs to the platform team and already holds everything.');
   if (!p.isSuperAdmin && role.organisationId !== me?.organisationId) throw new Error('You can only change roles in your own organisation.');
+  // Nobody widens their own access: a role you hold is changed by another administrator.
+  if (!p.isSuperAdmin && p.roleSlugs.includes(role.slug)) throw new Error('You cannot change a role you hold yourself — ask another administrator.');
   return { p, role };
 }
 

@@ -5,6 +5,7 @@ import { fmtDateTime } from '@/lib/customer-portal/format';
 import { Badge, Card, EmptyState, KeepCodes, PageHero, SectionTitle } from '@/components/customer/ui';
 import { Icon } from '@/components/customer/Icon';
 import { SupportReplyForm } from '@/components/customer/SupportReplyForm';
+import { NewSupportRequestForm } from '@/components/customer/NewSupportRequestForm';
 import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-payment-constants';
 import { APPROVAL_DEADLINE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/customer-portal/format';
 
@@ -34,7 +35,18 @@ export default async function SupportPage() {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-6">
-          {/* The customer's own support requests (hand-overs from the assistant) and the team's replies. */}
+          <section aria-labelledby="new-request-title" className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-5">
+            <details open={!tickets.length}>
+              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                <span id="new-request-title" className="flex items-center gap-2 text-base font-semibold text-[var(--ejo-text)]"><span className="text-[var(--ejo-primary)]"><Icon name="chat" size={18} /></span>Ask a question or make a complaint</span>
+                <span className="text-sm font-medium text-[var(--ejo-primary)]">Write to us</span>
+              </summary>
+              <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">It goes straight to our team with a reference number. You can follow it below and you will get an email when they reply.</p>
+              <NewSupportRequestForm />
+            </details>
+          </section>
+
+          {/* The customer's own support requests (hand-overs from the assistant, requests written here) and the team's replies. */}
           <section aria-labelledby="tickets-title" data-testid="support-tickets">
             <SectionTitle id="tickets-title" icon="chat" title="Your support requests" />
             {tickets.length ? (
@@ -47,6 +59,7 @@ export default async function SupportPage() {
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-[var(--ejo-text)]"><KeepCodes text={t.number} /></p>
                           <p className="mt-0.5 break-words text-sm text-[var(--ejo-text-muted)]">{t.subject}</p>
+                          {t.status !== 'CLOSED' && t.status !== 'RESOLVED' ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">{t.withTeam ? 'A member of our customer care team is handling it.' : 'Received — it is being passed to the right team.'}</p> : null}
                         </div>
                         <Badge tone={info.tone}>{info.label}</Badge>
                       </div>

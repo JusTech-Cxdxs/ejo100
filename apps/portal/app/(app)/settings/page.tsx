@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { jobStatuses } from '@/lib/job-runs';
+import { schemaHealth } from '@/lib/schema-health';
 import { getPrincipal, guardPage } from '@/lib/authz/server';
 import { decide, type PermissionKey } from '@/lib/authz/catalogue';
 import { formatDateTime, formatRelative } from '@/lib/utils/format-date';
@@ -18,6 +19,7 @@ const GROUPS: Group[] = [
     id: 'organisation', title: 'Organisation', text: 'Who you are and how you are organised.',
     areas: [
       { href: '/organisation', icon: 'building', title: 'Organisation profile', text: 'Name, logo, contacts, business units and the website ID.', needs: 'admin.organisation.manage' },
+      { href: '/organisation/people', icon: 'users', title: 'People we publish', text: 'Leadership and heads of department Enyo can introduce (“who is …”).', needs: 'admin.organisation.manage' },
       { href: '/branches', icon: 'branch', title: 'Branches and departments', text: 'Locations, departments and teams.', needs: 'admin.structure.manage' },
       { href: '/structure', icon: 'sitemap', title: 'Structure', text: 'Reporting lines and who approves what.', needs: 'admin.structure.manage' },
     ],
@@ -49,6 +51,7 @@ const GROUPS: Group[] = [
     id: 'records', title: 'Records and compliance', text: 'What changed, who changed it, and what was removed.',
     areas: [
       { href: '/audit-logs', icon: 'history', title: 'Audit logs', text: 'Every change and sign-in, searchable.', needs: 'audit.view' },
+      { href: '/audit-logs/errors', icon: 'alert', title: 'Error log', text: 'Every error reference people were shown, with what happened — for IT.', needs: 'audit.view' },
       { href: '/recycle-bin', icon: 'trash', title: 'Recycle bin', text: 'Restore removed records before they are deleted for good.', needs: 'admin.recycle_bin.manage' },
     ],
   },
@@ -57,7 +60,7 @@ const GROUPS: Group[] = [
 /** Settings — one place for every administration area, then the health of what runs on its own. */
 export default async function SettingsPage() {
   await guardPage('admin.settings.manage', '/settings');
-  const [{ jobs, emails7d }, p] = await Promise.all([jobStatuses(), getPrincipal()]);
+  const [{ jobs, emails7d }, p, schema] = await Promise.all([jobStatuses(), getPrincipal(), schemaHealth()]);
   const groups = GROUPS.map((g) => ({ ...g, areas: g.areas.filter((a) => decide(p, a.needs).allowed) })).filter((g) => g.areas.length);
   const late = jobs.filter((j) => !j.lastRun || Date.now() - j.lastRun.getTime() > (j.key === 'appointment-reminders' || j.key.startsWith('support') ? 3_600_000 : 3 * 86_400_000));
 
@@ -101,6 +104,19 @@ export default async function SettingsPage() {
             <span role="status" className={`rounded-full px-3 py-1 text-xs font-semibold ${late.length ? 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning-text,var(--ejo-warning))]' : 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]'}`}>
               {late.length ? `${late.length} of ${jobs.length} not running on time` : `All ${jobs.length} running`}
             </span>
+          </div>
+
+          <div className={`${card} mt-3 flex flex-wrap items-start gap-3 p-4 sm:p-5`} data-testid="schema-health">
+            <span aria-hidden="true" className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${schema.state === 'current' ? 'bg-[var(--ejo-success)]' : schema.state === 'behind' ? 'bg-[var(--ejo-error)]' : 'bg-[var(--ejo-warning)]'}`} />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-[var(--ejo-text)]">Database {schema.state === 'current' ? `up to date (${schema.expected})` : schema.state === 'behind' ? `behind: at ${schema.at ?? 'an older version'}, this release needs ${schema.expected}` : 'version could not be checked'}</p>
+              {schema.state === 'behind' ? (
+                <>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-[var(--ejo-text-muted)]">{schema.missing.map((m) => <li key={m.column}>{m.version}: {m.what}</li>)}</ul>
+                  <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Redeploy the API service on Render (its build adds the missing tables and columns — the log ends with “[db-push] Done.”). Until then those features cannot save.</p>
+                </>
+              ) : <p className="text-xs text-[var(--ejo-text-muted)]">Checked against the database&apos;s own catalogue just now.</p>}
+            </div>
           </div>
 
           <div className={`${card} mt-3 divide-y divide-[var(--ejo-border)]`}>
