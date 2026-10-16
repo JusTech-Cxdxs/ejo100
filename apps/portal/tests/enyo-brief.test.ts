@@ -87,3 +87,22 @@ test('the greeting line with a customer’s name is dropped from learned answers
   assert.equal(withoutGreeting('Good morning, Mr Okafor. We open at 8.'), 'We open at 8.');
   assert.equal(withoutGreeting('We open at 8.'), 'We open at 8.');
 });
+
+import { briefHeadline, cleanSummary, orderedSections, plainSummary } from '../lib/brief/core';
+test('the card: decisions and overdue first, notifications last; the summary is plain text', () => {
+  const d: BriefData = {
+    ...data,
+    sections: [
+      { key: 'activity', title: 'New notifications this week', count: 60, href: '/notifications', items: [] },
+      { key: 'mail', title: 'Unread mail', count: 3, href: '/mail', items: [] },
+      { key: 'decisions', title: 'Decisions waiting for you', count: 2, overdue: 1, href: '/approvals', items: [] },
+    ],
+  };
+  assert.deepEqual(orderedSections(d).map((s) => s.key), ['decisions', 'mail', 'activity']);
+  assert.equal(briefHeadline(d), '2 decisions waiting for you (1 overdue) · 3 unread mail');
+  assert.match(plainSummary(d), /1 item is overdue — start with decisions waiting for you/);
+  assert.equal(briefHeadline({ ...d, sections: [d.sections[0]!] }), 'Nothing needs you — only new notifications.');
+  // Whatever the model writes, no links, bracketed paths or markdown reach the card.
+  assert.equal(cleanSummary('Good evening, Ada. **Start** with [the estimate](/workshop/x) (all: [/notifications]) → [/crm/customers/abc].'), 'Good evening, Ada. Start with the estimate.');
+  assert.match(read('lib/brief/core.ts'), /Notifications are information only/);
+});

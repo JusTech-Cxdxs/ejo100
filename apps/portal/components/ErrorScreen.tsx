@@ -35,6 +35,18 @@ export function ErrorScreen({ error, reset, title, message, homeHref = '/dashboa
   useEffect(() => { setPath(window.location.pathname); }, []);
   const unsent = useRef<{ ref: string; name: string; message: string; path: string } | null>(null);
 
+  // A new version of the portal was published while this tab was open: its buttons point at the old
+  // version's actions. Reload once onto the new version instead of showing an error.
+  useEffect(() => {
+    if (!/Server Action .* was not found|failed-to-find-server-action|ChunkLoadError|Loading chunk .* failed/i.test(String(error?.message ?? ''))) return;
+    try {
+      const key = `ejo:reloaded:${window.location.pathname}`;
+      if (window.sessionStorage.getItem(key)) return;
+      window.sessionStorage.setItem(key, String(Date.now()));
+    } catch { /* storage off: reload anyway, once per render */ }
+    window.location.reload();
+  }, [error]);
+
   useEffect(() => {
     const send = () => {
       const r = unsent.current;

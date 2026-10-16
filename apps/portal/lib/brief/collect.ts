@@ -70,8 +70,17 @@ export async function collectBrief(period: { from: Date | null; to: Date; label:
   sections.push({ key: 'appointments', title: period.from && period.from < lagosMidnight ? 'Appointments' : 'Appointments today', count: appts.length, items: appts.slice(0, 8).map((a) => ({ title: a.title, href: `/schedule/${a.id}`, when: lagos(new Date(a.startsAt)), detail: a.room?.name ?? a.location ?? undefined })), href: '/schedule' });
   sections.push({ key: 'jobs', title: 'Your open jobs', count: jobs.length, items: jobs.slice(0, 8).map((j) => ({ title: `${j.number}${j.vehicle ? ` — ${j.vehicle}` : ''}`, detail: `${j.as}, ${j.status.replace(/_/g, ' ').toLowerCase()}`, href: j.url })), href: '/dashboard' });
   if (mail) sections.push(mail);
-  const fresh = activity.filter((a) => !a.read && (!period.from || new Date(a.at) >= period.from));
-  sections.push({ key: 'activity', title: period.from ? `New notifications ${period.label}` : 'Unread notifications', count: fresh.length, ...(activity.length >= 60 && !period.from ? { countLabel: '60+' } : {}), items: fresh.slice(0, 6).map((a) => ({ title: a.title, detail: a.detail ?? undefined, href: a.url || '/notifications', when: lagos(new Date(a.at)) })), href: '/notifications' });
+  // Notifications: unread ones in the period ("now": the last 7 days), each title once (one event can concern a Job Card and its road test).
+  const activityFrom = period.from ?? new Date(nowMs - 7 * DAY);
+  const seenTitles = new Set<string>();
+  const fresh = activity.filter((a) => {
+    if (a.read || new Date(a.at) < activityFrom) return false;
+    const k = `${a.title}|${new Date(a.at).toISOString().slice(0, 16)}`;
+    if (seenTitles.has(k)) return false;
+    seenTitles.add(k);
+    return true;
+  });
+  sections.push({ key: 'activity', title: period.from ? `New notifications ${period.label}` : 'New notifications this week', count: fresh.length, items: fresh.slice(0, 6).map((a) => ({ title: a.title, detail: a.detail ?? undefined, href: a.url || '/notifications', when: lagos(new Date(a.at)) })), href: '/notifications' });
   const unreadBc = broadcasts.filter((b) => !b.read);
   sections.push({ key: 'broadcasts', title: 'Unread announcements', count: unreadBc.length, items: unreadBc.slice(0, 4).map((b) => ({ title: b.title, href: '/notifications', when: lagos(new Date(b.startsAt)) })), href: '/notifications' });
 

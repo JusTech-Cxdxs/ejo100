@@ -62,6 +62,7 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
   let model = o.config.model;
   let answer = '';
   let calls = 0;
+  const deadlineAt = Date.now() + (o.deadlineMs ?? 55_000);
   const deadline = AbortSignal.timeout(o.deadlineMs ?? 55_000);
   const signal = o.signal ? AbortSignal.any([o.signal, deadline]) : deadline;
   const outOfTime = () => deadline.aborted && !o.signal?.aborted;
@@ -125,7 +126,17 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
           args = parsed.args;
           o.emit({ type: 'status', text: tool.status });
           try {
-            result = await tool.run(args, o.ctx);
+            // A slow lookup never runs past the deadline: the model answers with what it has.
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const slow = { ok: false as const, message: 'That lookup took too long. Answer with what you have and say what could not be checked.' };
+            result = await Promise.race([
+              tool.run(args, o.ctx),
+              new Promise<ToolResult>((resolve) => {
+                // At most 20 s per lookup, and always leaving ~8 s for the model to answer.
+                timer = setTimeout(() => resolve(slow), Math.max(2_000, Math.min(20_000, deadlineAt - Date.now() - 8_000)));
+                signal.addEventListener('abort', () => resolve(slow), { once: true });
+              }),
+            ]).finally(() => clearTimeout(timer));
           } catch {
             // Tool code throws only on unexpected failures; the details stay in the server log.
             result = { ok: false, message: 'That lookup failed. Tell the person it could not be checked right now.' };

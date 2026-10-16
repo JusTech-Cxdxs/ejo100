@@ -301,3 +301,15 @@ test('model routing: the fast model for small talk and short how-to, the main on
   assert.equal(routeModel('hello', cfg, { ENYO_LLM_ROUTING: 'off' }).tier, 'main');
   assert.equal(routeModel('hello', { ...cfg, fastModel: cfg.model }, {}).tier, 'main');
 });
+
+test('agent: a lookup that hangs never holds the answer past the deadline', async () => {
+  const hang: Tool<Ctx> = { ...takings, name: 'slow_lookup', run: () => new Promise(() => undefined) };
+  const { impl, seen } = scripted([() => callTool('slow_lookup', '{}'), () => say('I could not check that just now.')]);
+  const t0 = Date.now();
+  // A 10 s budget: the lookup gets at most budget − 8 s (floor 2 s), then the model answers.
+  const r = await runAgent({ config, system: 's', messages: [{ role: 'user', content: 'go' }], tools: [hang], ctx: { role: 'finance' }, emit: () => undefined, fetchImpl: impl, deadlineMs: 10_000 });
+  assert.ok(Date.now() - t0 < 6_000, 'gave up on the lookup in time');
+  assert.equal(r.toolRuns[0]?.ok, false);
+  assert.match((seen[1]?.body.messages as { content: string }[]).at(-1)?.content ?? '', /took too long/);
+  assert.equal(r.answer, 'I could not check that just now.');
+});

@@ -30,6 +30,8 @@ const SOMETHING_WRONG = 'Something went wrong on my side. Please try again, and 
  * event with the matching HTTP status (401 JSON when not signed in).
  */
 export async function POST(request: NextRequest) {
+  // Everything — the set-up reads, the model, the tools — must finish (and say so) inside the function's limit.
+  const requestStarted = Date.now();
   if (!sameOrigin(request)) return Response.json({ error: 'This request must come from the portal itself.' }, { status: 403 });
   let userId: string;
   try {
@@ -123,7 +125,7 @@ export async function POST(request: NextRequest) {
           return;
         }
         try {
-          const result = await runAgent({ config: { ...ready.config, model: route.model }, system, messages: turns, tools: staffTools(), ctx, emit, signal: request.signal });
+          const result = await runAgent({ config: { ...ready.config, model: route.model }, system, messages: turns, tools: staffTools(), ctx, emit, signal: request.signal, deadlineMs: Math.max(8_000, 52_000 - (Date.now() - requestStarted)) });
           // Keep what was said: which tools ran and how they ended, and the answer.
           // Tool RESULTS are not kept: they can hold email text or records whose own
           // retention and consent rules (mail: 90 days, withdrawn consent) must win.

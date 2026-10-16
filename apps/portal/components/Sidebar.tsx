@@ -138,7 +138,9 @@ export function Sidebar({
                 return (
                   <Link key={m.key} href={href} onClick={onNavigate} className={`flex items-center justify-between gap-2 rounded-[var(--ejo-radius-md)] px-3 py-1.5 text-[13px] transition-colors ${active ? 'bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]' : 'text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)] hover:text-[var(--ejo-text)]'}`}>
                     <span className="flex min-w-0 items-center gap-2"><RoadmapIcon icon={m.icon} size={15} className="shrink-0 opacity-70" /><span className="truncate">{m.name}</span></span>
-                    <span className="shrink-0 rounded-full border border-[var(--ejo-warning)]/40 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--ejo-warning-text)]">Soon</span>
+                    {m.live
+                      ? <span className="shrink-0 rounded-full border border-[var(--ejo-success)]/40 bg-[var(--ejo-success)]/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--ejo-success)]">Live</span>
+                      : <span className="shrink-0 rounded-full border border-[var(--ejo-warning)]/40 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--ejo-warning-text)]">Soon</span>}
                   </Link>
                 );
               })}

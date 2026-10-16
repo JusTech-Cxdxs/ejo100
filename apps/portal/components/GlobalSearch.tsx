@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { globalSearch, type SearchGroup } from '@/lib/actions/search';
+import type { SearchGroup } from '@/lib/actions/search';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { matchRanges, REFERENCE_PREFIXES } from '@/lib/search-plan';
 import { pluralize } from '@/lib/utils/pluralize';
@@ -60,18 +60,21 @@ export function GlobalSearch() {
 
   useEffect(() => { setMac(/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)); }, []);
 
-  // Debounced search; an answer to an older query is ignored (only the newest counts).
+  // Debounced search over a plain GET: a newer query cancels the older request (server actions would queue
+  // one behind another), and an answer to an older query is ignored (only the newest counts).
   useEffect(() => {
     const term = q.trim();
     const mine = ++seq.current;
     if (!term) { setGroups([]); setStatus('idle'); return; }
     setStatus('busy');
+    const ctrl = new AbortController();
     const t = setTimeout(() => {
-      globalSearch(term)
-        .then((r) => { if (mine === seq.current) { setGroups(r); setActive(0); setStatus('done'); } })
-        .catch(() => { if (mine === seq.current) { setGroups([]); setStatus('error'); } });
-    }, 220);
-    return () => clearTimeout(t);
+      fetch(`/api/search?q=${encodeURIComponent(term)}`, { signal: ctrl.signal, headers: { accept: 'application/json' } })
+        .then(async (res) => { if (!res.ok) throw new Error(String(res.status)); return (await res.json()) as { groups: SearchGroup[] }; })
+        .then((r) => { if (mine === seq.current) { setGroups(r.groups ?? []); setActive(0); setStatus('done'); } })
+        .catch((err: unknown) => { if ((err as Error)?.name !== 'AbortError' && mine === seq.current) { setGroups([]); setStatus('error'); } });
+    }, 250);
+    return () => { clearTimeout(t); ctrl.abort(); };
   }, [q]);
 
   const focusSearch = useCallback(() => {
