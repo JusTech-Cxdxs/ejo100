@@ -8,6 +8,7 @@ import { FilterSelect } from '@/components/FilterSelect';
 import { LoadingLink } from '@/components/LoadingLink';
 import { EmptyState, Icon, PageHeader, SectionCard, StatusChip, SubNav } from '@/components/ui';
 import { ORGANISATION_TABS } from '../tabs';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 export const metadata = { title: 'People we publish' };
 
@@ -37,6 +38,7 @@ function ProfileForm({ row, areas }: { row?: PublicProfileRow; areas: string[] }
       <div>
         <label htmlFor={`bio-${row?.id ?? 'new'}`} className={label}>Short public biography</label>
         <textarea id={`bio-${row?.id ?? 'new'}`} name="bio" rows={3} maxLength={1200} defaultValue={row?.bio ?? ''} className={input} />
+        <RefineTextButton targetId={`bio-${row?.id ?? 'new'}`} label="biography" />
         <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Two or three sentences about their role and background. No phone numbers or email addresses.</p>
       </div>
       <div>

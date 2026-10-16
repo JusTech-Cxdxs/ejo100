@@ -74,7 +74,7 @@ async function me() {
   return { ...u, organisationId };
 }
 
-export type HelpRow = { id: string; number: string; subject: string; status: string; statusLabel: string; createdAt: Date; updatedAt: Date; to: HelpTo; answered: boolean };
+export type HelpRow = { id: string; number: string; subject: string; status: string; statusLabel: string; createdAt: Date; updatedAt: Date; to: HelpTo; about: HelpAbout; answered: boolean };
 
 export async function listMyHelpRequests(): Promise<HelpRow[]> {
   const m = await me();
@@ -86,7 +86,8 @@ export async function listMyHelpRequests(): Promise<HelpRow[]> {
   });
   return rows.map((r) => ({
     id: r.id, number: r.number, subject: r.subject, status: r.status, statusLabel: SUPPORT_STATUS_FOR_CUSTOMER[r.status as SupportStatus] ?? r.status,
-    createdAt: r.createdAt, updatedAt: r.updatedAt, to: r.tags.includes('platform') ? 'platform' : 'organisation', answered: r.replies.length > 0,
+    createdAt: r.createdAt, updatedAt: r.updatedAt, to: r.tags.includes('platform') ? 'platform' : 'organisation',
+    about: asAbout(r.tags.find((t) => t.startsWith('about:'))?.slice(6) ?? (r.tags.includes('platform') ? 'fault' : 'portal')), answered: r.replies.length > 0,
   }));
 }
 

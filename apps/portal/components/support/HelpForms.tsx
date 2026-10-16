@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import { openHelpRequestAction, replyToMyHelpRequestAction, type HelpFormState, type HelpReplyState } from '@/lib/actions/help-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const field = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-base text-[var(--ejo-text)] focus:border-[var(--ejo-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--ejo-primary)]/25 sm:text-sm';
 const primary = 'min-h-11 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-5 text-sm font-semibold text-white hover:brightness-110';
@@ -15,8 +16,8 @@ const ABOUT = [
 ] as const;
 
 /** Ask for help: what it is about (which decides the team), what you were doing and what happened. */
-export function NewHelpForm({ errorRef, page }: { errorRef: string | null; page: string | null }) {
-  const [state, action] = useActionState<HelpFormState, FormData>(openHelpRequestAction, { error: null, subject: errorRef ? 'I got an error' : '', body: '', to: errorRef ? 'platform' : 'organisation', about: errorRef ? 'fault' : 'portal' });
+export function NewHelpForm({ errorRef, page, subject = '' }: { errorRef: string | null; page: string | null; subject?: string }) {
+  const [state, action] = useActionState<HelpFormState, FormData>(openHelpRequestAction, { error: null, subject: errorRef ? 'I got an error' : subject, body: '', to: errorRef ? 'platform' : 'organisation', about: errorRef ? 'fault' : 'portal' });
   const about = state.about ?? (state.to === 'platform' ? 'fault' : 'portal');
   return (
     <form action={action} className="space-y-4" key={state.error ?? 'fresh'}>
@@ -30,6 +31,7 @@ export function NewHelpForm({ errorRef, page }: { errorRef: string | null; page:
         <label htmlFor="help-body" className="block text-sm font-medium text-[var(--ejo-text)]">What were you doing, and what happened?</label>
         <textarea id="help-body" name="body" required minLength={5} rows={6} maxLength={8000} defaultValue={state.body} className={`${field} mt-1`}
           placeholder="Which page, which record (e.g. JC-2026-000123), what you pressed, and what you saw." />
+        <RefineTextButton targetId="help-body" label="request" />
         {errorRef ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">The error reference <strong>{errorRef}</strong>{page ? <> and the page <strong>{page}</strong></> : null} are added for you.</p> : null}
       </div>
       <fieldset>
@@ -60,6 +62,7 @@ export function HelpReplyForm({ id }: { id: string }) {
       <input type="hidden" name="id" value={id} />
       <label htmlFor="help-reply" className="block text-sm font-medium text-[var(--ejo-text)]">Add a message</label>
       <textarea id="help-reply" name="body" required rows={4} maxLength={8000} defaultValue={state.body} className={field} />
+      <RefineTextButton targetId="help-reply" label="message" />
       {state.error ? <p role="alert" className="text-sm text-[var(--ejo-error)]">{state.error}</p> : null}
       <SubmitButton label="Send" pendingLabel="Sending…" className={primary} />
     </form>

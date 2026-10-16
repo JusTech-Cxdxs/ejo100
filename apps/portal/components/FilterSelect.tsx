@@ -73,7 +73,7 @@ export function FilterSelect({
       <input
         id={id}
         type="text" value={text} placeholder={placeholder} aria-label={ariaLabel} required={required && !value} autoComplete="off"
-        role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
+        aria-controls={listId} aria-autocomplete="list"
         onChange={(e) => { setText(e.target.value); setValue(''); setOpen(true); setActive(0); }}
         onFocus={() => setOpen(true)} onClick={() => setOpen(true)} onKeyDown={onKey}
         className={`w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-[var(--ejo-text)] ${!required && value ? 'pr-9' : ''} ${large ? 'min-h-11 px-3 py-2 text-sm' : 'px-2 py-1.5 text-xs'}`}

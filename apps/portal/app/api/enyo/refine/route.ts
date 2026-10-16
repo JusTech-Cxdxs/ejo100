@@ -15,6 +15,8 @@ const TONES = {
   formal: 'formal and professional, suitable for a letter or an official email',
   short: 'as short as possible while keeping every fact',
   friendly: 'friendly and relaxed, still professional',
+  clear: 'clearer and better organised: the most important point first, short sentences, one idea per sentence',
+  decision: 'a clear decision note for the record: first what is decided, then why, then what happens next (who does what), in short sentences — using only what the text says; if the text does not say one of these, leave it out rather than invent it',
 } as const;
 type Tone = keyof typeof TONES;
 

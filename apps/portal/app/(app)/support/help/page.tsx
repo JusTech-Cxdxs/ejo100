@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import { listMyHelpRequests } from '@/lib/actions/help';
-import { currentAssist } from '@/lib/authz/server';
+import { currentAssist, getPrincipal } from '@/lib/authz/server';
+import { guideFor } from '@/lib/help/features';
+import { GuideBrowser } from '@/components/support/GuideBrowser';
+import { AskEnyoButton } from '@/components/enyo/AskEnyoButton';
 import { PageHeader, SectionCard, EmptyState, StatusChip, type Tone } from '@/components/ui';
 import { NewHelpForm } from '@/components/support/HelpForms';
 import { formatRelative } from '@/lib/utils/format-date';
@@ -8,6 +11,7 @@ import { formatRelative } from '@/lib/utils/format-date';
 export const metadata = { title: 'Get help' };
 export const dynamic = 'force-dynamic';
 
+const TEAM: Record<string, string> = { portal: 'Our administrators', fault: 'EJO platform team', complaint: 'Customer care', hr: 'HR & people' };
 const TONE: Record<string, Tone> = { OPEN: 'info', WAITING_ON_CUSTOMER: 'warning', ON_HOLD: 'neutral', RESOLVED: 'success', CLOSED: 'neutral' };
 
 /**
@@ -15,7 +19,7 @@ const TONE: Record<string, Tone> = { OPEN: 'info', WAITING_ON_CUSTOMER: 'warning
  * for help — access, how to do something, an error — and follows their own
  * requests. From an error screen the reference and page come along.
  */
-export default async function GetHelpPage({ searchParams }: { searchParams: Promise<{ ref?: string; page?: string }> }) {
+export default async function GetHelpPage({ searchParams }: { searchParams: Promise<{ ref?: string; page?: string; subject?: string }> }) {
   const sp = await searchParams;
   if (await currentAssist()) {
     return (
@@ -25,15 +29,23 @@ export default async function GetHelpPage({ searchParams }: { searchParams: Prom
       </div>
     );
   }
-  const rows = await listMyHelpRequests();
+  const [rows, principal] = await Promise.all([listMyHelpRequests(), getPrincipal()]);
+  const groups = guideFor(principal);
+  // A question someone typed elsewhere ("Ask Enyo" when Enyo is off) arrives as the subject — their own words, nothing guessed.
+  const subject = typeof sp.subject === 'string' ? sp.subject.replace(/\s+/g, ' ').trim().slice(0, 150) : '';
   const ref = typeof sp.ref === 'string' && /^[A-Za-z0-9-]{4,40}$/.test(sp.ref) ? sp.ref : null;
   const page = typeof sp.page === 'string' && /^\/[\w\-/[\]?=&.%]{0,200}$/.test(sp.page) ? sp.page : null;
   return (
     <div className="w-full max-w-5xl p-4 sm:p-8">
-      <PageHeader icon="help" title="Get help" description="Ask your administrators — or the EJO platform team for a fault in the system — and follow your requests here. Enyo can answer straight away with the steps for your role; a person is one click away." />
+      <PageHeader icon="help" title="Help centre" description="Find the steps for your role, ask Enyo, or ask a person — your administrators, Customer care, HR or the EJO platform team — and follow every request here."
+        actions={<><Link href="/support/features" className="inline-flex min-h-9 items-center rounded-full border border-[var(--ejo-border)] px-3 text-xs font-medium text-[var(--ejo-text)] hover:border-[var(--ejo-primary)]/50">What I can do here</Link><AskEnyoButton question="" label="Ask Enyo" /></>} />
+      <SectionCard icon="search" title="Find the answer yourself" description="The how-to guide for your role. Type what you want to do." className="mb-6">
+        <GuideBrowser groups={groups} compact />
+        <p className="mt-3 text-xs text-[var(--ejo-text-muted)]"><Link href="/support/features" className="font-medium text-[var(--ejo-primary)] hover:underline">See everything you can do here →</Link></p>
+      </SectionCard>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <SectionCard icon="help" title="Ask for help">
-          <NewHelpForm errorRef={ref} page={page} />
+        <SectionCard icon="help" title="Ask a person">
+          <NewHelpForm errorRef={ref} page={page} subject={subject} />
         </SectionCard>
         <SectionCard icon="list" title="My requests" description={rows.length ? `${rows.length} request${rows.length === 1 ? '' : 's'}` : undefined}>
           {rows.length ? (
@@ -46,7 +58,7 @@ export default async function GetHelpPage({ searchParams }: { searchParams: Prom
                       <StatusChip tone={TONE[r.status] ?? 'neutral'} label={r.statusLabel} />
                       {r.answered ? <span className="text-xs text-[var(--ejo-success)]">Answered</span> : null}
                     </span>
-                    <span className="mt-0.5 block text-xs text-[var(--ejo-text-muted)]">{r.number} · {r.to === 'platform' ? 'EJO platform team' : 'Our administrators'} · updated {formatRelative(r.updatedAt)}</span>
+                    <span className="mt-0.5 block text-xs text-[var(--ejo-text-muted)]">{r.number} · {TEAM[r.about]} · updated {formatRelative(r.updatedAt)}</span>
                   </Link>
                 </li>
               ))}

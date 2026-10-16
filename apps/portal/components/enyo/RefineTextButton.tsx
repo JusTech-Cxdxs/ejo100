@@ -18,6 +18,8 @@ const TONES: { tone: EnyoTone; label: string }[] = [
   { tone: 'formal', label: 'More formal' },
   { tone: 'short', label: 'Shorter' },
   { tone: 'friendly', label: 'Friendlier' },
+  { tone: 'clear', label: 'Clearer' },
+  { tone: 'decision', label: 'As a decision note' },
 ];
 
 type Field = HTMLTextAreaElement | HTMLInputElement;

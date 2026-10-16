@@ -67,6 +67,9 @@ export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen 
 
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
         <LiveStatus />
+        <Link href="/support/help" aria-label="Help centre" title="Help centre — how-tos, Enyo and a person" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--ejo-text-muted)] transition-colors hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-primary)]">
+          <Icon name="help" size={19} />
+        </Link>
         <span className="hidden sm:inline-flex"><ThemeToggle /></span>
         <NotificationBell />
 
@@ -101,6 +104,12 @@ export function Topbar({ userName, roleName, organisationName, onMenu, menuOpen 
                 </Link>
                 <Link href="/notifications" onClick={() => setAccount(false)} className="flex items-center gap-3 rounded-[var(--ejo-radius-md)] px-3 py-2 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">
                   <span className="text-[var(--ejo-primary)]"><Icon name="bell" size={17} /></span>Notification Center
+                </Link>
+                <Link href="/support/features" onClick={() => setAccount(false)} className="flex items-center gap-3 rounded-[var(--ejo-radius-md)] px-3 py-2 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">
+                  <span className="text-[var(--ejo-primary)]"><Icon name="sparkles" size={17} /></span>What I can do here
+                </Link>
+                <Link href="/support/help" onClick={() => setAccount(false)} className="flex items-center gap-3 rounded-[var(--ejo-radius-md)] px-3 py-2 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">
+                  <span className="text-[var(--ejo-primary)]"><Icon name="help" size={17} /></span>Help centre
                 </Link>
                 <Link href="/roadmap" onClick={() => setAccount(false)} className="flex items-center gap-3 rounded-[var(--ejo-radius-md)] px-3 py-2 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">
                   <span className="text-[var(--ejo-primary)]"><Icon name="roadmap" size={17} /></span>What’s coming next

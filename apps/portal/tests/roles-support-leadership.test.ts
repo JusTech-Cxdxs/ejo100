@@ -76,3 +76,31 @@ test('System health says when the database is behind this release', async () => 
   assert.equal(schemaVerdict(new Set()).at, 'older than v36');
   assert.match(read('app/(app)/settings/page.tsx'), /schemaHealth\(\)/);
 });
+
+test('every dropdown can be searched; features guide and Ask Enyo everywhere', () => {
+  const ss = read('components/SelectSearch.tsx');
+  assert.match(ss, /const MIN = 6/);
+  assert.match(ss, /sel\.dispatchEvent\(new Event\('change', \{ bubbles: true \}\)\)/);
+  assert.match(ss, /data-plain/);
+  assert.match(read('app/(app)/layout.tsx'), /<SelectSearch \/>/);
+  const fs = read('components/FilterSelect.tsx');
+  assert.match(fs, /const settle = \(\) =>/, 'unpicked text never looks chosen');
+  assert.match(read('components/Topbar.tsx'), /href="\/support\/help"/);
+  assert.match(read('components/enyo/EnyoPanel.tsx'), /window\.addEventListener\(ENYO_ASK_EVENT, onAsk\)/);
+  assert.match(read('app/api/enyo/refine/route.ts'), /decision: 'a clear decision note/);
+});
+
+test('features guide: each person sees only what their role opens', async () => {
+  const { highlightsFor, guideFor } = await import('../lib/help/features');
+  const tech = highlightsFor(who(['technician'])).map((h) => h.id);
+  assert.ok(tech.includes('enyo') && tech.includes('likely-ready'));
+  assert.ok(!tech.includes('analytics') && !tech.includes('integrity') && !tech.includes('users'));
+  const exec = highlightsFor(who(['executive'])).map((h) => h.id);
+  assert.ok(exec.includes('analytics') && exec.includes('workflows'));
+  assert.ok(!exec.includes('users'));
+  const it = highlightsFor(who(['it-administrator'])).map((h) => h.id);
+  assert.ok(it.includes('users') && it.includes('errors') && !it.includes('analytics'));
+  const areas = guideFor(who(['technician'])).map((g) => g.area);
+  assert.ok(areas.includes('Workshop'));
+  assert.ok(!guideFor(who(['technician'])).flatMap((g) => g.entries).some((e) => e.href.startsWith('/users')));
+});

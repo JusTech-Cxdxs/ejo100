@@ -8,6 +8,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { ENYO_REPLY_FILTERS, FAILURE_LABEL, FAILURE_REASONS, type EnyoReplyFilter } from '@/lib/support/monitor-core';
 import { SENDER_KIND_LABEL, type SenderKind } from '@/lib/support/context-core';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 export const metadata = { title: 'Enyo’s replies' };
 export const dynamic = 'force-dynamic';
@@ -123,6 +124,7 @@ export default async function EnyoRepliesPage({ searchParams }: { searchParams: 
                       <div>
                         <label htmlFor={`fix-${r.id}`} className="block text-xs font-medium text-[var(--ejo-text-muted)]">The right answer (when you choose “Needed a correction”) — it goes to the Enyo learning page for approval</label>
                         <textarea id={`fix-${r.id}`} name="corrected" rows={4} maxLength={8000} className={field} placeholder="Write the answer as it should have been, without the customer’s name or personal details." />
+                        <RefineTextButton targetId={`fix-${r.id}`} label="corrected answer" />
                       </div>
                       <SubmitButton label="Save my check" pendingLabel="Saving…" className="min-h-11 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 text-sm font-semibold text-white" />
                     </form>

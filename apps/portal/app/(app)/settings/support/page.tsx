@@ -35,7 +35,7 @@ export default async function SupportSetupOverview({ searchParams }: { searchPar
         {[
           { href: '/settings/support/teams', icon: 'users' as const, title: plural(active.length, 'active team', 'active teams'), text: `${plural(addresses, 'address', 'addresses')} connected` },
           { href: '/settings/support/hours', icon: 'clock' as const, title: 'Hours & holidays', text: s.settings.holidayCalendar ? 'Nigerian public holidays: automatic' : 'Public holidays: not used' },
-          { href: '/settings/support/enyo', icon: 'sparkles' as const, title: `Enyo answers when ≥ ${Math.round(s.settings.aiThreshold * 100)}% sure`, text: `${active.filter((q) => q.aiMode === 'AUTO').length} of ${active.length} teams let Enyo answer` },
+          { href: '/settings/support/enyo', icon: 'sparkles' as const, title: `Enyo answers when ≥ ${Math.round(s.settings.aiThreshold * 100)}% sure`, text: `${active.filter((q) => q.aiMode === 'AUTO').length} of ${plural(active.length, 'team', 'teams')} ${active.filter((q) => q.aiMode === 'AUTO').length === 1 ? 'lets' : 'let'} Enyo answer` },
           { href: '/settings/support/follow-ups', icon: 'bell' as const, title: `Reminder after ${s.settings.nudgeAfterHours} h`, text: `Resolved after ${s.settings.autoResolveDays} days without reply` },
         ].map((c) => (
           <LoadingLink key={c.href} href={c.href} className="group rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 hover:border-[var(--ejo-primary)]/50">

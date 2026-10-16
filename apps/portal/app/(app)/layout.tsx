@@ -14,6 +14,7 @@ import { portalConfig } from '@/lib/site-config';
 import { decide } from '@/lib/authz/catalogue';
 import { EnyoPanel } from '@/components/enyo/EnyoPanel';
 import { NavProgress } from '@/components/NavProgress';
+import { SelectSearch } from '@/components/SelectSearch';
 
 /**
  * Signed-in shell. The user's name and role come from Prisma (`fullName`),
@@ -74,6 +75,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       />
       <OfflineNotice />
       <Suspense fallback={null}><NavProgress /></Suspense>
+      <SelectSearch />
     </NotificationProvider>
   );
 }
