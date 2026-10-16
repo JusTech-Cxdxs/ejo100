@@ -6,6 +6,10 @@ jobs.jsonl  one finished job per line (predict/dataset-core.ts DatasetRow):
             — no names, contacts, plates, VINs or record ids.
 parts.jsonl one stocked part per line: part_id, weekly (consumption per
             Lagos week, oldest first), as_of (the last week's Monday).
+decisions.jsonl one approval decision per line (lib/insights/decisions-core.ts):
+            row_id (a one-way hash), on, step, rejected (0/1), amount, lines,
+            hour, weekday, requester_role, decider_role, wait_hours
+            — roles, amounts and times only: no names, ids, numbers or reasons.
 """
 from __future__ import annotations
 
@@ -18,6 +22,7 @@ import pandas as pd
 
 JOB_COLUMNS = ("row_id", "kind", "opened_on", "complaint_tokens", "feature_tokens", "work_numbers", "turnaround_hours", "lines")
 PART_COLUMNS = ("part_id", "weekly", "as_of")
+DECISION_COLUMNS = ("row_id", "on", "step", "rejected", "amount", "lines", "hour", "weekday", "requester_role", "decider_role", "wait_hours")
 
 
 class DatasetError(ValueError):
@@ -68,6 +73,23 @@ def parts_frame(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=list(PART_COLUMNS))
 
 
+def decisions_frame(rows: list[dict]) -> pd.DataFrame:
+    """Checked, time-ordered decisions."""
+    for i, r in enumerate(rows):
+        missing = [c for c in DECISION_COLUMNS if c not in r]
+        if missing:
+            raise DatasetError(f"Decision row {i + 1} lacks {', '.join(missing)}")
+        if r["rejected"] not in (0, 1):
+            raise DatasetError(f"Decision row {i + 1}: rejected must be 0 or 1")
+        if not (0 <= int(r["hour"]) <= 23 and 1 <= int(r["weekday"]) <= 7):
+            raise DatasetError(f"Decision row {i + 1}: hour or weekday out of range")
+    df = pd.DataFrame(rows, columns=list(DECISION_COLUMNS))
+    df["on"] = pd.to_datetime(df["on"], format="%Y-%m-%d", errors="raise")
+    df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0.0)
+    df["lines"] = pd.to_numeric(df["lines"], errors="coerce").fillna(0).astype(int)
+    return df.sort_values(["on", "row_id"], kind="mergesort").reset_index(drop=True)
+
+
 @dataclass
 class Split:
     train: pd.DataFrame
@@ -86,12 +108,14 @@ def time_split(df: pd.DataFrame, valid: float = 0.15, test: float = 0.2) -> Spli
     return Split(df.iloc[:n_train].reset_index(drop=True), df.iloc[n_train : n_train + n_valid].reset_index(drop=True), df.iloc[n_train + n_valid :].reset_index(drop=True))
 
 
-def load_dir(path: Path) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
+def load_dir(path: Path) -> tuple[pd.DataFrame | None, pd.DataFrame | None, pd.DataFrame | None]:
     jobs = path / "jobs.jsonl"
     parts = path / "parts.jsonl"
+    decisions = path / "decisions.jsonl"
     j = jobs_frame(read_jsonl(jobs.read_text(encoding="utf-8").splitlines())) if jobs.exists() else None
     p = parts_frame(read_jsonl(parts.read_text(encoding="utf-8").splitlines())) if parts.exists() else None
-    return j, p
+    d = decisions_frame(read_jsonl(decisions.read_text(encoding="utf-8").splitlines())) if decisions.exists() else None
+    return j, p, d
 
 
 def line_tokens(lines: list[dict]) -> list[str]:

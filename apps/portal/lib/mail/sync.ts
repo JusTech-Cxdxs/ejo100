@@ -297,6 +297,9 @@ export async function syncDueMailboxes(opts: { budgetMs?: number; perAccountMs?:
 
 /** Retention: stored copies older than 90 days are removed (the mailbox itself keeps them). */
 export async function purgeOldMailMessages(now: Date = new Date()): Promise<number> {
-  const r = await prisma.mailMessage.deleteMany({ where: { receivedAt: { lt: new Date(now.getTime() - RETENTION_DAYS * 86_400_000) } } });
+  const before = new Date(now.getTime() - RETENTION_DAYS * 86_400_000);
+  const r = await prisma.mailMessage.deleteMany({ where: { receivedAt: { lt: before } } });
+  // v37: writing samples follow the same 90 days.
+  await prisma.mailStyleSample.deleteMany({ where: { sentAt: { lt: before } } }).catch(() => undefined);
   return r.count;
 }

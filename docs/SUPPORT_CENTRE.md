@@ -1,4 +1,6 @@
-# Support centre (v36)
+# Support centre (v36, extended in v37)
+
+> v37 adds: who is writing (customer, colleague or both) and answers from proven senders' own records with exact links, the colleagues' Get help desk, and checking Enyo's replies with the gap report — see [ENYO_CONTEXT_AND_INTEGRITY.md](ENYO_CONTEXT_AND_INTEGRITY.md).
 
 One place for every customer support request: emails to the support
 addresses (support@, warranty@, technical@, customercare@ …), hand-overs from

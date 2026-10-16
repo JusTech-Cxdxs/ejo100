@@ -7,14 +7,14 @@ Each organisation gets its own models, trained on its own de-identified history.
 | Piece | Where | What it does |
 | --- | --- | --- |
 | Trainer | `ml/` (Python: pandas, scikit-learn, LightGBM) | Reads the history, trains every task, tests each model on the newest jobs against a simple baseline, and uploads each model. |
-| Trainer's door | `/api/ml/datasets/jobs`, `/api/ml/datasets/parts`, `/api/ml/models` | Gives out the de-identified datasets and takes trained models. Authorised by `ML_SERVICE_TOKEN` only, and answers 404 when that is not set. |
+| Trainer's door | `/api/ml/datasets/jobs`, `/api/ml/datasets/parts`, `/api/ml/datasets/decisions`, `/api/ml/models` | Gives out the de-identified datasets and takes trained models. Authorised by `ML_SERVICE_TOKEN` only, and answers 404 when that is not set. |
 | Model register | Table `enyo_models` (v32) | Stores each model with its metrics, its baseline, its gate result and its portable artifact (`ejo-ml/1`). |
 | Runtime | `apps/portal/lib/enyo/ml/runtime-core.ts` | Runs the artifacts in TypeScript. Parity tests check its results against the trainer's own, to 9 decimal places. |
 | Ladder | Settings → Enyo → Models (`/enyo/models`) | An administrator chooses the model in use and sets each capability to Off, Shadow or Assist. |
 
 The trainer never holds database credentials. The portal removes names, contacts, plates, VINs and record numbers before any data leaves it (`predict/dataset-core.ts`).
 
-## The five tasks
+## The six tasks
 
 | Task | Algorithm | Baseline it must beat | Shown to people (Assist) |
 | --- | --- | --- | --- |
@@ -23,6 +23,7 @@ The trainer never holds database credentials. The portal removes names, contacts
 | Parts demand | Per part, the best of Croston–SBA, exponential smoothing and a 12-week average, chosen on the last 8 weeks | "Same as last week" | `/inventory/reorder`: the reorder point and a suggested order quantity |
 | Unusual prices | Isolation Forest on price, quantity and amount compared with what is usual for that line | A rule that flags prices over 3× or under ⅓ of the usual | A warning under typed-in estimate prices |
 | Complaint themes | TF-IDF + k-means, with k chosen by silhouette | — (needs a silhouette of at least 0.05) | Themes and their shares on `/enyo/models` |
+| Decision risk (v37) | LightGBM binary (7 leaves, lr 0.05, early stopping) + isotonic calibration, on the step, requester role, amount, lines and arrival time — dataset `decisions` | Everyone gets the usual send-back rate (needs AUC ≥ 0.65 and a Brier score 3% better) | Quality on `/analytics/workflows` and `/enyo/models`; suggestions on requests come next (Shadow first). See [ENYO_CONTEXT_AND_INTEGRITY.md](ENYO_CONTEXT_AND_INTEGRITY.md) |
 
 A model that fails its gate is stored as **REJECTED**, with its reasons. A model that passes is stored as **CANDIDATE**. Nothing is used until an administrator presses **Use this model**. Every choice, retirement and level change is written to the audit trail.
 

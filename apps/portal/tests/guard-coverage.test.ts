@@ -31,6 +31,8 @@ const SELF_SCOPED = new Set(['markNotificationsRead', 'markNotificationsUnread',
   // Work mailbox (lib/actions/mail.ts): only the signed-in person's own mailbox (myMailbox: user id + organisation),
   // refused during assisted sessions; no permission can open another person's mail.
   'connectMailbox', 'setMailConsent', 'disconnectMailbox', 'readMyMessage', 'setMyMessageFlags',
+  // sendMyMail keeps the sender's OWN writing sample (by their user id), only with their mail consent.
+  'sendMyMail',
   // Get help (lib/actions/help.ts): the signed-in person's own requests only (requesterUserId + organisation),
   // refused during assisted sessions.
   'openHelpRequest', 'replyToMyHelpRequest', 'answerMyHelpRequest',

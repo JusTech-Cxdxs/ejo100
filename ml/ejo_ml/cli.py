@@ -4,7 +4,7 @@
         Fetches the organisation's de-identified history from the portal, trains
         every task, and uploads each model that was trained (as CANDIDATE, or
         REJECTED with its reasons). Needs ML_SERVICE_TOKEN in the environment.
-  python -m ejo_ml train --from-dir data/ --out out/          (offline: files in, files out)
+  python -m ejo_ml train --from-dir data/ --out out/          (offline: files in, files out — jobs, parts, decisions)
   python -m ejo_ml synth --out data/                          (an invented history to try it)
   python -m ejo_ml fixtures --out fixtures/                   (parity cases for the portal's tests)
 """
@@ -21,8 +21,8 @@ from pathlib import Path
 
 from . import TASKS, __version__
 from .client import PortalError, fetch_dataset, upload_model
-from .data import DatasetError, jobs_frame, load_dir, parts_frame, read_jsonl
-from .tasks import Result, anomaly, demand, duration, lines, themes
+from .data import DatasetError, decisions_frame, jobs_frame, load_dir, parts_frame, read_jsonl
+from .tasks import Result, anomaly, decisions as decision_task, demand, duration, lines, themes
 
 JOB_TASKS = {"JOB_DURATION": duration.train, "ESTIMATE_LINES": lines.train, "PRICE_ANOMALY": anomaly.train, "COMPLAINT_THEMES": themes.train}
 
@@ -48,12 +48,15 @@ def payload(organisation: str, result: Result, when: dt.datetime) -> dict:
     }
 
 
-def run_tasks(jobs, parts, tasks: list[str]) -> list[Result]:
+def run_tasks(jobs, parts, tasks: list[str], decisions=None) -> list[Result]:
     out = []
     for task in tasks:
         if task == "PARTS_DEMAND":
             if parts is not None:
                 out.append(demand.train(parts))
+        elif task == "DECISION_RISK":
+            if decisions is not None:
+                out.append(decision_task.train(decisions))
         elif jobs is not None:
             out.append(JOB_TASKS[task](jobs))
     return out
@@ -72,8 +75,9 @@ def cmd_train(a) -> int:
         print(f"Unknown task(s): {', '.join(bad)}", file=sys.stderr)
         return 2
     try:
+        decisions = None
         if a.from_dir:
-            jobs, parts = load_dir(Path(a.from_dir))
+            jobs, parts, decisions = load_dir(Path(a.from_dir))
         else:
             token = os.environ.get("ML_SERVICE_TOKEN", "")
             if not a.portal or not a.organisation or len(token) < 32:
@@ -81,10 +85,12 @@ def cmd_train(a) -> int:
                 return 2
             jobs = jobs_frame(read_jsonl(fetch_dataset(a.portal, token, a.organisation, "jobs")))
             parts = parts_frame(read_jsonl(fetch_dataset(a.portal, token, a.organisation, "parts")))
+            if "DECISION_RISK" in tasks:
+                decisions = decisions_frame(read_jsonl(fetch_dataset(a.portal, token, a.organisation, "decisions")))
     except (DatasetError, PortalError, OSError) as e:
         print(f"Could not load the data: {e}", file=sys.stderr)
         return 1
-    results = run_tasks(jobs, parts, tasks)
+    results = run_tasks(jobs, parts, tasks, decisions)
     out_dir = Path(a.out) if a.out else None
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -113,7 +119,8 @@ def cmd_synth(a) -> int:
     out.mkdir(parents=True, exist_ok=True)
     (out / "jobs.jsonl").write_text("".join(json.dumps(r) + "\n" for r in synth.jobs(a.jobs)), encoding="utf-8")
     (out / "parts.jsonl").write_text("".join(json.dumps(r) + "\n" for r in synth.parts()), encoding="utf-8")
-    print(f"Wrote {a.jobs} invented jobs and {len(synth.parts())} parts to {out}")
+    (out / "decisions.jsonl").write_text("".join(json.dumps(r) + "\n" for r in synth.decisions()), encoding="utf-8")
+    print(f"Wrote {a.jobs} invented jobs, {len(synth.parts())} parts and {len(synth.decisions())} decisions to {out}")
     return 0
 
 

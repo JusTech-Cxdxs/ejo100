@@ -4016,3 +4016,22 @@ model IntegrityAlert {
   @@index([subjectUserId])
   @@map("integrity_alerts")
 }
+
+// v37 — how a person writes: their own emails sent from the portal (only when
+// they allowed Enyo to read their mail), so Enyo drafts in their voice and
+// layout. Used only for that person's own drafts; never shared, never used
+// for training; 90 days, at most 200 per person. Additive only.
+model MailStyleSample {
+  id             String   @id @default(cuid())
+  userId         String
+  organisationId String?
+  subject        String
+  body           String
+  // The words as Enyo compares them (lib/enyo/predict/text.ts tokenise).
+  tokens         Json
+  isReply        Boolean  @default(false)
+  sentAt         DateTime @default(now())
+
+  @@index([userId, sentAt])
+  @@map("mail_style_samples")
+}

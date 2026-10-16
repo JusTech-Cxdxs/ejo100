@@ -168,6 +168,8 @@ const SKIP_MODELS = new Set([
   // v37: integrity alerts write their own entries — and a Speak up report must never record who raised it
   // when they chose to stay anonymous (the journal would stamp the person signed in).
   'IntegrityAlert',
+  // v37: a person's own sent emails (their writing style) — personal content, never journaled.
+  'MailStyleSample',
 ]);
 const SENSITIVE_KEY = /password|token|secret|hash/i;
 const MAX_JSON = 6000;
