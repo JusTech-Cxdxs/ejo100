@@ -82,3 +82,16 @@ export function asData(label: string, text: string): string {
   const safe = text.replace(/<\/?untrusted[^>]*>/gi, '');
   return `<untrusted source="${label.replace(/"/g, '')}">\n${safe}\n</untrusted>`;
 }
+
+/**
+ * Removes the citation marks some models write into answers ("【web_lookup†source】",
+ * "【3†L1-L4】", "[web_lookup]"), which mean nothing to a reader. The sources
+ * are shown separately under the answer. Also safe on half-finished text: an
+ * unclosed 【… at the end is hidden until it closes.
+ */
+export function stripCitationMarks(text: string): string {
+  return String(text ?? '')
+    .replace(/\s?【[^】\n]{0,120}】/g, '')
+    .replace(/\s?【[^】\n]{0,120}$/g, '')
+    .replace(/\s?\[(?:web_lookup|organisation_info|guide_search)[^\]\n]{0,60}\]/g, '');
+}

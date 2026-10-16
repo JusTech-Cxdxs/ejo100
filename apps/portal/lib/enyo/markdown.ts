@@ -17,6 +17,7 @@ export type Inline =
   | { t: 'a'; href: string; internal: boolean; c: Inline[] };
 
 import { readTable, type TableAlign } from './markdown-table';
+import { stripCitationMarks } from './citations';
 
 export type Block =
   | { type: 'table'; head: Inline[][]; align: TableAlign[]; rows: Inline[][][] }
@@ -113,7 +114,7 @@ const HEADING = /^\s{0,3}#{1,6}\s+(.*)$/;
 
 /** Splits an answer into blocks. Safe on half-finished (streaming) text. */
 export function parseMarkdown(src: string): Block[] {
-  const lines = src.replace(/\r\n?/g, '\n').split('\n');
+  const lines = stripCitationMarks(src ?? '').replace(/\r\n?/g, '\n').split('\n');
   const blocks: Block[] = [];
   let para: string[] = [];
   let list: { type: 'ul' | 'ol'; items: string[]; start: number } | null = null;

@@ -7,6 +7,7 @@
  * stays as plain text. Browser-safe: imports only ./rules and the shared table reader.
  */
 import { safeHref } from './rules';
+import { stripCitationMarks } from './citations';
 import { readTable, type TableAlign } from './markdown-table';
 
 export type Inline =
@@ -27,7 +28,7 @@ const BULLET = /^\s*[-*•]\s+(.*)$/;
 const NUMBERED = /^\s*(\d{1,3})[.)]\s+(.*)$/;
 
 export function parseMarkdown(src: string): Block[] {
-  const lines = (src ?? '').replace(/\r\n?/g, '\n').split('\n');
+  const lines = stripCitationMarks(src ?? '').replace(/\r\n?/g, '\n').split('\n');
   const out: Block[] = [];
   let para: string[] = [];
   const flush = () => {

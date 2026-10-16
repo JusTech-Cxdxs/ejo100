@@ -56,6 +56,8 @@ const READ_FENCES = [
   'myEnyoOrg(',
   // Integrity alerts: where { AND: [{ id }, visible(await integrityReviewer()) ] } — the reviewer's organisation, never about themselves.
   'integrityReviewer(',
+  // People the organisation publishes: where { id, organisationId: profileOrg() } (the administrator's own organisation).
+  'profileOrg(',
 ];
 
 /** Reads that need no record fence, with the reason. */

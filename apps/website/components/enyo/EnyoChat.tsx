@@ -175,7 +175,7 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
           case 'status': patch(answerId, (m) => ({ ...m, status: e.text })); break;
           case 'text': patch(answerId, (m) => ({ ...m, text: m.text + e.text, status: undefined })); break;
           case 'tool': patch(answerId, (m) => ({ ...m, status: m.text ? undefined : 'Putting the answer together…' })); break;
-          case 'sources': patch(answerId, (m) => ({ ...m, sources: e.sources.filter((s) => !s.href || s.href.startsWith('/')) })); break;
+          case 'sources': patch(answerId, (m) => ({ ...m, sources: e.sources.filter((s) => !s.href || (s.href.startsWith('/') && !s.href.startsWith('//')) || /^https:\/\/[^\s]+$/i.test(s.href)) })); break;
           case 'notice': patch(answerId, (m) => ({ ...m, notices: [...(m.notices ?? []), e.text] })); break;
           case 'handover': patch(answerId, (m) => ({ ...m, handover: { ticketNumber: e.ticketNumber, text: e.text } })); break;
           case 'error': patch(answerId, (m) => ({ ...m, pending: false, status: undefined, error: { message: e.message, ref: e.ref } })); break;
@@ -287,7 +287,7 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
                   <div className="mt-2 flex gap-2.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/[0.07] p-3" data-testid="enyo-handover">
                     <span className="mt-0.5 shrink-0 text-[var(--ejo-success)]"><Glyph d={ICON.person} size={17} /></span>
                     <p className="min-w-0">
-                      <span className="block font-semibold">Passed to our team · <span className="whitespace-nowrap">{m.handover.ticketNumber}</span></span>
+                      <span className="block font-semibold">Passed to our team{m.handover.ticketNumber ? <> · <span className="whitespace-nowrap">{m.handover.ticketNumber}</span></> : null}</span>
                       <span className="block text-[var(--ejo-text-muted)]">{m.handover.text}</span>
                       {variant === 'portal' ? <a href="/customer-portal/dashboard/support" className="mt-1 inline-block font-medium text-[var(--ejo-primary)] underline underline-offset-2">See my support requests</a> : null}
                     </p>
@@ -303,7 +303,7 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
                   <p className="mt-2 flex flex-wrap gap-1.5 text-xs text-[var(--ejo-text-muted)]">
                     <span>From:</span>
                     {m.sources.map((s) => (s.href ? (
-                      <a key={`${s.label}${s.href}`} href={s.href} className="rounded-full border border-[var(--ejo-border)] px-2 py-0.5 hover:border-[var(--ejo-primary)]/50 hover:text-[var(--ejo-primary)]">{s.label}</a>
+                      <a key={`${s.label}${s.href}`} href={s.href} {...(s.href.startsWith('https://') ? { target: '_blank', rel: 'noopener noreferrer nofollow' } : {})} className="max-w-full truncate rounded-full border border-[var(--ejo-border)] px-2 py-0.5 hover:border-[var(--ejo-primary)]/50 hover:text-[var(--ejo-primary)]">{s.label}</a>
                     ) : <span key={s.label} className="rounded-full border border-[var(--ejo-border)] px-2 py-0.5">{s.label}</span>))}
                   </p>
                 ) : null}

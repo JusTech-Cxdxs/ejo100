@@ -245,7 +245,7 @@ const howToPay: WebTool = {
 
 const companyInfo: WebTool = {
   name: 'organisation_info',
-  description: 'The organisation\'s contact details: the customer\'s own branch, other branches with addresses, phone numbers and emails, opening hours if listed, the businesses and services described on the website, and how to book.',
+  description: 'The organisation\'s contact details: the customer\'s own branch, other branches with addresses, phone numbers and emails, opening hours if listed, the businesses and services described on the website, its leadership and other people it publishes (titles and public profiles), and how to book. Check this first for a "who is …" question about one of the organisation\'s people.',
   parameters: { type: 'object', properties: {}, additionalProperties: false },
   kind: 'read',
   status: 'Looking up our contact details…',
@@ -271,6 +271,13 @@ const requestHandover: WebTool = {
     const me = needCustomer(ctx);
     if (!me) return SIGNED_OUT;
     const r = await openHandover(ctx, { name: me.fullName, phone: me.phone, email: me.email }, String(args.topic ?? ''));
+    if (!r.ticketNumber) {
+      const text = r.emailed
+        ? 'I have emailed your request to our customer care team. They will contact you soon. If it is urgent, please call your branch.'
+        : 'I could not pass this on just now. Please call your branch, or try again in a few minutes.';
+      if (r.emailed) ctx.emit({ type: 'handover', ticketNumber: '', text });
+      return r.emailed ? { ok: true, data: { emailedTheTeam: true, tellTheCustomer: text } } : { ok: false, message: `${text} Give them the branch phone numbers from the organisation information tool.` };
+    }
     const text = r.existing
       ? `Our team already has this conversation as ${r.ticketNumber}. You will see their reply under Help & support.`
       : `I have passed this to our customer care team as ${r.ticketNumber}. They will reply here under Help & support and by email.`;

@@ -8,8 +8,9 @@
  * Each area keeps its tools in its own `tools/<area>.ts` file; every file in
  * this folder must be imported here (a unit test checks it).
  *
- * General knowledge comes from the shared web look-up (Wikipedia, read only,
- * nothing from the records is sent); ENYO_WEB_LOOKUP=off removes it.
+ * General knowledge comes from the shared web look-up (Wikipedia, plus a
+ * general search engine when a key is set; read only, nothing from the
+ * records is sent); ENYO_WEB_LOOKUP=off removes it.
  */
 import { webLookupEnabled, webLookupTool } from '@ejo/enyo';
 import type { StaffCtx, StaffTool } from '../types';
@@ -27,6 +28,7 @@ import { workshopTools } from './workshop';
 import { learningTools } from './learning';
 import { supportTools } from './support';
 import { integrityTools } from './integrity';
+import { organisationTools } from './organisation';
 
 export function staffTools(): StaffTool[] {
   return [
@@ -44,6 +46,7 @@ export function staffTools(): StaffTool[] {
     ...learningTools,
     ...supportTools,
     ...integrityTools,
+    ...organisationTools,
     ...(webLookupEnabled() ? [webLookupTool<StaffCtx>()] : []),
   ];
 }

@@ -13,6 +13,8 @@ export type CompanyInfo = {
   branches: { name: string; area: string | null; address: string | null; phones: string[]; email: string | null }[];
   openingHours: string | null;
   businesses: string[];
+  /** The organisation's leadership and other people it publishes (name, title, area, short biography, public profile link). */
+  people: { name: string; title: string; area: string | null; about: string | null; profile: string | null }[];
   websitePages: { title: string; link: string }[];
   howToBook: string[];
   customerPortal: string;
@@ -33,7 +35,11 @@ export async function loadCompanyInfo(organisationId: string): Promise<CompanyIn
     prisma.businessUnit.findMany({ where: { organisationId, isActive: true }, orderBy: { name: 'asc' }, take: 20, select: { name: true } }),
   ]);
   // v36: opening hours from the Support centre's set-up, when an administrator has saved them.
-  const setting = await prisma.supportSetting.findUnique({ where: { organisationId }, select: { hours: true } }).catch(() => null);
+  // v38: the people the organisation publishes (Organisation → People we publish); public ones only.
+  const [setting, people] = await Promise.all([
+    prisma.supportSetting.findUnique({ where: { organisationId }, select: { hours: true } }).catch(() => null),
+    prisma.publicProfile.findMany({ where: { organisationId, isPublic: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], take: 40, select: { name: true, title: true, area: true, bio: true, profileUrl: true } }).catch(() => []),
+  ]);
   const phones = unique([...(org?.hotlines ?? []), siteConfig.contact.phone]);
   const email = org?.email?.trim() || siteConfig.contact.email || null;
   return {
@@ -48,6 +54,7 @@ export async function loadCompanyInfo(organisationId: string): Promise<CompanyIn
     })),
     openingHours: setting?.hours ? hoursText(setting.hours) : null,
     businesses: unique(units.map((u) => u.name)),
+    people: people.map((p) => ({ name: p.name, title: p.title, area: p.area, about: p.bio, profile: p.profileUrl })),
     websitePages: SEARCH_INDEX.filter((e) => e.category === 'Business' || ['/contact', '/support', '/about'].includes(e.href)).map((e) => ({ title: e.title, link: e.href })),
     howToBook: [
       'Call or email the branch nearest to you to book a service or repair; the team arranges the time with you.',
@@ -57,6 +64,9 @@ export async function loadCompanyInfo(organisationId: string): Promise<CompanyIn
     notes: [
       ...(setting?.hours ? ['Closed on public holidays.'] : ['Opening hours are not listed. Suggest calling the branch to confirm before visiting.']),
       'Prices are not published. Estimates are prepared after the vehicle is inspected.',
+      people.length
+        ? 'For "who is …" questions about someone in "people", answer from their entry (title, area, about) and mention their public profile link. Never give out anyone\'s personal phone number, email or address.'
+        : 'No leadership list is published here. For "who is …" about a named person, try the web look-up with the name and the organisation, and say if nothing clearly matches.',
     ],
   };
 }

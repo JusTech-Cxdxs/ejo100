@@ -5,7 +5,7 @@
  */
 import type { LlmConfig } from './config';
 import { LlmError, llmErrorMessage, stream, type ChatMessage, type ToolCall, type Usage } from './llm';
-import { clip, ungroundedFigures } from './guardrails';
+import { clip, stripCitationMarks, ungroundedFigures } from './guardrails';
 import { parseArgs, toolSpec, validateArgs, type Source, type Tool, type ToolResult } from './tools';
 import type { EnyoDraft, EnyoEvent } from './protocol';
 
@@ -88,7 +88,7 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
       const kind = outOfTime() ? 'timeout' : err instanceof LlmError ? err.kind : 'bad_response';
       const message = llmErrorMessage(kind as never);
       const extra = err instanceof LlmError ? { ...(err.detail ? { detail: err.detail } : {}), ...(err.status ? { status: err.status } : {}), ...(err.code ? { code: err.code } : {}) } : {};
-      return { answer: answer + text, transcript, toolRuns, sources, drafts, usage, model, unverified: [], error: { kind, message, ...extra } };
+      return { answer: stripCitationMarks(answer + text), transcript, toolRuns, sources, drafts, usage, model, unverified: [], error: { kind, message, ...extra } };
     }
 
     if (!toolCalls.length) {
@@ -107,7 +107,7 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
     for (const call of toolCalls) {
       if (signal.aborted) {
         const kind = outOfTime() ? 'timeout' : 'aborted';
-        return { answer, transcript, toolRuns, sources, drafts, usage, model, unverified: [], error: { kind, message: llmErrorMessage(kind) } };
+        return { answer: stripCitationMarks(answer), transcript, toolRuns, sources, drafts, usage, model, unverified: [], error: { kind, message: llmErrorMessage(kind) } };
       }
       calls += 1;
       const tool = byName.get(call.name);
@@ -163,6 +163,7 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
     }
   }
 
+  answer = stripCitationMarks(answer);
   if (sources.length) o.emit({ type: 'sources', sources });
   const unverified = ungroundedFigures(answer, evidence);
   if (unverified.length) {
