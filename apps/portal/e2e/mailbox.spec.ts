@@ -28,6 +28,7 @@ const SUBJECT = `Brake noise again ${tag}`;
 const HTML_SUBJECT = `Newsletter ${tag}`;
 const SUMMARY = `Ada asks for an update on her brake noise ${tag}`;
 let messageUrl = '';
+let attachmentHref = '';
 
 async function mailServerUp(): Promise<boolean> {
   const client = new ImapFlow({ host: HOST, port: IMAP_PORT, secure: false, doSTARTTLS: false, auth: { user: BOX.username, pass: BOX.password }, logger: false });
@@ -42,9 +43,9 @@ async function mailServerUp(): Promise<boolean> {
 }
 
 /** Mail arriving from outside: straight into the test server over SMTP. */
-async function deliver(opts: { subject: string; text?: string; html?: string; from?: string }) {
+async function deliver(opts: { subject: string; text?: string; html?: string; from?: string; attachments?: { filename: string; content: string }[] }) {
   const t = nodemailer.createTransport({ host: HOST, port: SMTP_PORT, secure: false, ignoreTLS: true });
-  await t.sendMail({ from: opts.from ?? 'Ada Customer <customer@e2e.test>', to: BOX.address, subject: opts.subject, text: opts.text, html: opts.html });
+  await t.sendMail({ from: opts.from ?? 'Ada Customer <customer@e2e.test>', to: BOX.address, subject: opts.subject, text: opts.text, html: opts.html, attachments: opts.attachments });
   t.close();
 }
 
@@ -96,7 +97,7 @@ test('consent: mail arrives, and the person allows Enyo', async ({ page }) => {
   // The stand-in model answers the brief with the JSON after "say:" (the email itself is wrapped as untrusted data).
   const brief = JSON.stringify({ summary: SUMMARY, category: 'customer', priority: 1, actions: [{ kind: 'reply', label: 'Reply to Ada' }] });
   await deliver({ subject: SUBJECT, text: `Good morning,\nThe brake noise is back on my car. Can you check it?\n[[say:${brief}]]\nAda` });
-  await deliver({ subject: HTML_SUBJECT, html: `<p>Hello <b>bold ${tag}</b></p><img src="http://tracker.invalid/pixel.png" alt="pixel"><script>window.__pwned = 1</script>` });
+  await deliver({ subject: HTML_SUBJECT, html: `<p>Hello <b>bold ${tag}</b></p><img src="http://tracker.invalid/pixel.png" alt="pixel"><script>window.__pwned = 1</script>`, attachments: [{ filename: 'job-notes.txt', content: `Notes ${tag}` }] });
   await as(page, OWNER);
   await open(page, '/mail/consent');
   await page.getByRole('button', { name: 'Yes, allow Enyo' }).click();
@@ -128,15 +129,32 @@ test('new mail is fetched when Mail opens; read as plain text, with Enyo\'s brie
   await expect(aside).toContainText('Needs you today');
   await expect(aside.getByRole('link', { name: 'Reply to Ada' })).toBeVisible();
 
-  // HTML-only mail: shown as text; no remote image, no script.
+  // HTML mail: its own layout in a sandboxed frame; no script runs; the remote picture waits to be asked for.
   await list.getByRole('link', { name: new RegExp(HTML_SUBJECT) }).click();
-  await expect(page.locator('article')).toContainText(`bold ${tag}`);
-  await expect(page.locator('img[src*="tracker.invalid"]')).toHaveCount(0);
+  const frame = page.frameLocator('iframe[title="Email content"]');
+  await expect(frame.locator('b')).toContainText(`bold ${tag}`);
+  await expect(frame.locator('img[src*="tracker.invalid"]')).toHaveCount(0);
+  await expect(frame.locator('script')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Show pictures' })).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined();
+  expect(await page.locator('iframe[title="Email content"]').getAttribute('sandbox')).not.toContain('allow-scripts');
+  await page.getByRole('button', { name: 'Show as plain text' }).click();
+  await expect(page.locator('article')).toContainText(`bold ${tag}`);
+  // The attachment downloads from the mail server, for its owner only.
+  const att = page.locator('article').getByRole('link', { name: /job-notes\.txt/ });
+  await expect(att).toBeVisible();
+  const href = await att.getAttribute('href');
+  const res = await page.request.get(href!);
+  expect(res.status()).toBe(200);
+  expect(res.headers()['content-type']).toContain('application/octet-stream');
+  expect(res.headers()['content-disposition']).toContain('attachment');
+  expect(await res.text()).toBe(`Notes ${tag}`);
+  attachmentHref = href!;
 });
 
 test('nobody else can open it — administrators included', async ({ page }) => {
   await as(page, 'administrator');
+  expect((await page.request.get(attachmentHref)).status()).toBe(404);
   await open(page, messageUrl.replace(/^https?:\/\/[^/]+/, ''));
   await expect(page.getByText(SUBJECT)).toHaveCount(0);
   await expect(page.getByText('The brake noise is back on my car.')).toHaveCount(0);
