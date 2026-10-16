@@ -69,10 +69,13 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
     where: { organisationId: m.organisationId ?? '__no_organisation__', updatedAt: { gte: recent }, OR: [{ assignedToId: m.id }, ...(myQueues.length ? [{ queueId: { in: myQueues }, assignedToId: null }] : [])] },
     select: { id: true }, take: 500,
   }).catch(() => []);
+  // My own requests for help: their replies come to me, linked to my help page.
+  const requested = await prisma.supportTicket.findMany({ where: { requesterUserId: m.id, updatedAt: { gte: recent } }, select: { id: true }, take: 200 }).catch(() => []);
+  const myHelp = new Set(requested.map((t: { id: string }) => t.id));
   const byType = new Map<string, string[]>();
   for (const r of mine) if (r.entityId) byType.set(r.entityType, [...(byType.get(r.entityType) ?? []), r.entityId]);
   const add = (t: string, ids: { id: string }[]) => { if (ids.length) byType.set(t, [...new Set([...(byType.get(t) ?? []), ...ids.map((x) => x.id)])]); };
-  add('JobCard', jcs); add('VehicleService', svs); add('PartRequestSlip', prss); add('ExternalProcurementRequest', eprs); add('AssistSession', assisted); add('SupportTicket', tickets);
+  add('JobCard', jcs); add('VehicleService', svs); add('PartRequestSlip', prss); add('ExternalProcurementRequest', eprs); add('AssistSession', assisted); add('SupportTicket', tickets); add('SupportTicket', requested);
   // Finance hears about every payment, refund, customer notification and
   // outside purchase — so they know when money is expected or moves.
   const financeWatch = m.roleSlugs.includes('finance-officer') ? [{ action: { contains: 'payment' } }, { action: { contains: 'refund' } }, { action: { contains: 'customer_notified' } }, { entityType: 'ExternalProcurementRequest' }] : [];
@@ -122,7 +125,7 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
       title: `${securityActionLabel(r.action)}${number ? ` — ${number}` : ''}`,
       detail: securityActionDetail(r.action, meta),
       area: areaOf(r.entityType),
-      url: r.entityId ? resolved.get(`${r.entityType}:${r.entityId}`)?.url ?? recordUrl(r.entityType, r.entityId) : '/audit-logs',
+      url: r.entityId && r.entityType === 'SupportTicket' && myHelp.has(r.entityId) ? `/support/help/${r.entityId}` : r.entityId ? resolved.get(`${r.entityType}:${r.entityId}`)?.url ?? recordUrl(r.entityType, r.entityId) : '/audit-logs',
       actor: r.userId ? actorLabel(name.get(r.userId) ?? null, meta) : 'System',
       at: r.createdAt,
       read: read.has(`audit:${r.id}`),

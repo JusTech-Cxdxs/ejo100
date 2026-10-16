@@ -26,6 +26,7 @@ import { mailTools } from './mail';
 import { workshopTools } from './workshop';
 import { learningTools } from './learning';
 import { supportTools } from './support';
+import { integrityTools } from './integrity';
 
 export function staffTools(): StaffTool[] {
   return [
@@ -42,6 +43,7 @@ export function staffTools(): StaffTool[] {
     ...workshopTools,
     ...learningTools,
     ...supportTools,
+    ...integrityTools,
     ...(webLookupEnabled() ? [webLookupTool<StaffCtx>()] : []),
   ];
 }

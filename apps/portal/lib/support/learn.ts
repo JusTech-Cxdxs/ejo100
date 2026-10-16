@@ -8,6 +8,8 @@ import 'server-only';
  * approve on the Enyo learning page. Approved answers are what Enyo uses
  * for customers (support emails, chat): it never learns by itself.
  *
+ * A colleague's own help request is learned for colleagues (STAFF), never for customers.
+ *
  * Not learned: requests about the customer's own records (job status,
  * invoices, warranty decisions, complaints) and anything naming a plate,
  * VIN or record number — those answers are about one customer, not general.
@@ -22,7 +24,7 @@ import { extractEntities } from './core';
 export async function learnFromResolution(o: { ticketId: string; organisationId: string; userId: string; replyId?: string }): Promise<'learned' | 'skipped'> {
   const t = await prisma.supportTicket.findFirst({
     where: { id: o.ticketId, organisationId: o.organisationId },
-    select: { id: true, topic: true, contactName: true, subject: true, replies: { orderBy: { createdAt: 'asc' }, take: 200, select: { id: true, kind: true, visibility: true, fromCustomer: true, body: true, authorUserId: true } } },
+    select: { id: true, topic: true, contactName: true, subject: true, requesterUserId: true, replies: { orderBy: { createdAt: 'asc' }, take: 200, select: { id: true, kind: true, visibility: true, fromCustomer: true, body: true, authorUserId: true } } },
   });
   if (!t) return 'skipped';
   if (t.topic && RECORD_TOPICS.includes(t.topic as Topic)) return 'skipped';
@@ -43,7 +45,7 @@ export async function learnFromResolution(o: { ticketId: string; organisationId:
   if (before?.status === 'REJECTED') return 'skipped';
   await prisma.enyoLearnedAnswer.upsert({
     where: { sourceId: `sup:${t.id}` },
-    create: { organisationId: o.organisationId, channel: 'SUPPORT', question: q, answer: a, tokens, source: 'support', sourceId: `sup:${t.id}`, createdById: o.userId, status: 'PENDING' },
+    create: { organisationId: o.organisationId, channel: t.requesterUserId ? 'STAFF' : 'SUPPORT', question: q, answer: a, tokens, source: 'support', sourceId: `sup:${t.id}`, createdById: o.userId, status: 'PENDING' },
     // A changed answer goes back for approval.
     update: { question: q, answer: a, tokens, status: 'PENDING', approvedById: null, approvedAt: null },
   });

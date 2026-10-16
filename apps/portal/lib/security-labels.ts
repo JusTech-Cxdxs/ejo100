@@ -98,6 +98,16 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'support.customer_confirmed': 'Customer said the answer solved it',
   'support.customer_asked_person': 'Customer asked for a person',
   'support.customer_rated': 'Customer rated the support',
+  'support.help_requested': 'A colleague asked for help',
+  'support.reopened': 'Support request reopened',
+  'support.ai_reviewed': 'Enyo’s support reply checked',
+  'user.signed_in': 'Signed in',
+  'user.sign_in_failed': 'Failed sign-in',
+  'customer.sign_in_failed': 'Customer failed to sign in',
+  'integrity.alert_raised': 'Integrity alert raised',
+  'integrity.alert_reviewed': 'Integrity alert reviewed',
+  'integrity.speak_up': 'Concern raised (Speak up)',
+  'integrity.scan': 'Integrity checks run',
 };
 
 export function securityActionLabel(action: string): string {

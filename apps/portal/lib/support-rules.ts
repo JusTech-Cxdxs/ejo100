@@ -65,6 +65,16 @@ export function ticketReachWhere(reach: { branchId?: string | { in: string[] } }
   return { AND: [org, { OR: [{ branchId: reach.branchId }, { branchId: null }] }] };
 }
 
+/**
+ * v37: a colleague's own request for help (requesterUserId set) is private to
+ * them, the people who work the queue it is in, and support managers
+ * (support.manage). Null = no extra condition (support managers).
+ */
+export function staffHelpFence(canManage: boolean, myQueueIds: string[]): Record<string, unknown> | null {
+  if (canManage) return null;
+  return { OR: [{ requesterUserId: null }, ...(myQueueIds.length ? [{ queueId: { in: myQueueIds } }] : [])] };
+}
+
 /** "12 min", "3 h 5 min", "2 days" — how long the customer waited for the first answer. */
 export function waitLabel(from: Date, to: Date): string {
   const minutes = Math.max(0, Math.round((to.getTime() - from.getTime()) / 60_000));

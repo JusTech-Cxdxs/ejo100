@@ -13,6 +13,7 @@ import { sendEmail } from '@/lib/email';
 import { renderCustomerRefundReceiptEmail } from '@/lib/email-templates/customer-refund-receipt';
 import { customerTotal } from '@/lib/estimate-billing';
 import { lagosYear } from '@/lib/utils/format-date';
+import { customerRecordUrl } from '@/lib/customer-links-core';
 
 class RefundActionError extends Error {}
 
@@ -59,8 +60,8 @@ async function loadTarget(target: RefundTarget) {
       // What the customer still owes on an active Job Card (customer lines
       // only); nothing once it's cancelled — then everything paid is owed back.
       customerOwes: jc.status === 'CANCELLED' ? 0 : customerTotal(jc.estimate?.lineItems ?? []),
-      entityType: 'JobCard',
-      portalAnchor: `jobcard-${jc.id}`,
+      entityType: 'JobCard' as const,
+      portalId: jc.id,
     };
   }
   const vs = await prisma.vehicleService.findUnique({
@@ -91,8 +92,8 @@ async function loadTarget(target: RefundTarget) {
     payments: vs.payments,
     refunds: vs.refunds,
     cancellationReason: null as string | null,
-    entityType: 'VehicleService',
-    portalAnchor: `service-${vs.id}`,
+    entityType: 'VehicleService' as const,
+    portalId: vs.id,
   };
 }
 
@@ -343,7 +344,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<{ id: stri
         paidToName,
         totalRefunded: `₦${after.refunded.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         remaining: after.remaining > 0 ? `₦${after.remaining.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null,
-        dashboardUrl: `${websiteUrl}/customer-portal/dashboard#${t.portalAnchor}`,
+        dashboardUrl: customerRecordUrl(websiteUrl, t.entityType, t.portalId),
         logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
         companyName: orgContext.companyName,
         branchName: orgContext.branchName,

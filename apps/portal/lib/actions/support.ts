@@ -20,9 +20,13 @@ import {
   asPriority, dueDates, dueLabel, extractEntities, PRIORITIES, PRIORITY_LABEL, reasonLabels, slaState, type Entities, type Priority, type SlaState,
 } from '@/lib/support/core';
 import { TOPIC_LABEL, asTopic } from '@/lib/support/ai-core';
-import { aiReply, aiSummary, letterheadFor, openTicket, queueById, responseUrl, sendFromSupport, subjectFor, supportEvent, supportSettings } from '@/lib/support/server';
+import { aiReply, aiSummary, followUrl, letterheadFor, openTicket, queueById, responseUrl, sendFromSupport, subjectFor, supportEvent, supportSettings } from '@/lib/support/server';
 import { learnFromResolution } from '@/lib/support/learn';
+import { draftUse } from '@/lib/support/monitor-core';
+import { senderContext } from '@/lib/support/context';
+import { senderView, type SenderView } from '@/lib/support/context-core';
 import { PLATFORM } from '@/lib/brand';
+import { fenceStaffHelp } from '@/lib/support/reach';
 
 /**
  * The Support centre for colleagues: customers and visitors handed over by
@@ -61,14 +65,14 @@ export type SupportInbox = {
 export async function getSupportInbox(input: { filter?: string; q?: string; queue?: string; priority?: string } = {}): Promise<SupportInbox> {
   await authorize(PERM, undefined, 'getSupportInbox');
   const me = await requireUser();
-  const reach = ticketReachWhere(await reachWhere(PERM), await myOrganisationId()) as Where;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as Where;
   const organisationId = await myOrganisationId();
   const filter = supportFilter(input.filter);
   const queueId = typeof input.queue === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(input.queue) ? input.queue : null;
   const priority = typeof input.priority === 'string' && (PRIORITIES as readonly string[]).includes(input.priority) ? input.priority : null;
   const q = typeof input.q === 'string' ? input.q.trim().slice(0, 60) : '';
   const search: Where = q
-    ? { OR: [{ number: { contains: q, mode: 'insensitive' } }, { contactName: { contains: q, mode: 'insensitive' } }, { subject: { contains: q, mode: 'insensitive' } }, { contactPhone: { contains: q } }, { contactEmail: { contains: q, mode: 'insensitive' } }] }
+    ? { OR: [{ number: { contains: q, mode: 'insensitive' } }, { contactName: { contains: q, mode: 'insensitive' } }, { subject: { contains: q, mode: 'insensitive' } }, { contactPhone: { contains: q } }, { contactEmail: { contains: q, mode: 'insensitive' } }, { tags: { has: q.toLowerCase() } }] }
     : {};
   const narrow: Where = { ...(queueId ? { queueId } : {}), ...(priority ? { priority } : {}) };
   const now = new Date();
@@ -128,7 +132,7 @@ export async function getSupportInbox(input: { filter?: string; q?: string; queu
 export async function countOpenSupportTickets(): Promise<number> {
   const user = await requireUser();
   if (!(await allows(PERM))) return 0;
-  const reach = ticketReachWhere(await reachWhere(PERM), await myOrganisationId()) as Where;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as Where;
   return prisma.supportTicket.count({ where: { AND: [reach, { status: 'OPEN' }, { OR: [{ assignedToId: null }, { assignedToId: user.id }] }] } }).catch(() => 0);
 }
 
@@ -153,13 +157,17 @@ export type SupportTicketDetail = {
   jobs: { id: string; number: string; status: string; href: string }[];
   /** For "someone else wrote meanwhile" checks when sending. */
   seenAt: string;
+  /** v37: who is writing (customer / colleague / both), whether it is proven, sign-in state, their records and links. */
+  sender: SenderView | null;
+  /** v37: a colleague's own help request. */
+  colleagueRequest: boolean;
 };
 
 /** One ticket with its thread (replies, notes, Enyo's draft), the customer's context, and the conversation with Enyo — or "not available". */
 export async function getSupportTicket(ticketId: string): Promise<SupportTicketDetail> {
   await authorize(PERM, undefined, 'getSupportTicket');
   const me = await requireUser();
-  const reach = ticketReachWhere(await reachWhere(PERM), await myOrganisationId()) as Where;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as Where;
   const t = typeof ticketId === 'string' && ticketId ? await prisma.supportTicket.findFirst({
     where: { AND: [{ id: ticketId }, reach] },
     include: { replies: { orderBy: { createdAt: 'asc' }, take: 400 } },
@@ -199,6 +207,9 @@ export async function getSupportTicket(ticketId: string): Promise<SupportTicketD
   const lastCustomer = [...t.replies].reverse().find((r) => r.fromCustomer);
   const draft = lastDraft && (!lastCustomer || lastDraft.createdAt >= lastCustomer.createdAt) ? { id: lastDraft.id, body: lastDraft.body, createdAt: lastDraft.createdAt } : null;
   const queueName = queues.find((x) => x.id === t.queueId)?.name ?? null;
+  const question = `${t.subject}\n${lastCustomer?.body ?? t.summary}`.slice(0, 600);
+  const ctx = await senderContext(t, question).catch(() => null);
+  const sender = ctx ? senderView(ctx, { canSeeErrors: await allows('audit.view') }) : null;
   return {
     id: t.id, number: t.number, status: t.status as SupportStatus, statusLabel: SUPPORT_STATUS_LABEL[t.status as SupportStatus] ?? t.status, channel: t.channel,
     contactName: t.contactName, contactPhone: t.contactPhone, contactEmail: t.contactEmail,
@@ -225,6 +236,7 @@ export async function getSupportTicket(ticketId: string): Promise<SupportTicketD
     vehicles: (customer?.vehicles ?? []).map((v) => ({ id: v.id, label: [v.make, v.model].filter(Boolean).join(' ') || 'Vehicle', plate: v.plateNumber })),
     jobs: jobs.map((j) => ({ id: j.id, number: j.jobNumber, status: String(j.status).replace(/_/g, ' ').toLowerCase(), href: `/workshop/job-cards/${j.id}` })),
     seenAt: (t.replies[t.replies.length - 1]?.createdAt ?? t.createdAt).toISOString(),
+    sender, colleagueRequest: Boolean(t.requesterUserId),
   };
 }
 
@@ -257,7 +269,7 @@ async function ticketForChange(ticketId: string, reach: Where) {
     where: { AND: [{ id: ticketId }, reach] },
     select: {
       id: true, number: true, status: true, organisationId: true, branchId: true, customerId: true, contactName: true, contactEmail: true, subject: true, assignedToId: true, firstResponseAt: true, channel: true,
-      queueId: true, mailboxId: true, token: true, sourceMessageId: true, priority: true, createdAt: true, aiOutcome: true, handoverReason: true,
+      queueId: true, mailboxId: true, token: true, sourceMessageId: true, priority: true, createdAt: true, aiOutcome: true, handoverReason: true, requesterUserId: true, authenticatedSender: true, verified: true, topic: true,
     },
   }) : null;
   if (!t) throw new SupportError(NOT_AVAILABLE);
@@ -276,7 +288,7 @@ async function ticketForChange(ticketId: string, reach: Where) {
 export async function replyToSupportTicket(ticketId: string, body: string, then: string = 'WAITING_ON_CUSTOMER', opts: { seenAt?: string; aiDrafted?: boolean; confirmNew?: boolean } = {}): Promise<{ emailed: boolean; emailTo: string | null }> {
   await authorize(PERM, undefined, 'replyToSupportTicket');
   const me = await requireUser();
-  const reach = ticketReachWhere(await reachWhere(PERM), await myOrganisationId()) as Where;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as Where;
   const t = await ticketForChange(ticketId, reach);
   const text = cleanReply(body);
   if (text.length < 2) throw new SupportError('Write the reply first.');
@@ -312,7 +324,7 @@ export async function replyToSupportTicket(ticketId: string, body: string, then:
   let emailed = false;
   if (to) {
     try {
-      if (t.channel === 'EMAIL' || t.mailboxId) {
+      if (t.channel === 'EMAIL' || t.mailboxId || t.requesterUserId) {
         const [queue, head, lastIn, agent] = await Promise.all([
           queueById(t.organisationId, t.queueId),
           letterheadFor(t.organisationId, t.branchId),
@@ -320,7 +332,7 @@ export async function replyToSupportTicket(ticketId: string, body: string, then:
           prisma.user.findUnique({ where: { id: me.id }, select: { fullName: true } }),
         ]);
         const signature = [agent?.fullName?.split(' ')[0], queue.signature || `${queue.name}, ${head.companyName}`].filter(Boolean).join('\n');
-        const m = renderSupportReply({ ...head, queueName: queue.name, number: t.number, subject: t.subject, customerName: customer?.fullName ?? t.contactName, responseUrl: responseUrl(t.token), body: text, by: 'agent', assistantName: PLATFORM.assistant, signature, statusLabel: SUPPORT_STATUS_FOR_CUSTOMER[status] });
+        const m = renderSupportReply({ ...head, queueName: queue.name, number: t.number, subject: t.subject, customerName: customer?.fullName ?? t.contactName, responseUrl: followUrl(t), body: text, by: 'agent', assistantName: PLATFORM.assistant, signature, statusLabel: SUPPORT_STATUS_FOR_CUSTOMER[status], colleague: Boolean(t.requesterUserId) });
         const refs = [t.sourceMessageId, lastIn?.emailMessageId].filter((x): x is string => Boolean(x));
         const sent = await sendFromSupport({ organisationId: t.organisationId, ticketId: t.id, mailboxId: t.mailboxId, to, subject: subjectFor(t.number, `Re: ${t.subject}`), html: m.html, inReplyTo: lastIn?.emailMessageId ?? t.sourceMessageId, references: refs, automatic: false });
         await prisma.supportReply.update({ where: { id: replyId }, data: { emailMessageId: sent.messageId } });
@@ -348,6 +360,8 @@ export async function replyToSupportTicket(ticketId: string, body: string, then:
       logError('replyToSupportTicket.email', err, { ticket: t.number });
     }
   }
+  // How Enyo's latest draft fared: sent nearly as written, edited, or not used (the Enyo replies page and its learning).
+  await markDraftUse(t.id, text, Boolean(opts.aiDrafted));
   await writeAuditLog({
     userId: me.id, organisationId: t.organisationId, action: 'support.replied', entityType: 'SupportTicket', entityId: t.id,
     metadata: { number: t.number, from: t.status, to: status, emailed, length: text.length, aiDrafted: Boolean(opts.aiDrafted), ...(t.assignedToId ? {} : { assignedTo: me.id }) },
@@ -356,11 +370,21 @@ export async function replyToSupportTicket(ticketId: string, body: string, then:
   return { emailed, emailTo: to };
 }
 
+async function markDraftUse(ticketId: string, sent: string, usedDraft: boolean): Promise<void> {
+  try {
+    const draft = await prisma.supportReply.findFirst({ where: { ticketId, kind: 'AI_DRAFT', reviewStatus: null }, orderBy: { createdAt: 'desc' }, select: { id: true, body: true } });
+    if (!draft) return;
+    await prisma.supportReply.updateMany({ where: { id: draft.id, reviewStatus: null }, data: { reviewStatus: draftUse(draft.body, sent, usedDraft), reviewedAt: new Date() } });
+  } catch {
+    /* a measure, never in the way of a reply */
+  }
+}
+
 /** A note for colleagues only — never shown or sent to the customer. */
 export async function addSupportNote(ticketId: string, body: string): Promise<void> {
   await authorize(PERM, undefined, 'addSupportNote');
   const me = await requireUser();
-  const reach = ticketReachWhere(await reachWhere(PERM), await myOrganisationId()) as Where;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as Where;
   const t = await ticketForChange(ticketId, reach);
   const text = cleanReply(body);
   if (text.length < 2) throw new SupportError('Write the note first.');
@@ -374,7 +398,7 @@ export async function addSupportNote(ticketId: string, body: string): Promise<vo
 export async function setSupportTicketStatus(ticketId: string, status: string): Promise<void> {
   await authorize(PERM, undefined, 'setSupportTicketStatus');
   const me = await requireUser();
-  const reach = ticketReachWhere(await reachWhere(PERM), await myOrganisationId()) as Where;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as Where;
   const t = await ticketForChange(ticketId, reach);
   if (!isSupportStatus(status)) throw new SupportError('Choose a status.');
   if (t.status === status) return;
@@ -397,7 +421,7 @@ export async function setSupportTicketStatus(ticketId: string, status: string): 
 export async function assignSupportTicket(ticketId: string, assigneeId: string): Promise<void> {
   await authorize(PERM, undefined, 'assignSupportTicket');
   const me = await requireUser();
-  const reach = ticketReachWhere(await reachWhere(PERM), await myOrganisationId()) as Where;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as Where;
   const t = await ticketForChange(ticketId, reach);
   const target = assigneeId === 'me' ? me.id : (assigneeId || null);
   if (target === t.assignedToId) return;
@@ -420,7 +444,7 @@ export async function assignSupportTicket(ticketId: string, assigneeId: string):
 export async function setSupportPriority(ticketId: string, priority: string): Promise<void> {
   await authorize(PERM, undefined, 'setSupportPriority');
   const me = await requireUser();
-  const reach = ticketReachWhere(await reachWhere(PERM), await myOrganisationId()) as Where;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as Where;
   const t = await ticketForChange(ticketId, reach);
   if (!(PRIORITIES as readonly string[]).includes(priority)) throw new SupportError('Choose a priority.');
   if (t.priority === priority) return;
@@ -439,7 +463,7 @@ export async function setSupportPriority(ticketId: string, priority: string): Pr
 export async function moveSupportTicket(ticketId: string, queueId: string): Promise<void> {
   await authorize(PERM, undefined, 'moveSupportTicket');
   const me = await requireUser();
-  const reach = ticketReachWhere(await reachWhere(PERM), await myOrganisationId()) as Where;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as Where;
   const t = await ticketForChange(ticketId, reach);
   const target = await prisma.supportQueue.findFirst({ where: { id: String(queueId ?? ''), organisationId: t.organisationId, active: true }, select: { id: true, name: true } });
   if (!target) throw new SupportError('Choose a team from the list.');
@@ -458,12 +482,13 @@ export async function moveSupportTicket(ticketId: string, queueId: string): Prom
 export async function draftSupportReply(ticketId: string): Promise<{ text: string } | { error: string }> {
   await authorize(PERM, undefined, 'draftSupportReply');
   await requireUser();
-  const reach = ticketReachWhere(await reachWhere(PERM), await myOrganisationId()) as Where;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as Where;
   const t = await ticketForChange(ticketId, reach);
   const thread = await prisma.supportReply.findMany({ where: { ticketId: t.id, kind: { in: ['CUSTOMER', 'AGENT', 'AI'] } }, orderBy: { createdAt: 'asc' }, take: 30, select: { fromCustomer: true, body: true } });
   const lastCustomer = [...thread].reverse().find((r) => r.fromCustomer)?.body ?? t.subject;
   const context = thread.slice(-6).map((r) => `${r.fromCustomer ? 'Customer' : 'Us'}: ${r.body}`).join('\n\n');
-  const ai = await aiReply(t.organisationId, { customerName: t.contactName, subject: t.subject, body: `${lastCustomer}\n\nEarlier in this conversation:\n${context}`.slice(0, 6000), topic: null, mode: 'draft' });
+  const sender = await senderContext(t, `${t.subject}\n${lastCustomer}`.slice(0, 600)).catch(() => null);
+  const ai = await aiReply(t.organisationId, { customerName: t.contactName, subject: t.subject, body: `${lastCustomer}\n\nEarlier in this conversation:\n${context}`.slice(0, 6000), topic: t.topic, mode: 'draft', context: sender });
   if (!ai) return { error: 'Enyo could not write a reply just now. Please write it yourself or try again in a minute.' };
   return { text: ai.reply };
 }
@@ -472,7 +497,7 @@ export async function draftSupportReply(ticketId: string): Promise<{ text: strin
 export async function summariseSupportTicket(ticketId: string): Promise<void> {
   await authorize(PERM, undefined, 'summariseSupportTicket');
   const me = await requireUser();
-  const reach = ticketReachWhere(await reachWhere(PERM), await myOrganisationId()) as Where;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as Where;
   const t = await ticketForChange(ticketId, reach);
   const thread = await prisma.supportReply.findMany({ where: { ticketId: t.id, kind: { in: ['CUSTOMER', 'AGENT', 'AI', 'NOTE'] } }, orderBy: { createdAt: 'asc' }, take: 60, select: { fromCustomer: true, kind: true, body: true } });
   const text = thread.map((r) => `${r.fromCustomer ? 'Customer' : r.kind === 'NOTE' ? 'Colleague (internal note)' : 'Us'}: ${r.body}`).join('\n\n');
@@ -486,7 +511,7 @@ export async function summariseSupportTicket(ticketId: string): Promise<void> {
 export async function saveSupportAnswer(ticketId: string, replyId: string): Promise<'learned' | 'skipped'> {
   await authorize(PERM, undefined, 'saveSupportAnswer');
   const me = await requireUser();
-  const reach = ticketReachWhere(await reachWhere(PERM), await myOrganisationId()) as Where;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as Where;
   const t = await ticketForChange(ticketId, reach);
   const r = await learnFromResolution({ ticketId: t.id, organisationId: t.organisationId, userId: me.id, replyId: String(replyId ?? '') });
   if (r === 'learned') await writeAuditLog({ userId: me.id, organisationId: t.organisationId, action: 'support.answer_saved', entityType: 'SupportTicket', entityId: t.id, metadata: { number: t.number } });

@@ -3604,7 +3604,16 @@ model SupportTicket {
   csatRequestedAt  DateTime?
   // The email that opened it (Message-ID), for threading replies.
   sourceMessageId  String?
+  // v37 — who is writing, as the Support centre recognised them from their
+  // address or session: customer | staff | both (a colleague who is also a
+  // customer) | unknown. And the colleague, when it is one.
+  senderKind       String?
+  senderUserId     String?
+  // v37 — a colleague's own request for help (Get help in the portal): only
+  // that colleague, the help queue's members and support managers see it.
+  requesterUserId  String?
 
+  @@index([requesterUserId, createdAt])
   @@index([organisationId, status, createdAt])
   @@index([customerId, createdAt])
   @@index([organisationId, queueId, status])
@@ -3736,7 +3745,24 @@ model SupportReply {
   attachments  Json?
   // Exactly-once intake of an email (mailbox + Message-ID hash).
   intakeKey    String?       @unique
+  // v37 — Enyo's own replies and drafts: how sure it was, the model, the
+  // approved answers it used, and what it knew about the sender (kind,
+  // proven, the records and links it was given — never message text).
+  aiConfidence Float?
+  aiModel      String?
+  aiSources    String[]      @default([])
+  aiContext    Json?
+  // v37 — a person's check of Enyo's reply (the Support centre's "Enyo's
+  // replies" page): GOOD | FIXED (a corrected answer was written) | WRONG,
+  // and for drafts automatically USED (sent nearly as written) | EDITED |
+  // IGNORED. The reason is a fixed code (knowledge_gap, wrong_facts …).
+  reviewStatus String?
+  reviewReason String?
+  reviewNote   String?
+  reviewedById String?
+  reviewedAt   DateTime?
 
+  @@index([kind, reviewStatus, createdAt])
   @@index([ticketId, createdAt])
   @@index([emailMessageId])
   @@map("support_replies")
@@ -3944,4 +3970,49 @@ model EnyoLearnedAnswer {
 
   @@index([organisationId, channel, status, createdAt])
   @@map("enyo_learned_answers")
+}
+
+// v37 — the integrity watch: unusual or risky activity found by the checks in
+// apps/portal/lib/integrity (money, parts and procurement, warranty, gate,
+// access, sign-ins) or raised by a colleague (Speak up). An administrator
+// reviews each one; nobody reviews an alert about themselves. A flag is a
+// reason to look, never proof: nothing is decided automatically.
+// Additive only.
+model IntegrityAlert {
+  id             String    @id @default(cuid())
+  organisationId String
+  // The check that raised it (refund_exceeds_paid, same_person_approval …, speak_up).
+  rule           String
+  // LOW | MEDIUM | HIGH
+  severity       String
+  // NEW | REVIEWING | CONFIRMED | DISMISSED
+  status         String    @default("NEW")
+  title          String
+  // Plain facts for the reviewer (amounts, dates, numbers — no message text).
+  evidence       Json?
+  // The record it is about, and the colleague whose activity it is about.
+  entityType     String?
+  entityId       String?
+  subjectUserId  String?
+  branchId       String?
+  // One alert per rule and record: the checks run again and only update it.
+  fingerprint    String
+  score          Float?
+  firstSeenAt    DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  seenCount      Int       @default(1)
+  // A Speak up report: who raised it (null when they chose to stay anonymous).
+  reportedById   String?
+  assignedToId   String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  resolution     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+
+  @@unique([organisationId, fingerprint])
+  @@index([organisationId, status, severity, lastSeenAt])
+  @@index([organisationId, rule, createdAt])
+  @@index([subjectUserId])
+  @@map("integrity_alerts")
 }

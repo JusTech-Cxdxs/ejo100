@@ -1,4 +1,5 @@
 import { betterAuth } from 'better-auth';
+import { createAuthMiddleware, isAPIError } from 'better-auth/api';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { nextCookies } from 'better-auth/next-js';
 import { after } from 'next/server';
@@ -130,6 +131,27 @@ export const customerAuth = betterAuth({
         },
       },
     },
+  },
+
+  // A failed sign-in on a registered address is recorded (why it failed,
+  // from where — never the password), so the Support centre can answer "I
+  // can't log in" and the integrity checks can see password-guessing.
+  // Unregistered addresses are not recorded (they belong to nobody).
+  hooks: {
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== '/sign-in/email') return;
+      const r = ctx.context.returned;
+      if (!isAPIError(r)) return;
+      const email = typeof (ctx.body as { email?: unknown } | undefined)?.email === 'string' ? String((ctx.body as { email: string }).email).trim().toLowerCase().slice(0, 160) : '';
+      if (!email) return;
+      const c = await prisma.customer.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true, organisationId: true, isActive: true } }).catch(() => null);
+      if (!c) return;
+      const ip = ctx.headers?.get('x-forwarded-for')?.split(',')[0]?.trim() || ctx.headers?.get('x-real-ip') || null;
+      await writeCustomerAudit({
+        customerId: c.id, organisationId: c.organisationId, verb: 'sign_in_failed', ipAddress: ip,
+        details: { reason: String((r.body as { code?: unknown } | undefined)?.code ?? r.status ?? 'failed').slice(0, 60), accessOff: !c.isActive, userAgent: ctx.headers?.get('user-agent')?.slice(0, 200) ?? null },
+      });
+    }),
   },
 
   // Brute-force protection, per internet address. CUSTOMER_SIGNIN_PER_MINUTE

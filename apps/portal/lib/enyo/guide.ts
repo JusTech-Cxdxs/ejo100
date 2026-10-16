@@ -567,6 +567,25 @@ export const GUIDE: GuideEntry[] = [
     ],
   },
   {
+    id: 'support-enyo-replies', title: 'Check and correct Enyo’s support replies', page: '/crm/support/enyo', needs: ['crm.view'], does: ['support.tickets.manage'], who: 'Customer care, managers and administrators',
+    keywords: ['enyo replies', 'check enyo', 'ai answers', 'review ai', 'correct enyo', 'wrong answer', 'why handed over', 'knowledge gap', 'ai monitoring', 'quality'],
+    steps: [
+      'Go to Customers → Support centre → Enyo’s replies.',
+      'Under "To check" open each answer Enyo sent by itself: read their message and Enyo’s reply.',
+      'Choose Good, Needed a correction (write the right answer) or Wrong, with why, and save. A correction waits on the Enyo learning page for an administrator to approve.',
+      'On the right, "Why Enyo could not resolve them" lists the gaps by topic with what to fix — usually an answer to approve.',
+    ],
+  },
+  {
+    id: 'get-help', title: 'Ask for help (administrators or the EJO platform team)', page: '/support/help', needs: EVERYONE,
+    keywords: ['help', 'get help', 'support', 'problem', 'error', 'not working', 'cannot', 'can\'t', 'stuck', 'access', 'permission', 'it support', 'contact admin', 'report a problem', 'bug'],
+    steps: [
+      'Open Get help in the menu (on an error screen, press "Ask for help with this error" — the reference comes along).',
+      'Say what you need and what happened, choose "Our administrators" (access, how to, a record) or "The EJO platform team" (an error in the system), and send.',
+      'Enyo may answer at once with the steps for your role; press "I still need a person" if it did not help. Answers come to your notifications and email.',
+    ],
+  },
+  {
     id: 'reminders', title: 'Set a reminder', page: '/reminders', needs: EVERYONE,
     keywords: ['reminder', 'remind me', 'follow up', 'alarm', 'due'],
     steps: ['Go to Reminders and create a new one.', 'Give it a title and the date and time it is due, then save. You are reminded when it is due.', 'You can also ask Enyo: "Remind me to call Mr Ade at 3 pm" — check the draft and save it.'],

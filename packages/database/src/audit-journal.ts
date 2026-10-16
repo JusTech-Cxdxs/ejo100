@@ -165,6 +165,9 @@ const SKIP_MODELS = new Set([
   'SupportMailbox',
   // Learned answers hold question and answer text; adding and removing them write their own entries.
   'EnyoLearnedAnswer',
+  // v37: integrity alerts write their own entries — and a Speak up report must never record who raised it
+  // when they chose to stay anonymous (the journal would stamp the person signed in).
+  'IntegrityAlert',
 ]);
 const SENSITIVE_KEY = /password|token|secret|hash/i;
 const MAX_JSON = 6000;

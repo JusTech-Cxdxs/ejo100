@@ -64,6 +64,7 @@ export default async function SupportCentrePage({ searchParams }: { searchParams
         actions={<>
           <HeaderAction href="/crm/support/new" icon="plus">New request</HeaderAction>
           <HeaderAction href="/crm/support/analytics" icon="chart" variant="secondary">Numbers</HeaderAction>
+          <HeaderAction href="/crm/support/enyo" icon="sparkles" variant="secondary">Enyo’s replies</HeaderAction>
           {inbox.canManage ? <HeaderAction href="/settings/support" icon="settings" variant="secondary">Set up</HeaderAction> : null}
         </>}
       />

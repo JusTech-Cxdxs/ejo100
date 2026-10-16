@@ -10,6 +10,7 @@ import { prisma, setAuditActor } from '@ejo/database';
  */
 export type CustomerAuditVerb =
   | 'signed_in'
+  | 'sign_in_failed'
   | 'profile_updated'
   | 'address_added'
   | 'address_updated'
