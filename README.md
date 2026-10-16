@@ -44,6 +44,10 @@ planned work is labelled as planned.
 | Security | Visitors, contractors, deliveries, vehicles in and out, exit passes, road-test permits, incidents, the gate register, 80 mm slip prints. |
 | Scheduling | Personal calendars, appointments, meeting rooms, aides who book for others, availability. |
 | Business Analytics | Sales, cost, gross profit, collections, receivables and work in progress per period and branch; every figure links to the records behind it. |
+| Support centre | Every support request in one place: emails to support@ / warranty@ / technical@ addresses, Enyo chat hand-overs and logged calls; teams with targets in business hours, fair assignment, acknowledgements, Enyo's triage, drafts and (where allowed) answers, reminders, satisfaction, and the numbers. See [docs/SUPPORT_CENTRE.md](docs/SUPPORT_CENTRE.md). |
+| Enyo (AI) | The assistant in every page: answers from the records each person may see, the guide and the web; drafts (never submits) Job Cards, reminders and mail; voice in and out; learns from approved answers; small model for small talk, large for records. |
+| Mail | Each person's own work mailbox (IMAP/SMTP, encrypted password): inbox with layout and pictures on request, compose in the organisation's letterhead with a live preview, Enyo's briefs and summaries read aloud. |
+| Reminders | Personal reminders into the bell and by email, with colleagues allowed to set them for you. |
 | Notifications | Action items, activity feed, email, staff and customer broadcasts with delivery figures. |
 | Administration | Organisation, structure (business units, branches, departments, teams), users, roles, permissions, settings, audit logs. |
 | Profile | Personal details, "what I can do" (generated from the permission catalogue), theme, password. |
@@ -56,6 +60,8 @@ planned work is labelled as planned.
 |---|---|
 | Website | The organisation's public site (about, businesses, products, services, careers, contact, privacy, terms). Carries the organisation's brand, not EJO's. |
 | Customer portal (`/customer-portal`) | Sign-in, forgot and reset password, overview of what needs attention, my vehicles, my services (status timeline, estimate, payments, balance), payments, warranties, notifications, profile and addresses, help and support. |
+| Support (`/support`, `/support/request/<token>`) | How to reach each support team, opening hours and branch phones; the customer's own page for a request (“Yes, solved” / “I still need a person” / “How did we do?”). |
+| Enyo chat | On every page: answers about the organisation, and — signed in — the customer's own vehicles, jobs, estimates, payments and warranties; hands over to a person with a SUP number. |
 
 **API** (`apps/api`, NestJS): a health check, and read routes for audit logs,
 organisations, structure, users, roles and permissions that only the platform
@@ -269,6 +275,13 @@ centralising configuration (`apps/portal/lib/site-config.ts`, website
 | `AUTH_SIGNIN_PER_MINUTE`, `AUTH_RESET_REQUESTS_PER_5_MIN` | portal | Optional | Override the staff sign-in and reset-request limits (defaults 20 and 5). |
 | `CUSTOMER_SIGNIN_PER_MINUTE`, `CUSTOMER_RESET_REQUESTS_PER_5_MIN` | website | Optional | Same limits for the customer portal. |
 | `MASTER_ADMIN_NAME`, `MASTER_ADMIN_EMAIL`, `MASTER_ADMIN_PASSWORD` | seed only | Required to seed | The platform administrator created by `prisma/seed.ts`. Not read by the running apps. |
+| `MAILBOX_ENCRYPTION_KEY` | portal | Required for Mail and support addresses | 32 bytes, base64. Encrypts mailbox passwords (AES-256-GCM). Losing it means reconnecting every mailbox. |
+| `ENYO_LLM_BASE_URL`, `ENYO_LLM_API_KEY`, `ENYO_LLM_MODEL`, `ENYO_LLM_FAST_MODEL` | portal, website | Required for Enyo | Any OpenAI-compatible server (e.g. Groq: `openai/gpt-oss-120b` and `openai/gpt-oss-20b`). |
+| `ENYO_LLM_PROVIDER_LABEL`, `ENYO_LLM_TIMEOUT_MS`, `ENYO_LLM_ROUTING`, `ENYO_WEB_LOOKUP`, `ENYO_REQUESTS_PER_MINUTE`, `ENYO_IP_HASH_KEY` | portal, website | Optional | Name shown in Settings, time limit, `off` to send everything to the large model, `off` to stop web look-ups, per-person rate, hashing of visitor addresses. |
+| `NEXT_PUBLIC_DEALER_BRANDS` | portal, website | Optional | Dealer brands in the email footer, e.g. `FOTON:#111111,ISUZU:#E4002B,SOUEAST:#F39800`. |
+| `NEXT_PUBLIC_APP_SHORT_NAME` | portal, website | Optional | Name of the installed app (default: the organisation's initials, e.g. KCG). |
+| `WEBSITE_ORGANISATION_SLUG` | website | Optional | Which organisation the website and its chat belong to. |
+| `MAILBOX_ALLOW_INSECURE` | portal | Test only | Allows unencrypted mail servers in tests. Never in production. |
 | `PORT` | API | Optional | API port (default 4000). |
 | `VERCEL_ENV`, `RENDER`, `IS_PULL_REQUEST` | deploy scripts | Set by the host | Decide whether a build may change the database (production only). |
 
@@ -351,6 +364,8 @@ ejo100/
 | [docs/TESTING_PROGRAMME.md](docs/TESTING_PROGRAMME.md) | Security, concurrency and load findings in detail. |
 | [docs/E2E_COVERAGE.md](docs/E2E_COVERAGE.md) | Playwright coverage matrix and defects found. |
 | [docs/MASTER_PLAN.md](docs/MASTER_PLAN.md) | Phase history and the list of carried-over requests. |
+| [docs/SUPPORT_CENTRE.md](docs/SUPPORT_CENTRE.md) | The Support centre: flow, teams and addresses, safety rules, numbers, learning, running it. |
+| [docs/ENYO_RELEASE.md](docs/ENYO_RELEASE.md), [docs/ML.md](docs/ML.md) | Enyo (AI) and its trained models. |
 | [docs/architecture.md](docs/architecture.md), [docs/folder-structure.md](docs/folder-structure.md), [docs/coding-standards.md](docs/coding-standards.md), [docs/module-creation-guide.md](docs/module-creation-guide.md) | Conventions for engineers adding to the codebase. |
 
 ---
@@ -363,8 +378,8 @@ will work (data model, permissions, delivery order) and which live records it
 builds on.
 
 **Next: the AI phase**
-- **AI support centre**: ticketed help desks for customers and staff, with an
-  assistant that drafts replies for a person to approve.
+- **AI support centre**: the customer side is live (Support centre, v36); next
+  is the staff help desk (“something is wrong here” from any page).
 - **Intelligence**: forecasting (parts demand, workshop load, revenue) and
   anomaly detection, in a separate Python service that reads curated data only.
   The rules for this phase are in [docs/AI_READINESS.md](docs/AI_READINESS.md).

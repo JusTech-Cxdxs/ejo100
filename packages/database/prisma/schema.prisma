@@ -3517,6 +3517,8 @@ model EnyoPrediction {
 enum SupportTicketStatus {
   OPEN
   WAITING_ON_CUSTOMER
+  // v36: waiting on someone else (manufacturer, supplier, insurer); the customer sees "With our team".
+  ON_HOLD
   RESOLVED
   CLOSED
 }
@@ -3524,6 +3526,10 @@ enum SupportTicketStatus {
 enum SupportChannel {
   CUSTOMER_PORTAL
   WEBSITE
+  // v36: an email to a support address (support@, warranty@, technical@ …).
+  EMAIL
+  // v36: opened by a colleague (a phone call, a walk-in).
+  STAFF
 }
 
 /// A customer or website visitor handed over from Enyo to the company's people.
@@ -3551,9 +3557,158 @@ model SupportTicket {
   resolvedAt      DateTime?
   replies         SupportReply[]
 
+  // ── v36: the Support centre ─────────────────────────────────────────
+  // Which team (queue) owns it, and the address it came in to / goes out from.
+  queueId          String?
+  mailboxId        String?
+  // URGENT | HIGH | NORMAL | LOW
+  priority         String    @default("NORMAL")
+  // What it is about (Enyo's triage or a colleague's choice) and how it reads.
+  topic            String?
+  sentiment        String?
+  language         String?
+  tags             String[]  @default([])
+  // Plates, VINs and record numbers found in the messages (linked on the ticket page).
+  entities         Json?
+  // The sender proved to be the customer (signed in, or the email passed DMARC
+  // and matches the customer's address). Only then may records be discussed.
+  verified         Boolean   @default(false)
+  // Unguessable; the customer's "solved / talk to a person / rate us" page.
+  token            String?   @unique
+  // Service targets, worked out in business hours when the ticket opens.
+  dueFirstResponseAt DateTime?
+  dueResolutionAt  DateTime?
+  slaWarnedAt      DateTime?
+  slaBreachedAt    DateTime?
+  lastCustomerAt   DateTime?
+  lastAgentAt      DateTime?
+  pendingSince     DateTime?
+  nudgeCount       Int       @default(0)
+  reopenCount      Int       @default(0)
+  closedAt         DateTime?
+  // Why a person was needed (customer_asked, low_confidence, sensitive, …).
+  handoverReason   String?
+  // ANSWERED (Enyo replied) → CONFIRMED (customer said solved) | ASSUMED (no
+  // further question) | ESCALATED (asked for a person) — the AI resolution measures.
+  aiOutcome        String?
+  aiAnsweredAt     DateTime?
+  // Waiting for Enyo to read it (triage, then an answer or a draft) — done
+  // by the scheduled run, so taking in mail stays fast.
+  aiPendingAt      DateTime?
+  csatScore        Int?
+  csatComment      String?
+  csatAt           DateTime?
+  csatRequestedAt  DateTime?
+  // The email that opened it (Message-ID), for threading replies.
+  sourceMessageId  String?
+
   @@index([organisationId, status, createdAt])
   @@index([customerId, createdAt])
+  @@index([organisationId, queueId, status])
+  @@index([status, dueFirstResponseAt])
+  @@index([sourceMessageId])
+  @@index([aiPendingAt])
   @@map("support_tickets")
+}
+
+/// v36 — a support team and its address(es): General, Warranty, Technical,
+/// Customer care, Parts, Sales … Each has its own targets and AI reply mode.
+model SupportQueue {
+  id             String   @id @default(cuid())
+  organisationId String
+  name           String
+  // general | warranty | technical | customer_care | parts | sales | other
+  kind           String   @default("general")
+  description    String?
+  // A branch's own queue (null: the whole organisation).
+  branchId       String?
+  isDefault      Boolean  @default(false)
+  active         Boolean  @default(true)
+  // OFF: people only · SUGGEST: Enyo drafts, people send · AUTO: Enyo answers
+  // general questions itself when it is confident; everything else goes to people.
+  aiMode         String   @default("SUGGEST")
+  autoAcknowledge Boolean @default(true)
+  // Minutes per priority: { URGENT: { first, resolve }, … } (defaults when null).
+  targets        Json?
+  signature      String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  members        SupportQueueMember[]
+  mailboxes      SupportMailbox[]
+
+  @@unique([organisationId, name])
+  @@index([organisationId, active])
+  @@map("support_queues")
+}
+
+/// v36 — who works a queue, how many open tickets they take, and whether they are away.
+model SupportQueueMember {
+  queueId        String
+  queue          SupportQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  userId         String
+  organisationId String
+  capacity       Int      @default(15)
+  away           Boolean  @default(false)
+  lastAssignedAt DateTime?
+  createdAt      DateTime @default(now())
+
+  @@id([queueId, userId])
+  @@index([organisationId, userId])
+  @@map("support_queue_members")
+}
+
+/// v36 — a shared support mailbox (support@, warranty@ …): read for new
+/// mail on a schedule, replies sent from it. The password is encrypted
+/// (AES-256-GCM, MAILBOX_ENCRYPTION_KEY) and never shown or logged.
+model SupportMailbox {
+  id             String   @id @default(cuid())
+  organisationId String
+  queueId        String
+  queue          SupportQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  address        String
+  displayName    String?
+  imapHost       String
+  imapPort       Int
+  imapSecure     Boolean  @default(true)
+  smtpHost       String
+  smtpPort       Int
+  smtpSecure     Boolean  @default(true)
+  username       String
+  secret         String
+  // ACTIVE | ERROR | PAUSED
+  status         String   @default("ACTIVE")
+  lastSyncAt     DateTime?
+  lastError      String?
+  // Where reading continues from (IMAP UID and its validity).
+  lastUid        Int      @default(0)
+  uidValidity    String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organisationId, address])
+  @@index([status, lastSyncAt])
+  @@map("support_mailboxes")
+}
+
+/// v36 — the organisation's support settings: opening hours, holidays and the AI threshold.
+model SupportSetting {
+  organisationId String   @id
+  // { "1": ["08:00","17:00"], …, "6": ["09:00","13:00"] } (1 = Monday; missing = closed)
+  hours          Json?
+  // ["2026-10-01", …]
+  holidays       String[] @default([])
+  // How sure Enyo must be (0–1) before it answers by itself in AUTO queues.
+  aiThreshold    Float    @default(0.75)
+  nudgeAfterHours Int     @default(48)
+  autoResolveDays Int     @default(7)
+  closeAfterDays Int      @default(4)
+  csatEnabled    Boolean  @default(true)
+  updatedById    String?
+  updatedAt      DateTime @updatedAt
+
+  @@map("support_settings")
 }
 
 model SupportReply {
@@ -3565,8 +3720,22 @@ model SupportReply {
   fromCustomer Boolean       @default(false)
   body         String
   createdAt    DateTime      @default(now())
+  // v36 — PUBLIC (the customer sees it) or INTERNAL (a colleague's note, never shown to the customer).
+  visibility   String        @default("PUBLIC")
+  // CUSTOMER | AGENT | AI | SYSTEM (acknowledgement, nudge) | NOTE
+  kind         String        @default("AGENT")
+  // Written with Enyo's help (a draft the colleague sent).
+  aiDrafted    Boolean       @default(false)
+  // Email threading: this message's Message-ID, and where it came from.
+  emailMessageId String?
+  fromAddress  String?
+  // Attachment names and sizes (the files stay in the mailbox).
+  attachments  Json?
+  // Exactly-once intake of an email (mailbox + Message-ID hash).
+  intakeKey    String?       @unique
 
   @@index([ticketId, createdAt])
+  @@index([emailMessageId])
   @@map("support_replies")
 }
 

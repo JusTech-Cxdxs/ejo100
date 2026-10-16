@@ -63,10 +63,16 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
     // Sessions a Branch Assistant held on my behalf ("… helped you with your work").
     prisma.assistSession.findMany({ where: { subjectId: m.id, startedAt: { gte: recent } }, select: { id: true }, take: 200 }),
   ]);
+  // Support tickets I own, and the unowned ones of the support queues I work (new, late, urgent).
+  const myQueues = (await prisma.supportQueueMember.findMany({ where: { userId: m.id }, select: { queueId: true } }).catch(() => [])).map((q: { queueId: string }) => q.queueId);
+  const tickets = await prisma.supportTicket.findMany({
+    where: { organisationId: m.organisationId ?? '__no_organisation__', updatedAt: { gte: recent }, OR: [{ assignedToId: m.id }, ...(myQueues.length ? [{ queueId: { in: myQueues }, assignedToId: null }] : [])] },
+    select: { id: true }, take: 500,
+  }).catch(() => []);
   const byType = new Map<string, string[]>();
   for (const r of mine) if (r.entityId) byType.set(r.entityType, [...(byType.get(r.entityType) ?? []), r.entityId]);
   const add = (t: string, ids: { id: string }[]) => { if (ids.length) byType.set(t, [...new Set([...(byType.get(t) ?? []), ...ids.map((x) => x.id)])]); };
-  add('JobCard', jcs); add('VehicleService', svs); add('PartRequestSlip', prss); add('ExternalProcurementRequest', eprs); add('AssistSession', assisted);
+  add('JobCard', jcs); add('VehicleService', svs); add('PartRequestSlip', prss); add('ExternalProcurementRequest', eprs); add('AssistSession', assisted); add('SupportTicket', tickets);
   // Finance hears about every payment, refund, customer notification and
   // outside purchase — so they know when money is expected or moves.
   const financeWatch = m.roleSlugs.includes('finance-officer') ? [{ action: { contains: 'payment' } }, { action: { contains: 'refund' } }, { action: { contains: 'customer_notified' } }, { entityType: 'ExternalProcurementRequest' }] : [];

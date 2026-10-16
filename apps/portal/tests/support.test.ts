@@ -32,7 +32,7 @@ test('who may handle tickets: front desk, workshop manager and administrators â€
   assert.equal(decide(who(['administrator']), 'support.tickets.manage', { branchId: 'other-org-branch' }).allowed, false);
 });
 
-test('the menu: "Support inbox" right under Customers, for people who handle tickets only', () => {
+test('the menu: "Support centre" right under Customers, for people who handle tickets only', () => {
   const keys = (roles: string[]) => navigationFor(who(roles)).map((i) => i.key);
   for (const role of ['receptionist', 'workshop-manager', 'administrator']) {
     const k = keys([role]);
@@ -50,7 +50,9 @@ test('inbox tabs', () => {
   assert.deepEqual(filterWhere('open', 'u'), { status: { in: ['OPEN'] } });
   assert.deepEqual(filterWhere('waiting', 'u'), { status: { in: ['WAITING_ON_CUSTOMER'] } });
   assert.deepEqual(filterWhere('resolved', 'u'), { status: { in: ['RESOLVED', 'CLOSED'] } });
-  assert.deepEqual(filterWhere('mine', 'u'), { assignedToId: 'u', status: { in: ['OPEN', 'WAITING_ON_CUSTOMER'] } });
+  assert.deepEqual(filterWhere('mine', 'u'), { assignedToId: 'u', status: { in: ['OPEN', 'WAITING_ON_CUSTOMER', 'ON_HOLD'] } });
+  assert.deepEqual(filterWhere('unassigned', 'u'), { status: { in: ['OPEN', 'ON_HOLD'] }, assignedToId: null });
+  assert.deepEqual(filterWhere('on_hold', 'u'), { status: { in: ['ON_HOLD'] } });
   assert.deepEqual(filterWhere('all', 'u'), {});
   assert.equal(isSupportStatus('RESOLVED'), true);
   assert.equal(isSupportStatus('DELETED'), false);

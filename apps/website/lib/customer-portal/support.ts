@@ -35,7 +35,7 @@ export async function replyToSupportTicket(_prev: ActionState, fd: FormData): Pr
 
   const ticket = await prisma.supportTicket.findFirst({
     where: { id: ticketId, customerId: me.id, organisationId: me.organisationId },
-    select: { id: true, number: true, status: true, assignedToId: true, branchId: true, organisationId: true },
+    select: { id: true, number: true, status: true, assignedToId: true, branchId: true, organisationId: true, aiOutcome: true, handoverReason: true },
   });
   if (!ticket) return { ok: false, error: 'That request isn’t on your account. Refresh the page and try again.' };
   if (ticket.status === 'CLOSED') return { ok: false, error: 'This request is closed. Ask the assistant or call your branch, and we will open a new one.' };
@@ -45,8 +45,17 @@ export async function replyToSupportTicket(_prev: ActionState, fd: FormData): Pr
 
   try {
     await prisma.$transaction([
-      prisma.supportReply.create({ data: { ticketId: ticket.id, fromCustomer: true, body }, select: { id: true } }),
-      prisma.supportTicket.update({ where: { id: ticket.id }, data: { status: 'OPEN', resolvedAt: null }, select: { id: true } }),
+      prisma.supportReply.create({ data: { ticketId: ticket.id, fromCustomer: true, kind: 'CUSTOMER', visibility: 'PUBLIC', body }, select: { id: true } }),
+      prisma.supportTicket.update({
+        where: { id: ticket.id },
+        data: {
+          status: ticket.status === 'ON_HOLD' ? 'ON_HOLD' : 'OPEN', resolvedAt: null, lastCustomerAt: new Date(), pendingSince: null, nudgeCount: 0,
+          ...(ticket.status === 'RESOLVED' ? { reopenCount: { increment: 1 } } : {}),
+          // Enyo answered and the customer came back: not resolved by Enyo after all.
+          ...(ticket.aiOutcome === 'ANSWERED' ? { aiOutcome: 'ESCALATED', handoverReason: [ticket.handoverReason, 'repeat_contact'].filter(Boolean).join(',') } : {}),
+        },
+        select: { id: true },
+      }),
     ]);
   } catch (err) {
     const ref = await logCustomerError('replyToSupportTicket', err);
@@ -58,7 +67,7 @@ export async function replyToSupportTicket(_prev: ActionState, fd: FormData): Pr
   await prisma.auditLog.create({
     data: {
       organisationId: me.organisationId, userId: null, action: 'support.customer_replied', entityType: 'SupportTicket', entityId: ticket.id,
-      metadata: { actor: 'customer', customerId: me.id, number: ticket.number, reopened: ticket.status !== 'OPEN' }, ipAddress: ip,
+      metadata: { actor: 'customer', customerId: me.id, number: ticket.number, reopened: ticket.status === 'RESOLVED' }, ipAddress: ip,
     },
   }).catch(() => undefined);
 

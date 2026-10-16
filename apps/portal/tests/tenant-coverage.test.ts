@@ -80,6 +80,8 @@ const RECORD_CHECKS = [
   'actorOrg', 'inMyOrganisation(',
   // Enyo learned answers: where { id, organisationId: learnedOrg() } (the person's own organisation).
   'learnedOrg(',
+  // Support centre set-up: where { id, organisationId: supportOrg() } (the person's own organisation).
+  'supportOrg(',
 ];
 /** authorize(key, { branchId … }) — a role check WITH the record's branch. */
 const AUTHORIZE_WITH_RECORD = /\bauthorize\([^,]+,\s*\{\s*branchId/;

@@ -25,6 +25,7 @@ import { remindersTools } from './reminders';
 import { mailTools } from './mail';
 import { workshopTools } from './workshop';
 import { learningTools } from './learning';
+import { supportTools } from './support';
 
 export function staffTools(): StaffTool[] {
   return [
@@ -40,6 +41,7 @@ export function staffTools(): StaffTool[] {
     ...mailTools,
     ...workshopTools,
     ...learningTools,
+    ...supportTools,
     ...(webLookupEnabled() ? [webLookupTool<StaffCtx>()] : []),
   ];
 }

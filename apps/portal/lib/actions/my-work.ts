@@ -62,11 +62,12 @@ async function supportItems(userId: string): Promise<MyWorkItem[]> {
     where: { AND: [fence, { status: 'OPEN' }, { OR: [{ assignedToId: userId }, { assignedToId: null }] }] },
     orderBy: { createdAt: 'asc' },
     take: 15,
-    select: { id: true, number: true, contactName: true, subject: true, assignedToId: true, createdAt: true, updatedAt: true },
+    select: { id: true, number: true, contactName: true, subject: true, assignedToId: true, createdAt: true, updatedAt: true, priority: true, firstResponseAt: true, dueFirstResponseAt: true },
   });
+  const now = Date.now();
   return rows.map((t: (typeof rows)[number]) => ({
     id: `support-${t.id}`,
-    title: t.assignedToId ? `Customer waiting for your reply — ${t.number}` : `New support request — ${t.number}`,
+    title: `${t.priority === 'URGENT' ? 'Urgent: ' : ''}${!t.firstResponseAt && t.dueFirstResponseAt && t.dueFirstResponseAt.getTime() < now ? 'Late — ' : ''}${t.assignedToId ? `Customer waiting for your reply — ${t.number}` : `New support request — ${t.number}`}`,
     detail: `${t.contactName}: ${t.subject}`.slice(0, 160),
     url: `/crm/support/${t.id}`,
     createdAt: t.assignedToId ? t.updatedAt : t.createdAt,

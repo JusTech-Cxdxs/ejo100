@@ -16,6 +16,8 @@ const GUARDS = [
   'requireVehicleServiceStepRole', 'requireServiceEstimateContributor', 'requireWarrantyStaff', 'requireWarrantyApprover', 'requireStaff(', 'requireApprover(',
   'requireGate', 'requireFrontDesk', 'requireChief', 'requireBroadcaster', 'requireBookFor', 'loadForChange', 'loadForGroups', 'canDecide', 'isStore(',
   'currentUserIsMasterAdmin', 'isSuperAdmin', 'getWarrantyRoles', 'getSecurityRoles',
+  // Support centre set-up (lib/actions/support-admin.ts): authorize('support.manage') + the person's own organisation.
+  'supportOrg(',
 ];
 /** Acting only on the person's OWN data (their read marks, their passes) — checked inside by user id. */
 const SELF_SCOPED = new Set(['markNotificationsRead', 'markNotificationsUnread', 'markAllRead', 'setNotificationsMuted', 'cancelExitPass', 'createExitPass', 'getJobCardSourcingNeeds',

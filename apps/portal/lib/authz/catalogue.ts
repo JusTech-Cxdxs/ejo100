@@ -51,7 +51,8 @@ export const PERMISSIONS = {
   // Customers (CRM)
   'crm.view': { module: 'Customers', label: 'See customers, their 360 pages, spend and history' },
   'crm.manage': { module: 'Customers', label: 'Edit customers, their contacts, addresses, notes, tags and portal access' },
-  'support.tickets.manage': { module: 'Customers', label: 'Answer customer support conversations handed over by Enyo' },
+  'support.tickets.manage': { module: 'Customers', label: 'Work the Support centre: answer support requests (email, chat hand-overs, calls) and see its numbers for their branch' },
+  'support.manage': { module: 'Customers', label: 'Set up the Support centre: teams and their email addresses, who works them, opening hours, targets and how Enyo answers' },
   'workshop.refund.record': { module: 'Finance', label: 'Record refunds' },
   // Store & procurement
   'store.view': { module: 'Store', label: 'Open the Store — parts, stock, parts requests and outside purchases' },
@@ -115,7 +116,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'admin.organisation.manage': A, 'admin.structure.manage': A, 'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A,
     'audit.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A, 'notifications.broadcast.send': A,
     'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'schedule.view': 'OWN',
-    'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A, 'enyo.manage': A, 'support.tickets.manage': A,
+    'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A, 'enyo.manage': A, 'support.tickets.manage': A, 'support.manage': A,
   },
   // One branch: its people and their roles, and oversight of that branch.
   'branch-administrator': {
