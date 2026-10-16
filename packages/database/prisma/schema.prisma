@@ -3669,6 +3669,9 @@ model MailMessage {
   subject        String
   snippet        String
   bodyText       String?
+  // v34: the email's own layout, cleaned (lib/mail/html.ts): no scripts, no
+  // forms, no tracking; remote images held back until the owner asks.
+  bodyHtml       String?
   receivedAt     DateTime
   seen           Boolean     @default(false)
   flagged        Boolean     @default(false)

@@ -6,6 +6,7 @@ import { ACCOUNT_SECRET_SELECT, connectionSettings } from './account';
 import { closeImap, MailConnectError, openImap, withTimeout } from './transport';
 import { cleanBody, flattenAddresses, snippetOf, threadKeyOf, withAttachments, type AttachmentInfo } from './parse-core';
 import { MailCryptoError } from './crypto';
+import { sanitizeMailHtml } from './html';
 import { briefNewMessages } from './brief';
 
 /**
@@ -17,8 +18,9 @@ import { briefNewMessages } from './brief';
  *    next time.
  *  • Seen / flagged changes made in another mail app are copied back for the
  *    stored messages, and messages deleted on the server are removed here.
- *  • Text only: remote HTML is converted to text by the parser and never
- *    stored; attachments are listed by name and size, never downloaded.
+ *  • The text, and the email's own layout cleaned by lib/mail/html.ts (no
+ *    scripts, remote pictures held back); attachments are listed by name and
+ *    size here and fetched from the server only when the owner downloads one.
  *
  * Two syncs of one mailbox never run together: each claims the mailbox by
  * moving `lastSyncAt` forward in one conditional update (only one instance
@@ -67,6 +69,10 @@ export async function parseOne(f: Fetched, accountId: string) {
   const attachments: AttachmentInfo[] = (parsed?.attachments ?? [])
     .filter((a) => !(a.related && a.contentDisposition === 'inline'))
     .map((a) => ({ name: (a.filename || 'attachment').slice(0, 200), size: a.size ?? 0 }));
+  // The email's own layout, cleaned; its inline pictures travel with it.
+  const cleaned = tooLarge || typeof parsed?.html !== 'string'
+    ? null
+    : sanitizeMailHtml(parsed.html, (parsed?.attachments ?? []).filter((a) => a.cid && a.content).map((a) => ({ cid: a.cid!, contentType: a.contentType ?? '', content: a.content as Buffer })));
   const internal = f.internalDate && !Number.isNaN(f.internalDate.getTime()) ? f.internalDate : null;
   const headerDate = parsed?.date && !Number.isNaN(parsed.date.getTime()) ? parsed.date : null;
   // A date header far in the future is not trusted (spam does this to stay on top).
@@ -88,6 +94,7 @@ export async function parseOne(f: Fetched, accountId: string) {
     subject,
     snippet: snippetOf(text),
     bodyText: withAttachments(text, attachments),
+    bodyHtml: cleaned?.html ?? null,
     receivedAt,
     seen: f.flags.has('\\Seen'),
     flagged: f.flags.has('\\Flagged'),

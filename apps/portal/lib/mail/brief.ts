@@ -17,13 +17,14 @@ import { splitAttachments } from './parse-core';
  */
 const PER_SYNC = 10;
 
-export async function briefNewMessages(organisationId: string, accountId: string, messageIds: string[], deadline: number): Promise<number> {
+export async function briefNewMessages(organisationId: string, accountId: string, messageIds: string[], deadline: number, opts: { again?: boolean } = {}): Promise<number> {
   const ready = await enyoReady(organisationId, 'mailAi');
   if (!ready.ready) return 0;
   const account = await prisma.mailAccount.findUnique({ where: { id: accountId }, select: { address: true, aiConsentAt: true } });
   if (!account?.aiConsentAt) return 0;
   const rows = await prisma.mailMessage.findMany({
-    where: { id: { in: messageIds }, accountId, aiAt: null },
+    // `again`: also messages tried before without a summary (the owner asked, or the model has changed).
+    where: { id: { in: messageIds }, accountId, ...(opts.again ? { aiSummary: null } : { aiAt: null }) },
     orderBy: { receivedAt: 'desc' },
     take: PER_SYNC,
     select: { id: true, fromAddress: true, fromName: true, subject: true, bodyText: true, receivedAt: true },
