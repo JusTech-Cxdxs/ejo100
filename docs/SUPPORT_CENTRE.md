@@ -1,4 +1,6 @@
-# Support centre (v36, extended in v37)
+# Support centre (v36, extended in v37 and v38)
+
+> v38 adds: set-up split into pages (Overview · Teams & addresses · one page per team · Hours & holidays · Enyo’s part · Follow-ups), Nigerian public holidays worked out automatically every year (fixed dates, Easter, the Islamic holidays estimated from the Hijri calendar beyond the published table, and the usual next weekday off when a fixed holiday falls on a weekend — all overridable), the **Customer care** and **Customer care lead** roles (work requests, never the set-up), complaints and HR questions routed to the matching team (kinds `customer_care` and `hr`), customers opening requests and complaints themselves in the customer portal, and hand-overs that are never lost (an older database is written the older way; if the save fails the team is emailed the details).
 
 > v37 adds: who is writing (customer, colleague or both) and answers from proven senders' own records with exact links, the colleagues' Get help desk, and checking Enyo's replies with the gap report — see [ENYO_CONTEXT_AND_INTEGRITY.md](ENYO_CONTEXT_AND_INTEGRITY.md).
 
@@ -27,7 +29,7 @@ logged call ────────┘   team · priority ·   ├─ Enyo read
 ## Teams (queues) and addresses
 
 * Each team has a kind (general, warranty, technical, customer care, parts,
-  sales), optional branch, targets per priority, a signature, whether to send
+  sales, staff help, HR & people), optional branch, targets per priority, a signature, whether to send
   an acknowledgement, and Enyo's part:
   * **People only** — Enyo stays out.
   * **Enyo drafts, people send** — default.
@@ -39,6 +41,26 @@ logged call ────────┘   team · priority ·   ├─ Enyo read
   so customers' answers come back to it.
 * Colleagues on a team share new requests: the least busy person who is not
   away and under their capacity gets the next one.
+
+## Who picks requests up
+
+* **Customer care** (role `customer-care`, branch) and **Customer care lead**
+  (`customer-care-lead`, whole organisation) work the Support centre; they do
+  not see the set-up. Receptionists, workshop managers and branch
+  administrators can also work it.
+* An administrator ticks who works each team (Settings → Support centre →
+  Teams → the team → Who works it). New requests go to the least busy person
+  there who is not away.
+* **Customers**: email, the website chat (Enyo hands over with their consent),
+  the customer-portal chat, or *Help & support → Ask a question or make a
+  complaint* in the portal. A complaint goes to the Customer care team.
+* **Colleagues**: *Help centre → Ask a person* in the portal. "What is it
+  about?" decides the team: using the portal → Staff help (administrators);
+  an error → the EJO platform team; a complaint → Customer care; HR & people →
+  the HR team (a team of kind *HR & people*, worked by HR staff given the
+  Customer care role), or Staff help when there is none. Requests stay
+  private to the person, that team and support managers. Wrongdoing goes to
+  *Speak up* (Integrity watch) instead.
 
 ## Rules that keep it safe
 
