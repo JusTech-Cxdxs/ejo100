@@ -17,6 +17,8 @@ import { readAddresses, splitAttachments, type Address, type AttachmentInfo } fr
 import { MAIL_CATEGORIES, readActions, readRefs, type MailAction, type MailCategory } from '@/lib/mail/brief-core';
 import { resolveMailRefs, type ResolvedRef } from '@/lib/mail/refs';
 import { briefNewMessages, suspiciousEmail } from '@/lib/mail/brief';
+import { MAIL_STYLES, renderPersonalMail, type MailStyle } from '@/lib/email-templates/personal-mail';
+import { portalBaseUrl } from '@/lib/portal-url';
 
 /**
  * The person's OWN work mailbox. Every action here works only on the
@@ -333,8 +335,36 @@ function pushFlags(accountId: string, uid: number, f: { seen?: boolean; flagged?
   });
 }
 
-/** Sends through the person's own mail server. Nothing is stored here; the original is marked answered on the server. */
-export async function sendMyMail(input: { to?: string; cc?: string; subject?: string; body?: string; inReplyTo?: string }): Promise<void> {
+/** The letterhead for a person's email: their organisation, branch and department, and their own details. */
+async function letterhead(m: Me, address: string, displayName: string | null) {
+  const [user, org] = await Promise.all([
+    prisma.user.findUnique({ where: { id: m.id }, select: { fullName: true, phone: true, department: { select: { name: true } }, branch: { select: { name: true, address: true, hotlines: true, email: true } } } }),
+    m.organisationId ? prisma.organisation.findUnique({ where: { id: m.organisationId }, select: { name: true } }) : null,
+  ]);
+  return {
+    companyName: org?.name ?? process.env.NEXT_PUBLIC_ORGANISATION_NAME ?? 'EJO 100',
+    logoUrl: `${portalBaseUrl()}/images/logo/email-logo.png`,
+    sender: { name: displayName || user?.fullName || address, department: user?.department?.name ?? null, branch: user?.branch?.name ?? null, phone: user?.phone ?? null, email: address },
+    branchContact: user?.branch ? { address: user.branch.address, phones: user.branch.hotlines, email: user.branch.email } : undefined,
+  };
+}
+
+const styleOf = (v: unknown): MailStyle => ((MAIL_STYLES as readonly string[]).includes(String(v)) ? (v as MailStyle) : 'standard');
+
+/** What the email will look like in the recipient's inbox (nothing is sent). */
+export async function previewMyMail(input: { subject?: string; body?: string; style?: string }): Promise<{ html: string | null }> {
+  const m = await me();
+  const box = await myMailbox(m);
+  if (!box) return { html: null };
+  const style = styleOf(input?.style);
+  if (style === 'plain') return { html: null };
+  const subject = String(input?.subject ?? '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, SUBJECT_MAX) || '(no subject)';
+  const body = String(input?.body ?? '').replace(/\r\n?/g, '\n').slice(0, BODY_MAX);
+  return { html: renderPersonalMail({ subject, body, style, ...(await letterhead(m, box.address, box.displayName)) }) };
+}
+
+/** Sends through the person's own mail server, in the organisation's letterhead unless they chose plain text. Nothing is stored here; the original is marked answered on the server. */
+export async function sendMyMail(input: { to?: string; cc?: string; subject?: string; body?: string; inReplyTo?: string; style?: string }): Promise<void> {
   const m = await me();
   const box = await myMailbox(m);
   if (!box) throw new MailError('Connect your mailbox first.');
@@ -349,6 +379,8 @@ export async function sendMyMail(input: { to?: string; cc?: string; subject?: st
   if (body.length > BODY_MAX) throw new MailError('This message is too long. Shorten it and try again.');
   if (!withinLimit(`mail-send:${m.id}`, 30, 10 * 60_000)) throw new MailError('You have sent a lot of messages in the last few minutes. Wait a little, then try again.');
   const original = input?.inReplyTo ? (await myMessage(m, input.inReplyTo)).msg : null;
+  const style = styleOf(input?.style);
+  const htmlBody = style === 'plain' ? undefined : renderPersonalMail({ subject, body, style, ...(await letterhead(m, box.address, box.displayName)) });
   const account = await prisma.mailAccount.findUnique({ where: { id: box.id }, select: ACCOUNT_SECRET_SELECT });
   if (!account) throw new MailError('Connect your mailbox first.');
   let transport: Awaited<ReturnType<typeof smtpTransport>> | null = null;
@@ -362,6 +394,8 @@ export async function sendMyMail(input: { to?: string; cc?: string; subject?: st
       cc: cc.valid.length ? cc.valid : undefined,
       subject,
       text: body,
+      ...(htmlBody ? { html: htmlBody } : {}),
+      ...(style === 'urgent' ? { priority: 'high' as const } : {}),
       ...(original?.messageId ? { inReplyTo: original.messageId, references } : {}),
     }), 30_000, 'send');
   } catch (err) {

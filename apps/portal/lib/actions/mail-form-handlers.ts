@@ -73,7 +73,7 @@ export async function messageFlagsFormAction(f: FormData) {
 }
 
 export async function sendMailFormAction(f: FormData) {
-  const input = { to: str(f, 'to'), cc: str(f, 'cc'), subject: str(f, 'subject'), body: String(f.get('body') ?? ''), inReplyTo: str(f, 'inReplyTo') || undefined };
+  const input = { to: str(f, 'to'), cc: str(f, 'cc'), subject: str(f, 'subject'), body: String(f.get('body') ?? ''), inReplyTo: str(f, 'inReplyTo') || undefined, style: str(f, 'style') || 'standard' };
   try {
     await sendMyMail(input);
   } catch (err) {
@@ -84,6 +84,7 @@ export async function sendMailFormAction(f: FormData) {
     if (input.subject) keep.set('subject', input.subject.slice(0, 300));
     if (input.body) keep.set('body', input.body.slice(0, 6000));
     if (input.inReplyTo) keep.set('inReplyTo', input.inReplyTo);
+    keep.set('style', input.style);
     keep.set('kept', '1');
     fail(`/mail/compose?${keep.toString()}`, err, 'The message could not be sent.');
   }
