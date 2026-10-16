@@ -149,13 +149,16 @@ export async function setMySupportAwayAction(f: FormData): Promise<void> {
 // ── Set-up (Settings → Support centre) ─────────────────────────────────
 
 const SETUP = '/settings/support';
-function setupBack(err: unknown, fallback: string, hash = ''): never {
-  redirect(`${SETUP}?error=${encodeURIComponent(friendlyError(err, fallback, 'support-form-handlers'))}${hash}`);
+/** Each set-up page is its own address; a safe id only (never a redirect elsewhere). */
+const teamPage = (id: string) => (/^[A-Za-z0-9_-]{1,40}$/.test(id) ? `${SETUP}/teams/${id}` : `${SETUP}/teams`);
+const SECTION_PAGE: Record<string, string> = { hours: `${SETUP}/hours`, holidays: `${SETUP}/hours`, enyo: `${SETUP}/enyo`, followups: `${SETUP}/follow-ups` };
+function setupBack(err: unknown, fallback: string, page = SETUP, hash = ''): never {
+  redirect(`${page}?error=${encodeURIComponent(friendlyError(err, fallback, 'support-form-handlers'))}${hash}`);
 }
-function setupDone(status: string, hash = ''): never {
-  revalidatePath(SETUP);
+function setupDone(status: string, page = SETUP, hash = ''): never {
+  revalidatePath(SETUP, 'layout');
   revalidatePath('/crm/support');
-  redirect(`${SETUP}?status=${status}${hash}`);
+  redirect(`${page}?status=${status}${hash}`);
 }
 
 const minutes = (f: FormData, k: string, unit: 'h' | 'm') => {
@@ -173,9 +176,9 @@ export async function saveSupportQueueAction(f: FormData): Promise<void> {
       autoAcknowledge: f.get('autoAcknowledge') === 'on', isDefault: f.get('isDefault') === 'on', active: f.get('active') !== 'off', signature: str(f, 'signature'), targets,
     })).id;
   } catch (err) {
-    setupBack(err, 'Could not save the team.', id ? `#queue-${id}` : '#new-queue');
+    setupBack(err, 'Could not save the team.', id ? teamPage(id) : `${SETUP}/teams`, id ? '#details' : '#new-queue');
   }
-  setupDone('queue_saved', `#queue-${id}`);
+  setupDone('queue_saved', teamPage(id));
 }
 
 export async function setSupportQueueMembersAction(f: FormData): Promise<void> {
@@ -184,9 +187,9 @@ export async function setSupportQueueMembersAction(f: FormData): Promise<void> {
     const members = f.getAll('member').map(String).map((userId) => ({ userId, capacity: Number(str(f, `capacity_${userId}`)) || 15 }));
     await setSupportQueueMembers(queueId, members);
   } catch (err) {
-    setupBack(err, 'Could not save who works this team.', `#queue-${queueId}`);
+    setupBack(err, 'Could not save who works this team.', teamPage(queueId), '#people');
   }
-  setupDone('members_saved', `#queue-${queueId}`);
+  setupDone('members_saved', teamPage(queueId), '#people');
 }
 
 export async function connectSupportMailboxAction(f: FormData): Promise<void> {
@@ -197,36 +200,51 @@ export async function connectSupportMailboxAction(f: FormData): Promise<void> {
       smtpHost: str(f, 'smtpHost'), smtpPort: str(f, 'smtpPort'), smtpSecurity: str(f, 'smtpSecurity'), username: str(f, 'username'), password: String(f.get('password') ?? ''),
     });
   } catch (err) {
-    setupBack(err, 'Could not connect the mailbox.', `#queue-${queueId}`);
+    setupBack(err, 'Could not connect the mailbox.', teamPage(queueId), '#addresses');
   }
-  setupDone('mailbox_connected', `#queue-${queueId}`);
+  setupDone('mailbox_connected', teamPage(queueId), '#addresses');
 }
 
 export async function changeSupportMailboxAction(f: FormData): Promise<void> {
   const action = str(f, 'do') as 'pause' | 'resume' | 'remove';
+  const back = teamPage(str(f, 'queueId'));
   try {
     await changeSupportMailbox(str(f, 'mailboxId'), action);
   } catch (err) {
-    setupBack(err, 'Could not change the mailbox.');
+    setupBack(err, 'Could not change the mailbox.', back, '#addresses');
   }
-  setupDone(`mailbox_${action}`);
+  setupDone(`mailbox_${action}`, back, '#addresses');
 }
 
+/** One set-up page's rules (section = hours | holidays | enyo | followups); the other pages' rules stay as they are. */
 export async function saveSupportSettingsAction(f: FormData): Promise<void> {
+  const section = str(f, 'section');
+  const page = SECTION_PAGE[section] ?? `${SETUP}/hours`;
   try {
-    const hours: Record<string, [string, string]> = {};
-    for (const d of ['1', '2', '3', '4', '5', '6', '7']) {
-      if (f.get(`open_${d}`) !== 'on') continue;
-      hours[d] = [str(f, `from_${d}`), str(f, `to_${d}`)];
+    if (section === 'hours') {
+      const hours: Record<string, [string, string]> = {};
+      for (const d of ['1', '2', '3', '4', '5', '6', '7']) {
+        if (f.get(`open_${d}`) !== 'on') continue;
+        hours[d] = [str(f, `from_${d}`), str(f, `to_${d}`)];
+      }
+      await saveSupportSettings({ hours });
+    } else if (section === 'holidays') {
+      await saveSupportSettings({
+        holidayCalendar: f.get('calendar') === 'on' ? 'NG' : null,
+        holidays: f.getAll('extraDay').map(String),
+        holidaysOff: f.getAll('openOn').map(String),
+      });
+    } else if (section === 'enyo') {
+      await saveSupportSettings({ aiThreshold: Number(str(f, 'aiThreshold')) / 100 });
+    } else if (section === 'followups') {
+      await saveSupportSettings({ nudgeAfterHours: Number(str(f, 'nudgeAfterHours')), autoResolveDays: Number(str(f, 'autoResolveDays')), closeAfterDays: Number(str(f, 'closeAfterDays')), csatEnabled: f.get('csatEnabled') === 'on' });
+    } else {
+      throw new Error('Nothing to save.');
     }
-    await saveSupportSettings({
-      hours, holidays: str(f, 'holidays').split(/[\s,;]+/).filter(Boolean), aiThreshold: Number(str(f, 'aiThreshold')) / 100,
-      nudgeAfterHours: Number(str(f, 'nudgeAfterHours')), autoResolveDays: Number(str(f, 'autoResolveDays')), closeAfterDays: Number(str(f, 'closeAfterDays')), csatEnabled: f.get('csatEnabled') === 'on',
-    });
   } catch (err) {
-    setupBack(err, 'Could not save the settings.', '#hours');
+    setupBack(err, 'Could not save the settings.', page);
   }
-  setupDone('settings_saved', '#hours');
+  setupDone(`${section}_saved`, page);
 }
 
 /** A person's check of an Enyo reply (the Enyo replies page). */

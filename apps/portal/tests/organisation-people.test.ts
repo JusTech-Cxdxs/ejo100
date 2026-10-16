@@ -46,3 +46,38 @@ test('citation marks never reach the reader', () => {
   assert.doesNotMatch(JSON.stringify(blocks), /【/);
   assert.equal(stripCitationMarks(read('../website/lib/enyo/citations.ts').includes('【') ? 'x【y】' : ''), 'x');
 });
+
+test('support holidays: Nigerian calendar worked out every year, own days added, days opened anyway removed', async () => {
+  const { holidayEntries, effectiveHolidays } = await import('../lib/support/holidays');
+  const { nigerianHolidays, islamicHolidaysEstimated } = await import('../lib/nigeria-calendar');
+  const y2026 = holidayEntries('NG', [], [], [2026]).map((e) => e.date);
+  for (const d of ['2026-01-01', '2026-04-03', '2026-04-06', '2026-05-01', '2026-06-12', '2026-10-01', '2026-12-25', '2026-12-26']) assert.ok(y2026.includes(d), d);
+  // Christmas 2027 is a Saturday, Boxing Day a Sunday: Monday 27 and Tuesday 28 are given off (provisional).
+  const h2027 = nigerianHolidays(2027, { observed: true });
+  assert.equal(h2027.get('2027-12-27')?.provisional, true);
+  assert.equal(h2027.get('2027-12-28')?.provisional, true);
+  // Without "observed" the plain calendar is unchanged.
+  assert.equal(nigerianHolidays(2027).has('2027-12-27'), false);
+  // Years beyond the table: Islamic holidays are estimated from the Hijri calendar.
+  const est = islamicHolidaysEstimated(2030).map(([, n]) => n);
+  assert.ok(est.includes('Eid-el-Fitr') && est.includes('Eid-el-Kabir') && est.includes('Eid-el-Maulud'), est.join(','));
+  assert.ok(nigerianHolidays(2030).size >= 12);
+  // Own closed day added; a holiday the organisation opens on removed; no calendar → own days only.
+  const eff = effectiveHolidays('NG', ['2026-11-20'], ['2026-12-26'], new Date('2026-10-16T09:00:00Z'));
+  assert.ok(eff.includes('2026-11-20'));
+  assert.ok(!eff.includes('2026-12-26'));
+  assert.ok(eff.includes('2025-12-25') && eff.includes('2027-01-01'));
+  assert.deepEqual(effectiveHolidays(null, ['2026-11-20', 'bad'], [], new Date('2026-10-16T09:00:00Z')), ['2026-11-20']);
+});
+
+test('support set-up: separate pages, each form saves only its own part', () => {
+  const h = read('lib/actions/support-form-handlers.ts');
+  for (const s of ["section === 'hours'", "section === 'holidays'", "section === 'enyo'", "section === 'followups'"]) assert.ok(h.includes(s), s);
+  const admin = read('lib/actions/support-admin.ts');
+  assert.match(admin, /if \(input\.hours !== undefined\)/);
+  for (const page of ['page.tsx', 'teams/page.tsx', 'teams/[id]/page.tsx', 'hours/page.tsx', 'enyo/page.tsx', 'follow-ups/page.tsx']) {
+    const src = read(`app/(app)/settings/support/${page}`);
+    assert.match(src, /guardPage\('support\.manage'/, page);
+  }
+  assert.doesNotMatch(read('app/(app)/settings/support/hours/page.tsx'), /YYYY-MM-DD, separated by commas/);
+});

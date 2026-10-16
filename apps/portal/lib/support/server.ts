@@ -7,6 +7,7 @@ import 'server-only';
  *
  * Organisation-fenced everywhere: every query carries the organisation.
  */
+import { asCalendar, effectiveHolidays, isIsoDay, type HolidayCalendar } from './holidays';
 import { randomBytes } from 'node:crypto';
 import { prisma, type Prisma } from '@ejo/database';
 import { asData, complete } from '@ejo/enyo';
@@ -30,13 +31,26 @@ import { recordsReadyFor, senderFacts, SENDER_KIND_LABEL, type SenderContext } f
 
 // ─────────────────────────────────────────────────────────── settings & queues
 
-export type SupportSettings = { hours: Hours; holidays: string[]; aiThreshold: number; nudgeAfterHours: number; autoResolveDays: number; closeAfterDays: number; csatEnabled: boolean };
+/**
+ * holidays: every closed day the targets and opening-hours checks use (the
+ * country calendar + the organisation's own days − days it opens anyway).
+ * customHolidays / holidaysOff / holidayCalendar: what the administrator set.
+ */
+export type SupportSettings = { hours: Hours; holidays: string[]; holidayCalendar: HolidayCalendar | null; customHolidays: string[]; holidaysOff: string[]; aiThreshold: number; nudgeAfterHours: number; autoResolveDays: number; closeAfterDays: number; csatEnabled: boolean };
+
+function holidaysOf(s: { holidays?: string[]; holidayCalendar?: string | null; holidaysOff?: string[] } | null) {
+  const customHolidays = (s?.holidays ?? []).filter(isIsoDay);
+  // No row yet (or a database a version behind): the Nigerian calendar by default.
+  const holidayCalendar = s && 'holidayCalendar' in s ? asCalendar(s.holidayCalendar) : 'NG';
+  const holidaysOff = (s?.holidaysOff ?? []).filter(isIsoDay);
+  return { holidays: effectiveHolidays(holidayCalendar, customHolidays, holidaysOff), holidayCalendar, customHolidays, holidaysOff };
+}
 
 export async function supportSettings(organisationId: string): Promise<SupportSettings> {
   const s = await prisma.supportSetting.findUnique({ where: { organisationId } }).catch(() => null);
   return {
     hours: s?.hours ? readHours(s.hours) : { ...DEFAULT_HOURS },
-    holidays: (s?.holidays ?? []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)),
+    ...holidaysOf(s),
     aiThreshold: Math.min(0.99, Math.max(0.5, s?.aiThreshold ?? 0.75)),
     nudgeAfterHours: Math.min(240, Math.max(12, s?.nudgeAfterHours ?? 48)),
     autoResolveDays: Math.min(30, Math.max(2, s?.autoResolveDays ?? 7)),
