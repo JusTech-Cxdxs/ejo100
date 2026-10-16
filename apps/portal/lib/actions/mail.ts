@@ -19,6 +19,7 @@ import { resolveMailRefs, type ResolvedRef } from '@/lib/mail/refs';
 import { briefNewMessages, MAX_TRIES, suspiciousEmail } from '@/lib/mail/brief';
 import { MAIL_STYLES, renderPersonalMail, type MailStyle } from '@/lib/email-templates/personal-mail';
 import { portalBaseUrl } from '@/lib/portal-url';
+import { PLATFORM } from '@/lib/brand';
 
 /**
  * The person's OWN work mailbox. Every action here works only on the
@@ -345,7 +346,7 @@ async function letterhead(m: Me, address: string, displayName: string | null) {
     m.organisationId ? prisma.organisation.findUnique({ where: { id: m.organisationId }, select: { name: true } }) : null,
   ]);
   return {
-    companyName: org?.name ?? process.env.NEXT_PUBLIC_ORGANISATION_NAME ?? 'EJO 100',
+    companyName: org?.name ?? process.env.NEXT_PUBLIC_ORGANISATION_NAME ?? PLATFORM.name,
     logoUrl: `${portalBaseUrl()}/images/logo/email-logo.png`,
     sender: { name: displayName || user?.fullName || address, department: user?.department?.name ?? null, branch: user?.branch?.name ?? null, phone: user?.phone ?? null, email: address },
     branchContact: user?.branch ? { address: user.branch.address, phones: user.branch.hotlines, email: user.branch.email } : undefined,

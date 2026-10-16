@@ -10,6 +10,7 @@ import { writeAuditLog } from '@/lib/workshop-core';
 import { loadServiceTracking } from '@/lib/vehicle-service-cycle';
 import { sendEmail } from '@/lib/email';
 import { renderServiceReminderEmail, serviceReminderSubject, type ServiceReminderStage } from '@/lib/email-templates/service-reminder';
+import { PLATFORM } from '@/lib/brand';
 
 
 export type VehicleNeedingReminder = {
@@ -102,7 +103,7 @@ export async function sendServiceReminder(need: VehicleNeedingReminder, trigger?
       // The customer's own account — never a staff-portal page they can't open.
       vehicleUrl: `${websiteUrl}/customer-portal/dashboard`,
       logoUrl: `${websiteUrl}/images/logo/email-logo.png`,
-      companyName: branchContext?.businessUnit.organisation.name ?? 'EJO 100',
+      companyName: branchContext?.businessUnit.organisation.name ?? PLATFORM.name,
       branchName: branchContext?.name ?? '',
     }),
   );

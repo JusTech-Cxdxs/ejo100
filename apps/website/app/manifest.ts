@@ -1,11 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { siteConfig } from '@/lib/site-config';
 
-/** A home-screen name has room for about 12 characters; a longer one is cut to its first word. */
-function shortName(name: string): string {
-  return name.length <= 12 ? name : (name.split(/\s+/)[0] ?? name).slice(0, 12);
-}
-
 /**
  * The customer portal as an installable app: it opens on the customer's
  * dashboard (the sign-in page when signed out) and stays inside
@@ -17,7 +12,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/customer-portal/dashboard',
     name: `${name} Customer Portal`,
-    short_name: shortName(name),
+    short_name: siteConfig.appShortName,
     description: siteConfig.description || `Your vehicles, jobs and payments with ${name}.`,
     start_url: '/customer-portal/dashboard',
     scope: '/customer-portal',

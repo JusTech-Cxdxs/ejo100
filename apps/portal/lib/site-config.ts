@@ -6,11 +6,14 @@
  * Set NEXT_PUBLIC_ORGANISATION_NAME per deployment; the default is the
  * product's own name so a fresh install never shows another company's.
  */
-const organisationName = process.env.NEXT_PUBLIC_ORGANISATION_NAME?.trim() || 'EJO 100';
+import { appShortName, PLATFORM } from './brand';
+const organisationName = process.env.NEXT_PUBLIC_ORGANISATION_NAME?.trim() || PLATFORM.name;
 
 export const portalConfig = {
-  productName: 'EJO 100 Enterprise Platform',
+  productName: PLATFORM.fullName,
   companyName: organisationName,
   organisationName,
-  poweredBy: 'Powered by EJO 100 Enterprise Platform',
+  poweredBy: PLATFORM.poweredBy,
+  /** The installed app's home-screen name: NEXT_PUBLIC_APP_SHORT_NAME, or the organisation's initials (KCG). */
+  appShortName: appShortName(organisationName, process.env.NEXT_PUBLIC_APP_SHORT_NAME),
 };

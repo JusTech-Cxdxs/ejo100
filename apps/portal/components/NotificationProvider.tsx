@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { useRouter } from 'next/navigation';
 import { useChangePings } from '@/lib/hooks/use-change-pings';
 import { getNotificationSummary, markNotificationsRead, setNotificationsMuted, type NotificationSummary } from '@/lib/actions/notifications';
+import { PLATFORM } from '@/lib/brand';
 
 /** How often an open, visible tab asks "has anything changed?" (a tiny GET). */
 const PULSE_MS = 10000;
@@ -353,7 +354,7 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     if (key === seenAlert.current) return;
     seenAlert.current = key;
     if (document.visibilityState === 'visible' || mutedRef.current || !('Notification' in window) || Notification.permission !== 'granted') return;
-    const title = 'title' in top ? String(top.title) : 'EJO 100';
+    const title = 'title' in top ? String(top.title) : PLATFORM.name;
     const url = 'url' in top ? String((top as { url: string }).url) : '/notifications?tab=broadcasts';
     try {
       const n = new Notification(title, { body: summary.total > 1 ? `${summary.total} things need your attention` : 'Needs your attention', tag: 'ejo100', icon: '/images/logo/logo.png' });

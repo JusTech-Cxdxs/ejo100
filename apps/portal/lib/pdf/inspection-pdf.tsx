@@ -1,4 +1,5 @@
 import { Document, Page, Text, View, Image, StyleSheet } from '@react-pdf/renderer';
+import { PLATFORM } from '@/lib/brand';
 
 const styles = StyleSheet.create({
   page: { paddingTop: 32, paddingBottom: 32, paddingHorizontal: 36, fontSize: 10, fontFamily: 'Helvetica', color: '#0F172A' },
@@ -218,7 +219,7 @@ export function InspectionPdf(props: InspectionPdfProps) {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>{organisation.legalName ?? organisation.name}{organisation.hqAddress ? ` · ${organisation.hqAddress}` : ''}</Text>
-          <Text style={styles.footerCredit}>Powered by EJO 100 Enterprise Platform</Text>
+          <Text style={styles.footerCredit}>{PLATFORM.poweredBy}</Text>
         </View>
       </Page>
     </Document>

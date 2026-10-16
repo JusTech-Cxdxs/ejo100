@@ -14,7 +14,8 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "brand:sync": "cp packages/enyo/src/brand.ts apps/portal/lib/brand.ts && cp packages/enyo/src/brand.ts apps/website/lib/brand.ts"
   },
   "devDependencies": {
     "prettier": "^3.9.10",

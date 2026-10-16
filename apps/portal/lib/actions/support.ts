@@ -14,6 +14,7 @@ import {
   cleanReply, filterWhere, isSupportStatus, REPLY_MAX, SUPPORT_STATUS_FOR_CUSTOMER, SUPPORT_STATUS_LABEL, supportFilter, ticketReachWhere, waitLabel,
   type SupportFilter, type SupportStatus,
 } from '@/lib/support-rules';
+import { PLATFORM } from '@/lib/brand';
 
 /**
  * The support inbox: customers and website visitors handed over by Enyo.
@@ -233,7 +234,7 @@ export async function replyToSupportTicket(ticketId: string, body: string, then:
         statusLabel: SUPPORT_STATUS_FOR_CUSTOMER[status],
         portalUrl: t.customerId && site ? `${site}/customer-portal/dashboard/support` : null,
         logoUrl: `${site || portalBaseUrl()}/images/logo/email-logo.png`,
-        companyName: org?.name ?? 'EJO 100',
+        companyName: org?.name ?? PLATFORM.name,
         branchName: branch?.name ?? null,
       });
       await sendEmail(to, m.subject, m.html);

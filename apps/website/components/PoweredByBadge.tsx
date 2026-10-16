@@ -1,3 +1,4 @@
+import { PLATFORM } from '@/lib/brand';
 export function PoweredByBadge() {
   return (
     <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
@@ -10,7 +11,7 @@ export function PoweredByBadge() {
         />
         <circle cx="12" cy="12" r="3" fill="var(--ejo-accent)" />
       </svg>
-      <span className="ejo-shimmer text-xs font-semibold">Powered by EJO 100 Enterprise Platform</span>
+      <span className="ejo-shimmer text-xs font-semibold">{PLATFORM.poweredBy}</span>
     </div>
   );
 }

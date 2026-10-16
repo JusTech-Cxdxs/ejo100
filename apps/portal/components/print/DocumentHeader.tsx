@@ -1,3 +1,4 @@
+import { PLATFORM } from '@/lib/brand';
 type OrganisationInfo = {
   name: string;
   legalName: string | null;
@@ -151,7 +152,7 @@ export function DocumentFooter({ organisation }: { organisation: OrganisationInf
         {organisation.legalName ?? organisation.name}
         {organisation.hqAddress ? ` · ${organisation.hqAddress}` : ''}
       </div>
-      <div style={{ fontSize: '8px', color: '#CBD5E1', marginTop: '4px' }}>Powered by EJO 100 Enterprise Platform</div>
+      <div style={{ fontSize: '8px', color: '#CBD5E1', marginTop: '4px' }}>{PLATFORM.poweredBy}</div>
     </div>
   );
 }

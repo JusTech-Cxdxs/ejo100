@@ -5,6 +5,7 @@ import nodemailer from 'nodemailer';
 import type { MailSecurity } from './rules';
 import { isPrivateAddress } from './net';
 import { mailAllowInsecure } from './config';
+import { PLATFORM } from '@/lib/brand';
 
 /**
  * Connections to a person's own mail servers (IMAP to read, SMTP to send).
@@ -94,7 +95,7 @@ export async function openImap(s: ServerSettings, timeoutMs = 20_000): Promise<I
     greetingTimeout: 8_000,
     socketTimeout: 30_000,
     tls: { servername: isIP(s.host) ? undefined : s.host, rejectUnauthorized: !insecure, minVersion: 'TLSv1.2' },
-    clientInfo: { name: 'EJO 100', vendor: 'Just Technologies' },
+    clientInfo: { name: PLATFORM.name, vendor: PLATFORM.makerShort },
   });
   // A dropped connection later on must never crash the server process.
   client.on('error', () => undefined);

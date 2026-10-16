@@ -14,6 +14,7 @@
  * escapes every interpolated value unless it was produced by another helper
  * here. That makes it hard to put unescaped customer input into an email.
  */
+import { PLATFORM } from '../brand';
 
 /* ------------------------------------------------------------------ */
 /* Safe HTML building                                                  */
@@ -284,7 +285,7 @@ export type EmailLayoutOptions = {
 
 function displayName(companyName: string): string {
   const n = (companyName ?? '').trim();
-  return n || 'EJO 100';
+  return n || PLATFORM.name;
 }
 
 function wordmark(name: string, logoUrl: string): SafeHtml {
@@ -513,7 +514,7 @@ ${raw('<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96
               <p class="ejo-body" style="margin: 0 0 2px 0; font-size: 13px; font-weight: 700; color: ${raw(C.body)};">${name}${context[0] ? html`<span class="ejo-muted" style="font-weight: 400; color: ${raw(C.muted)};"> &middot; ${context[0]}</span>` : ''}</p>${contactLine.length ? html`
               <p class="ejo-muted" style="margin: 0 0 2px 0; color: ${raw(C.muted)};">${contactLine.join(' · ')}</p>` : ''}
               <p class="ejo-muted" style="margin: 10px 0 0 0; color: ${raw(C.muted)};">${reason}</p>
-              <p class="ejo-muted" style="margin: 14px 0 0 0; font-size: 11px; letter-spacing: 0.04em; color: ${raw(C.faint)};">Powered by EJO 100</p>
+              <p class="ejo-muted" style="margin: 14px 0 0 0; font-size: 11px; letter-spacing: 0.04em; color: ${raw(C.faint)};">${PLATFORM.poweredBy}</p>
             </td>
           </tr>
         </table>

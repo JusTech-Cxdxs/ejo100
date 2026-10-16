@@ -4,6 +4,7 @@ import { prisma } from '@ejo/database';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { splitLines, durationLabel } from '@/lib/warranty-state';
+import { PLATFORM } from '@/lib/brand';
 
 /**
  * Tells the warranty department (Warranty HOD + Warranty Officers at the
@@ -64,7 +65,7 @@ export async function notifyWarrantyDepartmentOfPartWarranty(opts: { partId: str
           lines,
           actionUrl: `${portalUrl}/inventory/parts/${part.id}#warranty`,
           logoUrl: `${portalUrl}/images/logo/email-logo.png`,
-          companyName: org?.name ?? 'EJO 100',
+          companyName: org?.name ?? PLATFORM.name,
           branchName: branch?.name ?? '',
         }),
       );

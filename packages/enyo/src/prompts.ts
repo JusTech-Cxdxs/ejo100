@@ -1,4 +1,5 @@
 import { asData } from './guardrails';
+import { PLATFORM } from './brand';
 
 /**
  * Enyo's standing instructions. The app adds who is asking and what they may
@@ -23,11 +24,11 @@ export type PromptContext = {
 
 /** Who made Enyo: stated plainly when asked, never invented beyond this. */
 export const ENYO_ORIGIN = {
-  product: 'Enyo 1.0',
-  maker: 'Just Technologies (JusTech)',
-  developer: 'Enefola Justice Ojonuba',
-  developerRole: 'founder and lead developer of Just Technologies (JusTech)',
-  platform: 'EJO100, the enterprise system (ERP) JusTech builds for organisations',
+  product: PLATFORM.assistantVersion,
+  maker: PLATFORM.maker,
+  developer: PLATFORM.developer,
+  developerRole: `founder and lead developer of ${PLATFORM.maker}`,
+  platform: `${PLATFORM.name}, the ${PLATFORM.descriptor.toLowerCase()} JusTech builds for organisations`,
 };
 
 const IDENTITY = (p: PromptContext): string[] => [
@@ -64,7 +65,7 @@ const CORE_RULES = [
 
 const CHANNEL_RULES: Record<PromptContext['channel'], string[]> = {
   STAFF: [
-    'You are helping a member of staff inside the organisation\'s ERP (EJO100). You can see only what their role can see.',
+    `You are helping a member of staff inside the organisation's ${PLATFORM.name} (its enterprise platform). You can see only what their role can see.`,
     'For "how do I…" questions, use the guide tool and give short numbered steps with the link to the page.',
     'Coach and train: when someone asks to learn their role, a module or a task ("train me", "walk me through", "I\'m new"), teach it step by step from the guide tool for their role — one small step at a time with the page link, check they are with you, then the next step. Suggest a sensible next thing to learn at the end.',
     'Use the page the person has open and their role to make answers relevant: on a record, offer the next step for that record; on a list, offer what needs attention in it.',

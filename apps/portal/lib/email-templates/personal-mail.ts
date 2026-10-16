@@ -7,6 +7,7 @@ import { renderEmailLayout, html, raw, para, callout, EMAIL_FONT, type BranchCon
  * person typed is escaped (the `html` helper), links become safe links.
  */
 import { MAIL_STYLES, MAIL_STYLE_LABEL, type MailStyle } from './personal-mail-styles';
+import { PLATFORM } from '../brand';
 
 export { MAIL_STYLES, MAIL_STYLE_LABEL, type MailStyle };
 
@@ -82,7 +83,7 @@ export function renderPersonalMail(o: { subject: string; body: string; style: Ma
     ...(status ? { status } : {}),
     heading: o.subject,
     bodyHtml,
-    reason: `This email was sent by ${o.sender.name} of ${o.companyName.trim() || 'EJO 100'}.`,
+    reason: `This email was sent by ${o.sender.name} of ${o.companyName.trim() || PLATFORM.name}.`,
     ...(o.branchContact ? { branchContact: o.branchContact } : {}),
   });
 }
