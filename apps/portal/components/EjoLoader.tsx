@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { PLATFORM } from '@/lib/brand';
 
 /**
  * ============================================================================
@@ -48,7 +49,7 @@ export function EjoLoader() {
           </svg>
         </motion.div>
       </div>
-      <p className="ejo-shimmer absolute bottom-16 text-sm font-semibold">EJO 100 Enterprise Platform</p>
+      <p className="ejo-shimmer absolute bottom-16 text-sm font-semibold">{PLATFORM.fullName}</p>
     </div>
   );
 }

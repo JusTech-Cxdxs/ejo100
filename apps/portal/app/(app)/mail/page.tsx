@@ -9,6 +9,8 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { MailSync } from '@/components/mail/MailSync';
 import { MailHtmlFrame } from '@/components/mail/MailHtmlFrame';
 import { BriefNow, BriefRecent } from '@/components/mail/BriefNow';
+import { MailChanged } from '@/components/mail/MailChanged';
+import { MailDigest } from '@/components/mail/MailDigest';
 import { NOT_SET_UP } from '@/lib/mail/config';
 import { CATEGORY_LABEL, MAIL_CATEGORIES, PRIORITY_LABEL, type MailCategory } from '@/lib/mail/brief-core';
 import { addressLabel, formatSize } from '@/lib/mail/parse-core';
@@ -135,6 +137,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
         actions={<><HeaderAction href="/mail/compose" icon="plus">New message</HeaderAction><HeaderAction href="/mail/settings" icon="settings" variant="secondary">Mail settings</HeaderAction></>}
         meta={<MailSync lastSync={lastSync} />}
       />
+      <MailChanged signal={`${selectedId ?? ''}:${list.counts.unread}:${list.counts.flagged}`} />
       {sp.status && STATUS[sp.status] ? <div className="max-w-3xl" role="status"><FormFeedbackBanner kind="success" message={STATUS[sp.status]!} /></div> : null}
       {sp.error ? <div className="max-w-3xl" role="alert"><FormFeedbackBanner kind="error" message={sp.error} /></div> : null}
       {account.status === 'ERROR' && account.lastError ? (
@@ -191,6 +194,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
             ) : <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Nothing marked as needing you today.</p>}
             {account.aiConsent && box.aiAvailable ? <BriefRecent /> : null}
           </section>
+          {account.aiConsent && box.aiAvailable ? <MailDigest /> : null}
         </aside>
 
         {/* Message list */}

@@ -161,6 +161,8 @@ const SKIP_MODELS = new Set([
   // replies, status changes, assignments and reminder steps write their own
   // business audit entries without the text.
   'SupportTicket', 'SupportReply', 'Reminder',
+  // Learned answers hold question and answer text; adding and removing them write their own entries.
+  'EnyoLearnedAnswer',
 ]);
 const SENSITIVE_KEY = /password|token|secret|hash/i;
 const MAX_JSON = 6000;

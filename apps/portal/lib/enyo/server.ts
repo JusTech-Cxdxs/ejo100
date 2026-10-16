@@ -5,7 +5,7 @@
  */
 import type { NextRequest } from 'next/server';
 import { prisma } from '@ejo/database';
-import { buildSystemPrompt, encodeEvent, lagosNow, SSE_HEADERS, type EnyoEvent } from '@ejo/enyo';
+import { asData, buildSystemPrompt, encodeEvent, lagosNow, SSE_HEADERS, type EnyoEvent } from '@ejo/enyo';
 import { currentAssist, getPrincipal, myOrganisationId } from '@/lib/authz/server';
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from '@/lib/authz/catalogue';
 import { portalBaseUrl } from '@/lib/portal-url';
@@ -91,7 +91,7 @@ export function roleDescription(roleSlugs: string[], isSuperAdmin: boolean): str
   return parts.join('; ') || 'No role yet — can request their own exit passes';
 }
 
-export async function staffSystemPrompt(o: { ctx: StaffCtx; settings: EnyoSettings; organisationId: string | null; memory: string[]; assistantName: string | null }): Promise<string> {
+export async function staffSystemPrompt(o: { ctx: StaffCtx; settings: EnyoSettings; organisationId: string | null; memory: string[]; assistantName: string | null; examples?: { question: string; answer: string }[] }): Promise<string> {
   const org = o.organisationId ? await prisma.organisation.findUnique({ where: { id: o.organisationId }, select: { name: true } }).catch(() => null) : null;
   const organisationName = org?.name || process.env.NEXT_PUBLIC_ORGANISATION_NAME || 'the organisation';
   const firstName = o.ctx.name.split(/\s+/)[0] || o.ctx.name;
@@ -100,6 +100,7 @@ export async function staffSystemPrompt(o: { ctx: StaffCtx; settings: EnyoSettin
     'Every tool runs as this person: if a tool refuses, they lack that right — never suggest a way around it.',
     'Reference numbers look like JC-2026-000412 (Job Card), SV-… (Vehicle Service), PRS-, EPR-, GRN-, RF-, WR-, WC-, VIS-, EP-, VX-, RT-, INC-, DLV-, CTR-, APT-, BC-.',
     ...(o.ctx.page ? [`The person has this page open: ${o.ctx.page}. "This job", "this one" or "here" usually means the record on that page (its id is the last part of the path; the tools accept it).`] : []),
+    ...(o.examples?.length ? [`Colleagues found these answers helpful for similar questions. Use them as a pattern for a good answer (steps, links, tone); check anything that may have changed with the tools, and answer the person's own question:\n${asData('helpful past answers', o.examples.map((e, i) => `Example ${i + 1}\nQ: ${e.question}\nA: ${e.answer}`).join('\n\n'))}`] : []),
     ...(o.ctx.assisted ? [`${o.assistantName ?? 'A Branch Assistant'} is helping this person in an assisted session. Help as usual, for the person. Nothing is approved during an assisted session.`] : []),
   ];
   return buildSystemPrompt({

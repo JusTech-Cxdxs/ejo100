@@ -1,4 +1,5 @@
 import { Document, Page, Text, View, Image, StyleSheet } from '@react-pdf/renderer';
+import { PLATFORM } from '@/lib/brand';
 
 const styles = StyleSheet.create({
   page: { paddingTop: 32, paddingBottom: 32, paddingHorizontal: 36, fontSize: 10, fontFamily: 'Helvetica', color: '#0F172A' },
@@ -121,6 +122,8 @@ export function EstimatePdf(props: EstimatePdfProps) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        {/* The organisation's logo, very faint, behind every page (a watermark, repeated on each page). */}
+        <Image fixed src={logoUrl} style={{ position: 'absolute', top: 250, left: 70, width: 455, opacity: 0.045 }} />
         <View style={styles.headerRow}>
           {/* @react-pdf/renderer's own Image primitive, not an HTML
               <img> — it renders directly into the PDF's content
@@ -259,7 +262,7 @@ export function EstimatePdf(props: EstimatePdfProps) {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>{organisation.legalName ?? organisation.name}{organisation.hqAddress ? ` · ${organisation.hqAddress}` : ''}</Text>
-          <Text style={styles.footerCredit}>Powered by EJO 100 Enterprise Platform</Text>
+          <Text style={styles.footerCredit}>{PLATFORM.poweredBy}</Text>
         </View>
       </Page>
     </Document>

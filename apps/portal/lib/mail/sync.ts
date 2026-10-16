@@ -99,7 +99,8 @@ export async function parseOne(f: Fetched, accountId: string) {
     subject,
     snippet: snippetOf(text),
     bodyText: withAttachments(text, attachments),
-    bodyHtml: cleaned?.html ?? null,
+    // '' = looked at, no layout to show (so older messages can be told apart: null).
+    bodyHtml: cleaned?.html ?? '',
     receivedAt,
     seen: f.flags.has('\\Seen'),
     flagged: f.flags.has('\\Flagged'),
@@ -164,10 +165,46 @@ async function readInbox(client: ImapFlow, accountId: string, deadline: number):
       }
     }
     if (Date.now() < deadline) await refreshFlags(client, accountId);
+    if (Date.now() < deadline - 4_000) await backfillLayouts(client, accountId, deadline - 2_000);
   } finally {
     lock.release();
   }
   return { added };
+}
+
+/**
+ * Messages stored before Mail kept each email's own layout (bodyHtml null):
+ * a few at a time, newest first, read again so they show with their pictures
+ * and a clean text. '' marks "looked at, nothing to show", so none is read twice.
+ */
+const BACKFILL_PER_RUN = 15;
+const BACKFILL_GROUP = 5;
+async function backfillLayouts(client: ImapFlow, accountId: string, deadline: number): Promise<void> {
+  // Best effort: never fails or delays the sync it runs inside.
+  try {
+    const todo = await prisma.mailMessage.findMany({ where: { accountId, folder: FOLDER, bodyHtml: null }, orderBy: { receivedAt: 'desc' }, take: BACKFILL_PER_RUN, select: { id: true, uid: true } });
+    for (let i = 0; i < todo.length; i += BACKFILL_GROUP) {
+      if (Date.now() > deadline - 1_500) return;
+      const group = todo.slice(i, i + BACKFILL_GROUP) as { id: string; uid: number }[];
+      const byUid = new Map(group.map((t) => [t.uid, t.id]));
+      const fetched = await fetchChunk(client, [...byUid.keys()]);
+      for (const f of fetched) {
+        const id = byUid.get(f.uid);
+        if (!id) continue;
+        byUid.delete(f.uid);
+        try {
+          const row = await parseOne(f, accountId);
+          await prisma.mailMessage.update({ where: { id }, data: { bodyHtml: row.bodyHtml, bodyText: row.bodyText, snippet: row.snippet } });
+        } catch {
+          await prisma.mailMessage.update({ where: { id }, data: { bodyHtml: '' } }).catch(() => undefined);
+        }
+      }
+      // The whole group was fetched: anything not returned is gone from the server.
+      if (byUid.size) await prisma.mailMessage.updateMany({ where: { id: { in: [...byUid.values()] }, bodyHtml: null }, data: { bodyHtml: '' } });
+    }
+  } catch (err) {
+    logFailure('Mail layout backfill failed', err);
+  }
 }
 
 /** Seen / flagged changes made elsewhere, and messages deleted on the server. */

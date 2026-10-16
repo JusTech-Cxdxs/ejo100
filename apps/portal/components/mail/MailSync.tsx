@@ -23,6 +23,7 @@ export function MailSync({ lastSync, auto = true }: { lastSync: string | null; a
     setState({ kind: 'busy', text: 'Checking for new mail…' });
     try {
       const r = await syncMyMailbox(reason);
+      window.dispatchEvent(new Event('ejo:mail-changed'));
       if (r.status === 'error') setState({ kind: 'error', text: r.message ?? 'The mailbox could not be read just now.' });
       else if (r.status === 'synced') setState({ kind: 'done', text: r.added ? `${r.added} new ${r.added === 1 ? 'message' : 'messages'}` : 'Up to date' });
       else setState({ kind: 'done', text: reason === 'refresh' ? 'Checked a moment ago — up to date' : 'Up to date' });

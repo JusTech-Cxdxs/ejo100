@@ -4,6 +4,7 @@ import { logFailure } from '@/lib/log';
 import { prisma } from '@ejo/database';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
+import { PLATFORM } from '@/lib/brand';
 
 /**
  * Tells Security (every Security Officer and the Chief Security Officer)
@@ -45,7 +46,7 @@ export async function notifyGateOfRelease(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', 
           lines,
           actionUrl: `${portal}/security/vehicles/release/${kind === 'JOB_CARD' ? 'job-card' : 'vehicle-service'}/${recordId}`,
           logoUrl: `${portal}/images/logo/email-logo.png`,
-          companyName: rec.branch.businessUnit?.organisation?.name ?? 'EJO 100',
+          companyName: rec.branch.businessUnit?.organisation?.name ?? PLATFORM.name,
           branchName: rec.branch.name,
         }));
       } catch (err) {

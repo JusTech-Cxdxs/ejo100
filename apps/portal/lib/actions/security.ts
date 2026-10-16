@@ -19,6 +19,7 @@ import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-s
 import { visitOverdueMinutes, exitPassOverdueMinutes, roadTestOverdueMinutes, durationText, INCIDENT_TYPES, contractorState, contractorAfterHoursMinutes, lagosDay } from '@/lib/security-rules';
 import { customerTotal } from '@/lib/estimate-billing';
 import { lagosYear } from '@/lib/utils/format-date';
+import { PLATFORM } from '@/lib/brand';
 
 class SecurityError extends Error {}
 
@@ -167,7 +168,7 @@ async function nextNumber(prefix: 'VIS' | 'VP' | 'EP' | 'VX' | 'RT' | 'INC' | 'D
 async function sendLogged(entityType: string, entityId: string, recipients: Person[], subject: string, heading: string, lines: string[], path: string, actorId: string | null) {
   const unique = recipients.filter((r, i, a) => r.email && a.findIndex((x) => x.email === r.email) === i);
   if (unique.length === 0) return;
-  const org = await getWorkshopOrgContext().catch(() => ({ companyName: 'EJO 100', branchName: '', departmentName: '' }));
+  const org = await getWorkshopOrgContext().catch(() => ({ companyName: PLATFORM.name, branchName: '', departmentName: '' }));
   const portal = portalBaseUrl();
   for (const r of unique) {
     let sent = true;

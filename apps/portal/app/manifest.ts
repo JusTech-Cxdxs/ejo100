@@ -1,11 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { portalConfig } from '@/lib/site-config';
 
-/** A home-screen name has room for about 12 characters; a longer one is cut to its first word. */
-function shortName(name: string): string {
-  return name.length <= 12 ? name : (name.split(/\s+/)[0] ?? name).slice(0, 12);
-}
-
 /**
  * Lets the staff portal be added to a phone's home screen and open full
  * screen like an app. There is no service worker: pages hold personal and
@@ -18,7 +13,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/dashboard',
     name: `${name} Staff Portal`,
-    short_name: shortName(name),
+    short_name: portalConfig.appShortName,
     description: portalConfig.poweredBy,
     start_url: '/dashboard',
     scope: '/',

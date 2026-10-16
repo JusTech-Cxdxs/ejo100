@@ -7,6 +7,10 @@ import { LearningAccuracyChartLazy } from '@/components/enyo/LearningAccuracyCha
 import { pluralize } from '@/lib/utils/pluralize';
 import { Suspense } from 'react';
 import { DataQualityCard } from '@/components/enyo/DataQualityCard';
+import { LearnedAnswersCard } from '@/components/enyo/LearnedAnswersCard';
+import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+
+const LEARNED_STATUS: Record<string, string> = { learned_approved: 'Approved. Enyo now follows that answer.', learned_removed: 'Removed. Enyo no longer uses that answer.' };
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +38,10 @@ const TYPE_LABEL: Record<string, string> = { STORE_PART: 'Store Part', EXTERNAL_
  * on. For administrators (Enyo) and those who see Business Analytics, each
  * within their own reach.
  */
-export default async function EnyoLearningPage() {
+export default async function EnyoLearningPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string }> }) {
+  const sp = await searchParams;
+  const status = typeof sp.status === 'string' ? LEARNED_STATUS[sp.status] : undefined;
+  const error = typeof sp.error === 'string' ? sp.error.slice(0, 300) : undefined;
   await guardAnyPage(['enyo.manage', 'analytics.business.view'], '/enyo/learning');
   const p = await getPrincipal();
   const orgId = p.organisationId ?? (await myOrganisationId());
@@ -132,6 +139,16 @@ export default async function EnyoLearningPage() {
         <div className="mb-6">
           <Suspense fallback={<SectionCard icon="check-circle" title="Training data quality"><p role="status" className="text-sm text-[var(--ejo-text-muted)]">Checking the training data…</p></SectionCard>}>
             <DataQualityCard organisationId={orgId} branchIds={reach.branchId === undefined ? null : typeof reach.branchId === 'string' ? [reach.branchId] : reach.branchId.in} />
+          </Suspense>
+        </div>
+      ) : null}
+
+      {canManage ? (
+        <div className="mb-6">
+          {error ? <div role="alert"><FormFeedbackBanner kind="error" message={error} /></div> : null}
+          {status ? <div role="status"><FormFeedbackBanner kind="success" message={status} /></div> : null}
+          <Suspense fallback={<SectionCard icon="sparkles" title="What Enyo has learned"><p role="status" className="text-sm text-[var(--ejo-text-muted)]">Loading…</p></SectionCard>}>
+            <LearnedAnswersCard />
           </Suspense>
         </div>
       ) : null}

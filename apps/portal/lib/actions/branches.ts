@@ -9,6 +9,7 @@ import { authorize, getPrincipal } from '@/lib/authz/server';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { logError } from '@/lib/errors';
+import { PLATFORM } from '@/lib/brand';
 
 class BranchActionError extends Error {}
 
@@ -132,7 +133,7 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
               lines: [`Branch: ${trimmedName}`, `From: ${from}`, `To: ${to}`, `Changed by: ${actor?.fullName ?? 'an administrator'}`, 'Customers are told to pay into this account on every estimate. If you did not expect this change, report it immediately.'],
               actionUrl: `${portal}/branches/${branchId}`,
               logoUrl: `${portal}/images/logo/email-logo.png`,
-              companyName: 'EJO 100',
+              companyName: PLATFORM.name,
               branchName: trimmedName,
             }),
           ).catch((err: unknown) => logError('branch.bank_details_email', err));

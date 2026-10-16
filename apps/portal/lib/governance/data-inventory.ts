@@ -182,6 +182,7 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   EnyoConversation: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['PERSONAL'], lifecycle: 'EXPIRES', retention: 'Staff and customer chats 12 months, public website chats 90 days, then removed by the clean-up job', ai: 'AUTHORISED_USER' },
   EnyoMessage: { tenancy: 'VIA_PARENT', owner: 'conversationId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: 'With its conversation', ai: 'AUTHORISED_USER' },
   EnyoMemory: { tenancy: 'USER', owner: 'userId', classification: ['PERSONAL'], lifecycle: 'EDITABLE', retention: 'Until the person deletes it or leaves the organisation', ai: 'AUTHORISED_USER' },
+  EnyoLearnedAnswer: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EDITABLE', retention: 'Kept while useful; administrators remove entries on the Enyo learning page', ai: 'AUTHORISED_USER' },
   EnyoModel: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Kept while in use; retired models 2 years (model register)', ai: 'AUTHORISED_USER' },
   EnyoPrediction: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL', 'FINANCIAL'], lifecycle: 'IMMUTABLE', retention: '3 years (training and accuracy history)', ai: 'AUTHORISED_USER' },
   SupportTicket: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['PERSONAL'], lifecycle: 'STATE_MACHINE', retention: '3 years after it is closed', ai: 'AUTHORISED_USER' },

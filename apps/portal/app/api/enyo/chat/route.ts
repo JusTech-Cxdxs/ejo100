@@ -1,11 +1,14 @@
 import type { NextRequest } from 'next/server';
 import { prisma, type Prisma } from '@ejo/database';
-import { clip, encodeEvent, redactForLog, runAgent, SSE_HEADERS, trimHistory, type ChatMessage, type EnyoEvent } from '@ejo/enyo';
+import { clip, encodeEvent, redactForLog, routeModel, runAgent, SSE_HEADERS, trimHistory, type ChatMessage, type EnyoEvent } from '@ejo/enyo';
 import { requireUser } from '@/lib/actions/workshop';
 import { enyoReady } from '@/lib/enyo/settings';
 import { staffTools } from '@/lib/enyo/tools';
 import { cleanPage, MAX_MESSAGE_CHARS, overRateLimit, sameOrigin, sseError, staffContext, staffSystemPrompt, titleFrom } from '@/lib/enyo/server';
 import { logError } from '@/lib/errors';
+import { findLearned, noteLearnedUse } from '@/lib/enyo/learned';
+import { canReuse, reuseAllowed } from '@/lib/enyo/learned-core';
+import { tokenise } from '@/lib/enyo/predict/text';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -80,8 +83,13 @@ export async function POST(request: NextRequest) {
     await prisma.enyoMessage.create({ data: { conversationId: conversation.id, role: 'USER', content: message } });
 
     const memory = ctx.assisted ? [] : (await prisma.enyoMemory.findMany({ where: { userId, organisationId }, orderBy: { createdAt: 'asc' }, take: 50, select: { fact: true } })).map((m) => m.fact);
-    const system = await staffSystemPrompt({ ctx, settings: ready.settings, organisationId, memory, assistantName });
+    // What colleagues found helpful for this kind of question (organisation's own).
+    const learned = await findLearned(organisationId, ['STAFF', 'SUPPORT'], message, 2).catch(() => []);
+    const reuse = canReuse(learned[0], tokenise(message)) && reuseAllowed({ question: message, historyLength: history.length, assisted: Boolean(ctx.assisted), page: ctx.page }) ? learned[0]! : null;
+    const system = await staffSystemPrompt({ ctx, settings: ready.settings, organisationId, memory, assistantName, examples: learned.map((l) => ({ question: l.question, answer: l.answer })) });
     const turns: ChatMessage[] = [...trimHistory(history, 12_000, 16), { role: 'user', content: message }];
+    // Cost: small talk and short how-to go to the fast model; records and figures to the main one.
+    const route = routeModel(message, ready.config);
 
     const encoder = new TextEncoder();
     const started = Date.now();
@@ -94,8 +102,25 @@ export async function POST(request: NextRequest) {
         };
         const finish = () => { if (open) { open = false; try { controller.close(); } catch { /* already closed */ } } };
         emit({ type: 'conversation', id: conversation.id });
+        // Practically the same question as one colleagues found answered well: that answer, at once, no model call.
+        if (reuse) {
+          try {
+            const text = `${reuse.answer}\n\n_This is an answer colleagues found helpful for the same question. Ask me again in other words if you need something different._`;
+            emit({ type: 'text', text });
+            const saved = await prisma.enyoMessage.create({ data: { conversationId: conversation.id, role: 'ASSISTANT', content: text, model: 'learned', latencyMs: Date.now() - started, citations: { sources: [], learnedFrom: reuse.id } as Prisma.InputJsonValue }, select: { id: true } });
+            await noteLearnedUse(reuse.id);
+            await prisma.enyoConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }).catch(() => undefined);
+            emit({ type: 'done', messageId: saved.id });
+          } catch (err) {
+            const ref = logError('enyo.chat', err, { conversationId: conversation.id });
+            emit({ type: 'error', message: `${SOMETHING_WRONG} ${ref}.`, ref });
+          } finally {
+            finish();
+          }
+          return;
+        }
         try {
-          const result = await runAgent({ config: ready.config, system, messages: turns, tools: staffTools(), ctx, emit, signal: request.signal });
+          const result = await runAgent({ config: { ...ready.config, model: route.model }, system, messages: turns, tools: staffTools(), ctx, emit, signal: request.signal });
           // Keep what was said: which tools ran and how they ended, and the answer.
           // Tool RESULTS are not kept: they can hold email text or records whose own
           // retention and consent rules (mail: 90 days, withdrawn consent) must win.

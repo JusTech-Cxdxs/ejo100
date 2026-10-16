@@ -17,10 +17,22 @@ const ATTACHMENTS_HEADER = `${MARK}attachments${MARK}`;
 
 export type AttachmentInfo = { name: string; size: number };
 
-/** Control characters out, line endings unified, the private marker removed, clipped. */
+/**
+ * The text versions of HTML emails show each picture as its address in
+ * brackets ("Kewalram Chanrai Group [https://…/logo.png]", "[cid:…]"). In a
+ * text view those are noise: they are removed (the picture itself shows in
+ * the email's own layout).
+ */
+export function stripImageRefs(text: string): string {
+  return text
+    .replace(/\s?\[(?:cid:[^\]\s]{1,300}|https?:\/\/[^\]\s]{1,600}\.(?:png|jpe?g|gif|webp|bmp|svg|ico)(?:\?[^\]\s]{0,300})?)\]/gi, '')
+    .replace(/^\s*\[image:[^\]]{0,300}\]\s*$/gim, '');
+}
+
+/** Control characters out, line endings unified, picture addresses removed, clipped. */
 export function cleanBody(text: string | null | undefined, max = BODY_TEXT_MAX): string {
   if (!text) return '';
-  const t = text
+  const t = stripImageRefs(text)
     .replace(/\r\n?/g, '\n')
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')

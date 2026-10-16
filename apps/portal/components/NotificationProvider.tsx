@@ -1,9 +1,10 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useMemo, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useChangePings } from '@/lib/hooks/use-change-pings';
-import { getNotificationSummary, markNotificationsRead, setNotificationsMuted, type NotificationSummary } from '@/lib/actions/notifications';
+import { getMailUnreadNow, getNotificationSummary, markNotificationsRead, setNotificationsMuted, type NotificationSummary } from '@/lib/actions/notifications';
+import { PLATFORM } from '@/lib/brand';
 
 /** How often an open, visible tab asks "has anything changed?" (a tiny GET). */
 const PULSE_MS = 10000;
@@ -122,6 +123,8 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
   const cacheKey = userId ? `ejo.notifications.v1.${userId}` : null;
   const router = useRouter();
   const [summary, setSummary] = useState<NotificationSummary>(EMPTY);
+  // The mail badge's own fresher count; null = use the summary's (see below).
+  const [mailUnread, setMailUnread] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [muted, setMuted] = useState(false);
   const pulse = useRef<string | null>(null);
@@ -185,6 +188,8 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     if (mine && next.total > 0 && !mutedRef.current) chime(audio.current, next.actions.length > 0);
     sig.current = next.signature;
     setSummary(next);
+    // A fresh summary carries a fresh mail count: it wins until the next mail check.
+    setMailUnread(null);
     if (first) setMuted(next.muted);
     setLoaded(true);
     setState('ready');
@@ -234,6 +239,24 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     }, wait);
   }, [load, refreshPageSoon]);
   const pushed = useChangePings(onPing);
+
+  // The mail badge: its own small count, fresh every 90 s while the tab is in
+  // view and straight away when Mail changes something ("ejo:mail-changed").
+  useEffect(() => {
+    let alive = true;
+    let last = 0;
+    const refresh = async (force = false) => {
+      if (document.visibilityState === 'hidden' || (!force && Date.now() - last < 20_000)) return;
+      last = Date.now();
+      const n = await getMailUnreadNow().catch(() => null);
+      if (alive && typeof n === 'number') setMailUnread(n);
+    };
+    const onChanged = () => { void refresh(true); };
+    const timer = window.setInterval(() => { void refresh(); }, 90_000);
+    window.addEventListener('ejo:mail-changed', onChanged);
+    document.addEventListener('visibilitychange', onChanged);
+    return () => { alive = false; window.clearInterval(timer); window.removeEventListener('ejo:mail-changed', onChanged); document.removeEventListener('visibilitychange', onChanged); };
+  }, []);
   useEffect(() => {
     const on = () => { setOnline(true); void check(); };
     const off = () => setOnline(false);
@@ -353,7 +376,7 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     if (key === seenAlert.current) return;
     seenAlert.current = key;
     if (document.visibilityState === 'visible' || mutedRef.current || !('Notification' in window) || Notification.permission !== 'granted') return;
-    const title = 'title' in top ? String(top.title) : 'EJO 100';
+    const title = 'title' in top ? String(top.title) : PLATFORM.name;
     const url = 'url' in top ? String((top as { url: string }).url) : '/notifications?tab=broadcasts';
     try {
       const n = new Notification(title, { body: summary.total > 1 ? `${summary.total} things need your attention` : 'Needs your attention', tag: 'ejo100', icon: '/images/logo/logo.png' });
@@ -391,5 +414,6 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     await markNotificationsRead(keys).catch(() => undefined);
   }, []);
 
-  return <NotificationContext.Provider value={{ summary, loaded, state, muted, toggleMute, markRead, markManyRead, mode, lastSync }}>{children}</NotificationContext.Provider>;
+  const merged = useMemo(() => (mailUnread === null ? summary : { ...summary, mailUnread }), [summary, mailUnread]);
+  return <NotificationContext.Provider value={{ summary: merged, loaded, state, muted, toggleMute, markRead, markManyRead, mode, lastSync }}>{children}</NotificationContext.Provider>;
 }

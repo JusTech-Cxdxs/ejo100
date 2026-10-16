@@ -81,3 +81,11 @@ test('review: no break-out of <style>, no sender-chosen picture addresses, no ba
   assert.match(many.html, /Please approve the invoice<\/p>$/);
   assert.ok(many.html.length <= 1_500_000);
 });
+
+test('text views drop the bracketed picture addresses that HTML emails leave behind', async () => {
+  const { stripImageRefs, cleanBody } = await import('../lib/mail/parse-core');
+  assert.equal(stripImageRefs('Kewalram Chanrai Group [https://ejo100-website.vercel.app/images/logo/logo.png]\nHello'), 'Kewalram Chanrai Group\nHello');
+  assert.equal(stripImageRefs('See [cid:image001.png@01DA] here'), 'See here');
+  assert.equal(stripImageRefs('Read the terms [https://x.example/terms]'), 'Read the terms [https://x.example/terms]');
+  assert.equal(cleanBody('Logo [https://cdn.x/a.PNG?v=2]\r\nBody'), 'Logo\nBody');
+});

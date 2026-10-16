@@ -14,6 +14,7 @@
  * escapes every interpolated value unless it was produced by another helper
  * here. That makes it hard to put unescaped customer input into an email.
  */
+import { PLATFORM } from '../brand';
 
 /* ------------------------------------------------------------------ */
 /* Safe HTML building                                                  */
@@ -282,9 +283,34 @@ export type EmailLayoutOptions = {
   branchContact?: BranchContact;
 };
 
+/**
+ * The vehicle brands the organisation represents, shown as a quiet line at the
+ * foot of every email ("Authorised dealer · FOTON · ISUZU · SOUEAST"), in each
+ * brand's colour, as text (no pictures to block or load). Set once per
+ * installation: NEXT_PUBLIC_DEALER_BRANDS="FOTON:#111111,ISUZU:#E4002B,SOUEAST:#F39800".
+ */
+export function dealerBrands(value: string | undefined = process.env.NEXT_PUBLIC_DEALER_BRANDS): { name: string; color: string }[] {
+  return String(value ?? '')
+    .split(',')
+    .map((part) => {
+      const [rawName, rawColor] = part.split(':');
+      const name = (rawName ?? '').replace(/[^\p{L}\p{N} .&'-]/gu, '').trim().slice(0, 24);
+      const color = /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test((rawColor ?? '').trim()) ? (rawColor ?? '').trim() : C.body;
+      return { name, color };
+    })
+    .filter((b) => b.name)
+    .slice(0, 8);
+}
+
+function brandsLine(brands: { name: string; color: string }[]): SafeHtml | string {
+  if (!brands.length) return '';
+  return html`
+              <p class="ejo-muted" style="margin: 12px 0 0 0; font-size: 10px; line-height: 1.6; letter-spacing: 0.14em; text-transform: uppercase; color: ${raw(C.faint)};">Authorised dealer${brands.map((b) => html` &nbsp;&middot;&nbsp; <span style="color: ${raw(b.color)}; font-weight: 800; letter-spacing: 0.16em;">${b.name}</span>`)}</p>`;
+}
+
 function displayName(companyName: string): string {
   const n = (companyName ?? '').trim();
-  return n || 'EJO 100';
+  return n || PLATFORM.name;
 }
 
 function wordmark(name: string, logoUrl: string): SafeHtml {
@@ -512,8 +538,8 @@ ${raw('<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96
             <td class="ejo-px" align="center" style="padding: 24px 40px 0 40px; font-family: ${raw(EMAIL_FONT)}; font-size: 12px; line-height: 1.6; color: ${raw(C.muted)};">
               <p class="ejo-body" style="margin: 0 0 2px 0; font-size: 13px; font-weight: 700; color: ${raw(C.body)};">${name}${context[0] ? html`<span class="ejo-muted" style="font-weight: 400; color: ${raw(C.muted)};"> &middot; ${context[0]}</span>` : ''}</p>${contactLine.length ? html`
               <p class="ejo-muted" style="margin: 0 0 2px 0; color: ${raw(C.muted)};">${contactLine.join(' · ')}</p>` : ''}
-              <p class="ejo-muted" style="margin: 10px 0 0 0; color: ${raw(C.muted)};">${reason}</p>
-              <p class="ejo-muted" style="margin: 14px 0 0 0; font-size: 11px; letter-spacing: 0.04em; color: ${raw(C.faint)};">Powered by EJO 100</p>
+              <p class="ejo-muted" style="margin: 10px 0 0 0; color: ${raw(C.muted)};">${reason}</p>${brandsLine(dealerBrands())}
+              <p class="ejo-muted" style="margin: 14px 0 0 0; font-size: 11px; letter-spacing: 0.04em; color: ${raw(C.faint)};">${PLATFORM.poweredBy}</p>
             </td>
           </tr>
         </table>
