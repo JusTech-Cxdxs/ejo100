@@ -45,7 +45,7 @@ export const ROADMAP: RoadmapModule[] = [
     key: 'help',
     name: 'AI support centre',
     tagline: 'Help desks for customers and staff, with an assistant that drafts the answer.',
-    description: 'Two help desks on one ticket system: customers ask from the customer portal, staff ask from the portal. An assistant reads the guides and the asker’s own records, drafts a reply, and a person checks and sends it.',
+    description: 'The customer side is live as the Support centre (v36): support@ / warranty@ / technical@ addresses, chat hand-overs and logged calls in one place, with targets, Enyo’s triage, drafts and answers to general questions, and satisfaction. Still to come: the staff help desk (“something is wrong here” from any page) and published guides.',
     icon: 'help',
     group: 'next',
     next: true,

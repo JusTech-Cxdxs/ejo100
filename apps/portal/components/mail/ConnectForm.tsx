@@ -15,7 +15,7 @@ export type ConnectDefaults = Partial<Record<'preset' | 'address' | 'displayName
  * address and app password. The server signs in to both servers before
  * anything is saved. The password field is never filled back in.
  */
-export function ConnectForm({ action, defaults, allowInsecure, reconnect }: { action: (f: FormData) => Promise<void>; defaults: ConnectDefaults; allowInsecure: boolean; reconnect: boolean }) {
+export function ConnectForm({ action, defaults, allowInsecure, reconnect, hidden, addressLabel = 'Work email address', bare = false }: { action: (f: FormData) => Promise<void>; defaults: ConnectDefaults; allowInsecure: boolean; reconnect: boolean; hidden?: Record<string, string>; addressLabel?: string; bare?: boolean }) {
   const ids = { preset: useId(), address: useId(), name: useId(), user: useId(), pass: useId(), help: useId() };
   const start = MAIL_PRESETS.find((p) => p.key === defaults.preset) ?? (defaults.imapHost ? MAIL_PRESETS.find((p) => p.key === 'custom')! : MAIL_PRESETS[0]!);
   const [preset, setPreset] = useState<MailPreset>(start);
@@ -41,8 +41,9 @@ export function ConnectForm({ action, defaults, allowInsecure, reconnect }: { ac
     </>
   );
   return (
-    <form action={action} className="relative max-w-2xl space-y-5 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">
+    <form action={action} className={bare ? 'relative space-y-5' : 'relative max-w-2xl space-y-5 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6'}>
       <FormPendingOverlay />
+      {Object.entries(hidden ?? {}).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
       <div>
         <label htmlFor={ids.preset} className={label}>Your mail provider</label>
         <select id={ids.preset} name="preset" value={preset.key} onChange={(e) => choose(e.target.value)} className={input} aria-describedby={ids.help}>
@@ -54,7 +55,7 @@ export function ConnectForm({ action, defaults, allowInsecure, reconnect }: { ac
         <>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor={ids.address} className={label}>Work email address</label>
+              <label htmlFor={ids.address} className={label}>{addressLabel}</label>
               <input id={ids.address} name="address" type="email" required defaultValue={defaults.address ?? ''} readOnly={reconnect} autoComplete="email" className={`${input} ${reconnect ? 'opacity-70' : ''}`} />
             </div>
             <div>

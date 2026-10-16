@@ -3,12 +3,13 @@
  * pages and the unit tests. No database, no framework.
  */
 
-export const SUPPORT_STATUSES = ['OPEN', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'CLOSED'] as const;
+export const SUPPORT_STATUSES = ['OPEN', 'WAITING_ON_CUSTOMER', 'ON_HOLD', 'RESOLVED', 'CLOSED'] as const;
 export type SupportStatus = (typeof SUPPORT_STATUSES)[number];
 
 export const SUPPORT_STATUS_LABEL: Record<SupportStatus, string> = {
   OPEN: 'Open',
   WAITING_ON_CUSTOMER: 'Waiting on customer',
+  ON_HOLD: 'On hold (waiting on others)',
   RESOLVED: 'Resolved',
   CLOSED: 'Closed',
 };
@@ -17,6 +18,8 @@ export const SUPPORT_STATUS_LABEL: Record<SupportStatus, string> = {
 export const SUPPORT_STATUS_FOR_CUSTOMER: Record<SupportStatus, string> = {
   OPEN: 'With our team',
   WAITING_ON_CUSTOMER: 'Waiting for your reply',
+  // Waiting on the manufacturer, a supplier or an insurer: still with the team.
+  ON_HOLD: 'With our team',
   RESOLVED: 'Resolved',
   CLOSED: 'Closed',
 };
@@ -25,20 +28,27 @@ export function isSupportStatus(v: unknown): v is SupportStatus {
   return typeof v === 'string' && (SUPPORT_STATUSES as readonly string[]).includes(v);
 }
 
-export const SUPPORT_FILTERS = ['open', 'waiting', 'resolved', 'mine', 'all'] as const;
+export const SUPPORT_FILTERS = ['open', 'unassigned', 'mine', 'late', 'waiting', 'on_hold', 'resolved', 'all'] as const;
 export type SupportFilter = (typeof SUPPORT_FILTERS)[number];
 
 export function supportFilter(v: unknown): SupportFilter {
   return typeof v === 'string' && (SUPPORT_FILTERS as readonly string[]).includes(v) ? (v as SupportFilter) : 'open';
 }
 
+export const SUPPORT_FILTER_LABEL: Record<SupportFilter, string> = {
+  open: 'Open', unassigned: 'Unassigned', mine: 'Mine', late: 'Late or due soon', waiting: 'Waiting on customer', on_hold: 'On hold', resolved: 'Resolved', all: 'All',
+};
+
 /** The status / assignee condition for one inbox tab. */
-export function filterWhere(f: SupportFilter, userId: string): { status?: { in: SupportStatus[] }; assignedToId?: string } {
+export function filterWhere(f: SupportFilter, userId: string, now = new Date()): Record<string, unknown> {
   switch (f) {
     case 'open': return { status: { in: ['OPEN'] } };
+    case 'unassigned': return { status: { in: ['OPEN', 'ON_HOLD'] }, assignedToId: null };
+    case 'late': return { status: { in: ['OPEN', 'ON_HOLD'] }, firstResponseAt: null, dueFirstResponseAt: { lte: new Date(now.getTime() + 60 * 60_000) } };
     case 'waiting': return { status: { in: ['WAITING_ON_CUSTOMER'] } };
+    case 'on_hold': return { status: { in: ['ON_HOLD'] } };
     case 'resolved': return { status: { in: ['RESOLVED', 'CLOSED'] } };
-    case 'mine': return { assignedToId: userId, status: { in: ['OPEN', 'WAITING_ON_CUSTOMER'] } };
+    case 'mine': return { assignedToId: userId, status: { in: ['OPEN', 'WAITING_ON_CUSTOMER', 'ON_HOLD'] } };
     default: return {};
   }
 }

@@ -81,6 +81,23 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'assist.ended': 'Assisted session ended',
   'assist.consent_failed': 'Assisted session: wrong password typed',
   'assist.refused': 'Assisted session refused',
+  // Support centre (v36)
+  'support.ticket_opened': 'New support request',
+  'support.customer_replied': 'Customer replied on a support request',
+  'support.replied': 'Support reply sent',
+  'support.note_added': 'Note added on a support request',
+  'support.assigned': 'Support request assigned',
+  'support.status_changed': 'Support request status changed',
+  'support.priority_changed': 'Support request priority changed',
+  'support.queue_changed': 'Support request moved to another team',
+  'support.ai_answered': 'Enyo answered a support request',
+  'support.sla_warning': 'Support request: first answer due soon',
+  'support.sla_breached': 'Support request: first answer is late',
+  'support.urgent': 'Urgent support request (safety)',
+  'support.auto_resolved': 'Support request resolved (no reply from the customer)',
+  'support.customer_confirmed': 'Customer said the answer solved it',
+  'support.customer_asked_person': 'Customer asked for a person',
+  'support.customer_rated': 'Customer rated the support',
 };
 
 export function securityActionLabel(action: string): string {
@@ -94,6 +111,16 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
   switch (action) {
     case 'assist.ended':
       return s('summary');
+    case 'support.ticket_opened':
+    case 'support.sla_warning':
+    case 'support.sla_breached':
+    case 'support.urgent':
+    case 'support.ai_answered':
+    case 'support.customer_confirmed':
+    case 'support.customer_asked_person':
+      return [s('queue'), s('priority') && s('priority') !== 'NORMAL' ? `${s('priority')!.charAt(0)}${s('priority')!.slice(1).toLowerCase()} priority` : null].filter(Boolean).join(' · ') || null;
+    case 'support.customer_rated':
+      return typeof meta.score === 'number' ? `${meta.score} out of 5` : null;
     case 'assist.started':
       return `${s('assistant') ?? 'A Branch Assistant'} is helping ${s('colleague') ?? 'a colleague'}${s('reason') ? ` — ${s('reason')}` : ''}`;
     case 'assist.consent_failed':

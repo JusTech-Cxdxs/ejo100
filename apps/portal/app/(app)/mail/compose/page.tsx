@@ -13,6 +13,7 @@ import { formatLagos } from '@/lib/reminders-rules';
 import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 import { MailStyleField } from '@/components/mail/MailStyleField';
 import { RecipientField } from '@/components/mail/RecipientField';
+import { LiveMailPreview } from '@/components/mail/LiveMailPreview';
 import { MAIL_STYLES, type MailStyle } from '@/lib/email-templates/personal-mail-styles';
 
 export const metadata: Metadata = { title: 'New message' };
@@ -68,6 +69,7 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
     }
   }
   const replyGone = Boolean(refId) && !original;
+  const initialStyle: MailStyle = (MAIL_STYLES as readonly string[]).includes(String(sp.style)) ? (sp.style as MailStyle) : 'standard';
   return (
     <div className="p-4 sm:p-8">
       <PageHeader icon="mail" title={heading} back={{ href: original ? `/mail?m=${original.id}` : '/mail', label: 'Mail' }}
@@ -75,7 +77,9 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
       {error ? <div className="max-w-3xl" role="alert"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       {replyGone ? <div className="max-w-3xl" role="status"><FormFeedbackBanner kind="warning" message="The message you are answering is no longer here, so this is sent as a new message." /></div> : null}
       {p.forwardOf && original?.hasAttachments ? <div className="max-w-3xl" role="status"><FormFeedbackBanner kind="warning" message="Attachments are not forwarded from here. To forward them, use your usual mail app." /></div> : null}
-      <form action={sendMailFormAction} className="relative max-w-3xl space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">
+      {/* The form on the left; on wide screens, what the recipient sees on the right, live. */}
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,48rem)_minmax(0,1fr)]">
+      <form id="mail-compose" action={sendMailFormAction} className="relative min-w-0 space-y-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">
         <FormPendingOverlay />
         {original && p.inReplyTo ? <input type="hidden" name="inReplyTo" value={original.id} /> : null}
         <RecipientField id="mail-to" name="to" label="To" required defaultValue={to} placeholder="Type a name, branch or department — or an email address" className={input} />
@@ -100,12 +104,14 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
           <textarea id="mail-body" name="body" required rows={14} maxLength={BODY_MAX} defaultValue={body} className={`${input} min-h-64 font-[inherit] leading-relaxed`} />
           <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Sent from your own mailbox. Your text is placed in the organisation&apos;s letterhead unless you choose plain text.</p>
         </div>
-        <MailStyleField initial={(MAIL_STYLES as readonly string[]).includes(String(sp.style)) ? (sp.style as MailStyle) : 'standard'} />
+        <MailStyleField initial={initialStyle} />
         <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-wrap items-center gap-3 border-t border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-4 py-3 sm:static sm:mx-0 sm:mb-0 sm:border-0 sm:p-0">
           <SubmitButton label="Send" pendingLabel="Sending…" className="min-h-11 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-6 py-2.5 text-sm font-medium text-white hover:brightness-110" />
           <LoadingLink href={original ? `/mail?m=${original.id}` : '/mail'} className="min-h-11 rounded-[var(--ejo-radius-md)] px-4 py-2.5 text-sm font-medium text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">Discard</LoadingLink>
         </div>
       </form>
+      <LiveMailPreview formId="mail-compose" initialStyle={initialStyle} />
+      </div>
     </div>
   );
 }

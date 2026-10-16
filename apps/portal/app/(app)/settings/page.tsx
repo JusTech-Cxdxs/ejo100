@@ -39,6 +39,13 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    id: 'support', title: 'Customer support', text: 'The Support centre: teams and their email addresses, hours, targets and how Enyo answers.',
+    areas: [
+      { href: '/settings/support', icon: 'inbox', title: 'Support centre set-up', text: 'Teams (support@, warranty@, technical@ …), who works them, opening hours, targets and Enyo’s replies.', needs: 'support.manage' },
+      { href: '/crm/support/analytics', icon: 'chart', title: 'Support numbers', text: 'First answer, targets met, Enyo’s share, satisfaction and topics.', needs: 'support.tickets.manage' },
+    ],
+  },
+  {
     id: 'records', title: 'Records and compliance', text: 'What changed, who changed it, and what was removed.',
     areas: [
       { href: '/audit-logs', icon: 'history', title: 'Audit logs', text: 'Every change and sign-in, searchable.', needs: 'audit.view' },
@@ -52,7 +59,7 @@ export default async function SettingsPage() {
   await guardPage('admin.settings.manage', '/settings');
   const [{ jobs, emails7d }, p] = await Promise.all([jobStatuses(), getPrincipal()]);
   const groups = GROUPS.map((g) => ({ ...g, areas: g.areas.filter((a) => decide(p, a.needs).allowed) })).filter((g) => g.areas.length);
-  const late = jobs.filter((j) => !j.lastRun || Date.now() - j.lastRun.getTime() > (j.key === 'appointment-reminders' ? 3_600_000 : 3 * 86_400_000));
+  const late = jobs.filter((j) => !j.lastRun || Date.now() - j.lastRun.getTime() > (j.key === 'appointment-reminders' || j.key.startsWith('support') ? 3_600_000 : 3 * 86_400_000));
 
   return (
     <div className="w-full max-w-6xl p-4 sm:p-8">

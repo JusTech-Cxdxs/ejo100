@@ -95,7 +95,7 @@ export default async function StructurePage({ searchParams }: { searchParams: Pr
               </div>
               <details className="relative">
                 <summary className="cursor-pointer list-none rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)]">Rename</summary>
-                <form action={renameBusinessUnitFormAction} className="absolute right-0 z-10 mt-1 flex w-72 gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-2 shadow-lg">
+                <form action={renameBusinessUnitFormAction} className="absolute right-0 z-30 mt-1 flex w-72 gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-2 shadow-lg">
                   <input type="hidden" name="businessUnitId" value={u.id} /><input type="hidden" name="returnTo" value="/structure" />
                   <input name="name" defaultValue={u.name} required minLength={2} maxLength={80} aria-label={`New name for ${u.name}`} className={input} />
                   <SubmitButton label="Save" pendingLabel="…" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white" />

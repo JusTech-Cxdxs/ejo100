@@ -17,7 +17,7 @@ import { logCustomerError } from '@/lib/error-events';
 import { lagosYear, nextTicketNumber, retryOnNumberClash, ticketPrefix, type HandoverContact } from './rules';
 import type { WebCtx } from './types';
 
-export const OPEN_STATUSES = ['OPEN', 'WAITING_ON_CUSTOMER'] as const;
+export const OPEN_STATUSES = ['OPEN', 'WAITING_ON_CUSTOMER', 'ON_HOLD'] as const;
 
 export type HandoverResult = { ticketNumber: string; existing: boolean; emailed: boolean };
 
@@ -112,6 +112,11 @@ export async function openHandover(ctx: WebCtx, contact: HandoverContact, topicR
       subject: topic,
       summary,
       conversationId: ctx.conversationId,
+      // v36: the customer's own page for this request, and why a person is needed.
+      // The Support centre's scheduled run gives it a queue, targets and an owner.
+      token: randomBytes(24).toString('base64url'),
+      handoverReason: 'chat_handover',
+      lastCustomerAt: new Date(),
     },
     select: { id: true, number: true },
   }));

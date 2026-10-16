@@ -14,7 +14,7 @@ import { EnyoHistory } from './EnyoHistory';
 import { EIcon } from './icons';
 import { getEnyoStatus, loadConversation, streamChat } from './api';
 import { DEFAULT_PREFS, readPrefs, writePrefs, type EnyoPrefs } from './prefs';
-import { createMouthDriver, useSpeechInput, useSpeechOutput, type MouthDriver } from './voice';
+import { createMouthDriver, joinSpoken, useSpeechInput, useSpeechOutput, type MouthDriver } from './voice';
 import { useChatViewport } from '@ejo/enyo/src/ui/useChatViewport';
 
 /**
@@ -304,7 +304,13 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
 
   const stop = useCallback(() => { abortRef.current?.abort(); }, []);
 
-  const voiceIn = useSpeechInput((heard) => { void ask(heard); });
+  // Voice: send what was said (with anything already typed), or put it in the box to edit.
+  const voiceIn = useSpeechInput((heard, how) => {
+    const typed = inputRef.current?.value ?? '';
+    if (how === 'send') { void ask(joinSpoken(typed, heard).slice(0, MAX_LEN)); return; }
+    setInput(joinSpoken(typed, heard).slice(0, MAX_LEN));
+    window.setTimeout(() => { const el = inputRef.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
+  });
 
   const newChat = useCallback(() => {
     abortRef.current?.abort();
@@ -349,7 +355,7 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
             : wave ? 'wave'
               : 'idle';
 
-  const headerLine = voiceIn.processing ? 'Getting your words…' : voiceIn.listening ? 'Listening…'
+  const headerLine = voiceIn.processing ? 'Getting your words…' : voiceIn.listening ? 'Listening…' : voiceIn.paused ? 'Paused'
     : voiceOut.speaking ? 'Speaking'
       : waiting ? (turns.find((t) => t.state === 'waiting')?.status || 'Thinking…')
         : streaming ? 'Answering…'
@@ -535,14 +541,20 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
             {/* Composer */}
             {ready && view === 'chat' && !loadingChat ? (
               <div className="shrink-0 border-t border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 pb-3 pt-2.5">
-                {voiceIn.processing ? (
-                  <p role="status" className="mb-2 flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-surface)] px-3 py-2 text-sm text-[var(--ejo-text)]">
-                    <span className="enyo-typing" aria-hidden="true"><i /><i /><i /></span>Getting your words…
-                  </p>
-                ) : voiceIn.listening ? (
-                  <p role="status" className="mb-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-surface)] px-3 py-2 text-sm text-[var(--ejo-text)]">
-                    <span className="font-medium text-[var(--ejo-error)]">Listening</span>{voiceIn.interim ? <span className="text-[var(--ejo-text-muted)]"> · {voiceIn.interim}</span> : <span className="text-[var(--ejo-text-muted)]"> · speak now, then press the microphone again to send</span>}
-                  </p>
+                {voiceIn.active ? (
+                  <VoiceBar
+                    listening={voiceIn.listening}
+                    paused={voiceIn.paused}
+                    processing={voiceIn.processing}
+                    words={voiceIn.interim}
+                    startedAt={voiceIn.startedAt}
+                    onCancel={voiceIn.cancel}
+                    onPause={voiceIn.pause}
+                    onResume={voiceIn.resume}
+                    onEdit={() => voiceIn.finish('text')}
+                    onSend={() => voiceIn.finish('send')}
+                    busy={busy}
+                  />
                 ) : null}
                 {voiceIn.error ? (
                   <p role="alert" className="mb-2 flex items-start gap-2 rounded-[var(--ejo-radius-md)] bg-[color-mix(in_srgb,var(--ejo-warning)_10%,transparent)] px-3 py-2 text-xs text-[var(--ejo-text)]">
@@ -563,17 +575,17 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
                     onKeyDown={onComposerKey}
                     rows={1}
                     maxLength={MAX_LEN}
-                    placeholder={voiceIn.listening ? '' : `Ask ${name}…`}
+                    placeholder={voiceIn.active ? 'Type more if you like…' : `Ask ${name}…`}
                     className="max-h-36 min-h-11 flex-1 resize-none bg-transparent py-2.5 text-base leading-6 text-[var(--ejo-text)] outline-none [field-sizing:content] placeholder:text-[var(--ejo-text-muted)] sm:text-sm"
                   />
-                  {voiceIn.supported ? (
+                  {voiceIn.supported && !voiceIn.active ? (
                     <button
                       type="button"
-                      onClick={() => (voiceIn.listening ? voiceIn.stop() : (cancelSpeech(), voiceIn.start()))}
+                      onClick={() => { cancelSpeech(); voiceIn.start(); }}
                       disabled={busy}
-                      aria-pressed={voiceIn.listening}
-                      aria-label={voiceIn.listening ? 'Stop and send' : 'Speak your question'}
-                      className={`${iconBtn} ${voiceIn.listening ? 'enyo-mic-on bg-[var(--ejo-error)] text-white hover:bg-[var(--ejo-error)] hover:text-white' : ''} disabled:opacity-40`}
+                      aria-label="Speak your question"
+                      title="Speak — then send, pause, or edit the words first"
+                      className={`${iconBtn} disabled:opacity-40`}
                     >
                       <EIcon name="mic" size={19} />
                     </button>
@@ -628,6 +640,59 @@ function NotReady({ name, reason, canManage }: { name: string; reason?: string; 
           Open {name} settings
         </Link>
       ) : null}
+    </div>
+  );
+}
+
+/** Seconds since the recording started, shown as m:ss while listening. */
+function Elapsed({ since, running }: { since: number | null; running: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+    const id = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [running]);
+  const s = since ? Math.max(0, Math.floor((now - since) / 1000)) : 0;
+  return <span className="tabular-nums">{Math.floor(s / 60)}:{String(s % 60).padStart(2, '0')}</span>;
+}
+
+/**
+ * The voice-note bar (like chat apps): the words as they are heard, and
+ * Cancel · Pause / Resume · Edit as text · Send. Nothing is sent until Send.
+ */
+function VoiceBar(p: { listening: boolean; paused: boolean; processing: boolean; words: string; startedAt: number | null; busy: boolean; onCancel: () => void; onPause: () => void; onResume: () => void; onEdit: () => void; onSend: () => void }) {
+  const small = 'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ejo-primary)] disabled:opacity-40';
+  return (
+    <div role="group" aria-label="Voice note" className="mb-2 rounded-[18px] border border-[color-mix(in_srgb,var(--ejo-error)_30%,var(--ejo-border))] bg-[var(--ejo-surface)] p-2">
+      <p role="status" aria-live="polite" className="flex items-start gap-2 px-1.5 pb-1.5 text-sm text-[var(--ejo-text)]">
+        <span className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${p.listening ? 'enyo-mic-on bg-[var(--ejo-error)]' : 'bg-[var(--ejo-text-muted)]'}`} aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          <span className="font-medium">{p.processing ? 'Getting your words…' : p.listening ? 'Listening' : 'Paused'}</span>
+          <span className="text-[var(--ejo-text-muted)]"> · <Elapsed since={p.startedAt} running={p.listening} /></span>
+          <span className="mt-0.5 block max-h-24 overflow-y-auto break-words text-[var(--ejo-text-muted)]">{p.words || (p.listening ? 'Speak now…' : 'Nothing heard yet.')}</span>
+        </span>
+      </p>
+      <div className="flex items-center gap-1">
+        <button type="button" onClick={p.onCancel} aria-label="Cancel the voice note" title="Cancel" className={`${small} text-[var(--ejo-text-muted)] hover:bg-[color-mix(in_srgb,var(--ejo-text)_7%,transparent)] hover:text-[var(--ejo-text)]`}>
+          <EIcon name="close" size={18} />
+        </button>
+        {p.listening ? (
+          <button type="button" onClick={p.onPause} disabled={p.processing} aria-label="Pause" title="Pause — keep the words" className={`${small} text-[var(--ejo-text)] hover:bg-[color-mix(in_srgb,var(--ejo-text)_7%,transparent)]`}>
+            <EIcon name="pause" size={18} strokeWidth={2.2} />
+          </button>
+        ) : (
+          <button type="button" onClick={p.onResume} disabled={p.processing} aria-label="Carry on speaking" title="Carry on speaking" className={`${small} text-[var(--ejo-error)] hover:bg-[color-mix(in_srgb,var(--ejo-error)_10%,transparent)]`}>
+            <EIcon name="mic" size={18} />
+          </button>
+        )}
+        <span className="flex-1" />
+        <button type="button" onClick={p.onEdit} disabled={p.processing} className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[var(--ejo-primary)] hover:bg-[color-mix(in_srgb,var(--ejo-primary)_9%,transparent)] disabled:opacity-40">
+          <EIcon name="pencil" size={16} />Edit as text
+        </button>
+        <button type="button" onClick={p.onSend} disabled={p.processing || p.busy} aria-label="Send the voice note" title="Send now" className={`${small} bg-[var(--ejo-primary)] text-white hover:brightness-110`}>
+          <EIcon name="send" size={18} strokeWidth={2.1} />
+        </button>
+      </div>
     </div>
   );
 }

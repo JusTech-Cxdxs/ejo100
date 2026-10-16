@@ -46,7 +46,7 @@ export function navigationFor(p: Principal): NavItem[] {
     const needs = MODULE_NEEDS[m.key];
     if (!needs || needs.some(can)) out.push({ key: m.key, name: m.name, href: m.href, status: m.status });
     // Customers handed over by Enyo, right under Customers.
-    if (m.key === 'crm' && can('support.tickets.manage')) out.push({ key: 'support-inbox', name: 'Support inbox', href: '/crm/support', status: m.status });
+    if (m.key === 'crm' && can('support.tickets.manage')) out.push({ key: 'support-inbox', name: 'Support centre', href: '/crm/support', status: m.status });
   }
   // Everyone's own: reminders, and their work mailbox (the layout hides Mail during an assisted session).
   out.push({ key: 'reminders', name: 'Reminders', href: '/reminders', status: 'LIVE' });

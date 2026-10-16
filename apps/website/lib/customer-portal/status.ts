@@ -153,6 +153,8 @@ export const CUSTOMER_RESOLUTION: Record<string, string> = {
 export const SUPPORT_STATUS: Record<string, StatusInfo> = {
   OPEN: { label: 'With our team', tone: 'info', explain: 'Our customer care team has your request and will reply here.' },
   WAITING_ON_CUSTOMER: { label: 'Waiting for your reply', tone: 'attention', explain: 'Our team replied and needs an answer from you.' },
+  // Waiting on the manufacturer, a supplier or an insurer: still with the team.
+  ON_HOLD: { label: 'With our team', tone: 'info', explain: 'Our team is waiting on someone else (for example the manufacturer or a supplier) and will update you here.' },
   RESOLVED: { label: 'Resolved', tone: 'success', explain: 'Our team marked this as sorted. Reply below if it is not.' },
   CLOSED: { label: 'Closed', tone: 'neutral', explain: 'This request is closed.' },
 };

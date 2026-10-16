@@ -3,10 +3,13 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { friendlyError } from '@/lib/errors';
-import { assignSupportTicket, replyToSupportTicket, setSupportTicketStatus } from './support';
+import {
+  addSupportNote, assignSupportTicket, createSupportTicket, moveSupportTicket, replyToSupportTicket, saveSupportAnswer, setSupportPriority, setSupportTicketStatus, summariseSupportTicket,
+} from './support';
+import { changeSupportMailbox, connectSupportMailbox, saveSupportQueue, saveSupportSettings, setMySupportAway, setSupportQueueMembers } from './support-admin';
 import { requireUser } from './workshop';
 
-/** <form action> wrappers for the support inbox (each calls the authorised action). */
+/** <form action> wrappers for the Support centre (each calls the authorised action). */
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '');
 const page = (id: string) => `/crm/support/${encodeURIComponent(id)}`;
@@ -15,7 +18,13 @@ function back(id: string, err: unknown, fallback: string): never {
   redirect(`${page(id)}?error=${encodeURIComponent(friendlyError(err, fallback, 'support-form-handlers'))}`);
 }
 
-export type SupportReplyState = { error: string | null; body: string };
+function done(id: string, status: string, hash = ''): never {
+  revalidatePath(page(id));
+  revalidatePath('/crm/support');
+  redirect(`${page(id)}?status=${status}${hash}`);
+}
+
+export type SupportReplyState = { error: string | null; body: string; newer?: boolean };
 
 /** Reply to the customer — what was typed stays when something is wrong. */
 export async function replyToSupportTicketAction(_prev: SupportReplyState, f: FormData): Promise<SupportReplyState> {
@@ -25,14 +34,27 @@ export async function replyToSupportTicketAction(_prev: SupportReplyState, f: Fo
   const body = str(f, 'body');
   let status = 'replied';
   try {
-    const r = await replyToSupportTicket(id, body, str(f, 'then') || 'WAITING_ON_CUSTOMER');
+    const r = await replyToSupportTicket(id, body, str(f, 'then') || 'WAITING_ON_CUSTOMER', { seenAt: str(f, 'seenAt') || undefined, aiDrafted: str(f, 'aiDrafted') === '1', confirmNew: str(f, 'confirmNew') === '1' });
     status = r.emailTo ? (r.emailed ? 'replied_emailed' : 'replied_email_failed') : 'replied_no_email';
   } catch (err) {
-    return { error: friendlyError(err, 'Could not send the reply.', 'support-form-handlers'), body };
+    const message = friendlyError(err, 'Could not send the reply.', 'support-form-handlers');
+    return { error: message, body, newer: /arrived on this ticket after you opened it/.test(message) };
   }
-  revalidatePath(page(id));
-  revalidatePath('/crm/support');
-  redirect(`${page(id)}?status=${status}#replies`);
+  done(id, status, '#replies');
+}
+
+export type SupportNoteState = { error: string | null; body: string };
+
+export async function addSupportNoteAction(_prev: SupportNoteState, f: FormData): Promise<SupportNoteState> {
+  await requireUser();
+  const id = str(f, 'ticketId');
+  const body = str(f, 'body');
+  try {
+    await addSupportNote(id, body);
+  } catch (err) {
+    return { error: friendlyError(err, 'Could not save the note.', 'support-form-handlers'), body };
+  }
+  done(id, 'note_added', '#replies');
 }
 
 export async function setSupportTicketStatusAction(f: FormData): Promise<void> {
@@ -42,9 +64,7 @@ export async function setSupportTicketStatusAction(f: FormData): Promise<void> {
   } catch (err) {
     back(id, err, 'Could not change the status.');
   }
-  revalidatePath(page(id));
-  revalidatePath('/crm/support');
-  redirect(`${page(id)}?status=status_changed`);
+  done(id, 'status_changed');
 }
 
 export async function assignSupportTicketAction(f: FormData): Promise<void> {
@@ -55,7 +75,155 @@ export async function assignSupportTicketAction(f: FormData): Promise<void> {
   } catch (err) {
     back(id, err, 'Could not assign the ticket.');
   }
-  revalidatePath(page(id));
+  done(id, to ? 'assigned' : 'unassigned');
+}
+
+export async function setSupportPriorityAction(f: FormData): Promise<void> {
+  const id = str(f, 'ticketId');
+  try {
+    await setSupportPriority(id, str(f, 'priority'));
+  } catch (err) {
+    back(id, err, 'Could not change the priority.');
+  }
+  done(id, 'priority_changed');
+}
+
+export async function moveSupportTicketAction(f: FormData): Promise<void> {
+  const id = str(f, 'ticketId');
+  try {
+    await moveSupportTicket(id, str(f, 'queueId'));
+  } catch (err) {
+    back(id, err, 'Could not move the request.');
+  }
+  done(id, 'moved');
+}
+
+export async function summariseSupportTicketAction(f: FormData): Promise<void> {
+  const id = str(f, 'ticketId');
+  try {
+    await summariseSupportTicket(id);
+  } catch (err) {
+    back(id, err, 'Could not summarise the request.');
+  }
+  done(id, 'summarised');
+}
+
+export async function saveSupportAnswerAction(f: FormData): Promise<void> {
+  const id = str(f, 'ticketId');
+  let r: 'learned' | 'skipped' = 'skipped';
+  try {
+    r = await saveSupportAnswer(id, str(f, 'replyId'));
+  } catch (err) {
+    back(id, err, 'Could not save the answer.');
+  }
+  done(id, r === 'learned' ? 'answer_saved' : 'answer_skipped');
+}
+
+export type NewSupportState = { error: string | null; values: Record<string, string> };
+
+export async function createSupportTicketAction(_prev: NewSupportState, f: FormData): Promise<NewSupportState> {
+  await requireUser();
+  const values = Object.fromEntries(['customerId', 'contactName', 'contactPhone', 'contactEmail', 'subject', 'body', 'queueId', 'priority'].map((k) => [k, str(f, k)]));
+  let id = '';
+  try {
+    id = (await createSupportTicket(values)).id;
+  } catch (err) {
+    return { error: friendlyError(err, 'Could not open the request.', 'support-form-handlers'), values };
+  }
   revalidatePath('/crm/support');
-  redirect(`${page(id)}?status=${to ? 'assigned' : 'unassigned'}`);
+  redirect(`${page(id)}?status=created`);
+}
+
+export async function setMySupportAwayAction(f: FormData): Promise<void> {
+  const away = str(f, 'away') === '1';
+  try {
+    await setMySupportAway(away);
+  } catch (err) {
+    redirect(`/crm/support?error=${encodeURIComponent(friendlyError(err, 'Could not change your status.', 'support-form-handlers'))}`);
+  }
+  revalidatePath('/crm/support');
+  redirect(`/crm/support?status=${away ? 'away' : 'back'}`);
+}
+
+// ── Set-up (Settings → Support centre) ─────────────────────────────────
+
+const SETUP = '/settings/support';
+function setupBack(err: unknown, fallback: string, hash = ''): never {
+  redirect(`${SETUP}?error=${encodeURIComponent(friendlyError(err, fallback, 'support-form-handlers'))}${hash}`);
+}
+function setupDone(status: string, hash = ''): never {
+  revalidatePath(SETUP);
+  revalidatePath('/crm/support');
+  redirect(`${SETUP}?status=${status}${hash}`);
+}
+
+const minutes = (f: FormData, k: string, unit: 'h' | 'm') => {
+  const n = Number(str(f, k));
+  return Number.isFinite(n) && n > 0 ? Math.round(unit === 'h' ? n * 60 : n) : undefined;
+};
+
+export async function saveSupportQueueAction(f: FormData): Promise<void> {
+  let id = str(f, 'id');
+  try {
+    const targets: Record<string, { first?: number; resolve?: number }> = {};
+    for (const p of ['URGENT', 'HIGH', 'NORMAL', 'LOW']) targets[p] = { first: minutes(f, `${p}_first`, 'm'), resolve: minutes(f, `${p}_resolve`, 'h') };
+    id = (await saveSupportQueue({
+      id: id || undefined, name: str(f, 'name'), kind: str(f, 'kind'), description: str(f, 'description'), branchId: str(f, 'branchId'), aiMode: str(f, 'aiMode') || 'SUGGEST',
+      autoAcknowledge: f.get('autoAcknowledge') === 'on', isDefault: f.get('isDefault') === 'on', active: f.get('active') !== 'off', signature: str(f, 'signature'), targets,
+    })).id;
+  } catch (err) {
+    setupBack(err, 'Could not save the team.', id ? `#queue-${id}` : '#new-queue');
+  }
+  setupDone('queue_saved', `#queue-${id}`);
+}
+
+export async function setSupportQueueMembersAction(f: FormData): Promise<void> {
+  const queueId = str(f, 'queueId');
+  try {
+    const members = f.getAll('member').map(String).map((userId) => ({ userId, capacity: Number(str(f, `capacity_${userId}`)) || 15 }));
+    await setSupportQueueMembers(queueId, members);
+  } catch (err) {
+    setupBack(err, 'Could not save who works this team.', `#queue-${queueId}`);
+  }
+  setupDone('members_saved', `#queue-${queueId}`);
+}
+
+export async function connectSupportMailboxAction(f: FormData): Promise<void> {
+  const queueId = str(f, 'queueId');
+  try {
+    await connectSupportMailbox({
+      queueId, address: str(f, 'address'), displayName: str(f, 'displayName'), imapHost: str(f, 'imapHost'), imapPort: str(f, 'imapPort'), imapSecurity: str(f, 'imapSecurity'),
+      smtpHost: str(f, 'smtpHost'), smtpPort: str(f, 'smtpPort'), smtpSecurity: str(f, 'smtpSecurity'), username: str(f, 'username'), password: String(f.get('password') ?? ''),
+    });
+  } catch (err) {
+    setupBack(err, 'Could not connect the mailbox.', `#queue-${queueId}`);
+  }
+  setupDone('mailbox_connected', `#queue-${queueId}`);
+}
+
+export async function changeSupportMailboxAction(f: FormData): Promise<void> {
+  const action = str(f, 'do') as 'pause' | 'resume' | 'remove';
+  try {
+    await changeSupportMailbox(str(f, 'mailboxId'), action);
+  } catch (err) {
+    setupBack(err, 'Could not change the mailbox.');
+  }
+  setupDone(`mailbox_${action}`);
+}
+
+export async function saveSupportSettingsAction(f: FormData): Promise<void> {
+  try {
+    const hours: Record<string, [string, string]> = {};
+    for (const d of ['1', '2', '3', '4', '5', '6', '7']) {
+      if (f.get(`open_${d}`) !== 'on') continue;
+      hours[d] = [str(f, `from_${d}`), str(f, `to_${d}`)];
+    }
+    await saveSupportSettings({
+      hours, holidays: str(f, 'holidays').split(/[\s,;]+/).filter(Boolean), aiThreshold: Number(str(f, 'aiThreshold')) / 100,
+      nudgeAfterHours: Number(str(f, 'nudgeAfterHours')), autoResolveDays: Number(str(f, 'autoResolveDays')), closeAfterDays: Number(str(f, 'closeAfterDays')), csatEnabled: f.get('csatEnabled') === 'on',
+    });
+  } catch (err) {
+    setupBack(err, 'Could not save the settings.', '#hours');
+  }
+  setupDone('settings_saved', '#hours');
 }

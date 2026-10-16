@@ -100,7 +100,7 @@ test.describe('a signed-in customer', () => {
     test.skip(!S.ticket, 'needs the ticket from the previous step');
     await as(page, 'receptionist');
     await open(page, '/crm/support?filter=all');
-    await expect(page.getByRole('heading', { level: 1, name: 'Support inbox' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Support centre' })).toBeVisible();
     // The inbox list, not the scrolling ticker (which also links new tickets).
     await page.getByRole('main').getByRole('link', { name: new RegExp(S.ticket) }).first().click();
     await page.waitForURL(/\/crm\/support\/[^/?]+/);

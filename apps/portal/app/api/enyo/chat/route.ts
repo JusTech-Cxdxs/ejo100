@@ -7,6 +7,7 @@ import { staffTools } from '@/lib/enyo/tools';
 import { cleanPage, MAX_MESSAGE_CHARS, overRateLimit, sameOrigin, sseError, staffContext, staffSystemPrompt, titleFrom } from '@/lib/enyo/server';
 import { logError } from '@/lib/errors';
 import { findLearned, noteLearnedUse } from '@/lib/enyo/learned';
+import { workProfile } from '@/lib/enyo/work-profile';
 import { canReuse, reuseAllowed } from '@/lib/enyo/learned-core';
 import { tokenise } from '@/lib/enyo/predict/text';
 
@@ -86,7 +87,9 @@ export async function POST(request: NextRequest) {
     // What colleagues found helpful for this kind of question (organisation's own).
     const learned = await findLearned(organisationId, ['STAFF', 'SUPPORT'], message, 2).catch(() => []);
     const reuse = canReuse(learned[0], tokenise(message)) && reuseAllowed({ question: message, historyLength: history.length, assisted: Boolean(ctx.assisted), page: ctx.page }) ? learned[0]! : null;
-    const system = await staffSystemPrompt({ ctx, settings: ready.settings, organisationId, memory, assistantName, examples: learned.map((l) => ({ question: l.question, answer: l.answer })) });
+    // How this person works here (their own actions), so answers fit their job — never during an assisted session.
+    const profile = ctx.assisted ? null : await workProfile(userId, organisationId);
+    const system = await staffSystemPrompt({ ctx, settings: ready.settings, organisationId, memory, assistantName, examples: learned.map((l) => ({ question: l.question, answer: l.answer })), workProfile: profile });
     const turns: ChatMessage[] = [...trimHistory(history, 12_000, 16), { role: 'user', content: message }];
     // Cost: small talk and short how-to go to the fast model; records and figures to the main one.
     const route = routeModel(message, ready.config);

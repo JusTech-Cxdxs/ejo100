@@ -161,6 +161,8 @@ const SKIP_MODELS = new Set([
   // replies, status changes, assignments and reminder steps write their own
   // business audit entries without the text.
   'SupportTicket', 'SupportReply', 'Reminder',
+  // v36: support mailboxes hold an encrypted password; connect/remove write their own entries.
+  'SupportMailbox',
   // Learned answers hold question and answer text; adding and removing them write their own entries.
   'EnyoLearnedAnswer',
 ]);

@@ -75,6 +75,14 @@ const ALLOWED_PLAIN_STATUS_WRITES: Record<string, string> = {
   'lib/vehicle-service-cycle.ts:vehicleService.update': 'legacy normalisation',
   // Creates a PENDING learned answer; the update branch never touches status.
   'lib/enyo/learned.ts:enyoLearnedAnswer.upsert': 'creates the PENDING candidate',
+  // A support mailbox's reading status (ACTIVE / ERROR / PAUSED) is configuration, not a workflow:
+  // the last run or the administrator's choice simply wins.
+  'lib/actions/support-admin.ts:supportMailbox.update': 'pause / resume a support mailbox',
+  'lib/support/intake.ts:supportMailbox.update': 'reading status and position of a support mailbox',
+  // A colleague's answer becomes a PENDING candidate again for approval.
+  'lib/support/learn.ts:enyoLearnedAnswer.upsert': 'creates or resets the PENDING candidate',
+  // A customer / website chat answer becomes a PENDING candidate (an existing one is left as it is).
+  'lib/enyo/conversations.ts:enyoLearnedAnswer.upsert': 'creates the PENDING candidate',
 };
 
 function body(fnName: string, src: string): string {

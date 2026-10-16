@@ -32,6 +32,8 @@ export async function loadCompanyInfo(organisationId: string): Promise<CompanyIn
     }),
     prisma.businessUnit.findMany({ where: { organisationId, isActive: true }, orderBy: { name: 'asc' }, take: 20, select: { name: true } }),
   ]);
+  // v36: opening hours from the Support centre's set-up, when an administrator has saved them.
+  const setting = await prisma.supportSetting.findUnique({ where: { organisationId }, select: { hours: true } }).catch(() => null);
   const phones = unique([...(org?.hotlines ?? []), siteConfig.contact.phone]);
   const email = org?.email?.trim() || siteConfig.contact.email || null;
   return {
@@ -44,8 +46,7 @@ export async function loadCompanyInfo(organisationId: string): Promise<CompanyIn
       phones: unique(b.hotlines),
       email: b.email?.trim() || null,
     })),
-    // Not stored anywhere yet: say so rather than guess.
-    openingHours: null,
+    openingHours: setting?.hours ? hoursText(setting.hours) : null,
     businesses: unique(units.map((u) => u.name)),
     websitePages: SEARCH_INDEX.filter((e) => e.category === 'Business' || ['/contact', '/support', '/about'].includes(e.href)).map((e) => ({ title: e.title, link: e.href })),
     howToBook: [
@@ -54,8 +55,19 @@ export async function loadCompanyInfo(organisationId: string): Promise<CompanyIn
     ],
     customerPortal: '/customer-portal',
     notes: [
-      'Opening hours are not listed. Suggest calling the branch to confirm before visiting.',
+      ...(setting?.hours ? ['Closed on public holidays.'] : ['Opening hours are not listed. Suggest calling the branch to confirm before visiting.']),
       'Prices are not published. Estimates are prepared after the vehicle is inspected.',
     ],
   };
+}
+
+/** {"1":["08:00","17:00"],…} → "Monday 08:00–17:00; …; Sunday closed" (Lagos time). */
+function hoursText(json: unknown): string | null {
+  if (!json || typeof json !== 'object') return null;
+  const names = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const parts = [1, 2, 3, 4, 5, 6, 7].map((d) => {
+    const v = (json as Record<string, unknown>)[String(d)];
+    return Array.isArray(v) && typeof v[0] === 'string' && typeof v[1] === 'string' ? `${names[d]} ${v[0]}–${v[1]}` : `${names[d]} closed`;
+  });
+  return `${parts.join('; ')} (Lagos time)`;
 }

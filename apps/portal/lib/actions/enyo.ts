@@ -23,6 +23,10 @@ import { learnFromRating } from '@/lib/enyo/learned';
 
 class EnyoError extends Error {}
 
+function claimedCount(r: { count: number }): void {
+  if (!r.count) throw new EnyoError('That learned answer changed just now. Refresh the page and try again.');
+}
+
 const NOT_FOUND = 'That conversation is not available.';
 
 /**
@@ -231,7 +235,7 @@ export async function listLearnedAnswers(): Promise<LearnedAnswerRow[]> {
   const organisationId = await myOrganisationId();
   if (!organisationId) return [];
   return prisma.enyoLearnedAnswer.findMany({
-    where: { organisationId },
+    where: { organisationId, status: { in: ['PENDING', 'APPROVED'] } },
     orderBy: [{ status: 'desc' }, { createdAt: 'desc' }],
     take: 100,
     select: { id: true, channel: true, question: true, answer: true, source: true, status: true, uses: true, createdAt: true, lastUsedAt: true, approvedAt: true },
@@ -255,8 +259,9 @@ export async function removeLearnedAnswer(id: string): Promise<void> {
   await authorize('enyo.manage', undefined, 'removeLearnedAnswer', 'Only administrators manage Enyo.');
   await refuseDuringAssist('enyo.learned.remove');
   const organisationId = await learnedOrg();
-  const row = await prisma.enyoLearnedAnswer.findFirst({ where: { id: String(id ?? ''), organisationId }, select: { id: true, organisationId: true } });
+  const row = await prisma.enyoLearnedAnswer.findFirst({ where: { id: String(id ?? ''), organisationId, status: { in: ['PENDING', 'APPROVED'] } }, select: { id: true, organisationId: true } });
   if (!row) throw new EnyoError('That learned answer is not available.');
-  await prisma.enyoLearnedAnswer.delete({ where: { id: row.id } });
+  // Kept as REJECTED (text cleared) so the same chat or reply is never suggested again.
+  claimedCount(await prisma.enyoLearnedAnswer.updateMany({ where: { id: row.id, organisationId, status: { in: ['PENDING', 'APPROVED'] } }, data: { status: 'REJECTED', answer: '', question: '', tokens: [], approvedById: null, approvedAt: null } }));
   await writeAuditLog({ userId: user.id, action: 'enyo.learned_answer_removed', entityType: 'EnyoLearnedAnswer', entityId: row.id, organisationId: row.organisationId });
 }

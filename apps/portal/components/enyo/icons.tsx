@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 /** Icons only Enyo uses, drawn like components/ui/Icon (24 × 24, round caps, currentColor). */
 const P = {
   mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" /></>,
+  pause: <><path d="M9 6v12M15 6v12" /></>,
   stop: <><rect x="6.5" y="6.5" width="11" height="11" rx="2" /></>,
   send: <><path d="M5 12h13M12 5.5L18.5 12 12 18.5" /></>,
   copy: <><rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2" /><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5" /></>,

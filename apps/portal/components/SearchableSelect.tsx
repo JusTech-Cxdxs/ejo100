@@ -174,7 +174,7 @@ export function SearchableSelect({
         <div
           id={listboxId}
           role="listbox"
-          className="absolute z-10 mt-1 max-h-[min(16rem,45dvh)] w-full overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-lg"
+          className="absolute z-30 mt-1 max-h-[min(16rem,45dvh)] w-full overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-lg"
         >
           {state === 'loading' ? (
             <p className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--ejo-text-muted)]">

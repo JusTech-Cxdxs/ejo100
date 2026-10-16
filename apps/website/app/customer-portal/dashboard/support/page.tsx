@@ -55,7 +55,7 @@ export default async function SupportPage() {
                           <li className="text-sm text-[var(--ejo-text-muted)]">Opened {fmtDateTime(t.createdAt)}. {info.explain}</li>
                         ) : t.replies.map((r) => (
                           <li key={r.id} className={`rounded-[var(--ejo-radius-md)] px-3 py-2 text-sm ${r.fromCustomer ? 'ml-6 bg-[var(--ejo-primary)]/[0.07]' : 'mr-6 border border-[var(--ejo-border)] bg-[var(--ejo-bg)]'}`}>
-                            <p className="text-xs font-medium text-[var(--ejo-text-muted)]">{r.fromCustomer ? 'You' : 'Customer care'} · {fmtDateTime(r.createdAt)}</p>
+                            <p className="text-xs font-medium text-[var(--ejo-text-muted)]">{r.fromCustomer ? 'You' : r.kind === 'AI' ? 'AI assistant' : 'Customer care'} · {fmtDateTime(r.createdAt)}</p>
                             <p className="mt-1 whitespace-pre-wrap break-words text-[var(--ejo-text)] [overflow-wrap:anywhere]">{r.body}</p>
                           </li>
                         ))}

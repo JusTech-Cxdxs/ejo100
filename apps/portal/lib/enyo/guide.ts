@@ -536,9 +536,35 @@ export const GUIDE: GuideEntry[] = [
     steps: ['Go to Inventory → Reorder suggestions (/inventory/reorder).', 'Each part listed is at or below the reorder point learned from its real use, with the next four weeks\' expected use and a suggested quantity.', 'Raise the order the usual way; nothing is ordered for you.'],
   },
   {
-    id: 'support-inbox', title: 'Answer customers handed over by Enyo (support inbox)', page: '/crm/support', needs: ['crm.view'], does: ['support.tickets.manage'], who: 'Front desk, managers and administrators',
-    keywords: ['support', 'ticket', 'handover', 'customer care', 'complaint', 'sup', 'customer message', 'inbox'],
-    steps: ['Go to Customers → Support inbox. New conversations Enyo handed over are under "Open".', 'Open a ticket to read Enyo\'s summary and the conversation, then write your reply and send it. The customer gets it by email and in their portal.', 'Assign it to yourself or a colleague, and mark it resolved when done.'],
+    id: 'support-inbox', title: 'Work the Support centre (emails to support@, chat hand-overs, calls)', page: '/crm/support', needs: ['crm.view'], does: ['support.tickets.manage'], who: 'Front desk, customer care, managers and administrators',
+    keywords: ['support', 'ticket', 'handover', 'customer care', 'complaint', 'sup', 'customer message', 'inbox', 'support centre', 'warranty email', 'helpdesk', 'late', 'sla'],
+    steps: [
+      'Go to Customers → Support centre. Late and urgent requests are at the top; the tiles show Open, Unassigned, Late, Waiting on customers and Mine. Pick a team on the left to see only its requests.',
+      'Open a request: read Enyo\'s summary and why a person is needed, check the customer\'s vehicles and jobs on the right, and whether they are verified before discussing their records or money.',
+      'Reply in the box (or start from Enyo\'s suggested reply, or press "Ask Enyo for a draft"). It is emailed from the team\'s own address in the same thread and shows in their portal. Choose what happens next: wait for the customer, resolved, or on hold.',
+      'Add an internal note for colleagues (the customer never sees notes), change the priority, move it to another team, or assign it.',
+      'Going on leave or busy? Press "Mark me away" so new requests go to colleagues who are in.',
+    ],
+  },
+  {
+    id: 'support-new', title: 'Log a phone call or walk-in as a support request', page: '/crm/support/new', needs: ['crm.view'], does: ['support.tickets.manage'], who: 'Front desk and customer care',
+    keywords: ['log a call', 'new ticket', 'new support request', 'walk in', 'whatsapp', 'phone complaint', 'open a ticket'],
+    steps: ['Go to Customers → Support centre → New request.', 'Enter the customer (a known customer\'s email links their file), what it is about and what they said, the team and the priority.', 'Open it: it gets a SUP number, a target time and an owner like an email would.'],
+  },
+  {
+    id: 'support-numbers', title: 'See the Support centre numbers (speed, targets, satisfaction)', page: '/crm/support/analytics', needs: ['crm.view'], does: ['support.tickets.manage'],
+    keywords: ['support numbers', 'support analytics', 'first response', 'csat', 'satisfaction', 'sla', 'how fast', 'resolved by enyo'],
+    steps: ['Go to Customers → Support centre → Numbers.', 'Choose the period. You see first-answer time, targets met, how many Enyo resolved and why people were needed, reopen rate, satisfaction, backlog age, topics and each team.', 'Ask Enyo: "How is support doing this month?" for the same figures in a sentence.'],
+  },
+  {
+    id: 'support-setup', title: 'Set up support teams and addresses (support@, warranty@, technical@)', page: '/settings/support', needs: ['admin.settings.manage'], does: ['support.manage'], who: 'Administrators',
+    keywords: ['support setup', 'support email', 'warranty@', 'technical@', 'customercare@', 'queue', 'team', 'auto reply', 'autoresponder', 'opening hours', 'targets', 'sla'],
+    steps: [
+      'Go to Settings → Support centre set-up.',
+      'Add a team (for example Warranty), choose how Enyo helps (people only, Enyo drafts, or Enyo answers general questions), its targets and whether to send an acknowledgement.',
+      'Connect the team\'s address with an app password. New mail becomes numbered requests within minutes; the customer gets the reference and when to expect an answer.',
+      'Tick who works the team and how many open requests each takes. Set opening hours, holidays and the reminder and closing rules at the bottom.',
+    ],
   },
   {
     id: 'reminders', title: 'Set a reminder', page: '/reminders', needs: EVERYONE,

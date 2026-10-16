@@ -8,6 +8,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { Suspense } from 'react';
 import { DataQualityCard } from '@/components/enyo/DataQualityCard';
 import { LearnedAnswersCard } from '@/components/enyo/LearnedAnswersCard';
+import { ConversationInsightsCard } from '@/components/enyo/ConversationInsightsCard';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 
 const LEARNED_STATUS: Record<string, string> = { learned_approved: 'Approved. Enyo now follows that answer.', learned_removed: 'Removed. Enyo no longer uses that answer.' };
@@ -147,6 +148,9 @@ export default async function EnyoLearningPage({ searchParams }: { searchParams:
         <div className="mb-6">
           {error ? <div role="alert"><FormFeedbackBanner kind="error" message={error} /></div> : null}
           {status ? <div role="status"><FormFeedbackBanner kind="success" message={status} /></div> : null}
+          <Suspense fallback={<SectionCard icon="activity" title="What Enyo learns from its conversations"><p role="status" className="text-sm text-[var(--ejo-text-muted)]">Reading the conversations…</p></SectionCard>}>
+            <div className="mb-6"><ConversationInsightsCard /></div>
+          </Suspense>
           <Suspense fallback={<SectionCard icon="sparkles" title="What Enyo has learned"><p role="status" className="text-sm text-[var(--ejo-text-muted)]">Loading…</p></SectionCard>}>
             <LearnedAnswersCard />
           </Suspense>

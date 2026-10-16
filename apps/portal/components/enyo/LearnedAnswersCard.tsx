@@ -26,7 +26,7 @@ export async function LearnedAnswersCard() {
                   <summary className="flex min-h-11 cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
                     <span className="min-w-0">
                       <span className="block text-sm font-medium text-[var(--ejo-text)]">{r.question}</span>
-                      <span className="mt-0.5 block text-xs text-[var(--ejo-text-muted)]"><span className={`mr-1.5 inline-block rounded-full px-2 py-0.5 font-medium ${r.status === 'APPROVED' ? 'bg-[var(--ejo-success)]/10 text-[var(--ejo-success)]' : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning-text)]'}`}>{r.status === 'APPROVED' ? 'Approved' : 'Waiting'}</span>{r.source === 'rating' ? 'Marked helpful' : 'From a colleague’s reply'} · {formatDateOnly(r.createdAt)} · used {r.uses} time{r.uses === 1 ? '' : 's'}</span>
+                      <span className="mt-0.5 block text-xs text-[var(--ejo-text-muted)]"><span className={`mr-1.5 inline-block rounded-full px-2 py-0.5 font-medium ${r.status === 'APPROVED' ? 'bg-[var(--ejo-success)]/10 text-[var(--ejo-success)]' : 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning-text)]'}`}>{r.status === 'APPROVED' ? 'Approved' : 'Waiting'}</span>{r.source === 'rating' ? 'Marked helpful by a colleague' : r.source === 'support' ? 'From a colleague’s support reply' : r.source === 'chat' ? `From a ${r.channel === 'PUBLIC' ? 'website' : 'customer'} chat` : 'Learned'} · {formatDateOnly(r.createdAt)} · used {r.uses} time{r.uses === 1 ? '' : 's'}</span>
                     </span>
                     <span className="shrink-0 text-xs font-medium text-[var(--ejo-primary)] group-open:hidden">Show</span>
                   </summary>

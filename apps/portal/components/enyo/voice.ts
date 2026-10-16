@@ -67,21 +67,58 @@ const MIC_ERRORS: Record<string, string> = {
   network: 'Speech recognition needs an internet connection. Please type your question instead.',
 };
 
-export function useSpeechInput(onDone: (text: string) => void) {
+/** What happens to the words once the person finishes speaking. */
+export type VoiceFinish = 'send' | 'text';
+
+/** Joins spoken pieces with single spaces. */
+export function joinSpoken(...parts: string[]): string {
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Speaking to Enyo, the way people expect from voice notes in chat apps:
+ *  - start → listening, the words appear as they are heard;
+ *  - pause → stops listening and keeps the words; resume adds to them;
+ *  - finish('send') → sends what was said at once;
+ *  - finish('text') → puts the words into the message box to read, edit or
+ *    add to before sending;
+ *  - cancel → throws the recording away.
+ * If the browser stops listening on its own (silence, phone lock), the words
+ * are kept as if paused: nothing is ever sent without the person choosing.
+ */
+export function useSpeechInput(onDone: (text: string, how: VoiceFinish) => void) {
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [interim, setInterim] = useState('');
   const [error, setError] = useState<string | null>(null);
-  /** Between "stop" and the browser handing back the words. */
+  /** Between "finish" and the browser handing back the last words. */
   const [processing, setProcessing] = useState(false);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
   const rec = useRef<Recognition | null>(null);
+  /** Words from earlier pieces (before a pause). */
+  const kept = useRef('');
   const finalText = useRef('');
   const interimText = useRef('');
+  /** What the person chose when they stopped this piece (null: the browser stopped). */
+  const ending = useRef<VoiceFinish | 'pause' | 'cancel' | null>(null);
   const done = useRef(onDone);
   done.current = onDone;
 
   useEffect(() => { setSupported(Boolean(recognitionCtor())); }, []);
-  useEffect(() => () => rec.current?.abort(), []);
+  useEffect(() => () => { const r = rec.current; if (r) { r.onend = null; r.onresult = null; r.onerror = null; r.abort(); } }, []);
+
+  const reset = useCallback(() => {
+    kept.current = '';
+    finalText.current = '';
+    interimText.current = '';
+    ending.current = null;
+    setInterim('');
+    setPaused(false);
+    setListening(false);
+    setProcessing(false);
+    setStartedAt(null);
+  }, []);
 
   const begin = useCallback((lang: string) => {
     const Ctor = recognitionCtor();
@@ -91,6 +128,9 @@ export function useSpeechInput(onDone: (text: string) => void) {
     r.continuous = true;
     r.interimResults = true;
     r.maxAlternatives = 1;
+    finalText.current = '';
+    interimText.current = '';
+    ending.current = null;
     r.onresult = (e) => {
       let fin = '';
       let mid = '';
@@ -101,7 +141,7 @@ export function useSpeechInput(onDone: (text: string) => void) {
       }
       finalText.current = fin;
       interimText.current = mid;
-      setInterim(`${fin}${mid}`.trim());
+      setInterim(joinSpoken(kept.current, fin, mid));
     };
     r.onerror = (e) => {
       if (e.error === 'language-not-supported' && lang !== 'en-GB') {
@@ -109,46 +149,86 @@ export function useSpeechInput(onDone: (text: string) => void) {
         begin('en-GB');
         return;
       }
+      // Silence after some words is not an error worth showing: the words are kept.
+      if (e.error === 'no-speech' && kept.current) return;
       if (e.error !== 'aborted') setError(MIC_ERRORS[e.error] ?? 'The microphone stopped. Please try again or type your question.');
     };
     r.onend = () => {
-      setListening(false);
-      setProcessing(false);
       rec.current = null;
-      const text = `${finalText.current}${interimText.current}`.replace(/\s+/g, ' ').trim();
-      setInterim('');
-      if (text) done.current(text);
+      setListening(false);
+      const how = ending.current;
+      const text = joinSpoken(kept.current, finalText.current, interimText.current);
+      if (how === 'cancel') { reset(); return; }
+      if (how === 'send' || how === 'text') {
+        reset();
+        if (text) done.current(text, how);
+        return;
+      }
+      // Paused by the person, or the browser stopped by itself: keep the words.
+      kept.current = text;
+      finalText.current = '';
+      interimText.current = '';
+      setInterim(text);
+      setProcessing(false);
+      if (text) setPaused(true); else reset();
     };
     rec.current = r;
     try {
       r.start();
       setListening(true);
+      setPaused(false);
     } catch {
       setListening(false);
       setError('The microphone could not start. Please try again.');
     }
-  }, []);
+  }, [reset]);
 
   const start = useCallback(() => {
     if (rec.current) return;
     setError(null);
-    finalText.current = '';
-    interimText.current = '';
-    setInterim('');
+    reset();
+    setStartedAt(Date.now());
+    begin('en-NG');
+  }, [begin, reset]);
+
+  /** Stops listening and keeps the words (resume adds to them). */
+  const pause = useCallback(() => {
+    if (!rec.current) return;
+    ending.current = 'pause';
+    rec.current.stop();
+  }, []);
+
+  /** Listens again, adding to the words kept so far. */
+  const resume = useCallback(() => {
+    if (rec.current) return;
+    setError(null);
     begin('en-NG');
   }, [begin]);
 
-  /** Stops listening; what was heard is sent (onDone) when the browser finishes. */
-  const stop = useCallback(() => { if (rec.current) { setProcessing(true); rec.current.stop(); } }, []);
-  /** Stops without sending. */
-  const cancel = useCallback(() => {
-    finalText.current = '';
-    interimText.current = '';
-    setProcessing(false);
-    rec.current?.abort();
-  }, []);
+  /** Finishes: send what was said, or put it in the message box to edit. */
+  const finish = useCallback((how: VoiceFinish) => {
+    if (rec.current) {
+      ending.current = how;
+      setProcessing(true);
+      rec.current.stop();
+      return;
+    }
+    const text = kept.current;
+    reset();
+    if (text) done.current(text, how);
+  }, [reset]);
 
-  return { supported, listening, processing, interim, error, clearError: () => setError(null), start, stop, cancel };
+  /** Throws the recording away. */
+  const cancel = useCallback(() => {
+    const r = rec.current;
+    if (r) { r.onend = null; r.onresult = null; r.onerror = null; rec.current = null; r.abort(); }
+    reset();
+  }, [reset]);
+
+  /** Kept for callers that only stop and send. */
+  const stop = useCallback(() => finish('send'), [finish]);
+
+  return { supported, listening, paused, active: listening || paused || processing, processing, interim, startedAt, error, clearError: () => setError(null), start, pause, resume, finish, stop, cancel };
 }
 
 // ------------------------------------------------------------ text to speech

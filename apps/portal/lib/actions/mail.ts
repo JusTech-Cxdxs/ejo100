@@ -444,16 +444,18 @@ async function letterhead(m: Me, address: string, displayName: string | null) {
 
 const styleOf = (v: unknown): MailStyle => ((MAIL_STYLES as readonly string[]).includes(String(v)) ? (v as MailStyle) : 'standard');
 
-/** What the email will look like in the recipient's inbox (nothing is sent). */
-export async function previewMyMail(input: { subject?: string; body?: string; style?: string }): Promise<{ html: string | null }> {
+export type MailLetterhead = Awaited<ReturnType<typeof letterhead>>;
+
+/**
+ * The person's letterhead details (organisation, branch, their own name and
+ * contact), so Compose can show a live preview in the browser as they type,
+ * with no request per keystroke. Their own details only; nothing secret.
+ */
+export async function getMyLetterhead(): Promise<MailLetterhead | null> {
   const m = await me();
   const box = await myMailbox(m);
-  if (!box) return { html: null };
-  const style = styleOf(input?.style);
-  if (style === 'plain') return { html: null };
-  const subject = String(input?.subject ?? '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, SUBJECT_MAX) || '(no subject)';
-  const body = String(input?.body ?? '').replace(/\r\n?/g, '\n').slice(0, BODY_MAX);
-  return { html: renderPersonalMail({ subject, body, style, ...(await letterhead(m, box.address, box.displayName)) }) };
+  if (!box) return null;
+  return letterhead(m, box.address, box.displayName);
 }
 
 /** Sends through the person's own mail server, in the organisation's letterhead unless they chose plain text. Nothing is stored here; the original is marked answered on the server. */

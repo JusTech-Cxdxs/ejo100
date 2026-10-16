@@ -38,7 +38,7 @@ const MORE_PAGES: (SearchHit & { needs?: PermissionKey[] })[] = [
   { label: 'Appointments (APT)', href: '/schedule/appointments', needs: ['schedule.view'] },
   { label: 'Notification Center', href: '/notifications' },
   { label: 'Broadcasts (BC)', href: '/notifications/broadcasts', needs: ['notifications.broadcast.send'] },
-  { label: 'Support inbox (SUP)', href: '/crm/support', needs: ['support.tickets.manage'] },
+  { label: 'Support centre (SUP)', href: '/crm/support', needs: ['support.tickets.manage'] },
 ];
 
 type Text = { startsWith?: string; contains?: string; mode?: 'insensitive' };
